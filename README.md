@@ -63,7 +63,7 @@ The project is in the specification phase. No Go implementations exist yet; the 
 | PRDs written (utility) | 7 (ts, wc, cat, sponge, ls core, ls extended, du) |
 | PRDs written (shared components) | 3 (pkg/testutils, pkg/sys, pkg/format) |
 | Use cases written | 7 |
-| Test suites written | 7 |
+| Test suites written | 4 (one per release: rel01.0, rel01.1, rel02.0, rel02.1) |
 | Go implementations | 0 |
 
 Roadmap: [docs/road-map.yaml](docs/road-map.yaml). Full utility catalog with difficulty ratings, memory models, and implementation profiles: [docs/utilities.yaml](docs/utilities.yaml).
@@ -85,6 +85,7 @@ go-unix-utils/
 ├── docs/
 │   ├── VISION.yaml                  Project goals, risks, boundaries
 │   ├── ARCHITECTURE.yaml            Components, design decisions, tech choices
+│   ├── SPECIFICATIONS.yaml          PRD, use case, and test suite index
 │   ├── utilities.yaml               Full 123-utility catalog
 │   ├── road-map.yaml                Release schedule and use case status
 │   ├── specs/
@@ -135,4 +136,5 @@ Requires Go 1.21+, [Mage](https://magefile.org/), and Homebrew GNU coreutils/mor
 
 - [VISION.yaml](docs/VISION.yaml) -- Project goals, success criteria, risks, and boundaries
 - [ARCHITECTURE.yaml](docs/ARCHITECTURE.yaml) -- Component descriptions, design decisions, technology choices
+- [SPECIFICATIONS.yaml](docs/SPECIFICATIONS.yaml) -- PRD, use case, and test suite index with traceability
 - [Engineering guidelines](docs/engineering/) -- Conventions and practices above the code
