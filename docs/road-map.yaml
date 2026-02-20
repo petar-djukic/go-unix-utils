@@ -1,0 +1,41 @@
+id: go-unix-utils-roadmap
+title: "go-unix-utils Release Road Map"
+
+releases:
+  - id: rel01.0
+    name: "Batch 1 — ts specification and differential test"
+    focus: |
+      Establish the end-to-end pipeline for a single utility: derive the PRD from C/Perl
+      source, write a use case, produce a test suite, and verify a passing differential
+      test against the Homebrew ts reference binary. This release also establishes the
+      shared infrastructure PRDs (pkg/testutils, pkg/sys, pkg/format) and the source
+      extraction and dependency analysis artifacts.
+    use_cases:
+      - id: rel01.0-uc001-ts
+        status: in_progress
+
+  - id: rel01.1
+    name: "Batch 2 — wc, cat, sponge specification and differential tests"
+    focus: |
+      Extend the pipeline to three additional moreutils/coreutils utilities that share
+      the same pkg/testutils dependency and do not require pkg/sys or pkg/format. Each
+      utility gets a PRD, use case, and test suite.
+    use_cases:
+      - id: rel01.1-uc001-wc
+        status: pending
+      - id: rel01.1-uc002-cat
+        status: pending
+      - id: rel01.1-uc003-sponge
+        status: pending
+
+  - id: rel02.0
+    name: "Batch 3 — ls and du specification and differential tests"
+    focus: |
+      Extend the pipeline to utilities that require the pkg/sys and pkg/format shared
+      libraries. Each utility gets a PRD, use case, and test suite. pkg/sys and
+      pkg/format receive their own use cases covering the shared library behavior.
+    use_cases:
+      - id: rel02.0-uc001-ls
+        status: pending
+      - id: rel02.0-uc002-du
+        status: pending
