@@ -1,0 +1,190 @@
+# Planning Constitution
+#
+# This constitution governs the measure phase: analyzing the project state,
+# breaking down work, and proposing issues. It is injected into the measure
+# prompt so Claude knows how to create well-formed, appropriately sized tasks.
+
+articles:
+  - id: P1
+    title: Release-driven priority
+    rule: |
+      Focus on the earliest incomplete release from road-map.yaml. Every issue
+      should map to a use case in the roadmap. If uncertain, assign to release
+      99.0 (unscheduled). Early preview of later use cases is allowed when they
+      share functionality with the current release.
+
+  - id: P2
+    title: Task sizing
+    rule: |
+      Code tasks should target 300-700 lines of production code, touching no
+      more than 5 files. Split larger features into multiple tasks. Combine
+      trivial changes into one task. This keeps tasks completable in a single
+      session while making meaningful progress.
+
+  - id: P3
+    title: Task limit per batch
+    rule: |
+      Create no more than 10 tasks at a time. If more work is needed, create
+      additional tasks after completing some of the current batch.
+
+  - id: P4
+    title: Issue structure
+    rule: |
+      Every issue description must be a YAML document with: deliverable_type
+      (documentation or code), required_reading (mandatory), files (explicit
+      paths with action: create or modify), requirements, acceptance_criteria.
+      Documentation issues also include format_rule and required_sections.
+
+  - id: P5
+    title: Dependency ordering
+    rule: |
+      Identify what should be built first and why. PRDs before use cases,
+      use cases before test suites, test suites before code, foundational code
+      before features, libraries before CLI.
+
+issue_structure:
+  common_fields:
+    deliverable_type:
+      required: true
+      values: [documentation, code]
+      description: What kind of deliverable this issue produces
+
+    required_reading:
+      required: true
+      description: |
+        Files the agent must read before starting. List PRDs, ARCHITECTURE
+        sections, existing code, or upstream docs. This is mandatory for all
+        issues.
+
+    files:
+      required: true
+      description: |
+        Explicit list of files the issue will produce or change. Each entry
+        has path (absolute from repo root), action (create or modify), and
+        optional note (purpose).
+
+    requirements:
+      required: true
+      description: |
+        What needs to be built or written. Be specific and actionable.
+
+    design_decisions:
+      required: false
+      description: |
+        Architecture, patterns, or constraints to follow. Optional but
+        recommended for code tasks.
+
+    acceptance_criteria:
+      required: true
+      description: |
+        Checkable outcomes. Must be verifiable without ambiguity.
+
+  documentation_issues:
+    additional_fields:
+      format_rule:
+        required: true
+        description: |
+          The rule file that governs the output format (e.g., prd-format,
+          use-case-format, test-case-format, architecture-format,
+          vision-format, specification-format, engineering-guideline-format).
+
+      required_sections:
+        required: false
+        description: |
+          List of sections the document must contain, per the format rule.
+          For PRD: Problem, Goals, Requirements, Non-Goals, Acceptance Criteria.
+          For use case: Summary, Actor/trigger, Flow, Success criteria.
+
+    deliverable_types:
+      - type: ARCHITECTURE
+        location: docs/ARCHITECTURE.yaml
+        format_rule: architecture-format
+        when: Updating system overview, components, design decisions
+
+      - type: PRD
+        location: "docs/specs/product-requirements/prd[NNN]-[feature-name].yaml"
+        format_rule: prd-format
+        when: New or updated product requirements
+
+      - type: Use case
+        location: "docs/specs/use-cases/rel[NN].[N]-uc[NNN]-[short-name].yaml"
+        format_rule: use-case-format
+        when: Tracer-bullet flows, actor/trigger, demo criteria
+
+      - type: Test suite
+        location: "docs/specs/test-suites/test-rel-[release-id].yaml"
+        format_rule: test-case-format
+        when: Release-level test coverage spec; use cases as sub-sections
+
+      - type: Engineering guideline
+        location: "docs/engineering/eng[NN]-[short-name].md"
+        format_rule: engineering-guideline-format
+        when: Conventions and practices
+
+      - type: Specification
+        location: docs/SPECIFICATIONS.md
+        format_rule: specification-format
+        when: Summary of PRDs, use cases, test suites, roadmap
+
+  code_issues:
+    rules:
+      - No PRD-style Problem/Goals/Non-Goals sections in code issues
+      - Requirements focus on implementation: interfaces, operations, tests
+      - Design decisions reference PRDs and architecture patterns
+      - Acceptance criteria include tests passing and behavior verified
+
+example_documentation_issue: |
+  deliverable_type: documentation
+  format_rule: prd-format
+
+  required_reading:
+    - docs/ARCHITECTURE.yaml (components section)
+    - docs/specs/product-requirements/prd001-cupboard-core.yaml
+
+  files:
+    - path: docs/specs/product-requirements/prd-feature-name.yaml
+      action: create
+
+  required_sections:
+    - "Problem: explain the problem and why it matters"
+    - "Goals: G1 ..., G2 ..."
+    - "Requirements: R1.1 ..., R1.2 ..."
+    - "Non-Goals: what is out of scope"
+    - "Acceptance Criteria: checkable outcomes"
+
+  acceptance_criteria:
+    - All required sections present
+    - File saved as prd-feature-name.yaml
+    - Requirements numbered and specific
+
+example_code_issue: |
+  deliverable_type: code
+
+  required_reading:
+    - docs/specs/product-requirements/prd003-crumbs-interface.yaml
+    - pkg/types/cupboard.go
+
+  files:
+    - path: pkg/types/crumb.go
+      action: create
+      note: Crumb struct, Filter type
+    - path: internal/sqlite/crumbs.go
+      action: create
+      note: CrumbTable implementation
+    - path: internal/sqlite/crumbs_test.go
+      action: create
+      note: tests
+
+  requirements:
+    - Implement CrumbTable interface per prd003-crumbs-interface
+    - Add, Get, Archive, Purge, Fetch operations
+    - Property operations (Set/Get/Clear)
+
+  design_decisions:
+    - Use table accessor pattern from prd001-cupboard-core
+    - Filter as map[string]any per PRD
+
+  acceptance_criteria:
+    - All CrumbTable operations implemented
+    - Tests pass for each operation
+    - Errors match PRD error types

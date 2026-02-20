@@ -1,0 +1,179 @@
+# Execution Constitution
+#
+# This constitution governs the stitch phase: implementing a single task from
+# the work queue. It is injected into the stitch prompt so Claude knows how to
+# write code that matches project conventions and quality standards.
+
+articles:
+  - id: E1
+    title: Specification-first
+    rule: |
+      Code must correspond to existing PRDs and architecture. Read the PRDs and
+      ARCHITECTURE sections listed in Required Reading before writing code. Do
+      not invent interfaces, types, or patterns not described in those docs.
+
+  - id: E2
+    title: Traceability
+    rule: |
+      Commit messages must mention which PRDs (or aspects) are implemented.
+      Example: "Implement X (prd-feature-name R6-R7)". Where useful (package or
+      top-of-file comments), list the implemented PRDs.
+
+  - id: E3
+    title: No scope creep
+    rule: |
+      Do NOT modify files outside the Files to Create/Modify list unless a
+      requirement explicitly demands it. Do NOT add features, refactoring, or
+      improvements beyond what the requirements specify. Complete the task as
+      scoped, nothing more.
+
+  - id: E4
+    title: Session completion
+    rule: |
+      Work is NOT complete until changes are committed locally. Do NOT leave
+      uncommitted changes. All work must be committed before finishing.
+
+  - id: E5
+    title: Quality gates
+    rule: |
+      Every item in Acceptance Criteria must be verified. Run tests if the
+      criteria require it. Do not skip any criterion.
+
+coding_standards:
+  copyright_header: |
+    Every Go file must start with the SPDX copyright header:
+    // Copyright (c) 2026 Petar Djukic. All rights reserved.
+    // SPDX-License-Identifier: MIT
+
+  never_duplicate_code: |
+    Before writing a function, search for existing code that does the same thing.
+    When two pieces of code share logic, extract the common part. The threshold
+    is two: if you write the same thing twice, extract it.
+
+  design_patterns:
+    - Strategy: Multiple implementations, caller picks one. Define interface, not if/else ladder.
+    - Command: Encapsulate actions for queuing, undo, or composition.
+    - Facade: Simplified interface to complex subsystem. No toggle parameters.
+    - Factory: Centralized construction via NewXxx() functions.
+    - Decorator: Add cross-cutting concerns (logging, timing) without modifying the wrapped object.
+    - Adapter: Interface translation for foreign APIs.
+
+  interfaces: |
+    Introduce an interface when you have two concrete implementations or when
+    you need to mock a dependency in tests. Do not create an interface for a
+    single implementation "just in case." Accept interfaces as parameters;
+    return concrete structs. Keep interfaces small: one to three methods.
+
+  struct_and_function_design: |
+    Each struct represents one concept. Each function does one thing. If a
+    function takes more than three parameters, group related parameters into a
+    config struct. If a function exceeds 40 lines, find a seam and split it.
+
+  error_handling: |
+    Handle errors at the point they occur. Use guard clauses: check err != nil
+    and return early. Wrap errors with context: fmt.Errorf("doing X: %w", err).
+    Never silently discard an error with _ unless the operation is best-effort
+    cleanup (e.g., removing a temp file). When discarding, leave a comment.
+
+  no_magic_strings: |
+    Centralize all string literals that name external binaries, file paths,
+    URLs, or repeated text. Binary names: const (e.g., binGit, binGo). Large
+    prompts: embedded .tmpl templates. Never scatter raw string literals.
+
+  project_structure: |
+    cmd/: Entry points. Minimal: parse flags, wire dependencies, start.
+    internal/: Private implementation. Not importable outside this module.
+    pkg/: Shared public types and interfaces. No implementation.
+    tests/: Integration tests.
+    magefiles/: Build tooling. Flat directory. One file per concern.
+
+    Align package structure to PRD component structure. Each major component
+    maps to one package. Avoid package names like util, common, helpers.
+
+  standard_packages:
+    - "Build automation: magefile/mage"
+    - "CLI framework: spf13/cobra"
+    - "Configuration: spf13/viper"
+    - "Testing assertions: stretchr/testify"
+    - "YAML parsing: gopkg.in/yaml.v3"
+    - "JSON handling: encoding/json (stdlib)"
+
+  naming_conventions:
+    exported: PascalCase (e.g., CupboardConfig)
+    unexported: camelCase (e.g., cobblerConfig)
+    cli_flags: kebab-case (e.g., --silence-agent)
+    binary_constants: "bin prefix + PascalCase (e.g., binGit, binClaude)"
+    factories: "New prefix (e.g., NewBackend())"
+    interfaces: "Action or capability (e.g., Table, Reader)"
+
+  concurrency: |
+    Pass context.Context as the first parameter to any function that does I/O
+    or may block. Never start a goroutine without a plan for how it exits. Use
+    sync.WaitGroup or a done channel to manage lifetimes.
+
+  testing: |
+    Every exported function and every meaningful branch deserves a test. Use
+    table-driven parameterized tests for similar cases. Extract shared setup
+    into test helpers. Build reusable test utilities in a testutil package.
+
+traceability:
+  before_implementing:
+    - Identify related PRDs, ARCHITECTURE, use cases, test suites, guidelines, VISION
+    - Read the relevant sections so behavior, data shapes, and contracts are clear
+    - Implement so the code conforms to the requirements and design described
+
+  commit_message: |
+    Must mention which PRDs (or aspects) are being implemented. Prefer explicit:
+    "Implement X (prd-feature-name, prd-component)" or "Add Y per prd-feature R12".
+    If only parts touched, say so: "Implement operation X (prd-feature R8, R13)".
+
+  code_comments: |
+    At the top of a file or package doc, list implemented PRDs and architecture
+    sections. Do not repeat this in every function; use file- or package-level
+    comments only.
+
+  reference_paths:
+    - "Architecture: docs/ARCHITECTURE.yaml"
+    - "PRDs: docs/specs/product-requirements/prd*.yaml"
+    - "Use cases: docs/specs/use-cases/rel*-uc*-*.yaml"
+    - "Test suites (YAML specs): docs/specs/test-suites/test-rel-*.yaml"
+    - "Release tests (Go): tests/rel-*/rel-*_test.go"
+    - "Engineering guidelines: docs/engineering/eng*.md"
+    - "Vision: docs/VISION.yaml"
+
+session_completion:
+  offline: true  # No git push during sessions
+  commit_required: true  # Every session must end with a commit
+  token_tracking: true  # Log tokens used per issue
+
+  workflow:
+    - File issues for remaining work
+    - Run quality gates if code changed (tests, linters, builds)
+    - Update issue status and log tokens (cupboard comments add <id> "tokens: N")
+    - Close finished work (cupboard close <id>)
+    - COMMIT CHANGES (git add -A && git commit -m "message")
+    - Verify all changes committed (git status)
+    - Hand off with context for next session
+
+  critical_rules:
+    - Work is NOT complete until changes are committed locally
+    - NEVER leave uncommitted changes - commit everything
+    - After creating or editing any files, commit before ending your turn
+    - We work offline - do not push; local commit required
+
+technology:
+  primary_language: Go
+  python_manager: pixi  # Use pixi for Python, not pip/pip3 directly
+  cli_framework: cobra
+  build_system: mage
+  yaml_library: gopkg.in/yaml.v3
+  issue_tracker: cupboard (migrating from beads)
+
+git_conventions:
+  tagging: "v[REL].[DATE].[REVISION] (e.g., v0.20260213.0, v1.20260301.0)"
+  commit_stats: |
+    Include full stats in commit message:
+    Stats:
+      Lines of code (Go, production): 520 (+79)
+      Lines of code (Go, tests):      45 (+45)
+      Words (documentation):          21900 (+868)
