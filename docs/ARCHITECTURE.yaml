@@ -100,25 +100,29 @@ components:
     responsibility: |
       Holds the Go implementation of each utility. Each sub-package compiles to a
       standalone binary and contains its differential tests alongside the implementation.
+      cmd/ grows as utilities are implemented following road-map.yaml. The full catalog
+      of 123 target utilities (coreutils, moreutils, grep, findutils) is in
+      docs/utilities.yaml; stdbuf is the only utility in those repos that is explicitly
+      excluded (LD_PRELOAD injection not possible in pure Go).
     capabilities:
-      - cmd/ts/ -- timestamp stdin lines (moreutils)
-      - cmd/sponge/ -- atomic soak-and-write (moreutils)
-      - cmd/ls/ -- file listing with formatting (coreutils)
-      - cmd/vidir/ -- directory editing via $EDITOR (moreutils)
-      - cmd/pee/ -- tee stdin to multiple commands (moreutils)
-      - cmd/chronic/ -- run a command quietly unless it fails (moreutils)
-      - cmd/cat/, cmd/cp/, cmd/mv/, cmd/wc/, cmd/du/ -- coreutils
-      - cmd/grep/, cmd/find/, cmd/xargs/ -- grep and findutils
+      - One package per utility, named cmd/<utility>/
+      - Each package contains main.go (implementation) and <utility>_test.go (differential tests)
+      - Active roadmap: see road-map.yaml for current release and use case status
+      - Full catalog: see docs/utilities.yaml for difficulty, memory model, and implementation profile of each utility
     references: cmd/
 
   - name: pkg/sys/
     responsibility: |
       Wraps Darwin and Linux syscalls and signal handling. Provides a stable interface
       that cmd/ packages use to avoid platform-specific code in utility implementations.
+      Only syscalls that have platform divergence between Darwin and Linux, or that Go's
+      standard library does not expose cleanly, belong here.
     capabilities:
-      - Terminal size queries
+      - Terminal size queries (TIOCGWINSZ ioctl)
       - Signal handling (SIGPIPE, SIGHUP, SIGWINCH)
-      - File metadata (stat, lstat, device/inode access)
+      - File metadata (stat, lstat; abstracts st_mtimespec/st_mtim and st_blocks divergence)
+      - Process group management (setpgid, killpg) for timeout and xargs -P
+      - Process priority (setpriority) for nice and renice
     references: pkg/sys/
 
   - name: pkg/format/
@@ -228,6 +232,33 @@ design_decisions:
       - Fully automated pipeline (orchestrator writes specs too) conflates two failure modes
       - Fully manual pipeline (human writes Go) does not test the orchestrator at all
 
+  - id: DD6
+    title: Locale handling deferred; LC_ALL=C for the current roadmap
+    decision: |
+      Go's standard library has no strcoll() equivalent. Utilities that require locale-aware
+      string collation (sort, join, comm, uniq with locale ordering; ls sort order under
+      non-C locales; grep character classes under LC_COLLATE) cannot be implemented with
+      full POSIX locale semantics using only the Go standard library.
+
+      For the current roadmap (rel01.0 through rel02.1), all implementations target
+      LC_ALL=C behavior only. Every differential test that touches string comparison or
+      character classification sets LC_ALL=C so the Go and reference binary outputs agree.
+      This constraint is recorded as a precondition in each affected test suite.
+
+      When locale-sensitive utilities are scheduled beyond rel02.1, we will evaluate
+      golang.org/x/text/collate as the implementation path. If approved, the external
+      dependency policy (currently golang.org/x/sys only) will be updated to permit
+      golang.org/x/* packages. No other locale library will be considered; building CLDR
+      tables in-house is out of scope.
+    benefits:
+      - Unblocks the current roadmap without requiring a policy change or new dependency
+      - Makes the constraint explicit and testable rather than discovered mid-implementation
+      - golang.org/x/text is the same vendor and trust tier as golang.org/x/sys
+    alternatives_rejected:
+      - Implement strcoll in-house using CLDR tables: out of scope, maintenance burden
+      - Allow any locale library: increases supply-chain surface beyond what the project accepts
+      - Silently test only LC_ALL=C without documenting the gap: hides a behavioral difference
+
 technology_choices:
   - technology: Go
     reason: Idiomatic systems programming language with strong standard library for I/O and OS operations.
@@ -237,12 +268,16 @@ technology_choices:
     reason: Comprehensive linting for idiomatic Go; integrated with the mage lint target.
   - technology: golang.org/x/sys
     reason: |
-      The only external Go dependency beyond the standard library. Provides stable
-      Darwin and Linux syscall coverage for Stat_t field access (field names diverge
-      between platforms), ioctl constants (TIOCGWINSZ), and signal mask operations.
-      pkg/sys wraps this into a single internal API; cmd/ packages do not import
-      golang.org/x/sys directly. IsTerminal and TerminalWidth are implemented in
-      pkg/sys using golang.org/x/sys, avoiding a separate golang.org/x/term dependency.
+      The only external Go dependency in the current roadmap. Provides stable Darwin and
+      Linux syscall coverage for Stat_t field access (field names diverge between
+      platforms), ioctl constants (TIOCGWINSZ), and signal mask operations. pkg/sys wraps
+      this into a single internal API; cmd/ packages do not import golang.org/x/sys
+      directly. IsTerminal and TerminalWidth are implemented in pkg/sys using
+      golang.org/x/sys, avoiding a separate golang.org/x/term dependency.
+
+      golang.org/x/text/collate is the planned addition when locale-sensitive utilities
+      are scheduled (see DD6). Until then, the external dependency surface is golang.org/x/sys
+      only.
   - technology: Homebrew (GNU coreutils, moreutils, grep, findutils)
     reason: Provides the reference binaries (gls, gts, etc.) used in differential testing.
   - technology: Git (coreutils, moreutils, grep, findutils mirrors)
@@ -255,12 +290,24 @@ technology_choices:
 project_structure:
   - path: docs/
     role: Specification and documentation suite (VISION, ARCHITECTURE, PRDs, use cases, test suites)
+  - path: docs/VISION.yaml
+    role: Project goals, success criteria, risks, and explicit boundaries
+  - path: docs/ARCHITECTURE.yaml
+    role: Component descriptions, design decisions, and technology choices
+  - path: docs/utilities.yaml
+    role: Full catalog of 123 target utilities with difficulty, memory model, and implementation profiles
+  - path: docs/road-map.yaml
+    role: Release schedule; maps use cases to releases with status
   - path: docs/specs/product-requirements/
     role: Per-utility PRDs; also PRDs for shared pkg/ components
   - path: docs/specs/use-cases/
     role: Per-utility use cases (concrete execution paths through the system)
+  - path: docs/specs/test-suites/
+    role: Per-use-case test suites with explicit inputs and expected outputs
+  - path: docs/engineering/
+    role: Engineering guidelines (conventions, practices, patterns above the code)
   - path: cmd/
-    role: Go implementation of each utility, one package per utility
+    role: Go implementation of each utility, one package per utility; grows with road-map.yaml
   - path: pkg/sys/
     role: Darwin and Linux syscall abstractions
   - path: pkg/format/
@@ -275,45 +322,65 @@ project_structure:
     role: Go module definition (module github.com/petar-djukic/go-unix-utils)
 
 implementation_status:
-  - component: cmd/ts
-    status: in progress
-  - component: cmd/sponge
-    status: planned
-  - component: cmd/ls
-    status: in progress
-  - component: cmd/vidir
-    status: planned
-  - component: cmd/pee
-    status: planned
-  - component: cmd/chronic
-    status: planned
-  - component: cmd/cat
-    status: planned
-  - component: cmd/cp
-    status: planned
-  - component: cmd/mv
-    status: planned
-  - component: cmd/wc
-    status: planned
-  - component: cmd/du
-    status: planned
-  - component: cmd/grep
-    status: planned
-  - component: cmd/find
-    status: planned
-  - component: cmd/xargs
-    status: planned
-  - component: pkg/sys
-    status: in progress
-  - component: pkg/format
-    status: in progress
-  - component: pkg/testutils
-    status: planned
+  note: |
+    Status reflects the specification phase, not code. "spec complete" means PRD and
+    use case exist and mage analyze passes. "spec in progress" means a PRD exists but
+    the use case or test suite is not yet written. "pending" means no PRD yet.
+    See road-map.yaml for the active release and docs/utilities.yaml for the full catalog.
+  components:
+    - component: pkg/testutils
+      status: spec complete
+      release: rel01.0
+    - component: pkg/sys
+      status: spec complete
+      release: rel02.0
+    - component: pkg/format
+      status: spec complete
+      release: rel02.0
+    - component: cmd/ts
+      status: spec in progress
+      release: rel01.0
+      note: PRD complete; use case written; test suite written; implementation pending
+    - component: cmd/wc
+      status: spec in progress
+      release: rel01.1
+      note: PRD complete; use case and test suite pending
+    - component: cmd/cat
+      status: spec in progress
+      release: rel01.1
+      note: PRD complete; use case and test suite pending
+    - component: cmd/sponge
+      status: spec in progress
+      release: rel01.1
+      note: PRD complete; use case and test suite pending
+    - component: cmd/ls
+      status: spec in progress
+      release: rel02.0 (core) / rel02.1 (extended)
+      note: PRDs complete; use cases and test suites pending
+    - component: cmd/du
+      status: spec in progress
+      release: rel02.0
+      note: PRD complete; use case and test suite pending
+    - component: cmd/grep
+      status: pending
+    - component: cmd/find
+      status: pending
+    - component: cmd/xargs
+      status: pending
+    - component: remaining 110 utilities
+      status: cataloged in docs/utilities.yaml; not yet scheduled
 
 related_documents:
   - id: VISION
     path: docs/VISION.yaml
-  - id: spec-rules
-    path: docs/spec-rules.yaml
+  - id: utilities-catalog
+    path: docs/utilities.yaml
+    note: Full catalog of 123 target utilities with difficulty and memory model profiles.
+  - id: road-map
+    path: docs/road-map.yaml
+    note: Release schedule; current release and use case status.
+  - id: eng01-spec-extraction
+    path: docs/engineering/eng01-spec-extraction.yaml
+    note: Engineering guideline for extracting specifications from C/Perl source.
   - id: configuration
     path: configuration.yaml

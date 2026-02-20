@@ -128,11 +128,28 @@ risks:
       Differential testing is the gating check. Code cannot pass review until
       differential tests pass. Edge cases are explicit in the PRD and exercised
       as named test inputs in pkg/testutils/.
+  - id: R5
+    risk: Go has no locale-aware string collation (strcoll equivalent).
+    impact: high
+    likelihood: high
+    mitigation: |
+      The current roadmap (rel01.0 through rel02.1) avoids locale-sensitive utilities.
+      All differential tests run with LC_ALL=C so Go and reference binary outputs agree.
+      When locale-sensitive utilities (sort, join, comm) are scheduled, we will evaluate
+      golang.org/x/text/collate as the implementation path. If it does not cover the
+      required POSIX LC_COLLATE semantics, those utilities will be deferred or scoped
+      to LC_ALL=C only.
 
 not:
   - This project is not a general-purpose Unix toolkit for production deployment.
   - We do not target BSD utilities or macOS built-ins as reference binaries.
   - We do not implement utilities outside coreutils, moreutils, grep, and findutils.
+  - We do not implement stdbuf. It requires injecting a shared library via LD_PRELOAD,
+    which is not possible in pure Go. stdbuf is the only moreutils utility excluded.
   - We do not target Windows.
   - Specs are not replacements for man pages; they capture implementer-relevant behavior.
   - We do not produce a drop-in replacement binary at a system path; binaries live in bin/.
+  - We do not implement full POSIX locale-aware collation (LC_COLLATE) in the current
+    roadmap. Utilities that require strcoll() semantics (sort, join, comm, uniq) are
+    constrained to LC_ALL=C behavior for now. golang.org/x/text/collate is the planned
+    path when locale-sensitive utilities are scheduled.
