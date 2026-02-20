@@ -1,0 +1,91 @@
+id: rel01.1-uc001-wc
+title: "Count lines, words, and bytes via wc"
+
+summary: |
+  The operator runs the Go wc binary on one or more files or stdin. The binary counts
+  lines, words, and bytes (or characters, or max line length) and writes formatted results
+  to stdout. The differential testing harness then runs both the Go binary and the Homebrew
+  reference binary (gwc from coreutils) with the same stdin, args, and environment and
+  confirms that their outputs are identical byte-for-byte. No output normalization is
+  needed because wc output consists of deterministic integer counts.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd005-wc.yaml) and invokes do-work to produce
+  a passing differential test for cmd/wc.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go wc binary with stdin input or file arguments.
+      Example: printf 'foo\nbar baz\n' | ./bin/wc
+  - id: F2
+    step: |
+      cmd/wc reads from stdin or the named files. For each input, it counts newlines (-l),
+      words (-w), bytes (-c), characters (-m), and max line length (-L) as requested by the
+      active flags. When no flags are given, it counts lines, words, and bytes.
+  - id: F3
+    step: |
+      cmd/wc writes one line per input in the format "COUNT COUNT COUNT FILENAME" with
+      right-aligned columns. For stdin with no filename, the filename is omitted.
+  - id: F4
+    step: |
+      When multiple files are given, cmd/wc prints a "total" line with the sum of all counts.
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/wc and gwc with
+      the same stdin, args, and environment.
+  - id: F6
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical count values and column alignment.
+  - id: F7
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/wc — line, word, byte, char, max-line-length counting, multi-file totals (prd005-wc R1, R2, R3, R4, R5, R6)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison (prd001-testutils R1, R2, R3)"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/wc compiles and ./bin/wc exists after mage build.
+  - id: S2
+    criterion: |
+      printf 'foo\nbar baz\n' | ./bin/wc produces '2 3 12' (matching gwc output format).
+  - id: S3
+    criterion: |
+      The differential test for default mode passes: ./bin/wc and gwc produce identical
+      output on three-line stdin.
+  - id: S4
+    criterion: |
+      The differential tests for -l, -w, and -c flags each pass: outputs match gwc
+      byte-for-byte.
+  - id: S5
+    criterion: |
+      The differential test for -m with LC_ALL=C passes: character count matches byte
+      count under the C locale.
+  - id: S6
+    criterion: |
+      The differential test for -L passes: max line length matches gwc on multi-line input
+      with varying line lengths.
+  - id: S7
+    criterion: |
+      The differential test for multi-file with total line passes: right-aligned columns
+      and the "total" label match gwc output byte-for-byte.
+  - id: S8
+    criterion: |
+      Empty stdin produces '0 0 0' for default flags, matching gwc.
+  - id: S9
+    criterion: |
+      A non-existent file argument produces an error to stderr, exits 1, and still processes
+      other files on the command line, matching gwc behavior.
+
+out_of_scope:
+  - --files0-from is covered in the test suite but is not the primary flow of this use case.
+  - --total=always and --total=only are covered in the test suite but are not part of the primary flow.
+  - Binary input edge cases are covered in the test suite but are not the primary flow.
+
+test_suite: test-rel01.1-uc001-wc
