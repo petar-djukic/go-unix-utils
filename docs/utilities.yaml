@@ -1,0 +1,1331 @@
+id: utilities
+title: "Unix Utility Catalog"
+
+overview: |
+  Complete catalog of all utilities across the four source repositories used by this
+  project. For each utility: description, source implementation language and file(s),
+  approximate source LOC, internal code shared with other utilities in the same repo,
+  and which of our Go packages (pkg/) the utility would require.
+
+  Go package shorthand:
+    testutils  — pkg/testutils (differential testing harness; applies to ALL utilities)
+    sys/stat   — pkg/sys Stat/Lstat (extended metadata: st_nlink, st_ino, st_dev, st_blocks)
+    sys/tty    — pkg/sys TerminalWidth + IsTerminal (TIOCGWINSZ ioctl)
+    sys/sigpipe— pkg/sys InstallSIGPIPEHandler (suppress broken-pipe errors)
+    sys/sigwinch— pkg/sys OnTerminalResize (reflow on terminal resize)
+    fmt/human  — pkg/format HumanSize (human-readable byte sizes for -h flag)
+    fmt/columns— pkg/format Columns + PadRight/PadLeft (multi-column layout)
+    fmt/color  — pkg/format FileTypeColor (ANSI color by file type)
+
+  Coreutils internal shared code (C infrastructure shared within the repo):
+    copy_engine   — copy.c, copy-file-data.c, force-link.c (cp, mv, install)
+    remove_engine — remove.c (rm, cp, mv)
+    expand_common — expand-common.c (expand, unexpand)
+    chown_engine  — chown-core.c (chown, chgrp)
+    ls_engine     — ls.c with compile-time defaults (ls, dir, vdir)
+    uname_engine  — uname.c (uname, arch)
+    group_list    — group-list.c (id, groups)
+    show_date     — show-date.c (date, touch)
+    operand2sig   — operand2sig.c (kill)
+
+  Moreutils internal shared code:
+    physmem       — physmem.c (sponge, parallel)
+
+repositories:
+
+  # ---------------------------------------------------------------------------
+  - id: coreutils
+    source: https://github.com/coreutils/coreutils
+    brew: brew install coreutils  # installs with g-prefix: gls, gcat, gwc …
+    utilities:
+
+      # --- File content display / transformation ---
+
+      - name: cat
+        description: Concatenate files and print to stdout; display control chars with -v/-E/-T.
+        language: C
+        source_file: src/cat.c
+        loc: 828
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # deterministic; byte-for-byte differential test
+        homebrew_binary: gcat
+
+      - name: tac
+        description: Concatenate files in reverse (last line first).
+        language: C
+        source_file: src/tac.c
+        loc: 592
+        shared_internal: []  # tac-pipe.c is an internal helper included inline
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gtac
+
+      - name: head
+        description: Print the first N lines or bytes of each file.
+        language: C
+        source_file: src/head.c
+        loc: 1086
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: ghead
+
+      - name: tail
+        description: Print the last N lines or bytes; follow a file with -f.
+        language: C
+        source_file: src/tail.c
+        loc: 2540
+        shared_internal: [sys/stat]  # uses st_ino/st_dev to detect file rotation in -f
+        pkg_go: [sys/sigpipe, sys/stat]
+        testability: medium  # -f (follow) mode is non-deterministic; static modes are high
+        homebrew_binary: gtail
+
+      - name: wc
+        description: Count newlines, words, and bytes in files.
+        language: C
+        source_file: src/wc.c
+        loc: 1049  # wc.h + wc_avx2/avx512/neon are SIMD variants compiled in
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gwc
+
+      - name: nl
+        description: Number lines of files with configurable style and section delimiters.
+        language: C
+        source_file: src/nl.c
+        loc: 654
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gnl
+
+      - name: od
+        description: Dump files in octal, hex, decimal, or character representation.
+        language: C
+        source_file: src/od.c
+        loc: 2064
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: god
+
+      - name: fold
+        description: Wrap long lines to a specified width.
+        language: C
+        source_file: src/fold.c
+        loc: 362
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gfold
+
+      - name: fmt
+        description: Simple text formatter that fills and joins short lines.
+        language: C
+        source_file: src/fmt.c
+        loc: 1065
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gfmt
+
+      # --- Text field / column processing ---
+
+      - name: cut
+        description: Remove sections from lines of files by byte, character, or field delimiter.
+        language: C
+        source_file: src/cut.c
+        loc: 616  # set-fields.c is an internal helper
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gcut
+
+      - name: paste
+        description: Merge lines of files side by side with a delimiter.
+        language: C
+        source_file: src/paste.c
+        loc: 558
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gpaste
+
+      - name: join
+        description: Join lines of two sorted files on a common field.
+        language: C
+        source_file: src/join.c
+        loc: 1234
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # inputs must be sorted; output is deterministic
+        homebrew_binary: gjoin
+
+      - name: tr
+        description: Translate or delete characters; squeeze repeated characters with -s.
+        language: C
+        source_file: src/tr.c
+        loc: 1906
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gtr
+
+      - name: expand
+        description: Convert tabs to spaces.
+        language: C
+        source_file: src/expand.c
+        loc: 230
+        shared_internal: [expand_common]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gexpand
+
+      - name: unexpand
+        description: Convert spaces back to tabs.
+        language: C
+        source_file: src/unexpand.c
+        loc: 325
+        shared_internal: [expand_common]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gunexpand
+
+      # --- Sorting / comparison ---
+
+      - name: sort
+        description: Sort lines of text files; supports locale-aware, numeric, random, and stable sorts.
+        language: C
+        source_file: src/sort.c
+        loc: 4989
+        shared_internal: []  # temp-stream.c is an inline internal
+        pkg_go: [sys/sigpipe]
+        testability: medium  # locale-sensitive; LC_ALL=C required for differential tests
+        homebrew_binary: gsort
+
+      - name: uniq
+        description: Report or omit repeated adjacent lines; count occurrences with -c.
+        language: C
+        source_file: src/uniq.c
+        loc: 663
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # inputs must be pre-sorted or -i used; output is deterministic
+        homebrew_binary: guniq
+
+      - name: comm
+        description: Compare two sorted files line by line; print lines unique to each or common.
+        language: C
+        source_file: src/comm.c
+        loc: 511
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gcomm
+
+      - name: tsort
+        description: Perform topological sort on directed graph edges given as pairs.
+        language: C
+        source_file: src/tsort.c
+        loc: ~300
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gtsort
+
+      # --- File listing / metadata ---
+
+      - name: ls
+        description: List directory contents; multi-column, long format, color, human-readable sizes.
+        language: C
+        source_file: src/ls.c
+        loc: 5638
+        shared_internal: [ls_engine]  # dir and vdir are ls.c compiled with different defaults
+        pkg_go: [sys/stat, sys/tty, sys/sigpipe, sys/sigwinch, fmt/human, fmt/columns, fmt/color]
+        testability: medium  # timestamps and inode numbers require normalization
+        homebrew_binary: gls
+
+      - name: dir
+        description: Like ls but defaults to vertical column format (ls --format=vertical).
+        language: C
+        source_file: src/ls.c  # compiled with LS_LS_MAIN undefined, LS_MULTI_COL defined
+        loc: 5638  # same source as ls
+        shared_internal: [ls_engine]
+        pkg_go: [sys/stat, sys/tty, sys/sigpipe, sys/sigwinch, fmt/human, fmt/columns, fmt/color]
+        testability: medium
+        homebrew_binary: gdir
+
+      - name: vdir
+        description: Like ls but defaults to long format (ls --format=long).
+        language: C
+        source_file: src/ls.c  # compiled with LS_VDIR_MAIN defined
+        loc: 5638  # same source as ls
+        shared_internal: [ls_engine]
+        pkg_go: [sys/stat, sys/tty, sys/sigpipe, sys/sigwinch, fmt/human, fmt/columns, fmt/color]
+        testability: medium
+        homebrew_binary: gvdir
+
+      - name: stat
+        description: Display detailed file or filesystem status; supports printf-style format strings.
+        language: C
+        source_file: src/stat.c
+        loc: 1989
+        shared_internal: []
+        pkg_go: [sys/stat, sys/sigpipe, fmt/human]
+        testability: medium  # timestamps and inode numbers vary; format strings normalize output
+        homebrew_binary: gstat
+
+      - name: du
+        description: Estimate file space usage; recurses directories; deduplicates hard links.
+        language: C
+        source_file: src/du.c
+        loc: ~1191
+        shared_internal: []
+        pkg_go: [sys/stat, sys/sigpipe, fmt/human]
+        testability: medium  # block counts are deterministic on same filesystem; -k normalizes units
+        homebrew_binary: gdu
+
+      - name: df
+        description: Report filesystem disk space usage for mounted filesystems.
+        language: C
+        source_file: src/df.c
+        loc: 1855
+        shared_internal: []
+        pkg_go: [sys/sigpipe, fmt/human]
+        testability: low  # filesystem sizes change at runtime; not amenable to differential testing
+        homebrew_binary: gdf
+
+      - name: dircolors
+        description: Output shell commands to set LS_COLORS from a color configuration database.
+        language: C
+        source_file: src/dircolors.c
+        loc: ~500
+        shared_internal: []
+        pkg_go: []
+        testability: high  # output is deterministic given same input database
+        homebrew_binary: gdircolors
+
+      # --- File operations ---
+
+      - name: cp
+        description: Copy files and directories; preserves attributes with -a; supports reflinks.
+        language: C
+        source_file: src/cp.c
+        loc: 1336
+        shared_internal: [copy_engine, remove_engine]
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium  # timestamps on copied files can vary; -p mode normalizes
+        homebrew_binary: gcp
+
+      - name: mv
+        description: Move (rename) files and directories; falls back to copy+delete on cross-device.
+        language: C
+        source_file: src/mv.c
+        loc: 573
+        shared_internal: [copy_engine, remove_engine]
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium
+        homebrew_binary: gmv
+
+      - name: rm
+        description: Remove files or directories; recursive with -r; interactive with -i.
+        language: C
+        source_file: src/rm.c
+        loc: 396
+        shared_internal: [remove_engine]
+        pkg_go: [sys/sigpipe]
+        testability: medium  # side effects require fixture setup/teardown
+        homebrew_binary: grm
+
+      - name: ln
+        description: Create hard or symbolic links between files.
+        language: C
+        source_file: src/ln.c
+        loc: 716
+        shared_internal: [force_link]
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium
+        homebrew_binary: gln
+
+      - name: install
+        description: Copy files and set attributes (permissions, owner, strip); used in Makefiles.
+        language: C
+        source_file: src/install.c
+        loc: 1107
+        shared_internal: [copy_engine]
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium
+        homebrew_binary: ginstall
+
+      - name: shred
+        description: Overwrite a file to make it unrecoverable; optionally delete after.
+        language: C
+        source_file: src/shred.c
+        loc: 1291
+        shared_internal: []
+        pkg_go: [sys/sigpipe, fmt/human]
+        testability: low  # output depends on random data and filesystem internals
+        homebrew_binary: gshred
+
+      - name: truncate
+        description: Shrink or extend a file to a given size.
+        language: C
+        source_file: src/truncate.c
+        loc: ~300
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # side effect on file; verifiable by checking file size
+        homebrew_binary: gtruncate
+
+      - name: dd
+        description: Convert and copy a file with block I/O; convert byte order, skip, seek.
+        language: C
+        source_file: src/dd.c
+        loc: 2547
+        shared_internal: []
+        pkg_go: [sys/stat, sys/sigpipe, fmt/human]
+        testability: medium  # progress output non-deterministic; output data is deterministic
+        homebrew_binary: gdd
+
+      - name: sync
+        description: Synchronize cached writes to persistent storage.
+        language: C
+        source_file: src/sync.c
+        loc: ~100
+        shared_internal: []
+        pkg_go: []
+        testability: low  # no observable stdout; side effect only
+        homebrew_binary: gsync
+
+      # --- Directory operations ---
+
+      - name: mkdir
+        description: Create directories; create parent directories with -p.
+        language: C
+        source_file: src/mkdir.c
+        loc: 319
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium  # side effect; verify by stat of created directory
+        homebrew_binary: gmkdir
+
+      - name: rmdir
+        description: Remove empty directories; remove parent directories with -p.
+        language: C
+        source_file: src/rmdir.c
+        loc: ~200
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium
+        homebrew_binary: grmdir
+
+      - name: mktemp
+        description: Create a temporary file or directory with a unique name.
+        language: C
+        source_file: src/mktemp.c
+        loc: 358
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: low  # output (the name) is random by design
+        homebrew_binary: gmktemp
+
+      - name: mkfifo
+        description: Create named pipes (FIFOs).
+        language: C
+        source_file: src/mkfifo.c
+        loc: ~150
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium
+        homebrew_binary: gmkfifo
+
+      - name: mknod
+        description: Create block or character device files, FIFOs, or regular files.
+        language: C
+        source_file: src/mknod.c
+        loc: ~200
+        shared_internal: []
+        pkg_go: []
+        testability: low  # requires root for device nodes
+        homebrew_binary: gmknod
+
+      - name: realpath
+        description: Print the resolved absolute path for each argument.
+        language: C
+        source_file: src/realpath.c
+        loc: 302
+        shared_internal: [relpath]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: grealpath
+
+      - name: readlink
+        description: Print the value of a symbolic link or canonical file name.
+        language: C
+        source_file: src/readlink.c
+        loc: ~180
+        shared_internal: [relpath]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: greadlink
+
+      - name: pwd
+        description: Print the name of the current working directory.
+        language: C
+        source_file: src/pwd.c
+        loc: ~250
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gpwd
+
+      - name: basename
+        description: Strip directory and suffix from filenames.
+        language: C
+        source_file: src/basename.c
+        loc: 194
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gbasename
+
+      - name: dirname
+        description: Strip last component from a file name.
+        language: C
+        source_file: src/dirname.c
+        loc: 134
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gdirname
+
+      - name: pathchk
+        description: Check whether file names are valid and portable.
+        language: C
+        source_file: src/pathchk.c
+        loc: ~350
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gpathchk
+
+      # --- File attributes ---
+
+      - name: chmod
+        description: Change file mode bits (permissions).
+        language: C
+        source_file: src/chmod.c
+        loc: 669
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium
+        homebrew_binary: gchmod
+
+      - name: chown
+        description: Change file owner and group.
+        language: C
+        source_file: src/chown.c
+        loc: 367
+        shared_internal: [chown_engine]
+        pkg_go: [sys/sigpipe]
+        testability: medium  # requires matching user/group names across systems
+        homebrew_binary: gchown
+
+      - name: chgrp
+        description: Change group ownership of files.
+        language: C
+        source_file: src/chown.c  # compiled with CHGRP defined
+        loc: 367  # same source as chown
+        shared_internal: [chown_engine]
+        pkg_go: [sys/sigpipe]
+        testability: medium
+        homebrew_binary: gchgrp
+
+      - name: touch
+        description: Change file access and modification timestamps; create empty files.
+        language: C
+        source_file: src/touch.c
+        loc: 456
+        shared_internal: [show_date]
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium  # output depends on current time unless -t is used
+        homebrew_binary: gtouch
+
+      # --- Checksums / integrity ---
+
+      - name: cksum
+        description: Print CRC checksum and byte count for each file.
+        language: C
+        source_file: src/cksum.c
+        loc: ~500  # plus SIMD variants in cksum_avx2/avx512/crc/pclmul/vmull
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gcksum
+
+      - name: md5sum
+        description: Compute and check MD5 message digests.
+        language: C
+        source_file: src/md5sum.c  # multi-call entry point for all digest utilities
+        loc: ~800
+        shared_internal: [cksum_avx]  # shares SIMD helpers with cksum
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gmd5sum
+
+      - name: sha1sum
+        description: Compute and check SHA-1 message digests.
+        language: C
+        source_file: src/md5sum.c  # same multi-call source as md5sum
+        loc: ~800
+        shared_internal: [cksum_avx]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gsha1sum
+
+      - name: sha256sum
+        description: Compute and check SHA-256 message digests.
+        language: C
+        source_file: src/md5sum.c
+        loc: ~800
+        shared_internal: [cksum_avx]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gsha256sum
+
+      - name: sha512sum
+        description: Compute and check SHA-512 message digests.
+        language: C
+        source_file: src/md5sum.c
+        loc: ~800
+        shared_internal: [cksum_avx]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gsha512sum
+
+      - name: b2sum
+        description: Compute and check BLAKE2 message digests.
+        language: C
+        source_file: src/md5sum.c
+        loc: ~800
+        shared_internal: [cksum_avx]
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gb2sum
+
+      # --- Output / number generation ---
+
+      - name: echo
+        description: Display a line of text; -n suppresses newline; -e enables escape sequences.
+        language: C
+        source_file: src/echo.c
+        loc: 286
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gecho
+
+      - name: printf
+        description: Format and print data per a format string; subset of C printf.
+        language: C
+        source_file: src/printf.c
+        loc: 754
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gprintf
+
+      - name: yes
+        description: Repeatedly output a string (default 'y') until killed.
+        language: C
+        source_file: src/yes.c
+        loc: 134
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium  # infinite output; test with head -n N or timeout
+        homebrew_binary: gyes
+
+      - name: seq
+        description: Print a sequence of numbers with configurable step and format.
+        language: C
+        source_file: src/seq.c
+        loc: 707
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gseq
+
+      - name: factor
+        description: Print the prime factorization of each integer argument.
+        language: C
+        source_file: src/factor.c
+        loc: 2041
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gfactor
+
+      - name: numfmt
+        description: Reformat numbers from and to human-readable representations (K/M/G/T).
+        language: C
+        source_file: src/numfmt.c
+        loc: 1768
+        shared_internal: []
+        pkg_go: [sys/sigpipe, fmt/human]
+        testability: high
+        homebrew_binary: gnumfmt
+
+      # --- Stream / tee ---
+
+      - name: tee
+        description: Read stdin and write to stdout and files simultaneously.
+        language: C
+        source_file: src/tee.c
+        loc: 354
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gtee
+
+      - name: split
+        description: Split a file into pieces by line count, byte count, or number of chunks.
+        language: C
+        source_file: src/split.c
+        loc: 1760
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gsplit
+
+      - name: csplit
+        description: Split a file into sections by context lines matching patterns.
+        language: C
+        source_file: src/csplit.c
+        loc: 1466
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gcsplit
+
+      # --- Text printing ---
+
+      - name: pr
+        description: Paginate text files for printing; multi-column output; headers and footers.
+        language: C
+        source_file: src/pr.c
+        loc: 2898
+        shared_internal: []
+        pkg_go: [sys/tty, sys/sigpipe, fmt/columns]
+        testability: high  # output is deterministic given fixed page width
+        homebrew_binary: gpr
+
+      - name: ptx
+        description: Produce permuted index of file words (KWIC index).
+        language: C
+        source_file: src/ptx.c
+        loc: 2045
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # output is deterministic
+        homebrew_binary: gptx
+
+      # --- Date and time ---
+
+      - name: date
+        description: Display or set the system date and time; output with strftime format strings.
+        language: C
+        source_file: src/date.c
+        loc: 722
+        shared_internal: [show_date]
+        pkg_go: [sys/sigpipe]
+        testability: low  # current time is non-deterministic; -d (parse) mode is testable
+        homebrew_binary: gdate
+
+      - name: sleep
+        description: Delay execution for a specified duration (seconds, minutes, hours, days).
+        language: C
+        source_file: src/sleep.c
+        loc: 145
+        shared_internal: []
+        pkg_go: []
+        testability: high  # exit code and absence of output are deterministic
+        homebrew_binary: gsleep
+
+      # --- Process and environment ---
+
+      - name: env
+        description: Run a program in a modified environment; unset or set variables.
+        language: C
+        source_file: src/env.c
+        loc: ~800
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # env with no args: deterministic given known environment
+        homebrew_binary: genv
+
+      - name: nice
+        description: Run a command with modified scheduling priority.
+        language: C
+        source_file: src/nice.c
+        loc: ~300
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # subprocess execution
+        homebrew_binary: gnice
+
+      - name: nohup
+        description: Run a command immune to hangups; redirect stdout/stderr if TTY.
+        language: C
+        source_file: src/nohup.c
+        loc: ~250
+        shared_internal: []
+        pkg_go: []
+        testability: medium
+        homebrew_binary: gnohup
+
+      - name: stdbuf
+        description: Run a command with modified I/O stream buffering.
+        language: C
+        source_file: src/stdbuf.c
+        loc: ~300
+        shared_internal: []  # libstdbuf.c is a shared library injected via LD_PRELOAD
+        pkg_go: []
+        testability: low  # behavior depends on libc buffer implementation
+        homebrew_binary: gstdbuf
+
+      - name: timeout
+        description: Run a command with a time limit; send a signal on expiry.
+        language: C
+        source_file: src/timeout.c
+        loc: ~400
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # subprocess + signal; output timing is non-deterministic
+        homebrew_binary: gtimeout
+
+      - name: chroot
+        description: Run a command with a different root directory.
+        language: C
+        source_file: src/chroot.c
+        loc: ~350
+        shared_internal: []
+        pkg_go: []
+        testability: low  # requires root; platform-specific
+        homebrew_binary: gchroot
+
+      - name: kill
+        description: Send signals to processes by PID or name.
+        language: C
+        source_file: src/kill.c
+        loc: ~350
+        shared_internal: [operand2sig]
+        pkg_go: []
+        testability: low  # targets live processes; hard to differential test
+        homebrew_binary: gkill
+
+      - name: nproc
+        description: Print the number of available processing units.
+        language: C
+        source_file: src/nproc.c
+        loc: ~150
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # deterministic on same machine; varies between machines
+        homebrew_binary: gnproc
+
+      # --- User / system info ---
+
+      - name: id
+        description: Print real and effective user and group IDs.
+        language: C
+        source_file: src/id.c
+        loc: 461
+        shared_internal: [group_list]
+        pkg_go: []
+        testability: medium  # output varies by user; run as known user for determinism
+        homebrew_binary: gid
+
+      - name: groups
+        description: Print the groups a user is in.
+        language: C
+        source_file: src/groups.c  # thin wrapper; group_list.c does the work
+        loc: ~100
+        shared_internal: [group_list]
+        pkg_go: []
+        testability: medium
+        homebrew_binary: ggroups
+
+      - name: whoami
+        description: Print the effective user name.
+        language: C
+        source_file: src/whoami.c
+        loc: ~80
+        shared_internal: []
+        pkg_go: []
+        testability: medium
+        homebrew_binary: gwhoami
+
+      - name: logname
+        description: Print the current login name.
+        language: C
+        source_file: src/logname.c
+        loc: ~80
+        shared_internal: []
+        pkg_go: []
+        testability: medium
+        homebrew_binary: glogname
+
+      - name: who
+        description: Show who is logged on; reads utmp/utmpx.
+        language: C
+        source_file: src/who.c
+        loc: ~800
+        shared_internal: []
+        pkg_go: [fmt/columns]
+        testability: low  # output varies with active logins
+        homebrew_binary: gwho
+
+      - name: users
+        description: Print the login names of users currently on the machine.
+        language: C
+        source_file: src/users.c
+        loc: ~150
+        shared_internal: []
+        pkg_go: []
+        testability: low  # varies with active logins
+        homebrew_binary: gusers
+
+      - name: pinky
+        description: Lightweight finger; show user information.
+        language: C
+        source_file: src/pinky.c
+        loc: ~600
+        shared_internal: []
+        pkg_go: [fmt/columns]
+        testability: low  # varies with active logins and utmpx content
+        homebrew_binary: gpinky
+
+      - name: uptime
+        description: Tell how long the system has been running; load averages.
+        language: C
+        source_file: src/uptime.c
+        loc: ~200
+        shared_internal: []
+        pkg_go: []
+        testability: low  # output changes with uptime and load
+        homebrew_binary: guptime
+
+      - name: uname
+        description: Print system information (kernel name, version, hardware, OS).
+        language: C
+        source_file: src/uname.c
+        loc: ~400
+        shared_internal: [uname_engine]  # arch is uname -m compiled separately
+        pkg_go: []
+        testability: medium  # deterministic on a fixed machine; varies between machines
+        homebrew_binary: guname
+
+      - name: arch
+        description: Print machine hardware name (equivalent to uname -m).
+        language: C
+        source_file: src/uname.c  # compiled with ARCH_PROGRAM defined
+        loc: ~400
+        shared_internal: [uname_engine]
+        pkg_go: []
+        testability: medium
+        homebrew_binary: garch
+
+      - name: hostname
+        description: Show or set the system hostname.
+        language: C
+        source_file: src/hostname.c
+        loc: ~150
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # read-only mode is deterministic on same machine
+        homebrew_binary: ghostname
+
+      - name: hostid
+        description: Print the numeric identifier for the current host.
+        language: C
+        source_file: src/hostid.c
+        loc: ~80
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # deterministic on same machine
+        homebrew_binary: ghostid
+
+      # --- Terminal ---
+
+      - name: tty
+        description: Print the file name of the terminal connected to stdin.
+        language: C
+        source_file: src/tty.c
+        loc: ~150
+        shared_internal: []
+        pkg_go: [sys/tty]
+        testability: medium  # output depends on terminal device name
+        homebrew_binary: gtty
+
+      - name: stty
+        description: Change and print terminal line settings (baud rate, echo, signals, etc.)
+        language: C
+        source_file: src/stty.c
+        loc: 2328
+        shared_internal: []
+        pkg_go: [sys/tty]
+        testability: low  # output depends on live terminal state
+        homebrew_binary: gstty
+
+      # --- Miscellaneous ---
+
+      - name: test
+        description: Evaluate conditional expressions; return 0 (true) or 1 (false).
+        language: C
+        source_file: src/test.c
+        loc: ~900
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gtest
+        note: Also installed as [ (lbracket).
+
+      - name: expr
+        description: Evaluate expressions (arithmetic, string, regex) and print the result.
+        language: C
+        source_file: src/expr.c
+        loc: ~900
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gexpr
+
+      - name: shuf
+        description: Generate random permutations of lines or a range of numbers.
+        language: C
+        source_file: src/shuf.c
+        loc: 609
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: low  # output is random by design; -i with --output can be tested for structure
+        homebrew_binary: gshuf
+
+      - name: false
+        description: Return a non-zero exit code unconditionally.
+        language: C
+        source_file: src/false.c
+        loc: 2
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gfalse
+
+      - name: true
+        description: Return a zero exit code unconditionally.
+        language: C
+        source_file: src/true.c
+        loc: 80
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gtrue
+
+      - name: link
+        description: Create a hard link to a file (raw syscall wrapper, no flags).
+        language: C
+        source_file: src/link.c
+        loc: ~100
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: glink
+
+      - name: unlink
+        description: Call the unlink syscall to remove a single file.
+        language: C
+        source_file: src/unlink.c
+        loc: ~100
+        shared_internal: []
+        pkg_go: []
+        testability: high
+        homebrew_binary: gunlink
+
+      - name: sum
+        description: Compute BSD or SysV checksum and block count for files.
+        language: C
+        source_file: src/sum.c
+        loc: ~400
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gsum
+        note: Obsolete; prefer cksum or md5sum.
+
+      - name: printenv
+        description: Print environment variables; optionally print the value of a specific variable.
+        language: C
+        source_file: src/printenv.c
+        loc: ~150
+        shared_internal: []
+        pkg_go: []
+        testability: high  # given a controlled environment
+        homebrew_binary: gprintenv
+
+      - name: basenc
+        description: Encode or decode data in base64, base32, base16, and other encodings.
+        language: C
+        source_file: src/basenc.c
+        loc: ~600
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gbasenc
+
+      - name: runcon
+        description: Run a command in a specified SELinux security context.
+        language: C
+        source_file: src/runcon.c
+        loc: ~250
+        shared_internal: []
+        pkg_go: []
+        testability: low  # requires SELinux; not available on macOS
+        homebrew_binary: gruncon
+
+      - name: chcon
+        description: Change SELinux security context of files.
+        language: C
+        source_file: src/chcon.c
+        loc: ~400
+        shared_internal: []
+        pkg_go: []
+        testability: low  # requires SELinux; not available on macOS
+        homebrew_binary: gchcon
+
+  # ---------------------------------------------------------------------------
+  - id: moreutils
+    source: https://git.joeyh.name/git/moreutils.git
+    brew: brew install moreutils  # installs without g-prefix (no macOS conflicts)
+    utilities:
+
+      - name: ts
+        description: Timestamp each line of stdin with a strftime format; -i/-s elapsed modes; -r relative conversion.
+        language: Perl
+        source_file: ts
+        loc: 192
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high  # with TimestampNormalizer to replace wall-clock values
+        homebrew_binary: ts
+
+      - name: sponge
+        description: Soak up stdin before writing to a file; safe for in-place pipeline rewriting (cat file | sponge file).
+        language: C
+        source_file: sponge.c
+        loc: 395
+        shared_internal: [physmem]
+        pkg_go: [sys/sigpipe]
+        testability: high  # file-content comparison after both binaries exit
+        homebrew_binary: sponge
+
+      - name: pee
+        description: Tee stdin to multiple commands simultaneously; exit status is OR of all subcommands.
+        language: C
+        source_file: pee.c
+        loc: 119
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium  # output ordering across N commands may vary
+        homebrew_binary: pee
+
+      - name: chronic
+        description: Run a command silently unless it fails; suppress stdout/stderr on success.
+        language: Perl
+        source_file: chronic
+        loc: 97
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # depends on subprocess; run with deterministic subcommands
+        homebrew_binary: chronic
+
+      - name: vidir
+        description: Edit file and directory names in a text editor; applies renames on save.
+        language: Perl
+        source_file: vidir
+        loc: 243
+        shared_internal: []
+        pkg_go: []
+        testability: low  # launches $EDITOR interactively; hard to automate
+        homebrew_binary: vidir
+
+      - name: vipe
+        description: Insert a text editor into a pipeline; edits stdin and writes to stdout.
+        language: Perl
+        source_file: vipe
+        loc: 94
+        shared_internal: []
+        pkg_go: []
+        testability: low  # launches $EDITOR interactively
+        homebrew_binary: vipe
+
+      - name: ifne
+        description: Run a command only if stdin is not empty; pass stdin through to the command.
+        language: C
+        source_file: ifne.c
+        loc: 129
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: ifne
+
+      - name: ifdata
+        description: Check network interface data (IP, netmask, MTU, etc.) and return it.
+        language: C
+        source_file: ifdata.c
+        loc: 585
+        shared_internal: []
+        pkg_go: []
+        testability: low  # output depends on live network interface state
+        homebrew_binary: ifdata
+
+      - name: mispipe
+        description: Pipe two commands together; return the exit status of the first.
+        language: C
+        source_file: mispipe.c
+        loc: 179
+        shared_internal: []
+        pkg_go: []
+        testability: medium
+        homebrew_binary: mispipe
+
+      - name: lckdo
+        description: Execute a command while holding a lock file; retry or wait for the lock.
+        language: C
+        source_file: lckdo.c
+        loc: 232
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # lock contention requires concurrent test setup
+        homebrew_binary: lckdo
+        note: Deprecated in moreutils; use flock instead.
+
+      - name: parallel
+        description: Run multiple jobs in parallel from stdin; similar to xargs -P but line-oriented.
+        language: C
+        source_file: parallel.c
+        loc: 427
+        shared_internal: [physmem]
+        pkg_go: [sys/sigpipe]
+        testability: low  # output ordering is non-deterministic with -j N
+        homebrew_binary: parallel
+        note: Not the same as GNU parallel (a separate, much larger tool).
+
+      - name: zrun
+        description: Automatically decompress compressed file arguments before passing to a command.
+        language: Perl
+        source_file: zrun
+        loc: 106
+        shared_internal: []
+        pkg_go: []
+        testability: medium  # depends on decompressor availability
+        homebrew_binary: zrun
+
+      - name: isutf8
+        description: Check whether files are valid UTF-8.
+        language: C
+        source_file: is_utf8/is_utf8.c
+        loc: ~200
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: isutf8
+
+  # ---------------------------------------------------------------------------
+  - id: grep
+    source: https://git.savannah.gnu.org/git/grep.git
+    brew: brew install grep  # installs with g-prefix: ggrep
+    utilities:
+
+      - name: grep
+        description: Search for patterns in files using BRE, ERE, or Perl-compatible regular expressions.
+        language: C
+        source_file: src/grep.c
+        loc: 3036
+        shared_internal: []  # dfasearch.c, kwsearch.c, pcresearch.c are linked in
+        pkg_go: [sys/sigpipe]
+        testability: high  # output is deterministic; --color=never for differential tests
+        homebrew_binary: ggrep
+
+      - name: egrep
+        description: Grep with extended regular expressions (ERE); equivalent to grep -E.
+        language: shell  # generated shell script wrapper; calls grep -E
+        source_file: src/egrep.sh
+        loc: ~10
+        shared_internal: [grep]  # delegates entirely to grep
+        pkg_go: [sys/sigpipe]
+        testability: high  # same as grep with -E
+        homebrew_binary: gegrep
+        note: Obsolescent per POSIX; prefer grep -E.
+
+      - name: fgrep
+        description: Grep with fixed strings (no regex); equivalent to grep -F.
+        language: shell  # generated shell script wrapper; calls grep -F
+        source_file: src/egrep.sh  # same template as egrep
+        loc: ~10
+        shared_internal: [grep]  # delegates entirely to grep
+        pkg_go: [sys/sigpipe]
+        testability: high
+        homebrew_binary: gfgrep
+        note: Obsolescent per POSIX; prefer grep -F.
+
+  # ---------------------------------------------------------------------------
+  - id: findutils
+    source: https://git.savannah.gnu.org/git/findutils.git
+    brew: brew install findutils  # installs with g-prefix: gfind, gxargs
+    utilities:
+
+      - name: find
+        description: Search for files in a directory hierarchy by name, type, size, time, permissions, and more.
+        language: C
+        source_files:
+          - find/ftsfind.c   # main loop (816 loc)
+          - find/parser.c    # predicate and option parsing (3320 loc)
+          - find/pred.c      # predicate evaluation (1351 loc)
+          - find/print.c     # -printf/-ls output formatting
+          - find/tree.c      # directory tree traversal
+          - find/util.c      # shared helpers
+        shared_internal: []  # all find sources are internal to the find binary
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium  # timestamps and inode numbers in output require normalization; paths are deterministic
+        homebrew_binary: gfind
+
+      - name: xargs
+        description: Build and execute command lines from stdin; parallel execution with -P.
+        language: C
+        source_file: xargs/xargs.c
+        loc: 1784
+        shared_internal: []
+        pkg_go: [sys/sigpipe]
+        testability: medium  # output order with -P is non-deterministic; sequential mode is deterministic
+        homebrew_binary: gxargs
+
+      - name: locate
+        description: Find files by name using a pre-built database (updatedb index).
+        language: C
+        source_files:
+          - locate/locate.c
+          - locate/frcode.c
+        shared_internal: []
+        pkg_go: []
+        testability: low  # depends on database freshness and filesystem state
+        homebrew_binary: glocate
+
+      - name: updatedb
+        description: Update the database used by locate; scans the filesystem.
+        language: C
+        source_file: locate/updatedb.sh  # shell script driver
+        shared_internal: [locate]
+        pkg_go: []
+        testability: low  # long-running; filesystem-dependent
+        homebrew_binary: gupdatedb
