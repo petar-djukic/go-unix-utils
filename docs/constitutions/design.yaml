@@ -70,6 +70,19 @@ documentation_standards:
       Explain abbreviations at least once per document section. Define
       domain-specific abbreviations on first use.
 
+    yaml_scalars: |
+      A YAML block mapping value that starts with a double-quote character
+      must be a complete double-quoted string. If the value contains a
+      double-quoted token followed by more text (e.g. a flag name like "-"
+      followed by a prose description), wrap the entire value in single quotes:
+
+        WRONG:  description: "-" as a filename argument reads from stdin.
+        RIGHT:  description: '"-" as a filename argument reads from stdin.'
+
+      Alternatively use a literal block scalar (|). Never write a value where
+      a leading or embedded double-quote would cause the YAML parser to treat
+      part of the string as a quoted scalar and the rest as unexpected content.
+
   figures_and_diagrams: |
     All diagrams MUST be written in PlantUML and defined inline in markdown
     using fenced code blocks. Do not create separate .puml files or PNG images.
@@ -162,7 +175,7 @@ document_types:
       Every use case must be covered by its release test suite.
 
   test_suite:
-    location: "docs/specs/test-suites/test-rel-[release-id].yaml"
+    location: "docs/specs/test-suites/test-[release-id].yaml"
     format_rule: test-case-format
     required_fields:
       - id (matching filename, e.g. test-rel01.0)
@@ -222,7 +235,7 @@ document_types:
 naming_conventions:
   prd: "prd[NNN]-[feature-name].yaml (e.g., prd001-cupboard-core.yaml)"
   use_case: "rel[NN].[N]-uc[NNN]-[short-name].yaml (e.g., rel01.0-uc001-cupboard-lifecycle.yaml)"
-  test_suite: "test-[use-case-id].yaml (e.g., test-rel01.0-uc001-cupboard-lifecycle.yaml)"
+  test_suite: "test-[release-id].yaml (e.g., test-rel01.0.yaml)"
   engineering_guideline: "eng[NN]-[short-name].yaml (e.g., eng01-git-integration.yaml)"
   architecture: "ARCHITECTURE.yaml"
   vision: "VISION.yaml"
@@ -242,6 +255,54 @@ traceability_model:
   use_cases: Tracer bullets (exercise architecture components via touchpoints)
   test_suites: Validation (validate use case success criteria)
   code: Implementation (traces to PRDs via commit messages)
+
+traceability_invariants:
+  description: |
+    mage analyze enforces these five invariants. Every specification set must
+    satisfy all five. The invariants are checked by parsing file contents —
+    exact token formats matter.
+  invariants:
+    - id: T1
+      check: No orphaned PRDs
+      rule: |
+        Every file matching docs/specs/product-requirements/prd*.yaml must be
+        referenced by at least one use case touchpoint. The analyzer finds PRD
+        IDs by scanning touchpoint strings for bare tokens that start with "prd".
+        Embed the PRD ID directly in the touchpoint value:
+          touchpoints:
+            - T1: "Config component (prd001-orchestrator-core R1, R2)"
+
+    - id: T2
+      check: No releases without test suites
+      rule: |
+        Every release ID in docs/road-map.yaml must have a corresponding test
+        suite file at docs/specs/test-suites/test-[release-id].yaml.
+        Example: release id "rel01.0" requires test-rel01.0.yaml.
+
+    - id: T3
+      check: No orphaned test suites
+      rule: |
+        Every test suite's traces list must reference at least one use case ID
+        that exists as a file under docs/specs/use-cases/. The analyzer finds
+        use case IDs in trace entries by matching tokens that start with "rel"
+        and contain "-uc". Use the full use case ID verbatim:
+          traces:
+            - rel01.0-uc001-orchestrator-initialization
+
+    - id: T4
+      check: No broken touchpoints
+      rule: |
+        Every PRD ID embedded in a use case touchpoint must correspond to an
+        existing file in docs/specs/product-requirements/. If a touchpoint
+        mentions "prd001-feature" then prd001-feature.yaml must exist.
+
+    - id: T5
+      check: All use cases in roadmap
+      rule: |
+        Every file matching docs/specs/use-cases/rel*.yaml must appear under
+        a release's use_cases list in docs/road-map.yaml. The analyzer matches
+        by use case ID (the id field in the YAML, which must equal the filename
+        without extension).
 
 completeness_checklists:
   vision:
@@ -290,4 +351,4 @@ completeness_checklists:
     - Each test case has name, inputs, expected outputs
     - Inputs use real commands and data
     - Expected outputs are specific and checkable
-    - File saved as test-[use-case-id].yaml
+    - File saved as test-[release-id].yaml in docs/specs/test-suites/

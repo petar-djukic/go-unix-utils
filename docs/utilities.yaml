@@ -405,7 +405,7 @@ repositories:
           memory: filesystem_walk
           algorithms: [multi_column_layout, ansi_color, version_sort_strverscmp]
           go_notes: |
-            Uses every shared package in the project. Key challenges:
+            Uses every shared package in the project. Notable challenges:
             - Multi-column layout: must compute column widths after reading all entries.
             - ANSI color: disabled when stdout is not a TTY.
             - SIGWINCH: reflows column layout when terminal is resized mid-listing.

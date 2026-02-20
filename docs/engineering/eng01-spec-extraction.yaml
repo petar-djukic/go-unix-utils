@@ -188,7 +188,7 @@ sections:
       column ordering. These citations let the next reader verify the requirement without
       re-reading the whole source file.
 
-      non_goals are equally important as requirements. Every behavior you deliberately do not
+      non_goals are equally important as requirements. Every behavior you choose not to
       implement should appear here. prd004-ts excludes file input, egrep-style colorization,
       and localized date parsing. Without explicit non-goals, implementers will guess and
       often guess wrong.
@@ -275,7 +275,7 @@ sections:
       design normalization functions for them. Undiscovered non-determinism causes flaky tests
       that obscure real failures.
 
-      Set the differential test environment precisely. Locale-sensitive utilities (wc -m,
+      Set the differential test environment correctly. Locale-sensitive utilities (wc -m,
       grep character classes) must run with LC_ALL=C. Timezone-sensitive utilities (ts wall
       clock) must run with a fixed TZ. Record these constraints in the test suite YAML under
       preconditions so the test is reproducible without knowing the extraction history.
@@ -312,7 +312,7 @@ sections:
         - Requirements (R1.1...) start with "Must" or "Must not" and are non-compound
         - Source line numbers cited for non-obvious behaviors
         - Shared capabilities referenced to their shared-package PRD, not duplicated
-        - non_goals list every deliberate omission
+        - non_goals list every explicit omission
         - acceptance_criteria are runnable without ambiguity
 
       Classification

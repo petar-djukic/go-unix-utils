@@ -89,4 +89,4 @@ out_of_scope:
     differential harness; it is verified by manual inspection.
   - Memory threshold tuning is not tested; the spill path is exercised by the large-input test.
 
-test_suite: test-rel01.1-uc003-sponge
+test_suite: test-rel01.1

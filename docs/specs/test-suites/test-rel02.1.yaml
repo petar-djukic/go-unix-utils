@@ -1,5 +1,6 @@
-id: test-rel02.1-uc001-ls-extended
-title: "Test Suite: ls extended flag listing"
+id: test-rel02.1
+title: "Test Suite: rel02.1 — ls extended flag listing"
+release: rel02.1
 
 traces:
   - rel02.1-uc001-ls-extended
@@ -31,6 +32,8 @@ preconditions: |
     - Dotfiles for filter interaction with -R
 
 test_cases:
+  # --- uc001-ls-extended: ls extended flag listing ---
+
   - name: multi_col_forced
     description: -C forces multi-column output even when stdout is piped.
     inputs:

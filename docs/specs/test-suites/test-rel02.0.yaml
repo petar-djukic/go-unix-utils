@@ -1,0 +1,418 @@
+id: test-rel02.0
+title: "Test Suite: rel02.0 — ls core and du specification and differential tests"
+release: rel02.0
+
+traces:
+  - rel02.0-uc001-ls
+  - rel02.0-uc002-du
+  - prd008-ls R1
+  - prd008-ls R2
+  - prd008-ls R3
+  - prd008-ls R4
+  - prd008-ls R5
+  - prd008-ls R6
+  - prd008-ls R7
+  - prd009-du R1
+  - prd009-du R2
+  - prd009-du R3
+  - prd009-du R4
+  - prd009-du R5
+
+preconditions: |
+  Both utilities share these preconditions:
+  - Binaries exist under ./bin/ (built via mage build).
+  - Reference binaries are installed via Homebrew: gls (coreutils), gdu (coreutils).
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from
+    pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+
+  ls-specific preconditions:
+  - All differential tests use --color=never to eliminate ANSI escape variance (except
+    color-specific structural tests).
+  - For -l tests, the LsNormalizer replaces the mtime column (matching "Mon DD HH:MM" or
+    "Mon DD  YYYY" patterns) with the placeholder "MTIME" before comparison.
+  - Tests use a fixture directory (testdata/ls-fixture/) containing:
+    - Regular files of known sizes (0 bytes, 1024 bytes, 1536 bytes, 1048576 bytes)
+    - A subdirectory
+    - Dotfiles (.hidden, .config)
+    - A symbolic link
+    - Files with known permissions (rwxr-xr-x, rw-r-----)
+    - All files owned by the test runner's UID/GID for consistent owner/group display.
+
+  du-specific preconditions:
+  - No normalization is applied; du output is deterministic when both binaries run on the
+    same directory on the same filesystem.
+  - All block-count tests use -k to pin output to 1024-byte blocks and eliminate platform
+    default divergence.
+  - Tests use a fixture directory (testdata/du-fixture/) containing:
+    - A subdirectory with nested files of known sizes
+    - A second subdirectory for multi-argument tests
+    - Files of varied sizes (empty, small, 1 MB) for human-readable testing
+    - Hard-link pairs are created in test setup (not committed) to test dedup
+  - All files in the fixture are on the same filesystem as the test runner.
+
+test_cases:
+  # --- uc001-ls: ls core flag listing ---
+
+  - name: ls_default_single_col_redirect
+    description: No flags, stdout redirected (not a TTY); one entry per line in C locale order.
+    inputs:
+      args: ["--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      note: stdout is a pipe (not TTY), so default format is single-column
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one entry per line, sorted in C locale order, no dotfiles
+      stderr: ""
+    traces:
+      - prd008-ls R1.2
+      - prd008-ls R1.3
+      - prd008-ls R1.4
+
+  - name: ls_default_multi_col_tty
+    description: Default on TTY (or forced with -C and --width=80); multi-column output.
+    inputs:
+      args: ["-C", "--color=never", "-w", "80", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      note: -C forces multi-column even without TTY; -w 80 sets column width
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: entries arranged in columns fitting within 80 characters
+      stderr: ""
+    traces:
+      - prd008-ls R1.1
+
+  - name: ls_single_col_flag
+    description: -1 forces single-column output regardless of TTY.
+    inputs:
+      args: ["-1", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one entry per line, sorted in C locale order
+      stderr: ""
+    traces:
+      - prd008-ls R2.1
+
+  - name: ls_long_format
+    description: -l produces long format with permissions, nlink, owner, group, size, mtime, name.
+    inputs:
+      args: ["-l", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: LsNormalizer replaces mtime column with MTIME placeholder
+    expected:
+      exit_code: 0
+      stdout_structure: |
+        "total N" line followed by one long-format line per entry.
+        Each line has: type+perms, nlink, owner, group, size, MTIME, name.
+      stderr: ""
+    traces:
+      - prd008-ls R2.2
+      - prd008-ls R2.3
+      - prd008-ls R2.4
+      - prd008-ls R2.5
+      - prd008-ls R2.6
+      - prd008-ls R2.7
+      - prd008-ls R2.9
+
+  - name: ls_long_format_symlink
+    description: -l on a directory containing a symlink shows "name -> target".
+    inputs:
+      args: ["-l", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: LsNormalizer replaces mtime column with MTIME placeholder
+    expected:
+      exit_code: 0
+      stdout_contains: " -> "
+      stderr: ""
+    traces:
+      - prd008-ls R2.8
+
+  - name: ls_long_human
+    description: -lh displays human-readable file sizes matching gls -lh.
+    inputs:
+      args: ["-lh", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: LsNormalizer replaces mtime column with MTIME placeholder
+    expected:
+      exit_code: 0
+      stdout_structure: long format with sizes like "1.0K", "1.5K", "1.0M" instead of byte counts
+      stderr: ""
+    traces:
+      - prd008-ls R5.1
+      - prd008-ls R5.2
+
+  - name: ls_filter_all
+    description: -a includes all entries including . and .. and dotfiles.
+    inputs:
+      args: ["-a", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "."
+      stdout_contains_2: ".."
+      stdout_contains_3: ".hidden"
+      stderr: ""
+    traces:
+      - prd008-ls R3.1
+
+  - name: ls_filter_almost_all
+    description: -A includes dotfiles but excludes . and .. entries.
+    inputs:
+      args: ["-A", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: ".hidden"
+      stdout_not_contains: standalone "." or ".." entries
+      stderr: ""
+    traces:
+      - prd008-ls R3.2
+
+  - name: ls_directory_itself
+    description: -d shows the directory entry itself, not its contents.
+    inputs:
+      args: ["-d", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "testdata/ls-fixture/\n"
+      stderr: ""
+    traces:
+      - prd008-ls R3.3
+
+  - name: ls_color_suppressed
+    description: --color=never produces no ANSI escape sequences.
+    inputs:
+      args: ["--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_not_contains: "\\033["
+      stderr: ""
+    traces:
+      - prd008-ls R4.4
+
+  - name: ls_color_always
+    description: --color=always produces ANSI escape sequences for file types.
+    inputs:
+      args: ["--color=always", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      note: structural check only, not a diff test (ANSI codes must be present)
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "\\033["
+      stderr: ""
+    traces:
+      - prd008-ls R4.1
+      - prd008-ls R4.3
+
+  - name: ls_missing_file
+    description: Non-existent argument prints error to stderr, exits 1, lists other args.
+    inputs:
+      args: ["--color=never", "nonexistent", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout_structure: listing of testdata/ls-fixture/ entries
+      stderr_contains: "nonexistent"
+    traces:
+      - prd008-ls R6.2
+
+  - name: ls_bad_option
+    description: Unknown flag produces error and exits 2.
+    inputs:
+      args: ["--invalid-flag"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 2
+      stderr_contains: "unrecognized option"
+    traces:
+      - prd008-ls R6.3
+
+  # --- uc002-du: du recursive directory disk usage ---
+
+  - name: du_default_recursive
+    description: Default flags with -k on fixture directory; one line per subdirectory and root.
+    inputs:
+      args: ["-k", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one "SIZE\tPATH" line per subdirectory, ending with the root directory total
+      stderr: ""
+    traces:
+      - prd009-du R1.1
+      - prd009-du R1.2
+      - prd009-du R1.3
+
+  - name: du_summary_mode
+    description: -s prints only the total for each argument.
+    inputs:
+      args: ["-sk", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line with total size and path
+      stderr: ""
+    traces:
+      - prd009-du R2.2
+
+  - name: du_all_files
+    description: -a prints size for every file, not just directories.
+    inputs:
+      args: ["-ak", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line per file and directory in the tree
+      stderr: ""
+    traces:
+      - prd009-du R2.3
+
+  - name: du_human_readable
+    description: -h displays sizes as human-readable strings (K/M/G).
+    inputs:
+      args: ["-h", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: size values contain unit suffixes (K, M, G)
+      stderr: ""
+    traces:
+      - prd009-du R2.1
+
+  - name: du_max_depth_1
+    description: -d 1 limits output to the argument and its immediate children.
+    inputs:
+      args: ["-k", "-d", "1", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: lines for immediate subdirectories and the root; no deeper entries
+      stderr: ""
+    traces:
+      - prd009-du R2.4
+
+  - name: du_grand_total
+    description: -c prints a grand total "total" line after all arguments.
+    inputs:
+      args: ["-ck", "testdata/du-fixture/subdir1", "testdata/du-fixture/subdir2"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: per-argument lines followed by a "SIZE\ttotal" line
+      stderr: ""
+    traces:
+      - prd009-du R2.7
+
+  - name: du_hard_link_dedup
+    description: A file hard-linked into two directories is counted only once.
+    inputs:
+      args: ["-k", "testdata/du-hardlink-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      setup: |
+        Create testdata/du-hardlink-fixture/ with:
+        - dir_a/shared.txt (a regular file)
+        - dir_b/shared.txt (hard link to dir_a/shared.txt, same inode)
+        The hard link is created at test time via os.Link.
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: total for the root counts shared.txt blocks once, not twice
+      stderr: ""
+    traces:
+      - prd009-du R3.1
+      - prd009-du R3.2
+      - prd009-du R3.3
+
+  - name: du_apparent_size
+    description: --apparent-size reports st_size instead of st_blocks.
+    inputs:
+      args: ["--apparent-size", "-k", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: sizes based on file content length, not block allocation
+      stderr: ""
+    traces:
+      - prd009-du R2.8
+
+  - name: du_kilobyte_units
+    description: -k reports in 1024-byte blocks (default, accepted without error).
+    inputs:
+      args: ["-k", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: identical to default_recursive (1K is the default)
+      stderr: ""
+    traces:
+      - prd009-du R2.5
+
+  - name: du_megabyte_units
+    description: -m reports in 1048576-byte (1M) blocks.
+    inputs:
+      args: ["-m", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: sizes in megabyte units, smaller values show as 1 (rounded up)
+      stderr: ""
+    traces:
+      - prd009-du R2.6
+
+  - name: du_missing_path
+    description: Non-existent argument prints error to stderr, exits 1.
+    inputs:
+      args: ["-k", "nonexistent_dir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "nonexistent_dir"
+    traces:
+      - prd009-du R4.2

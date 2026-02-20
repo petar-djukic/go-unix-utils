@@ -1,5 +1,6 @@
-id: test-rel01.0-uc001-ts
-title: "Test Suite: ts timestamp stdin lines"
+id: test-rel01.0
+title: "Test Suite: rel01.0 — ts timestamp stdin lines"
+release: rel01.0
 
 traces:
   - rel01.0-uc001-ts
@@ -20,6 +21,8 @@ preconditions: |
     consistent strftime output between runs.
 
 test_cases:
+  # --- uc001-ts: ts timestamp stdin lines ---
+
   - name: default_format_three_lines
     description: Default format ("%b %d %H:%M:%S") with three-line stdin.
     inputs:

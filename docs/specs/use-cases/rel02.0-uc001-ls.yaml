@@ -92,4 +92,4 @@ out_of_scope:
   - SIGWINCH behavior is specified in prd008-ls R7.2 but is not directly testable in the
     differential harness.
 
-test_suite: test-rel02.0-uc001-ls
+test_suite: test-rel02.0

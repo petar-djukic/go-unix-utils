@@ -92,4 +92,4 @@ out_of_scope:
   - Sparse file creation depends on the filesystem; --apparent-size tests use a regular file
     with known size rather than a true sparse file.
 
-test_suite: test-rel02.0-uc002-du
+test_suite: test-rel02.0

@@ -1,0 +1,625 @@
+id: test-rel01.1
+title: "Test Suite: rel01.1 — wc, cat, sponge specification and differential tests"
+release: rel01.1
+
+traces:
+  - rel01.1-uc001-wc
+  - rel01.1-uc002-cat
+  - rel01.1-uc003-sponge
+  - prd005-wc R1
+  - prd005-wc R2
+  - prd005-wc R3
+  - prd005-wc R4
+  - prd005-wc R5
+  - prd005-wc R6
+  - prd006-cat R1
+  - prd006-cat R2
+  - prd006-cat R3
+  - prd006-cat R4
+  - prd006-cat R5
+  - prd007-sponge R1
+  - prd007-sponge R2
+  - prd007-sponge R3
+  - prd007-sponge R4
+  - prd007-sponge R5
+  - prd007-sponge R6
+
+preconditions: |
+  All three utilities share these preconditions:
+  - Binaries exist under ./bin/ (built via mage build).
+  - Reference binaries are installed via Homebrew: gwc (coreutils), gcat (coreutils),
+    sponge (moreutils).
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from
+    pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+
+  Utility-specific preconditions:
+  - wc: No normalization is applied; wc output is deterministic integer counts.
+  - cat: No normalization is applied; cat output is deterministic. Binary test inputs
+    are specified as hex escape sequences.
+  - sponge: Each test creates an isolated temp directory. Comparison is on output file
+    content (prd001-testutils R5) for tests with an output filename. Passthrough mode
+    tests compare stdout byte-for-byte.
+
+test_cases:
+  # --- uc001-wc: wc count lines, words, and bytes ---
+
+  - name: wc_default_three_lines
+    description: Default flags (line, word, byte count) with three-line stdin.
+    inputs:
+      args: []
+      stdin: "foo\nbar baz\nqux\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "3"
+      stderr: ""
+    traces:
+      - prd005-wc R1.1
+      - prd005-wc R1.2
+      - prd005-wc R1.3
+
+  - name: wc_lines_only
+    description: -l flag counts newline characters only.
+    inputs:
+      args: ["-l"]
+      stdin: "one\ntwo\nthree\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "3"
+      stderr: ""
+    traces:
+      - prd005-wc R2.1
+      - prd005-wc R2.6
+
+  - name: wc_words_only
+    description: -w flag counts words (maximal sequences of non-whitespace).
+    inputs:
+      args: ["-w"]
+      stdin: "hello world\ngoodbye  cruel   world\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "5"
+      stderr: ""
+    traces:
+      - prd005-wc R2.2
+      - prd005-wc R2.6
+
+  - name: wc_bytes_only
+    description: -c flag counts bytes.
+    inputs:
+      args: ["-c"]
+      stdin: "abc\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "4"
+      stderr: ""
+    traces:
+      - prd005-wc R2.3
+
+  - name: wc_chars_lc_c
+    description: -m with LC_ALL=C; character count equals byte count under C locale.
+    inputs:
+      args: ["-m"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "6"
+      stderr: ""
+    traces:
+      - prd005-wc R2.4
+      - prd005-wc R5.1
+      - prd005-wc R5.2
+
+  - name: wc_max_line_length
+    description: -L flag reports the longest line length with tab expansion.
+    inputs:
+      args: ["-L"]
+      stdin: "short\na much longer line here\nmed\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "22"
+      stderr: ""
+    traces:
+      - prd005-wc R2.5
+
+  - name: wc_combined_flags_order
+    description: Combined flags (-l -w -c) produce counts in fixed order (lines, words, bytes).
+    inputs:
+      args: ["-w", "-l", "-c"]
+      stdin: "one two\nthree\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: counts in order lines, words, bytes regardless of flag order
+      stderr: ""
+    traces:
+      - prd005-wc R2.6
+
+  - name: wc_multi_file_total
+    description: Two files produce per-file lines and a total line with right-aligned columns.
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      setup: |
+        file1.txt contains "hello\nworld\n" (2 lines, 2 words, 12 bytes)
+        file2.txt contains "foo bar baz\n" (1 line, 3 words, 12 bytes)
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: three lines — file1 counts, file2 counts, total with label "total"; columns right-aligned
+      stderr: ""
+    traces:
+      - prd005-wc R1.4
+      - prd005-wc R3.1
+      - prd005-wc R3.2
+
+  - name: wc_total_only
+    description: --total=only with two files prints only the total line.
+    inputs:
+      args: ["--total=only", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      setup: |
+        file1.txt contains "a\n"
+        file2.txt contains "b\nc\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line with summed counts and label "total"
+      stderr: ""
+    traces:
+      - prd005-wc R3.3
+
+  - name: wc_total_never
+    description: --total=never with two files prints no total line.
+    inputs:
+      args: ["--total=never", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      setup: |
+        file1.txt contains "x\n"
+        file2.txt contains "y\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: two lines (one per file), no total line
+      stderr: ""
+    traces:
+      - prd005-wc R3.3
+
+  - name: wc_stdin_dash
+    description: '"-" as a filename argument reads from stdin.'
+    inputs:
+      args: ["-"]
+      stdin: "stdin content\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line of counts (no filename label for stdin dash)
+      stderr: ""
+    traces:
+      - prd005-wc R4.1
+
+  - name: wc_empty_stdin
+    description: Zero bytes of stdin produces "0 0 0" for default flags.
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "0"
+      stderr: ""
+    traces:
+      - prd005-wc R4.3
+
+  - name: wc_missing_file
+    description: Non-existent file prints error to stderr, exits 1, processes remaining files.
+    inputs:
+      args: ["nonexistent.txt", "real.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      setup: |
+        real.txt contains "data\n"
+        nonexistent.txt does not exist
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout_structure: counts for real.txt and a total line are printed
+      stderr_contains: "nonexistent.txt"
+    traces:
+      - prd005-wc R6.2
+
+  # --- uc002-cat: cat concatenate and display files ---
+
+  - name: cat_default_passthrough
+    description: No flags, text file content passes through verbatim.
+    inputs:
+      args: ["file1.txt"]
+      stdin: null
+      env: []
+      setup: |
+        file1.txt contains "hello\nworld\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello\nworld\n"
+      stderr: ""
+    traces:
+      - prd006-cat R1.1
+      - prd006-cat R1.5
+
+  - name: cat_binary_passthrough
+    description: No flags, binary input (all byte values 0x00-0xFF) passes through without corruption.
+    inputs:
+      args: []
+      stdin: "\\x00\\x01\\x02...\\xfe\\xff (all 256 byte values)"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: identical 256 bytes as input
+      stderr: ""
+    traces:
+      - prd006-cat R1.4
+
+  - name: cat_line_numbering_n
+    description: -n flag prepends line numbers to all lines including blank lines.
+    inputs:
+      args: ["-n"]
+      stdin: "alpha\n\nbeta\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "     1\talpha\n     2\t\n     3\tbeta\n"
+      stderr: ""
+    traces:
+      - prd006-cat R2.1
+
+  - name: cat_line_numbering_b
+    description: -b flag prepends line numbers only to non-blank lines.
+    inputs:
+      args: ["-b"]
+      stdin: "first\n\n\nsecond\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "     1\tfirst\n\n\n     2\tsecond\n"
+      stderr: ""
+    traces:
+      - prd006-cat R2.2
+      - prd006-cat R2.4
+
+  - name: cat_squeeze_blanks
+    description: -s collapses consecutive blank lines to one.
+    inputs:
+      args: ["-s"]
+      stdin: "a\n\n\n\nb\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\n\nb\n"
+      stderr: ""
+    traces:
+      - prd006-cat R3.1
+
+  - name: cat_show_nonprinting
+    description: -v displays non-printing characters with caret and M- notation.
+    inputs:
+      args: ["-v"]
+      stdin: "\\x01\\x09\\x1b\\x7f\\x80\\xff"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^A\\x09^[^?M-^@M-^?"
+      stderr: ""
+    traces:
+      - prd006-cat R4.1
+      - prd006-cat R4.2
+
+  - name: cat_show_ends
+    description: -E appends "$" before each newline.
+    inputs:
+      args: ["-E"]
+      stdin: "line one\nline two\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "line one$\nline two$\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.3
+
+  - name: cat_show_tabs
+    description: -T displays tabs as "^I".
+    inputs:
+      args: ["-T"]
+      stdin: "col1\\tcol2\\tcol3\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "col1^Icol2^Icol3\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.4
+
+  - name: cat_show_all
+    description: -A is equivalent to -vET combined.
+    inputs:
+      args: ["-A"]
+      stdin: "\\x01\\thello\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^A^Ihello$\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.5
+
+  - name: cat_flag_e
+    description: -e is equivalent to -vE (show non-printing and show ends).
+    inputs:
+      args: ["-e"]
+      stdin: "\\x01hello\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^Ahello$\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.6
+
+  - name: cat_flag_t
+    description: -t is equivalent to -vT (show non-printing and show tabs).
+    inputs:
+      args: ["-t"]
+      stdin: "\\x01\\thello\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^A^Ihello\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.7
+
+  - name: cat_flag_u_accepted
+    description: -u flag is accepted without error, output unchanged from default.
+    inputs:
+      args: ["-u"]
+      stdin: "test\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "test\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.8
+
+  - name: cat_combined_ns
+    description: -n -s combined; squeeze applied before numbering.
+    inputs:
+      args: ["-n", "-s"]
+      stdin: "a\n\n\n\nb\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "     1\ta\n     2\t\n     3\tb\n"
+      stderr: ""
+    traces:
+      - prd006-cat R3.3
+      - prd006-cat R4.9
+
+  - name: cat_multiple_files
+    description: Two files concatenated with no separator between them.
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: []
+      setup: |
+        file1.txt contains "aaa\n"
+        file2.txt contains "bbb\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "aaa\nbbb\n"
+      stderr: ""
+    traces:
+      - prd006-cat R1.1
+      - prd006-cat R1.3
+
+  - name: cat_stdin_dash
+    description: '"-" as a filename argument reads from stdin.'
+    inputs:
+      args: ["-"]
+      stdin: "from stdin\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "from stdin\n"
+      stderr: ""
+    traces:
+      - prd006-cat R1.2
+
+  - name: cat_missing_file
+    description: Non-existent file prints error to stderr, exits 1, continues processing.
+    inputs:
+      args: ["nonexistent.txt", "real.txt"]
+      stdin: null
+      env: []
+      setup: |
+        real.txt contains "data\n"
+        nonexistent.txt does not exist
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: "data\n"
+      stderr_contains: "nonexistent.txt"
+    traces:
+      - prd006-cat R5.2
+
+  # --- uc003-sponge: sponge soak stdin and write to file ---
+
+  - name: sponge_small_stdin_to_file
+    description: 100 lines piped to sponge with an output filename; compare output file content.
+    inputs:
+      args: ["outfile.txt"]
+      stdin: "seq 1 100 output (lines 1 through 100, each followed by newline)"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        outfile.txt: "100 lines, '1\n' through '100\n'"
+      stderr: ""
+    traces:
+      - prd007-sponge R1.1
+      - prd007-sponge R1.2
+      - prd007-sponge R2.1
+
+  - name: sponge_soak_before_write
+    description: Same input and output file (cat file | sponge file). Output must equal input, proving sponge did not truncate before reading.
+    inputs:
+      args: ["data.txt"]
+      stdin: "content of data.txt (fed via 'cat data.txt')"
+      env: []
+      setup: |
+        data.txt contains "line1\nline2\nline3\n"
+        Pipeline: cat data.txt | sponge data.txt
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        data.txt: "line1\nline2\nline3\n"
+      stderr: ""
+    traces:
+      - prd007-sponge R1.1
+      - prd007-sponge R2.5
+
+  - name: sponge_passthrough_stdout
+    description: No output filename; stdin content appears on stdout.
+    inputs:
+      args: []
+      stdin: "hello world\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello world\n"
+      stderr: ""
+    traces:
+      - prd007-sponge R4.1
+      - prd007-sponge R4.3
+
+  - name: sponge_append_mode
+    description: -a flag prepends original file content before stdin content.
+    inputs:
+      args: ["-a", "existing.txt"]
+      stdin: "appended line\n"
+      env: []
+      setup: |
+        existing.txt contains "original line\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        existing.txt: "original line\nappended line\n"
+      stderr: ""
+    traces:
+      - prd007-sponge R3.1
+      - prd007-sponge R3.3
+
+  - name: sponge_append_mode_no_existing_file
+    description: -a with a non-existent output file behaves as default mode (creates new file).
+    inputs:
+      args: ["-a", "newfile.txt"]
+      stdin: "new content\n"
+      env: []
+      setup: |
+        newfile.txt does not exist
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        newfile.txt: "new content\n"
+      stderr: ""
+    traces:
+      - prd007-sponge R3.2
+
+  - name: sponge_large_stdin
+    description: Input >= 1 MB forces temp-file spill; output file content must match.
+    inputs:
+      args: ["large_out.txt"]
+      stdin: "generated payload of 1,048,576+ bytes (e.g., seq 1 50000)"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        large_out.txt: "identical to stdin content"
+      stderr: ""
+    traces:
+      - prd007-sponge R1.3
+      - prd007-sponge R1.4
+
+  - name: sponge_output_file_exists_mode
+    description: Existing file has mode 0640; after sponge, file mode is preserved.
+    inputs:
+      args: ["protected.txt"]
+      stdin: "new content\n"
+      env: []
+      setup: |
+        protected.txt exists with mode 0640 and contains "old content\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        protected.txt: "new content\n"
+      state:
+        protected.txt_mode: "0640"
+      stderr: ""
+    traces:
+      - prd007-sponge R2.3
+
+  - name: sponge_empty_stdin
+    description: Zero bytes of stdin; output file created with zero bytes.
+    inputs:
+      args: ["empty_out.txt"]
+      stdin: ""
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      files:
+        empty_out.txt: ""
+      stderr: ""
+    traces:
+      - prd007-sponge R1.1
+      - prd007-sponge R2.1

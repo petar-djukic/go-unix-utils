@@ -1,0 +1,185 @@
+id: go-unix-utils-specifications
+title: "go-unix-utils Specification Summary"
+
+overview: |
+  This document ties together the PRDs, use cases, test suites, and roadmap for
+  go-unix-utils into a single navigable index. We summarize each artifact and show
+  the relationships between them. Regenerate this file when any specification
+  artifact changes.
+
+roadmap_summary:
+  - version: rel01.0
+    name: "Batch 1 — ts specification and differential test"
+    use_cases_done: 0
+    use_cases_total: 1
+    status: in_progress
+  - version: rel01.1
+    name: "Batch 2 — wc, cat, sponge specification and differential tests"
+    use_cases_done: 0
+    use_cases_total: 3
+    status: pending
+  - version: rel02.0
+    name: "Batch 3 — ls core and du specification and differential tests"
+    use_cases_done: 0
+    use_cases_total: 2
+    status: pending
+  - version: rel02.1
+    name: "Batch 4 — ls extended specification and differential tests"
+    use_cases_done: 0
+    use_cases_total: 1
+    status: pending
+
+prd_index:
+  - id: prd001-testutils
+    title: "pkg/testutils: Differential Testing Harness"
+    summary: Shared harness for executing Go and reference binaries side by side and comparing outputs.
+    path: docs/specs/product-requirements/prd001-testutils.yaml
+  - id: prd002-sys
+    title: "pkg/sys: Syscall Abstractions"
+    summary: Portable terminal-width, extended file metadata, and signal handling for Darwin and Linux.
+    path: docs/specs/product-requirements/prd002-sys.yaml
+  - id: prd003-format
+    title: "pkg/format: Output Formatting"
+    summary: Column alignment, ANSI color, and human-readable size conversion shared across utilities.
+    path: docs/specs/product-requirements/prd003-format.yaml
+  - id: prd004-ts
+    title: "cmd/ts: Timestamp Stdin Lines"
+    summary: Prepend strftime timestamps to each stdin line with incremental, elapsed, monotonic, and relative modes.
+    path: docs/specs/product-requirements/prd004-ts.yaml
+  - id: prd005-wc
+    title: "cmd/wc: Count Lines, Words, and Bytes"
+    summary: Count lines, words, bytes, characters, and max line length from files or stdin.
+    path: docs/specs/product-requirements/prd005-wc.yaml
+  - id: prd006-cat
+    title: "cmd/cat: Concatenate and Display Files"
+    summary: Concatenate files to stdout with line numbering, blank squeezing, and non-printing display.
+    path: docs/specs/product-requirements/prd006-cat.yaml
+  - id: prd007-sponge
+    title: "cmd/sponge: Soak Stdin and Write to File"
+    summary: Buffer all stdin before opening the output file, enabling safe in-place pipeline rewrites.
+    path: docs/specs/product-requirements/prd007-sponge.yaml
+  - id: prd008-ls
+    title: "cmd/ls: Core File Listing"
+    summary: List directory contents with multi-column, single-column, and long format plus filter and color flags.
+    path: docs/specs/product-requirements/prd008-ls.yaml
+  - id: prd009-du
+    title: "cmd/du: Recursive Directory Disk Usage"
+    summary: Report disk usage with recursive traversal, hard-link deduplication, and human-readable output.
+    path: docs/specs/product-requirements/prd009-du.yaml
+  - id: prd010-ls-extended
+    title: "cmd/ls: Extended Flags"
+    summary: Multi-column layout control, sort order, metadata display, classification, and recursive listing.
+    path: docs/specs/product-requirements/prd010-ls-extended.yaml
+
+use_case_index:
+  - id: rel01.0-uc001-ts
+    title: "Timestamp stdin lines via ts"
+    release: rel01.0
+    status: in_progress
+    test_suite: test-rel01.0
+    path: docs/specs/use-cases/rel01.0-uc001-ts.yaml
+  - id: rel01.1-uc001-wc
+    title: "Count lines, words, and bytes via wc"
+    release: rel01.1
+    status: pending
+    test_suite: test-rel01.1
+    path: docs/specs/use-cases/rel01.1-uc001-wc.yaml
+  - id: rel01.1-uc002-cat
+    title: "Concatenate and display files via cat"
+    release: rel01.1
+    status: pending
+    test_suite: test-rel01.1
+    path: docs/specs/use-cases/rel01.1-uc002-cat.yaml
+  - id: rel01.1-uc003-sponge
+    title: "Soak stdin and write to file via sponge"
+    release: rel01.1
+    status: pending
+    test_suite: test-rel01.1
+    path: docs/specs/use-cases/rel01.1-uc003-sponge.yaml
+  - id: rel02.0-uc001-ls
+    title: "List directory contents via ls (core flags)"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc001-ls.yaml
+  - id: rel02.0-uc002-du
+    title: "Report recursive directory disk usage via du"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc002-du.yaml
+  - id: rel02.1-uc001-ls-extended
+    title: "List directory contents via ls (extended flags)"
+    release: rel02.1
+    status: pending
+    test_suite: test-rel02.1
+    path: docs/specs/use-cases/rel02.1-uc001-ls-extended.yaml
+
+test_suite_index:
+  - id: test-rel01.0
+    title: "Test Suite: rel01.0 — ts timestamp stdin lines"
+    traces:
+      - rel01.0-uc001-ts
+    test_case_count: 12
+    path: docs/specs/test-suites/test-rel01.0.yaml
+  - id: test-rel01.1
+    title: "Test Suite: rel01.1 — wc, cat, sponge specification and differential tests"
+    traces:
+      - rel01.1-uc001-wc
+      - rel01.1-uc002-cat
+      - rel01.1-uc003-sponge
+    test_case_count: 25
+    path: docs/specs/test-suites/test-rel01.1.yaml
+  - id: test-rel02.0
+    title: "Test Suite: rel02.0 — ls core and du specification and differential tests"
+    traces:
+      - rel02.0-uc001-ls
+      - rel02.0-uc002-du
+    test_case_count: 22
+    path: docs/specs/test-suites/test-rel02.0.yaml
+  - id: test-rel02.1
+    title: "Test Suite: rel02.1 — ls extended flag listing"
+    traces:
+      - rel02.1-uc001-ls-extended
+    test_case_count: 14
+    path: docs/specs/test-suites/test-rel02.1.yaml
+
+prd_to_use_case_mapping:
+  - use_case: rel01.0-uc001-ts
+    prd: prd004-ts
+    why_required: ts is the first utility in the pipeline; exercises prd001-testutils and prd004-ts.
+    coverage: Full — all prd004-ts requirement groups (R1-R9) are traced from the test suite.
+  - use_case: rel01.1-uc001-wc
+    prd: prd005-wc
+    why_required: wc exercises multi-file output, column alignment, and locale handling.
+    coverage: Full — all prd005-wc requirement groups (R1-R6) are traced from the test suite.
+  - use_case: rel01.1-uc002-cat
+    prd: prd006-cat
+    why_required: cat exercises binary passthrough, non-printing display, and flag combinations.
+    coverage: Full — all prd006-cat requirement groups (R1-R5) are traced from the test suite.
+  - use_case: rel01.1-uc003-sponge
+    prd: prd007-sponge
+    why_required: sponge exercises file-state comparison in pkg/testutils and atomic write patterns.
+    coverage: Full — all prd007-sponge requirement groups (R1-R6) are traced from the test suite.
+  - use_case: rel02.0-uc001-ls
+    prd: prd008-ls
+    why_required: ls core exercises pkg/sys and pkg/format for the first time in the pipeline.
+    coverage: Full — all prd008-ls requirement groups (R1-R7) are traced from the test suite.
+  - use_case: rel02.0-uc002-du
+    prd: prd009-du
+    why_required: du exercises hard-link deduplication and recursive block accumulation.
+    coverage: Full — all prd009-du requirement groups (R1-R5) are traced from the test suite.
+  - use_case: rel02.1-uc001-ls-extended
+    prd: prd010-ls-extended
+    why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing.
+    coverage: Full — all prd010-ls-extended requirement groups (R1-R6) are traced from the test suite.
+
+coverage_gaps: |
+  Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) do not have dedicated use
+  cases or test suites. They are exercised indirectly through the utility use cases that depend
+  on them. This is by design: shared libraries are validated through their consumers, not
+  independently.
+
+  No coverage gaps exist in the current roadmap. Every use case has a test suite, every PRD is
+  referenced by at least one use case touchpoint, and every release has a corresponding test
+  suite.
