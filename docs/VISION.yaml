@@ -23,14 +23,14 @@ what_this_does: |
   We run a four-stage pipeline for each utility. In the extraction stage, we clone the
   C source (coreutils, moreutils, grep, findutils) and analyze behavior directly from
   the source of truth. In the specification stage, a human operator uses the make-work
-  and do-work Claude Code skills to produce three artifacts: a PRD (numbered requirements
-  and acceptance criteria), a use case (concrete end-to-end execution path through the
-  system), and a spec.md (full behavioral detail of all flags, exit codes, and stream
-  behaviors). Shared library components (pkg/) also receive PRDs when their requirements
-  span multiple utilities. In the synthesis stage, the mage-claude-orchestrator library
-  drives a Claude agent to generate idiomatic Go from the spec.md. In the verification
-  stage, a differential testing harness runs the Go binary and the Homebrew reference
-  binary side by side and compares outputs.
+  and do-work Claude Code skills to produce two artifacts: a PRD (numbered requirements
+  and acceptance criteria covering all flags, exit codes, and stream behaviors) and a
+  use case (concrete end-to-end execution path through the system). Shared library
+  components (pkg/) also receive PRDs when their requirements span multiple utilities.
+  In the synthesis stage, the mage-claude-orchestrator library drives a Claude agent to
+  generate idiomatic Go from the PRD. In the verification stage, a differential testing
+  harness runs the Go binary and the Homebrew reference binary side by side and compares
+  outputs.
 
 why_we_build_this: |
   We use GNU utilities as a stress test for the mage-claude-orchestrator code generation
@@ -51,7 +51,7 @@ success_criteria:
       with 100% output parity on exit code, stdout, and stderr.
   - id: SC2
     criterion: >
-      Every utility has a spec.md that covers all flags, exit codes, and stream
+      Every utility has a PRD that covers all flags, exit codes, and stream
       behaviors derived from C source.
   - id: SC3
     criterion: >
@@ -76,24 +76,24 @@ implementation_phases:
     deliverables:
       - Differential testing harness in pkg/testutils/
       - pkg/sys/ and pkg/format/ initial implementations
-      - cmd/ts/ with spec.md and passing differential tests
+      - cmd/ts/ with PRD and passing differential tests
   - phase: 2
     name: Moreutils
     focus: Remaining moreutils tools (sponge, vidir, pee, chronic).
     deliverables:
-      - spec.md and Go implementation for sponge, vidir, pee, and chronic
+      - PRD and Go implementation for sponge, vidir, pee, and chronic
       - Differential tests for each moreutils utility
   - phase: 3
     name: Coreutils
     focus: High-complexity coreutils tools (ls, cat, cp, mv, wc, du).
     deliverables:
-      - spec.md and Go implementation for each coreutils utility
+      - PRD and Go implementation for each coreutils utility
       - Shared formatting and syscall logic promoted to pkg/
   - phase: 4
     name: Search Utilities
     focus: grep, egrep, fgrep (grep package) and find, xargs (findutils).
     deliverables:
-      - spec.md and Go implementations for all grep and findutils tools
+      - PRD and Go implementations for all grep and findutils tools
       - Full differential test coverage for the search utility suite
 
 risks:
@@ -126,7 +126,7 @@ risks:
     likelihood: medium
     mitigation: |
       Differential testing is the gating check. Code cannot pass review until
-      differential tests pass. Edge cases are explicit in the spec.md and exercised
+      differential tests pass. Edge cases are explicit in the PRD and exercised
       as named test inputs in pkg/testutils/.
 
 not:

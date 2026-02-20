@@ -10,14 +10,14 @@ overview:
     accumulates common logic as utilities are added.
   lifecycle: |
     For each utility a human operator clones the C source repository, analyzes flags and
-    edge cases, and uses the make-work and do-work Claude Code skills to produce three
-    specification artifacts: a PRD (numbered requirements and acceptance criteria), a
-    use case (concrete end-to-end execution path through the system), and a spec.md (full
-    behavioral detail of all flags, exit codes, and stream behaviors). The spec.md is the
-    primary input to code generation. Once the spec artifacts are complete, the human
-    invokes the mage-claude-orchestrator via mage targets; the orchestrator drives a Claude
-    agent to generate Go code in cmd/<utility>/ and runs the differential testing harness.
-    If tests fail, the operator refines the spec and the orchestrator re-generates.
+    edge cases, and uses the make-work and do-work Claude Code skills to produce two
+    specification artifacts: a PRD (numbered requirements and acceptance criteria covering
+    all flags, exit codes, and stream behaviors) and a use case (concrete end-to-end
+    execution path through the system). The PRD is the primary input to code generation.
+    Once the spec artifacts are complete, the human invokes the mage-claude-orchestrator
+    via mage targets; the orchestrator drives a Claude agent to generate Go code in
+    cmd/<utility>/ and runs the differential testing harness. If tests fail, the operator
+    refines the PRD and the orchestrator re-generates.
 
     Shared library components (pkg/sys, pkg/format, pkg/testutils) may also have PRDs
     when their requirements are non-trivial and span multiple utilities.
@@ -41,12 +41,6 @@ interfaces:
         system. Captures the actor, trigger, flow steps, architecture touchpoints, and
         success criteria. Located at docs/specs/use-cases/. One use case per utility.
         Links to a corresponding test suite.
-    - name: spec.md
-      description: |
-        Per-utility behavioral specification documenting all flags, exit codes, stream
-        behaviors, and edge cases. Written in Markdown. Consumed by the mage-claude-orchestrator
-        as the primary input for code generation. One file per utility, located at
-        docs/specs/<utility>/spec.md.
     - name: DiffTest
       description: |
         Go struct in pkg/testutils/ defining a single differential test case with fields
@@ -80,10 +74,10 @@ components:
     responsibility: |
       Guides specification development for each utility. Clones the C source, analyzes
       flags and edge cases, and uses the make-work and do-work Claude Code skills to
-      produce a PRD, a use case, and a spec.md. Decides when the spec artifacts are
-      complete enough to hand off to the orchestrator. Refines specs when
-      orchestrator-generated code fails differential tests. Also authors PRDs for shared
-      pkg/ components when their requirements warrant it.
+      produce a PRD and a use case. Decides when the spec artifacts are complete enough
+      to hand off to the orchestrator. Refines PRDs when orchestrator-generated code
+      fails differential tests. Also authors PRDs for shared pkg/ components when their
+      requirements warrant it.
     capabilities:
       - make-work skill: breaks a utility into specification issues
       - do-work skill: works through individual specification issues
@@ -92,13 +86,12 @@ components:
 
   - name: Specification Repository
     responsibility: |
-      Holds the formal per-utility PRDs, use cases, and spec.md files alongside this
-      documentation suite. Serves as the source of truth for synthesis and verification.
-      Shared library components (pkg/) may also have PRDs.
+      Holds the formal per-utility PRDs and use cases alongside this documentation suite.
+      Serves as the source of truth for synthesis and verification. Shared library
+      components (pkg/) may also have PRDs.
     capabilities:
       - One PRD per utility under docs/specs/product-requirements/ (plus PRDs for shared pkg/ components as needed)
       - One use case per utility under docs/specs/use-cases/
-      - One spec.md per utility under docs/specs/<utility>/
       - VISION.yaml and ARCHITECTURE.yaml project-level docs
       - Test suites under docs/specs/test-suites/
     references: docs/
@@ -223,10 +216,10 @@ design_decisions:
   - id: DD5
     title: Human-guided specification, automated synthesis
     decision: |
-      We split responsibility at the spec boundary. The human operator owns spec.md
+      We split responsibility at the spec boundary. The human operator owns the PRD
       via make-work and do-work skills. The mage-claude-orchestrator owns code generation
       and testing from that point forward. The operator does not write Go; the orchestrator
-      does not write specs.
+      does not write PRDs.
     benefits:
       - Isolates the experiment variable so orchestrator quality is evaluated independently of spec quality
       - Human judgment is applied where it adds most value (behavioral analysis of C source)
@@ -247,7 +240,7 @@ technology_choices:
   - technology: Git (coreutils, moreutils, grep, findutils mirrors)
     reason: Source repositories for C implementations used as spec extraction input.
   - technology: mage-claude-orchestrator (mesh-intelligence)
-    reason: Drives Claude agents for code generation from spec.md; provides the cobbler measure/stitch generation cycle.
+    reason: Drives Claude agents for code generation from the PRD; provides the cobbler measure/stitch generation cycle.
   - technology: make-work / do-work (Claude Code skills)
     reason: Human operator uses these skills to break utilities into specification issues and work through them systematically.
 
@@ -258,8 +251,6 @@ project_structure:
     role: Per-utility PRDs; also PRDs for shared pkg/ components
   - path: docs/specs/use-cases/
     role: Per-utility use cases (concrete execution paths through the system)
-  - path: docs/specs/<utility>/spec.md
-    role: Per-utility behavioral specification (flags, exit codes, stream behaviors)
   - path: cmd/
     role: Go implementation of each utility, one package per utility
   - path: pkg/sys/
