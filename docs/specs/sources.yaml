@@ -1,0 +1,231 @@
+id: sources
+title: "C Source Repository Catalog"
+
+overview: |
+  Catalog of the four C source repositories used for spec extraction. For each utility
+  we record the source file, flag-parsing entry point, exit-code logic location, and
+  the Homebrew reference binary name used in differential testing. Clones live in
+  /tmp/sources/ (not committed). This file is the input for dependency-map.yaml.
+
+repositories:
+  - id: coreutils
+    clone_url: https://github.com/coreutils/coreutils.git
+    commit: 200cc6a5986f37777e6802ba4a0d38c9cbbf732e
+    brew_install: brew install coreutils
+    brew_note: |
+      Installs with g-prefix (gls, gcat, etc.) because the names conflict with
+      macOS BSD built-ins. Unprefixed names available via libexec/gnubin/ on PATH.
+    utilities:
+      - name: ls
+        source_file: src/ls.c
+        main_line: 1648
+        flag_parsing: "getopt_long at src/ls.c:1924; switch(c) at line 1930"
+        exit_code_logic: "exit(status) at src/ls.c:5638; status set to EXIT_FAILURE on stat errors (line 5339)"
+        exit_codes:
+          0: success
+          1: minor problems (e.g., cannot access a file)
+          2: serious trouble (e.g., invalid option)
+        homebrew_binary: gls
+
+      - name: cat
+        source_file: src/cat.c
+        main_line: 550
+        flag_parsing: "getopt_long at src/cat.c:595; switch(c) at line 598"
+        exit_code_logic: "return ok ? EXIT_SUCCESS : EXIT_FAILURE at src/cat.c:828"
+        exit_codes:
+          0: success
+          1: read or write error
+        homebrew_binary: gcat
+
+      - name: cp
+        source_file: src/cp.c
+        main_line: 1029
+        flag_parsing: "getopt_long at src/cp.c:1052; switch(c) at line 1056"
+        exit_code_logic: "main_exit(ok ? EXIT_SUCCESS : EXIT_FAILURE) at src/cp.c:1335"
+        exit_codes:
+          0: success
+          1: error
+        homebrew_binary: gcp
+
+      - name: mv
+        source_file: src/mv.c
+        main_line: 343
+        flag_parsing: "getopt_long at src/mv.c:368; switch(c) at line 371"
+        exit_code_logic: "main_exit(ok ? EXIT_SUCCESS : EXIT_FAILURE) at src/mv.c:572"
+        exit_codes:
+          0: success
+          1: error
+        homebrew_binary: gmv
+
+      - name: wc
+        source_file: src/wc.c
+        main_line: 792
+        flag_parsing: "getopt_long at src/wc.c:820; switch(optc) at line 637"
+        exit_code_logic: "return ok ? EXIT_SUCCESS : EXIT_FAILURE at src/wc.c:1049"
+        exit_codes:
+          0: success
+          1: read or write error
+        homebrew_binary: gwc
+
+      - name: du
+        source_file: src/du.c
+        main_line: 772
+        flag_parsing: "getopt_long at src/du.c:808; switch(c) at line 813"
+        exit_code_logic: "return ok ? EXIT_SUCCESS : EXIT_FAILURE at src/du.c:1191"
+        exit_codes:
+          0: success
+          1: error
+        homebrew_binary: gdu
+
+  - id: moreutils
+    clone_url: https://git.joeyh.name/git/moreutils.git
+    commit: e9a53e8922fbebe825f74ffbe309d4e57d6b09d5
+    brew_install: brew install moreutils
+    brew_note: |
+      Installs without g-prefix (ts, sponge, pee, vidir, chronic) because these
+      utilities do not conflict with any macOS built-ins.
+    utilities:
+      - name: ts
+        source_file: ts
+        language: Perl
+        flag_parsing: "Perl GetOptions at ts:64; flags: -r, -i, -s, -m"
+        exit_code_logic: "die on bad options (non-zero); implicit exit 0 on EOF"
+        exit_codes:
+          0: success, stdin consumed and timestamped
+          non-zero: bad option or missing Perl module (Time::Duration, Date::Parse for -r)
+        homebrew_binary: ts
+
+      - name: sponge
+        source_file: sponge.c
+        language: C
+        main_line: 279
+        flag_parsing: "getopt at sponge.c:290; flags: -a (append), -h (help)"
+        exit_code_logic: "exit(1) on any I/O failure (lines 191-237); exit(0) on success (line 48)"
+        exit_codes:
+          0: success
+          1: I/O error (read stdin, write temp file, rename, open output)
+        homebrew_binary: sponge
+
+      - name: vidir
+        source_file: vidir
+        language: Perl
+        flag_parsing: "Perl GetOptions; flags: --verbose"
+        exit_code_logic: "exit 0 on success; non-zero on editor failure or rename error"
+        exit_codes:
+          0: success
+          non-zero: editor failure or file operation error
+        homebrew_binary: vidir
+
+      - name: pee
+        source_file: pee.c
+        language: C
+        main_line: 33
+        flag_parsing: "no flags; all argv are command strings to pipe stdin into"
+        exit_code_logic: |
+          ret |= WEXITSTATUS(r) for each child (line 20-25); exit via close_pipes return (line 118).
+          Exits EXIT_FAILURE on fork/pipe errors (lines 65-112).
+        exit_codes:
+          0: all subcommands exited 0
+          non-zero: OR of all subcommand exit statuses; 1 if fork/pipe failed
+        homebrew_binary: pee
+
+      - name: chronic
+        source_file: chronic
+        language: Perl
+        flag_parsing: "Perl GetOptions; flags: -v (verbose), -e (check stderr)"
+        exit_code_logic: "propagates subcommand exit code; exits 0 if silent success"
+        exit_codes:
+          0: subcommand succeeded (and produced no output, or -v not set)
+          non-zero: subcommand exit code
+        homebrew_binary: chronic
+
+  - id: grep
+    clone_url: https://git.savannah.gnu.org/git/grep.git
+    commit: 071ac3aa76a575dd55dc184570da2192adafe267
+    brew_install: brew install grep
+    brew_note: |
+      Installs with g-prefix (ggrep) because grep conflicts with macOS BSD grep.
+      Unprefixed name available via libexec/gnubin/ on PATH.
+    utilities:
+      - name: grep
+        source_file: src/grep.c
+        main_line: 2468
+        flag_parsing: "getopt_long at src/grep.c:2140"
+        exit_code_logic: |
+          exit_failure set to EXIT_TROUBLE (2) at line 2477 for errors.
+          Returns EXIT_SUCCESS (0) when match found (line 2837).
+          Returns EXIT_FAILURE (1) when no match found (line 2916).
+        exit_codes:
+          0: match found
+          1: no match
+          2: error (invalid option, read error, etc.)
+        homebrew_binary: ggrep
+
+      - name: egrep
+        source_file: src/egrep.sh
+        language: shell
+        flag_parsing: "shell script wrapper: calls grep -E with all args forwarded"
+        exit_code_logic: "inherits grep exit codes via exec"
+        exit_codes:
+          0: match found
+          1: no match
+          2: error
+        homebrew_binary: gegrep
+        note: "egrep and fgrep are generated from egrep.sh at build time (Makefile.am:55-57)"
+
+      - name: fgrep
+        source_file: src/egrep.sh
+        language: shell
+        flag_parsing: "shell script wrapper: calls grep -F with all args forwarded"
+        exit_code_logic: "inherits grep exit codes via exec"
+        exit_codes:
+          0: match found
+          1: no match
+          2: error
+        homebrew_binary: gfgrep
+        note: "generated from egrep.sh; fgrep is obsolescent per POSIX, equivalent to grep -F"
+
+  - id: findutils
+    clone_url: https://git.savannah.gnu.org/git/findutils.git
+    commit: 6b49775f9d98c0ed6470c47844c7558d4854fc67
+    brew_install: brew install findutils
+    brew_note: |
+      Installs with g-prefix (gfind, gxargs) because find and xargs conflict with
+      macOS BSD built-ins. Unprefixed names available via libexec/gnubin/ on PATH.
+    utilities:
+      - name: find
+        source_files:
+          - find/ftsfind.c
+          - find/parser.c
+          - find/pred.c
+          - find/print.c
+        main_line: "find/ftsfind.c:714"
+        flag_parsing: |
+          Option and predicate parsing via process_option mechanism in find/parser.c.
+          getopt_long used at find/ftsfind.c:2140 for initial option pass.
+          Predicates (-name, -type, -exec, etc.) parsed by parser.c functions.
+        exit_code_logic: |
+          state.exit_status tracked in find/ftsfind.c; set to EXIT_FAILURE on
+          access errors (lines 655, 683). Returned at line 809.
+        exit_codes:
+          0: success (all files processed without error)
+          1: some files could not be examined
+        homebrew_binary: gfind
+
+      - name: xargs
+        source_file: xargs/xargs.c
+        main_line: 397
+        flag_parsing: "getopt_long at xargs/xargs.c:521; flags: -0, -a, -E, -e, -i, -I, -l, -L, -n, -o, -p, -r, -s, -t, -x, -P, -d"
+        exit_code_logic: |
+          Returns 0 if all invocations succeed; 1 if any invocation fails;
+          123 if any invocation exits with status 1-125; 124 if command exits 255;
+          125 if command not found; 126 if command cannot be run; 127 if command not found.
+        exit_codes:
+          0: all commands succeeded
+          1: invocation returned non-zero
+          123: any invocation exited 1-125
+          124: command exited with status 255
+          125: command not found (xargs itself)
+          126: command cannot be run
+          127: command not found
+        homebrew_binary: gxargs
