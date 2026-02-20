@@ -1,67 +1,138 @@
-# go-utils
+# go-unix-utils
 
-**go-utils** is a systems engineering project focused on the high-fidelity regeneration of classic Unix utilities in Go. The project follows a strict **Spec-to-Code** methodology, reverse-engineering functionality from standard Unix tools and verifying them against reference binaries.
+Go implementations of 123 Unix utilities (coreutils, moreutils, grep, findutils), generated from formal specifications and verified against GNU reference binaries.
 
-Developed on macOS, the suite targets functional parity with GNU and Moreutils versions available via Homebrew, ensuring that the Go implementations are robust, cross-platform, and concurrent.
+## Why
 
----
+Man pages are ambiguous. Unit tests with hardcoded expectations encode a human's interpretation of behavior, not the behavior itself. This project takes a different approach: derive specifications directly from the C source code, then verify the Go implementation by running it side-by-side with the GNU binary and comparing outputs byte-for-byte. The specification and verification are the product; the Go binaries are a byproduct.
 
-## 🛠 Project Philosophy
+This is spec-driven development applied to systems programming. The human writes the spec. An AI orchestrator generates the code. A differential testing harness decides whether the code is correct.
 
-Unlike simple clones, this project treats Unix utilities as a set of formal requirements. Every utility is built following a four-stage pipeline:
+## Pipeline
 
-1. **Extract:** Clone the C/Perl source (coreutils, moreutils, grep, findutils) and derive formal requirements from the source of truth — not man pages.
-2. **Specify:** Write a PRD (numbered requirements, acceptance criteria) and a use case (concrete end-to-end flow) for each utility. Shared libraries (`pkg/`) get their own PRDs when requirements span multiple utilities.
-3. **Synthesize:** The `mage-claude-orchestrator` library drives a Claude agent to generate Go source from the PRD and use case.
-4. **Verify:** A differential testing harness (`pkg/testutils`) runs both the Go binary and the Homebrew GNU reference binary on the same inputs and compares output, exit codes, and error streams.
+```plantuml
+@startuml
+skinparam backgroundColor transparent
+skinparam defaultTextAlignment center
 
----
+rectangle "C/Perl Source\n(coreutils, moreutils,\ngrep, findutils)" as source
+rectangle "PRD + Use Case\n(formal spec)" as spec
+rectangle "Go Source\n(cmd/<utility>/)" as code
+rectangle "Differential\nTest Harness" as verify
 
-## 📊 Utility Catalog
+source -right-> spec : "**Extract + Specify**\nhuman-guided"
+spec -right-> code : "**Synthesize**\norchestrator-driven"
+code -right-> verify : "**Verify**"
+verify -up-> spec : "fail → refine spec"
 
-The full catalog of 123 target utilities — covering all of coreutils, moreutils, grep, and findutils — is in [`docs/utilities.yaml`](docs/utilities.yaml). Each entry records the source file, language, estimated LOC, shared internal packages, required Go packages, testability, and an implementation profile.
+note bottom of source
+  Clone the repository.
+  Analyze flags, edge cases,
+  exit codes from source.
+end note
 
-**Difficulty breakdown** (how hard to port to Go):
+note bottom of spec
+  Numbered requirements.
+  Acceptance criteria.
+  Concrete test inputs.
+end note
 
-| Difficulty | Count | Notes                                                     |
-|------------|------:|-----------------------------------------------------------|
-| trivial    |    23 | Single syscall or simple text output                      |
-| easy       |    56 | Flag parsing, line-oriented I/O                           |
-| medium     |    27 | Non-trivial flags, locale handling, moderate algorithms   |
-| hard       |    10 | Complex state machines, multi-column layout, stdlib gaps  |
-| very_hard  |     7 | Locale collation, external sort, fork/exec, or LD_PRELOAD |
+note bottom of code
+  Claude agent generates
+  Go from the PRD.
+  One package per utility.
+end note
 
-**Memory model breakdown** (how data flows through the program):
+note bottom of verify
+  Run Go binary and GNU
+  binary with same inputs.
+  Compare stdout, stderr,
+  exit code.
+end note
 
-| Model           | Count | Description                                        |
-|-----------------|------:|----------------------------------------------------|
-| streaming       |    93 | Constant memory; processes one line at a time      |
-| windowed        |    12 | Bounded buffer (e.g., tail -n 10, head -c 1M)      |
-| accumulating    |     9 | Loads all input before writing (e.g., sort, uniq)  |
-| spill_capable   |     2 | Accumulates but spills to disk if RAM is exhausted |
-| filesystem_walk |     7 | Memory proportional to directory tree depth/width  |
+@enduml
+```
 
-**Key findings:**
+## Status
 
-- `stdbuf` cannot be implemented in pure Go — it requires injecting a shared library via `LD_PRELOAD` and is excluded from the roadmap.
-- Only `golang.org/x/sys` is permitted as an external dependency; all other functionality is written in-house.
-- 7 very-hard utilities (`sort`, `join`, `awk`, `sed`, `xargs -P`, `find`, `expr`) require significant Go-specific design work around locale collation, external merge sort, or parallel process management.
+The project is in the specification phase. No Go implementations exist yet; the current focus is building a complete, verified specification suite before code generation begins.
 
----
+| Metric | Count |
+| ------ | ----: |
+| Target utilities | 123 |
+| PRDs written (utility) | 7 (ts, wc, cat, sponge, ls core, ls extended, du) |
+| PRDs written (shared components) | 3 (pkg/testutils, pkg/sys, pkg/format) |
+| Use cases written | 7 |
+| Test suites written | 7 |
+| Go implementations | 0 |
 
-## 📂 Repository Structure
+Roadmap: [docs/road-map.yaml](docs/road-map.yaml). Full utility catalog with difficulty ratings, memory models, and implementation profiles: [docs/utilities.yaml](docs/utilities.yaml).
+
+## Methodology
+
+**Extract.** Clone the C or Perl source repository (GNU coreutils, moreutils, grep, findutils). Read the source — not the man page — to catalog every flag, exit code, signal handler, and edge case. The source is the specification authority.
+
+**Specify.** Write a PRD with numbered requirements, acceptance criteria, and design decisions for each utility. Write a use case describing a concrete end-to-end execution path. Write a test suite with explicit inputs and expected structural outputs. Shared components (syscall abstractions, output formatting, the test harness itself) get their own PRDs when their requirements span multiple utilities.
+
+**Synthesize.** A Claude-based orchestrator reads the PRD and generates Go source. The human does not write Go; the orchestrator does not write specs. This separation isolates specification quality from generation quality, making each independently measurable.
+
+**Verify.** A differential testing harness executes both the Go binary and the Homebrew GNU reference binary (e.g., `gls`, `gdu`, `gcat`) with identical arguments, environment, and stdin. It compares stdout, stderr, and exit code. Normalization hooks handle acceptable differences (e.g., mtime fields in `ls -l` output). If the outputs diverge, the harness reports the triggering input, both raw outputs, and both exit codes.
+
+## Repository Structure
 
 ```text
-go-utils/
-├── README.md           # Project manifesto and roadmap
-├── go.mod              # Go module definition
-├── pkg/                # Shared internal logic (The "Unix Toolkit")
-│   ├── sys/            # Darwin/Linux syscalls and signal handling
-│   ├── format/         # Table alignment, colors, and unit conversion
-│   └── testutils/      # Harness for differential testing
-└── cmd/                # Regenerated Utilities
-    ├── ts/             # Timestamping (from moreutils)
-    ├── sponge/         # Atomic soak-and-write (from moreutils)
-    ├── ls/             # High-complexity file listing (from coreutils)
-    └── vidir/          # Directory editing (from moreutils)
+go-unix-utils/
+├── docs/
+│   ├── VISION.yaml                  Project goals, risks, boundaries
+│   ├── ARCHITECTURE.yaml            Components, design decisions, tech choices
+│   ├── utilities.yaml               Full 123-utility catalog
+│   ├── road-map.yaml                Release schedule and use case status
+│   ├── specs/
+│   │   ├── product-requirements/    Per-utility and shared component PRDs
+│   │   ├── use-cases/               Concrete end-to-end execution paths
+│   │   └── test-suites/             Explicit inputs and expected outputs
+│   └── engineering/                 Engineering guidelines
+├── cmd/                             One package per utility (grows with roadmap)
+├── pkg/
+│   ├── sys/                         Darwin/Linux syscall abstractions
+│   ├── format/                      Table alignment, colors, human-readable sizes
+│   └── testutils/                   Differential testing harness
+└── magefiles/                       Build targets (build, lint, test, analyze)
 ```
+
+## Technology Choices
+
+**Go** for the implementations. Go's constrained type system and lack of implicit behavior make it predictable input for AI code generation. A Claude agent producing Go is less likely to introduce subtle bugs than one producing C++ or Rust, because there are fewer ways to express the same logic.
+
+**Differential testing against Homebrew GNU binaries** rather than unit tests with expected constants. Both binaries stat the same files on the same filesystem, so block counts, inode numbers, and file sizes are deterministic. The test is "does the Go binary produce the same output as the GNU binary?" not "does the Go binary produce the output I think is correct?"
+
+**`golang.org/x/sys` as the only external dependency.** Platform-divergent syscall field names (`st_mtimespec` on Darwin vs. `st_mtim` on Linux), ioctl constants, and signal mask operations require it. Everything else is standard library. `golang.org/x/text/collate` is the planned addition when locale-sensitive utilities are scheduled.
+
+**PlantUML for architecture diagrams.** Defined inline in documentation, not as separate files.
+
+## Build and Test
+
+```bash
+# Build all utilities to bin/
+mage build
+
+# Run all tests (including differential tests)
+go test ./...
+
+# Lint
+mage lint
+
+# Cross-artifact consistency checks (PRDs, use cases, test suites, roadmap)
+mage analyze
+
+# Print lines of code and documentation word counts
+mage stats
+```
+
+Requires Go 1.21+, [Mage](https://magefile.org/), and Homebrew GNU coreutils/moreutils (`brew install coreutils moreutils`).
+
+## Documentation
+
+- [VISION.yaml](docs/VISION.yaml) -- Project goals, success criteria, risks, and boundaries
+- [ARCHITECTURE.yaml](docs/ARCHITECTURE.yaml) -- Component descriptions, design decisions, technology choices
+- [Engineering guidelines](docs/engineering/) -- Conventions and practices above the code
