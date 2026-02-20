@@ -1,0 +1,84 @@
+id: prd003-format
+title: "pkg/format: Output Formatting"
+
+problem: |
+  Both ls and du produce human-readable output that requires formatting logic beyond
+  fmt.Sprintf: ls produces column-aligned tabular output with ANSI color codes for
+  file types, and both ls and du convert raw byte counts to human-readable sizes
+  (4.0K, 128M, 1.5G). Without pkg/format each cmd/ package would implement its own
+  column width computation, ANSI escape handling, and unit conversion, producing
+  inconsistent behavior across utilities and making differential test normalization
+  harder.
+
+  The formatting logic is driven by C source requirements in ls.c and du.c. Each
+  capability is listed with its utility context so the API reflects real call sites,
+  not speculation.
+
+goals:
+  - id: G1
+    goal: Provide a column-width computation and padding function for multi-column tabular output, matching ls column-layout behavior.
+  - id: G2
+    goal: Provide an ANSI color lookup and output function for file-type colorization, with automatic suppression when stdout is not a TTY.
+  - id: G3
+    goal: Provide a human-readable size conversion function matching GNU coreutils human_readable() behavior for both ls -h and du -h.
+
+requirements:
+  - group: R1
+    title: Column alignment
+    items:
+      - id: R1.1
+        requirement: Must provide a Columns(entries []string, termWidth int) [][]string function that distributes entries into the maximum number of columns that fit within termWidth, using the longest entry in each column to determine column width.
+      - id: R1.2
+        requirement: Must provide a PadRight(s string, width int) string and PadLeft(s string, width int) string function for left- and right-aligned field padding within a fixed-width column.
+      - id: R1.3
+        requirement: Must treat multi-byte Unicode characters correctly: column width must be computed from display width (rune count or east-asian width), not byte count.
+      - id: R1.4
+        requirement: Utility context — ls (ls.c multi-column layout): ls default output places filenames in as many columns as fit in the terminal width. Column widths are computed from the longest filename in each column, not the global maximum.
+
+  - group: R2
+    title: ANSI color
+    items:
+      - id: R2.1
+        requirement: Must provide a FileTypeColor(mode os.FileMode) string function that returns the ANSI escape sequence for a file's type (directory, symlink, executable, block device, character device, socket, pipe, regular file).
+      - id: R2.2
+        requirement: Must provide a Reset() string constant or function that returns the ANSI reset sequence ("\033[0m").
+      - id: R2.3
+        requirement: Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. When false, FileTypeColor must return an empty string and Reset must return an empty string.
+      - id: R2.4
+        requirement: Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).
+      - id: R2.5
+        requirement: Utility context — ls (ls.c:103 includes dircolors.h, ls.c:273 get_color_indicator): ls outputs ANSI escapes before and after each filename in colorized mode. Color is suppressed when stdout is not a TTY or when --color=never is set.
+
+  - group: R3
+    title: Human-readable size conversion
+    items:
+      - id: R3.1
+        requirement: Must provide a HumanSize(bytes int64, opts HumanSizeOpts) string function that converts a byte count to a human-readable string with an appropriate unit suffix.
+      - id: R3.2
+        requirement: HumanSizeOpts must support two rounding modes: binary (1024-based, suffixes K/M/G/T/P/E) and SI (1000-based, suffixes kB/MB/GB/TB). The default must be binary.
+      - id: R3.3
+        requirement: Must format the output to at most one decimal place when the value is not an integer at the chosen unit (e.g., 1536 bytes must produce "1.5K", not "2K").
+      - id: R3.4
+        requirement: Must return "0" for a zero byte count regardless of the unit mode.
+      - id: R3.5
+        requirement: Utility context — ls (ls.c -h flag, human_output_opts): ls -h shows file sizes in human-readable form in -l output. The same conversion applies to ls -s (block counts).
+      - id: R3.6
+        requirement: Utility context — du (du.c:153 human_output_opts, du.c:442 human_readable()): du -h outputs directory sizes as human-readable strings. du uses the same binary/SI distinction as ls -h.
+
+non_goals:
+  - pkg/format does not read or parse LS_COLORS environment variables; it uses GNU ls defaults only.
+  - pkg/format does not implement terminal hyperlinks (ls.c:210 mentions them as a feature but they are not in scope).
+  - pkg/format does not provide a full table library; it provides only the column-alignment primitives needed by ls and du.
+  - pkg/format does not handle color themes beyond the GNU ls defaults.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: Columns(entries, termWidth) with a list of 20 filenames and termWidth=80 produces the same column layout as gls --format=across for the same input.
+  - id: AC2
+    criterion: FileTypeColor returns the correct ANSI code for each of the eight file types listed in R2.4.
+  - id: AC3
+    criterion: ColorEnabled returns false when passed an io.Writer backed by an os.Pipe (not a TTY), and true when passed os.Stdout in a TTY test.
+  - id: AC4
+    criterion: HumanSize(1536, binary) returns "1.5K". HumanSize(1000000, SI) returns "1.0MB". HumanSize(0, binary) returns "0".
+  - id: AC5
+    criterion: All pkg/format code compiles with no warnings under golangci-lint.

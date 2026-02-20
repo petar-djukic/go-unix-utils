@@ -1,0 +1,115 @@
+id: prd007-sponge
+title: "cmd/sponge: Soak Stdin and Write to File"
+
+problem: |
+  Shell pipelines often need to process a file and write the result back to the same
+  file. The naive form "cmd file | redirect > file" truncates the output file before
+  cmd finishes reading it, producing empty or corrupt output. sponge (from moreutils)
+  solves this by reading all of stdin into a buffer before opening the output file.
+  Only after stdin is fully consumed does sponge write to the named file, making the
+  idiom "cmd file | sponge file" safe.
+
+  The Go implementation must match the Homebrew reference binary (sponge, installed by
+  moreutils) byte-for-byte on all flag combinations and large-input behavior, verified
+  by differential testing via pkg/testutils.
+
+goals:
+  - id: G1
+    goal: Read all of stdin into memory before opening the output file, guaranteeing that the output file is not opened until stdin is fully consumed.
+  - id: G2
+    goal: Write the buffered content to the named output file atomically via a temp-file rename, preserving the original file's permissions if it exists.
+  - id: G3
+    goal: Support append mode (-a) that prepends the original file content before the stdin content in the output.
+  - id: G4
+    goal: Support passthrough mode (no output filename) that writes buffered stdin to stdout.
+  - id: G5
+    goal: Handle large stdin inputs that exceed available memory by spilling to a temp file.
+
+requirements:
+  - group: R1
+    title: Core soak-before-write contract
+    items:
+      - id: R1.1
+        requirement: Must read all bytes from stdin before opening or creating the output file. Opening the output file before stdin is closed violates the core contract and is not permitted.
+      - id: R1.2
+        requirement: Must buffer stdin in memory using a dynamically grown buffer starting at 8192 bytes, doubling on overflow, matching sponge.c:BUFF_SIZE and the realloc loop at sponge.c:313-324.
+      - id: R1.3
+        requirement: When the in-memory buffer would exceed the available memory threshold (derived from physmem_available() in the reference; in Go, use runtime.MemStats or a fixed fraction of RLIMIT_DATA), must spill the current buffer to a temp file and continue reading. The spill must be transparent: the final output is still a single concatenated byte stream.
+      - id: R1.4
+        requirement: Must create the temp file in the directory specified by the TMPDIR environment variable, or "/tmp" if TMPDIR is not set. The temp file name must follow the pattern "sponge.XXXXXX" (mkstemp-style random suffix).
+      - id: R1.5
+        requirement: Must register a cleanup handler (atexit equivalent in Go: defer or os/signal) that deletes the temp file if the process exits or receives SIGINT, SIGTERM, SIGHUP, or SIGPIPE before the rename completes.
+
+  - group: R2
+    title: Output file handling
+    items:
+      - id: R2.1
+        requirement: When an output filename is given, must attempt an atomic rename of the temp file to the output filename when the output file is a regular file or does not yet exist (sponge.c:371-373).
+      - id: R2.2
+        requirement: When the rename fails (e.g., cross-device move), must fall back to a byte-for-byte copy of the temp file content to the output file, then delete the temp file.
+      - id: R2.3
+        requirement: When the output file already exists, must preserve its file mode (permissions) by reading the mode via lstat before writing and applying it to the output file via chmod (sponge.c:338-346). When the output file does not exist, must apply the default mode 0666 masked by the process umask.
+      - id: R2.4
+        requirement: Must use lstat (not stat) to check whether the output path exists and is a regular file (sponge.c:332-333). This matters when the output path is a symlink: sponge must replace the symlink target, not follow it blindly.
+      - id: R2.5
+        requirement: The output file must never be in a partially-written state observable by other processes. Either the rename succeeds atomically or the copy completes before the old file is removed.
+
+  - group: R3
+    title: Append mode (-a)
+    items:
+      - id: R3.1
+        requirement: -a must cause sponge to prepend the existing content of the output file to the stdin content before writing. The result is: [original file content][stdin content] written to the output file.
+      - id: R3.2
+        requirement: -a applies only when the output file already exists and is a regular file. When the output file does not exist, -a behaves identically to the default mode (creates a new file with stdin content).
+      - id: R3.3
+        requirement: The prepend operation must copy the original file content into the temp file first, then append the stdin buffer to the temp file (sponge.c:352-357). The original file must be read before the temp file is renamed over it.
+
+  - group: R4
+    title: Passthrough mode (no output filename)
+    items:
+      - id: R4.1
+        requirement: When no output filename is given, must write the buffered stdin content to stdout after stdin is fully consumed.
+      - id: R4.2
+        requirement: In passthrough mode with large input (temp file spill), must seek the temp file to the beginning and copy its content to stdout (sponge.c:403-406).
+      - id: R4.3
+        requirement: In passthrough mode with small input (buffer fits in memory), must write the in-memory buffer directly to stdout without creating or reading a temp file (sponge.c:408-411).
+
+  - group: R5
+    title: Exit codes and error handling
+    items:
+      - id: R5.1
+        requirement: Must exit 0 on success.
+      - id: R5.2
+        requirement: Must exit 1 when stdin cannot be read, when the temp file cannot be created or written, when the output file cannot be opened, or when the rename or copy fails. In all error cases, must print a descriptive error message to stderr via perror-equivalent before exiting.
+      - id: R5.3
+        requirement: Must exit 1 when memory allocation fails (buffer realloc). Must print an error and exit rather than panicking.
+      - id: R5.4
+        requirement: Must clean up the temp file on exit in all error paths. The temp file must not persist after the process exits, whether due to success or failure.
+
+  - group: R6
+    title: Differential testing
+    items:
+      - id: R6.1
+        requirement: Differential tests must compare the content of the output file (not stdout) after both the Go binary and the reference binary have exited, using file-content comparison provided by pkg/testutils.
+      - id: R6.2
+        requirement: Tests must cover: small stdin (fits in memory), large stdin (forces temp file spill, tested with input larger than 1 MB), append mode, passthrough mode (no filename), output file does not exist, output file already exists (mode preservation), and the cross-device rename fallback (tested by placing the output file on a different filesystem from TMPDIR).
+
+non_goals:
+  - cmd/sponge does not implement interactive editing or prompt modes.
+  - cmd/sponge does not implement a --buffer-size flag; the buffer size is determined automatically.
+  - cmd/sponge does not follow symlinks for the output file path; it operates on the path as given.
+  - cmd/sponge does not implement atomic writes for passthrough mode (stdout); atomicity applies only to named output files.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "seq 1 100 | go run ./cmd/sponge /tmp/out.txt && cat /tmp/out.txt produces 100 lines 1-100, confirming stdin was fully read before the file was opened."
+  - id: AC2
+    criterion: The soak-before-write contract is verifiable by the test harness creating a file, running 'cat file | sponge file' and confirming the output equals the original input (not an empty file).
+  - id: AC3
+    criterion: "printf 'appended\\n' | go run ./cmd/sponge -a /tmp/existing.txt prepends the original content of existing.txt before 'appended', matching gsponge -a behavior."
+  - id: AC4
+    criterion: "printf 'hello' | go run ./cmd/sponge produces 'hello' on stdout, matching gsponge with no filename."
+  - id: AC5
+    criterion: Differential test against sponge reference binary passes for small input, large input (1 MB+), append mode, and passthrough mode.
+  - id: AC6
+    criterion: cmd/sponge compiles with no warnings under golangci-lint.

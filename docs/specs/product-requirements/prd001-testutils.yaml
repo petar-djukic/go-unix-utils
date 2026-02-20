@@ -1,0 +1,106 @@
+id: prd001-testutils
+title: "pkg/testutils: Differential Testing Harness"
+
+problem: |
+  Every utility in go-unix-utils is verified by running the Go binary and the Homebrew
+  GNU reference binary side by side and comparing their stdout, stderr, and exit code.
+  Without a shared harness, each cmd/ package would duplicate the execution and comparison
+  logic, the normalization hooks needed for non-deterministic output (timestamps in ts,
+  path ordering in find), and the divergence reporting format. This duplication makes
+  the verification layer fragile: a bug in one cmd/'s harness copy would produce
+  different verification behavior than another cmd/'s copy.
+
+  pkg/testutils is the acceptance gate for the entire pipeline. The mage-claude-orchestrator
+  cannot declare a utility complete until its differential tests pass through this harness.
+
+goals:
+  - id: G1
+    goal: Provide a single execution function that runs a Go binary and a GNU reference binary with identical inputs and returns both outputs for comparison.
+  - id: G2
+    goal: Provide a comparison function that diffs stdout, stderr, and exit code and reports divergence with the triggering input.
+  - id: G3
+    goal: Provide a normalization hook mechanism so individual utilities can strip or replace non-deterministic output fields before comparison.
+  - id: G4
+    goal: Integrate with go test so that each cmd/ package can define test cases as data and call the harness from a standard TestXxx function.
+
+requirements:
+  - group: R1
+    title: Test case data structure
+    items:
+      - id: R1.1
+        requirement: Must define a DiffTest struct with fields for command-line args ([]string), stdin content ([]byte), environment overrides ([]string), expected exit code (int), and an optional normalization function.
+      - id: R1.2
+        requirement: Must allow DiffTest.Stdin to be nil, meaning the binary receives no stdin input (EOF immediately).
+      - id: R1.3
+        requirement: Must allow DiffTest.Env to be nil, meaning the binary inherits the test process environment with no overrides.
+      - id: R1.4
+        requirement: Must define a Normalize function type (func([]byte) []byte) used to transform stdout and stderr before comparison. When nil, no normalization is applied.
+
+  - group: R2
+    title: Binary execution
+    items:
+      - id: R2.1
+        requirement: Must accept two binary paths: the Go binary under test and the GNU reference binary. Both must be invoked with identical args, stdin, and environment.
+      - id: R2.2
+        requirement: Must capture stdout, stderr, and exit code from each binary independently.
+      - id: R2.3
+        requirement: Must impose a configurable timeout on each binary invocation. The default timeout must be 10 seconds. The test fails if either binary exceeds the timeout.
+      - id: R2.4
+        requirement: Must not write any output to the test process stdout or stderr during a passing test run.
+      - id: R2.5
+        requirement: Must support passing a working directory to each binary invocation. When not specified, both binaries run in a per-test temporary directory created by the harness.
+
+  - group: R3
+    title: Comparison and reporting
+    items:
+      - id: R3.1
+        requirement: Must apply the DiffTest.Normalize function (if non-nil) to both binaries' stdout and stderr before comparison.
+      - id: R3.2
+        requirement: Must compare normalized stdout byte-for-byte. Any difference must be reported as a test failure.
+      - id: R3.3
+        requirement: Must compare normalized stderr byte-for-byte. Any difference must be reported as a test failure.
+      - id: R3.4
+        requirement: Must compare exit codes exactly. A difference must be reported as a test failure.
+      - id: R3.5
+        requirement: Must report divergence with the following information in the failure message: the DiffTest args, the stdin content (truncated to 256 bytes if longer), the reference binary stdout, the Go binary stdout, the reference stderr, the Go stderr, and both exit codes.
+      - id: R3.6
+        requirement: Must run each DiffTest as a named subtest (t.Run) so individual test case failures are identifiable in go test output.
+
+  - group: R4
+    title: Normalization hooks
+    items:
+      - id: R4.1
+        requirement: Must allow per-DiffTest normalization via the Normalize field. The function receives the raw output bytes and returns the normalized bytes.
+      - id: R4.2
+        requirement: Must provide a built-in TimestampNormalizer that replaces common strftime timestamp patterns with a fixed placeholder string. This normalizer is used by cmd/ts tests.
+      - id: R4.3
+        requirement: Must allow normalizers to be composed: the harness must accept a slice of Normalize functions applied in order, not a single function. When the slice is nil or empty, no normalization is applied.
+
+  - group: R5
+    title: File-state comparison
+    items:
+      - id: R5.1
+        requirement: Must support utilities whose primary output is a file rather than stdout (sponge, cp, mv). For these, DiffTest must allow specifying expected file content after execution alongside expected stdout/stderr.
+      - id: R5.2
+        requirement: Must compare expected file content byte-for-byte and report divergence in the same format as stdout divergence.
+
+non_goals:
+  - pkg/testutils does not build or compile the Go binaries under test.
+  - pkg/testutils does not install or manage Homebrew reference binaries.
+  - pkg/testutils does not produce test reports beyond standard go test output.
+  - pkg/testutils does not implement retry logic; a failing test fails immediately.
+  - pkg/testutils does not mock or stub the filesystem or OS for unit testing cmd/ packages.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t, goBinary, refBinary, tests) from a TestXxx function with no other setup.
+  - id: AC2
+    criterion: A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries' stdout, stderr, and exit code.
+  - id: AC3
+    criterion: TimestampNormalizer replaces strftime-formatted timestamps (e.g., "Feb 19 12:34:56") with a fixed placeholder so that ts differential tests pass despite wall-clock differences.
+  - id: AC4
+    criterion: A DiffTest with a file expectation field correctly fails when the Go binary writes different content than the reference binary.
+  - id: AC5
+    criterion: A DiffTest that exceeds the timeout fails with a clear timeout message rather than hanging the test run.
+  - id: AC6
+    criterion: All pkg/testutils code compiles with no warnings under golangci-lint.

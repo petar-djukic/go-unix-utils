@@ -1,0 +1,115 @@
+id: prd006-cat
+title: "cmd/cat: Concatenate and Display Files"
+
+problem: |
+  The macOS BSD cat differs from GNU cat in flag handling (-e, -t, and -v behavior) and
+  in the treatment of non-printing characters. Scripts that rely on GNU cat's -A, -v,
+  -E, and -T flags for diagnostic inspection of binary or control-character content will
+  behave differently on macOS. The Go implementation must match the Homebrew GNU
+  reference binary (gcat, installed by coreutils) byte-for-byte on all flag combinations
+  including binary input, verified by differential testing via pkg/testutils.
+
+goals:
+  - id: G1
+    goal: Concatenate one or more files (or stdin) to stdout with no transformation by default.
+  - id: G2
+    goal: Support line-numbering flags (-n, -b) that prepend line numbers to output.
+  - id: G3
+    goal: Support the blank-squeezing flag (-s) that collapses consecutive blank lines into one.
+  - id: G4
+    goal: Support non-printing display flags (-v, -E, -T, -A, -e, -t) that make control characters and special bytes visible.
+  - id: G5
+    goal: Pass binary data through without corruption when no transformation flags are active.
+
+requirements:
+  - group: R1
+    title: Default behavior (no flags)
+    items:
+      - id: R1.1
+        requirement: Must read each named file in argument order and write its contents verbatim to stdout.
+      - id: R1.2
+        requirement: Must read from stdin when no file arguments are given, or when "-" is given as a filename.
+      - id: R1.3
+        requirement: Must support concatenating multiple files: each file's content is written in sequence with no separator.
+      - id: R1.4
+        requirement: Must not corrupt binary input: output bytes must be identical to input bytes when no transformation flags are active.
+      - id: R1.5
+        requirement: Must not add or remove newlines from the input.
+
+  - group: R2
+    title: Line numbering (-n, -b)
+    items:
+      - id: R2.1
+        requirement: -n must prepend a line number to every output line. The line number must be right-justified in a field of width 6, followed by a tab character and then the line content (format: "%6d\t%s"). Line numbering resets to 1 at the start of each cat invocation, not per file.
+      - id: R2.2
+        requirement: -b must prepend a line number only to non-blank lines. Blank lines receive no number and no tab prefix. -b implies -n (activates line numbering) but overrides it by skipping blank lines.
+      - id: R2.3
+        requirement: When -b and -n are both given, -b takes precedence (blank lines are not numbered). This matches cat.c:602 where number_nonblank overrides number.
+      - id: R2.4
+        requirement: A blank line is a line containing only a newline character (zero non-newline bytes). Lines with spaces or tabs are not blank.
+
+  - group: R3
+    title: Blank-line squeezing (-s)
+    items:
+      - id: R3.1
+        requirement: -s must suppress repeated blank lines: when two or more consecutive blank lines appear in the output, only one must be written. The first blank line is written; subsequent consecutive blank lines are discarded.
+      - id: R3.2
+        requirement: -s must apply across file boundaries when multiple files are concatenated: if the last line of file A and the first line of file B are both blank, they count as consecutive blank lines.
+      - id: R3.3
+        requirement: -s is compatible with -n and -b. When combined, squeezing is applied before numbering: the suppressed blank lines do not consume line numbers.
+
+  - group: R4
+    title: Non-printing display (-v, -E, -T, -A, -e, -t)
+    items:
+      - id: R4.1
+        requirement: -v must display non-printing characters using caret notation and M- prefix. Control characters (0x00-0x1F except 0x09 tab and 0x0A newline) must be shown as ^X where X is the character 64 positions higher (e.g., 0x01 → "^A", 0x1B → "^["). Characters in the range 0x80-0x9F must be shown as "M-^X". Characters in the range 0xA0-0xFE must be shown as "M-X" where X is the character minus 0x80. The DEL character (0x7F) must be shown as "^?". 0xFF must be shown as "M-^?".
+      - id: R4.2
+        requirement: -v must not alter tab (0x09) or newline (0x0A) characters. Those are the two control characters exempted from -v display.
+      - id: R4.3
+        requirement: -E must append a "$" character before each newline in the output. The newline itself is still written after the "$".
+      - id: R4.4
+        requirement: -T must display tab characters (0x09) as the two-character sequence "^I" rather than the tab character itself.
+      - id: R4.5
+        requirement: -A is equivalent to -v -E -T combined. All three transformations are active simultaneously.
+      - id: R4.6
+        requirement: -e is equivalent to -v -E combined (show non-printing, show ends).
+      - id: R4.7
+        requirement: -t is equivalent to -v -T combined (show non-printing, show tabs).
+      - id: R4.8
+        requirement: -u is accepted but has no effect (cat.c:616: "we provide the -u feature unconditionally"). The flag must not produce an error.
+      - id: R4.9
+        requirement: Transformation flags are compatible with -n, -b, and -s. The order of application is: squeeze blanks (-s), then apply non-printing display (-v/-T), then append end-of-line marker (-E), then prepend line number (-n/-b).
+
+  - group: R5
+    title: Error handling and exit codes
+    items:
+      - id: R5.1
+        requirement: Must exit 0 when all inputs are processed successfully.
+      - id: R5.2
+        requirement: Must exit 1 when any input file cannot be opened. The error message must be written to stderr. cat must continue processing remaining file arguments after the error.
+      - id: R5.3
+        requirement: Must exit 1 when a write error occurs on stdout (e.g., SIGPIPE or full disk). The write error must be detected and reported; the process must not hang.
+      - id: R5.4
+        requirement: Must not exit non-zero due to SIGPIPE when stdout is closed by a downstream consumer.
+
+non_goals:
+  - cmd/cat does not implement the FIONREAD ioctl optimization from cat.c:298; it uses standard io.Copy which is sufficient for correctness.
+  - cmd/cat does not implement POSIX unbuffered output semantics for -u; the flag is accepted but ignored.
+  - cmd/cat does not implement terminal line-editing or interactive mode.
+  - cmd/cat does not detect when input and output refer to the same file and warn about it (GNU cat does; this is a diagnostic, not a correctness requirement).
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/cat file1 file2 produces identical bytes to gcat file1 file2 for arbitrary file contents including binary."
+  - id: AC2
+    criterion: "printf 'a\\n\\n\\nb\\n' | go run ./cmd/cat -n produces numbered lines, matching gcat -n output byte-for-byte."
+  - id: AC3
+    criterion: "printf 'a\\n\\n\\nb\\n' | go run ./cmd/cat -s produces a single blank line between 'a' and 'b', matching gcat -s."
+  - id: AC4
+    criterion: "printf '\\x01\\x09\\x1b\\x7f\\x80\\xff' | go run ./cmd/cat -v produces the correct caret and M- notation, matching gcat -v byte-for-byte."
+  - id: AC5
+    criterion: Differential test against gcat passes for all flag combinations: -n, -b, -s, -v, -E, -T, -A, -e, -t, and combinations thereof, on text and binary inputs.
+  - id: AC6
+    criterion: "go run ./cmd/cat on a non-existent file prints an error to stderr, exits 1, and still processes any other files on the command line."
+  - id: AC7
+    criterion: cmd/cat compiles with no warnings under golangci-lint.

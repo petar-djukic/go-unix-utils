@@ -1,0 +1,209 @@
+id: test-rel01.0-uc001-ts
+title: "Test Suite: ts timestamp stdin lines"
+
+traces:
+  - rel01.0-uc001-ts
+  - prd004-ts R1
+  - prd004-ts R2
+  - prd004-ts R3
+  - prd004-ts R4
+  - prd004-ts R5
+  - prd004-ts R6
+  - prd004-ts R7
+
+preconditions: |
+  - ./bin/ts exists (built via mage build).
+  - The reference binary ts is installed (brew install moreutils) and on PATH.
+  - Tests are run via go test ./cmd/ts/... which invokes RunDiffTests from pkg/testutils.
+  - TimestampNormalizer is applied to all tests whose output contains wall-clock timestamps.
+  - All tests use LC_ALL=C and TZ=America/New_York (or a fixed known zone) to ensure
+    consistent strftime output between runs.
+
+test_cases:
+  - name: default_format_three_lines
+    description: Default format ("%b %d %H:%M:%S") with three-line stdin.
+    inputs:
+      args: []
+      stdin: "line1\nline2\nline3\n"
+      env: []
+    normalization: TimestampNormalizer replaces "%b %d %H:%M:%S"-matching prefixes with "TIMESTAMP"
+    expected:
+      exit_code: 0
+      stdout_structure: three lines, each matching "TIMESTAMP line1", "TIMESTAMP line2", "TIMESTAMP line3"
+      stderr: ""
+    traces:
+      - prd004-ts R1.1
+      - prd004-ts R1.2
+      - prd004-ts R1.4
+
+  - name: default_format_empty_stdin
+    description: Empty stdin produces no output and exits 0.
+    inputs:
+      args: []
+      stdin: ""
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd004-ts R1.6
+
+  - name: default_format_partial_last_line
+    description: Stdin with no trailing newline; partial line must be timestamped.
+    inputs:
+      args: []
+      stdin: "partial"
+      env: []
+    normalization: TimestampNormalizer
+    expected:
+      exit_code: 0
+      stdout_structure: one line matching "TIMESTAMP partial" (no trailing newline added)
+      stderr: ""
+    traces:
+      - prd004-ts R1.5
+
+  - name: custom_strftime_format
+    description: Custom strftime format string "%Y-%m-%dT%H:%M:%S".
+    inputs:
+      args: ["%Y-%m-%dT%H:%M:%S"]
+      stdin: "hello\nworld\n"
+      env: []
+    normalization: TimestampNormalizer replaces ISO-8601 datetime prefix with "TIMESTAMP"
+    expected:
+      exit_code: 0
+      stdout_structure: two lines matching "TIMESTAMP hello", "TIMESTAMP world"
+      stderr: ""
+    traces:
+      - prd004-ts R2.1
+      - prd004-ts R2.2
+
+  - name: subsecond_format_dotS
+    description: Subsecond extension %.S produces seconds with microsecond suffix.
+    inputs:
+      args: ["%.S"]
+      stdin: "test\n"
+      env: []
+    normalization: TimestampNormalizer replaces numeric.numeric pattern with "SECONDS.USEC"
+    expected:
+      exit_code: 0
+      stdout_structure: one line matching "SECONDS.USEC test"
+      stderr: ""
+    traces:
+      - prd004-ts R2.3
+      - prd004-ts R2.4
+
+  - name: elapsed_since_start_mode
+    description: -s mode; timestamps show time elapsed since ts started, increasing monotonically.
+    inputs:
+      args: ["-s"]
+      stdin: "a\nb\nc\n"
+      env: []
+    normalization: TimestampNormalizer replaces HH:MM:SS elapsed prefix with "ELAPSED"
+    expected:
+      exit_code: 0
+      stdout_structure: three lines each matching "ELAPSED <letter>"; elapsed values non-negative
+      stderr: ""
+    traces:
+      - prd004-ts R4.1
+      - prd004-ts R4.2
+
+  - name: incremental_mode
+    description: -i mode; each timestamp shows time since the previous line.
+    inputs:
+      args: ["-i"]
+      stdin: "first\nsecond\nthird\n"
+      env: []
+    normalization: TimestampNormalizer replaces HH:MM:SS elapsed prefix with "ELAPSED"
+    expected:
+      exit_code: 0
+      stdout_structure: three lines each matching "ELAPSED <word>"
+      stderr: ""
+    traces:
+      - prd004-ts R3.1
+      - prd004-ts R3.2
+
+  - name: incremental_and_elapsed_mutually_exclusive
+    description: Passing both -i and -s must produce a usage error and non-zero exit.
+    inputs:
+      args: ["-i", "-s"]
+      stdin: ""
+      env: []
+    normalization: none
+    expected:
+      exit_code: non-zero
+      stderr_contains: "usage"
+    traces:
+      - prd004-ts R3.4
+
+  - name: monotonic_clock_mode
+    description: -m mode with default format; output structure must match reference.
+    inputs:
+      args: ["-m"]
+      stdin: "tick\n"
+      env: []
+    normalization: TimestampNormalizer (monotonic timestamps have same wall-clock format as default)
+    expected:
+      exit_code: 0
+      stdout_structure: one line matching "TIMESTAMP tick"
+      stderr: ""
+    traces:
+      - prd004-ts R5.1
+      - prd004-ts R5.2
+
+  - name: relative_mode_syslog_timestamp
+    description: -r mode converts a syslog-format timestamp in stdin to relative age.
+    inputs:
+      args: ["-r"]
+      stdin: "Jan  1 00:00:00 boot message\n"
+      env: []
+    normalization: TimestampNormalizer replaces relative age string with "AGO"
+    expected:
+      exit_code: 0
+      stdout_structure: one line containing "AGO boot message"
+      stderr: ""
+    traces:
+      - prd004-ts R6.1
+      - prd004-ts R6.2
+
+  - name: relative_mode_no_timestamp_passthrough
+    description: -r mode passes through lines with no recognized timestamp unchanged.
+    inputs:
+      args: ["-r"]
+      stdin: "no timestamp here\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "no timestamp here\n"
+      stderr: ""
+    traces:
+      - prd004-ts R6.4
+
+  - name: invalid_flag
+    description: Unrecognized flag must produce a usage error and non-zero exit.
+    inputs:
+      args: ["-z"]
+      stdin: ""
+      env: []
+    normalization: none
+    expected:
+      exit_code: non-zero
+      stderr_contains: "usage"
+    traces:
+      - prd004-ts R7.2
+
+  - name: tz_environment_respected
+    description: TZ=UTC causes wall-clock timestamps to be in UTC.
+    inputs:
+      args: ["%H:%M:%S"]
+      stdin: "event\n"
+      env: ["TZ=UTC"]
+    normalization: TimestampNormalizer
+    expected:
+      exit_code: 0
+      stdout_structure: one line matching "TIMESTAMP event"
+      stderr: ""
+    traces:
+      - prd004-ts R8.1

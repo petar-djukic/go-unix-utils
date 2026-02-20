@@ -1,0 +1,91 @@
+id: rel01.0-uc001-ts
+title: "Timestamp stdin lines via ts"
+
+summary: |
+  The operator runs a log-producing command piped through the Go ts binary. The binary
+  reads stdin line by line and writes each line to stdout prefixed with a strftime
+  timestamp. The differential testing harness then runs both the Go binary and the
+  Homebrew reference binary (ts from moreutils) with the same stdin input and confirms
+  that their outputs are identical after timestamp normalization.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd004-ts.yaml) and invokes do-work to produce
+  a passing differential test for cmd/ts.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go ts binary with a known stdin input and a format flag.
+      Example: printf 'line1\nline2\nline3\n' | ./bin/ts '%H:%M:%S'
+  - id: F2
+    step: |
+      cmd/ts reads each line from stdin. For each line, it calls time.Now() to get the
+      current time, formats it with the strftime-equivalent using the given format string,
+      and writes "<timestamp> <line>" to stdout.
+  - id: F3
+    step: |
+      The output is three lines, each prefixed with an HH:MM:SS timestamp.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/ts and the
+      reference ts binary with the same stdin content, args, and environment.
+  - id: F5
+    step: |
+      The harness applies the TimestampNormalizer from pkg/testutils to both outputs,
+      replacing the HH:MM:SS timestamp prefix with a fixed placeholder string
+      (e.g., "HH:MM:SS").
+  - id: F6
+    step: |
+      The harness compares the normalized outputs byte-for-byte. Both binaries must
+      produce the same line structure: three lines each starting with the placeholder
+      followed by a space and the original line content.
+  - id: F7
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports
+      the triggering args, both raw outputs, and both normalized outputs.
+
+touchpoints:
+  - id: T1
+    component: cmd/ts
+    detail: Implements the timestamp prefix logic from prd004-ts.yaml requirements R1 and R2.
+  - id: T2
+    component: pkg/testutils
+    detail: |
+      Provides RunDiffTests, the TimestampNormalizer, and the binary-execution harness
+      per prd001-testutils.yaml requirements R1-R4.
+  - id: T3
+    component: Human Operator
+    detail: Triggers the use case by invoking do-work after completing prd004-ts.yaml.
+
+success_criteria:
+  - id: S1
+    criterion: cmd/ts compiles and ./bin/ts exists after mage build.
+  - id: S2
+    criterion: |
+      printf 'line1\nline2\nline3\n' | ./bin/ts produces three lines each prefixed
+      with a timestamp in the default format "%b %d %H:%M:%S".
+  - id: S3
+    criterion: |
+      The differential test for the default format mode passes: normalized output from
+      ./bin/ts matches normalized output from the reference ts binary on three-line stdin.
+  - id: S4
+    criterion: |
+      The differential test for -s mode passes: elapsed timestamps increase monotonically
+      across lines and normalized outputs match.
+  - id: S5
+    criterion: |
+      The differential test for -i mode passes: per-line incremental timestamps and
+      normalized outputs match.
+  - id: S6
+    criterion: Empty stdin (immediate EOF) produces no output and exits 0 for both binaries.
+  - id: S7
+    criterion: go test ./cmd/ts/... passes with no failures.
+
+out_of_scope:
+  - -r mode (relative timestamp conversion) is covered by tests in the test suite but is not the primary flow of this use case.
+  - -m mode (monotonic clock) differential testing is noted in the test suite but excluded from the primary flow because the reference binary and Go binary may use different monotonic sources.
+  - The use case does not cover cmd/ts code generation by the orchestrator; that is handled by the cobbler:stitch mage target.
+
+test_suite: test-rel01.0-uc001-ts

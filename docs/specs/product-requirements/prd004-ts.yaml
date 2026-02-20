@@ -1,0 +1,144 @@
+id: prd004-ts
+title: "cmd/ts: Timestamp Stdin Lines"
+
+problem: |
+  Shell pipelines that process log output often need each line annotated with the time
+  it arrived. The standard Unix tools offer no built-in way to prepend a timestamp to
+  each stdin line. ts (from moreutils) fills this gap: it reads stdin line by line and
+  writes each line to stdout prefixed with a strftime-formatted timestamp. The Go
+  implementation must match the Homebrew reference binary (ts, installed by moreutils)
+  byte-for-byte on all flag combinations, verified by differential testing via
+  pkg/testutils.
+
+goals:
+  - id: G1
+    goal: Prepend a strftime timestamp to each stdin line with the default format "%b %d %H:%M:%S".
+  - id: G2
+    goal: Support custom strftime format strings including the ts-specific subsecond extensions %.S, %.s, and %.T.
+  - id: G3
+    goal: Support incremental and elapsed-time modes (-i and -s) that show time between lines or time since start.
+  - id: G4
+    goal: Support monotonic clock mode (-m) for timestamp sources that must not jump on wall-clock adjustments.
+  - id: G5
+    goal: Support relative-time conversion mode (-r) that rewrites existing timestamps in stdin to relative age strings.
+
+requirements:
+  - group: R1
+    title: Default behavior (no flags)
+    items:
+      - id: R1.1
+        requirement: Must read stdin line by line (newline-delimited). Each line must be written to stdout prefixed by a timestamp and a single space.
+      - id: R1.2
+        requirement: The default timestamp format must be "%b %d %H:%M:%S" (strftime, e.g. "Feb 19 14:05:32"). The format must be evaluated at the time each line is received, not at startup.
+      - id: R1.3
+        requirement: Must flush stdout after each line so that downstream consumers receive timestamps in real time.
+      - id: R1.4
+        requirement: Must preserve the original newline at the end of each line; must not add an extra newline.
+      - id: R1.5
+        requirement: Must pass through partial lines (lines not terminated by a newline at EOF) with a timestamp prefix.
+      - id: R1.6
+        requirement: Exit code must be 0 after stdin is closed with EOF. Must not exit non-zero due to SIGPIPE when stdout is closed by a downstream consumer.
+
+  - group: R2
+    title: Custom format string
+    items:
+      - id: R2.1
+        requirement: Must accept an optional positional argument specifying a custom strftime format string, e.g. "ts '%Y-%m-%dT%H:%M:%S'".
+      - id: R2.2
+        requirement: Must support all standard strftime(3) conversion specifications available on the target platform.
+      - id: R2.3
+        requirement: Must support three ts-specific subsecond extensions: %.S (seconds with microsecond suffix, e.g. "32.001234"), %.s (Unix epoch with microsecond suffix, e.g. "1708358732.001234"), %.T (HH:MM:SS with microsecond suffix, e.g. "14:05:32.001234"). These extensions require Time::HiRes in the Perl reference; the Go implementation must use time.Now() sub-nanosecond precision formatted to six decimal places.
+      - id: R2.4
+        requirement: When a subsecond extension is used in the format string, must obtain both the second and microsecond components atomically from a single time sample per line.
+
+  - group: R3
+    title: Incremental mode (-i)
+    items:
+      - id: R3.1
+        requirement: -i must change the timestamp to the time elapsed since the previous line was received. The first line's timestamp is the time elapsed since ts started.
+      - id: R3.2
+        requirement: The default format in -i mode must be "%H:%M:%S". The TZ environment must be set to GMT so that strftime on a delta-second value produces a correct elapsed string (e.g., 5 seconds since last line → "00:00:05").
+      - id: R3.3
+        requirement: A custom format argument overrides the -i default format. The TZ=GMT behavior still applies.
+      - id: R3.4
+        requirement: -i and -s are mutually exclusive; passing both must print a usage error to stderr and exit non-zero.
+
+  - group: R4
+    title: Elapsed-since-start mode (-s)
+    items:
+      - id: R4.1
+        requirement: -s must change the timestamp to the time elapsed since ts started, increasing monotonically across lines (unlike -i which resets per line).
+      - id: R4.2
+        requirement: The default format in -s mode must be "%H:%M:%S" with TZ=GMT, same as -i.
+      - id: R4.3
+        requirement: A custom format argument overrides the -s default format.
+
+  - group: R5
+    title: Monotonic clock mode (-m)
+    items:
+      - id: R5.1
+        requirement: -m must use the system's monotonic clock (CLOCK_MONOTONIC via time.Now() in Go, which automatically uses the monotonic reading) instead of the wall clock for timestamp sampling.
+      - id: R5.2
+        requirement: -m is compatible with all format modes (-i, -s, default) and with custom format strings including subsecond extensions.
+      - id: R5.3
+        requirement: When -m is active, the timestamp must not jump backwards or exhibit discontinuities if the wall clock is adjusted (e.g., by NTP) while ts is running.
+
+  - group: R6
+    title: Relative-time conversion mode (-r)
+    items:
+      - id: R6.1
+        requirement: -r must scan each input line for known timestamp patterns and replace each match with a human-readable relative age string (e.g., "15m5s ago").
+      - id: R6.2
+        requirement: Must recognize the following timestamp patterns from the Perl source regex: syslog format ("Jan  5 14:30:00"), ISO-8601 ("2024-01-05T14:30:00.000Z"), RFC 2822 with optional day ("16 Jun 94 07:29:35 GMT"), lastlog format ("Mon Jan  5 14:30").
+      - id: R6.3
+        requirement: When -r and a format string are both given, must convert matched timestamps to the specified format via strftime rather than to a relative string.
+      - id: R6.4
+        requirement: Lines with no recognizable timestamp must be passed through unchanged.
+      - id: R6.5
+        requirement: -r is mutually exclusive with -i and -s; passing both must print a usage error to stderr and exit non-zero.
+
+  - group: R7
+    title: Exit codes and error handling
+    items:
+      - id: R7.1
+        requirement: Must exit 0 on clean EOF from stdin.
+      - id: R7.2
+        requirement: Must exit non-zero and print a usage message to stderr when an unrecognized flag is given.
+      - id: R7.3
+        requirement: Must exit non-zero when -r mode is requested but the timestamp parsing dependency (equivalent of Date::Parse) is unavailable. In the Go implementation this means the parsing library must be compiled in, so this condition cannot arise; document the invariant in the implementation.
+
+  - group: R8
+    title: Environment
+    items:
+      - id: R8.1
+        requirement: Must respect the TZ environment variable to determine the local time zone for wall-clock timestamps (non -i/-s modes). Setting TZ=UTC must cause timestamps to be in UTC.
+      - id: R8.2
+        requirement: In -i and -s modes, must use TZ=GMT internally for elapsed-time formatting regardless of the user's TZ setting, matching the Perl source behavior.
+
+  - group: R9
+    title: Differential testing
+    items:
+      - id: R9.1
+        requirement: Differential tests must use the TimestampNormalizer from pkg/testutils to replace wall-clock timestamps in output with a fixed placeholder before comparing Go and reference binary outputs.
+      - id: R9.2
+        requirement: Tests must cover: default format, custom strftime format, -s mode, -i mode, -m mode (with monotonic normalization), multi-line stdin, empty stdin, and partial last line (no trailing newline).
+
+non_goals:
+  - cmd/ts does not implement egrep-style timestamp colorization.
+  - cmd/ts does not read from files; it reads only from stdin.
+  - cmd/ts does not support localized date parsing in -r mode (the Perl source explicitly notes this limitation).
+  - cmd/ts does not implement --help or --version flags beyond a usage string on bad input.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "echo 'hello world' | go run ./cmd/ts produces a line matching the pattern: '<month> <day> <HH:MM:SS> hello world'."
+  - id: AC2
+    criterion: "printf 'a\\nb\\nc\\n' | go run ./cmd/ts -s produces three lines with monotonically increasing elapsed timestamps."
+  - id: AC3
+    criterion: Differential test against ts reference binary passes with TimestampNormalizer applied for default, -s, and -i modes on a 10-line stdin input.
+  - id: AC4
+    criterion: "ts with an invalid flag prints a usage message to stderr and exits non-zero."
+  - id: AC5
+    criterion: "Empty stdin (immediate EOF) produces no output and exits 0."
+  - id: AC6
+    criterion: cmd/ts compiles with no warnings under golangci-lint.
