@@ -31,7 +31,7 @@ cobbler:
     estimated_lines_min: 250
     estimated_lines_max: 350
 podman:
-    image: ""
+    image: "claude-cli"
     args: []
 claude:
     args:
