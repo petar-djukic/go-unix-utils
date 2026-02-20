@@ -34,7 +34,7 @@ requirements:
       - id: R1.2
         requirement: Must return an error (not panic) when stdout is not a terminal or when ioctl fails.
       - id: R1.3
-        requirement: Must use golang.org/x/term or syscall to perform the ioctl; must not shell out to tput or stty.
+        requirement: Must use golang.org/x/sys/unix (the project's only external dependency) to perform the TIOCGWINSZ ioctl; must not shell out to tput or stty and must not import golang.org/x/term.
       - id: R1.4
         requirement: Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.
 

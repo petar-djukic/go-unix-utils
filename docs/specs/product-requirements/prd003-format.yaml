@@ -43,7 +43,7 @@ requirements:
       - id: R2.2
         requirement: Must provide a Reset() string constant or function that returns the ANSI reset sequence ("\033[0m").
       - id: R2.3
-        requirement: Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. When false, FileTypeColor must return an empty string and Reset must return an empty string.
+        requirement: Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. It must delegate the TTY check to pkg/sys.IsTerminal (implemented in pkg/sys using golang.org/x/sys/unix, not golang.org/x/term). When false, FileTypeColor must return an empty string and Reset must return an empty string.
       - id: R2.4
         requirement: Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).
       - id: R2.5

@@ -235,6 +235,14 @@ technology_choices:
     reason: Go-native build tool; targets are plain Go functions, no DSL to learn or maintain.
   - technology: golangci-lint
     reason: Comprehensive linting for idiomatic Go; integrated with the mage lint target.
+  - technology: golang.org/x/sys
+    reason: |
+      The only external Go dependency beyond the standard library. Provides stable
+      Darwin and Linux syscall coverage for Stat_t field access (field names diverge
+      between platforms), ioctl constants (TIOCGWINSZ), and signal mask operations.
+      pkg/sys wraps this into a single internal API; cmd/ packages do not import
+      golang.org/x/sys directly. IsTerminal and TerminalWidth are implemented in
+      pkg/sys using golang.org/x/sys, avoiding a separate golang.org/x/term dependency.
   - technology: Homebrew (GNU coreutils, moreutils, grep, findutils)
     reason: Provides the reference binaries (gls, gts, etc.) used in differential testing.
   - technology: Git (coreutils, moreutils, grep, findutils mirrors)
