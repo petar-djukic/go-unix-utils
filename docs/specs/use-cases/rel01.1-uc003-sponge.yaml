@@ -1,0 +1,92 @@
+id: rel01.1-uc003-sponge
+title: "Soak stdin and write to file via sponge"
+
+summary: |
+  The operator runs a pipeline that reads a file, transforms it, and pipes the result through
+  the Go sponge binary back to the same file. sponge reads all of stdin before opening the
+  output file, making the idiom "cmd file | sponge file" safe. The differential testing
+  harness runs both the Go binary and the Homebrew reference binary (sponge from moreutils)
+  with the same stdin and arguments, then compares the output file contents byte-for-byte.
+  Unlike wc and cat, sponge verification uses file-content comparison, not stdout comparison.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd007-sponge.yaml) and invokes do-work to produce
+  a passing differential test for cmd/sponge.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs a pipeline that pipes file content through the Go sponge binary back
+      to the same file. Example: cat data.txt | ./bin/sponge data.txt
+  - id: F2
+    step: |
+      cmd/sponge reads all bytes from stdin into an in-memory buffer. If the buffer exceeds
+      the memory threshold, sponge spills to a temp file and continues reading. The output
+      file is not opened during this phase.
+  - id: F3
+    step: |
+      After stdin reaches EOF, cmd/sponge opens the output file. If the output file already
+      exists, sponge reads its permissions for later restoration. In append mode (-a), sponge
+      prepends the original file content to the buffered stdin content.
+  - id: F4
+    step: |
+      cmd/sponge writes the buffered content to a temp file, then atomically renames the temp
+      file to the output path. If the rename fails (cross-device), sponge falls back to a
+      byte-for-byte copy.
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/sponge and the
+      reference sponge binary with the same stdin, args, and environment in isolated temp
+      directories.
+  - id: F6
+    step: |
+      The harness compares the output file contents byte-for-byte using the file-state
+      comparison capability (prd001-testutils R5). Both binaries must produce identical
+      output file content.
+  - id: F7
+    step: |
+      If the file contents match, the test passes. If they diverge, the harness reports the
+      triggering args, both file contents, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/sponge — soak-before-write contract, atomic rename, append mode, passthrough (prd007-sponge R1, R2, R3, R4, R5)"
+  - T2: "pkg/testutils — RunDiffTests, file-state comparison (prd001-testutils R1, R2, R3, R5)"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/sponge compiles and ./bin/sponge exists after mage build.
+  - id: S2
+    criterion: |
+      The soak-before-write contract holds: "cat file | ./bin/sponge file" produces a file
+      containing the original content (not empty or truncated), confirming sponge did not
+      open the output file until stdin was fully consumed.
+  - id: S3
+    criterion: |
+      Passthrough mode works: "printf 'hello' | ./bin/sponge" writes 'hello' to stdout,
+      matching the reference binary.
+  - id: S4
+    criterion: |
+      Append mode works: "printf 'appended\n' | ./bin/sponge -a existing.txt" produces a
+      file containing [original content][appended\n], matching the reference binary.
+  - id: S5
+    criterion: |
+      Large input (1 MB or more) triggers temp-file spill and produces correct output file
+      content, matching the reference binary.
+  - id: S6
+    criterion: |
+      File permissions are preserved: an output file with mode 0640 retains that mode after
+      sponge overwrites it.
+  - id: S7
+    criterion: |
+      The differential test passes for all modes: small stdin, large stdin, append, passthrough,
+      and soak-before-write contract.
+
+out_of_scope:
+  - Cross-device rename fallback is covered in the test suite but is not the primary flow.
+  - SIGINT/SIGTERM cleanup behavior is specified in the PRD but is not directly testable in the
+    differential harness; it is verified by manual inspection.
+  - Memory threshold tuning is not tested; the spill path is exercised by the large-input test.
+
+test_suite: test-rel01.1-uc003-sponge
