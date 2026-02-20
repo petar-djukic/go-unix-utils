@@ -1,0 +1,138 @@
+id: go-unix-utils
+title: "go-unix-utils: Specification-Driven Regeneration of Unix Utilities in Go"
+
+executive_summary: |
+  go-unix-utils is an experiment in specification-driven development using classic Unix
+  utilities as the test bed. We derive formal specifications from C source code, generate
+  Go implementations from those specs using an AI coding agent, and verify parity against
+  reference binaries through differential testing. The goal is not to ship utilities; it
+  is to find where the methodology breaks down.
+
+problem: |
+  Classic Unix utilities have no formal specifications accessible to implementers. Man
+  pages omit edge cases, flag interactions, and exit-code contracts. Re-implementations
+  built from documentation alone diverge in observable behavior -- they break scripts,
+  pipelines, and tools that depend on precise semantics.
+
+  Existing Go re-implementations treat utilities as isolated exercises. They lack shared
+  infrastructure, behavioral contracts, and systematic verification. The result is
+  utilities that work for common cases but fail on edge cases that production users
+  encounter.
+
+what_this_does: |
+  We run a four-stage pipeline for each utility. In the extraction stage, we clone the
+  C source (coreutils, moreutils, grep, findutils) and analyze behavior directly from
+  the source of truth. In the specification stage, a human operator uses the make-work
+  and do-work Claude Code skills to produce three artifacts: a PRD (numbered requirements
+  and acceptance criteria), a use case (concrete end-to-end execution path through the
+  system), and a spec.md (full behavioral detail of all flags, exit codes, and stream
+  behaviors). Shared library components (pkg/) also receive PRDs when their requirements
+  span multiple utilities. In the synthesis stage, the mage-claude-orchestrator library
+  drives a Claude agent to generate idiomatic Go from the spec.md. In the verification
+  stage, a differential testing harness runs the Go binary and the Homebrew reference
+  binary side by side and compares outputs.
+
+why_we_build_this: |
+  We use GNU utilities as a stress test for the mage-claude-orchestrator code generation
+  system. GNU utilities are an ideal subject: their behavior is authoritative (C source
+  is public), their correctness is verifiable (differential testing against reference
+  binaries), and they span a wide range of complexity -- from ts (trivial) to ls
+  (hundreds of flags and edge cases). The human operator guides spec development through
+  make-work and do-work skills; the orchestrator then takes over and generates Go code
+  autonomously. We want to know where the system holds and where it fails: how much
+  spec detail the orchestrator needs, how it handles complex flag interactions, and
+  whether differential testing catches the gaps. The shared Go library (pkg/) is a
+  by-product, not the goal.
+
+success_criteria:
+  - id: SC1
+    criterion: >
+      Every utility passes differential tests against its Homebrew reference binary
+      with 100% output parity on exit code, stdout, and stderr.
+  - id: SC2
+    criterion: >
+      Every utility has a spec.md that covers all flags, exit codes, and stream
+      behaviors derived from C source.
+  - id: SC3
+    criterion: >
+      Go binaries are idiomatic and compile with no warnings under standard linting
+      (golangci-lint).
+  - id: SC4
+    criterion: >
+      The shared pkg/ library is used by at least two utilities for common logic,
+      with no duplication of syscall or formatting code across cmd/ packages.
+  - id: SC5
+    criterion: mage analyze passes with no broken references or missing fields.
+  - id: SC6
+    criterion: >
+      We can characterize where mage-claude-orchestrator succeeds and fails: which
+      utility complexity levels it handles autonomously, which require spec refinement
+      by the human operator, and which it cannot complete without manual intervention.
+
+implementation_phases:
+  - phase: 1
+    name: Foundation
+    focus: Pipeline infrastructure, first utility (ts), shared pkg/ skeleton.
+    deliverables:
+      - Differential testing harness in pkg/testutils/
+      - pkg/sys/ and pkg/format/ initial implementations
+      - cmd/ts/ with spec.md and passing differential tests
+  - phase: 2
+    name: Moreutils
+    focus: Remaining moreutils tools (sponge, vidir, pee, chronic).
+    deliverables:
+      - spec.md and Go implementation for sponge, vidir, pee, and chronic
+      - Differential tests for each moreutils utility
+  - phase: 3
+    name: Coreutils
+    focus: High-complexity coreutils tools (ls, cat, cp, mv, wc, du).
+    deliverables:
+      - spec.md and Go implementation for each coreutils utility
+      - Shared formatting and syscall logic promoted to pkg/
+  - phase: 4
+    name: Search Utilities
+    focus: grep, egrep, fgrep (grep package) and find, xargs (findutils).
+    deliverables:
+      - spec.md and Go implementations for all grep and findutils tools
+      - Full differential test coverage for the search utility suite
+
+risks:
+  - id: R1
+    risk: Platform divergence between GNU and macOS behavior.
+    impact: high
+    likelihood: medium
+    mitigation: |
+      We target Homebrew-installed GNU binaries (gls, gts, etc.) as the reference,
+      not the macOS BSD built-ins. All tests run against the GNU reference binary,
+      which is built from the same C source we use for spec extraction.
+  - id: R2
+    risk: C source complexity makes full behavioral extraction impractical for some utilities.
+    impact: medium
+    likelihood: medium
+    mitigation: |
+      We combine C source analysis with behavioral testing of the reference binary
+      for edge cases. Specs note where behavior is observed rather than source-derived,
+      and we include those observations as test inputs in the differential harness.
+  - id: R3
+    risk: Go standard library lacks POSIX syscall coverage on macOS.
+    impact: medium
+    likelihood: low
+    mitigation: |
+      We build pkg/sys/ as an abstraction layer over Darwin and Linux syscalls and
+      use golang.org/x/sys for extended coverage where the standard library falls short.
+  - id: R4
+    risk: AI synthesis produces code that passes common cases but fails edge cases.
+    impact: high
+    likelihood: medium
+    mitigation: |
+      Differential testing is the gating check. Code cannot pass review until
+      differential tests pass. Edge cases are explicit in the spec.md and exercised
+      as named test inputs in pkg/testutils/.
+
+not:
+  - This project is not a general-purpose Unix toolkit for production deployment.
+  - We do not target BSD utilities or macOS built-ins as reference binaries.
+  - We do not implement utilities outside coreutils, moreutils, grep, and findutils.
+  - We do not target Windows.
+  - Specs are not replacements for man pages; they capture implementer-relevant behavior.
+  - We do not produce a drop-in replacement binary at a system path; binaries live in bin/.
