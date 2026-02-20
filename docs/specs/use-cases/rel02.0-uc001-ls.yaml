@@ -1,0 +1,95 @@
+id: rel02.0-uc001-ls
+title: "List directory contents via ls (core flags)"
+
+summary: |
+  The operator runs the Go ls binary on a known fixture directory with core flags (default,
+  -1, -l, -a, -A, -d, --color, -h). The differential testing harness runs both the Go binary
+  and the Homebrew reference binary (gls from coreutils) with the same arguments and
+  environment, applies an LsNormalizer to both outputs (replacing mtime columns with a fixed
+  placeholder), and confirms that the normalized outputs are identical. All tests run with
+  --color=never and LC_ALL=C to eliminate ANSI and locale variance.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd008-ls.yaml) and shared component PRDs
+  (prd002-sys, prd003-format) and invokes do-work to produce a passing differential
+  test for cmd/ls core flags.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go ls binary on a fixture directory with known file types,
+      sizes, and permissions. Example: ./bin/ls --color=never testdata/ls-fixture/
+  - id: F2
+    step: |
+      cmd/ls reads the directory entries, queries terminal width via pkg/sys.TerminalWidth
+      (for default multi-column mode), and obtains file metadata via pkg/sys.Stat for long
+      format. It formats output via pkg/format.Columns (multi-column) or inline formatting
+      (long format with pkg/format.HumanSize for -h).
+  - id: F3
+    step: |
+      cmd/ls writes the formatted listing to stdout. The format depends on the active flags:
+      multi-column (default TTY), single-column (default pipe or -1), or long format (-l).
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/ls and gls with
+      the same arguments, environment (LC_ALL=C, --color=never), and working directory.
+  - id: F5
+    step: |
+      The harness applies the LsNormalizer to both outputs. The LsNormalizer replaces the
+      modification time column in -l output (fields matching "Mon DD HH:MM" or "Mon DD  YYYY")
+      with the placeholder "MTIME". This eliminates wall-clock divergence between runs.
+  - id: F6
+    step: |
+      The harness compares the normalized outputs byte-for-byte. Both binaries must produce
+      identical entry names, sort order, column layout, and field values (permissions,
+      hard-link count, owner, group, size).
+  - id: F7
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both raw outputs, both normalized outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/ls — directory listing, format modes, filter flags, color, human sizes (prd008-ls R1, R2, R3, R4, R5, R6, R7)"
+  - T2: "pkg/sys — TerminalWidth, Stat/Lstat, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize (prd002-sys R1, R2, R3, R4)"
+  - T3: "pkg/format — Columns, FileTypeColor, HumanSize (prd003-format R1, R2, R3)"
+  - T4: "pkg/testutils — RunDiffTests, LsNormalizer, binary execution and comparison (prd001-testutils R1, R2, R3, R4)"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/ls compiles and ./bin/ls exists after mage build.
+  - id: S2
+    criterion: |
+      Default mode with stdout redirected (not a TTY) produces single-column output with
+      one entry per line, matching gls output on the same fixture.
+  - id: S3
+    criterion: |
+      -l long format produces identical output to gls -l after MTIME normalization on the
+      same fixture directory.
+  - id: S4
+    criterion: |
+      -a includes dotfiles (including . and ..) and matches gls -a output on a fixture
+      containing dotfiles.
+  - id: S5
+    criterion: |
+      --color=never produces output with no ANSI escape sequences, matching gls --color=never
+      byte-for-byte.
+  - id: S6
+    criterion: |
+      -lh produces human-readable file sizes that match gls -lh on files with known sizes.
+  - id: S7
+    criterion: |
+      The differential test passes for all core flags: default (single-col redirect),
+      -1, -l, -lh, -a, -A, -d, --color=never. All tests use LC_ALL=C and --color=never
+      (except color-specific tests).
+
+out_of_scope:
+  - Default multi-column mode on a real TTY is difficult to test deterministically in the
+    harness; we test -C explicitly in the ls extended use case (rel02.1).
+  - Owner/group name normalization is not applied; tests use a fixture where files are owned
+    by the test runner's UID/GID, ensuring consistency.
+  - SIGWINCH behavior is specified in prd008-ls R7.2 but is not directly testable in the
+    differential harness.
+
+test_suite: test-rel02.0-uc001-ls
