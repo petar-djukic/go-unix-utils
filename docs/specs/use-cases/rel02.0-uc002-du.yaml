@@ -1,0 +1,95 @@
+id: rel02.0-uc002-du
+title: "Report recursive directory disk usage via du"
+
+summary: |
+  The operator runs the Go du binary on a fixture directory to report disk usage. The
+  differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gdu from coreutils) on the same directory on the same filesystem with the same arguments
+  and environment, and confirms that their outputs are identical byte-for-byte. Block counts
+  are deterministic when both binaries stat the same files on the same filesystem. All tests
+  use -k to pin output to 1024-byte blocks and eliminate platform block-size default variance.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd009-du.yaml) and shared component PRDs
+  (prd002-sys, prd003-format) and invokes do-work to produce a passing differential
+  test for cmd/du.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go du binary on a fixture directory with known file sizes and
+      directory structure. Example: ./bin/du -k testdata/du-fixture/
+  - id: F2
+    step: |
+      cmd/du traverses the directory tree using os.ReadDir (or filepath.Walk), calling
+      pkg/sys.Lstat on each entry to obtain st_blocks for block counts and st_dev/st_ino
+      for hard-link deduplication. It accumulates block counts per directory.
+  - id: F3
+    step: |
+      cmd/du writes one line per directory (or per file with -a) in the format
+      "SIZE\tPATH\n". With -h, sizes are formatted via pkg/format.HumanSize.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/du and gdu with
+      the same arguments, environment, and working directory.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical size values and path listings because they stat the same files on
+      the same filesystem.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/du — recursive traversal, block accumulation, hard-link dedup, flag modes (prd009-du R1, R2, R3, R4, R5)"
+  - T2: "pkg/sys — Stat/Lstat for st_blocks, st_dev, st_ino, InstallSIGPIPEHandler (prd002-sys R2, R3)"
+  - T3: "pkg/format — HumanSize for -h output (prd003-format R3)"
+  - T4: "pkg/testutils — RunDiffTests, binary execution and comparison (prd001-testutils R1, R2, R3)"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/du compiles and ./bin/du exists after mage build.
+  - id: S2
+    criterion: |
+      Default recursive mode produces one line per subdirectory and the root directory,
+      matching gdu -k output on the same fixture.
+  - id: S3
+    criterion: |
+      -s summary mode produces one line per argument with the total size, matching gdu -sk
+      output.
+  - id: S4
+    criterion: |
+      -a all-files mode produces one line per file and directory, matching gdu -ak output.
+  - id: S5
+    criterion: |
+      -h human-readable mode produces size strings (K/M/G) that match gdu -h output on the
+      same fixture.
+  - id: S6
+    criterion: |
+      -c grand total mode produces a "total" line after all arguments, matching gdu -ck output.
+  - id: S7
+    criterion: |
+      Hard-link deduplication works: a fixture with two directory entries pointing to the same
+      inode produces a total that counts the file's blocks only once, matching gdu behavior.
+  - id: S8
+    criterion: |
+      --apparent-size mode uses st_size instead of st_blocks, matching gdu --apparent-size
+      output.
+  - id: S9
+    criterion: |
+      The differential test passes for all flag combinations: default -k, -sk, -ak, -h,
+      -ck, -d 1, --apparent-size, and missing path.
+
+out_of_scope:
+  - Cross-filesystem behavior (files on different mount points) is not tested in the
+    differential harness; both binaries see the same single filesystem.
+  - SIGPIPE handling is specified in prd009-du R5.1 but is not directly testable in the
+    differential harness.
+  - Sparse file creation depends on the filesystem; --apparent-size tests use a regular file
+    with known size rather than a true sparse file.
+
+test_suite: test-rel02.0-uc002-du

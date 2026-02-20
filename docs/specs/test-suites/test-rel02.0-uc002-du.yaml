@@ -1,0 +1,188 @@
+id: test-rel02.0-uc002-du
+title: "Test Suite: du recursive directory disk usage"
+
+traces:
+  - rel02.0-uc002-du
+  - prd009-du R1
+  - prd009-du R2
+  - prd009-du R3
+  - prd009-du R4
+  - prd009-du R5
+
+preconditions: |
+  - ./bin/du exists (built via mage build).
+  - The reference binary gdu is installed (brew install coreutils) and on PATH.
+  - Tests are run via go test ./cmd/du/... which invokes RunDiffTests from pkg/testutils.
+  - No normalization is applied; du output is deterministic when both binaries run on the
+    same directory on the same filesystem.
+  - All block-count tests use -k to pin output to 1024-byte blocks and eliminate platform
+    default divergence.
+  - Tests use a fixture directory (testdata/du-fixture/) containing:
+    - A subdirectory with nested files of known sizes
+    - A second subdirectory for multi-argument tests
+    - Files of varied sizes (empty, small, 1 MB) for human-readable testing
+    - Hard-link pairs are created in test setup (not committed) to test dedup
+  - All files in the fixture are on the same filesystem as the test runner.
+
+test_cases:
+  - name: default_recursive
+    description: Default flags with -k on fixture directory; one line per subdirectory and root.
+    inputs:
+      args: ["-k", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one "SIZE\tPATH" line per subdirectory, ending with the root directory total
+      stderr: ""
+    traces:
+      - prd009-du R1.1
+      - prd009-du R1.2
+      - prd009-du R1.3
+
+  - name: summary_mode
+    description: -s prints only the total for each argument.
+    inputs:
+      args: ["-sk", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line with total size and path
+      stderr: ""
+    traces:
+      - prd009-du R2.2
+
+  - name: all_files
+    description: -a prints size for every file, not just directories.
+    inputs:
+      args: ["-ak", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line per file and directory in the tree
+      stderr: ""
+    traces:
+      - prd009-du R2.3
+
+  - name: human_readable
+    description: -h displays sizes as human-readable strings (K/M/G).
+    inputs:
+      args: ["-h", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: size values contain unit suffixes (K, M, G)
+      stderr: ""
+    traces:
+      - prd009-du R2.1
+
+  - name: max_depth_1
+    description: -d 1 limits output to the argument and its immediate children.
+    inputs:
+      args: ["-k", "-d", "1", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: lines for immediate subdirectories and the root; no deeper entries
+      stderr: ""
+    traces:
+      - prd009-du R2.4
+
+  - name: grand_total
+    description: -c prints a grand total "total" line after all arguments.
+    inputs:
+      args: ["-ck", "testdata/du-fixture/subdir1", "testdata/du-fixture/subdir2"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: per-argument lines followed by a "SIZE\ttotal" line
+      stderr: ""
+    traces:
+      - prd009-du R2.7
+
+  - name: hard_link_dedup
+    description: A file hard-linked into two directories is counted only once.
+    inputs:
+      args: ["-k", "testdata/du-hardlink-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+      setup: |
+        Create testdata/du-hardlink-fixture/ with:
+        - dir_a/shared.txt (a regular file)
+        - dir_b/shared.txt (hard link to dir_a/shared.txt, same inode)
+        The hard link is created at test time via os.Link.
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: total for the root counts shared.txt blocks once, not twice
+      stderr: ""
+    traces:
+      - prd009-du R3.1
+      - prd009-du R3.2
+      - prd009-du R3.3
+
+  - name: apparent_size
+    description: --apparent-size reports st_size instead of st_blocks.
+    inputs:
+      args: ["--apparent-size", "-k", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: sizes based on file content length, not block allocation
+      stderr: ""
+    traces:
+      - prd009-du R2.8
+
+  - name: kilobyte_units
+    description: -k reports in 1024-byte blocks (default, accepted without error).
+    inputs:
+      args: ["-k", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: identical to default_recursive (1K is the default)
+      stderr: ""
+    traces:
+      - prd009-du R2.5
+
+  - name: megabyte_units
+    description: -m reports in 1048576-byte (1M) blocks.
+    inputs:
+      args: ["-m", "testdata/du-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: sizes in megabyte units, smaller values show as 1 (rounded up)
+      stderr: ""
+    traces:
+      - prd009-du R2.6
+
+  - name: missing_path
+    description: Non-existent argument prints error to stderr, exits 1.
+    inputs:
+      args: ["-k", "nonexistent_dir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "nonexistent_dir"
+    traces:
+      - prd009-du R4.2
