@@ -2,22 +2,22 @@ id: utilities
 title: "Unix Utility Catalog"
 
 overview: |
-  Complete catalog of all utilities across the four source repositories used by this
-  project. For each utility: description, source implementation language and file(s),
-  approximate source LOC, internal code shared with other utilities in the same repo,
-  and which of our Go packages (pkg/) the utility would require.
+  Complete catalog of all utilities across the four source repositories. Each entry
+  records: description, implementation language and source file(s), approximate LOC,
+  internal shared code, required Go packages, and a profile block for implementation
+  planning.
 
   Go package shorthand:
-    testutils  — pkg/testutils (differential testing harness; applies to ALL utilities)
-    sys/stat   — pkg/sys Stat/Lstat (extended metadata: st_nlink, st_ino, st_dev, st_blocks)
-    sys/tty    — pkg/sys TerminalWidth + IsTerminal (TIOCGWINSZ ioctl)
-    sys/sigpipe— pkg/sys InstallSIGPIPEHandler (suppress broken-pipe errors)
-    sys/sigwinch— pkg/sys OnTerminalResize (reflow on terminal resize)
-    fmt/human  — pkg/format HumanSize (human-readable byte sizes for -h flag)
-    fmt/columns— pkg/format Columns + PadRight/PadLeft (multi-column layout)
-    fmt/color  — pkg/format FileTypeColor (ANSI color by file type)
+    testutils   — pkg/testutils (differential testing harness; applies to ALL utilities)
+    sys/stat    — pkg/sys Stat/Lstat (extended metadata: st_nlink, st_ino, st_dev, st_blocks)
+    sys/tty     — pkg/sys TerminalWidth + IsTerminal (TIOCGWINSZ ioctl)
+    sys/sigpipe — pkg/sys InstallSIGPIPEHandler (suppress broken-pipe errors)
+    sys/sigwinch — pkg/sys OnTerminalResize (reflow on terminal resize)
+    fmt/human   — pkg/format HumanSize (human-readable byte sizes for -h)
+    fmt/columns — pkg/format Columns + PadRight/PadLeft (multi-column layout)
+    fmt/color   — pkg/format FileTypeColor (ANSI color by file type)
 
-  Coreutils internal shared code (C infrastructure shared within the repo):
+  Coreutils internal shared code:
     copy_engine   — copy.c, copy-file-data.c, force-link.c (cp, mv, install)
     remove_engine — remove.c (rm, cp, mv)
     expand_common — expand-common.c (expand, unexpand)
@@ -27,9 +27,43 @@ overview: |
     group_list    — group-list.c (id, groups)
     show_date     — show-date.c (date, touch)
     operand2sig   — operand2sig.c (kill)
-
   Moreutils internal shared code:
     physmem       — physmem.c (sponge, parallel)
+
+  Profile taxonomy
+  ────────────────
+  type:
+    os_wrapper      — thin wrapper around one or two syscalls; trivial dispatch logic
+    stream_transform — reads bytes/lines, applies stateless transformation, writes output
+    stream_stateful  — stream with bounded state between records (counter, previous line, etc.)
+    stream_accumulate — must buffer all input before producing output
+    file_operate    — acts on filesystem objects; no stream processing
+    file_report     — queries and reports filesystem or system state
+    process_manage  — manages child processes (fork/exec, signal forwarding, IPC)
+    encode_decode   — checksums, base encoding/decoding, format conversion
+    regex_search    — searches using DFA/NFA/PCRE engine
+    number_emit     — generates or formats numbers (seq, factor, numfmt, expr)
+    editor_launch   — spawns $EDITOR; interactive; not amenable to automation
+    db_index        — builds or queries a binary file database (locate/updatedb)
+
+  difficulty:
+    trivial   — <150 effective LOC; obvious implementation; single syscall or trivial I/O
+    easy      — 150–700 LOC; clear linear logic; few interacting modes
+    medium    — 700–2000 LOC or moderate state machine; multiple modes with interactions
+    hard      — >2000 LOC or complex internal algorithms; significant platform-specific code
+    very_hard — >3500 LOC OR requires implementing a compiler/regex engine/locale-aware sort
+
+  memory:
+    streaming       — O(1); processes one record at a time; input size does not matter
+    windowed        — small bounded buffer (e.g., N lines for tail -n, one previous line for uniq)
+    accumulating    — O(N); must hold all input in memory before producing output
+    spill_capable   — accumulates but overflows to temp files on disk when memory is exhausted
+    filesystem_walk — proportional to directory depth/breadth being traversed
+
+  concurrency (omit field if none):
+    fork_exec  — spawns one or more child processes
+    threaded   — uses POSIX threads (sort --parallel, parallel)
+    parallel_capable — can use multiple workers with -P/-j flag
 
 repositories:
 
@@ -48,18 +82,32 @@ repositories:
         loc: 828
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # deterministic; byte-for-byte differential test
+        testability: high
         homebrew_binary: gcat
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
+          algorithms: []
 
       - name: tac
         description: Concatenate files in reverse (last line first).
         language: C
         source_file: src/tac.c
         loc: 592
-        shared_internal: []  # tac-pipe.c is an internal helper included inline
+        shared_internal: []
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gtac
+        profile:
+          type: stream_accumulate
+          difficulty: easy
+          memory: accumulating
+          algorithms: []
+          go_notes: |
+            Must read entire input to reverse. Simplest Go approach: collect all lines into
+            a slice, print in reverse. For very large inputs this exhausts memory; C tac uses
+            block-level seek-backward tricks to avoid this.
 
       - name: head
         description: Print the first N lines or bytes of each file.
@@ -70,26 +118,46 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: ghead
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: windowed  # reads only as many bytes/lines as requested
 
       - name: tail
         description: Print the last N lines or bytes; follow a file with -f.
         language: C
         source_file: src/tail.c
         loc: 2540
-        shared_internal: [sys/stat]  # uses st_ino/st_dev to detect file rotation in -f
-        pkg_go: [sys/sigpipe, sys/stat]
-        testability: medium  # -f (follow) mode is non-deterministic; static modes are high
+        shared_internal: []
+        pkg_go: [sys/stat, sys/sigpipe]
+        testability: medium  # -f is non-deterministic; static modes are high
         homebrew_binary: gtail
+        profile:
+          type: stream_stateful
+          difficulty: hard
+          memory: windowed  # circular buffer of N lines; -f watches indefinitely
+          algorithms: [circular_buffer]
+          go_notes: |
+            Static mode (-n N): circular buffer of N lines — straightforward.
+            Follow mode (-f): requires platform-specific file watching. On Linux use
+            inotify; on Darwin use kqueue. Go's fsnotify wraps both but is not a
+            well-known-source library per project rules — implement using
+            golang.org/x/sys/unix directly.
 
       - name: wc
         description: Count newlines, words, and bytes in files.
         language: C
         source_file: src/wc.c
-        loc: 1049  # wc.h + wc_avx2/avx512/neon are SIMD variants compiled in
+        loc: 1049
         shared_internal: []
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gwc
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: streaming
+          algorithms: []
 
       - name: nl
         description: Number lines of files with configurable style and section delimiters.
@@ -100,6 +168,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gnl
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: streaming
+          algorithms: [section_delimiter_state_machine]
 
       - name: od
         description: Dump files in octal, hex, decimal, or character representation.
@@ -110,6 +183,15 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: god
+        profile:
+          type: stream_transform
+          difficulty: hard
+          memory: windowed  # buffers one output word/line at a time
+          algorithms: [multi_radix_dump, char_encoding_table]
+          go_notes: |
+            Multiple output radices and word sizes (-t format strings). Address column
+            is configurable. The format string parser (e.g., -t x4, -t d2, -t c) is
+            a small but non-trivial DSL.
 
       - name: fold
         description: Wrap long lines to a specified width.
@@ -120,6 +202,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gfold
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       - name: fmt
         description: Simple text formatter that fills and joins short lines.
@@ -130,18 +216,27 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gfmt
+        profile:
+          type: stream_stateful
+          difficulty: medium
+          memory: windowed  # accumulates one paragraph at a time (bounded by paragraph size)
+          algorithms: [paragraph_fill]
 
       # --- Text field / column processing ---
 
       - name: cut
-        description: Remove sections from lines of files by byte, character, or field delimiter.
+        description: Remove sections from lines by byte, character, or field delimiter.
         language: C
         source_file: src/cut.c
-        loc: 616  # set-fields.c is an internal helper
+        loc: 616
         shared_internal: []
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gcut
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       - name: paste
         description: Merge lines of files side by side with a delimiter.
@@ -152,6 +247,14 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gpaste
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: streaming
+          go_notes: |
+            Must interleave one line from each of N open files simultaneously. In Go,
+            maintain a slice of open file handles and read one line per handle per output
+            line. No threading needed; purely sequential per-line I/O.
 
       - name: join
         description: Join lines of two sorted files on a common field.
@@ -160,8 +263,13 @@ repositories:
         loc: 1234
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # inputs must be sorted; output is deterministic
+        testability: high
         homebrew_binary: gjoin
+        profile:
+          type: stream_stateful
+          difficulty: medium
+          memory: windowed  # both inputs must be pre-sorted; small lookahead state
+          algorithms: [sort_merge_join]
 
       - name: tr
         description: Translate or delete characters; squeeze repeated characters with -s.
@@ -172,6 +280,15 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gtr
+        profile:
+          type: stream_transform
+          difficulty: medium
+          memory: streaming
+          algorithms: [character_class_expansion, translation_table]
+          go_notes: |
+            Character class expansion ([a-z], [:alpha:], equivalence classes) is the
+            complex part. Build a 256-entry lookup table at startup, then stream bytes
+            through it. Squeeze mode adds one bit of state (previous output char).
 
       - name: expand
         description: Convert tabs to spaces.
@@ -182,6 +299,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gexpand
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       - name: unexpand
         description: Convert spaces back to tabs.
@@ -192,18 +313,36 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gunexpand
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       # --- Sorting / comparison ---
 
       - name: sort
-        description: Sort lines of text files; supports locale-aware, numeric, random, and stable sorts.
+        description: Sort lines of text files; locale-aware, numeric, random, and stable sorts.
         language: C
         source_file: src/sort.c
         loc: 4989
-        shared_internal: []  # temp-stream.c is an inline internal
+        shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: medium  # locale-sensitive; LC_ALL=C required for differential tests
+        testability: medium  # LC_ALL=C required; locale-sensitive otherwise
         homebrew_binary: gsort
+        profile:
+          type: stream_accumulate
+          difficulty: very_hard
+          memory: spill_capable
+          concurrency: threaded  # --parallel uses pthreads for merge passes
+          algorithms: [merge_sort, radix_sort, locale_collation, external_merge_sort]
+          go_notes: |
+            Two major challenges in Go:
+            1. Locale-aware collation (LC_COLLATE): Go stdlib has no strcoll equivalent.
+               Must implement locale collation in-house or accept LC_ALL=C-only behavior.
+            2. External sort (inputs > RAM): sort.c spills sorted runs to temp files in
+               TMPDIR and merge-sorts them. Go's sort.Slice is in-memory only.
+               Need a custom k-way merge implementation with disk spill.
+            3. --parallel uses pthreads; in Go use goroutines + sync.WaitGroup.
 
       - name: uniq
         description: Report or omit repeated adjacent lines; count occurrences with -c.
@@ -212,8 +351,12 @@ repositories:
         loc: 663
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # inputs must be pre-sorted or -i used; output is deterministic
+        testability: high
         homebrew_binary: guniq
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: windowed  # only needs the previous output line in memory
 
       - name: comm
         description: Compare two sorted files line by line; print lines unique to each or common.
@@ -224,9 +367,14 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gcomm
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: windowed
+          algorithms: [three_way_line_comparison]
 
       - name: tsort
-        description: Perform topological sort on directed graph edges given as pairs.
+        description: Perform topological sort; reads directed edges as pairs from stdin.
         language: C
         source_file: src/tsort.c
         loc: ~300
@@ -234,6 +382,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gtsort
+        profile:
+          type: stream_accumulate
+          difficulty: medium
+          memory: accumulating  # must hold entire graph in memory
+          algorithms: [dfs_topological_sort]
 
       # --- File listing / metadata ---
 
@@ -242,40 +395,67 @@ repositories:
         language: C
         source_file: src/ls.c
         loc: 5638
-        shared_internal: [ls_engine]  # dir and vdir are ls.c compiled with different defaults
+        shared_internal: [ls_engine]
         pkg_go: [sys/stat, sys/tty, sys/sigpipe, sys/sigwinch, fmt/human, fmt/columns, fmt/color]
-        testability: medium  # timestamps and inode numbers require normalization
+        testability: medium
         homebrew_binary: gls
+        profile:
+          type: file_report
+          difficulty: very_hard
+          memory: filesystem_walk
+          algorithms: [multi_column_layout, ansi_color, version_sort_strverscmp]
+          go_notes: |
+            Uses every shared package in the project. Key challenges:
+            - Multi-column layout: must compute column widths after reading all entries.
+            - ANSI color: disabled when stdout is not a TTY.
+            - SIGWINCH: reflows column layout when terminal is resized mid-listing.
+            - Sorting: strverscmp (version sort) has no stdlib equivalent.
+            - Extended stat: needs pkg/sys for st_nlink, st_ino, st_blocks, st_uid, st_gid.
 
       - name: dir
         description: Like ls but defaults to vertical column format (ls --format=vertical).
         language: C
-        source_file: src/ls.c  # compiled with LS_LS_MAIN undefined, LS_MULTI_COL defined
-        loc: 5638  # same source as ls
+        source_file: src/ls.c
+        loc: 5638
         shared_internal: [ls_engine]
         pkg_go: [sys/stat, sys/tty, sys/sigpipe, sys/sigwinch, fmt/human, fmt/columns, fmt/color]
         testability: medium
         homebrew_binary: gdir
+        profile:
+          type: file_report
+          difficulty: very_hard
+          memory: filesystem_walk
+          go_notes: Same source as ls; compiled with different default format.
 
       - name: vdir
         description: Like ls but defaults to long format (ls --format=long).
         language: C
-        source_file: src/ls.c  # compiled with LS_VDIR_MAIN defined
-        loc: 5638  # same source as ls
+        source_file: src/ls.c
+        loc: 5638
         shared_internal: [ls_engine]
         pkg_go: [sys/stat, sys/tty, sys/sigpipe, sys/sigwinch, fmt/human, fmt/columns, fmt/color]
         testability: medium
         homebrew_binary: gvdir
+        profile:
+          type: file_report
+          difficulty: very_hard
+          memory: filesystem_walk
+          go_notes: Same source as ls; compiled with different default format.
 
       - name: stat
-        description: Display detailed file or filesystem status; supports printf-style format strings.
+        description: Display detailed file or filesystem status; printf-style format strings.
         language: C
         source_file: src/stat.c
         loc: 1989
         shared_internal: []
         pkg_go: [sys/stat, sys/sigpipe, fmt/human]
-        testability: medium  # timestamps and inode numbers vary; format strings normalize output
+        testability: medium  # timestamps and inode numbers require normalization
         homebrew_binary: gstat
+        profile:
+          type: file_report
+          difficulty: medium
+          memory: streaming
+          algorithms: [printf_format_string_parser]
 
       - name: du
         description: Estimate file space usage; recurses directories; deduplicates hard links.
@@ -284,8 +464,17 @@ repositories:
         loc: ~1191
         shared_internal: []
         pkg_go: [sys/stat, sys/sigpipe, fmt/human]
-        testability: medium  # block counts are deterministic on same filesystem; -k normalizes units
+        testability: medium
         homebrew_binary: gdu
+        profile:
+          type: file_report
+          difficulty: medium
+          memory: filesystem_walk
+          algorithms: [inode_dedup_tracking]
+          go_notes: |
+            Hard-link deduplication requires a map[uint64]map[uint64]bool (dev → ino → seen)
+            per invocation. This map is O(unique inodes) in memory — bounded but can be large
+            on filesystems with many hard links.
 
       - name: df
         description: Report filesystem disk space usage for mounted filesystems.
@@ -294,8 +483,16 @@ repositories:
         loc: 1855
         shared_internal: []
         pkg_go: [sys/sigpipe, fmt/human]
-        testability: low  # filesystem sizes change at runtime; not amenable to differential testing
+        testability: low  # filesystem sizes change at runtime
         homebrew_binary: gdf
+        profile:
+          type: file_report
+          difficulty: medium
+          memory: streaming
+          go_notes: |
+            Calls getmntent() (Linux) or getmntinfo() (Darwin) to enumerate mount points,
+            then statfs() per mount. Darwin and Linux differ in struct layout; needs
+            platform-specific build tags.
 
       - name: dircolors
         description: Output shell commands to set LS_COLORS from a color configuration database.
@@ -304,8 +501,12 @@ repositories:
         loc: ~500
         shared_internal: []
         pkg_go: []
-        testability: high  # output is deterministic given same input database
+        testability: high
         homebrew_binary: gdircolors
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       # --- File operations ---
 
@@ -316,11 +517,21 @@ repositories:
         loc: 1336
         shared_internal: [copy_engine, remove_engine]
         pkg_go: [sys/stat, sys/sigpipe]
-        testability: medium  # timestamps on copied files can vary; -p mode normalizes
+        testability: medium
         homebrew_binary: gcp
+        profile:
+          type: file_operate
+          difficulty: hard
+          memory: streaming  # copies in blocks; no full buffering
+          algorithms: [sparse_file_detection, reflink_copy]
+          go_notes: |
+            copy_engine (copy.c) handles sparse files, reflinks (FICLONE ioctl on Linux),
+            and extended attributes. Reflinks are Linux-only and not available on macOS.
+            The Go implementation must choose: skip reflinks entirely, or add a Linux build
+            tag. Sparse file detection uses SEEK_HOLE/SEEK_DATA.
 
       - name: mv
-        description: Move (rename) files and directories; falls back to copy+delete on cross-device.
+        description: Move (rename) files; falls back to copy+delete on cross-device moves.
         language: C
         source_file: src/mv.c
         loc: 573
@@ -328,6 +539,13 @@ repositories:
         pkg_go: [sys/stat, sys/sigpipe]
         testability: medium
         homebrew_binary: gmv
+        profile:
+          type: file_operate
+          difficulty: medium
+          memory: streaming
+          go_notes: |
+            Cross-device move uses os.Rename first; on EXDEV error falls back to copy+delete
+            using the copy_engine. The fallback path inherits all cp complexity.
 
       - name: rm
         description: Remove files or directories; recursive with -r; interactive with -i.
@@ -336,8 +554,17 @@ repositories:
         loc: 396
         shared_internal: [remove_engine]
         pkg_go: [sys/sigpipe]
-        testability: medium  # side effects require fixture setup/teardown
+        testability: medium
         homebrew_binary: grm
+        profile:
+          type: file_operate
+          difficulty: medium
+          memory: filesystem_walk
+          algorithms: [fts_post_order_traversal]
+          go_notes: |
+            Recursive removal with -r uses FTS (file tree scan) in post-order so that
+            directory entries are removed after their contents. In Go, implement with
+            filepath.WalkDir or a manual post-order DFS.
 
       - name: ln
         description: Create hard or symbolic links between files.
@@ -348,6 +575,10 @@ repositories:
         pkg_go: [sys/stat, sys/sigpipe]
         testability: medium
         homebrew_binary: gln
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: install
         description: Copy files and set attributes (permissions, owner, strip); used in Makefiles.
@@ -358,16 +589,30 @@ repositories:
         pkg_go: [sys/stat, sys/sigpipe]
         testability: medium
         homebrew_binary: ginstall
+        profile:
+          type: file_operate
+          difficulty: medium
+          memory: streaming
 
       - name: shred
-        description: Overwrite a file to make it unrecoverable; optionally delete after.
+        description: Overwrite a file multiple times to make recovery harder; optionally delete.
         language: C
         source_file: src/shred.c
         loc: 1291
         shared_internal: []
         pkg_go: [sys/sigpipe, fmt/human]
-        testability: low  # output depends on random data and filesystem internals
+        testability: low
         homebrew_binary: gshred
+        profile:
+          type: file_operate
+          difficulty: medium
+          memory: streaming  # writes in blocks; no full buffering
+          algorithms: [secure_overwrite_passes, prng_fill]
+          go_notes: |
+            Multiple overwrite passes with random data. Uses a PRNG (not crypto/rand for
+            performance). Progress output with -v uses human-readable sizes. The guarantee
+            that data is unrecoverable depends on filesystem behavior (journaling, SSD wear
+            leveling) that shred explicitly warns about — no algorithmic solution.
 
       - name: truncate
         description: Shrink or extend a file to a given size.
@@ -376,18 +621,32 @@ repositories:
         loc: ~300
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # side effect on file; verifiable by checking file size
+        testability: high
         homebrew_binary: gtruncate
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: dd
-        description: Convert and copy a file with block I/O; convert byte order, skip, seek.
+        description: Convert and copy a file with block I/O; byte-order conversion, skip, seek.
         language: C
         source_file: src/dd.c
         loc: 2547
         shared_internal: []
         pkg_go: [sys/stat, sys/sigpipe, fmt/human]
-        testability: medium  # progress output non-deterministic; output data is deterministic
+        testability: medium
         homebrew_binary: gdd
+        profile:
+          type: stream_transform
+          difficulty: hard
+          memory: windowed  # processes one block at a time (ibs/obs block sizes)
+          algorithms: [block_io_conversion, byte_order_swap]
+          go_notes: |
+            Progress reporting uses SIGINFO on BSD/macOS and SIGUSR1 on Linux — needs
+            platform-specific build tags. Conversions (conv=swab, conv=ucase, conv=ascii,
+            conv=ebcdic) are table-driven. ibs and obs can differ, requiring an internal
+            partial-block buffer when ibs != obs.
 
       - name: sync
         description: Synchronize cached writes to persistent storage.
@@ -398,6 +657,10 @@ repositories:
         pkg_go: []
         testability: low  # no observable stdout; side effect only
         homebrew_binary: gsync
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       # --- Directory operations ---
 
@@ -408,8 +671,12 @@ repositories:
         loc: 319
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: medium  # side effect; verify by stat of created directory
+        testability: medium
         homebrew_binary: gmkdir
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: rmdir
         description: Remove empty directories; remove parent directories with -p.
@@ -420,6 +687,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: medium
         homebrew_binary: grmdir
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: mktemp
         description: Create a temporary file or directory with a unique name.
@@ -428,8 +699,12 @@ repositories:
         loc: 358
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: low  # output (the name) is random by design
+        testability: low  # output is random by design
         homebrew_binary: gmktemp
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: mkfifo
         description: Create named pipes (FIFOs).
@@ -440,16 +715,24 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: medium
         homebrew_binary: gmkfifo
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: mknod
-        description: Create block or character device files, FIFOs, or regular files.
+        description: Create block/character device files, FIFOs, or regular files.
         language: C
         source_file: src/mknod.c
         loc: ~200
         shared_internal: []
         pkg_go: []
-        testability: low  # requires root for device nodes
+        testability: low  # device nodes require root
         homebrew_binary: gmknod
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: realpath
         description: Print the resolved absolute path for each argument.
@@ -460,6 +743,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: grealpath
+        profile:
+          type: file_report
+          difficulty: easy
+          memory: streaming
 
       - name: readlink
         description: Print the value of a symbolic link or canonical file name.
@@ -470,6 +757,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: greadlink
+        profile:
+          type: file_report
+          difficulty: easy
+          memory: streaming
 
       - name: pwd
         description: Print the name of the current working directory.
@@ -480,6 +771,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gpwd
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: basename
         description: Strip directory and suffix from filenames.
@@ -490,6 +785,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gbasename
+        profile:
+          type: stream_transform
+          difficulty: trivial
+          memory: streaming
 
       - name: dirname
         description: Strip last component from a file name.
@@ -500,6 +799,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gdirname
+        profile:
+          type: stream_transform
+          difficulty: trivial
+          memory: streaming
 
       - name: pathchk
         description: Check whether file names are valid and portable.
@@ -510,6 +813,10 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gpathchk
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       # --- File attributes ---
 
@@ -522,6 +829,15 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: medium
         homebrew_binary: gchmod
+        profile:
+          type: file_operate
+          difficulty: medium
+          memory: streaming
+          algorithms: [symbolic_mode_parser]
+          go_notes: |
+            Symbolic mode strings (u+x, go-w, a=r, +X) require a small parser that
+            converts to bitmask operations applied to the existing mode. Octal modes
+            are trivial. The symbolic parser is the interesting part.
 
       - name: chown
         description: Change file owner and group.
@@ -530,28 +846,41 @@ repositories:
         loc: 367
         shared_internal: [chown_engine]
         pkg_go: [sys/sigpipe]
-        testability: medium  # requires matching user/group names across systems
+        testability: medium
         homebrew_binary: gchown
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: chgrp
         description: Change group ownership of files.
         language: C
-        source_file: src/chown.c  # compiled with CHGRP defined
-        loc: 367  # same source as chown
+        source_file: src/chown.c
+        loc: 367
         shared_internal: [chown_engine]
         pkg_go: [sys/sigpipe]
         testability: medium
         homebrew_binary: gchgrp
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
 
       - name: touch
-        description: Change file access and modification timestamps; create empty files.
+        description: Change file timestamps; create empty files when they do not exist.
         language: C
         source_file: src/touch.c
         loc: 456
         shared_internal: [show_date]
         pkg_go: [sys/stat, sys/sigpipe]
-        testability: medium  # output depends on current time unless -t is used
+        testability: medium
         homebrew_binary: gtouch
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
+          algorithms: [strptime_parsing]  # -d and -t flags parse date strings
 
       # --- Checksums / integrity ---
 
@@ -559,31 +888,48 @@ repositories:
         description: Print CRC checksum and byte count for each file.
         language: C
         source_file: src/cksum.c
-        loc: ~500  # plus SIMD variants in cksum_avx2/avx512/crc/pclmul/vmull
+        loc: ~500
         shared_internal: []
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gcksum
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [crc32]
 
       - name: md5sum
         description: Compute and check MD5 message digests.
         language: C
-        source_file: src/md5sum.c  # multi-call entry point for all digest utilities
+        source_file: src/md5sum.c
         loc: ~800
-        shared_internal: [cksum_avx]  # shares SIMD helpers with cksum
+        shared_internal: [cksum_avx]
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gmd5sum
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [md5]
+          go_notes: Use crypto/md5 from stdlib.
 
       - name: sha1sum
         description: Compute and check SHA-1 message digests.
         language: C
-        source_file: src/md5sum.c  # same multi-call source as md5sum
+        source_file: src/md5sum.c
         loc: ~800
         shared_internal: [cksum_avx]
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gsha1sum
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [sha1]
+          go_notes: Use crypto/sha1 from stdlib.
 
       - name: sha256sum
         description: Compute and check SHA-256 message digests.
@@ -594,6 +940,12 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gsha256sum
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [sha256]
+          go_notes: Use crypto/sha256 from stdlib.
 
       - name: sha512sum
         description: Compute and check SHA-512 message digests.
@@ -604,6 +956,12 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gsha512sum
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [sha512]
+          go_notes: Use crypto/sha512 from stdlib.
 
       - name: b2sum
         description: Compute and check BLAKE2 message digests.
@@ -614,11 +972,21 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gb2sum
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [blake2b]
+          go_notes: |
+            golang.org/x/crypto/blake2b exists but is not a well-known-source stdlib
+            package. Write the BLAKE2b implementation in-house or use crypto/sha512
+            (BLAKE2 is not in stdlib). This is the one checksum that may need
+            significant in-house work.
 
       # --- Output / number generation ---
 
       - name: echo
-        description: Display a line of text; -n suppresses newline; -e enables escape sequences.
+        description: Display a line of text; -n suppresses newline; -e enables escapes.
         language: C
         source_file: src/echo.c
         loc: 286
@@ -626,6 +994,10 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: gecho
+        profile:
+          type: stream_transform
+          difficulty: trivial
+          memory: streaming
 
       - name: printf
         description: Format and print data per a format string; subset of C printf.
@@ -636,6 +1008,15 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: gprintf
+        profile:
+          type: number_emit
+          difficulty: medium
+          memory: streaming
+          algorithms: [printf_format_string_parser]
+          go_notes: |
+            Cannot use Go's fmt.Printf directly — GNU printf supports octal/hex escapes,
+            %b (binary), and repeated arguments with trailing \n suppression. Must implement
+            a custom format-string parser.
 
       - name: yes
         description: Repeatedly output a string (default 'y') until killed.
@@ -644,8 +1025,17 @@ repositories:
         loc: 134
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: medium  # infinite output; test with head -n N or timeout
+        testability: medium
         homebrew_binary: gyes
+        profile:
+          type: stream_transform
+          difficulty: trivial
+          memory: streaming
+          go_notes: |
+            Performance matters: yes is used in benchmarks and piped to programs that read
+            large amounts. The C implementation fills a large output buffer to avoid per-line
+            syscall overhead. In Go, use a bufio.Writer with a large buffer, or write in
+            large fixed-size blocks.
 
       - name: seq
         description: Print a sequence of numbers with configurable step and format.
@@ -656,6 +1046,15 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gseq
+        profile:
+          type: number_emit
+          difficulty: easy
+          memory: streaming
+          go_notes: |
+            Floating-point range generation with exact decimal formatting. seq avoids
+            floating-point rounding artifacts by using the format string to control decimal
+            places. Go's strconv.FormatFloat or fmt.Sprintf should match the behavior when
+            the format is derived from the step value's decimal precision.
 
       - name: factor
         description: Print the prime factorization of each integer argument.
@@ -666,9 +1065,19 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gfactor
+        profile:
+          type: number_emit
+          difficulty: hard
+          memory: streaming
+          algorithms: [miller_rabin_primality, pollard_rho_factorization]
+          go_notes: |
+            For small numbers (< 2^64): uses a precomputed prime wheel + trial division +
+            Pollard's rho. For large numbers GNU factor uses Miller-Rabin primality testing.
+            Go's math/big provides arbitrary-precision arithmetic needed for large inputs.
+            The algorithm is non-trivial but well-documented; implement in-house.
 
       - name: numfmt
-        description: Reformat numbers from and to human-readable representations (K/M/G/T).
+        description: Reformat numbers from/to human-readable representations (K/M/G/T).
         language: C
         source_file: src/numfmt.c
         loc: 1768
@@ -676,6 +1085,16 @@ repositories:
         pkg_go: [sys/sigpipe, fmt/human]
         testability: high
         homebrew_binary: gnumfmt
+        profile:
+          type: number_emit
+          difficulty: medium
+          memory: streaming
+          algorithms: [si_iec_unit_parsing, field_extraction]
+          go_notes: |
+            Two directions: --from (human to raw number) and --to (raw to human). Field
+            extraction (--field, --delimiter) is a cut-like column picker. The
+            fmt/human.HumanSize function covers the --to direction; --from needs a parser
+            for K/M/G suffixes with SI and IEC variants.
 
       # --- Stream / tee ---
 
@@ -688,9 +1107,13 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gtee
+        profile:
+          type: stream_transform
+          difficulty: easy
+          memory: streaming
 
       - name: split
-        description: Split a file into pieces by line count, byte count, or number of chunks.
+        description: Split a file into pieces by line count, byte count, or N chunks.
         language: C
         source_file: src/split.c
         loc: 1760
@@ -698,6 +1121,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gsplit
+        profile:
+          type: stream_stateful
+          difficulty: medium
+          memory: windowed  # one output chunk at a time
+          algorithms: [chunk_boundary_detection]
 
       - name: csplit
         description: Split a file into sections by context lines matching patterns.
@@ -708,6 +1136,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gcsplit
+        profile:
+          type: stream_stateful
+          difficulty: hard
+          memory: accumulating  # buffers current section until pattern match
+          algorithms: [pattern_match_split, regex_lookahead]
 
       # --- Text printing ---
 
@@ -718,8 +1151,17 @@ repositories:
         loc: 2898
         shared_internal: []
         pkg_go: [sys/tty, sys/sigpipe, fmt/columns]
-        testability: high  # output is deterministic given fixed page width
+        testability: high
         homebrew_binary: gpr
+        profile:
+          type: stream_accumulate
+          difficulty: hard
+          memory: accumulating  # buffers a full page (N lines) before printing
+          algorithms: [page_layout, multi_column_interleave]
+          go_notes: |
+            Must accumulate a full page of lines from potentially multiple files
+            before producing output (multi-column mode interleaves columns from
+            different files). Buffer size is O(page_length × column_count).
 
       - name: ptx
         description: Produce permuted index of file words (KWIC index).
@@ -728,13 +1170,18 @@ repositories:
         loc: 2045
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # output is deterministic
+        testability: high
         homebrew_binary: gptx
+        profile:
+          type: stream_accumulate
+          difficulty: hard
+          memory: accumulating  # must read all words before sorting and centering
+          algorithms: [kwic_index_generation, word_centering]
 
       # --- Date and time ---
 
       - name: date
-        description: Display or set the system date and time; output with strftime format strings.
+        description: Display or set system date/time; output with strftime format strings.
         language: C
         source_file: src/date.c
         loc: 722
@@ -742,6 +1189,16 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: low  # current time is non-deterministic; -d (parse) mode is testable
         homebrew_binary: gdate
+        profile:
+          type: number_emit
+          difficulty: medium
+          memory: streaming
+          algorithms: [strptime_parsing, strftime_formatting, timezone_arithmetic]
+          go_notes: |
+            -d flag parses a date string using strptime-like semantics. Go's time.Parse
+            uses a different layout convention (reference time 2006-01-02) incompatible
+            with strptime format strings. Need an in-house strptime-to-time.Time parser
+            or a mapping layer.
 
       - name: sleep
         description: Delay execution for a specified duration (seconds, minutes, hours, days).
@@ -750,8 +1207,12 @@ repositories:
         loc: 145
         shared_internal: []
         pkg_go: []
-        testability: high  # exit code and absence of output are deterministic
+        testability: high
         homebrew_binary: gsleep
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       # --- Process and environment ---
 
@@ -762,8 +1223,13 @@ repositories:
         loc: ~800
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # env with no args: deterministic given known environment
+        testability: high
         homebrew_binary: genv
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: nice
         description: Run a command with modified scheduling priority.
@@ -772,8 +1238,13 @@ repositories:
         loc: ~300
         shared_internal: []
         pkg_go: []
-        testability: medium  # subprocess execution
+        testability: medium
         homebrew_binary: gnice
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: nohup
         description: Run a command immune to hangups; redirect stdout/stderr if TTY.
@@ -784,16 +1255,31 @@ repositories:
         pkg_go: []
         testability: medium
         homebrew_binary: gnohup
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: stdbuf
         description: Run a command with modified I/O stream buffering.
         language: C
         source_file: src/stdbuf.c
         loc: ~300
-        shared_internal: []  # libstdbuf.c is a shared library injected via LD_PRELOAD
+        shared_internal: []
         pkg_go: []
-        testability: low  # behavior depends on libc buffer implementation
+        testability: low
         homebrew_binary: gstdbuf
+        profile:
+          type: process_manage
+          difficulty: hard
+          memory: streaming
+          concurrency: fork_exec
+          go_notes: |
+            Injects libstdbuf.so via LD_PRELOAD to intercept libc setvbuf() calls in the
+            child process. This mechanism does not exist in Go (no LD_PRELOAD equivalent
+            without CGO). Not implementable in pure Go. Would require CGO or a shim shared
+            library, making this one of the few utilities incompatible with the Go approach.
 
       - name: timeout
         description: Run a command with a time limit; send a signal on expiry.
@@ -802,8 +1288,18 @@ repositories:
         loc: ~400
         shared_internal: []
         pkg_go: []
-        testability: medium  # subprocess + signal; output timing is non-deterministic
+        testability: medium
         homebrew_binary: gtimeout
+        profile:
+          type: process_manage
+          difficulty: medium
+          memory: streaming
+          concurrency: fork_exec
+          go_notes: |
+            Forks the child, sets a timer (SIGALRM or a separate thread), and sends a
+            configurable signal on expiry. In Go: use os/exec + time.AfterFunc + cmd.Process.Signal.
+            Signal forwarding (--foreground) requires catching all signals and re-sending to
+            the child's process group.
 
       - name: chroot
         description: Run a command with a different root directory.
@@ -812,8 +1308,13 @@ repositories:
         loc: ~350
         shared_internal: []
         pkg_go: []
-        testability: low  # requires root; platform-specific
+        testability: low  # requires root
         homebrew_binary: gchroot
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: kill
         description: Send signals to processes by PID or name.
@@ -822,8 +1323,12 @@ repositories:
         loc: ~350
         shared_internal: [operand2sig]
         pkg_go: []
-        testability: low  # targets live processes; hard to differential test
+        testability: low
         homebrew_binary: gkill
+        profile:
+          type: os_wrapper
+          difficulty: easy
+          memory: streaming
 
       - name: nproc
         description: Print the number of available processing units.
@@ -832,8 +1337,13 @@ repositories:
         loc: ~150
         shared_internal: []
         pkg_go: []
-        testability: medium  # deterministic on same machine; varies between machines
+        testability: medium
         homebrew_binary: gnproc
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
+          go_notes: runtime.NumCPU() covers the common case.
 
       # --- User / system info ---
 
@@ -844,18 +1354,26 @@ repositories:
         loc: 461
         shared_internal: [group_list]
         pkg_go: []
-        testability: medium  # output varies by user; run as known user for determinism
+        testability: medium
         homebrew_binary: gid
+        profile:
+          type: file_report
+          difficulty: easy
+          memory: streaming
 
       - name: groups
         description: Print the groups a user is in.
         language: C
-        source_file: src/groups.c  # thin wrapper; group_list.c does the work
+        source_file: src/groups.c
         loc: ~100
         shared_internal: [group_list]
         pkg_go: []
         testability: medium
         homebrew_binary: ggroups
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: whoami
         description: Print the effective user name.
@@ -866,6 +1384,10 @@ repositories:
         pkg_go: []
         testability: medium
         homebrew_binary: gwhoami
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: logname
         description: Print the current login name.
@@ -876,6 +1398,10 @@ repositories:
         pkg_go: []
         testability: medium
         homebrew_binary: glogname
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: who
         description: Show who is logged on; reads utmp/utmpx.
@@ -884,8 +1410,16 @@ repositories:
         loc: ~800
         shared_internal: []
         pkg_go: [fmt/columns]
-        testability: low  # output varies with active logins
+        testability: low
         homebrew_binary: gwho
+        profile:
+          type: file_report
+          difficulty: medium
+          memory: streaming
+          go_notes: |
+            Reads utmpx database. Darwin and Linux have different utmpx struct layouts.
+            golang.org/x/sys/unix exposes utmpx on some platforms but not uniformly.
+            Will need platform-specific build tags and structs.
 
       - name: users
         description: Print the login names of users currently on the machine.
@@ -894,8 +1428,12 @@ repositories:
         loc: ~150
         shared_internal: []
         pkg_go: []
-        testability: low  # varies with active logins
+        testability: low
         homebrew_binary: gusers
+        profile:
+          type: file_report
+          difficulty: easy
+          memory: streaming
 
       - name: pinky
         description: Lightweight finger; show user information.
@@ -904,8 +1442,14 @@ repositories:
         loc: ~600
         shared_internal: []
         pkg_go: [fmt/columns]
-        testability: low  # varies with active logins and utmpx content
+        testability: low
         homebrew_binary: gpinky
+        profile:
+          type: file_report
+          difficulty: medium
+          memory: streaming
+          go_notes: |
+            Reads utmpx + /etc/passwd. Same platform divergence as who.
 
       - name: uptime
         description: Tell how long the system has been running; load averages.
@@ -914,28 +1458,40 @@ repositories:
         loc: ~200
         shared_internal: []
         pkg_go: []
-        testability: low  # output changes with uptime and load
+        testability: low
         homebrew_binary: guptime
+        profile:
+          type: file_report
+          difficulty: easy
+          memory: streaming
 
       - name: uname
         description: Print system information (kernel name, version, hardware, OS).
         language: C
         source_file: src/uname.c
         loc: ~400
-        shared_internal: [uname_engine]  # arch is uname -m compiled separately
+        shared_internal: [uname_engine]
         pkg_go: []
-        testability: medium  # deterministic on a fixed machine; varies between machines
+        testability: medium
         homebrew_binary: guname
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: arch
         description: Print machine hardware name (equivalent to uname -m).
         language: C
-        source_file: src/uname.c  # compiled with ARCH_PROGRAM defined
+        source_file: src/uname.c
         loc: ~400
         shared_internal: [uname_engine]
         pkg_go: []
         testability: medium
         homebrew_binary: garch
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: hostname
         description: Show or set the system hostname.
@@ -944,8 +1500,12 @@ repositories:
         loc: ~150
         shared_internal: []
         pkg_go: []
-        testability: medium  # read-only mode is deterministic on same machine
+        testability: medium
         homebrew_binary: ghostname
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: hostid
         description: Print the numeric identifier for the current host.
@@ -954,8 +1514,12 @@ repositories:
         loc: ~80
         shared_internal: []
         pkg_go: []
-        testability: medium  # deterministic on same machine
+        testability: medium
         homebrew_binary: ghostid
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       # --- Terminal ---
 
@@ -966,8 +1530,12 @@ repositories:
         loc: ~150
         shared_internal: []
         pkg_go: [sys/tty]
-        testability: medium  # output depends on terminal device name
+        testability: medium
         homebrew_binary: gtty
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: stty
         description: Change and print terminal line settings (baud rate, echo, signals, etc.)
@@ -976,8 +1544,20 @@ repositories:
         loc: 2328
         shared_internal: []
         pkg_go: [sys/tty]
-        testability: low  # output depends on live terminal state
+        testability: low
         homebrew_binary: gstty
+        profile:
+          type: file_report
+          difficulty: very_hard
+          memory: streaming
+          algorithms: [terminal_attribute_bitmask_parser]
+          go_notes: |
+            The complexity is not in LOC but in terminal attribute semantics: hundreds of
+            named flags, special characters, and baud rate settings mapped to struct termios
+            bitmasks. The symbolic-name-to-bitmask table alone is ~400 entries. Requires
+            golang.org/x/sys/unix for raw termios manipulation (tcgetattr, tcsetattr).
+            Testing requires a pseudo-terminal (pty); not differentially testable in the
+            same way as stream utilities.
 
       # --- Miscellaneous ---
 
@@ -991,9 +1571,14 @@ repositories:
         testability: high
         homebrew_binary: gtest
         note: Also installed as [ (lbracket).
+        profile:
+          type: stream_stateful
+          difficulty: medium
+          memory: streaming
+          algorithms: [expression_parser]
 
       - name: expr
-        description: Evaluate expressions (arithmetic, string, regex) and print the result.
+        description: Evaluate arithmetic, string, and regex expressions; print result.
         language: C
         source_file: src/expr.c
         loc: ~900
@@ -1001,6 +1586,11 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: gexpr
+        profile:
+          type: number_emit
+          difficulty: medium
+          memory: streaming
+          algorithms: [expression_evaluation, basic_regex]
 
       - name: shuf
         description: Generate random permutations of lines or a range of numbers.
@@ -1009,8 +1599,17 @@ repositories:
         loc: 609
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: low  # output is random by design; -i with --output can be tested for structure
+        testability: low  # output is random by design
         homebrew_binary: gshuf
+        profile:
+          type: stream_accumulate
+          difficulty: easy
+          memory: accumulating
+          algorithms: [fisher_yates_shuffle]
+          go_notes: |
+            Must read all input lines into memory to shuffle. For -i (range) mode input
+            is virtual (no file read). math/rand.Shuffle implements Fisher-Yates.
+            For large inputs (-n with a huge file) memory is O(N lines).
 
       - name: false
         description: Return a non-zero exit code unconditionally.
@@ -1021,6 +1620,10 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: gfalse
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: true
         description: Return a zero exit code unconditionally.
@@ -1031,6 +1634,10 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: gtrue
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: link
         description: Create a hard link to a file (raw syscall wrapper, no flags).
@@ -1041,6 +1648,10 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: glink
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: unlink
         description: Call the unlink syscall to remove a single file.
@@ -1051,6 +1662,10 @@ repositories:
         pkg_go: []
         testability: high
         homebrew_binary: gunlink
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: sum
         description: Compute BSD or SysV checksum and block count for files.
@@ -1062,16 +1677,25 @@ repositories:
         testability: high
         homebrew_binary: gsum
         note: Obsolete; prefer cksum or md5sum.
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          algorithms: [bsd_sysv_checksum]
 
       - name: printenv
-        description: Print environment variables; optionally print the value of a specific variable.
+        description: Print environment variables; value of a specific variable optionally.
         language: C
         source_file: src/printenv.c
         loc: ~150
         shared_internal: []
         pkg_go: []
-        testability: high  # given a controlled environment
+        testability: high
         homebrew_binary: gprintenv
+        profile:
+          type: os_wrapper
+          difficulty: trivial
+          memory: streaming
 
       - name: basenc
         description: Encode or decode data in base64, base32, base16, and other encodings.
@@ -1082,6 +1706,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gbasenc
+        profile:
+          type: encode_decode
+          difficulty: easy
+          memory: streaming
+          go_notes: encoding/base64 and encoding/hex cover the common encodings; base32 crockford needs in-house work.
 
       - name: runcon
         description: Run a command in a specified SELinux security context.
@@ -1092,6 +1721,12 @@ repositories:
         pkg_go: []
         testability: low  # requires SELinux; not available on macOS
         homebrew_binary: gruncon
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
+          go_notes: Linux/SELinux only. Not portable to Darwin.
 
       - name: chcon
         description: Change SELinux security context of files.
@@ -1102,42 +1737,78 @@ repositories:
         pkg_go: []
         testability: low  # requires SELinux; not available on macOS
         homebrew_binary: gchcon
+        profile:
+          type: file_operate
+          difficulty: easy
+          memory: streaming
+          go_notes: Linux/SELinux only. Not portable to Darwin.
 
   # ---------------------------------------------------------------------------
   - id: moreutils
     source: https://git.joeyh.name/git/moreutils.git
-    brew: brew install moreutils  # installs without g-prefix (no macOS conflicts)
+    brew: brew install moreutils  # installs without g-prefix
     utilities:
 
       - name: ts
-        description: Timestamp each line of stdin with a strftime format; -i/-s elapsed modes; -r relative conversion.
+        description: Timestamp each line of stdin; -i/-s elapsed modes; -r relative conversion.
         language: Perl
         source_file: ts
         loc: 192
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # with TimestampNormalizer to replace wall-clock values
+        testability: high
         homebrew_binary: ts
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: streaming
+          algorithms: [strftime_formatting, subsecond_extension_parsing]
+          go_notes: |
+            Needs in-house strftime covering the codes ts actually uses (%b, %d, %H, %M,
+            %S, %Y, %m, %s epoch) plus the moreutils subsecond extensions (%.S, %.s, %.T).
+            No external library per project rules. The subsecond extensions are not standard
+            strftime and must be post-processed from time.Time.
 
       - name: sponge
-        description: Soak up stdin before writing to a file; safe for in-place pipeline rewriting (cat file | sponge file).
+        description: Soak up stdin before writing to a file; safe for in-place pipeline rewriting.
         language: C
         source_file: sponge.c
         loc: 395
         shared_internal: [physmem]
         pkg_go: [sys/sigpipe]
-        testability: high  # file-content comparison after both binaries exit
+        testability: high
         homebrew_binary: sponge
+        profile:
+          type: stream_accumulate
+          difficulty: medium
+          memory: spill_capable
+          algorithms: [physmem_bounded_soak, atomic_file_rename]
+          go_notes: |
+            Two memory regimes: small input (fits in RAM, use a growing []byte) and large
+            input (exceeds a fraction of available physical memory, spill to TMPDIR temp
+            file). The threshold is derived from physmem_available(); in Go use
+            runtime.MemStats or a fixed fraction of RLIMIT_DATA. Atomic rename requires
+            os.Rename; cross-device fallback needs a copy loop.
 
       - name: pee
-        description: Tee stdin to multiple commands simultaneously; exit status is OR of all subcommands.
+        description: Tee stdin to multiple commands simultaneously; exit OR of all subcommands.
         language: C
         source_file: pee.c
         loc: 119
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: medium  # output ordering across N commands may vary
+        testability: medium  # output ordering across N commands may interleave
         homebrew_binary: pee
+        profile:
+          type: process_manage
+          difficulty: medium
+          memory: streaming
+          concurrency: fork_exec
+          go_notes: |
+            Forks N children, each receiving a copy of stdin via a pipe. C implementation
+            uses select() to multiplex writes. In Go: start N goroutines, each with their
+            own io.Writer from an os/exec pipe; use io.MultiWriter to fan out from stdin.
+            Exit status is bitwise OR of all child exit codes.
 
       - name: chronic
         description: Run a command silently unless it fails; suppress stdout/stderr on success.
@@ -1146,8 +1817,17 @@ repositories:
         loc: 97
         shared_internal: []
         pkg_go: []
-        testability: medium  # depends on subprocess; run with deterministic subcommands
+        testability: medium
         homebrew_binary: chronic
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: accumulating  # buffers all subprocess output in memory until exit
+          concurrency: fork_exec
+          go_notes: |
+            Must capture all stdout+stderr of the subprocess in memory, then either discard
+            (success) or print (failure). Buffer is O(subprocess output size) — unbounded but
+            bounded by available memory. In Go: os/exec with bytes.Buffer for stdout/stderr.
 
       - name: vidir
         description: Edit file and directory names in a text editor; applies renames on save.
@@ -1156,11 +1836,19 @@ repositories:
         loc: 243
         shared_internal: []
         pkg_go: []
-        testability: low  # launches $EDITOR interactively; hard to automate
+        testability: low  # launches $EDITOR interactively
         homebrew_binary: vidir
+        profile:
+          type: editor_launch
+          difficulty: medium
+          memory: accumulating
+          go_notes: |
+            Reads all entries into a temp file, launches $EDITOR, diffs the before/after
+            to determine renames and deletes, applies them. The editor interaction makes
+            automated testing impractical. Not amenable to differential testing.
 
       - name: vipe
-        description: Insert a text editor into a pipeline; edits stdin and writes to stdout.
+        description: Insert a text editor into a pipeline; edit stdin before it reaches stdout.
         language: Perl
         source_file: vipe
         loc: 94
@@ -1168,9 +1856,16 @@ repositories:
         pkg_go: []
         testability: low  # launches $EDITOR interactively
         homebrew_binary: vipe
+        profile:
+          type: editor_launch
+          difficulty: easy
+          memory: accumulating
+          go_notes: |
+            Buffers stdin to a temp file, launches $EDITOR, writes edited content to stdout.
+            Like vidir, not differentially testable due to editor interaction.
 
       - name: ifne
-        description: Run a command only if stdin is not empty; pass stdin through to the command.
+        description: Run a command only if stdin is not empty; otherwise exit 0 silently.
         language: C
         source_file: ifne.c
         loc: 129
@@ -1178,6 +1873,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: ifne
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: windowed  # reads at most one byte to check emptiness
+          concurrency: fork_exec
 
       - name: ifdata
         description: Check network interface data (IP, netmask, MTU, etc.) and return it.
@@ -1188,6 +1888,13 @@ repositories:
         pkg_go: []
         testability: low  # output depends on live network interface state
         homebrew_binary: ifdata
+        profile:
+          type: file_report
+          difficulty: easy
+          memory: streaming
+          go_notes: |
+            Uses SIOCGIFADDR and related ioctls. net package covers most needs;
+            platform-specific ioctls via golang.org/x/sys/unix for MTU etc.
 
       - name: mispipe
         description: Pipe two commands together; return the exit status of the first.
@@ -1198,20 +1905,30 @@ repositories:
         pkg_go: []
         testability: medium
         homebrew_binary: mispipe
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: lckdo
-        description: Execute a command while holding a lock file; retry or wait for the lock.
+        description: Execute a command while holding a lock file; retry or wait.
         language: C
         source_file: lckdo.c
         loc: 232
         shared_internal: []
         pkg_go: []
-        testability: medium  # lock contention requires concurrent test setup
+        testability: medium
         homebrew_binary: lckdo
         note: Deprecated in moreutils; use flock instead.
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: parallel
-        description: Run multiple jobs in parallel from stdin; similar to xargs -P but line-oriented.
+        description: Run multiple jobs in parallel from stdin; similar to xargs -P.
         language: C
         source_file: parallel.c
         loc: 427
@@ -1220,6 +1937,16 @@ repositories:
         testability: low  # output ordering is non-deterministic with -j N
         homebrew_binary: parallel
         note: Not the same as GNU parallel (a separate, much larger tool).
+        profile:
+          type: process_manage
+          difficulty: medium
+          memory: windowed  # holds one job per worker slot; not O(N) of input
+          concurrency: fork_exec
+          parallel_capable: true
+          go_notes: |
+            In Go, goroutines + semaphore (buffered channel) replace the C fork/wait loop.
+            Goroutines are cheaper than OS threads, making -j 100 practical. Output
+            interleaving is still non-deterministic without buffering.
 
       - name: zrun
         description: Automatically decompress compressed file arguments before passing to a command.
@@ -1228,8 +1955,13 @@ repositories:
         loc: 106
         shared_internal: []
         pkg_go: []
-        testability: medium  # depends on decompressor availability
+        testability: medium
         homebrew_binary: zrun
+        profile:
+          type: process_manage
+          difficulty: easy
+          memory: streaming
+          concurrency: fork_exec
 
       - name: isutf8
         description: Check whether files are valid UTF-8.
@@ -1240,6 +1972,11 @@ repositories:
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: isutf8
+        profile:
+          type: stream_stateful
+          difficulty: easy
+          memory: streaming
+          go_notes: unicode/utf8.Valid covers the core check.
 
   # ---------------------------------------------------------------------------
   - id: grep
@@ -1248,36 +1985,59 @@ repositories:
     utilities:
 
       - name: grep
-        description: Search for patterns in files using BRE, ERE, or Perl-compatible regular expressions.
+        description: Search for patterns in files using BRE, ERE, or Perl-compatible regex.
         language: C
         source_file: src/grep.c
         loc: 3036
-        shared_internal: []  # dfasearch.c, kwsearch.c, pcresearch.c are linked in
+        shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: high  # output is deterministic; --color=never for differential tests
+        testability: high
         homebrew_binary: ggrep
+        profile:
+          type: regex_search
+          difficulty: very_hard
+          memory: streaming
+          algorithms: [dfa_construction, boyer_moore, aho_corasick, pcre]
+          go_notes: |
+            Three regex engines in one binary:
+            1. BRE/ERE (-G/-E): Go's regexp package uses RE2 semantics (no backreferences,
+               no lookahead). For basic grep, RE2 is sufficient and compatible.
+            2. Fixed strings (-F): Aho-Corasick multi-string search. Go stdlib has no
+               Aho-Corasick; implement in-house (~200 lines) or use RE2 alternation.
+            3. PCRE (-P): Perl-compatible with backreferences and lookahead. Go has no
+               stdlib PCRE. Either drop -P support or use CGO with libpcre2. Per project
+               rules, not a well-known-source Go library — CGO is the only option.
+            For a first implementation, target BRE/ERE (-G/-E) and -F; exclude -P.
 
       - name: egrep
         description: Grep with extended regular expressions (ERE); equivalent to grep -E.
-        language: shell  # generated shell script wrapper; calls grep -E
+        language: shell
         source_file: src/egrep.sh
         loc: ~10
-        shared_internal: [grep]  # delegates entirely to grep
+        shared_internal: [grep]
         pkg_go: [sys/sigpipe]
-        testability: high  # same as grep with -E
+        testability: high
         homebrew_binary: gegrep
         note: Obsolescent per POSIX; prefer grep -E.
+        profile:
+          type: regex_search
+          difficulty: trivial  # shell wrapper only; all logic in grep
+          memory: streaming
 
       - name: fgrep
         description: Grep with fixed strings (no regex); equivalent to grep -F.
-        language: shell  # generated shell script wrapper; calls grep -F
-        source_file: src/egrep.sh  # same template as egrep
+        language: shell
+        source_file: src/egrep.sh
         loc: ~10
-        shared_internal: [grep]  # delegates entirely to grep
+        shared_internal: [grep]
         pkg_go: [sys/sigpipe]
         testability: high
         homebrew_binary: gfgrep
         note: Obsolescent per POSIX; prefer grep -F.
+        profile:
+          type: regex_search
+          difficulty: trivial  # shell wrapper only
+          memory: streaming
 
   # ---------------------------------------------------------------------------
   - id: findutils
@@ -1286,19 +2046,34 @@ repositories:
     utilities:
 
       - name: find
-        description: Search for files in a directory hierarchy by name, type, size, time, permissions, and more.
+        description: Search for files in a directory hierarchy by name, type, size, time, and more.
         language: C
         source_files:
-          - find/ftsfind.c   # main loop (816 loc)
+          - find/ftsfind.c   # main traversal loop (816 loc)
           - find/parser.c    # predicate and option parsing (3320 loc)
           - find/pred.c      # predicate evaluation (1351 loc)
-          - find/print.c     # -printf/-ls output formatting
-          - find/tree.c      # directory tree traversal
+          - find/print.c     # -printf / -ls output formatting
+          - find/tree.c      # directory tree representation
           - find/util.c      # shared helpers
-        shared_internal: []  # all find sources are internal to the find binary
+        shared_internal: []
         pkg_go: [sys/stat, sys/sigpipe]
-        testability: medium  # timestamps and inode numbers in output require normalization; paths are deterministic
+        testability: medium
         homebrew_binary: gfind
+        profile:
+          type: file_report
+          difficulty: very_hard
+          memory: filesystem_walk
+          algorithms: [fts_traversal, predicate_dsl_parser, predicate_evaluation]
+          go_notes: |
+            Three distinct complexity layers:
+            1. Traversal: FTS (file tree scan) with cycle detection (via st_dev/st_ino).
+               Go's filepath.WalkDir is simpler but lacks FTS's -follow-symlink controls.
+            2. Predicate parser (parser.c 3320 LOC): a recursive-descent parser for the
+               find predicate DSL (-name, -type, -newer, -exec, -prune, -print, boolean
+               operators). This is the single largest Go implementation challenge.
+            3. -exec and -exec {} +: the latter batches arguments and exec's in bulk like
+               xargs. Subprocess management with correct argument splitting is tricky.
+            Start with a subset: -name, -type, -maxdepth, -print, -newer, -exec (single).
 
       - name: xargs
         description: Build and execute command lines from stdin; parallel execution with -P.
@@ -1307,8 +2082,21 @@ repositories:
         loc: 1784
         shared_internal: []
         pkg_go: [sys/sigpipe]
-        testability: medium  # output order with -P is non-deterministic; sequential mode is deterministic
+        testability: medium
         homebrew_binary: gxargs
+        profile:
+          type: process_manage
+          difficulty: hard
+          memory: windowed  # accumulates arguments up to -s limit, then exec's
+          concurrency: fork_exec
+          parallel_capable: true
+          algorithms: [argument_splitting, nul_delimited_parsing]
+          go_notes: |
+            -P N (parallel) runs N processes concurrently with output interleaved unless
+            --replace is used. In Go: goroutines + semaphore + sync.Mutex for output
+            ordering. Argument accumulation (-n N, -s SIZE) is a fixed-size window.
+            Seven distinct exit codes (0, 1, 123, 124, 125, 126, 127) each have specific
+            semantics that must be preserved exactly.
 
       - name: locate
         description: Find files by name using a pre-built database (updatedb index).
@@ -1320,12 +2108,30 @@ repositories:
         pkg_go: []
         testability: low  # depends on database freshness and filesystem state
         homebrew_binary: glocate
+        profile:
+          type: db_index
+          difficulty: medium
+          memory: streaming
+          algorithms: [frcode_decompression, front_coded_string_list]
+          go_notes: |
+            Frcode is a front-compression format: each entry stores only the suffix that
+            differs from the previous path. Decompression is a simple state machine.
+            The database format is stable and documented.
 
       - name: updatedb
         description: Update the database used by locate; scans the filesystem.
         language: C
-        source_file: locate/updatedb.sh  # shell script driver
+        source_file: locate/updatedb.sh
         shared_internal: [locate]
         pkg_go: []
-        testability: low  # long-running; filesystem-dependent
+        testability: low
         homebrew_binary: gupdatedb
+        profile:
+          type: db_index
+          difficulty: medium
+          memory: filesystem_walk
+          algorithms: [frcode_compression, front_coded_string_list]
+          go_notes: |
+            Walks the filesystem collecting paths, then encodes using frcode. Output is
+            O(filesystem size). The shell script driver handles pruning and exclusions;
+            the encoding logic is in frcode.c.
