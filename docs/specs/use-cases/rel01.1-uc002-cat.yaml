@@ -1,0 +1,93 @@
+id: rel01.1-uc002-cat
+title: "Concatenate and display files via cat"
+
+summary: |
+  The operator runs the Go cat binary on one or more files or stdin. The binary concatenates
+  input to stdout, optionally applying line numbering, blank-line squeezing, or non-printing
+  character display. The differential testing harness then runs both the Go binary and the
+  Homebrew reference binary (gcat from coreutils) with the same stdin, args, and environment
+  and confirms that their outputs are identical byte-for-byte. No output normalization is
+  needed because cat output is deterministic.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd006-cat.yaml) and invokes do-work to produce
+  a passing differential test for cmd/cat.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go cat binary with file arguments or stdin.
+      Example: printf 'hello\nworld\n' | ./bin/cat -n
+  - id: F2
+    step: |
+      cmd/cat reads from each named file in order (or stdin when no files are given or when
+      "-" is given). It applies the active transformations in order: squeeze blanks (-s),
+      non-printing display (-v/-T), end-of-line marker (-E), line number prefix (-n/-b).
+  - id: F3
+    step: |
+      cmd/cat writes the transformed content to stdout. With no flags, output is the
+      verbatim concatenation of all inputs.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/cat and gcat
+      with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/cat — concatenation, line numbering, blank squeezing, non-printing display (prd006-cat R1, R2, R3, R4, R5)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison (prd001-testutils R1, R2, R3)"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/cat compiles and ./bin/cat exists after mage build.
+  - id: S2
+    criterion: |
+      ./bin/cat file1 file2 produces identical bytes to gcat file1 file2 for text files.
+  - id: S3
+    criterion: |
+      The differential test for default mode passes: ./bin/cat and gcat produce identical
+      output on multi-file text input.
+  - id: S4
+    criterion: |
+      The differential test for -n passes: line numbers match gcat output byte-for-byte
+      (format, width, tab separator).
+  - id: S5
+    criterion: |
+      The differential test for -b passes: only non-blank lines are numbered, matching
+      gcat -b output.
+  - id: S6
+    criterion: |
+      The differential test for -s passes: consecutive blank lines are collapsed to one,
+      matching gcat -s output.
+  - id: S7
+    criterion: |
+      The differential test for -v passes: non-printing characters are displayed with
+      correct caret and M- notation, matching gcat -v byte-for-byte on binary input.
+  - id: S8
+    criterion: |
+      The differential test for -A passes: combined -vET transformations match gcat -A
+      byte-for-byte.
+  - id: S9
+    criterion: |
+      The differential test for multiple files passes: files are concatenated with no
+      separator, matching gcat output.
+  - id: S10
+    criterion: |
+      A non-existent file argument produces an error to stderr, exits 1, and still
+      processes other files on the command line, matching gcat behavior.
+
+out_of_scope:
+  - FIONREAD ioctl optimization is not tested; correctness is the only requirement.
+  - Same-file detection warning (cat reading from its own output) is not tested.
+  - -u flag is accepted but has no observable effect; a test verifies acceptance only.
+
+test_suite: test-rel01.1-uc002-cat

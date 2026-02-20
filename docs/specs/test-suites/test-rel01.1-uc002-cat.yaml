@@ -1,0 +1,255 @@
+id: test-rel01.1-uc002-cat
+title: "Test Suite: cat concatenate and display files"
+
+traces:
+  - rel01.1-uc002-cat
+  - prd006-cat R1
+  - prd006-cat R2
+  - prd006-cat R3
+  - prd006-cat R4
+  - prd006-cat R5
+
+preconditions: |
+  - ./bin/cat exists (built via mage build).
+  - The reference binary gcat is installed (brew install coreutils) and on PATH.
+  - Tests are run via go test ./cmd/cat/... which invokes RunDiffTests from pkg/testutils.
+  - No normalization is applied; cat output is deterministic.
+  - Binary test inputs are specified as hex escape sequences.
+
+test_cases:
+  - name: default_passthrough
+    description: No flags, text file content passes through verbatim.
+    inputs:
+      args: ["file1.txt"]
+      stdin: null
+      env: []
+      setup: |
+        file1.txt contains "hello\nworld\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello\nworld\n"
+      stderr: ""
+    traces:
+      - prd006-cat R1.1
+      - prd006-cat R1.5
+
+  - name: binary_passthrough
+    description: No flags, binary input (all byte values 0x00-0xFF) passes through without corruption.
+    inputs:
+      args: []
+      stdin: "\\x00\\x01\\x02...\\xfe\\xff (all 256 byte values)"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: identical 256 bytes as input
+      stderr: ""
+    traces:
+      - prd006-cat R1.4
+
+  - name: line_numbering_n
+    description: -n flag prepends line numbers to all lines including blank lines.
+    inputs:
+      args: ["-n"]
+      stdin: "alpha\n\nbeta\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "     1\talpha\n     2\t\n     3\tbeta\n"
+      stderr: ""
+    traces:
+      - prd006-cat R2.1
+
+  - name: line_numbering_b
+    description: -b flag prepends line numbers only to non-blank lines.
+    inputs:
+      args: ["-b"]
+      stdin: "first\n\n\nsecond\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "     1\tfirst\n\n\n     2\tsecond\n"
+      stderr: ""
+    traces:
+      - prd006-cat R2.2
+      - prd006-cat R2.4
+
+  - name: squeeze_blanks
+    description: -s collapses consecutive blank lines to one.
+    inputs:
+      args: ["-s"]
+      stdin: "a\n\n\n\nb\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\n\nb\n"
+      stderr: ""
+    traces:
+      - prd006-cat R3.1
+
+  - name: show_nonprinting
+    description: -v displays non-printing characters with caret and M- notation.
+    inputs:
+      args: ["-v"]
+      stdin: "\\x01\\x09\\x1b\\x7f\\x80\\xff"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^A\\x09^[^?M-^@M-^?"
+      stderr: ""
+    traces:
+      - prd006-cat R4.1
+      - prd006-cat R4.2
+
+  - name: show_ends
+    description: -E appends "$" before each newline.
+    inputs:
+      args: ["-E"]
+      stdin: "line one\nline two\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "line one$\nline two$\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.3
+
+  - name: show_tabs
+    description: -T displays tabs as "^I".
+    inputs:
+      args: ["-T"]
+      stdin: "col1\\tcol2\\tcol3\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "col1^Icol2^Icol3\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.4
+
+  - name: show_all
+    description: -A is equivalent to -vET combined.
+    inputs:
+      args: ["-A"]
+      stdin: "\\x01\\thello\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^A^Ihello$\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.5
+
+  - name: flag_e
+    description: -e is equivalent to -vE (show non-printing and show ends).
+    inputs:
+      args: ["-e"]
+      stdin: "\\x01hello\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^Ahello$\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.6
+
+  - name: flag_t
+    description: -t is equivalent to -vT (show non-printing and show tabs).
+    inputs:
+      args: ["-t"]
+      stdin: "\\x01\\thello\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "^A^Ihello\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.7
+
+  - name: flag_u_accepted
+    description: -u flag is accepted without error, output unchanged from default.
+    inputs:
+      args: ["-u"]
+      stdin: "test\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "test\n"
+      stderr: ""
+    traces:
+      - prd006-cat R4.8
+
+  - name: combined_ns
+    description: -n -s combined; squeeze applied before numbering.
+    inputs:
+      args: ["-n", "-s"]
+      stdin: "a\n\n\n\nb\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "     1\ta\n     2\t\n     3\tb\n"
+      stderr: ""
+    traces:
+      - prd006-cat R3.3
+      - prd006-cat R4.9
+
+  - name: multiple_files
+    description: Two files concatenated with no separator between them.
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: []
+      setup: |
+        file1.txt contains "aaa\n"
+        file2.txt contains "bbb\n"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "aaa\nbbb\n"
+      stderr: ""
+    traces:
+      - prd006-cat R1.1
+      - prd006-cat R1.3
+
+  - name: stdin_dash
+    description: "-" as a filename argument reads from stdin.
+    inputs:
+      args: ["-"]
+      stdin: "from stdin\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "from stdin\n"
+      stderr: ""
+    traces:
+      - prd006-cat R1.2
+
+  - name: missing_file
+    description: Non-existent file prints error to stderr, exits 1, continues processing.
+    inputs:
+      args: ["nonexistent.txt", "real.txt"]
+      stdin: null
+      env: []
+      setup: |
+        real.txt contains "data\n"
+        nonexistent.txt does not exist
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: "data\n"
+      stderr_contains: "nonexistent.txt"
+    traces:
+      - prd006-cat R5.2
