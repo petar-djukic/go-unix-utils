@@ -1,0 +1,249 @@
+id: dependency-map
+title: "Shared Component Dependency Map"
+
+overview: |
+  This document maps each of the 14 utilities to the shared pkg/ components they will
+  need in their Go implementations. Dependencies are derived from C source analysis in
+  sources.yaml. The map justifies the scope and required API of each shared component
+  PRD (pkg/testutils, pkg/sys, pkg/format). A utility is listed under a component when
+  it requires behavior that would be duplicated across cmd/ packages without that component.
+
+components:
+  - id: pkg/testutils
+    rationale: |
+      Every utility is verified by running the Go binary and the Homebrew GNU reference
+      binary side by side and comparing stdout, stderr, and exit code. This logic is
+      identical for all utilities: execute both binaries with the same stdin, args, and
+      environment; diff the outputs; report divergence. Without a shared harness each
+      cmd/ package would duplicate the execution and comparison logic. Additionally,
+      some utilities require output normalization before comparison (timestamps in ts,
+      path prefixes in find), and a shared hook mechanism avoids duplicating that too.
+    users:
+      - utility: ts
+        package: moreutils
+        need: timestamp normalization hook (output contains wall-clock timestamps that differ between runs)
+      - utility: sponge
+        package: moreutils
+        need: file-state comparison after execution (output is a written file, not stdout)
+      - utility: vidir
+        package: moreutils
+        need: file-state comparison (renames files; no stdout output to diff)
+      - utility: pee
+        package: moreutils
+        need: stdout comparison; multiple subcommands mean ordering may need normalization
+      - utility: chronic
+        package: moreutils
+        need: stdout/stderr suppression behavior; exit-code passthrough verification
+      - utility: ls
+        package: coreutils
+        need: timestamp normalization (-l shows mtime); path normalization for test fixtures
+      - utility: cat
+        package: coreutils
+        need: standard stdout/stderr diff; binary-input test cases
+      - utility: cp
+        package: coreutils
+        need: file-state comparison (output is a copied file); no stdout to diff
+      - utility: mv
+        package: coreutils
+        need: file-state comparison (output is a moved file); no stdout to diff
+      - utility: wc
+        package: coreutils
+        need: standard stdout diff; all output is deterministic counts
+      - utility: du
+        package: coreutils
+        need: path and size normalization (sizes vary by filesystem block size across machines)
+      - utility: grep
+        package: grep
+        need: standard stdout/stderr diff; exit-code verification (0/1/2 contract)
+      - utility: find
+        package: findutils
+        need: path normalization (output order varies by filesystem); file-state comparison for -exec
+      - utility: xargs
+        package: findutils
+        need: stdout comparison; exec order normalization for -P (parallel)
+
+  - id: pkg/sys
+    rationale: |
+      Several utilities need syscall surfaces that diverge between Darwin and Linux:
+      terminal width queries (ioctl TIOCGWINSZ), file metadata beyond what os.Stat
+      provides (device number, inode, hard-link count for ls -l), and signal handling
+      (SIGPIPE for clean exit when stdout closes, SIGWINCH for ls to re-query terminal
+      width on resize). Go's standard library does not provide a stable cross-platform
+      API for these. Wrapping them in pkg/sys avoids per-utility cgo or syscall imports
+      and ensures the Darwin/Linux divergence is handled once.
+    users:
+      - utility: ls
+        package: coreutils
+        needs:
+          - terminal_width: |
+              ls.c:2281 uses struct winsize via ioctl(TIOCGWINSZ) to determine column
+              count for multi-column layout. Go's standard library has no portable
+              terminal-width query; pkg/sys wraps golang.org/x/term or syscall.
+          - file_metadata: |
+              ls -l needs st_nlink (hard-link count), st_uid, st_gid, st_rdev (device
+              numbers for character/block devices), and st_blocks. os.FileInfo does not
+              expose these; pkg/sys exposes them via syscall.Stat_t.
+          - signal_handling: |
+              ls.c:1600-1620 sets up SIGPIPE (suppress broken-pipe on stdout close) and
+              ls.c:2281 registers SIGWINCH to re-query terminal width on resize. Go's
+              os/signal package provides the hook; pkg/sys provides a consistent interface.
+          - lstat: |
+              ls.c uses lstat for symlink targets (to show link target vs target info
+              depending on -L flag). os.Lstat is available but symlink metadata
+              (st_mode of the link itself) requires care on Darwin.
+
+      - utility: du
+        package: coreutils
+        needs:
+          - file_metadata: |
+              du.c:554 uses fts_statp (stat struct from fts traversal) to get st_blocks
+              and st_dev for deduplication of hard-linked files. pkg/sys exposes st_dev
+              and st_ino for hard-link detection and st_blocks for physical block count.
+          - signal_handling: |
+              du.c uses SIGPIPE for clean stdout close.
+
+      - utility: find
+        package: findutils
+        needs:
+          - file_metadata: |
+              find/ftsfind.c:172 calls apply_predicate with a stat struct for -type, -size,
+              -newer, -perm predicates. The full stat struct (st_mode, st_size, st_mtime,
+              st_uid, st_gid, st_nlink) is needed. pkg/sys exposes this.
+          - signal_handling: |
+              find/ftsfind.c:735-749 registers SIGUSR1/SIGUSR2 for debug output. pkg/sys
+              provides a clean signal registration interface.
+          - lstat: |
+              find uses lstat (not stat) by default to avoid following symlinks unless
+              -L is given. pkg/sys wraps os.Lstat with full stat metadata.
+
+      - utility: xargs
+        package: findutils
+        needs:
+          - signal_handling: |
+              xargs propagates signals to child processes (SIGTERM, SIGINT). pkg/sys
+              provides signal forwarding to process groups.
+
+  - id: pkg/format
+    rationale: |
+      Both ls and du produce human-readable output that requires formatting logic beyond
+      fmt.Sprintf: ls produces column-aligned tabular output with ANSI color codes for
+      file types, and both ls and du convert byte counts to human-readable sizes
+      (K/M/G/T). Without pkg/format each cmd/ package would implement its own column
+      math and ANSI escape handling, producing inconsistent output and making
+      differential testing harder.
+    users:
+      - utility: ls
+        package: coreutils
+        needs:
+          - column_alignment: |
+              ls.c uses multi-column layout (default) and long format (-l). Column widths
+              are computed from the longest filename or field value in the listing. pkg/format
+              provides a column-width computation function and a right/left-pad formatter.
+          - ansi_color: |
+              ls.c:103 includes dircolors.h. ls outputs ANSI escape sequences for file
+              types (directory=blue, symlink=cyan, executable=green, etc.) and resets
+              color after each entry. pkg/format provides a file-type-to-ANSI-code
+              lookup and a color-strip mode when stdout is not a TTY.
+          - human_readable_size: |
+              ls -h and ls -s --block-size=human both need human_readable() output.
+              pkg/format provides byte-to-unit conversion with configurable suffixes
+              (K/M/G/T) and SI vs binary rounding modes.
+
+      - utility: du
+        package: coreutils
+        needs:
+          - human_readable_size: |
+              du.c:153 declares human_output_opts; du.c:442 calls human_readable().
+              du -h outputs sizes like 4.0K, 128M. The same conversion logic as ls -h.
+              pkg/format provides this as a shared function to avoid duplication.
+
+utilities_without_shared_components:
+  - utility: cat
+    package: coreutils
+    reason: |
+      cat is pure I/O passthrough with flag-controlled output transformations (-n, -b,
+      -s, -v, -E, -T). It needs no terminal-width query, no file-metadata beyond
+      fstat for identity check (Go's os.SameFile covers this), no formatting, and
+      no ANSI color. cat does not use pkg/sys or pkg/format.
+
+  - utility: wc
+    package: coreutils
+    reason: |
+      wc counts lines, words, and bytes. It uses fstat only to detect when input and
+      output are the same file (no practical relevance in Go). Column alignment for
+      multi-file output is simple right-padding of numeric fields, not tabular
+      formatting. wc does not use pkg/sys or pkg/format.
+
+  - utility: ts
+    package: moreutils
+    reason: |
+      ts reads stdin line by line and prepends timestamps using POSIX strftime and
+      gettimeofday/clock_gettime (exposed via Go's time.Now(), time.Since(), and
+      time.Format()). Monotonic clock is available via time.Now() in Go. ts does
+      not use pkg/sys or pkg/format.
+
+  - utility: sponge
+    package: moreutils
+    reason: |
+      sponge reads stdin into a buffer, then writes to a file using a temp-file and
+      rename for atomicity. All operations are standard file I/O (os.CreateTemp,
+      os.Rename). sponge does not use pkg/sys or pkg/format.
+
+  - utility: pee
+    package: moreutils
+    reason: |
+      pee forks a subprocess for each argv command and tees stdin to all of them.
+      Go's os/exec and io.MultiWriter cover this without any pkg/ wrapping. pee
+      does not use pkg/sys or pkg/format.
+
+  - utility: vidir
+    package: moreutils
+    reason: |
+      vidir opens $EDITOR with a temp file listing directory entries. All operations
+      are standard file I/O and os/exec. vidir does not use pkg/sys or pkg/format.
+
+  - utility: chronic
+    package: moreutils
+    reason: |
+      chronic runs a subcommand and suppresses its output unless it fails. All
+      operations are os/exec and io.ReadAll. chronic does not use pkg/sys or
+      pkg/format.
+
+  - utility: cp
+    package: coreutils
+    reason: |
+      cp is handled in a later phase (coreutils phase 3). Not in the current batch.
+
+  - utility: mv
+    package: coreutils
+    reason: |
+      mv is handled in a later phase (coreutils phase 3). Not in the current batch.
+
+  - utility: grep
+    package: grep
+    reason: |
+      grep is handled in a later phase (search utilities phase 4). Not in the current batch.
+
+  - utility: find
+    package: findutils
+    reason: |
+      find is handled in a later phase (search utilities phase 4). pkg/sys dependency
+      is noted above but the PRD and use case are deferred.
+
+  - utility: xargs
+    package: findutils
+    reason: |
+      xargs is handled in a later phase (search utilities phase 4). Not in the current batch.
+
+notes:
+  - |
+    egrep and fgrep are shell script wrappers for grep -E and grep -F respectively.
+    They do not require separate Go implementations; they are handled as flags of the
+    grep PRD.
+  - |
+    The current batch (phase 1-2) focuses on ts, wc, cat, sponge from the dependency
+    analysis. These four utilities share only pkg/testutils and require no pkg/sys or
+    pkg/format, making them the lowest-risk starting point for the pipeline.
+  - |
+    ls requires all three shared components (pkg/testutils, pkg/sys, pkg/format) and
+    is the most complex utility in the batch. It is deferred to phase 3 (coreutils).
