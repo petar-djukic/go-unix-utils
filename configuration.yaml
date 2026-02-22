@@ -28,10 +28,11 @@ cobbler:
     planning_constitution: docs/constitutions/planning.yaml
     execution_constitution: docs/constitutions/execution.yaml
     design_constitution: docs/constitutions/design.yaml
-    estimated_lines_min: 400
-    estimated_lines_max: 700
+    estimated_lines_min: 250
+    estimated_lines_max: 350
+    history_dir: history
 podman:
-    image: "claude-cli"
+    image: claude-cli
     args: []
 claude:
     args:
