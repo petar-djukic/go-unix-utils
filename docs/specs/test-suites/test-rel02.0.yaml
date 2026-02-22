@@ -55,12 +55,11 @@ test_cases:
   # --- uc001-ls: ls core flag listing ---
 
   - name: ls_default_single_col_redirect
-    description: No flags, stdout redirected (not a TTY); one entry per line in C locale order.
+    description: 'No flags, stdout redirected (not a TTY); one entry per line in C locale order. stdout is a pipe (not TTY), so default format is single-column'
     inputs:
       args: ["--color=never", "testdata/ls-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      note: stdout is a pipe (not TTY), so default format is single-column
     normalization: none
     expected:
       exit_code: 0
@@ -72,12 +71,11 @@ test_cases:
       - prd008-ls R1.4
 
   - name: ls_default_multi_col_tty
-    description: Default on TTY (or forced with -C and --width=80); multi-column output.
+    description: 'Default on TTY (or forced with -C and --width=80); multi-column output. -C forces multi-column even without TTY; -w 80 sets column width'
     inputs:
       args: ["-C", "--color=never", "-w", "80", "testdata/ls-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      note: -C forces multi-column even without TTY; -w 80 sets column width
     normalization: none
     expected:
       exit_code: 0
@@ -131,7 +129,7 @@ test_cases:
     normalization: LsNormalizer replaces mtime column with MTIME placeholder
     expected:
       exit_code: 0
-      stdout_contains: " -> "
+      stdout_structure: 'output contains " -> "'
       stderr: ""
     traces:
       - prd008-ls R2.8
@@ -160,9 +158,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "."
-      stdout_contains_2: ".."
-      stdout_contains_3: ".hidden"
+      stdout_structure: 'output contains ".", "..", and ".hidden"'
       stderr: ""
     traces:
       - prd008-ls R3.1
@@ -176,8 +172,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: ".hidden"
-      stdout_not_contains: standalone "." or ".." entries
+      stdout_structure: 'output contains ".hidden" and must not contain standalone "." or ".." entries'
       stderr: ""
     traces:
       - prd008-ls R3.2
@@ -205,22 +200,21 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_not_contains: "\\033["
+      stdout_structure: 'output must not contain "\\033["'
       stderr: ""
     traces:
       - prd008-ls R4.4
 
   - name: ls_color_always
-    description: --color=always produces ANSI escape sequences for file types.
+    description: '--color=always produces ANSI escape sequences for file types. structural check only, not a diff test (ANSI codes must be present)'
     inputs:
       args: ["--color=always", "testdata/ls-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      note: structural check only, not a diff test (ANSI codes must be present)
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "\\033["
+      stdout_structure: 'output contains "\\033["'
       stderr: ""
     traces:
       - prd008-ls R4.1
@@ -342,16 +336,11 @@ test_cases:
       - prd009-du R2.7
 
   - name: du_hard_link_dedup
-    description: A file hard-linked into two directories is counted only once.
+    description: 'A file hard-linked into two directories is counted only once. Setup: create testdata/du-hardlink-fixture/ with dir_a/shared.txt (a regular file) and dir_b/shared.txt (hard link to dir_a/shared.txt, same inode). The hard link is created at test time via os.Link.'
     inputs:
       args: ["-k", "testdata/du-hardlink-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        Create testdata/du-hardlink-fixture/ with:
-        - dir_a/shared.txt (a regular file)
-        - dir_b/shared.txt (hard link to dir_a/shared.txt, same inode)
-        The hard link is created at test time via os.Link.
     normalization: none
     expected:
       exit_code: 0

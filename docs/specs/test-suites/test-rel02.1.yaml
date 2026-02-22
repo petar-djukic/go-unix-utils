@@ -35,12 +35,11 @@ test_cases:
   # --- uc001-ls-extended: ls extended flag listing ---
 
   - name: multi_col_forced
-    description: -C forces multi-column output even when stdout is piped.
+    description: -C forces multi-column output even when stdout is piped. stdout is a pipe; -C overrides single-column default
     inputs:
       args: ["-C", "--color=never", "-w", "80", "testdata/ls-extended-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      note: stdout is a pipe; -C overrides single-column default
     normalization: none
     expected:
       exit_code: 0
@@ -65,14 +64,11 @@ test_cases:
       - prd010-ls-extended R1.3
 
   - name: sort_by_mtime
-    description: -t sorts by modification time, newest first.
+    description: '-t sorts by modification time, newest first. Fixture files have distinct mtimes set via os.Chtimes: newest_file (mtime = now), middle_file (mtime = now - 1h), oldest_file (mtime = now - 2h)'
     inputs:
       args: ["-1t", "--color=never", "testdata/ls-extended-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        Fixture files have distinct mtimes set via os.Chtimes:
-        newest_file (mtime = now), middle_file (mtime = now - 1h), oldest_file (mtime = now - 2h)
     normalization: none
     expected:
       exit_code: 0
@@ -196,20 +192,15 @@ test_cases:
       - prd010-ls-extended R6.1
 
   - name: classify_indicator
-    description: -F appends type indicators to entry names.
+    description: '-F appends type indicators to entry names. Fixture contains: a directory (gets /), an executable (gets *), a symlink (gets @), a named pipe (gets |), a regular file (no indicator).'
     inputs:
       args: ["-1F", "--color=never", "testdata/ls-extended-fixture/"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        Fixture contains: a directory (gets /), an executable (gets *), a symlink (gets @),
-        a named pipe (gets |), a regular file (no indicator).
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "/"
-      stdout_contains_2: "*"
-      stdout_contains_3: "@"
+      stdout_structure: 'output contains "/", "*", and "@"'
       stderr: ""
     traces:
       - prd010-ls-extended R4.1

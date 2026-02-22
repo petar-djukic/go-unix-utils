@@ -45,7 +45,7 @@ requirements:
       - id: R2.5
         requirement: -L must print the length of the longest line in the input, measured in display columns (tab-expanded, treating each tab as advancing to the next multiple of 8). -L is independent of other flags and may be combined with any of them.
       - id: R2.6
-        requirement: When flags are combined, must print each requested count in the order: lines (-l), words (-w), chars (-m) or bytes (-c), max-line-length (-L). This is the fixed output column order from wc.c:237-247, not the flag order given by the user.
+        requirement: 'When flags are combined, must print each requested count in the order: lines (-l), words (-w), chars (-m) or bytes (-c), max-line-length (-L). This is the fixed output column order from wc.c:237-247, not the flag order given by the user.'
 
   - group: R3
     title: Multi-file output and column alignment

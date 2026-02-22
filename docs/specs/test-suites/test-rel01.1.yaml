@@ -53,7 +53,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "3"
+      stdout_structure: 'output contains "3"'
       stderr: ""
     traces:
       - prd005-wc R1.1
@@ -69,7 +69,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "3"
+      stdout_structure: 'output contains "3"'
       stderr: ""
     traces:
       - prd005-wc R2.1
@@ -84,7 +84,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "5"
+      stdout_structure: 'output contains "5"'
       stderr: ""
     traces:
       - prd005-wc R2.2
@@ -99,7 +99,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "4"
+      stdout_structure: 'output contains "4"'
       stderr: ""
     traces:
       - prd005-wc R2.3
@@ -113,7 +113,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "6"
+      stdout_structure: 'output contains "6"'
       stderr: ""
     traces:
       - prd005-wc R2.4
@@ -129,7 +129,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "22"
+      stdout_structure: 'output contains "22"'
       stderr: ""
     traces:
       - prd005-wc R2.5
@@ -149,14 +149,11 @@ test_cases:
       - prd005-wc R2.6
 
   - name: wc_multi_file_total
-    description: Two files produce per-file lines and a total line with right-aligned columns.
+    description: 'Two files produce per-file lines and a total line with right-aligned columns. Setup: file1.txt contains "hello\nworld\n" (2 lines, 2 words, 12 bytes), file2.txt contains "foo bar baz\n" (1 line, 3 words, 12 bytes)'
     inputs:
       args: ["file1.txt", "file2.txt"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        file1.txt contains "hello\nworld\n" (2 lines, 2 words, 12 bytes)
-        file2.txt contains "foo bar baz\n" (1 line, 3 words, 12 bytes)
     normalization: none
     expected:
       exit_code: 0
@@ -168,14 +165,11 @@ test_cases:
       - prd005-wc R3.2
 
   - name: wc_total_only
-    description: --total=only with two files prints only the total line.
+    description: '--total=only with two files prints only the total line. Setup: file1.txt contains "a\n", file2.txt contains "b\nc\n"'
     inputs:
       args: ["--total=only", "file1.txt", "file2.txt"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        file1.txt contains "a\n"
-        file2.txt contains "b\nc\n"
     normalization: none
     expected:
       exit_code: 0
@@ -185,14 +179,11 @@ test_cases:
       - prd005-wc R3.3
 
   - name: wc_total_never
-    description: --total=never with two files prints no total line.
+    description: '--total=never with two files prints no total line. Setup: file1.txt contains "x\n", file2.txt contains "y\n"'
     inputs:
       args: ["--total=never", "file1.txt", "file2.txt"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        file1.txt contains "x\n"
-        file2.txt contains "y\n"
     normalization: none
     expected:
       exit_code: 0
@@ -224,20 +215,17 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      stdout_contains: "0"
+      stdout_structure: 'output contains "0"'
       stderr: ""
     traces:
       - prd005-wc R4.3
 
   - name: wc_missing_file
-    description: Non-existent file prints error to stderr, exits 1, processes remaining files.
+    description: 'Non-existent file prints error to stderr, exits 1, processes remaining files. Setup: real.txt contains "data\n", nonexistent.txt does not exist'
     inputs:
       args: ["nonexistent.txt", "real.txt"]
       stdin: null
       env: ["LC_ALL=C"]
-      setup: |
-        real.txt contains "data\n"
-        nonexistent.txt does not exist
     normalization: none
     expected:
       exit_code: 1
@@ -249,13 +237,11 @@ test_cases:
   # --- uc002-cat: cat concatenate and display files ---
 
   - name: cat_default_passthrough
-    description: No flags, text file content passes through verbatim.
+    description: 'No flags, text file content passes through verbatim. Setup: file1.txt contains "hello\nworld\n"'
     inputs:
       args: ["file1.txt"]
       stdin: null
       env: []
-      setup: |
-        file1.txt contains "hello\nworld\n"
     normalization: none
     expected:
       exit_code: 0
@@ -437,14 +423,11 @@ test_cases:
       - prd006-cat R4.9
 
   - name: cat_multiple_files
-    description: Two files concatenated with no separator between them.
+    description: 'Two files concatenated with no separator between them. Setup: file1.txt contains "aaa\n", file2.txt contains "bbb\n"'
     inputs:
       args: ["file1.txt", "file2.txt"]
       stdin: null
       env: []
-      setup: |
-        file1.txt contains "aaa\n"
-        file2.txt contains "bbb\n"
     normalization: none
     expected:
       exit_code: 0
@@ -469,14 +452,11 @@ test_cases:
       - prd006-cat R1.2
 
   - name: cat_missing_file
-    description: Non-existent file prints error to stderr, exits 1, continues processing.
+    description: 'Non-existent file prints error to stderr, exits 1, continues processing. Setup: real.txt contains "data\n", nonexistent.txt does not exist'
     inputs:
       args: ["nonexistent.txt", "real.txt"]
       stdin: null
       env: []
-      setup: |
-        real.txt contains "data\n"
-        nonexistent.txt does not exist
     normalization: none
     expected:
       exit_code: 1
@@ -496,8 +476,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      files:
-        outfile.txt: "100 lines, '1\n' through '100\n'"
+      stdout_structure: 'expected file outfile.txt contains "100 lines, 1\n through 100\n"'
       stderr: ""
     traces:
       - prd007-sponge R1.1
@@ -505,19 +484,15 @@ test_cases:
       - prd007-sponge R2.1
 
   - name: sponge_soak_before_write
-    description: Same input and output file (cat file | sponge file). Output must equal input, proving sponge did not truncate before reading.
+    description: 'Same input and output file (cat file | sponge file). Output must equal input, proving sponge did not truncate before reading. Setup: data.txt contains "line1\nline2\nline3\n", Pipeline: cat data.txt | sponge data.txt'
     inputs:
       args: ["data.txt"]
       stdin: "content of data.txt (fed via 'cat data.txt')"
       env: []
-      setup: |
-        data.txt contains "line1\nline2\nline3\n"
-        Pipeline: cat data.txt | sponge data.txt
     normalization: none
     expected:
       exit_code: 0
-      files:
-        data.txt: "line1\nline2\nline3\n"
+      stdout_structure: 'expected file data.txt contains "line1\nline2\nline3\n"'
       stderr: ""
     traces:
       - prd007-sponge R1.1
@@ -539,36 +514,30 @@ test_cases:
       - prd007-sponge R4.3
 
   - name: sponge_append_mode
-    description: -a flag prepends original file content before stdin content.
+    description: '-a flag prepends original file content before stdin content. Setup: existing.txt contains "original line\n"'
     inputs:
       args: ["-a", "existing.txt"]
       stdin: "appended line\n"
       env: []
-      setup: |
-        existing.txt contains "original line\n"
     normalization: none
     expected:
       exit_code: 0
-      files:
-        existing.txt: "original line\nappended line\n"
+      stdout_structure: 'expected file existing.txt contains "original line\nappended line\n"'
       stderr: ""
     traces:
       - prd007-sponge R3.1
       - prd007-sponge R3.3
 
   - name: sponge_append_mode_no_existing_file
-    description: -a with a non-existent output file behaves as default mode (creates new file).
+    description: '-a with a non-existent output file behaves as default mode (creates new file). Setup: newfile.txt does not exist'
     inputs:
       args: ["-a", "newfile.txt"]
       stdin: "new content\n"
       env: []
-      setup: |
-        newfile.txt does not exist
     normalization: none
     expected:
       exit_code: 0
-      files:
-        newfile.txt: "new content\n"
+      stdout_structure: 'expected file newfile.txt contains "new content\n"'
       stderr: ""
     traces:
       - prd007-sponge R3.2
@@ -582,28 +551,22 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      files:
-        large_out.txt: "identical to stdin content"
+      stdout_structure: 'expected file large_out.txt contains "identical to stdin content"'
       stderr: ""
     traces:
       - prd007-sponge R1.3
       - prd007-sponge R1.4
 
   - name: sponge_output_file_exists_mode
-    description: Existing file has mode 0640; after sponge, file mode is preserved.
+    description: 'Existing file has mode 0640; after sponge, file mode is preserved. Setup: protected.txt exists with mode 0640 and contains "old content\n"'
     inputs:
       args: ["protected.txt"]
       stdin: "new content\n"
       env: []
-      setup: |
-        protected.txt exists with mode 0640 and contains "old content\n"
     normalization: none
     expected:
       exit_code: 0
-      files:
-        protected.txt: "new content\n"
-      state:
-        protected.txt_mode: "0640"
+      stdout_structure: 'expected file protected.txt contains "new content\n" with mode 0640'
       stderr: ""
     traces:
       - prd007-sponge R2.3
@@ -617,8 +580,7 @@ test_cases:
     normalization: none
     expected:
       exit_code: 0
-      files:
-        empty_out.txt: ""
+      stdout_structure: 'expected file empty_out.txt contains ""'
       stderr: ""
     traces:
       - prd007-sponge R1.1

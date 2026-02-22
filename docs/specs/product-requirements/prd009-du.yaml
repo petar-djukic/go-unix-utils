@@ -90,15 +90,15 @@ requirements:
         requirement: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping du output to head or other truncating consumers does not produce a broken-pipe error message.
 
 non_goals:
-  - "--si" (1000-based units) is out of scope; we support only binary (1024-based) human-readable output.
-  - "--exclude" and "--exclude-from" pattern-based exclusion filters are out of scope.
+  - --si (1000-based units) is out of scope; we support only binary (1024-based) human-readable output.
+  - --exclude and --exclude-from pattern-based exclusion filters are out of scope.
   - -D / --dereference-args (dereference only command-line symlink arguments) is out of scope.
   - -L / --dereference (dereference all symlinks during traversal) is out of scope.
   - -l / --count-links (count hard-linked files multiple times) is out of scope.
-  - "--time" (show modification time alongside size) is out of scope.
-  - "--inodes" (count inodes instead of block usage) is out of scope.
+  - --time (show modification time alongside size) is out of scope.
+  - --inodes (count inodes instead of block usage) is out of scope.
   - -b / --bytes (equivalent to --apparent-size --block-size=1) is out of scope as a shorthand; --apparent-size with default 1K blocks is sufficient.
-  - "--block-size=SIZE" with arbitrary unit suffixes is out of scope; only -k and -m are supported.
+  - --block-size=SIZE with arbitrary unit suffixes is out of scope; only -k and -m are supported.
   - -0 / --null (NUL-terminated output) is out of scope.
 
 acceptance_criteria:

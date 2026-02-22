@@ -34,11 +34,11 @@ requirements:
       - id: R1.2
         requirement: Must buffer stdin in memory using a dynamically grown buffer starting at 8192 bytes, doubling on overflow, matching sponge.c:BUFF_SIZE and the realloc loop at sponge.c:313-324.
       - id: R1.3
-        requirement: When the in-memory buffer would exceed the available memory threshold (derived from physmem_available() in the reference; in Go, use runtime.MemStats or a fixed fraction of RLIMIT_DATA), must spill the current buffer to a temp file and continue reading. The spill must be transparent: the final output is still a single concatenated byte stream.
+        requirement: 'When the in-memory buffer would exceed the available memory threshold (derived from physmem_available() in the reference; in Go, use runtime.MemStats or a fixed fraction of RLIMIT_DATA), must spill the current buffer to a temp file and continue reading. The spill must be transparent: the final output is still a single concatenated byte stream.'
       - id: R1.4
         requirement: Must create the temp file in the directory specified by the TMPDIR environment variable, or "/tmp" if TMPDIR is not set. The temp file name must follow the pattern "sponge.XXXXXX" (mkstemp-style random suffix).
       - id: R1.5
-        requirement: Must register a cleanup handler (atexit equivalent in Go: defer or os/signal) that deletes the temp file if the process exits or receives SIGINT, SIGTERM, SIGHUP, or SIGPIPE before the rename completes.
+        requirement: 'Must register a cleanup handler (atexit equivalent in Go: defer or os/signal) that deletes the temp file if the process exits or receives SIGINT, SIGTERM, SIGHUP, or SIGPIPE before the rename completes.'
 
   - group: R2
     title: Output file handling
@@ -50,7 +50,7 @@ requirements:
       - id: R2.3
         requirement: When the output file already exists, must preserve its file mode (permissions) by reading the mode via lstat before writing and applying it to the output file via chmod (sponge.c:338-346). When the output file does not exist, must apply the default mode 0666 masked by the process umask.
       - id: R2.4
-        requirement: Must use lstat (not stat) to check whether the output path exists and is a regular file (sponge.c:332-333). This matters when the output path is a symlink: sponge must replace the symlink target, not follow it blindly.
+        requirement: 'Must use lstat (not stat) to check whether the output path exists and is a regular file (sponge.c:332-333). This matters when the output path is a symlink: sponge must replace the symlink target, not follow it blindly.'
       - id: R2.5
         requirement: The output file must never be in a partially-written state observable by other processes. Either the rename succeeds atomically or the copy completes before the old file is removed.
 
@@ -58,7 +58,7 @@ requirements:
     title: Append mode (-a)
     items:
       - id: R3.1
-        requirement: -a must cause sponge to prepend the existing content of the output file to the stdin content before writing. The result is: [original file content][stdin content] written to the output file.
+        requirement: '-a must cause sponge to prepend the existing content of the output file to the stdin content before writing. The result is: [original file content][stdin content] written to the output file.'
       - id: R3.2
         requirement: -a applies only when the output file already exists and is a regular file. When the output file does not exist, -a behaves identically to the default mode (creates a new file with stdin content).
       - id: R3.3
@@ -92,7 +92,7 @@ requirements:
       - id: R6.1
         requirement: Differential tests must compare the content of the output file (not stdout) after both the Go binary and the reference binary have exited, using file-content comparison provided by pkg/testutils.
       - id: R6.2
-        requirement: Tests must cover: small stdin (fits in memory), large stdin (forces temp file spill, tested with input larger than 1 MB), append mode, passthrough mode (no filename), output file does not exist, output file already exists (mode preservation), and the cross-device rename fallback (tested by placing the output file on a different filesystem from TMPDIR).
+        requirement: 'Tests must cover: small stdin (fits in memory), large stdin (forces temp file spill, tested with input larger than 1 MB), append mode, passthrough mode (no filename), output file does not exist, output file already exists (mode preservation), and the cross-device rename fallback (tested by placing the output file on a different filesystem from TMPDIR).'
 
 non_goals:
   - cmd/sponge does not implement interactive editing or prompt modes.

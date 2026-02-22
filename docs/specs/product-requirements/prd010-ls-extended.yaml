@@ -107,14 +107,14 @@ requirements:
         requirement: -h (from prd008-ls R5) must apply to -s block counts when both -s and -h are given, converting block counts to human-readable form.
 
 non_goals:
-  - "--hyperlink" (terminal hyperlinks) remains out of scope for this project.
-  - "--dired" (Emacs dired mode) remains out of scope.
+  - --hyperlink (terminal hyperlinks) remains out of scope for this project.
+  - --dired (Emacs dired mode) remains out of scope.
   - -Z (SELinux security context) remains out of scope.
-  - "--quoting-style" (filename quoting) remains out of scope.
-  - "--block-size=SIZE" with arbitrary unit suffixes remains out of scope.
+  - --quoting-style (filename quoting) remains out of scope.
+  - --block-size=SIZE with arbitrary unit suffixes remains out of scope.
   - LS_COLORS environment variable parsing remains out of scope.
   - ACL display in long format (the "+" indicator) remains out of scope.
-  - "--group-directories-first" is out of scope for this release.
+  - --group-directories-first is out of scope for this release.
   - -w / --width (explicit width override) is out of scope; terminal width is queried via pkg/sys.
   - --sort=WORD (long-form sort option) is out of scope; only short flags (-t, -S, -r, -U, -v) are supported.
 

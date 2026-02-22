@@ -40,7 +40,7 @@ requirements:
     title: Binary execution
     items:
       - id: R2.1
-        requirement: Must accept two binary paths: the Go binary under test and the GNU reference binary. Both must be invoked with identical args, stdin, and environment.
+        requirement: 'Must accept two binary paths: the Go binary under test and the GNU reference binary. Both must be invoked with identical args, stdin, and environment.'
       - id: R2.2
         requirement: Must capture stdout, stderr, and exit code from each binary independently.
       - id: R2.3
@@ -62,7 +62,7 @@ requirements:
       - id: R3.4
         requirement: Must compare exit codes exactly. A difference must be reported as a test failure.
       - id: R3.5
-        requirement: Must report divergence with the following information in the failure message: the DiffTest args, the stdin content (truncated to 256 bytes if longer), the reference binary stdout, the Go binary stdout, the reference stderr, the Go stderr, and both exit codes.
+        requirement: 'Must report divergence with the following information in the failure message: the DiffTest args, the stdin content (truncated to 256 bytes if longer), the reference binary stdout, the Go binary stdout, the reference stderr, the Go stderr, and both exit codes.'
       - id: R3.6
         requirement: Must run each DiffTest as a named subtest (t.Run) so individual test case failures are identifiable in go test output.
 
@@ -74,7 +74,7 @@ requirements:
       - id: R4.2
         requirement: Must provide a built-in TimestampNormalizer that replaces common strftime timestamp patterns with a fixed placeholder string. This normalizer is used by cmd/ts tests.
       - id: R4.3
-        requirement: Must allow normalizers to be composed: the harness must accept a slice of Normalize functions applied in order, not a single function. When the slice is nil or empty, no normalization is applied.
+        requirement: 'Must allow normalizers to be composed: the harness must accept a slice of Normalize functions applied in order, not a single function. When the slice is nil or empty, no normalization is applied.'
 
   - group: R5
     title: File-state comparison

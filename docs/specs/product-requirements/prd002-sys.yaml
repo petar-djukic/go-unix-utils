@@ -36,7 +36,7 @@ requirements:
       - id: R1.3
         requirement: Must use golang.org/x/sys/unix (the project's only external dependency) to perform the TIOCGWINSZ ioctl; must not shell out to tput or stty and must not import golang.org/x/term.
       - id: R1.4
-        requirement: Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.
+        requirement: 'Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.'
 
   - group: R2
     title: Extended file metadata
@@ -44,15 +44,15 @@ requirements:
       - id: R2.1
         requirement: Must provide a Stat(path string) (*FileInfo, error) function and an Lstat(path string) (*FileInfo, error) function that return a FileInfo struct containing all fields from syscall.Stat_t.
       - id: R2.2
-        requirement: FileInfo must include at minimum: Mode (os.FileMode), Size (int64), Nlink (uint64), Uid (uint32), Gid (uint32), Rdev (uint64), Dev (uint64), Ino (uint64), Blocks (int64), Blksize (int64), ModTime (time.Time), and the underlying os.FileInfo for compatibility with os package functions.
+        requirement: 'FileInfo must include at minimum: Mode (os.FileMode), Size (int64), Nlink (uint64), Uid (uint32), Gid (uint32), Rdev (uint64), Dev (uint64), Ino (uint64), Blocks (int64), Blksize (int64), ModTime (time.Time), and the underlying os.FileInfo for compatibility with os package functions.'
       - id: R2.3
         requirement: Must abstract the Darwin/Linux divergence in struct field names (st_mtimespec on Darwin vs st_mtim on Linux; st_blocks interpretation) so callers use a single API.
       - id: R2.4
-        requirement: Utility context — ls (ls.c:213, 371): ls needs st_nlink, st_uid, st_gid, st_rdev, st_mode for -l format; st_blocks for -s; st_ino for -i.
+        requirement: 'Utility context — ls (ls.c:213, 371): ls needs st_nlink, st_uid, st_gid, st_rdev, st_mode for -l format; st_blocks for -s; st_ino for -i.'
       - id: R2.5
-        requirement: Utility context — du (du.c:554): du needs st_dev and st_ino for hard-link deduplication, and st_blocks for physical block-count accumulation.
+        requirement: 'Utility context — du (du.c:554): du needs st_dev and st_ino for hard-link deduplication, and st_blocks for physical block-count accumulation.'
       - id: R2.6
-        requirement: Utility context — find (find/ftsfind.c:172): find predicates (-type, -size, -newer, -perm, -uid, -gid) require st_mode, st_size, st_mtime, st_uid, st_gid, st_nlink from the stat struct.
+        requirement: 'Utility context — find (find/ftsfind.c:172): find predicates (-type, -size, -newer, -perm, -uid, -gid) require st_mode, st_size, st_mtime, st_uid, st_gid, st_nlink from the stat struct.'
 
   - group: R3
     title: SIGPIPE handling
@@ -62,7 +62,7 @@ requirements:
       - id: R3.2
         requirement: Must not use signal.Ignore; instead must install a signal handler that calls os.Exit(0) on SIGPIPE so deferred cleanup functions do not run (matching GNU behavior where SIGPIPE terminates silently).
       - id: R3.3
-        requirement: Utility context — ls (ls.c:1600-1620): ls installs a SIGPIPE handler via sigaction so that piping ls output to head does not produce a broken-pipe error message. du, find, and xargs have the same requirement.
+        requirement: 'Utility context — ls (ls.c:1600-1620): ls installs a SIGPIPE handler via sigaction so that piping ls output to head does not produce a broken-pipe error message. du, find, and xargs have the same requirement.'
 
   - group: R4
     title: SIGWINCH handling
@@ -72,7 +72,7 @@ requirements:
       - id: R4.2
         requirement: Must support multiple calls to OnTerminalResize; each registered callback must be called on resize.
       - id: R4.3
-        requirement: Utility context — ls (ls.c:2281, SIGWINCH registration): ls re-queries terminal width on SIGWINCH to re-format output when the terminal window is resized during a long listing.
+        requirement: 'Utility context — ls (ls.c:2281, SIGWINCH registration): ls re-queries terminal width on SIGWINCH to re-format output when the terminal window is resized during a long listing.'
 
 non_goals:
   - pkg/sys does not wrap all of syscall or golang.org/x/sys; it exposes only the surfaces required by the current utility batch.

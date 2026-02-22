@@ -31,9 +31,9 @@ requirements:
       - id: R1.2
         requirement: Must provide a PadRight(s string, width int) string and PadLeft(s string, width int) string function for left- and right-aligned field padding within a fixed-width column.
       - id: R1.3
-        requirement: Must treat multi-byte Unicode characters correctly: column width must be computed from display width (rune count or east-asian width), not byte count.
+        requirement: 'Must treat multi-byte Unicode characters correctly: column width must be computed from display width (rune count or east-asian width), not byte count.'
       - id: R1.4
-        requirement: Utility context — ls (ls.c multi-column layout): ls default output places filenames in as many columns as fit in the terminal width. Column widths are computed from the longest filename in each column, not the global maximum.
+        requirement: 'Utility context — ls (ls.c multi-column layout): ls default output places filenames in as many columns as fit in the terminal width. Column widths are computed from the longest filename in each column, not the global maximum.'
 
   - group: R2
     title: ANSI color
@@ -45,9 +45,9 @@ requirements:
       - id: R2.3
         requirement: Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. It must delegate the TTY check to pkg/sys.IsTerminal (implemented in pkg/sys using golang.org/x/sys/unix, not golang.org/x/term). When false, FileTypeColor must return an empty string and Reset must return an empty string.
       - id: R2.4
-        requirement: Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).
+        requirement: 'Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).'
       - id: R2.5
-        requirement: Utility context — ls (ls.c:103 includes dircolors.h, ls.c:273 get_color_indicator): ls outputs ANSI escapes before and after each filename in colorized mode. Color is suppressed when stdout is not a TTY or when --color=never is set.
+        requirement: 'Utility context — ls (ls.c:103 includes dircolors.h, ls.c:273 get_color_indicator): ls outputs ANSI escapes before and after each filename in colorized mode. Color is suppressed when stdout is not a TTY or when --color=never is set.'
 
   - group: R3
     title: Human-readable size conversion
@@ -55,15 +55,15 @@ requirements:
       - id: R3.1
         requirement: Must provide a HumanSize(bytes int64, opts HumanSizeOpts) string function that converts a byte count to a human-readable string with an appropriate unit suffix.
       - id: R3.2
-        requirement: HumanSizeOpts must support two rounding modes: binary (1024-based, suffixes K/M/G/T/P/E) and SI (1000-based, suffixes kB/MB/GB/TB). The default must be binary.
+        requirement: 'HumanSizeOpts must support two rounding modes: binary (1024-based, suffixes K/M/G/T/P/E) and SI (1000-based, suffixes kB/MB/GB/TB). The default must be binary.'
       - id: R3.3
         requirement: Must format the output to at most one decimal place when the value is not an integer at the chosen unit (e.g., 1536 bytes must produce "1.5K", not "2K").
       - id: R3.4
         requirement: Must return "0" for a zero byte count regardless of the unit mode.
       - id: R3.5
-        requirement: Utility context — ls (ls.c -h flag, human_output_opts): ls -h shows file sizes in human-readable form in -l output. The same conversion applies to ls -s (block counts).
+        requirement: 'Utility context — ls (ls.c -h flag, human_output_opts): ls -h shows file sizes in human-readable form in -l output. The same conversion applies to ls -s (block counts).'
       - id: R3.6
-        requirement: Utility context — du (du.c:153 human_output_opts, du.c:442 human_readable()): du -h outputs directory sizes as human-readable strings. du uses the same binary/SI distinction as ls -h.
+        requirement: 'Utility context — du (du.c:153 human_output_opts, du.c:442 human_readable()): du -h outputs directory sizes as human-readable strings. du uses the same binary/SI distinction as ls -h.'
 
 non_goals:
   - pkg/format does not read or parse LS_COLORS environment variables; it uses GNU ls defaults only.

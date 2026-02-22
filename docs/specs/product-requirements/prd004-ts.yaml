@@ -47,7 +47,7 @@ requirements:
       - id: R2.2
         requirement: Must support all standard strftime(3) conversion specifications available on the target platform.
       - id: R2.3
-        requirement: Must support three ts-specific subsecond extensions: %.S (seconds with microsecond suffix, e.g. "32.001234"), %.s (Unix epoch with microsecond suffix, e.g. "1708358732.001234"), %.T (HH:MM:SS with microsecond suffix, e.g. "14:05:32.001234"). These extensions require Time::HiRes in the Perl reference; the Go implementation must use time.Now() sub-nanosecond precision formatted to six decimal places.
+        requirement: 'Must support three ts-specific subsecond extensions: %.S (seconds with microsecond suffix, e.g. "32.001234"), %.s (Unix epoch with microsecond suffix, e.g. "1708358732.001234"), %.T (HH:MM:SS with microsecond suffix, e.g. "14:05:32.001234"). These extensions require Time::HiRes in the Perl reference; the Go implementation must use time.Now() sub-nanosecond precision formatted to six decimal places.'
       - id: R2.4
         requirement: When a subsecond extension is used in the format string, must obtain both the second and microsecond components atomically from a single time sample per line.
 
@@ -89,7 +89,7 @@ requirements:
       - id: R6.1
         requirement: -r must scan each input line for known timestamp patterns and replace each match with a human-readable relative age string (e.g., "15m5s ago").
       - id: R6.2
-        requirement: Must recognize the following timestamp patterns from the Perl source regex: syslog format ("Jan  5 14:30:00"), ISO-8601 ("2024-01-05T14:30:00.000Z"), RFC 2822 with optional day ("16 Jun 94 07:29:35 GMT"), lastlog format ("Mon Jan  5 14:30").
+        requirement: 'Must recognize the following timestamp patterns from the Perl source regex: syslog format ("Jan  5 14:30:00"), ISO-8601 ("2024-01-05T14:30:00.000Z"), RFC 2822 with optional day ("16 Jun 94 07:29:35 GMT"), lastlog format ("Mon Jan  5 14:30").'
       - id: R6.3
         requirement: When -r and a format string are both given, must convert matched timestamps to the specified format via strftime rather than to a relative string.
       - id: R6.4
@@ -121,7 +121,7 @@ requirements:
       - id: R9.1
         requirement: Differential tests must use the TimestampNormalizer from pkg/testutils to replace wall-clock timestamps in output with a fixed placeholder before comparing Go and reference binary outputs.
       - id: R9.2
-        requirement: Tests must cover: default format, custom strftime format, -s mode, -i mode, -m mode (with monotonic normalization), multi-line stdin, empty stdin, and partial last line (no trailing newline).
+        requirement: 'Tests must cover: default format, custom strftime format, -s mode, -i mode, -m mode (with monotonic normalization), multi-line stdin, empty stdin, and partial last line (no trailing newline).'
 
 non_goals:
   - cmd/ts does not implement egrep-style timestamp colorization.

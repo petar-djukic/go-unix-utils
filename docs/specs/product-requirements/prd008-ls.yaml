@@ -116,11 +116,11 @@ requirements:
 
 non_goals:
   - -C (force multi-column), -x (sort across), -t (sort by mtime), -S (sort by size), -r (reverse sort), -U (unsorted), -v (version sort), -i (inode number), -s (block size), -n (numeric UID/GID), -R (recursive), -F (classify with indicator) are deferred to prd010-ls-extended.
-  - "--hyperlink" (terminal hyperlinks) is out of scope for this project.
-  - "--dired" (Emacs dired mode) is out of scope.
+  - --hyperlink (terminal hyperlinks) is out of scope for this project.
+  - --dired (Emacs dired mode) is out of scope.
   - -Z (SELinux security context) is out of scope; this project does not target SELinux.
-  - "--quoting-style" (filename quoting) is out of scope for this release.
-  - "--block-size" unit suffixes beyond -h are out of scope for this release.
+  - --quoting-style (filename quoting) is out of scope for this release.
+  - --block-size unit suffixes beyond -h are out of scope for this release.
   - LS_COLORS environment variable parsing is out of scope; we use GNU default colors only (prd003-format non-goals).
   - ACL (access control list) display in long format (the "+" indicator) is out of scope.
 

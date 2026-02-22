@@ -30,9 +30,9 @@ requirements:
       - id: R1.2
         requirement: Must read from stdin when no file arguments are given, or when "-" is given as a filename.
       - id: R1.3
-        requirement: Must support concatenating multiple files: each file's content is written in sequence with no separator.
+        requirement: 'Must support concatenating multiple files: each file''s content is written in sequence with no separator.'
       - id: R1.4
-        requirement: Must not corrupt binary input: output bytes must be identical to input bytes when no transformation flags are active.
+        requirement: 'Must not corrupt binary input: output bytes must be identical to input bytes when no transformation flags are active.'
       - id: R1.5
         requirement: Must not add or remove newlines from the input.
 
@@ -40,7 +40,7 @@ requirements:
     title: Line numbering (-n, -b)
     items:
       - id: R2.1
-        requirement: -n must prepend a line number to every output line. The line number must be right-justified in a field of width 6, followed by a tab character and then the line content (format: "%6d\t%s"). Line numbering resets to 1 at the start of each cat invocation, not per file.
+        requirement: '-n must prepend a line number to every output line. The line number must be right-justified in a field of width 6, followed by a tab character and then the line content (format: "%6d\t%s"). Line numbering resets to 1 at the start of each cat invocation, not per file.'
       - id: R2.2
         requirement: -b must prepend a line number only to non-blank lines. Blank lines receive no number and no tab prefix. -b implies -n (activates line numbering) but overrides it by skipping blank lines.
       - id: R2.3
@@ -52,11 +52,11 @@ requirements:
     title: Blank-line squeezing (-s)
     items:
       - id: R3.1
-        requirement: -s must suppress repeated blank lines: when two or more consecutive blank lines appear in the output, only one must be written. The first blank line is written; subsequent consecutive blank lines are discarded.
+        requirement: '-s must suppress repeated blank lines: when two or more consecutive blank lines appear in the output, only one must be written. The first blank line is written; subsequent consecutive blank lines are discarded.'
       - id: R3.2
-        requirement: -s must apply across file boundaries when multiple files are concatenated: if the last line of file A and the first line of file B are both blank, they count as consecutive blank lines.
+        requirement: '-s must apply across file boundaries when multiple files are concatenated: if the last line of file A and the first line of file B are both blank, they count as consecutive blank lines.'
       - id: R3.3
-        requirement: -s is compatible with -n and -b. When combined, squeezing is applied before numbering: the suppressed blank lines do not consume line numbers.
+        requirement: '-s is compatible with -n and -b. When combined, squeezing is applied before numbering: the suppressed blank lines do not consume line numbers.'
 
   - group: R4
     title: Non-printing display (-v, -E, -T, -A, -e, -t)
@@ -76,9 +76,9 @@ requirements:
       - id: R4.7
         requirement: -t is equivalent to -v -T combined (show non-printing, show tabs).
       - id: R4.8
-        requirement: -u is accepted but has no effect (cat.c:616: "we provide the -u feature unconditionally"). The flag must not produce an error.
+        requirement: '-u is accepted but has no effect (cat.c:616: "we provide the -u feature unconditionally"). The flag must not produce an error.'
       - id: R4.9
-        requirement: Transformation flags are compatible with -n, -b, and -s. The order of application is: squeeze blanks (-s), then apply non-printing display (-v/-T), then append end-of-line marker (-E), then prepend line number (-n/-b).
+        requirement: 'Transformation flags are compatible with -n, -b, and -s. The order of application is: squeeze blanks (-s), then apply non-printing display (-v/-T), then append end-of-line marker (-E), then prepend line number (-n/-b).'
 
   - group: R5
     title: Error handling and exit codes
@@ -108,7 +108,7 @@ acceptance_criteria:
   - id: AC4
     criterion: "printf '\\x01\\x09\\x1b\\x7f\\x80\\xff' | go run ./cmd/cat -v produces the correct caret and M- notation, matching gcat -v byte-for-byte."
   - id: AC5
-    criterion: Differential test against gcat passes for all flag combinations: -n, -b, -s, -v, -E, -T, -A, -e, -t, and combinations thereof, on text and binary inputs.
+    criterion: 'Differential test against gcat passes for all flag combinations: -n, -b, -s, -v, -E, -T, -A, -e, -t, and combinations thereof, on text and binary inputs.'
   - id: AC6
     criterion: "go run ./cmd/cat on a non-existent file prints an error to stderr, exits 1, and still processes any other files on the command line."
   - id: AC7
