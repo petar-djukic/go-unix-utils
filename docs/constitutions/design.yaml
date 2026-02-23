@@ -172,8 +172,9 @@ document_types:
     purpose: |
       Groups test cases for a full release. Each use case in the release appears
       as a sub-section within the suite. The YAML provides quick human/Claude
-      consumption of test coverage; Go tests in tests/rel-NNN/ implement the
-      cases with use cases as sub-tests (t.Run("uc-NNN-slug", ...)).
+      consumption of test coverage; Go tests in tests/rel01.0/ use flat top-level
+      functions named TestRel{NN}_UC{NNN}_DescriptiveName. See
+      docs/constitutions/testing.yaml for the naming convention.
 
   engineering_guideline:
     location: "docs/engineering/eng[NN]-[short-name].yaml"
