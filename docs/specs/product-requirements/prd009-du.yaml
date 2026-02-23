@@ -15,79 +15,53 @@ problem: |
   prd003-format respectively.
 
 goals:
-  - id: G1
-    goal: Report disk usage for directories by recursively accumulating block counts, matching GNU du default output.
-  - id: G2
-    goal: Support summary mode (-s) to print only the total for each argument.
-  - id: G3
-    goal: Support human-readable output (-h) matching GNU du -h formatting.
-  - id: G4
-    goal: Support all-files mode (-a) to report sizes for individual files, not just directories.
-  - id: G5
-    goal: Support depth limiting (-d N / --max-depth=N) to control recursion depth.
-  - id: G6
-    goal: Support grand total (-c) to print a cumulative total after all arguments.
-  - id: G7
-    goal: Support apparent size (--apparent-size) to report file size instead of block count.
+  - G1: Report disk usage for directories by recursively accumulating block counts, matching GNU du default output.
+  - G2: Support summary mode (-s) to print only the total for each argument.
+  - G3: Support human-readable output (-h) matching GNU du -h formatting.
+  - G4: Support all-files mode (-a) to report sizes for individual files, not just directories.
+  - G5: Support depth limiting (-d N / --max-depth=N) to control recursion depth.
+  - G6: Support grand total (-c) to print a cumulative total after all arguments.
+  - G7: Support apparent size (--apparent-size) to report file size instead of block count.
 
 requirements:
-  - group: R1
+  R1:
     title: Default behavior
     items:
-      - id: R1.1
-        requirement: Must recurse into each directory argument and print the accumulated size and path for each subdirectory and the directory itself. When no arguments are given, must default to the current directory (".").
-      - id: R1.2
-        requirement: Must report sizes in 1024-byte (1K) block units by default, matching GNU du (du.c output_block_size defaults to 1024). Each entry's size is computed from st_blocks (512-byte blocks from the stat struct) divided by 2 to yield 1K blocks. Must obtain st_blocks via pkg/sys.Stat (prd002-sys R2.1-R2.2).
-      - id: R1.3
-        requirement: Must print one line per entry in the format "SIZE\tPATH\n" where SIZE is a right-aligned integer (no leading spaces) and PATH is the relative path as given by the directory traversal.
-      - id: R1.4
-        requirement: Must not follow symbolic links during traversal. Must use pkg/sys.Lstat (prd002-sys R2.1) to obtain metadata without following symlinks.
-      - id: R1.5
-        requirement: Must process multiple directory arguments in the order given on the command line. Each argument is traversed independently.
+      - R1.1: Must recurse into each directory argument and print the accumulated size and path for each subdirectory and the directory itself. When no arguments are given, must default to the current directory (".").
+      - R1.2: Must report sizes in 1024-byte (1K) block units by default, matching GNU du (du.c output_block_size defaults to 1024). Each entry's size is computed from st_blocks (512-byte blocks from the stat struct) divided by 2 to yield 1K blocks. Must obtain st_blocks via pkg/sys.Stat (prd002-sys R2.1-R2.2).
+      - R1.3: Must print one line per entry in the format "SIZE\tPATH\n" where SIZE is a right-aligned integer (no leading spaces) and PATH is the relative path as given by the directory traversal.
+      - R1.4: Must not follow symbolic links during traversal. Must use pkg/sys.Lstat (prd002-sys R2.1) to obtain metadata without following symlinks.
+      - R1.5: Must process multiple directory arguments in the order given on the command line. Each argument is traversed independently.
 
-  - group: R2
+  R2:
     title: Flag behavior
     items:
-      - id: R2.1
-        requirement: -h must display sizes as human-readable strings using binary mode (1024-based, suffixes K/M/G/T) via pkg/format.HumanSize (prd003-format R3.1-R3.4). -h applies to all output lines including the grand total line when -c is also given.
-      - id: R2.2
-        requirement: -s must print only one line per argument with the total size of that argument. When -s is given, subdirectory lines must not be printed. -s is equivalent to --max-depth=0.
-      - id: R2.3
-        requirement: -a must print a size line for every file encountered during traversal, not just directories. Without -a, only directory entries are printed (the default).
-      - id: R2.4
-        requirement: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.
-      - id: R2.5
-        requirement: -k must report sizes in 1024-byte blocks. Since 1K is already the default, -k has no visible effect but must be accepted without error for compatibility.
-      - id: R2.6
-        requirement: -m must report sizes in 1048576-byte (1M) blocks. Each entry's st_blocks value is converted from 512-byte blocks to 1M blocks, rounding up.
-      - id: R2.7
-        requirement: -c must print a grand total line after all arguments are processed. The grand total line has the format "SIZE\ttotal\n" where SIZE is the sum of all argument totals.
-      - id: R2.8
-        requirement: --apparent-size must report file sizes using st_size (the apparent file size in bytes) instead of st_blocks (the physical block allocation). The apparent size is then converted to the selected block unit (1K by default, or as overridden by -k, -m, or -h). Obtains st_size from the os.FileInfo.Size() method.
+      - R2.1: -h must display sizes as human-readable strings using binary mode (1024-based, suffixes K/M/G/T) via pkg/format.HumanSize (prd003-format R3.1-R3.4). -h applies to all output lines including the grand total line when -c is also given.
+      - R2.2: -s must print only one line per argument with the total size of that argument. When -s is given, subdirectory lines must not be printed. -s is equivalent to --max-depth=0.
+      - R2.3: -a must print a size line for every file encountered during traversal, not just directories. Without -a, only directory entries are printed (the default).
+      - R2.4: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.
+      - R2.5: -k must report sizes in 1024-byte blocks. Since 1K is already the default, -k has no visible effect but must be accepted without error for compatibility.
+      - R2.6: -m must report sizes in 1048576-byte (1M) blocks. Each entry's st_blocks value is converted from 512-byte blocks to 1M blocks, rounding up.
+      - R2.7: -c must print a grand total line after all arguments are processed. The grand total line has the format "SIZE\ttotal\n" where SIZE is the sum of all argument totals.
+      - R2.8: --apparent-size must report file sizes using st_size (the apparent file size in bytes) instead of st_blocks (the physical block allocation). The apparent size is then converted to the selected block unit (1K by default, or as overridden by -k, -m, or -h). Obtains st_size from the os.FileInfo.Size() method.
 
-  - group: R3
+  R3:
     title: Hard-link deduplication
     items:
-      - id: R3.1
-        requirement: Must track files by their device number (st_dev) and inode number (st_ino) across the entire du invocation. A file that has already been counted (same st_dev and st_ino) must not be counted again. This prevents double-counting hard-linked files, matching GNU du behavior (du.c:554 inode tracking via hash table).
-      - id: R3.2
-        requirement: Must obtain st_dev and st_ino via pkg/sys.Stat or pkg/sys.Lstat (prd002-sys R2.2). The deduplication map is keyed by (st_dev, st_ino) pairs.
-      - id: R3.3
-        requirement: Hard-link deduplication applies per du invocation, not per argument. A hard-linked file counted under one argument must not be counted again under a subsequent argument.
+      - R3.1: Must track files by their device number (st_dev) and inode number (st_ino) across the entire du invocation. A file that has already been counted (same st_dev and st_ino) must not be counted again. This prevents double-counting hard-linked files, matching GNU du behavior (du.c:554 inode tracking via hash table).
+      - R3.2: Must obtain st_dev and st_ino via pkg/sys.Stat or pkg/sys.Lstat (prd002-sys R2.2). The deduplication map is keyed by (st_dev, st_ino) pairs.
+      - R3.3: Hard-link deduplication applies per du invocation, not per argument. A hard-linked file counted under one argument must not be counted again under a subsequent argument.
 
-  - group: R4
+  R4:
     title: Exit codes
     items:
-      - id: R4.1
-        requirement: Must exit 0 when all arguments are traversed and reported successfully.
-      - id: R4.2
-        requirement: Must exit 1 when any error occurs during traversal (cannot stat a file, cannot read a directory, permission denied). Must print a diagnostic to stderr for each error and continue processing remaining entries and arguments before exiting.
+      - R4.1: Must exit 0 when all arguments are traversed and reported successfully.
+      - R4.2: Must exit 1 when any error occurs during traversal (cannot stat a file, cannot read a directory, permission denied). Must print a diagnostic to stderr for each error and continue processing remaining entries and arguments before exiting.
 
-  - group: R5
+  R5:
     title: Signal handling
     items:
-      - id: R5.1
-        requirement: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping du output to head or other truncating consumers does not produce a broken-pipe error message.
+      - R5.1: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping du output to head or other truncating consumers does not produce a broken-pipe error message.
 
 non_goals:
   - --si (1000-based units) is out of scope; we support only binary (1024-based) human-readable output.
@@ -102,21 +76,12 @@ non_goals:
   - -0 / --null (NUL-terminated output) is out of scope.
 
 acceptance_criteria:
-  - id: AC1
-    criterion: Default mode comparison -- gdu and go run ./cmd/du on a test directory fixture produce identical output. Differential tests must use -k to normalize block size and run both binaries on the same directory on the same filesystem.
-  - id: AC2
-    criterion: Summary mode -- gdu -s and go run ./cmd/du -s produce identical single-line output per argument on the same fixture.
-  - id: AC3
-    criterion: Human-readable sizes -- gdu -h and go run ./cmd/du -h produce identical size strings on a fixture with directories of known cumulative sizes.
-  - id: AC4
-    criterion: Hard-link deduplication -- a fixture containing one file hard-linked twice in different subdirectories produces the same total with gdu and the Go binary. The total must count the file's blocks only once.
-  - id: AC5
-    criterion: Apparent size -- gdu --apparent-size and go run ./cmd/du --apparent-size produce identical output on a fixture containing a sparse file (where apparent size differs from block allocation).
-  - id: AC6
-    criterion: Depth limiting -- gdu -d 1 and go run ./cmd/du -d 1 produce identical output, showing only the top-level entries and the argument total.
-  - id: AC7
-    criterion: Grand total -- gdu -c dir1 dir2 and go run ./cmd/du -c dir1 dir2 produce identical output including the "total" line.
-  - id: AC8
-    criterion: Exit codes -- the Go binary exits 1 when given a non-existent directory argument and prints a diagnostic to stderr, matching gdu behavior.
-  - id: AC9
-    criterion: cmd/du compiles with no warnings under golangci-lint.
+  - "AC1: Default mode comparison -- gdu and go run ./cmd/du on a test directory fixture produce identical output. Differential tests must use -k to normalize block size and run both binaries on the same directory on the same filesystem."
+  - "AC2: Summary mode -- gdu -s and go run ./cmd/du -s produce identical single-line output per argument on the same fixture."
+  - "AC3: Human-readable sizes -- gdu -h and go run ./cmd/du -h produce identical size strings on a fixture with directories of known cumulative sizes."
+  - "AC4: Hard-link deduplication -- a fixture containing one file hard-linked twice in different subdirectories produces the same total with gdu and the Go binary. The total must count the file's blocks only once."
+  - "AC5: Apparent size -- gdu --apparent-size and go run ./cmd/du --apparent-size produce identical output on a fixture containing a sparse file (where apparent size differs from block allocation)."
+  - "AC6: Depth limiting -- gdu -d 1 and go run ./cmd/du -d 1 produce identical output, showing only the top-level entries and the argument total."
+  - "AC7: Grand total -- gdu -c dir1 dir2 and go run ./cmd/du -c dir1 dir2 produce identical output including the \"total\" line."
+  - "AC8: Exit codes -- the Go binary exits 1 when given a non-existent directory argument and prints a diagnostic to stderr, matching gdu behavior."
+  - "AC9: cmd/du compiles with no warnings under golangci-lint."

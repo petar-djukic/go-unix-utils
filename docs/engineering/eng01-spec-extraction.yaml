@@ -327,18 +327,8 @@ sections:
           preconditions
 
 references:
-  - id: prd002-sys
-    path: docs/specs/product-requirements/prd002-sys.yaml
-    note: Shared syscall library PRD; shows how shared capabilities are extracted and documented separately from utility PRDs.
-  - id: prd004-ts
-    path: docs/specs/product-requirements/prd004-ts.yaml
-    note: Example PRD extracted from Perl source (ts from moreutils); illustrates Perl-specific extraction patterns and subsecond timestamp handling.
-  - id: prd005-wc
-    path: docs/specs/product-requirements/prd005-wc.yaml
-    note: Example PRD extracted from C source (wc from coreutils); illustrates column-ordering extraction and locale constraints.
-  - id: sources
-    path: docs/specs/sources.yaml
-    note: Catalog of reference repositories; records commit hash, source file, flag-parsing location, and exit-code logic location for each utility.
-  - id: utilities
-    path: docs/utilities.yaml
-    note: Full utility catalog with difficulty and memory model classifications derived from this extraction process.
+  - "docs/specs/product-requirements/prd002-sys.yaml — shared syscall library PRD; shows how shared capabilities are extracted and documented separately from utility PRDs."
+  - "docs/specs/product-requirements/prd004-ts.yaml — example PRD extracted from Perl source (ts from moreutils); illustrates Perl-specific extraction patterns and subsecond timestamp handling."
+  - "docs/specs/product-requirements/prd005-wc.yaml — example PRD extracted from C source (wc from coreutils); illustrates column-ordering extraction and locale constraints."
+  - "docs/specs/sources.yaml — catalog of reference repositories; records commit hash, source file, flag-parsing location, and exit-code logic location for each utility."
+  - "docs/utilities.yaml — full utility catalog with difficulty and memory model classifications derived from this extraction process."

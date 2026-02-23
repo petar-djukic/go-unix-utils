@@ -18,38 +18,18 @@ traces:
   - prd009-du R4
   - prd009-du R5
 
-preconditions: |
-  Both utilities share these preconditions:
+preconditions:
   - Binaries exist under ./bin/ (built via mage build).
-  - Reference binaries are installed via Homebrew: gls (coreutils), gdu (coreutils).
-  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from
-    pkg/testutils.
+  - Reference binaries are installed via Homebrew gls (coreutils) and gdu (coreutils).
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
   - All tests use LC_ALL=C to eliminate locale-dependent divergence.
-
-  ls-specific preconditions:
-  - All differential tests use --color=never to eliminate ANSI escape variance (except
-    color-specific structural tests).
-  - For -l tests, the LsNormalizer replaces the mtime column (matching "Mon DD HH:MM" or
-    "Mon DD  YYYY" patterns) with the placeholder "MTIME" before comparison.
-  - Tests use a fixture directory (testdata/ls-fixture/) containing:
-    - Regular files of known sizes (0 bytes, 1024 bytes, 1536 bytes, 1048576 bytes)
-    - A subdirectory
-    - Dotfiles (.hidden, .config)
-    - A symbolic link
-    - Files with known permissions (rwxr-xr-x, rw-r-----)
-    - All files owned by the test runner's UID/GID for consistent owner/group display.
-
-  du-specific preconditions:
-  - No normalization is applied; du output is deterministic when both binaries run on the
-    same directory on the same filesystem.
-  - All block-count tests use -k to pin output to 1024-byte blocks and eliminate platform
-    default divergence.
-  - Tests use a fixture directory (testdata/du-fixture/) containing:
-    - A subdirectory with nested files of known sizes
-    - A second subdirectory for multi-argument tests
-    - Files of varied sizes (empty, small, 1 MB) for human-readable testing
-    - Hard-link pairs are created in test setup (not committed) to test dedup
-  - All files in the fixture are on the same filesystem as the test runner.
+  - "ls: all differential tests use --color=never to eliminate ANSI escape variance (except color-specific structural tests)."
+  - "ls: for -l tests, the LsNormalizer replaces the mtime column with the placeholder MTIME before comparison."
+  - "ls: tests use a fixture directory (testdata/ls-fixture/) containing regular files of known sizes, a subdirectory, dotfiles, a symbolic link, and files with known permissions."
+  - "du: no normalization is applied; du output is deterministic when both binaries run on the same directory on the same filesystem."
+  - "du: all block-count tests use -k to pin output to 1024-byte blocks and eliminate platform default divergence."
+  - "du: tests use a fixture directory (testdata/du-fixture/) containing nested files of known sizes, a second subdirectory for multi-argument tests, and files of varied sizes."
+  - "du: hard-link pairs are created in test setup (not committed) to test dedup. All files in the fixture are on the same filesystem as the test runner."
 
 test_cases:
   # --- uc001-ls: ls core flag listing ---

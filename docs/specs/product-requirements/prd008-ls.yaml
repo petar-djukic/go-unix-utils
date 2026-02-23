@@ -16,103 +16,69 @@ problem: |
   for rel02.0; extended flags are deferred to prd010-ls-extended.
 
 goals:
-  - id: G1
-    goal: List directory contents in multi-column, single-column, or long format, matching GNU ls output layout.
-  - id: G2
-    goal: Support filter flags (-a, -A, -d) to control which entries appear in the listing.
-  - id: G3
-    goal: Support colorized output via --color with automatic suppression when stdout is not a TTY.
-  - id: G4
-    goal: Support human-readable file sizes (-h) in long format, matching GNU ls -lh output.
-  - id: G5
-    goal: Produce correct exit codes (0, 1, 2) matching GNU ls exit-code contract.
+  - G1: List directory contents in multi-column, single-column, or long format, matching GNU ls output layout.
+  - G2: Support filter flags (-a, -A, -d) to control which entries appear in the listing.
+  - G3: Support colorized output via --color with automatic suppression when stdout is not a TTY.
+  - G4: Support human-readable file sizes (-h) in long format, matching GNU ls -lh output.
+  - G5: Produce correct exit codes (0, 1, 2) matching GNU ls exit-code contract.
 
 requirements:
-  - group: R1
+  R1:
     title: Default listing (multi-column and single-column)
     items:
-      - id: R1.1
-        requirement: When stdout is a TTY and no format flag is given, must produce multi-column output sorted vertically (down columns, then across). Column count must be computed from the terminal width obtained via pkg/sys.TerminalWidth and entries laid out via pkg/format.Columns.
-      - id: R1.2
-        requirement: When stdout is not a TTY (pipe, file redirect) and no format flag is given, must produce single-column output with one entry per line. This matches GNU ls behavior (ls.c detects stdout is not a TTY and sets format to single-column).
-      - id: R1.3
-        requirement: Must sort entries in the C locale order (LC_COLLATE=C). Differential tests must set LC_ALL=C to eliminate locale-dependent sort divergence.
-      - id: R1.4
-        requirement: Must not list entries whose names start with "." unless -a or -A is given. This is the default filter behavior matching GNU ls.
+      - R1.1: When stdout is a TTY and no format flag is given, must produce multi-column output sorted vertically (down columns, then across). Column count must be computed from the terminal width obtained via pkg/sys.TerminalWidth and entries laid out via pkg/format.Columns.
+      - R1.2: When stdout is not a TTY (pipe, file redirect) and no format flag is given, must produce single-column output with one entry per line. This matches GNU ls behavior (ls.c detects stdout is not a TTY and sets format to single-column).
+      - R1.3: Must sort entries in the C locale order (LC_COLLATE=C). Differential tests must set LC_ALL=C to eliminate locale-dependent sort divergence.
+      - R1.4: Must not list entries whose names start with "." unless -a or -A is given. This is the default filter behavior matching GNU ls.
 
-  - group: R2
+  R2:
     title: Single-column mode (-1) and long format (-l)
     items:
-      - id: R2.1
-        requirement: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
-      - id: R2.2
-        requirement: -l must produce long format with fields in this order, matching GNU ls (ls.c:4700-4750) -- file type and permissions (10 characters), hard-link count, owner name, group name, size in bytes, modification time, and entry name. Fields are separated by spaces; numeric fields are right-aligned.
-      - id: R2.3
-        requirement: In long format, the file type character must be one of "d" (directory), "l" (symbolic link), "c" (character device), "b" (block device), "p" (named pipe/FIFO), "s" (socket), or "-" (regular file).
-      - id: R2.4
-        requirement: In long format, permissions must be displayed as nine characters (rwxrwxrwx) with "-" replacing unset bits. Setuid is shown as "s" (or "S" when execute is unset) in the owner execute position. Setgid is shown as "s" (or "S") in the group execute position. Sticky bit is shown as "t" (or "T") in the other execute position.
-      - id: R2.5
-        requirement: In long format, hard-link count must be obtained from pkg/sys.Stat (st_nlink field from syscall.Stat_t via prd002-sys R2.1-R2.2).
-      - id: R2.6
-        requirement: In long format, owner and group names must be resolved from UID and GID obtained via pkg/sys.Stat (st_uid, st_gid from prd002-sys R2.2). Must use os/user.LookupId and os/user.LookupGroupId for name resolution. If lookup fails, must display the numeric ID.
-      - id: R2.7
-        requirement: In long format, the modification time must be displayed as "Mon DD HH:MM" for files modified within the last six months, and "Mon DD  YYYY" for files modified more than six months ago, matching GNU ls time formatting (ls.c:4572-4610).
-      - id: R2.8
-        requirement: In long format, symlinks must display the link name followed by " -> " and the link target path (obtained via os.Readlink).
-      - id: R2.9
-        requirement: In long format, must print a "total N" line before the listing, where N is the sum of 512-byte block counts (st_blocks) for all listed entries, divided by 2 to convert to 1024-byte blocks. This matches GNU ls (ls.c:3363-3377 total_blocks calculation).
+      - R2.1: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
+      - R2.2: -l must produce long format with fields in this order, matching GNU ls (ls.c:4700-4750) -- file type and permissions (10 characters), hard-link count, owner name, group name, size in bytes, modification time, and entry name. Fields are separated by spaces; numeric fields are right-aligned.
+      - R2.3: In long format, the file type character must be one of "d" (directory), "l" (symbolic link), "c" (character device), "b" (block device), "p" (named pipe/FIFO), "s" (socket), or "-" (regular file).
+      - R2.4: In long format, permissions must be displayed as nine characters (rwxrwxrwx) with "-" replacing unset bits. Setuid is shown as "s" (or "S" when execute is unset) in the owner execute position. Setgid is shown as "s" (or "S") in the group execute position. Sticky bit is shown as "t" (or "T") in the other execute position.
+      - R2.5: In long format, hard-link count must be obtained from pkg/sys.Stat (st_nlink field from syscall.Stat_t via prd002-sys R2.1-R2.2).
+      - R2.6: In long format, owner and group names must be resolved from UID and GID obtained via pkg/sys.Stat (st_uid, st_gid from prd002-sys R2.2). Must use os/user.LookupId and os/user.LookupGroupId for name resolution. If lookup fails, must display the numeric ID.
+      - R2.7: In long format, the modification time must be displayed as "Mon DD HH:MM" for files modified within the last six months, and "Mon DD  YYYY" for files modified more than six months ago, matching GNU ls time formatting (ls.c:4572-4610).
+      - R2.8: In long format, symlinks must display the link name followed by " -> " and the link target path (obtained via os.Readlink).
+      - R2.9: In long format, must print a "total N" line before the listing, where N is the sum of 512-byte block counts (st_blocks) for all listed entries, divided by 2 to convert to 1024-byte blocks. This matches GNU ls (ls.c:3363-3377 total_blocks calculation).
 
-  - group: R3
+  R3:
     title: Filter flags (-a, -A, -d)
     items:
-      - id: R3.1
-        requirement: -a must include entries whose names start with "." including the special entries "." and ".." in the listing.
-      - id: R3.2
-        requirement: -A must include entries whose names start with "." except for "." and "..". -A is the "almost all" filter.
-      - id: R3.3
-        requirement: -d must list directory entries themselves rather than their contents. When a directory is given as an argument with -d, must print the directory name (or its long-format entry with -l) without descending into it.
-      - id: R3.4
-        requirement: When both -a and -A are given, the last one on the command line takes precedence, matching GNU ls behavior.
+      - R3.1: -a must include entries whose names start with "." including the special entries "." and ".." in the listing.
+      - R3.2: -A must include entries whose names start with "." except for "." and "..". -A is the "almost all" filter.
+      - R3.3: -d must list directory entries themselves rather than their contents. When a directory is given as an argument with -d, must print the directory name (or its long-format entry with -l) without descending into it.
+      - R3.4: When both -a and -A are given, the last one on the command line takes precedence, matching GNU ls behavior.
 
-  - group: R4
+  R4:
     title: Color output (--color)
     items:
-      - id: R4.1
-        requirement: Must support --color=always, --color=auto, and --color=never. When --color is given without a value, it must default to "always".
-      - id: R4.2
-        requirement: --color=auto must colorize output only when stdout is a TTY. TTY detection must use pkg/sys.IsTerminal (prd002-sys). When stdout is not a TTY, --color=auto must behave like --color=never.
-      - id: R4.3
-        requirement: Colorized output must use GNU LS_COLORS default color assignments via pkg/format.FileTypeColor (prd003-format R2.1-R2.4). Each entry name is wrapped in the appropriate ANSI escape sequence and followed by the reset sequence from pkg/format.Reset.
-      - id: R4.4
-        requirement: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
+      - R4.1: Must support --color=always, --color=auto, and --color=never. When --color is given without a value, it must default to "always".
+      - R4.2: --color=auto must colorize output only when stdout is a TTY. TTY detection must use pkg/sys.IsTerminal (prd002-sys). When stdout is not a TTY, --color=auto must behave like --color=never.
+      - R4.3: Colorized output must use GNU LS_COLORS default color assignments via pkg/format.FileTypeColor (prd003-format R2.1-R2.4). Each entry name is wrapped in the appropriate ANSI escape sequence and followed by the reset sequence from pkg/format.Reset.
+      - R4.4: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
 
-  - group: R5
+  R5:
     title: Human-readable sizes (-h)
     items:
-      - id: R5.1
-        requirement: -h must only take effect with -l (long format). When -h is given with -l, file sizes must be displayed as human-readable strings using binary mode (1024-based, suffixes K/M/G/T) via pkg/format.HumanSize (prd003-format R3.1-R3.4).
-      - id: R5.2
-        requirement: -h must also apply to the "total N" block count line in long format, converting the total block count to a human-readable string.
-      - id: R5.3
-        requirement: Without -l, -h must have no visible effect on output.
+      - R5.1: -h must only take effect with -l (long format). When -h is given with -l, file sizes must be displayed as human-readable strings using binary mode (1024-based, suffixes K/M/G/T) via pkg/format.HumanSize (prd003-format R3.1-R3.4).
+      - R5.2: -h must also apply to the "total N" block count line in long format, converting the total block count to a human-readable string.
+      - R5.3: Without -l, -h must have no visible effect on output.
 
-  - group: R6
+  R6:
     title: Exit codes
     items:
-      - id: R6.1
-        requirement: Must exit 0 when all listed paths are accessed and output is written successfully.
-      - id: R6.2
-        requirement: Must exit 1 when a minor problem occurs, such as failing to access a file or directory given as an argument (e.g., permission denied, file not found). Must still list the remaining accessible entries before exiting. Must print a diagnostic to stderr for each inaccessible entry.
-      - id: R6.3
-        requirement: Must exit 2 when a serious problem occurs, such as an invalid command-line option. This matches GNU ls (ls.c:5638 exit(status) where status is set to EXIT_FAILURE=2 for bad options at ls.c:2026).
+      - R6.1: Must exit 0 when all listed paths are accessed and output is written successfully.
+      - R6.2: Must exit 1 when a minor problem occurs, such as failing to access a file or directory given as an argument (e.g., permission denied, file not found). Must still list the remaining accessible entries before exiting. Must print a diagnostic to stderr for each inaccessible entry.
+      - R6.3: Must exit 2 when a serious problem occurs, such as an invalid command-line option. This matches GNU ls (ls.c:5638 exit(status) where status is set to EXIT_FAILURE=2 for bad options at ls.c:2026).
 
-  - group: R7
+  R7:
     title: Signal handling
     items:
-      - id: R7.1
-        requirement: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping ls output to head or other truncating consumers does not produce a broken-pipe error message.
-      - id: R7.2
-        requirement: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize (prd002-sys R4.1-R4.2) that re-queries the terminal width. This allows ls to adapt column layout if the terminal is resized during a long listing.
+      - R7.1: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping ls output to head or other truncating consumers does not produce a broken-pipe error message.
+      - R7.2: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize (prd002-sys R4.1-R4.2) that re-queries the terminal width. This allows ls to adapt column layout if the terminal is resized during a long listing.
 
 non_goals:
   - -C (force multi-column), -x (sort across), -t (sort by mtime), -S (sort by size), -r (reverse sort), -U (unsorted), -v (version sort), -i (inode number), -s (block size), -n (numeric UID/GID), -R (recursive), -F (classify with indicator) are deferred to prd010-ls-extended.
@@ -125,19 +91,11 @@ non_goals:
   - ACL (access control list) display in long format (the "+" indicator) is out of scope.
 
 acceptance_criteria:
-  - id: AC1
-    criterion: Default mode comparison -- gls and go run ./cmd/ls on a test directory produce identical multi-column output when run in a pseudo-TTY with the same terminal width. Differential test must set LC_ALL=C and --color=never.
-  - id: AC2
-    criterion: Single-column comparison -- gls -1 and go run ./cmd/ls -1 produce identical output on the same test directory.
-  - id: AC3
-    criterion: Long format comparison -- gls -l and go run ./cmd/ls -l produce identical output on the same test directory. Because mtime display depends on wall clock, differential tests must normalize the mtime column by replacing it with a fixed placeholder (e.g., "MTIME") before comparison. Because owner/group names may vary, tests must use a fixture where files are owned by the test user, or normalize owner/group fields.
-  - id: AC4
-    criterion: Color suppression -- gls --color=auto and go run ./cmd/ls --color=auto produce no ANSI escape sequences when stdout is piped (not a TTY).
-  - id: AC5
-    criterion: Human-readable sizes -- gls -lh and go run ./cmd/ls -lh produce identical size strings on a set of test files with known sizes (0 bytes, 1023 bytes, 1024 bytes, 1536 bytes, 1048576 bytes, 1073741824 bytes).
-  - id: AC6
-    criterion: Filter flags -- gls -a, gls -A, and gls -d produce identical output to the Go binary with the same flags on a test directory containing dotfiles and subdirectories.
-  - id: AC7
-    criterion: Exit codes -- the Go binary exits 1 when given a non-existent path argument and exits 2 when given an invalid option, matching gls behavior.
-  - id: AC8
-    criterion: cmd/ls compiles with no warnings under golangci-lint.
+  - "AC1: Default mode comparison -- gls and go run ./cmd/ls on a test directory produce identical multi-column output when run in a pseudo-TTY with the same terminal width. Differential test must set LC_ALL=C and --color=never."
+  - "AC2: Single-column comparison -- gls -1 and go run ./cmd/ls -1 produce identical output on the same test directory."
+  - "AC3: Long format comparison -- gls -l and go run ./cmd/ls -l produce identical output on the same test directory. Because mtime display depends on wall clock, differential tests must normalize the mtime column by replacing it with a fixed placeholder (e.g., \"MTIME\") before comparison. Because owner/group names may vary, tests must use a fixture where files are owned by the test user, or normalize owner/group fields."
+  - "AC4: Color suppression -- gls --color=auto and go run ./cmd/ls --color=auto produce no ANSI escape sequences when stdout is piped (not a TTY)."
+  - "AC5: Human-readable sizes -- gls -lh and go run ./cmd/ls -lh produce identical size strings on a set of test files with known sizes (0 bytes, 1023 bytes, 1024 bytes, 1536 bytes, 1048576 bytes, 1073741824 bytes)."
+  - "AC6: Filter flags -- gls -a, gls -A, and gls -d produce identical output to the Go binary with the same flags on a test directory containing dotfiles and subdirectories."
+  - "AC7: Exit codes -- the Go binary exits 1 when given a non-existent path argument and exits 2 when given an invalid option, matching gls behavior."
+  - "AC8: cmd/ls compiles with no warnings under golangci-lint."

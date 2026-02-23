@@ -24,22 +24,14 @@ traces:
   - prd007-sponge R5
   - prd007-sponge R6
 
-preconditions: |
-  All three utilities share these preconditions:
+preconditions:
   - Binaries exist under ./bin/ (built via mage build).
-  - Reference binaries are installed via Homebrew: gwc (coreutils), gcat (coreutils),
-    sponge (moreutils).
-  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from
-    pkg/testutils.
+  - Reference binaries are installed via Homebrew gwc (coreutils), gcat (coreutils), sponge (moreutils).
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
   - All tests use LC_ALL=C to eliminate locale-dependent divergence.
-
-  Utility-specific preconditions:
-  - wc: No normalization is applied; wc output is deterministic integer counts.
-  - cat: No normalization is applied; cat output is deterministic. Binary test inputs
-    are specified as hex escape sequences.
-  - sponge: Each test creates an isolated temp directory. Comparison is on output file
-    content (prd001-testutils R5) for tests with an output filename. Passthrough mode
-    tests compare stdout byte-for-byte.
+  - "wc: no normalization is applied; wc output is deterministic integer counts."
+  - "cat: no normalization is applied; cat output is deterministic. Binary test inputs are specified as hex escape sequences."
+  - "sponge: each test creates an isolated temp directory. Comparison is on output file content (prd001-testutils R5) for tests with an output filename. Passthrough mode tests compare stdout byte-for-byte."
 
 test_cases:
   # --- uc001-wc: wc count lines, words, and bytes ---

@@ -29,45 +29,25 @@ overview:
     pkg/testutils/ is the shared acceptance criterion for both phases.
 
 interfaces:
-  data_structures:
-    - name: PRD (prd[NNN]-<utility>.yaml)
-      description: |
-        Per-utility product requirements document with numbered goals, requirements, and
-        acceptance criteria. Written in YAML following spec-rules.yaml. Located at
-        docs/specs/product-requirements/prd[NNN]-<utility>.yaml. One PRD per utility.
-    - name: use case (rel[NN].[N]-uc[NNN]-<utility>.yaml)
-      description: |
-        Per-utility use case describing a concrete end-to-end execution path through the
-        system. Captures the actor, trigger, flow steps, architecture touchpoints, and
-        success criteria. Located at docs/specs/use-cases/. One use case per utility.
-        Links to a corresponding test suite.
-    - name: DiffTest
-      description: |
-        Go struct in pkg/testutils/ defining a single differential test case with fields
-        for input arguments, stdin, environment, expected exit code, and expected output.
-        cmd/ packages construct slices of DiffTest and pass them to the harness.
-    - name: configuration.yaml
-      description: |
-        Orchestrator configuration file at the project root. Consumed by magefiles/
-        to configure build, analysis, and generation targets. Fields include module_path,
-        binary_dir, spec_globs, and generation parameters.
-  operations:
-    - name: mage build
-      description: Compiles all cmd/ binaries to bin/.
-    - name: mage lint
-      description: Runs golangci-lint on all Go source under cmd/ and pkg/.
-    - name: mage stats
-      description: Prints Go lines of code (production and test) and documentation word counts.
-    - name: mage analyze
-      description: Runs cross-artifact consistency checks on docs/ (PRDs, use cases, test suites, roadmap).
-    - name: go test ./...
-      description: Runs all tests including differential tests in each cmd/ package.
-  announcements:
-    - name: Differential test failure
-      description: |
-        When a Go binary output diverges from the reference binary, go test reports
-        the divergence with the input that triggered it, the expected output (reference
-        binary), and the actual output (Go binary).
+  - name: Data Structures
+    summary: |
+      Specification artifacts and runtime data structures used across the pipeline.
+    data_structures:
+      - "PRD (prd[NNN]-<utility>.yaml): per-utility product requirements document with numbered goals, requirements, and acceptance criteria."
+      - "Use case (rel[NN].[N]-uc[NNN]-<utility>.yaml): per-utility use case describing a concrete end-to-end execution path through the system."
+      - "DiffTest: Go struct in pkg/testutils/ defining a single differential test case with fields for input arguments, stdin, environment, expected exit code, and expected output."
+      - "configuration.yaml: orchestrator configuration file at the project root consumed by magefiles/ to configure build, analysis, and generation targets."
+    operations:
+      - "mage build: compiles all cmd/ binaries to bin/."
+      - "mage lint: runs golangci-lint on all Go source under cmd/ and pkg/."
+      - "mage stats:loc: prints Go lines of code (production and test) and documentation word counts."
+      - "mage analyze: runs cross-artifact consistency checks on docs/ (PRDs, use cases, test suites, roadmap)."
+      - "go test ./...: runs all tests including differential tests in each cmd/ package."
+  - name: Events
+    summary: |
+      Observable events emitted by the system during operation.
+    operations:
+      - "Differential test failure: go test reports the divergence with the input that triggered it, the expected output (reference binary), and the actual output (Go binary)."
 
 components:
   - name: Human Operator
@@ -79,10 +59,11 @@ components:
       fails differential tests. Also authors PRDs for shared pkg/ components when their
       requirements warrant it.
     capabilities:
-      - make-work skill: breaks a utility into specification issues
-      - do-work skill: works through individual specification issues
+      - make-work skill breaks a utility into specification issues
+      - do-work skill works through individual specification issues
       - C source analysis via cloned coreutils/moreutils/grep/findutils repositories
-    references: .claude/commands/
+    references:
+      - .claude/commands/
 
   - name: Specification Repository
     responsibility: |
@@ -94,7 +75,8 @@ components:
       - One use case per utility under docs/specs/use-cases/
       - VISION.yaml and ARCHITECTURE.yaml project-level docs
       - Test suites under docs/specs/test-suites/
-    references: docs/
+    references:
+      - docs/
 
   - name: cmd/
     responsibility: |
@@ -107,9 +89,10 @@ components:
     capabilities:
       - One package per utility, named cmd/<utility>/
       - Each package contains main.go (implementation) and <utility>_test.go (differential tests)
-      - Active roadmap: see road-map.yaml for current release and use case status
-      - Full catalog: see docs/utilities.yaml for difficulty, memory model, and implementation profile of each utility
-    references: cmd/
+      - Active roadmap in road-map.yaml for current release and use case status
+      - Full catalog in docs/utilities.yaml for difficulty, memory model, and implementation profile of each utility
+    references:
+      - cmd/
 
   - name: pkg/sys/
     responsibility: |
@@ -123,7 +106,8 @@ components:
       - File metadata (stat, lstat; abstracts st_mtimespec/st_mtim and st_blocks divergence)
       - Process group management (setpgid, killpg) for timeout and xargs -P
       - Process priority (setpriority) for nice and renice
-    references: pkg/sys/
+    references:
+      - pkg/sys/
 
   - name: pkg/format/
     responsibility: |
@@ -133,7 +117,8 @@ components:
       - Column alignment for tabular output (ls -l style)
       - ANSI color codes for file types and permissions
       - Human-readable size formatting
-    references: pkg/format/
+    references:
+      - pkg/format/
 
   - name: pkg/testutils/
     responsibility: |
@@ -145,7 +130,8 @@ components:
       - Compare stdout, stderr, and exit code
       - Report divergence with the input, expected output, and actual output
       - Support normalization hooks for known acceptable differences (e.g., timestamps)
-    references: pkg/testutils/
+    references:
+      - pkg/testutils/
 
   - name: magefiles/
     responsibility: |
@@ -154,17 +140,18 @@ components:
       agents for code generation. This is the boundary between the human-guided spec
       phase and the automated synthesis phase.
     capabilities:
-      - mage build -- compile all binaries
-      - mage lint -- run golangci-lint
-      - mage stats -- print LOC and doc word counts
-      - mage analyze -- cross-artifact consistency checks
-      - mage init -- initialize project (beads)
-      - mage credentials -- extract Claude credentials from macOS Keychain
-      - mage cobbler:measure / mage cobbler:stitch -- orchestrator generation cycle
-    references: magefiles/
+      - mage build compiles all binaries
+      - mage lint runs golangci-lint
+      - mage stats:loc prints LOC and doc word counts
+      - mage analyze runs cross-artifact consistency checks
+      - mage init initializes project (beads)
+      - mage credentials extracts Claude credentials from macOS Keychain
+      - mage cobbler:measure and mage cobbler:stitch run the orchestrator generation cycle
+    references:
+      - magefiles/
 
 design_decisions:
-  - id: DD1
+  - id: 1
     title: C source as the specification source of truth
     decision: |
       We derive specs from the C source code of coreutils, moreutils, grep, and findutils
@@ -174,10 +161,10 @@ design_decisions:
       - Eliminates ambiguity about intended behavior
       - Enables completeness verification against the actual implementation
     alternatives_rejected:
-      - Man-page-only specs: insufficient detail for edge cases and exit codes
-      - Behavioral-only extraction: slower, misses implementation intent for unexposed paths
+      - "Man-page-only specs: insufficient detail for edge cases and exit codes"
+      - "Behavioral-only extraction: slower, misses implementation intent for unexposed paths"
 
-  - id: DD2
+  - id: 2
     title: Differential testing as the primary verification mechanism
     decision: |
       We verify Go implementations by running them side by side with the Homebrew GNU
@@ -188,10 +175,10 @@ design_decisions:
       - Discovers regressions automatically when spec or code changes
       - Scales to any number of inputs without manual expected-output authoring
     alternatives_rejected:
-      - Unit tests with hardcoded expectations: brittle, based on documentation assumptions
-      - Integration tests against a fixed corpus: does not verify against live GNU behavior
+      - "Unit tests with hardcoded expectations: brittle, based on documentation assumptions"
+      - "Integration tests against a fixed corpus: does not verify against live GNU behavior"
 
-  - id: DD3
+  - id: 3
     title: Shared pkg/ library for Unix primitives
     decision: |
       Common logic (syscalls, formatting, I/O patterns) is promoted to pkg/ rather than
@@ -201,10 +188,10 @@ design_decisions:
       - Builds a reusable Go library of Unix primitives
       - Makes each cmd/ package focused on utility-specific logic
     alternatives_rejected:
-      - Per-utility internal packages: promotes duplication across cmd/
-      - External formatting libraries: reduces control, increases supply-chain surface
+      - "Per-utility internal packages: promotes duplication across cmd/"
+      - "External formatting libraries: reduces control, increases supply-chain surface"
 
-  - id: DD4
+  - id: 4
     title: Homebrew GNU binaries as reference, not macOS built-ins
     decision: |
       On macOS we use gls, gts, and other g-prefixed Homebrew binaries as the reference,
@@ -214,10 +201,10 @@ design_decisions:
       - Avoids testing against BSD variants with different flag sets and semantics
       - Homebrew binaries are the same version as the cloned source
     alternatives_rejected:
-      - macOS built-ins: BSD-derived, significant flag and behavior differences from GNU
-      - Building from source ourselves: adds complexity without benefit
+      - "macOS built-ins: BSD-derived, significant flag and behavior differences from GNU"
+      - "Building from source ourselves: adds complexity without benefit"
 
-  - id: DD5
+  - id: 5
     title: Human-guided specification, automated synthesis
     decision: |
       We split responsibility at the spec boundary. The human operator owns the PRD
@@ -232,7 +219,7 @@ design_decisions:
       - Fully automated pipeline (orchestrator writes specs too) conflates two failure modes
       - Fully manual pipeline (human writes Go) does not test the orchestrator at all
 
-  - id: DD6
+  - id: 6
     title: Locale handling deferred; LC_ALL=C for the current roadmap
     decision: |
       Go's standard library has no strcoll() equivalent. Utilities that require locale-aware
@@ -255,37 +242,41 @@ design_decisions:
       - Makes the constraint explicit and testable rather than discovered mid-implementation
       - golang.org/x/text is the same vendor and trust tier as golang.org/x/sys
     alternatives_rejected:
-      - Implement strcoll in-house using CLDR tables: out of scope, maintenance burden
-      - Allow any locale library: increases supply-chain surface beyond what the project accepts
-      - Silently test only LC_ALL=C without documenting the gap: hides a behavioral difference
+      - "Implement strcoll in-house using CLDR tables: out of scope, maintenance burden"
+      - "Allow any locale library: increases supply-chain surface beyond what the project accepts"
+      - "Silently test only LC_ALL=C without documenting the gap: hides a behavioral difference"
 
 technology_choices:
-  - technology: Go
-    reason: Idiomatic systems programming language with strong standard library for I/O and OS operations.
-  - technology: Mage
-    reason: Go-native build tool; targets are plain Go functions, no DSL to learn or maintain.
-  - technology: golangci-lint
-    reason: Comprehensive linting for idiomatic Go; integrated with the mage lint target.
-  - technology: golang.org/x/sys
-    reason: |
+  - component: Language
+    technology: Go
+    purpose: Idiomatic systems programming language with strong standard library for I/O and OS operations.
+  - component: Build
+    technology: Mage
+    purpose: Go-native build tool; targets are plain Go functions, no DSL to learn or maintain.
+  - component: Lint
+    technology: golangci-lint
+    purpose: Comprehensive linting for idiomatic Go; integrated with the mage lint target.
+  - component: Syscalls
+    technology: golang.org/x/sys
+    purpose: |
       The only external Go dependency in the current roadmap. Provides stable Darwin and
       Linux syscall coverage for Stat_t field access (field names diverge between
       platforms), ioctl constants (TIOCGWINSZ), and signal mask operations. pkg/sys wraps
       this into a single internal API; cmd/ packages do not import golang.org/x/sys
-      directly. IsTerminal and TerminalWidth are implemented in pkg/sys using
-      golang.org/x/sys, avoiding a separate golang.org/x/term dependency.
-
-      golang.org/x/text/collate is the planned addition when locale-sensitive utilities
-      are scheduled (see DD6). Until then, the external dependency surface is golang.org/x/sys
-      only.
-  - technology: Homebrew (GNU coreutils, moreutils, grep, findutils)
-    reason: Provides the reference binaries (gls, gts, etc.) used in differential testing.
-  - technology: Git (coreutils, moreutils, grep, findutils mirrors)
-    reason: Source repositories for C implementations used as spec extraction input.
-  - technology: mage-claude-orchestrator (mesh-intelligence)
-    reason: Drives Claude agents for code generation from the PRD; provides the cobbler measure/stitch generation cycle.
-  - technology: make-work / do-work (Claude Code skills)
-    reason: Human operator uses these skills to break utilities into specification issues and work through them systematically.
+      directly. golang.org/x/text/collate is the planned addition when locale-sensitive
+      utilities are scheduled (see DD6).
+  - component: Reference binaries
+    technology: Homebrew (GNU coreutils, moreutils, grep, findutils)
+    purpose: Provides the reference binaries (gls, gts, etc.) used in differential testing.
+  - component: Source extraction
+    technology: Git (coreutils, moreutils, grep, findutils mirrors)
+    purpose: Source repositories for C implementations used as spec extraction input.
+  - component: Code generation
+    technology: mage-claude-orchestrator (mesh-intelligence)
+    purpose: Drives Claude agents for code generation from the PRD; provides the cobbler measure/stitch generation cycle.
+  - component: Specification workflow
+    technology: make-work / do-work (Claude Code skills)
+    purpose: Human operator uses these skills to break utilities into specification issues and work through them systematically.
 
 project_structure:
   - path: docs/
@@ -322,65 +313,34 @@ project_structure:
     role: Go module definition (module github.com/petar-djukic/go-unix-utils)
 
 implementation_status:
-  note: |
+  current_focus: |
     Status reflects the specification phase, not code. "spec complete" means PRD and
     use case exist and mage analyze passes. "spec in progress" means a PRD exists but
     the use case or test suite is not yet written. "pending" means no PRD yet.
     See road-map.yaml for the active release and docs/utilities.yaml for the full catalog.
-  components:
-    - component: pkg/testutils
-      status: spec complete
-      release: rel01.0
-    - component: pkg/sys
-      status: spec complete
-      release: rel02.0
-    - component: pkg/format
-      status: spec complete
-      release: rel02.0
-    - component: cmd/ts
-      status: spec in progress
-      release: rel01.0
-      note: PRD complete; use case written; test suite written; implementation pending
-    - component: cmd/wc
-      status: spec in progress
-      release: rel01.1
-      note: PRD complete; use case and test suite pending
-    - component: cmd/cat
-      status: spec in progress
-      release: rel01.1
-      note: PRD complete; use case and test suite pending
-    - component: cmd/sponge
-      status: spec in progress
-      release: rel01.1
-      note: PRD complete; use case and test suite pending
-    - component: cmd/ls
-      status: spec in progress
-      release: rel02.0 (core) / rel02.1 (extended)
-      note: PRDs complete; use cases and test suites pending
-    - component: cmd/du
-      status: spec in progress
-      release: rel02.0
-      note: PRD complete; use case and test suite pending
-    - component: cmd/grep
-      status: pending
-    - component: cmd/find
-      status: pending
-    - component: cmd/xargs
-      status: pending
-    - component: remaining 110 utilities
-      status: cataloged in docs/utilities.yaml; not yet scheduled
+  progress:
+    - pkg/testutils: "spec complete (rel01.0)"
+    - pkg/sys: "spec complete (rel02.0)"
+    - pkg/format: "spec complete (rel02.0)"
+    - cmd/ts: "spec in progress (rel01.0) — PRD complete, use case written, test suite written, implementation pending"
+    - cmd/wc: "spec in progress (rel01.1) — PRD complete, use case and test suite pending"
+    - cmd/cat: "spec in progress (rel01.1) — PRD complete, use case and test suite pending"
+    - cmd/sponge: "spec in progress (rel01.1) — PRD complete, use case and test suite pending"
+    - cmd/ls: "spec in progress (rel02.0 core / rel02.1 extended) — PRDs complete, use cases and test suites pending"
+    - cmd/du: "spec in progress (rel02.0) — PRD complete, use case and test suite pending"
+    - cmd/grep: pending
+    - cmd/find: pending
+    - cmd/xargs: pending
+    - remaining 110 utilities: "cataloged in docs/utilities.yaml, not yet scheduled"
 
 related_documents:
-  - id: VISION
-    path: docs/VISION.yaml
-  - id: utilities-catalog
-    path: docs/utilities.yaml
-    note: Full catalog of 123 target utilities with difficulty and memory model profiles.
-  - id: road-map
-    path: docs/road-map.yaml
-    note: Release schedule; current release and use case status.
-  - id: eng01-spec-extraction
-    path: docs/engineering/eng01-spec-extraction.yaml
-    note: Engineering guideline for extracting specifications from C/Perl source.
-  - id: configuration
-    path: configuration.yaml
+  - doc: docs/VISION.yaml
+    purpose: Project goals, success criteria, risks, and explicit boundaries.
+  - doc: docs/utilities.yaml
+    purpose: Full catalog of 123 target utilities with difficulty and memory model profiles.
+  - doc: docs/road-map.yaml
+    purpose: Release schedule; current release and use case status.
+  - doc: docs/engineering/eng01-spec-extraction.yaml
+    purpose: Engineering guideline for extracting specifications from C/Perl source.
+  - doc: configuration.yaml
+    purpose: Orchestrator configuration for build, analysis, and generation targets.

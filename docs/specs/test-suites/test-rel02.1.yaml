@@ -11,25 +11,14 @@ traces:
   - prd010-ls-extended R5
   - prd010-ls-extended R6
 
-preconditions: |
+preconditions:
   - ./bin/ls exists (built via mage build).
   - The reference binary gls is installed (brew install coreutils) and on PATH.
   - Tests are run via go test ./cmd/ls/... which invokes RunDiffTests from pkg/testutils.
   - All tests use LC_ALL=C and --color=never to eliminate locale and ANSI variance.
-  - The LsExtendedNormalizer replaces mtime columns with "MTIME" in all output including
-    recursive subdirectory listings.
-  - Both binaries run on the same fixture directory on the same filesystem, ensuring inode
-    numbers and block counts are identical.
-  - Fixture directory (testdata/ls-extended-fixture/) contains:
-    - Files with distinct, known sizes (10 bytes, 100 bytes, 1000 bytes, 10000 bytes)
-    - Files with distinct mtimes set via os.Chtimes during test setup
-    - A subdirectory with nested files (for -R testing)
-    - A second subdirectory for multi-level recursion
-    - A symbolic link
-    - An executable file (mode 0755)
-    - A named pipe (FIFO, created at test time via syscall.Mkfifo)
-    - Files named file1, file2, file10, file20 (for -v version sort testing)
-    - Dotfiles for filter interaction with -R
+  - The LsExtendedNormalizer replaces mtime columns with MTIME in all output including recursive subdirectory listings.
+  - Both binaries run on the same fixture directory on the same filesystem, ensuring inode numbers and block counts are identical.
+  - "Fixture directory (testdata/ls-extended-fixture/) contains files with distinct known sizes, files with distinct mtimes set via os.Chtimes, subdirectories with nested files for -R testing, a symbolic link, an executable file (mode 0755), a named pipe (FIFO), files named file1/file2/file10/file20 for -v version sort testing, and dotfiles for filter interaction with -R."
 
 test_cases:
   # --- uc001-ls-extended: ls extended flag listing ---

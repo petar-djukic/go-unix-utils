@@ -12,13 +12,12 @@ traces:
   - prd004-ts R6
   - prd004-ts R7
 
-preconditions: |
+preconditions:
   - ./bin/ts exists (built via mage build).
   - The reference binary ts is installed (brew install moreutils) and on PATH.
   - Tests are run via go test ./cmd/ts/... which invokes RunDiffTests from pkg/testutils.
   - TimestampNormalizer is applied to all tests whose output contains wall-clock timestamps.
-  - All tests use LC_ALL=C and TZ=America/New_York (or a fixed known zone) to ensure
-    consistent strftime output between runs.
+  - All tests use LC_ALL=C and TZ=America/New_York (or a fixed known zone) to ensure consistent strftime output between runs.
 
 test_cases:
   # --- uc001-ts: ts timestamp stdin lines ---
