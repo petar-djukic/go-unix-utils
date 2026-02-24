@@ -37,7 +37,7 @@ constraints: |
 output_format: |
   Write a YAML list of crumb objects to `{output_path}`. Each crumb has a sequential `index` (starting at 0) and a `dependency` field. Set `dependency` to the index of the crumb that must be completed first, or `-1` if there are no dependencies.
 
-  The `description` field must be a valid YAML document conforming to the issue_format_constitution injected above. Write it as a YAML literal block scalar. Quote all requirement strings. Use ASCII dashes, not Unicode em dashes. Each design_decision is a mapping with `id:` (D1, D2, ...) and `text:` fields, not a bare string.
+  The `description` field must be a valid YAML document conforming to the issue_format_constitution injected above. Write it as a YAML literal block scalar. Use ASCII dashes, not Unicode em dashes. Requirements, design decisions, and acceptance criteria are all mappings with `id:` and `text:` fields (R1/R2/..., D1/D2/..., AC1/AC2/...).
 
   Example:
     - index: 0
@@ -59,8 +59,10 @@ output_format: |
             note: ExampleType implementation
 
         requirements:
-          - "R1: Implement ExampleType per prd001-feature R2"
-          - "R2: Add Get and Set operations"
+          - id: R1
+            text: Implement ExampleType per prd001-feature R2
+          - id: R2
+            text: Add Get and Set operations
 
         design_decisions:
           - id: D1
@@ -69,8 +71,10 @@ output_format: |
             text: "Keep implementation in internal/, not pkg/"
 
         acceptance_criteria:
-          - All operations implemented and tested
-          - Tests pass for each operation
+          - id: AC1
+            text: All operations implemented and tested
+          - id: AC2
+            text: Tests pass for each operation
 
     - index: 1
       title: Task that depends on task 0
@@ -87,11 +91,13 @@ output_format: |
             note: integration tests
 
         requirements:
-          - "R1: Test all ExampleType operations end to end"
+          - id: R1
+            text: Test all ExampleType operations end to end
 
         acceptance_criteria:
-          - All tests pass
+          - id: AC1
+            text: All tests pass
 
-  The description must be self-contained. All five fields (deliverable_type, required_reading, files, requirements, acceptance_criteria) are required. Add design_decisions (each with `id` and `text` fields) when the stitch agent must follow specific patterns or architecture constraints.
+  The description must be self-contained. All five fields (deliverable_type, required_reading, files, requirements, acceptance_criteria) are required. Each requirement, design_decision, and acceptance_criteria entry is a mapping with `id` and `text` fields. Add design_decisions when the stitch agent must follow specific patterns or architecture constraints.
 
   The tasks will be automatically imported into the issue tracker.

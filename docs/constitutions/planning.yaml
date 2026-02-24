@@ -68,19 +68,21 @@ issue_structure:
     requirements:
       required: true
       description: |
-        What needs to be built or written. Be specific and actionable.
+        What needs to be built or written. Each item is a mapping with
+        `id` (R1, R2, ...) and `text` fields. Be specific and actionable.
 
     design_decisions:
       required: false
       description: |
         Architecture, patterns, or constraints to follow. Each item is a
-        mapping with `id` (D1, D2, ...) and `text` fields, not a bare
-        string. Optional but recommended for code tasks.
+        mapping with `id` (D1, D2, ...) and `text` fields. Optional but
+        recommended for code tasks.
 
     acceptance_criteria:
       required: true
       description: |
-        Checkable outcomes. Must be verifiable without ambiguity.
+        Checkable outcomes. Each item is a mapping with `id` (AC1, AC2, ...)
+        and `text` fields. Must be verifiable without ambiguity.
 
   documentation_issues:
     additional_fields:
@@ -130,9 +132,8 @@ issue_structure:
         when: Summary of PRDs, use cases, test suites, roadmap
 
   yaml_quality:
-    - Quote all requirement strings that contain colons or special YAML characters.
     - Use ASCII dashes (--), not Unicode em dashes or en dashes.
-    - Design decisions are mappings with id (D1, D2, ...) and text fields, not bare strings.
+    - Requirements, design decisions, and acceptance criteria are all mappings with id and text fields.
 
   code_issues:
     rules:
@@ -161,9 +162,12 @@ example_documentation_issue: |
     - "Acceptance Criteria: checkable outcomes"
 
   acceptance_criteria:
-    - All required sections present
-    - File saved as prd-feature-name.yaml
-    - Requirements numbered and specific
+    - id: AC1
+      text: All required sections present
+    - id: AC2
+      text: File saved as prd-feature-name.yaml
+    - id: AC3
+      text: Requirements numbered and specific
 
 example_code_issue: |
   deliverable_type: code
@@ -184,9 +188,12 @@ example_code_issue: |
       note: tests
 
   requirements:
-    - Implement CrumbTable interface per prd003-crumbs-interface
-    - Add, Get, Archive, Purge, Fetch operations
-    - Property operations (Set/Get/Clear)
+    - id: R1
+      text: Implement CrumbTable interface per prd003-crumbs-interface
+    - id: R2
+      text: Add, Get, Archive, Purge, Fetch operations
+    - id: R3
+      text: Property operations (Set/Get/Clear)
 
   design_decisions:
     - id: D1
@@ -195,6 +202,9 @@ example_code_issue: |
       text: Filter as map[string]any per PRD
 
   acceptance_criteria:
-    - All CrumbTable operations implemented
-    - Tests pass for each operation
-    - Errors match PRD error types
+    - id: AC1
+      text: All CrumbTable operations implemented
+    - id: AC2
+      text: Tests pass for each operation
+    - id: AC3
+      text: Errors match PRD error types
