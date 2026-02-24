@@ -151,7 +151,7 @@ session_completion:
     - Ensure all files are written and saved
     - Verify code compiles and tests pass
 
-  required_rules:
+  critical_rules:
     - Do NOT run any git commands (add, commit, status, init, rm .git)
     - Git is managed externally by the orchestrator
     - Your job is to write code and verify it works
