@@ -260,3 +260,161 @@
         text: >
           Production code (difftest.go + normalize.go) is between 200 and 350 lines.
   dependency: -1
+- index: 0
+  title: Implement pkg/testutils differential testing harness
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (full PRD for pkg/testutils -- defines DiffTest struct, RunDiffTests API, normalization hooks, file-state comparison, and acceptance criteria)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component description and its role as the acceptance gate for the pipeline)
+      - docs/specs/test-suites/test-rel01.0.yaml (test suite for ts -- shows how TimestampNormalizer and RunDiffTests are consumed by cmd/ts tests; confirms the API shape the harness must expose)
+      - go.mod (module path and Go version)
+
+    files:
+      - path: pkg/testutils/testutils.go
+        action: create
+        note: "DiffTest struct, Normalize function type, RunDiffTests entry point, binary execution, comparison and reporting, file-state comparison"
+      - path: pkg/testutils/normalizers.go
+        action: create
+        note: "TimestampNormalizer and ComposeNormalizers helper"
+      - path: pkg/testutils/testutils_test.go
+        action: create
+        note: "Unit tests for RunDiffTests, normalization composition, TimestampNormalizer, and file-state comparison"
+
+    requirements:
+      - id: R1
+        text: |
+          Define a DiffTest struct in pkg/testutils/testutils.go with these fields:
+            - Name string (used as the t.Run subtest name)
+            - Args []string (command-line arguments passed to both binaries)
+            - Stdin []byte (stdin content; nil means no stdin / immediate EOF)
+            - Env []string (environment variable overrides; nil means inherit test process env)
+            - ExitCode int (expected exit code; compared against both binaries)
+            - Normalize []func([]byte) []byte (slice of normalization functions applied in order before comparison; nil or empty means no normalization)
+            - WorkDir string (optional working directory for both binaries; empty means use a per-test temp dir created by the harness)
+            - ExpectedFiles map[string][]byte (optional; maps relative file paths to expected content after execution, for utilities like sponge whose output is a file rather than stdout)
+      - id: R2
+        text: |
+          Implement a RunDiffTests function with signature:
+            func RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest)
+          For each DiffTest in the slice, call t.Run(test.Name, ...) to create a named subtest. Inside
+          the subtest, execute both goBinary and refBinary with identical Args, Stdin, Env, and WorkDir.
+          Use os/exec.Command. Set cmd.Stdin from test.Stdin (use bytes.NewReader; if nil, set to nil
+          for immediate EOF). Set cmd.Env by merging os.Environ() with test.Env overrides (later entries
+          override earlier ones for the same key). Capture stdout and stderr into bytes.Buffer. Capture
+          the exit code from the *exec.ExitError or 0 on success.
+      - id: R3
+        text: |
+          Impose a configurable timeout on each binary invocation. Use context.WithTimeout with a
+          default of 10 seconds. Accept an optional Timeout time.Duration field on DiffTest (zero
+          means use default). If either binary exceeds the timeout, fail the subtest with a message
+          that includes which binary timed out, the args, and the timeout duration.
+      - id: R4
+        text: |
+          After both binaries complete, apply the normalization chain. If test.Normalize is non-nil
+          and non-empty, apply each function in order to both binaries' stdout and stderr bytes.
+          The functions are applied sequentially: output of function N is input to function N+1.
+      - id: R5
+        text: |
+          Compare normalized stdout byte-for-byte. Compare normalized stderr byte-for-byte. Compare
+          exit codes exactly. If any differ, call t.Errorf with a failure message that includes:
+          the DiffTest.Args, the Stdin content (truncated to 256 bytes if longer with a note
+          "(truncated)"), the reference binary stdout, the Go binary stdout, the reference stderr,
+          the Go stderr, both exit codes. A passing test must produce no output.
+      - id: R6
+        text: |
+          When test.ExpectedFiles is non-nil, after both binaries complete, for each entry in
+          ExpectedFiles read the file at the relative path (relative to the binary's WorkDir) and
+          compare its content byte-for-byte to the expected []byte value. Report divergence in the
+          same format as stdout divergence (showing expected vs actual file content).
+      - id: R7
+        text: |
+          When test.WorkDir is empty, create a temporary directory via t.TempDir() for each binary
+          invocation. The Go binary and reference binary each get their own temp dir to avoid
+          interference. For file-state comparison (ExpectedFiles), run both binaries in separate
+          copies of the same initial directory state -- copy the initial WorkDir contents to both
+          temp dirs before execution, then compare the expected files in each temp dir.
+      - id: R8
+        text: |
+          Implement TimestampNormalizer in pkg/testutils/normalizers.go as a func([]byte) []byte
+          that replaces common timestamp patterns with the fixed string "TIMESTAMP". Patterns to
+          match (using regexp):
+            - Syslog format: "Jan  5 14:30:00" or "Feb 19 12:34:56" -- abbreviated month, space-padded day, HH:MM:SS
+            - ISO-8601: "2024-01-05T14:30:00" with optional fractional seconds and Z or timezone offset
+            - HH:MM:SS standalone (for -s and -i elapsed mode output)
+            - Epoch with microseconds: digits.digits pattern like "1708358732.001234"
+          The normalizer must handle multiple timestamps on the same line and across multiple lines.
+      - id: R9
+        text: |
+          Implement a ComposeNormalizers function with signature:
+            func ComposeNormalizers(fns ...func([]byte) []byte) func([]byte) []byte
+          that returns a single normalizer applying all functions in order. This is a convenience
+          for building the Normalize slice from individual normalizers.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Package name is "testutils" under module path github.com/petar-djukic/go-unix-utils/pkg/testutils.
+          The package is imported by cmd/<utility>/ test files. It must not import any cmd/ package.
+      - id: D2
+        text: |
+          Use os/exec for binary execution. Do not shell out via bash or sh. Pass args directly
+          to exec.Command(binary, args...). This avoids shell quoting issues and matches how
+          Go test binaries are invoked.
+      - id: D3
+        text: |
+          For environment merging, iterate os.Environ() first, then append test.Env entries.
+          If test.Env contains a key already in os.Environ(), the test.Env value wins because
+          exec.Cmd.Env uses the last occurrence of a key.
+      - id: D4
+        text: |
+          The only external dependency allowed is golang.org/x/sys (already in go.mod per the
+          architecture). pkg/testutils itself should need only the Go standard library.
+      - id: D5
+        text: |
+          For the test file (testutils_test.go), write tests that use a simple test binary.
+          Create a small Go program in testdata/ (e.g., testdata/echo/main.go) that echoes
+          stdin to stdout with optional prefix, so RunDiffTests can be tested without requiring
+          any Homebrew reference binary. Build it with "go build" in TestMain or use "go run"
+          with the testdata path. This makes the tests self-contained and runnable in CI without
+          brew dependencies.
+
+    acceptance_criteria:
+      - id: AC1
+        text: |
+          pkg/testutils compiles with "go build ./pkg/testutils/..." and produces no errors.
+      - id: AC2
+        text: |
+          RunDiffTests runs each DiffTest as a named subtest visible in "go test -v" output.
+      - id: AC3
+        text: |
+          A test case where both binaries produce identical output passes silently (no t.Errorf).
+      - id: AC4
+        text: |
+          A test case where stdout differs between binaries fails with a message showing args,
+          stdin, both stdouts, both stderrs, and both exit codes.
+      - id: AC5
+        text: |
+          A test case that exceeds the timeout fails with a clear timeout message rather than
+          hanging the test run.
+      - id: AC6
+        text: |
+          TimestampNormalizer replaces syslog-format timestamps ("Feb 19 12:34:56") with
+          "TIMESTAMP" and replaces HH:MM:SS patterns with "TIMESTAMP".
+      - id: AC7
+        text: |
+          ComposeNormalizers applies normalizers in order -- output of first is input to second.
+      - id: AC8
+        text: |
+          File-state comparison (ExpectedFiles) correctly detects when a binary writes different
+          file content than expected.
+      - id: AC9
+        text: |
+          "go test ./pkg/testutils/..." passes with all tests green.
+      - id: AC10
+        text: |
+          golangci-lint run ./pkg/testutils/... produces no warnings. If golangci-lint is not
+          installed or not configured, skip this check but ensure "go vet ./pkg/testutils/..."
+          produces no warnings.
+  dependency: -1
