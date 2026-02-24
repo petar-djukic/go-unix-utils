@@ -10,7 +10,7 @@ project:
     version_file: ""
     magefiles_dir: magefiles
     context_sources: ""
-    release: ""
+    release: "01.0"
     seed_files: {}
 generation:
     prefix: generation-
@@ -30,8 +30,8 @@ cobbler:
     execution_constitution: docs/constitutions/execution.yaml
     design_constitution: docs/constitutions/design.yaml
     go_style_constitution: docs/constitutions/go-style.yaml
-    estimated_lines_min: 250
-    estimated_lines_max: 350
+    estimated_lines_min: 150
+    estimated_lines_max: 250
     history_dir: history
 podman:
     image: claude-cli
@@ -43,6 +43,8 @@ claude:
         - --verbose
         - --output-format
         - stream-json
+        - --max-turns
+        - "25"
     silence_agent: true
     secrets_dir: .secrets
     default_token_file: claude.json
