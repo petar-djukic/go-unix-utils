@@ -1,0 +1,20 @@
+caller: measure
+started_at: "2026-02-24T03:31:14Z"
+duration: 1m37s
+duration_s: 96
+tokens:
+    input: 183744
+    output: 4181
+    cache_creation: 78245
+    cache_read: 105496
+cost_usd: 0.6463192499999999
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0
