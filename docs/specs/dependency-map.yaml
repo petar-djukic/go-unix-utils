@@ -2,10 +2,10 @@ id: dependency-map
 title: "Shared Component Dependency Map"
 
 overview: |
-  This document maps each of the 14 utilities to the shared pkg/ components they will
-  need in their Go implementations. Dependencies are derived from C source analysis in
+  We map each of the 14 utilities to the shared pkg/ components they will need in
+  their Go implementations. Dependencies are derived from C source analysis in
   sources.yaml. The map justifies the scope and required API of each shared component
-  PRD (pkg/testutils, pkg/sys, pkg/format). A utility is listed under a component when
+  PRD (pkg/testutils, pkg/sys, pkg/format). We list a utility under a component when
   it requires behavior that would be duplicated across cmd/ packages without that component.
 
 components:

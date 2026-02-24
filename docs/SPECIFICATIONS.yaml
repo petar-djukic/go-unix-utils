@@ -2,10 +2,10 @@ id: go-unix-utils-specifications
 title: "go-unix-utils Specification Summary"
 
 overview: |
-  This document ties together the PRDs, use cases, test suites, and roadmap for
-  go-unix-utils into a single navigable index. We summarize each artifact and show
-  the relationships between them. Regenerate this file when any specification
-  artifact changes.
+  We tie together the PRDs, use cases, test suites, and roadmap for go-unix-utils
+  into a single navigable index, summarizing each artifact and showing the
+  relationships between them. Regenerate this file when any specification artifact
+  changes.
 
 roadmap_summary:
   - version: rel01.0

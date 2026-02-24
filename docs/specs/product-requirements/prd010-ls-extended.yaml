@@ -10,8 +10,8 @@ problem: |
   complex output normalization in differential tests (inode numbers, block counts, and
   modification times all vary across test runs).
 
-  This PRD extends prd008-ls. All requirements in prd008-ls remain in force; this document
-  adds the extended flag behavior without repeating core requirements.
+  We extend prd008-ls here. All requirements in prd008-ls remain in force; we add the
+  extended flag behavior without repeating core requirements.
 
 goals:
   - G1: Support multi-column layout control flags (-C, -x) for forced columnar output with vertical or horizontal sorting.

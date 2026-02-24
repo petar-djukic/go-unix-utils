@@ -2,60 +2,25 @@
 
 Go implementations of 123 Unix utilities (coreutils, moreutils, grep, findutils), generated from formal specifications and verified against GNU reference binaries.
 
-## Why
+## Architectural Thesis
 
-Man pages are ambiguous. Unit tests with hardcoded expectations encode a human's interpretation of behavior, not the behavior itself. This project takes a different approach: derive specifications directly from the C source code, then verify the Go implementation by running it side-by-side with the GNU binary and comparing outputs byte-for-byte. The specification and verification are the product; the Go binaries are a byproduct.
+Man pages are ambiguous. Unit tests with hardcoded expectations encode a human's interpretation of behavior, not the behavior itself. We take a different approach: derive specifications directly from the C source code, then verify the Go implementation by running it side-by-side with the GNU binary and comparing outputs byte-for-byte. The specification and the verification are the product; the Go binaries are a byproduct.
 
-This is spec-driven development applied to systems programming. The human writes the spec. An AI orchestrator generates the code. A differential testing harness decides whether the code is correct.
+We apply spec-driven development to systems programming. The human writes the spec. An AI orchestrator generates the code. A differential testing harness decides whether the code is correct.
 
 ## Pipeline
 
-```plantuml
-@startuml
-skinparam backgroundColor transparent
-skinparam defaultTextAlignment center
-
-rectangle "C/Perl Source\n(coreutils, moreutils,\ngrep, findutils)" as source
-rectangle "PRD + Use Case\n(formal spec)" as spec
-rectangle "Go Source\n(cmd/<utility>/)" as code
-rectangle "Differential\nTest Harness" as verify
-
-source -right-> spec : "**Extract + Specify**\nhuman-guided"
-spec -right-> code : "**Synthesize**\norchestrator-driven"
-code -right-> verify : "**Verify**"
-verify -up-> spec : "fail → refine spec"
-
-note bottom of source
-  Clone the repository.
-  Analyze flags, edge cases,
-  exit codes from source.
-end note
-
-note bottom of spec
-  Numbered requirements.
-  Acceptance criteria.
-  Concrete test inputs.
-end note
-
-note bottom of code
-  Claude agent generates
-  Go from the PRD.
-  One package per utility.
-end note
-
-note bottom of verify
-  Run Go binary and GNU
-  binary with same inputs.
-  Compare stdout, stderr,
-  exit code.
-end note
-
-@enduml
+```mermaid
+graph LR
+    A["C/Perl Source<br>(coreutils, moreutils,<br>grep, findutils)"] -->|Extract + Specify| B["PRD + Use Case<br>(formal spec)"]
+    B -->|Synthesize| C["Go Source<br>(cmd/utility/)"]
+    C -->|Verify| D["Differential<br>Test Harness"]
+    D -->|Fail: refine spec| B
 ```
 
-## Status
+## Scope and Status
 
-The project is in the specification phase. No Go implementations exist yet; the current focus is building a complete, verified specification suite before code generation begins.
+We are in the specification phase. No Go implementations exist yet; the current focus is building a complete, verified specification suite before code generation begins.
 
 | Metric | Count |
 | ------ | ----: |
@@ -70,13 +35,13 @@ Roadmap: [docs/road-map.yaml](docs/road-map.yaml). Full utility catalog with dif
 
 ## Methodology
 
-**Extract.** Clone the C or Perl source repository (GNU coreutils, moreutils, grep, findutils). Read the source — not the man page — to catalog every flag, exit code, signal handler, and edge case. The source is the specification authority.
+Extract. We clone the C or Perl source repository (GNU coreutils, moreutils, grep, findutils) and read the source -- not the man page -- to catalog every flag, exit code, signal handler, and edge case. The source is the specification authority.
 
-**Specify.** Write a PRD with numbered requirements, acceptance criteria, and design decisions for each utility. Write a use case describing a concrete end-to-end execution path. Write a test suite with explicit inputs and expected structural outputs. Shared components (syscall abstractions, output formatting, the test harness itself) get their own PRDs when their requirements span multiple utilities.
+Specify. We write a product requirements document (PRD) with numbered requirements, acceptance criteria, and design decisions for each utility. We write a use case describing a concrete end-to-end execution path. We write a test suite with explicit inputs and expected structural outputs. Shared components (syscall abstractions, output formatting, the test harness itself) get their own PRDs when their requirements span multiple utilities.
 
-**Synthesize.** A Claude-based orchestrator reads the PRD and generates Go source. The human does not write Go; the orchestrator does not write specs. This separation isolates specification quality from generation quality, making each independently measurable.
+Synthesize. A Claude-based orchestrator reads the PRD and generates Go source. The human does not write Go; the orchestrator does not write specs. This separation isolates specification quality from generation quality, making each independently measurable.
 
-**Verify.** A differential testing harness executes both the Go binary and the Homebrew GNU reference binary (e.g., `gls`, `gdu`, `gcat`) with identical arguments, environment, and stdin. It compares stdout, stderr, and exit code. Normalization hooks handle acceptable differences (e.g., mtime fields in `ls -l` output). If the outputs diverge, the harness reports the triggering input, both raw outputs, and both exit codes.
+Verify. A differential testing harness executes both the Go binary and the Homebrew GNU reference binary (e.g., `gls`, `gdu`, `gcat`) with identical arguments, environment, and stdin. It compares stdout, stderr, and exit code. Normalization hooks handle acceptable differences (e.g., mtime fields in `ls -l` output). If the outputs diverge, the harness reports the triggering input, both raw outputs, and both exit codes.
 
 ## Repository Structure
 
@@ -103,13 +68,11 @@ go-unix-utils/
 
 ## Technology Choices
 
-**Go** for the implementations. Go's constrained type system and lack of implicit behavior make it predictable input for AI code generation. A Claude agent producing Go is less likely to introduce subtle bugs than one producing C++ or Rust, because there are fewer ways to express the same logic.
+Go for the implementations. Go's constrained type system and lack of implicit behavior make it predictable input for AI code generation. A Claude agent producing Go introduces fewer subtle bugs than one producing C++ or Rust, because there are fewer ways to express the same logic.
 
-**Differential testing against Homebrew GNU binaries** rather than unit tests with expected constants. Both binaries stat the same files on the same filesystem, so block counts, inode numbers, and file sizes are deterministic. The test is "does the Go binary produce the same output as the GNU binary?" not "does the Go binary produce the output I think is correct?"
+Differential testing against Homebrew GNU binaries rather than unit tests with expected constants. Both binaries stat the same files on the same filesystem, so block counts, inode numbers, and file sizes are deterministic. The test is "does the Go binary produce the same output as the GNU binary?" not "does the Go binary produce the output I think is correct?"
 
-**`golang.org/x/sys` as the only external dependency.** Platform-divergent syscall field names (`st_mtimespec` on Darwin vs. `st_mtim` on Linux), ioctl constants, and signal mask operations require it. Everything else is standard library. `golang.org/x/text/collate` is the planned addition when locale-sensitive utilities are scheduled.
-
-**PlantUML for architecture diagrams.** Defined inline in documentation, not as separate files.
+`golang.org/x/sys` as the only external dependency. Platform-divergent syscall field names (`st_mtimespec` on Darwin vs. `st_mtim` on Linux), ioctl constants, and signal mask operations require it. Everything else is standard library. `golang.org/x/text/collate` is the planned addition when locale-sensitive utilities are scheduled.
 
 ## Build and Test
 

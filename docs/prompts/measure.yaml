@@ -4,23 +4,23 @@ role: |
 task: |
   Follow these steps in order. Complete each step before moving to the next. Do NOT explore the filesystem, read files, or run commands unless a step explicitly asks you to. All project information is already provided in the project_context field above.
 
-  1. **Analyze project context** — Review the project_context field above. It contains ALL project documentation: vision, architecture, specifications, roadmap, PRDs, use cases, test suites, engineering guidelines, constitutions, and existing issues. Do NOT read any files — everything you need is inline.
+  1. Analyze project context — Review the project_context field above. It contains ALL project documentation: vision, architecture, specifications, roadmap, PRDs, use cases, test suites, engineering guidelines, constitutions, and existing issues. Do NOT read any files — everything you need is inline.
 
-  2. **Summarize project state** — Write a brief summary of:
+  2. Summarize project state — Write a brief summary of:
      - What problem this project solves
      - The high-level architecture (major components and how they fit together)
      - Current state of implementation (what is done, what is in progress)
      - Current release: which release we are working on, which use cases remain (check the roadmap)
 
-  3. **Reason about priorities** — Determine what to build next using release priority:
+  3. Reason about priorities — Determine what to build next using release priority:
      - Focus on the earliest incomplete release in the roadmap
      - Later use cases can be partially implemented if they share functionality with the current release
      - Each issue should map to a use case in the roadmap; if uncertain, use release 99.0 (unscheduled)
      - Identify dependencies: what must be built first and why
 
-  4. **Propose tasks** — For each task, write a description that follows the crumb-format YAML schema (see planning_constitution above and output_format below). Remember: the stitch agent sees ONLY the task description and the execution constitution. It does not see your analysis, the existing issues, or this conversation. The description must be self-contained.
+  4. Propose tasks — For each task, write a description that follows the crumb-format YAML schema (see planning_constitution above and output_format below). Remember: the stitch agent sees ONLY the task description and the execution constitution. It does not see your analysis, the existing issues, or this conversation. The description must be self-contained.
 
-  5. **Write output** — Append the proposed tasks as a YAML list to `{output_path}` using the Write tool.
+  5. Write output — Append the proposed tasks as a YAML list to `{output_path}` using the Write tool.
 
 constraints: |
   - Do NOT explore the filesystem. Do NOT run ls, find, tree, or similar commands. Do NOT read files. All project information is in the project_context above.

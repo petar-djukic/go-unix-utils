@@ -31,8 +31,10 @@ type Prompt mg.Namespace
 // Stats groups the stats targets (LOC, tokens).
 type Stats mg.Namespace
 
-// Test groups the testing targets.
-type Test mg.Namespace
+// Tests: run directly with go test:
+//   go test -tags=usecase -v -count=1 -timeout 1800s ./tests/rel01.0/...          # all
+//   go test -tags=usecase -v ./tests/rel01.0/uc001/                               # one UC
+//   go test -tags=usecase -bench=. -benchtime=1x -run=^$ ./tests/rel01.0/uc008/   # benchmarks
 
 // baseCfg holds the configuration loaded from configuration.yaml.
 var baseCfg orchestrator.Config
@@ -97,35 +99,6 @@ func Tag() error { return newOrch().Tag() }
 // magefiles/orchestrator.go, docs/constitutions/, docs/prompts/, and
 // configuration.yaml. Pass "." for the current directory.
 func (Scaffold) Pop(target string) error { return newOrch().Uninstall(target) }
-
-// --- Test targets ---
-
-// Unit runs go test on all packages.
-func (Test) Unit() error { return newOrch().TestUnit() }
-
-// All runs unit and E2E tests.
-func (Test) All() error { return newOrch().TestAll() }
-
-// Uc001OrchestratorInitialization runs UC001 E2E tests (init, reset, defaults).
-func (Test) Uc001OrchestratorInitialization() error { return newOrch().TestE2EByUseCase("001") }
-
-// Uc002GenerationLifecycle runs UC002 E2E tests (start, stop, list, run, switch).
-func (Test) Uc002GenerationLifecycle() error { return newOrch().TestE2EByUseCase("002") }
-
-// Uc003MeasureWorkflow runs UC003 E2E tests (measure creates issues).
-func (Test) Uc003MeasureWorkflow() error { return newOrch().TestE2EByUseCase("003") }
-
-// Uc004StitchWorkflow runs UC004 E2E tests (stitch executes tasks).
-func (Test) Uc004StitchWorkflow() error { return newOrch().TestE2EByUseCase("004") }
-
-// Uc005ResumeRecovery runs UC005 E2E tests (resume from interruption).
-func (Test) Uc005ResumeRecovery() error { return newOrch().TestE2EByUseCase("005") }
-
-// Uc006ScaffoldOperations runs UC006 E2E tests (scaffold push/pop).
-func (Test) Uc006ScaffoldOperations() error { return newOrch().TestE2EByUseCase("006") }
-
-// Uc007BuildTooling runs UC007 E2E tests (build, install, clean, stats).
-func (Test) Uc007BuildTooling() error { return newOrch().TestE2EByUseCase("007") }
 
 // --- Cobbler targets ---
 

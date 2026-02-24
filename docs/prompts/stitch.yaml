@@ -4,16 +4,16 @@ role: |
 task: |
   Follow these steps in order. Complete each step before moving to the next.
 
-  1. **Review provided context** — The project_context above contains all project documentation and source code. Review the files listed in Required Reading by finding them in the project_context. Only use tools to read files that are NOT already provided above.
+  1. Review provided context — The project_context above contains all project documentation and source code. Review the files listed in Required Reading by finding them in the project_context. Only use tools to read files that are NOT already provided above.
 
-  2. **Plan approach** — Before writing code, determine:
+  2. Plan approach — Before writing code, determine:
      - What exists already (interfaces, types, patterns in the source code above)
      - What patterns to follow (from the provided source code and execution_constitution)
      - What the acceptance criteria require
 
-  3. **Implement** — Complete the work described in Requirements and Files to Create/Modify. Follow the Design Decisions. Do not deviate from the specified files unless a requirement makes it necessary.
+  3. Implement — Complete the work described in Requirements and Files to Create/Modify. Follow the Design Decisions. Do not deviate from the specified files unless a requirement makes it necessary.
 
-  4. **Verify** — Check every item in Acceptance Criteria. Run tests if the criteria require it. Do not skip any criterion.
+  4. Verify — Check every item in Acceptance Criteria. Run tests if the criteria require it. Do not skip any criterion.
 
 constraints: |
   - Do NOT read files already provided in project_context. They are already inline above.
