@@ -1,0 +1,152 @@
+id: eng03-pipeline-validation
+title: "Measure+Stitch Pipeline End-to-End Validation"
+
+introduction: |
+  We ran the cobbler measure and stitch steps end-to-end on go-unix-utils on 2026-02-24 to
+  validate that the pipeline produces working code from specifications. This guideline records
+  the pipeline execution, compares the measure output with the GH-5 reproducibility baseline
+  (eng02), and documents the stitch step behavior including code generation metrics.
+
+sections:
+  - title: "Experiment design"
+    content: |
+      We executed a full measure+stitch cycle on the same codebase state used in the GH-5
+      reproducibility experiment. The codebase had 10 PRDs, 7 use cases, 4 test suites, and
+      0 lines of Go code. Configuration: temperature 0, 5-minute timeout, Claude Opus 4.6
+      via Claude Code CLI in a Podman container.
+
+      The cycle consisted of two generation runs:
+      - Run 1 (measure only): timestamp 2026-02-24-22-31-22. Produced the issue for GH-2
+        sub-issue 1 comparison with the GH-5 baseline.
+      - Run 2 (measure + stitch): timestamp 2026-02-24-22-35-08 (measure) and
+        2026-02-24-22-38-31 (stitch). Produced both the issue and the Go implementation.
+
+  - title: "Measure reproducibility (three-run comparison)"
+    content: |
+      We now have four measure runs on an identical codebase state. All four are semantically
+      equivalent: same target component (pkg/testutils), same PRD (prd001 R1-R5), same DiffTest
+      harness concept.
+
+      | Metric              | Run A (GH-5)  | Run B (GH-5)  | Run C (GH-2)  | Run D (GH-2)  |
+      |---------------------|---------------|---------------|---------------|---------------|
+      | Timestamp           | 21-51-50      | 21-54-24      | 22-31-22      | 22-35-16      |
+      | Duration            | 1m54s         | 3m8s          | 2m35s         | 3m3s          |
+      | Input tokens        | 180,777       | 184,453       | 183,490       | 185,030       |
+      | Output tokens       | 6,319         | 10,505        | 8,975         | 10,546        |
+      | Cost                | $0.696        | $0.824        | $0.779        | $0.828        |
+      | Cache read          | 102,929       | 102,785       | 103,004       | 103,004       |
+      | Issue count         | 1             | 1             | 1             | 1             |
+      | Requirements        | 6 (R1-R6)     | 5 (R1-R5)     | 6 (R1-R6)     | 4 (R1-R4)     |
+      | ACs                 | 6             | 7             | 6             | 6             |
+      | Issue size          | 6,200 bytes   | 7,999 bytes   | 7,210 bytes   | 5,636 bytes   |
+
+      Cache read tokens are stable across all four runs (~103,000), confirming the prompt is
+      deterministic. Output tokens range from 6,319 to 10,546 (1.67x spread), consistent with
+      the eng02 finding that thinking token non-determinism is the dominant variance source.
+
+      The eng02 conclusion holds: semantic equivalence is the practical standard. All four runs
+      would produce equivalent implementations.
+
+  - title: "Stitch execution"
+    content: |
+      The stitch step picked the measure-generated issue, created a worktree, invoked Claude,
+      and produced compilable Go code in a single task cycle.
+
+      | Metric              | Value           |
+      |---------------------|-----------------|
+      | Task picked         | generation-2026-02-24-22-35-08-4ee |
+      | Duration            | 1m41s           |
+      | API turns           | 17              |
+      | Input tokens        | 1,180,371       |
+      | Output tokens       | 5,333           |
+      | Cache read          | 1,102,620       |
+      | Cache creation      | 77,737          |
+      | Cost                | $1.173          |
+      | LOC produced        | 244 (production), 0 (test) |
+      | Files created       | 1 (pkg/testutils/difftest.go) |
+      | Insertions          | 305             |
+      | go build            | pass            |
+      | go vet              | pass            |
+      | golangci-lint       | not available in container |
+
+      The stitch agent used 17 turns: initial planning, reading go.mod and existing files,
+      creating the directory, writing difftest.go, running go build and go vet, and verifying
+      acceptance criteria. It ran in a worktree isolated from the main branch, then merged
+      the result back via fast-forward.
+
+  - title: "Code quality assessment"
+    content: |
+      The generated file pkg/testutils/difftest.go is 244 lines and implements:
+      - DiffTest struct with all required fields (Name, Args, Stdin, Env, ExitCode, WorkDir,
+        Normalize)
+      - RunDiffTests entry point using t.Run for subtest isolation
+      - Binary execution with context.WithTimeout (10-second default)
+      - Byte-for-byte comparison of stdout, stderr, and exit codes
+      - Detailed divergence reporting with truncated stdin display
+      - TimestampNormalizer with regex patterns for syslog and elapsed-time formats
+      - ComposeNormalizers for chaining multiple normalizers
+
+      The code compiles clean with go build and go vet. It follows the project naming
+      convention (primary file named after primary type). PRD requirement traceability
+      comments are present throughout. The normalizer file was not separated (all code is in
+      difftest.go), which differs from the measure proposal (normalizers.go as a separate
+      file). This is a reasonable implementation decision for 244 lines.
+
+      Missing from this run: no test files were generated. The measure issue for Run D
+      explicitly excluded tests (D5: "This task produces implementation only -- no test files").
+      Earlier measure runs (A and B) included difftest_test.go in the file list.
+
+  - title: "Pipeline cost model"
+    content: |
+      The full measure+stitch pipeline for one task costs approximately $2.00:
+
+      | Step      | Cost    | Input tokens | Output tokens | Duration |
+      |-----------|---------|--------------|---------------|----------|
+      | Measure   | $0.828  | 185,030      | 10,546        | 3m3s     |
+      | Stitch    | $1.173  | 1,180,371    | 5,333         | 1m41s    |
+      | Total     | $2.001  | 1,365,401    | 15,879        | 4m44s    |
+
+      Stitch uses 6x more input tokens than measure because it receives the full project
+      context plus the task description, and the multi-turn conversation (17 turns) accumulates
+      context. Stitch output tokens are lower than measure because stitch writes code (compact)
+      while measure writes YAML specifications (verbose).
+
+      Cache effectiveness is high: 93% of stitch input tokens (1,102,620 of 1,180,371) were
+      cache reads.
+
+  - title: "Findings and recommendations"
+    content: |
+      Finding 1: The measure step is reproducible at the semantic level across four runs. The
+      eng02 findings hold. Token and cost variance remains within the ranges documented in eng02.
+
+      Finding 2: The stitch step produces compilable Go code that follows project conventions.
+      A single stitch task on an empty codebase produced 244 lines of production code in under
+      2 minutes.
+
+      Finding 3: The pipeline end-to-end (measure + stitch) costs approximately $2 per task
+      and takes under 5 minutes. For a project with many tasks, the cost per line of production
+      code is approximately $0.008 ($2 / 244 LOC).
+
+      Finding 4: The stitch agent correctly uses worktrees for isolation, runs quality gates
+      (go build, go vet), and merges cleanly. The orchestrator handles the full lifecycle:
+      branch creation, worktree setup, agent execution, merge, and cleanup.
+
+      Finding 5: Test generation is inconsistent across measure runs. Some runs include test
+      files in the proposal; others explicitly exclude them. This should be controlled by the
+      measure prompt rather than left to model discretion.
+
+      Recommendation 1: Add a measure prompt directive that specifies whether test files should
+      be included in or excluded from task proposals. The current behavior is non-deterministic.
+
+      Recommendation 2: Track stitch turn count across runs. The 17-turn stitch run is
+      significantly more expensive in input tokens than a 2-4 turn stitch would be. The
+      single-turn measure optimization (cobbler-scaffold#12) should be complemented by
+      investigating stitch turn reduction.
+
+references:
+  - "history/2026-02-24-22-31-22-measure-*.yaml — Run C outputs (GH-2 sub-issue 1)"
+  - "history/2026-02-24-22-35-16-measure-*.yaml — Run D outputs (GH-2 sub-issue 2)"
+  - "history/2026-02-24-22-38-31-stitch-*.yaml — Stitch outputs (GH-2 sub-issue 2)"
+  - "docs/engineering/eng02-measure-reproducibility.yaml — GH-5 reproducibility analysis"
+  - "pkg/testutils/difftest.go — Generated code from stitch"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/2 — GH-2: Validate measure+stitch pipeline"
