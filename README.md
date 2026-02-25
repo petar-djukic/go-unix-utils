@@ -20,7 +20,7 @@ graph LR
 
 ## Scope and Status
 
-We have completed specifications for the first three releases and generated Go implementations for releases 01.0 and 01.1, with shared libraries previewed from 02.0. The pipeline produced 4,586 lines of Go across 22 files in 16 measure+stitch cycles.
+We have completed specifications for the first three releases. The first generation run produced 4,586 lines of Go across 22 files in 16 measure+stitch cycles; that code is available at the generation-merged tags (see Tagging Scheme). The working branch contains specifications only.
 
 | Metric | Count |
 | ------ | ----: |
@@ -29,8 +29,7 @@ We have completed specifications for the first three releases and generated Go i
 | PRDs written (shared components) | 3 (pkg/testutils, pkg/sys, pkg/format) |
 | Use cases written | 7 |
 | Test suites written | 4 (one per release: rel01.0, rel01.1, rel02.0, rel02.1) |
-| Go production LOC | 2,842 (4 utilities + 3 shared packages) |
-| Go test LOC | 1,744 (differential tests for all utilities) |
+| Go implementations | at generation-merged tags (2,842 production + 1,744 test LOC) |
 
 Roadmap: [docs/road-map.yaml](docs/road-map.yaml). Full utility catalog with difficulty ratings, memory models, and implementation profiles: [docs/utilities.yaml](docs/utilities.yaml).
 
@@ -44,7 +43,7 @@ The repository uses a two-prefix versioning convention to distinguish human-writ
 
 The intended lifecycle: a human writes specifications and tags v0, the pipeline generates code and tags v1, then the generated code is removed from the working branch so that the next specification edit starts from a clean v0 state. This separation makes it possible to re-generate all code from any v0 tag, compare v1 tags across generation runs, and measure specification quality independently of generation quality.
 
-In practice, the current tooling (cobbler-scaffold) does not yet delete generated code after tagging v1, so the main branch carries both specifications and code between generation runs. See [eng04](docs/engineering/eng04-generation-run-results.yaml) for details on the first multi-generation run and the lifecycle issues encountered.
+The first generation run is documented in [eng04](docs/engineering/eng04-generation-run-results.yaml). Generated code lives at v1 tags; the working branch carries specifications only.
 
 ## Methodology
 
@@ -59,7 +58,7 @@ Verify. A differential testing harness executes both the Go binary and the Homeb
 ## Repository Structure
 
 ```text
-go-unix-utils/
+go-unix-utils/                         Specification-only working branch
 ├── docs/
 │   ├── VISION.yaml                  Project goals, risks, boundaries
 │   ├── ARCHITECTURE.yaml            Components, design decisions, tech choices
@@ -71,12 +70,11 @@ go-unix-utils/
 │   │   ├── use-cases/               Concrete end-to-end execution paths
 │   │   └── test-suites/             Explicit inputs and expected outputs
 │   └── engineering/                 Engineering guidelines
-├── cmd/                             One package per utility (grows with roadmap)
-├── pkg/
-│   ├── sys/                         Darwin/Linux syscall abstractions
-│   ├── format/                      Table alignment, colors, human-readable sizes
-│   └── testutils/                   Differential testing harness
 └── magefiles/                       Build targets (build, lint, test, analyze)
+
+At v1 tags only:
+├── cmd/                             One package per utility
+└── pkg/                             Shared libraries (sys, format, testutils)
 ```
 
 ## Technology Choices
