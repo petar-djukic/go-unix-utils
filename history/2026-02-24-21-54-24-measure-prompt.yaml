@@ -4206,10 +4206,10 @@ task: |
 
     4. **Propose tasks** — For each task, write a description that follows the crumb-format YAML schema (see planning_constitution above and output_format below). Remember: the stitch agent sees ONLY the task description and the execution constitution. It does not see your analysis, the existing issues, or this conversation. The description must be self-contained.
 
-    5. **Write output** — Append the proposed tasks as a YAML list to `.cobbler/measure-20260224-071542.yaml` using the Write tool.
+    5. **Write output** — Append the proposed tasks as a YAML list to `.cobbler/measure-20260224-215424.yaml` using the Write tool.
 constraints: |
     - Do NOT explore the filesystem. Do NOT run ls, find, tree, or similar commands. Do NOT read files. All project information is in the project_context above.
-    - Do NOT interact with the issue tracker directly. Write the tasks to `.cobbler/measure-20260224-071542.yaml` using the Write tool.
+    - Do NOT interact with the issue tracker directly. Write the tasks to `.cobbler/measure-20260224-215424.yaml` using the Write tool.
     - Do NOT read docs/ files with tools. All documentation is provided in the project_context above.
     - Do NOT duplicate existing issues. Review the issues in the project_context above before proposing.
     - Do NOT exceed 1 tasks. If more work is needed, create additional tasks in a future session.
@@ -4224,7 +4224,7 @@ constraints: |
     - Do NOT vary requirement count between equivalent runs. Each PRD requirement maps to one task requirement. Given the same input, produce the same requirement set. If two runs of this prompt against the same project state would produce different requirements, the decomposition is under-constrained -- tighten it.
     - The ONLY tool call you should make is the Write tool to save the output YAML file.
 output_format: |
-    Write a YAML list of crumb objects to `.cobbler/measure-20260224-071542.yaml`. Each crumb has a sequential `index` (starting at 0) and a `dependency` field. Set `dependency` to the index of the crumb that must be completed first, or `-1` if there are no dependencies.
+    Write a YAML list of crumb objects to `.cobbler/measure-20260224-215424.yaml`. Each crumb has a sequential `index` (starting at 0) and a `dependency` field. Set `dependency` to the index of the crumb that must be completed first, or `-1` if there are no dependencies.
 
     The `description` field must be a valid YAML document conforming to the issue_format_constitution injected above. Write it as a YAML literal block scalar. Use ASCII dashes, not Unicode em dashes. Requirements, design decisions, and acceptance criteria are all mappings with `id:` and `text:` fields (R1/R2/..., D1/D2/..., AC1/AC2/...).
 

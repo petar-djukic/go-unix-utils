@@ -19,9 +19,19 @@ articles:
       Code tasks should target the line range specified in the CONSTRAINTS
       section of the prompt (typically 250-350 lines of production code),
       touching no more than 5-7 files. Split larger features into multiple
-      tasks. Combine trivial changes into one task. Prefer splitting
-      implementation and tests into separate tasks. This keeps tasks
-      completable within the Claude timeout while making meaningful progress.
+      tasks. Combine trivial changes into one task.
+
+      Always split implementation and tests into separate tasks. Decompose
+      each feature into up to three tasks in this order: (1) types and
+      interfaces, (2) implementation, (3) tests. A single task must never
+      both implement and test the same feature. If the types and interfaces
+      are small enough to fit within the implementation task's line budget,
+      combine steps 1 and 2 into one task.
+
+      Each task must be completable within the Claude timeout (typically
+      5-10 minutes). If a task would require more than 20 agent turns, it
+      is too large and must be split further. Treat timeout as a signal
+      that the task needs decomposition, not retrying.
 
   - id: P3
     title: Task limit per batch

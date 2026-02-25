@@ -35,6 +35,9 @@ cobbler:
     estimated_lines_min: 250
     estimated_lines_max: 350
     golden_example: ""
+    max_context_bytes: 0
+    enforce_measure_validation: false
+    max_measure_retries: 0
     history_dir: history
 podman:
     image: claude-cli
@@ -52,3 +55,4 @@ claude:
     token_file: ""
     max_time_sec: 300
     container_credentials_path: /home/crumbs/.claude/.credentials.json
+    temperature: 0

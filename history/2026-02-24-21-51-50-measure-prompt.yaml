@@ -3819,6 +3819,50 @@ planning_constitution:
             Identify what should be built first and why. PRDs before use cases,
             use cases before test suites, test suites before code, foundational code
             before features, libraries before CLI.
+        - id: P6
+          title: Requirement-anchored decomposition
+          rule: |
+            Anchor each task to specific PRD requirements by ID (e.g., prd001 R1.1,
+            prd002 R2.3). Include the requirement ID(s) in the task title. Each PRD
+            requirement maps to exactly one task unless the requirement exceeds the
+            line budget, in which case split into implementation and test tasks that
+            both reference the same requirement. Do not invent task boundaries that
+            cross requirement boundaries. This makes decomposition deterministic:
+            given the same PRD and release, the same set of tasks should be proposed.
+        - id: P7
+          title: File naming conventions
+          rule: |
+            Derive file names from the module or feature name established in the
+            PRD or architecture document. Use the existing project naming pattern
+            (snake_case for Go files, kebab-case for YAML documents). When creating
+            a new package, use the name from ARCHITECTURE.yaml. Do not invent novel
+            file names. If the PRD names a component "crumb", the file is crumb.go,
+            not item.go or entity.go. Go packages must name the primary source file
+            after the primary exported type, not the package name.
+            `testutils/testutils.go` is forbidden; if the primary type is
+            `DiffTest`, the file is `difftest.go`. Test files mirror source:
+            `difftest_test.go`.
+        - id: P8
+          title: Deterministic ordering
+          rule: |
+            Propose tasks in a fixed canonical order. Within the same release:
+            1. Documentation tasks before code tasks.
+            2. Types and interfaces before implementations.
+            3. Libraries and shared packages before consumers.
+            4. Implementation before tests (when split into separate tasks).
+            When two tasks have equal priority under these rules, order by the
+            primary file path alphabetically. This ensures the same input produces
+            the same task sequence.
+        - id: P9
+          title: Requirement granularity
+          rule: |
+            Code tasks target 5-8 requirements, 5-8 acceptance criteria, and 3-5
+            design decisions. Documentation tasks target 2-4 requirements and 3-5
+            acceptance criteria. Each PRD requirement maps to exactly one task
+            requirement. Do not inflate counts by splitting a single requirement
+            into sub-bullets, and do not deflate counts by merging unrelated
+            requirements. If a task falls outside these ranges, re-examine the
+            decomposition.
     issue_structure:
         common_fields:
             deliverable_type:
@@ -4162,10 +4206,10 @@ task: |
 
     4. **Propose tasks** — For each task, write a description that follows the crumb-format YAML schema (see planning_constitution above and output_format below). Remember: the stitch agent sees ONLY the task description and the execution constitution. It does not see your analysis, the existing issues, or this conversation. The description must be self-contained.
 
-    5. **Write output** — Append the proposed tasks as a YAML list to `.cobbler/measure-20260223-220750.yaml` using the Write tool.
+    5. **Write output** — Append the proposed tasks as a YAML list to `.cobbler/measure-20260224-215150.yaml` using the Write tool.
 constraints: |
     - Do NOT explore the filesystem. Do NOT run ls, find, tree, or similar commands. Do NOT read files. All project information is in the project_context above.
-    - Do NOT interact with the issue tracker directly. Write the tasks to `.cobbler/measure-20260223-220750.yaml` using the Write tool.
+    - Do NOT interact with the issue tracker directly. Write the tasks to `.cobbler/measure-20260224-215150.yaml` using the Write tool.
     - Do NOT read docs/ files with tools. All documentation is provided in the project_context above.
     - Do NOT duplicate existing issues. Review the issues in the project_context above before proposing.
     - Do NOT exceed 1 tasks. If more work is needed, create additional tasks in a future session.
@@ -4173,9 +4217,14 @@ constraints: |
     - Each task MUST be independently executable by an agent that has no context beyond the task description and the execution constitution.
     - Do NOT assume the stitch agent has access to your analysis, the existing issues list, or any context from this conversation.
     - Do NOT propose tasks that require human judgment or manual testing. Each task must have checkable acceptance criteria.
+    - Anchor every task to specific PRD requirement IDs (e.g., prd001 R1.1). Include the requirement ID in the task title. Given the same PRD and release, the same tasks should be proposed regardless of how many times this prompt is run.
+    - Order tasks canonically: documentation before code, types before implementations, libraries before consumers, implementation before tests. Break ties by primary file path alphabetically.
+    - Derive file names from PRD/architecture names, not invented names. If the architecture calls a component "crumb", the file is crumb.go.
+    - Do NOT invent design decisions not derived from the PRD or architecture. Derive struct shapes, timeout strategies, file names, and naming conventions from the PRD rather than making arbitrary choices. If the PRD does not specify a detail, omit it from design decisions rather than inventing one.
+    - Do NOT vary requirement count between equivalent runs. Each PRD requirement maps to one task requirement. Given the same input, produce the same requirement set. If two runs of this prompt against the same project state would produce different requirements, the decomposition is under-constrained -- tighten it.
     - The ONLY tool call you should make is the Write tool to save the output YAML file.
 output_format: |
-    Write a YAML list of crumb objects to `.cobbler/measure-20260223-220750.yaml`. Each crumb has a sequential `index` (starting at 0) and a `dependency` field. Set `dependency` to the index of the crumb that must be completed first, or `-1` if there are no dependencies.
+    Write a YAML list of crumb objects to `.cobbler/measure-20260224-215150.yaml`. Each crumb has a sequential `index` (starting at 0) and a `dependency` field. Set `dependency` to the index of the crumb that must be completed first, or `-1` if there are no dependencies.
 
     The `description` field must be a valid YAML document conforming to the issue_format_constitution injected above. Write it as a YAML literal block scalar. Use ASCII dashes, not Unicode em dashes. Requirements, design decisions, and acceptance criteria are all mappings with `id:` and `text:` fields (R1/R2/..., D1/D2/..., AC1/AC2/...).
 
@@ -4239,5 +4288,7 @@ output_format: |
               text: All tests pass
 
     The description must be self-contained. All five fields (deliverable_type, required_reading, files, requirements, acceptance_criteria) are required. Each requirement, design_decision, and acceptance_criteria entry is a mapping with `id` and `text` fields. Add design_decisions when the stitch agent must follow specific patterns or architecture constraints.
+
+    When a golden_example field is present in this prompt, it is the authoritative reference for style, granularity, and naming conventions. Match its requirement count range, acceptance criteria density, design decision style, and file naming pattern. Deviate from the golden example only when the PRD explicitly requires a different structure.
 
     The tasks will be automatically imported into the issue tracker.

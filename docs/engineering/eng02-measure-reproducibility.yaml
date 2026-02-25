@@ -1,0 +1,125 @@
+id: eng02-measure-reproducibility
+title: "Measure Step Reproducibility Analysis"
+
+introduction: |
+  The cobbler measure step proposes implementation tasks by sending project context to a
+  Claude agent. We ran two identical measure cycles back-to-back on 2026-02-24 to evaluate
+  whether the step produces reproducible output. This guideline records the findings and
+  identifies the sources of variance.
+
+sections:
+  - title: "Experiment design"
+    content: |
+      We executed two generation cycles on the same codebase state with no spec or code
+      changes between them. Each cycle ran mage generator:start, mage cobbler:measure, and
+      mage generator:stop. The configuration used temperature 0, a 5-minute timeout, and
+      the Claude Opus 4.6 model via the Claude Code CLI in a Podman container.
+
+      Run A timestamp: 2026-02-24-21-51-50. Run B timestamp: 2026-02-24-21-54-24. Both
+      ran against the same main branch commit with 10 PRDs, 7 use cases, 4 test suites,
+      and 0 lines of Go code.
+
+  - title: "Prompt reproducibility"
+    content: |
+      The measure prompts are functionally identical across runs. The orchestrator assembles
+      the prompt deterministically from project files resolved by glob patterns (9 patterns
+      yielding 27 files in both runs). The only difference is 3 lines containing the
+      timestamp-based output filename (.cobbler/measure-YYYYMMDD-HHMMSS.yaml). The
+      remaining 4,200+ lines are byte-for-byte identical.
+
+      The prompt is reproducible. The output filename is the sole source of prompt variance.
+
+  - title: "Issue reproducibility"
+    content: |
+      Both runs proposed exactly 1 issue targeting the same component (pkg/testutils) and
+      the same PRD requirements (prd001 R1-R5). The issues are semantically equivalent but
+      not textually identical.
+
+      | Dimension              | Run A                        | Run B                        |
+      |------------------------|------------------------------|------------------------------|
+      | Title                  | ...DiffTest struct and RunDiffTests harness... | ...DiffTest harness...  |
+      | Files to create        | difftest.go, normalize.go, difftest_test.go | difftest.go, normalizers.go, difftest_test.go |
+      | Requirement count      | 6 (R1-R6)                    | 5 (R1-R5)                    |
+      | Acceptance criteria    | 6 (AC1-AC6)                  | 7 (AC1-AC7)                  |
+      | Design decisions       | 4 (D1-D4)                    | 4 (D1-D4)                    |
+      | Output size            | 6,200 bytes                  | 7,999 bytes                  |
+      | YAML style             | Inline strings               | Multi-line blocks             |
+
+      Run A splits file-state comparison into a separate R6; Run B folds it into R5. Run B
+      adds an explicit AC7 for test coverage. Run B names the normalizer file normalizers.go
+      (plural); Run A uses normalize.go (singular). Run B explicitly includes ISO-8601
+      datetime normalization; Run A omits it.
+
+      The differences are in wording, formatting, granularity, and minor naming choices. Both
+      issues would produce equivalent implementations.
+
+  - title: "Token and cost variance"
+    content: |
+      | Metric            | Run A      | Run B      | Delta  |
+      |-------------------|------------|------------|--------|
+      | Duration          | 1m54s      | 3m8s       | +65%   |
+      | Input tokens      | 180,777    | 184,453    | +2%    |
+      | Output tokens     | 6,319      | 10,505     | +66%   |
+      | Cost              | $0.696     | $0.824     | +18%   |
+      | Thinking chars    | 6,957      | 14,252     | +105%  |
+      | Cache read        | 102,929    | 102,785    | ~same  |
+      | Cache creation    | 77,845     | 81,665     | +5%    |
+
+  - title: "Turn structure"
+    content: |
+      Both runs have identical turn structure: system init, assistant (thinking + text +
+      tool_use Write), rate_limit, user (tool_result), assistant (summary text), result.
+      Two API turns total. The model made no file reads or searches in either run; the only
+      tool call was the Write to save the issue YAML.
+
+      The difference is entirely in the thinking block. Run A produced 6,957 characters of
+      internal reasoning; Run B produced 14,252 characters. The model reached the same
+      conclusion via a longer reasoning path in Run B.
+
+  - title: "Sources of variance"
+    content: |
+      Source 1 — Thinking token non-determinism. At temperature 0 the model uses greedy
+      decoding (always pick the highest-probability token), but the probabilities are
+      computed with floating-point arithmetic that varies across GPU runs. Small differences
+      in early tokens compound through the reasoning chain, producing thinking blocks that
+      differ in length by 2x.
+
+      Source 2 — Multi-turn accumulation. Turn 1's thinking tokens become part of the input
+      context for turn 2 (after the Write tool result). A longer thinking block in turn 1
+      inflates the input token count for turn 2. The 3,676-token input difference between
+      runs closely tracks the 4,186-token output difference from accumulated conversation
+      context.
+
+      Source 3 — Output filename in prompt. The timestamp-based output filename
+      (.cobbler/measure-YYYYMMDD-HHMMSS.yaml) differs between runs. This is cosmetic but
+      prevents byte-for-byte prompt identity.
+
+  - title: "Recommendations"
+    content: |
+      Recommendation 1 — Single-turn measure (cobbler-scaffold#12). Redesign the measure step so the
+      model returns issue YAML as text output instead of using the Write tool. The
+      orchestrator captures the YAML and writes the file itself. This eliminates the second
+      API turn, removes multi-turn token accumulation, and makes input token counts
+      identical across runs. The orchestrator already parses the output to import issues,
+      so the file-writing capability is redundant.
+
+      Recommendation 2 — Normalize the output filename. Use a fixed placeholder in the
+      prompt (e.g., OUTPUT_FILE) and substitute the real timestamp-based path after prompt
+      assembly. This makes the prompt byte-for-byte identical across runs.
+
+      Recommendation 3 — Report thinking tokens separately. The orchestrator log already
+      contains the full stream-json output. Parse thinking block size from the log and
+      report it alongside total output tokens in the stats file. This lets cost comparisons
+      distinguish between useful output variance and reasoning variance.
+
+      Recommendation 4 — Accept semantic equivalence. Both runs produce issues that would
+      lead to equivalent implementations. Exact textual reproducibility is not achievable
+      with current LLM inference infrastructure. Semantic equivalence is the practical
+      standard for measure quality.
+
+references:
+  - "history/2026-02-24-21-51-50-measure-*.yaml — Run A outputs (prompt, issues, stats, log)"
+  - "history/2026-02-24-21-54-24-measure-*.yaml — Run B outputs (prompt, issues, stats, log)"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/5 — GH-5: Compare two generation runs for reproducibility"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/12 — cobbler-scaffold#12: Single-turn measure to eliminate thinking token variance"
+  - "configuration.yaml — Orchestrator configuration (temperature: 0, max_time_sec: 300)"
