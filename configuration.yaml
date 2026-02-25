@@ -6,7 +6,7 @@ project:
     binary_name: go-unix-utils
     binary_dir: bin
     main_package: ""
-    go_source_dirs: []
+    go_source_dirs: [pkg, cmd]
     version_file: ""
     magefiles_dir: magefiles
     context_sources: ""
@@ -53,6 +53,6 @@ claude:
     secrets_dir: .secrets
     default_token_file: claude.json
     token_file: ""
-    max_time_sec: 300
+    max_time_sec: 900
     container_credentials_path: /home/crumbs/.claude/.credentials.json
     temperature: 0

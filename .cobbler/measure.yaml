@@ -1180,3 +1180,176 @@
       - id: AC7
         text: "File-state comparison reads files from FileExpectations after binary execution and reports divergence with the file path, expected content, and actual content."
   dependency: -1
+- index: 0
+  title: Implement pkg/testutils differential testing harness (prd001 R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (full PRD for pkg/testutils)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component description and project structure)
+      - go.mod (module path and dependencies)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: "DiffTest struct, FileExpectation struct, RunDiffTests function, binary execution, comparison and divergence reporting, file-state comparison"
+      - path: pkg/testutils/normalize.go
+        action: create
+        note: "Normalize function type, ComposeNormalizers combinator, TimestampNormalizer for strftime-pattern replacement"
+
+    requirements:
+      - id: R1
+        text: "Implement DiffTest struct with fields for Args ([]string), Stdin ([]byte, nil means no stdin), Env ([]string, nil means inherit), ExpectedExitCode (int), and Normalize (slice of normalize functions). Implement a Normalize function type as func([]byte) []byte. Per prd001 R1.1-R1.4."
+      - id: R2
+        text: "Implement binary execution that accepts two binary paths (Go binary under test and GNU reference binary), invokes both with identical args, stdin, and environment, captures stdout, stderr, and exit code independently, imposes a configurable timeout (default 10 seconds), produces no output on passing runs, and supports an optional working directory (defaulting to a per-test t.TempDir()). Per prd001 R2.1-R2.5."
+      - id: R3
+        text: "Implement comparison and reporting that applies the DiffTest normalize functions to both outputs before comparison, compares normalized stdout byte-for-byte, compares normalized stderr byte-for-byte, compares exit codes exactly, reports divergence with args, stdin (truncated to 256 bytes), reference stdout, Go stdout, reference stderr, Go stderr, and both exit codes, and runs each DiffTest as a named subtest via t.Run. Per prd001 R3.1-R3.6."
+      - id: R4
+        text: "Implement normalization hooks: per-DiffTest normalize via the Normalize slice field, a built-in TimestampNormalizer that replaces common strftime timestamp patterns (e.g., 'Feb 19 12:34:56', 'HH:MM:SS', ISO-8601 datetime prefixes) with a fixed placeholder string, and a ComposeNormalizers function that chains a slice of normalize functions in order. Per prd001 R4.1-R4.3."
+      - id: R5
+        text: "Implement file-state comparison for utilities whose primary output is a file (sponge, cp, mv). DiffTest must allow specifying expected file paths and content after execution. File content is compared byte-for-byte with divergence reported in the same format as stdout divergence. Per prd001 R5.1-R5.2."
+
+    design_decisions:
+      - id: D1
+        text: "RunDiffTests signature is RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) per prd001 AC1. This is the sole public entry point for cmd/ test files."
+      - id: D2
+        text: "DiffTest.Normalize is a []func([]byte) []byte slice applied in order per prd001 R4.3. When nil or empty, no normalization is applied. This replaces a single Normalize field with a composable slice."
+      - id: D3
+        text: "Binary execution timeout uses context.WithTimeout with a default of 10 seconds per prd001 R2.3. The timeout applies independently to each binary invocation."
+      - id: D4
+        text: "Each DiffTest runs as t.Run(testName, func(t *testing.T) { ... }) per prd001 R3.6, where testName is a field on DiffTest so individual failures are identifiable in go test output."
+      - id: D5
+        text: "When no working directory is specified, both binaries run in a per-test temporary directory created via t.TempDir() per prd001 R2.5."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "DiffTest struct exists in pkg/testutils/difftest.go with all fields specified by prd001 R1.1-R1.4: Args, Stdin, Env, Name, Normalize, WorkDir, and file expectation fields."
+      - id: AC2
+        text: "RunDiffTests(t, goBinary, refBinary, tests) is callable from a cmd/ test file with a []DiffTest slice and no other setup, per prd001 AC1."
+      - id: AC3
+        text: "Both binaries are executed with identical args, stdin, and environment. Stdout, stderr, and exit code are captured independently per prd001 R2.1-R2.2."
+      - id: AC4
+        text: "A binary that exceeds the 10-second timeout causes the test to fail with a clear timeout message rather than hanging, per prd001 AC5."
+      - id: AC5
+        text: "TimestampNormalizer replaces strftime-formatted timestamps (e.g., 'Feb 19 12:34:56') with a fixed placeholder so that ts differential tests can pass despite wall-clock differences, per prd001 AC3."
+      - id: AC6
+        text: "File-state comparison correctly detects when the Go binary writes different file content than the reference binary, per prd001 AC4."
+      - id: AC7
+        text: "All pkg/testutils code compiles with no warnings under golangci-lint, per prd001 AC6. Run: golangci-lint run ./pkg/testutils/..."
+  dependency: -1
+- index: 0
+  title: Implement pkg/testutils DiffTest harness (prd001 R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (full PRD for the differential testing harness -- all requirements and acceptance criteria)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component description, project structure, design decisions)
+      - go.mod (module path for import references)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, Normalize type, RunDiffTests function, comparison and reporting logic, TimestampNormalizer, file-state comparison
+
+    requirements:
+      - id: R1
+        text: "Define the DiffTest struct with fields for Args ([]string), Stdin ([]byte -- nil means EOF immediately), Env ([]string -- nil means inherit test process environment), ExitCode (int -- expected exit code), Normalize ([]Normalize -- applied in order before comparison; nil or empty means no normalization), WorkDir (string -- optional working directory; empty means per-test temp directory), and file expectation fields for utilities whose output is a file. Define the Normalize function type as func([]byte) []byte. Per prd001-testutils R1.1-R1.4."
+      - id: R2
+        text: "Implement RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) that iterates over the test slice and runs each as a named subtest via t.Run. For each test: invoke both binaries with identical args, stdin, and environment; capture stdout, stderr, and exit code independently; impose a configurable timeout (default 10 seconds) on each invocation; create a per-test temporary directory when WorkDir is empty. Must not write output during passing tests. Per prd001-testutils R2.1-R2.5."
+      - id: R3
+        text: "Implement comparison and divergence reporting: apply the DiffTest Normalize functions in slice order to both binaries' stdout and stderr before comparison. Compare normalized stdout byte-for-byte, normalized stderr byte-for-byte, and exit codes exactly. On any divergence, report via t.Errorf with the DiffTest args, stdin content (truncated to 256 bytes if longer), reference binary stdout, Go binary stdout, reference stderr, Go stderr, and both exit codes. Per prd001-testutils R3.1-R3.6."
+      - id: R4
+        text: "Implement TimestampNormalizer as an exported Normalize function that replaces common strftime timestamp patterns -- syslog format ('Feb 19 12:34:56'), ISO-8601 datetime, and HH:MM:SS elapsed time -- with a fixed placeholder string (e.g., 'TIMESTAMP'). This normalizer is used by cmd/ts differential tests. Per prd001-testutils R4.1-R4.3."
+      - id: R5
+        text: "Implement file-state comparison: DiffTest must support specifying an output file path and expected content after execution. After both binaries run, compare the output file content byte-for-byte. Report divergence in the same format as stdout divergence (showing expected vs actual file content). Per prd001-testutils R5.1-R5.2."
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go -- the project convention requires naming the file after the primary exported type (DiffTest), not the package name. testutils/testutils.go is forbidden."
+      - id: D2
+        text: "Use os/exec.CommandContext with context.WithTimeout for binary invocation to enforce the configurable timeout per prd001-testutils R2.3. Default timeout is 10 seconds."
+      - id: D3
+        text: "Normalize is a named exported type: type Normalize func([]byte) []byte. The DiffTest.Normalize field is a slice ([]Normalize) applied in order per prd001-testutils R4.3. When nil or empty, no normalization is applied."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest.go compiles without errors: go build ./pkg/testutils/... succeeds."
+      - id: AC2
+        text: "The exported API allows a cmd/ package to define a []DiffTest slice and call RunDiffTests(t, goBinary, refBinary, tests) from a TestXxx function with no other setup per prd001-testutils AC1."
+      - id: AC3
+        text: "TimestampNormalizer is exported and replaces strftime-formatted timestamps (e.g., 'Feb 19 12:34:56') with a fixed placeholder string per prd001-testutils AC3."
+      - id: AC4
+        text: "DiffTest supports file expectation fields so that a test specifying expected file content correctly triggers comparison after binary execution per prd001-testutils AC4."
+      - id: AC5
+        text: "A binary invocation exceeding the timeout causes the subtest to fail with a clear timeout message rather than hanging per prd001-testutils AC5."
+      - id: AC6
+        text: "All pkg/testutils code compiles with no warnings under golangci-lint per prd001-testutils AC6."
+  dependency: -1
+- index: 0
+  title: 'cmd/ts implementation: prd004-ts R1-R8 timestamp stdin lines'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd004-ts.yaml (full PRD for ts -- all requirements R1-R8)
+      - docs/specs/use-cases/rel01.0-uc001-ts.yaml (use case flow and success criteria)
+      - docs/specs/test-suites/test-rel01.0.yaml (test cases that this implementation must satisfy)
+      - docs/specs/sources.yaml (ts source is Perl, flag parsing at ts:64, flags -r -i -s -m)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests -- the harness this binary will be tested against)
+      - pkg/testutils/normalize.go (TimestampNormalizer -- understand what normalization tests will apply)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "Complete ts utility implementation: flag parsing, stdin timestamping, all modes (-i, -s, -m, -r), strftime format support including subsecond extensions, exit codes, TZ handling"
+
+    requirements:
+      - id: R1
+        text: "Default behavior (prd004-ts R1.1-R1.6): Read stdin line by line, prepend timestamp in default format \"%b %d %H:%M:%S\" evaluated at line-receive time, flush after each line, preserve original newlines, handle partial last lines (no trailing newline), exit 0 on EOF, suppress SIGPIPE."
+      - id: R2
+        text: "Custom format string (prd004-ts R2.1-R2.4): Accept optional positional argument as strftime format string. Support standard strftime(3) conversion specifications by converting them to Go time.Format layout strings. Support three ts-specific subsecond extensions: %.S (seconds with 6-digit microsecond suffix e.g. \"32.001234\"), %.s (Unix epoch with 6-digit microsecond suffix e.g. \"1708358732.001234\"), %.T (HH:MM:SS with 6-digit microsecond suffix e.g. \"14:05:32.001234\"). Obtain second and microsecond from a single time.Now() call per line."
+      - id: R3
+        text: "Incremental mode -i (prd004-ts R3.1-R3.4): Timestamp shows elapsed time since previous line was received. First line shows elapsed since ts started. Default format \"%H:%M:%S\" with TZ=GMT internally. Custom format overrides the default but TZ=GMT still applies. -i and -s are mutually exclusive -- print usage error to stderr and exit non-zero if both given."
+      - id: R4
+        text: "Elapsed-since-start mode -s (prd004-ts R4.1-R4.3): Timestamp shows elapsed time since ts started, increasing monotonically across lines. Default format \"%H:%M:%S\" with TZ=GMT internally. Custom format overrides the default."
+      - id: R5
+        text: "Monotonic clock mode -m (prd004-ts R5.1-R5.3): Use Go time.Now() monotonic reading for timestamp sampling. Compatible with all format modes and custom format strings including subsecond extensions. Timestamp must not jump on wall-clock adjustments."
+      - id: R6
+        text: "Relative-time conversion mode -r (prd004-ts R6.1-R6.5): Scan each input line for known timestamp patterns (syslog \"Jan  5 14:30:00\", ISO-8601 \"2024-01-05T14:30:00.000Z\", RFC 2822 with optional day \"16 Jun 94 07:29:35 GMT\", lastlog \"Mon Jan  5 14:30\") and replace with human-readable relative age string (e.g. \"15m5s ago\"). When -r and a format string are both given, convert matched timestamps to the specified format via strftime. Lines with no recognized timestamp pass through unchanged. -r is mutually exclusive with -i and -s."
+      - id: R7
+        text: "Exit codes and error handling (prd004-ts R7.1-R7.3): Exit 0 on clean EOF. Exit non-zero with usage message to stderr for unrecognized flags. Document that the Go implementation compiles in all parsing support (the Date::Parse unavailability condition from R7.3 cannot arise)."
+      - id: R8
+        text: "Environment handling (prd004-ts R8.1-R8.2): Respect TZ environment variable for wall-clock timestamps in default mode. In -i and -s modes, use TZ=GMT internally for elapsed-time formatting regardless of user TZ setting."
+
+    design_decisions:
+      - id: D1
+        text: "Strftime-to-Go conversion: Implement a strftimeToGo(format string) function that maps strftime directives (%Y, %m, %d, %H, %M, %S, %b, %B, %a, %A, %p, %Z, %z, %j, %u, %w, %s, %T, %F, %R, %n, %t, %%) to Go reference-time layout tokens. Pre-process the ts-specific extensions (%.S, %.s, %.T) by replacing them with sentinel placeholders before conversion, then substitute the actual microsecond values after time.Format() returns."
+      - id: D2
+        text: "Elapsed time formatting for -i and -s modes: Compute the delta as a time.Duration, convert to seconds, construct a time.Time from epoch + delta seconds, then format with TZ set to time.FixedZone(\"GMT\", 0). This matches the Perl source behavior where TZ=GMT causes strftime on a delta-second value to produce correct elapsed strings."
+      - id: D3
+        text: "Flag parsing: Use the Go standard library flag package. Define -i, -s, -m, -r as boolean flags. The remaining non-flag argument (if any) is the custom format string. Validate mutual exclusivity (-i/-s, -r/-i, -r/-s) before entering the main loop. Print usage to stderr and os.Exit(1) on validation failure."
+      - id: D4
+        text: "Relative time patterns for -r mode: Compile regexp patterns matching the four timestamp formats from prd004-ts R6.2 (syslog, ISO-8601, RFC 2822, lastlog). For each match, parse into time.Time, compute time.Since(), and format as a relative age string using the largest two non-zero units (e.g. \"2h15m ago\", \"3d5h ago\", \"45s ago\")."
+      - id: D5
+        text: "SIGPIPE handling: Call signal.Notify for syscall.SIGPIPE and start a goroutine that calls os.Exit(0) on receipt, matching GNU behavior where SIGPIPE terminates silently. This is simpler than importing pkg/sys (which ts does not need per dependency-map.yaml)."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go compiles with `go build ./cmd/ts/` with no errors."
+      - id: AC2
+        text: "echo 'hello world' | go run ./cmd/ts produces a line matching the pattern \"<Mon> <DD> <HH:MM:SS> hello world\" (prd004-ts AC1)."
+      - id: AC3
+        text: "printf 'a\\nb\\nc\\n' | go run ./cmd/ts -s produces three lines with monotonically increasing elapsed timestamps in HH:MM:SS format (prd004-ts AC2)."
+      - id: AC4
+        text: "go run ./cmd/ts with an invalid flag (e.g. -z) prints a usage message to stderr and exits non-zero (prd004-ts AC4)."
+      - id: AC5
+        text: "Empty stdin (no input, immediate EOF) produces no output and exits 0 (prd004-ts AC5)."
+      - id: AC6
+        text: "go run ./cmd/ts -i -s prints a mutual-exclusivity error to stderr and exits non-zero (prd004-ts R3.4)."
+      - id: AC7
+        text: "printf 'no timestamp here\\n' | go run ./cmd/ts -r passes through the line unchanged (prd004-ts R6.4)."
+      - id: AC8
+        text: "The produced binary runs under golangci-lint with no warnings (prd004-ts AC6). Run: golangci-lint run ./cmd/ts/..."
+  dependency: -1
