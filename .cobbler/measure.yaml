@@ -689,3 +689,62 @@
       - id: AC7
         text: go test ./pkg/testutils/... passes with no failures.
   dependency: -1
+- index: 0
+  title: 'pkg/testutils: Implement DiffTest struct and RunDiffTests harness (prd001 R1-R5)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (full PRD for the differential testing harness)
+      - docs/ARCHITECTURE.yaml (component description for pkg/testutils, project structure, design decisions)
+      - go.mod (module path: github.com/petar-djukic/go-unix-utils)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, Normalize type, RunDiffTests function, comparison and reporting logic
+      - path: pkg/testutils/normalize.go
+        action: create
+        note: TimestampNormalizer, ComposeNormalizers helper
+      - path: pkg/testutils/difftest_test.go
+        action: create
+        note: Tests for RunDiffTests, TimestampNormalizer, file-state comparison, timeout behavior
+
+    requirements:
+      - id: R1
+        text: "Define a DiffTest struct with fields: Name (string for subtest naming), Args ([]string), Stdin ([]byte, nil means no stdin/EOF immediately), Env ([]string, nil means inherit test process environment), ExitCode (int), Normalize ([]func([]byte) []byte, nil or empty means no normalization), WorkDir (string, empty means create a per-test temp directory), and ExpectedFiles (map[string][]byte for file-state comparison, nil means no file comparison). Define a Normalize function type as func([]byte) []byte. Traces prd001-testutils R1.1-R1.4, R5.1."
+      - id: R2
+        text: "Implement RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) that iterates over the test slice, runs each as a named subtest via t.Run(test.Name, ...), executes both binaries with identical args, stdin, and environment, and compares their outputs. Each subtest is independent. Traces prd001-testutils R2.1, R3.6, AC1."
+      - id: R3
+        text: "Implement binary execution using os/exec.CommandContext with context.WithTimeout. Default timeout is 10 seconds. Capture stdout and stderr into bytes.Buffer and exit code from exec.ExitError.ExitCode(). When WorkDir is empty, create a per-test temp directory via t.TempDir() and set both binaries' working directory to it. Produce no output to the test process stdout or stderr during a passing test. Traces prd001-testutils R2.1-R2.5."
+      - id: R4
+        text: "Implement comparison logic: apply each function in the DiffTest.Normalize slice in order to both binaries' stdout and stderr before comparison. Compare normalized stdout byte-for-byte, normalized stderr byte-for-byte, and exit codes exactly. On any divergence, report: the DiffTest args, stdin content (truncated to 256 bytes if longer), reference binary stdout, Go binary stdout, reference stderr, Go stderr, and both exit codes via t.Errorf. Traces prd001-testutils R3.1-R3.5."
+      - id: R5
+        text: "Implement a TimestampNormalizer (func([]byte) []byte) that replaces common strftime timestamp patterns with the fixed placeholder string 'TIMESTAMP'. Must match the default ts format '%b %d %H:%M:%S' (e.g., 'Feb 19 12:34:56') and bare 'HH:MM:SS' elapsed-time format (e.g., '00:00:05'). Implement ComposeNormalizers(fns ...func([]byte) []byte) func([]byte) []byte that returns a single normalizer applying each function in order. Traces prd001-testutils R4.1-R4.3."
+      - id: R6
+        text: "Implement file-state comparison: when DiffTest.ExpectedFiles is non-nil, after both binaries exit, for each key (file path relative to WorkDir) in ExpectedFiles, read the file written by each binary and compare content byte-for-byte. Report divergence in the same format as stdout divergence (file path, expected content, actual content). Traces prd001-testutils R5.1-R5.2."
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go (named after the primary exported type DiffTest), not testutils.go. Package name is testutils under pkg/testutils/. This follows the project convention that Go packages name the primary source file after the primary exported type."
+      - id: D2
+        text: "Use os/exec.CommandContext with context.WithTimeout for binary execution. Default timeout is 10 seconds per prd001-testutils R2.3. Extract exit code via exec.ExitError; when the error is a context.DeadlineExceeded, report a timeout failure with the binary path and timeout duration."
+      - id: D3
+        text: "Normalize is stored as a slice of func([]byte) []byte on DiffTest, applied in order per prd001-testutils R4.3. When the slice is nil or empty, no normalization is applied. ComposeNormalizers is a convenience for callers that prefer a single function."
+      - id: D4
+        text: "TimestampNormalizer uses regexp.ReplaceAll to match patterns. The month-day-time pattern matches three-letter month abbreviation, one or two digit day, and HH:MM:SS. The elapsed pattern matches standalone HH:MM:SS at line start. Both are replaced with the literal string 'TIMESTAMP'."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "A Go test file can define a []DiffTest slice and call RunDiffTests(t, goBinary, refBinary, tests) from a TestXxx function with no other setup beyond building the binaries."
+      - id: AC2
+        text: "A passing test run produces no output on the test process stdout or stderr. A failing test prints the triggering args, stdin (truncated to 256 bytes), and both binaries' stdout, stderr, and exit code."
+      - id: AC3
+        text: "TimestampNormalizer replaces a string like 'Feb 19 12:34:56' with 'TIMESTAMP' and replaces a string like '00:00:05' at line start with 'TIMESTAMP'."
+      - id: AC4
+        text: "A DiffTest with ExpectedFiles set correctly reports failure when the Go binary writes different file content than the reference binary."
+      - id: AC5
+        text: "A DiffTest where a binary exceeds the 10-second timeout fails with a message containing 'timeout' rather than hanging the test run."
+      - id: AC6
+        text: "All pkg/testutils code compiles with go build ./pkg/testutils/... and passes go vet ./pkg/testutils/... with no errors. All tests pass with go test ./pkg/testutils/..."
+  dependency: -1
