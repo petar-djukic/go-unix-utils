@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-25-07-46-59-g96
+task_title: Implement cmd/ts differential tests -- prd004-ts R9, prd001-testutils R1-R3
+status: success
+started_at: "2026-02-25T12:53:04Z"
+duration: 8m19s
+duration_s: 498
+tokens:
+    input: 1884604
+    output: 28973
+    cache_creation: 115853
+    cache_read: 1768735
+cost_usd: 2.3353817500000003
+loc_before:
+    production: 864
+    test: 0
+loc_after:
+    production: 864
+    test: 215
+diff:
+    files: 2
+    insertions: 409
+    deletions: 0
