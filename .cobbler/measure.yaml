@@ -881,3 +881,125 @@
           divergent exit code (fail), TimestampNormalizer replacement, ComposeNormalizers
           chaining, and timeout expiration.
   dependency: -1
+- index: 0
+  title: 'pkg/testutils: Implement DiffTest struct, RunDiffTests harness, and TimestampNormalizer (prd001-testutils R1-R5)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (complete PRD for this component -- all requirements R1-R5 and acceptance criteria AC1-AC6)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component description, project structure, and design decisions)
+      - docs/specs/test-suites/test-rel01.0.yaml (how cmd/ts tests will consume RunDiffTests and TimestampNormalizer)
+      - go.mod (module path and existing dependencies)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, Normalize type, RunDiffTests entry point, binary execution, comparison, and divergence reporting logic
+      - path: pkg/testutils/normalizers.go
+        action: create
+        note: TimestampNormalizer and ComposeNormalizers functions
+
+    requirements:
+      - id: R1
+        text: |
+          Define a DiffTest struct with fields: Name (string, used for t.Run subtest name),
+          Args ([]string), Stdin ([]byte, nil means immediate EOF per prd001 R1.2), Env
+          ([]string, nil means inherit test process environment per prd001 R1.3), ExitCode
+          (int, expected exit code), Normalize ([]Normalize, applied in order before comparison;
+          nil or empty means no normalization per prd001 R1.4), WorkDir (string, optional working
+          directory; empty means use a per-test temp directory per prd001 R2.5), and a file
+          expectation field for utilities that write output files instead of stdout (per prd001
+          R5.1). Define Normalize as type Normalize func([]byte) []byte. Per prd001-testutils
+          R1.1-R1.4.
+      - id: R2
+        text: |
+          Implement binary execution that accepts two binary paths (Go binary under test and GNU
+          reference binary), invokes both with identical Args, Stdin, and Env from the DiffTest,
+          captures stdout, stderr, and exit code from each independently, imposes a configurable
+          timeout (default 10 seconds) using context.WithTimeout, supports an optional WorkDir
+          (creating a per-test temp directory when not specified), and produces no output to the
+          test process stdout or stderr during a passing test run. Per prd001-testutils R2.1-R2.5.
+      - id: R3
+        text: |
+          Implement comparison logic that applies the DiffTest Normalize function slice (in order)
+          to both binaries' stdout and stderr before comparison, compares normalized stdout
+          byte-for-byte (any difference is a test failure), compares normalized stderr byte-for-byte
+          (any difference is a test failure), compares exit codes exactly (any difference is a test
+          failure), and reports divergence with: the DiffTest Args, Stdin content (truncated to 256
+          bytes if longer), reference binary stdout, Go binary stdout, reference stderr, Go stderr,
+          and both exit codes. Each DiffTest runs as a named subtest via t.Run(test.Name, ...) so
+          individual failures are identifiable in go test output. Per prd001-testutils R3.1-R3.6.
+      - id: R4
+        text: |
+          Implement a built-in TimestampNormalizer that replaces common strftime timestamp patterns
+          (e.g., "Feb 19 12:34:56" for "%b %d %H:%M:%S", ISO-8601 datetime prefixes) with a fixed
+          placeholder string so that ts differential tests pass despite wall-clock differences
+          between the Go and reference binary runs. Implement a ComposeNormalizers function that
+          accepts a variadic or slice of Normalize functions and returns a single Normalize function
+          that applies them in order. Per prd001-testutils R4.1-R4.3 and AC3.
+      - id: R5
+        text: |
+          Implement file-state comparison for utilities whose primary output is a file rather than
+          stdout (sponge, cp, mv). The DiffTest file expectation field allows specifying file paths
+          whose content should be compared after both binaries exit. Compare file content byte-for-byte
+          and report divergence in the same format as stdout divergence (showing both contents and
+          the triggering args). Per prd001-testutils R5.1-R5.2 and AC4.
+      - id: R6
+        text: |
+          Export RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) as
+          the single public entry point. A cmd/ package defines a []DiffTest slice and calls
+          RunDiffTests from a standard TestXxx function with no other setup required. Per
+          prd001-testutils AC1.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Primary source file is difftest.go, named after the primary exported type DiffTest.
+          The file must not be named testutils.go. Per project naming convention in
+          ARCHITECTURE.yaml: "Go packages must name the primary source file after the primary
+          exported type, not the package name."
+      - id: D2
+        text: |
+          Normalize is defined as type Normalize func([]byte) []byte. DiffTest.Normalize is
+          []Normalize (a slice for composition per prd001-testutils R4.3). When nil or empty,
+          no normalization is applied (per prd001-testutils R1.4).
+      - id: D3
+        text: |
+          Binary execution uses os/exec.CommandContext with context.WithTimeout for the
+          configurable timeout (default 10 seconds). A test that exceeds the timeout fails
+          with a clear timeout message rather than hanging the test run. Per prd001-testutils
+          R2.3 and AC5.
+      - id: D4
+        text: |
+          RunDiffTests iterates the []DiffTest slice, calling t.Run(test.Name, func(t
+          *testing.T){...}) for subtest isolation so individual test case failures are
+          identifiable in go test output. Per prd001-testutils R3.6.
+      - id: D5
+        text: |
+          This task produces implementation only -- no test files. Tests for pkg/testutils
+          are a separate task. Do not create any _test.go files.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... compiles with no errors."
+      - id: AC2
+        text: |
+          RunDiffTests is exported with signature func(t *testing.T, goBinary string,
+          refBinary string, tests []DiffTest).
+      - id: AC3
+        text: |
+          DiffTest struct has all required fields: Name (string), Args ([]string), Stdin
+          ([]byte), Env ([]string), ExitCode (int), Normalize ([]Normalize), WorkDir (string),
+          and a file expectation field for post-execution file content comparison.
+      - id: AC4
+        text: |
+          TimestampNormalizer is exported and replaces strftime-formatted timestamp patterns
+          (e.g., "Feb 19 12:34:56") with a fixed placeholder string.
+      - id: AC5
+        text: |
+          ComposeNormalizers is exported and combines a slice of Normalize functions into a
+          single Normalize function that applies them in order.
+      - id: AC6
+        text: "golangci-lint runs clean on all files in pkg/testutils/ with no warnings."
+  dependency: -1
