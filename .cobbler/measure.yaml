@@ -1120,3 +1120,63 @@
       - id: AC6
         text: "All code passes golangci-lint run ./pkg/testutils/... with no warnings or errors."
   dependency: -1
+- index: 0
+  title: Implement pkg/testutils differential testing harness (prd001 R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (complete PRD for this component -- all requirements and acceptance criteria)
+      - docs/ARCHITECTURE.yaml (project structure, component descriptions, technology choices)
+      - go.mod (module path for import statements)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, FileExpectation struct, RunDiffTests function, binary execution, comparison, reporting, file-state comparison
+      - path: pkg/testutils/normalize.go
+        action: create
+        note: Normalize function type, TimestampNormalizer, normalizer composition helpers
+
+    requirements:
+      - id: R1
+        text: "Define DiffTest struct with fields: Args ([]string), Stdin ([]byte, nil means no stdin/immediate EOF), Env ([]string, nil means inherit test process environment), ExitCode (int, expected exit code), Normalize ([]Normalize, applied in order before comparison), WorkDir (string, empty means use per-test temp dir), and FileExpectations ([]FileExpectation for file-state comparison). Define Normalize as func([]byte) []byte. Define FileExpectation struct with Path (string) and Content ([]byte). (prd001 R1.1-R1.4, R5.1)"
+      - id: R2
+        text: "Implement RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) that iterates the test slice and runs each as a named subtest via t.Run. For each test, invoke both binaries with identical args, stdin, and environment. Capture stdout, stderr, and exit code independently from each binary. Impose a configurable timeout (default 10 seconds) on each invocation; fail the test if either binary exceeds the timeout with a clear timeout message. When WorkDir is empty, run both binaries in a per-test temporary directory created via t.TempDir(). Produce no output to the test process stdout or stderr during a passing test run. (prd001 R2.1-R2.5, R3.6)"
+      - id: R3
+        text: "Implement comparison logic: apply each Normalize function in slice order to both binaries' stdout and stderr before comparison. Compare normalized stdout byte-for-byte -- any difference is a test failure. Compare normalized stderr byte-for-byte -- any difference is a test failure. Compare exit codes exactly -- any difference is a test failure. (prd001 R3.1-R3.4)"
+      - id: R4
+        text: "Implement divergence reporting: on any comparison failure, report the DiffTest args, stdin content (truncated to 256 bytes if longer), reference binary stdout, Go binary stdout, reference stderr, Go stderr, and both exit codes via t.Errorf. (prd001 R3.5)"
+      - id: R5
+        text: "Implement TimestampNormalizer as an exported Normalize function that replaces common strftime timestamp patterns with the fixed placeholder string 'TIMESTAMP'. Must handle at minimum: syslog format ('Feb 19 12:34:56'), ISO-8601 datetime, and HH:MM:SS elapsed time patterns. Implement normalizer composition -- when the Normalize slice is nil or empty, no normalization is applied; otherwise each function is applied in sequence. (prd001 R4.1-R4.3)"
+      - id: R6
+        text: "Implement file-state comparison: when DiffTest.FileExpectations is non-empty, after both binaries exit, read each expected file path relative to the working directory and compare content byte-for-byte against FileExpectation.Content. Report divergence in the same format as stdout divergence (path, expected content, actual content). (prd001 R5.1-R5.2)"
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go because the primary exported type is DiffTest. Normalizer logic goes in normalize.go. Package name is testutils. (project convention: name source file after primary exported type, not package name)"
+      - id: D2
+        text: "RunDiffTests runs each DiffTest as a named subtest via t.Run so individual test case failures are identifiable in go test output (prd001 R3.6). The subtest name is derived from the test index or a Name field if present on DiffTest."
+      - id: D3
+        text: "Default timeout is 10 seconds per prd001 R2.3. Use context.WithTimeout for each binary invocation via exec.CommandContext. DiffTest may include a Timeout field (time.Duration) to override the default; when zero, the 10-second default applies."
+      - id: D4
+        text: "Normalize is func([]byte) []byte. DiffTest.Normalize is a slice of Normalize functions applied in order (prd001 R4.3). When nil or empty, no normalization is applied. This supports per-test normalization and composition."
+      - id: D5
+        text: "When DiffTest.WorkDir is empty, both binaries run in a per-test temporary directory created via t.TempDir() (prd001 R2.5). This ensures test isolation and automatic cleanup."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... compiles with no errors."
+      - id: AC2
+        text: "go vet ./pkg/testutils/... reports no issues."
+      - id: AC3
+        text: "DiffTest struct has all fields specified in prd001 R1.1-R1.4 and R5.1: Args, Stdin, Env, ExitCode, Normalize (slice of Normalize), WorkDir, FileExpectations (slice of FileExpectation)."
+      - id: AC4
+        text: "RunDiffTests signature is RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) and runs each test as a named subtest."
+      - id: AC5
+        text: "TimestampNormalizer is an exported variable or function of type Normalize that replaces strftime-formatted timestamps with the fixed placeholder 'TIMESTAMP'."
+      - id: AC6
+        text: "Binary execution uses context.WithTimeout with a 10-second default. If either binary exceeds the timeout, the test fails with a message containing the word 'timeout'."
+      - id: AC7
+        text: "File-state comparison reads files from FileExpectations after binary execution and reports divergence with the file path, expected content, and actual content."
+  dependency: -1
