@@ -96,7 +96,7 @@ sections:
 
   - title: "Recommendations"
     content: |
-      Recommendation 1 — Single-turn measure (GH-7). Redesign the measure step so the
+      Recommendation 1 — Single-turn measure (cobbler-scaffold#12). Redesign the measure step so the
       model returns issue YAML as text output instead of using the Write tool. The
       orchestrator captures the YAML and writes the file itself. This eliminates the second
       API turn, removes multi-turn token accumulation, and makes input token counts
@@ -121,5 +121,5 @@ references:
   - "history/2026-02-24-21-51-50-measure-*.yaml — Run A outputs (prompt, issues, stats, log)"
   - "history/2026-02-24-21-54-24-measure-*.yaml — Run B outputs (prompt, issues, stats, log)"
   - "https://github.com/petar-djukic/go-unix-utils/issues/5 — GH-5: Compare two generation runs for reproducibility"
-  - "https://github.com/petar-djukic/go-unix-utils/issues/7 — GH-7: Single-turn measure to eliminate thinking token variance"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/12 — cobbler-scaffold#12: Single-turn measure to eliminate thinking token variance"
   - "configuration.yaml — Orchestrator configuration (temperature: 0, max_time_sec: 300)"
