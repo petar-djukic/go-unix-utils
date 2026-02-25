@@ -1,0 +1,23 @@
+task_id: generation-2026-02-25-07-46-59-g96
+task_title: Implement cmd/ts differential tests -- prd004-ts R9, prd001-testutils R1-R3
+status: success
+branch: task/generation-2026-02-25-07-46-59-generation-2026-02-25-07-46-59-g96
+diff:
+    files: 2
+    insertions: 409
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 194
+      deletions: 0
+    - path: cmd/ts/ts_test.go
+      status: A
+      insertions: 215
+      deletions: 0
+loc_before:
+    production: 864
+    test: 0
+loc_after:
+    production: 864
+    test: 215
