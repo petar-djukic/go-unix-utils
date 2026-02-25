@@ -314,18 +314,25 @@ project_structure:
 
 implementation_status:
   current_focus: |
-    Status reflects the specification phase, not code. "spec complete" means PRD and
-    use case exist and mage analyze passes. "spec in progress" means a PRD exists but
-    the use case or test suite is not yet written. "pending" means no PRD yet.
-    See road-map.yaml for the active release and docs/utilities.yaml for the full catalog.
+    The working branch contains specifications only. Generated Go code (4,586 LOC across
+    22 files) lives at the generation-merged tags from the first pipeline run: Gen A
+    (generation-2026-02-25-07-08-59-merged), Gen B (generation-2026-02-25-07-46-59-merged),
+    Gen C (generation-2026-02-25-08-44-27-merged). The combined code includes pkg/testutils,
+    cmd/ts, cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. No generated code is
+    present on the working branch. See README Tagging Scheme and eng04 for details.
+
+    "spec complete" means PRD, use case, and code exist (code at v1 tag). "spec in
+    progress" means a PRD exists but the use case or test suite is not yet written.
+    "pending" means no PRD yet. See road-map.yaml for the active release and
+    docs/utilities.yaml for the full catalog.
   progress:
-    - pkg/testutils: "spec complete (rel01.0)"
-    - pkg/sys: "spec complete (rel02.0)"
-    - pkg/format: "spec complete (rel02.0)"
-    - cmd/ts: "spec in progress (rel01.0) — PRD complete, use case written, test suite written, implementation pending"
-    - cmd/wc: "spec in progress (rel01.1) — PRD complete, use case and test suite pending"
-    - cmd/cat: "spec in progress (rel01.1) — PRD complete, use case and test suite pending"
-    - cmd/sponge: "spec in progress (rel01.1) — PRD complete, use case and test suite pending"
+    - pkg/testutils: "spec complete (rel01.0), code at generation-merged tags"
+    - pkg/sys: "spec complete (rel02.0), code at generation-merged tags"
+    - pkg/format: "spec complete (rel02.0), code at generation-merged tags"
+    - cmd/ts: "spec complete (rel01.0), code at generation-merged tags"
+    - cmd/wc: "spec complete (rel01.1), code at generation-merged tags"
+    - cmd/cat: "spec complete (rel01.1), code at generation-merged tags"
+    - cmd/sponge: "spec complete (rel01.1), code at generation-merged tags"
     - cmd/ls: "spec in progress (rel02.0 core / rel02.1 extended) — PRDs complete, use cases and test suites pending"
     - cmd/du: "spec in progress (rel02.0) — PRD complete, use case and test suite pending"
     - cmd/grep: pending
