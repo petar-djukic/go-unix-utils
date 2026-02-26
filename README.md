@@ -43,7 +43,7 @@ The repository uses a two-prefix versioning convention to distinguish human-writ
 
 The intended lifecycle: a human writes specifications and tags v0, the pipeline generates code and tags v1, then the generated code is removed from the working branch so that the next specification edit starts from a clean v0 state. This separation makes it possible to re-generate all code from any v0 tag, compare v1 tags across generation runs, and measure specification quality independently of generation quality.
 
-The first generation run is documented in [eng04](docs/engineering/eng04-generation-run-results.yaml). Generated code lives at v1 tags; the working branch carries specifications only.
+The first generation run is documented in [eng04](docs/engineering/eng04-generation-run-results.yaml). A context configuration benchmark comparing default, include-all, and exclude-all prompt settings is documented in [eng06](docs/engineering/eng06-context-benchmark-results.yaml). Generated code lives at v1 tags; the working branch carries specifications only.
 
 ## Methodology
 

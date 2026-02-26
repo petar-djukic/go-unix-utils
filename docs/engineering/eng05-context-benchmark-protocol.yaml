@@ -1,0 +1,197 @@
+id: eng05-context-benchmark-protocol
+title: "Context Benchmark Protocol: Default vs Include-All vs Exclude-All"
+
+introduction: |
+  The cobbler pipeline assembles a prompt context from project documentation and source code
+  before invoking the measure and stitch agents. Three configuration.yaml fields control what
+  files enter this context: context_sources (extra files), context_include (replaces the
+  standard document discovery), and context_exclude (removes files from the resolved set).
+
+  The eng04 generation run used default settings (all three fields empty), which loads a
+  standard set of 27 files via nine glob patterns: VISION.yaml, ARCHITECTURE.yaml,
+  SPECIFICATIONS.yaml, road-map.yaml, all PRDs, use cases, test suites, dependency-map.yaml,
+  and sources.yaml. We do not know whether this default is optimal. Including more files may
+  give the model better context at higher token cost. Excluding all files may reveal which
+  documents the model considers necessary by observing what it requests.
+
+  This experiment runs three generation variants with identical scope but different context
+  configurations, then compares token cost, wall-clock time, and code quality.
+
+sections:
+  - title: "Experiment variables"
+    content: |
+      The independent variable is the context configuration. The dependent variables are token
+      cost, wall-clock time, lines of code produced, and code quality. All other configuration
+      parameters remain constant across variants.
+
+      Table 1: Context configuration per variant
+
+      | Variant | context_sources | context_include | context_exclude | Effect |
+      |---------|-----------------|-----------------|-----------------|--------|
+      | 1 (default) | "" | "" | "" | Standard discovery: 9 glob patterns resolve ~27 files (VISION, ARCHITECTURE, SPECIFICATIONS, road-map, PRDs, use cases, test suites, dependency-map, sources) |
+      | 2 (include-all) | "" | see below | "" | Replaces standard discovery with globs that capture every YAML, markdown, and Go file in the repo |
+      | 3 (exclude-all) | "" | "" | "." | Excludes all files from both documentation context and Go source context |
+
+      Variant 2 context_include value (newline-delimited globs):
+      ```
+      docs/**/*.yaml
+      docs/**/*.md
+      *.yaml
+      *.md
+      .claude/**/*.yaml
+      .claude/**/*.md
+      magefiles/**/*.go
+      ```
+      This captures constitutions, prompts, engineering guidelines, the README, configuration.yaml,
+      and magefiles in addition to the standard set. It does not capture .cobbler/history/ (which
+      would add noise from previous runs).
+
+      Variant 3 uses the single pattern "." which the orchestrator's resolveFileSet() function
+      expands to exclude every file in the working directory.
+
+  - title: "Controlled parameters"
+    content: |
+      All non-context parameters remain identical to the eng04 run. We reproduce them here for
+      traceability.
+
+      Table 2: Fixed configuration parameters
+
+      | Parameter | Value | Source |
+      |-----------|-------|--------|
+      | Model | Claude Opus 4.6 | claude.args |
+      | Temperature | 0 | claude.temperature |
+      | Max time per agent | 900s | claude.max_time_sec |
+      | go_source_dirs | [pkg, cmd] | project.go_source_dirs |
+      | max_measure_issues | 1 | cobbler.max_measure_issues |
+      | max_stitch_issues_per_cycle | 10 | cobbler.max_stitch_issues_per_cycle |
+      | estimated_lines_min | 250 | cobbler.estimated_lines_min |
+      | estimated_lines_max | 350 | cobbler.estimated_lines_max |
+      | Constitutions | planning, execution, design, go-style | cobbler.*_constitution |
+      | Prompts | measure.yaml, stitch.yaml | cobbler.*_prompt |
+
+  - title: "Target scope"
+    content: |
+      Each variant generates the same set of packages that eng04 produced: pkg/testutils, cmd/ts,
+      cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. The specification artifacts (PRDs,
+      use cases, test suites) are identical across variants because main has not changed.
+
+      Each variant runs as its own generation lifecycle (generator:start through generator:stop)
+      on a separate generation branch. We run enough measure+stitch cycles to cover the full
+      scope or until the measure step declares no remaining work. If a variant produces fewer
+      packages than expected, that is itself a result.
+
+      We organize three generations per variant, matching the eng04 structure:
+      - Generation A: rel01.0 scope (pkg/testutils, cmd/ts)
+      - Generation B: rel01.1 scope (cmd/cat, cmd/wc, cmd/sponge + differential tests)
+      - Generation C: rel02.0 preview (pkg/sys, pkg/format)
+
+  - title: "Metrics"
+    content: |
+      We capture metrics from two sources: the .cobbler/history/*-stats.yaml files emitted after
+      each measure and stitch invocation, and manual observations during the run.
+
+      Table 3: Metrics collected per cycle
+
+      | Metric | Source | Description |
+      |--------|--------|-------------|
+      | Token input | stats.yaml tokens.input | Total input tokens (includes cache reads) |
+      | Token output | stats.yaml tokens.output | Total output tokens |
+      | Cache creation | stats.yaml tokens.cache_creation | Tokens written to prompt cache |
+      | Cache read | stats.yaml tokens.cache_read | Tokens served from prompt cache |
+      | Cost USD | stats.yaml cost_usd | Computed cost in USD |
+      | Duration | stats.yaml duration_s | Wall-clock seconds for the agent invocation |
+      | LOC production | stats.yaml loc_after.production - loc_before.production | Lines of Go production code added |
+      | LOC test | stats.yaml loc_after.test - loc_before.test | Lines of Go test code added |
+      | Files changed | stats.yaml diff.files | Number of files created or modified |
+      | Status | stats.yaml status | success or failed (with error message) |
+
+      Table 4: Aggregate metrics per variant
+
+      | Metric | Computation |
+      |--------|-------------|
+      | Total cost | Sum of cost_usd across all measure + stitch cycles |
+      | Measure cost | Sum of cost_usd for caller=measure |
+      | Stitch cost | Sum of cost_usd for caller=stitch |
+      | Total time | Sum of duration_s across all cycles |
+      | Total LOC (prod) | Final loc_after.production from last stitch |
+      | Total LOC (test) | Final loc_after.test from last stitch |
+      | Cycles | Count of measure+stitch pairs |
+      | Failures | Count of cycles with status=failed |
+      | Cost per LOC | Total cost / (total prod LOC + total test LOC) |
+
+  - title: "Quality assessment"
+    content: |
+      Code quality is assessed by the stitch agent's own verification (go build, go vet) and by
+      post-run inspection. We apply the same criteria to all three variants.
+
+      Table 5: Quality criteria
+
+      | Criterion | Method | Pass condition |
+      |-----------|--------|----------------|
+      | Compilation | go build ./... | Zero errors |
+      | Vet | go vet ./... | Zero warnings |
+      | Completeness | Compare generated packages to target scope | All 7 packages present |
+      | Test pass | go test ./... (after installing reference binaries) | All tests pass or skip gracefully |
+      | Spec conformance | Manual review against PRD requirements | No missing flags or modes |
+
+      If a variant fails to produce all 7 packages, we still compare the packages it did produce.
+      Partial completion is a valid outcome that informs the cost/quality tradeoff.
+
+  - title: "Variant 3 file-request capture"
+    content: |
+      When the context excludes all files, the stitch agent may request files via Read tool calls
+      within its Claude Code session. These requests are visible in the stitch orchestrator log
+      (.cobbler/history/*-stitch-orchestrator.log) and the stitch conversation log
+      (.cobbler/history/*-stitch-log.log).
+
+      For each stitch cycle in variant 3, we extract:
+      1. Every file path the agent attempts to read (Read tool invocations)
+      2. The order in which files are requested
+      3. Whether the read succeeded (file exists) or failed (file not found)
+
+      We then compare the set of requested files against the standard discovery set (27 files)
+      and against the variant 2 include set. This reveals which documents the model considers
+      necessary for code generation versus which are provided but unused.
+
+      Extraction method: grep the stitch-log.log for Read tool invocations and parse the
+      file_path parameter. The orchestrator log may also contain tool-use summaries depending
+      on the --verbose output format.
+
+  - title: "Branching strategy"
+    content: |
+      All three variants run on the gh-18-context-benchmark feature branch. Each variant's
+      generation lifecycle creates its own generation branch (named with the generation- prefix
+      and a timestamp). The configuration.yaml changes are made on the feature branch before
+      starting each variant's generation.
+
+      Sequence:
+      1. Variant 1: verify default configuration.yaml, run three generations, record stats
+      2. Variant 2: update context_include, run three generations, record stats
+      3. Variant 3: update context_exclude, run three generations, record stats
+      4. Restore configuration.yaml to defaults
+
+      Between variants, we reset the Go source state on the feature branch to spec-only (no
+      generated code) so each variant starts from the same baseline.
+
+  - title: "Execution checklist"
+    content: |
+      For each variant:
+
+      1. Confirm configuration.yaml matches the variant's settings
+      2. Confirm no Go source exists on the feature branch (spec-only baseline)
+      3. Run generation A (rel01.0 scope):
+         a. mage generator:start
+         b. Seed generation branch if needed (git checkout main -- pkg/ cmd/)
+         c. Run measure+stitch cycles until measure declares no work
+         d. mage generator:stop
+      4. Repeat step 3 for generation B (rel01.1) and generation C (rel02.0)
+      5. Copy all stats files to a variant-specific directory for later comparison:
+         cp .cobbler/history/*-stats.yaml results/variant-N/
+      6. Record any failures, timeouts, or anomalies in a run log
+      7. Reset: delete generated Go code, restore spec-only state
+
+references:
+  - "docs/engineering/eng04-generation-run-results.yaml — Previous generation run metrics"
+  - "configuration.yaml — Orchestrator configuration file"
+  - "docs/ARCHITECTURE.yaml — Component descriptions and context field documentation"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/18 — GH-18: Benchmark issue"

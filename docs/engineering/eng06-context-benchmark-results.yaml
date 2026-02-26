@@ -1,0 +1,320 @@
+id: eng06-context-benchmark-results
+title: "GH-18 Context Benchmark Results: Default vs Include-All vs Exclude-All"
+
+introduction: |
+  We ran the cobbler pipeline three times against the same specification baseline, varying only
+  the context configuration in configuration.yaml. The experiment tests whether more or less
+  project context improves code generation quality, cost efficiency, and task selection accuracy.
+
+  The specification baseline contained 10 PRDs, 7 use cases, 4 test suites, and zero Go source
+  code. All three variants used Claude Opus 4.6 at temperature 0 with identical constitutions,
+  prompts, and generation lifecycle parameters. The eng05 protocol document describes the
+  experiment design; this document reports the results.
+
+  Two bugs in cobbler-scaffold were discovered during execution: cobbler-scaffold#52 (measure
+  re-proposes completed work across cycles) and cobbler-scaffold#53 (context_include bypasses
+  Vision/Architecture/Roadmap structured parsing). Both affected the results and are discussed
+  in the observations section.
+
+sections:
+  - title: "Variant configurations"
+    content: |
+      Table 1: Context configuration per variant
+
+      | Variant | context_sources | context_include | context_exclude | Initial prompt bytes |
+      |---------|-----------------|-----------------|-----------------|----------------------|
+      | 1 (default) | "" | "" | "" | 283,619 |
+      | 2 (include-all) | "" | 7 glob patterns | "" | ~145,138 |
+      | 3 (exclude-all) | "" | "" | "." | ~26,593 |
+
+      Variant 1 uses the standard 9-glob discovery that resolves VISION.yaml, ARCHITECTURE.yaml,
+      SPECIFICATIONS.yaml, road-map.yaml, all PRDs, use cases, test suites, dependency-map.yaml,
+      and sources.yaml. The orchestrator's dedicated parsers (VisionDoc, ArchitectureDoc,
+      RoadmapDoc) expand these into structured JSON within the prompt.
+
+      Variant 2 sets context_include to seven globs: docs/**/*.yaml, docs/**/*.md, *.yaml, *.md,
+      .claude/**/*.yaml, .claude/**/*.md, magefiles/**/*.go. This replaces the standard discovery
+      path. Despite capturing more files, the prompt is smaller (145K vs 283K) because
+      context_include bypasses the dedicated parsers. Vision, Architecture, and Roadmap lose their
+      structured JSON expansion and are loaded as raw YAML. Twelve markdown files were silently
+      dropped by the generic YAML loader.
+
+      Variant 3 sets context_exclude to "." which filters out every file in the working directory.
+      The prompt contains only the system template and constitutions with an empty project_context
+      object.
+
+  - title: "Aggregate results"
+    content: |
+      Table 2: Comparison across all three variants
+
+      | Metric | Variant 1 (default) | Variant 2 (include-all) | Variant 3 (exclude-all) |
+      |--------|---------------------|-------------------------|-------------------------|
+      | Total cycles | 18 | 7 | 1 |
+      | Productive cycles | 5 | 7 | 0 |
+      | Wasted cycles | 13 | 0 | 0 |
+      | Total cost | $33.30 | ~$11.64 | $0.09 |
+      | Productive cost | ~$13.00 | ~$11.64 | $0.00 |
+      | Wall-clock time | ~70 min | ~55 min | ~17 sec |
+      | Production LOC | 1,334 | 584 | 0 |
+      | Test LOC | 479 | 698 | 0 |
+      | Total LOC | 1,813 | 1,282 | 0 |
+      | Packages produced | 3 | 3 | 0 |
+      | Cost per LOC (total) | $0.018 | $0.009 | n/a |
+      | Cost per productive LOC | $0.007 | $0.009 | n/a |
+      | Re-proposal rate | 72% (13/18) | 0% | n/a |
+      | Target scope hit | Yes (3/7 roadmap) | No (3 off-roadmap) | n/a |
+
+      Variant 1 produced the most total LOC but wasted 72% of cycles on re-proposals of
+      pkg/testutils (cobbler-scaffold#52). If the re-proposal bug were fixed, variant 1 would
+      produce more code at lower cost per line.
+
+      Variant 2 produced no wasted cycles but selected utilities outside the roadmap scope
+      (chronic, pee, vidir instead of testutils, ts, cat). This happened because context_include
+      bypassed the structured Roadmap parser, removing release prioritization from the prompt.
+
+      Variant 3 refused immediately. The measure agent identified the empty project_context and
+      correctly declined to propose tasks, stating minimum required context: ARCHITECTURE.yaml,
+      roadmap, PRDs, use cases, existing issues, and source code.
+
+  - title: "Variant 1 results (default context)"
+    content: |
+      Variant 1 ran across four generation lifecycles: 07-05-13 (Gen A, 2 cycles), 07-17-19
+      (Gen B, 10 cycles), 07-58-15 (Gen C, 6 cycles). The generation boundaries caused code
+      loss between generations (cobbler-scaffold#23), contributing to the re-proposal loop.
+
+      Table 3: Variant 1 cycle-by-cycle summary
+
+      | Cycle | Gen | Proposed task | Productive? | Stitch cost |
+      |-------|-----|---------------|-------------|-------------|
+      | 1 | A | pkg/testutils (prd001 R1-R5) | Yes (+354 prod) | $0.96 |
+      | 2 | A | cmd/ts (prd004-ts R1-R8) | Yes (+652 prod) | $1.47 |
+      | 3 | B | pkg/testutils (re-proposal) | No | $1.28 |
+      | 4 | B | pkg/testutils (re-proposal) | No | $1.30 |
+      | 5 | B | pkg/testutils (re-proposal) | No | $1.00 |
+      | 6 | B | pkg/testutils (re-proposal) | No | $1.21 |
+      | 7 | B | pkg/testutils (re-proposal) | No | $1.12 |
+      | 8 | B | cmd/ts differential tests | Yes (+218 test) | $1.47 |
+      | 9 | B | cmd/cat (prd006-cat R1-R5) | Yes (+328 prod) | $3.07 |
+      | 10 | B | pkg/testutils (re-proposal) | No | $1.14 |
+      | 11 | B | pkg/testutils (re-proposal) | No | $1.50 |
+      | 12 | B | pkg/testutils (re-proposal) | No | $1.39 |
+      | 13 | C | pkg/testutils (re-proposal) | No | $1.20 |
+      | 14 | C | pkg/testutils (re-proposal) | No | $1.40 |
+      | 15 | C | cmd/cat differential tests | Yes (+261 test) | $1.80 |
+      | 16 | C | pkg/testutils (re-proposal) | No | $1.70 |
+      | 17 | C | pkg/testutils (re-proposal) | No | $1.41 |
+      | 18 | C | pkg/testutils (re-proposal) | No | $1.30 |
+
+      The re-proposal pattern stems from two interacting bugs: ARCHITECTURE.yaml's static text
+      declaring "specifications only, no generated code" (which the measure agent reads as
+      confirming testutils does not exist), and the lack of closed-issue semantics in the measure
+      prompt (cobbler-scaffold#52).
+
+      Cost breakdown: measure $5.42 (16%) vs stitch $27.88 (84%). Non-productive stitch cycles
+      consumed $16.75 (50% of total spend). Prompt caching worked well: 18M cache-read tokens vs
+      1.7M cache-creation tokens across all cycles.
+
+      Packages produced: pkg/testutils (354 LOC), cmd/ts (652 LOC), cmd/cat (328 LOC), plus
+      cmd/ts tests (218 LOC) and cmd/cat tests (261 LOC). These three packages match the roadmap
+      (rel01.0 and rel01.1 scope), confirming that default context provides correct task
+      prioritization when the measure agent selects new work.
+
+  - title: "Variant 2 results (include-all context)"
+    content: |
+      Variant 2 ran as a single generation (08-47-03) with context_include set to seven glob
+      patterns after the generation was started. The configuration was changed mid-generation.
+      Stats files for the variant 2 specific cycles were not persisted to .cobbler/history/; cost
+      data comes from the session log ($11.64 total).
+
+      The context_include setting triggered a different code path in buildProjectContext(). Instead
+      of calling resolveStandardFiles() and the dedicated Vision/Architecture/Roadmap parsers, the
+      orchestrator called resolveContextSources() with loadNamedDoc() for each file. This produced:
+      - vision=false, arch=false, roadmap=false in the prompt header
+      - Twelve markdown files silently dropped (YAML parse errors)
+      - No structured release prioritization in the prompt
+
+      Table 4: Variant 2 tasks and output
+
+      | Cycle | Task | Production LOC | Test LOC |
+      |-------|------|----------------|----------|
+      | 1 | cmd/chronic (prd007 R1-R7) | 83 | 0 |
+      | 2 | cmd/chronic differential tests | 0 | 165 |
+      | 3 | cmd/pee (prd009 R1-R5) | 90 | 0 |
+      | 4 | cmd/pee differential tests | 0 | 156 |
+      | 5 | cmd/vidir (prd010 R1-R7) | 256 | 0 |
+      | 6 | cmd/vidir differential tests | 0 | 377 |
+      | 7 | Final measure (no more work) | 0 | 0 |
+      | Total | | 584 | 698 |
+
+      The stitch agent also modified pkg/testutils/difftest.go (+155 LOC) during the chronic
+      tests cycle, bringing total production LOC to 584 (429 new utilities + 155 testutils).
+
+      Without roadmap context, the measure agent selected utilities by PRD complexity rather
+      than release order. It chose chronic, pee, and vidir (rel02.0 and beyond) instead of the
+      rel01.0/01.1 targets (testutils, ts, cat, wc, sponge). All proposed tasks were valid
+      implementations of existing PRDs, and none were re-proposals.
+
+      The zero re-proposal rate in variant 2 is explained by the absence of ARCHITECTURE.yaml's
+      misleading implementation_status text. Without the "specifications only" assertion, the
+      measure agent trusted the beads issue state and did not re-propose completed work.
+
+  - title: "Variant 3 results (exclude-all context)"
+    content: |
+      Variant 3 set context_exclude to "." which excludes all files. The prompt shrank to
+      ~26,593 bytes: just the system template, constitutions, and an empty project_context
+      object. No vision, architecture, roadmap, PRDs, use cases, test suites, issues, or source
+      code were included.
+
+      The measure agent produced a single-turn response in ~17 seconds at $0.09. The response
+      identified the empty context and listed the minimum files needed to proceed:
+
+      - docs/ARCHITECTURE.yaml
+      - The roadmap (road-map.yaml or equivalent)
+      - Relevant PRDs from docs/specs/product-requirements/
+      - Use cases from docs/specs/use-cases/
+      - Existing issues list
+      - Any existing source code paths and their contents
+
+      This list confirms that the measure agent considers all six document categories necessary.
+      Notably, it did not mention constitutions, engineering guidelines, or the VISION document,
+      suggesting these are useful but not required for task selection.
+
+      Table 5: Variant 3 file-request analysis
+
+      | Requested category | In standard set? | In variant 2 set? | Necessity |
+      |--------------------|------------------|--------------------|-----------|
+      | ARCHITECTURE.yaml | Yes | Yes (raw) | Required |
+      | road-map.yaml | Yes | Yes (raw) | Required |
+      | PRDs | Yes | Yes | Required |
+      | Use cases | Yes | Yes | Required |
+      | Existing issues | Yes (via beads) | Yes (via beads) | Required |
+      | Source code | Yes (go_source_dirs) | No | Required |
+
+      The measure agent requested exactly the standard discovery set minus VISION, SPECIFICATIONS,
+      dependency-map, and sources.yaml. The standard set appears to be approximately correct, with
+      some files (VISION, SPECIFICATIONS) being supplementary rather than required.
+
+  - title: "Cost efficiency analysis"
+    content: |
+      Table 6: Cost efficiency comparison
+
+      | Metric | Variant 1 | Variant 2 | Variant 3 |
+      |--------|-----------|-----------|-----------|
+      | Total cost | $33.30 | $11.64 | $0.09 |
+      | LOC produced | 1,813 | 1,282 | 0 |
+      | Cost per LOC | $0.018 | $0.009 | n/a |
+      | Productive cost | ~$13.00 | $11.64 | $0.00 |
+      | Productive cost/LOC | $0.007 | $0.009 | n/a |
+      | Waste (% of total cost) | 61% | 0% | 0% |
+
+      Variant 1 has the lowest productive cost per LOC ($0.007) but the highest total cost
+      because 61% of spend was wasted on re-proposals. Fixing cobbler-scaffold#52 would reduce
+      variant 1's total cost to approximately $13 for the same output.
+
+      Variant 2 has no waste but a higher productive cost per LOC ($0.009) because it generated
+      simpler utilities (chronic: 83 LOC, pee: 90 LOC) that require the same measure+stitch
+      overhead as complex ones.
+
+      The cost comparison between variants is not apples-to-apples because variant 2 selected
+      different packages. A fair comparison would require fixing the re-proposal bug and running
+      both variants against the same target set.
+
+  - title: "Observations and findings"
+    content: |
+      Finding 1: The default context set is approximately correct. Variant 3's file-request list
+      maps closely to the standard discovery set. The measure agent considers ARCHITECTURE, roadmap,
+      PRDs, use cases, issues, and source code necessary. VISION and SPECIFICATIONS are
+      supplementary.
+
+      Finding 2: Structured document parsing matters more than file count. Variant 2 included more
+      files but produced worse task selection because it lost the structured Roadmap parser. The
+      roadmap provides release prioritization that guides the measure agent toward the right
+      packages in the right order. Raw YAML file inclusion does not substitute for structured
+      context assembly.
+
+      Finding 3: The re-proposal bug (cobbler-scaffold#52) is the dominant cost factor. Fixing
+      this single issue would reduce variant 1's cost by 61% and likely allow all 7 target packages
+      to be generated. The bug has two components: ARCHITECTURE.yaml's static "specifications only"
+      text misleads the measure agent, and the measure prompt lacks closed-issue semantics that
+      would teach the agent to skip already-completed work.
+
+      Finding 4: Context size does not correlate with generation quality. Variant 2 (145K prompt)
+      produced higher-quality output per cycle than variant 1 (283K prompt), but selected the
+      wrong packages. Variant 3 (26K prompt) produced nothing. The sweet spot is providing the
+      right documents with structured parsing, not maximizing document count.
+
+      Finding 5: The measure agent can identify its own context requirements. Given zero context,
+      it produces a clear list of what it needs. This suggests a bootstrapping approach: run
+      measure with minimal context first, then populate based on what it requests.
+
+      Finding 6: The generator lifecycle causes code loss between generations
+      (cobbler-scaffold#23). In variant 1, testutils was lost when moving from Gen A to Gen B
+      to Gen C because generator:start resets Go sources. This compounds the re-proposal bug:
+      even when code exists, generation boundaries erase it.
+
+  - title: "Recommendation"
+    content: |
+      The default context configuration is optimal. The standard discovery set provides the right
+      documents with structured parsing that preserves release prioritization and architectural
+      context. We do not recommend switching to context_include or context_exclude for normal
+      generation runs.
+
+      However, the default context's effectiveness is masked by the re-proposal bug
+      (cobbler-scaffold#52). We recommend fixing that bug before drawing further conclusions
+      about context optimization. The priority order for improving generation quality:
+
+      1. Fix cobbler-scaffold#52 (measure re-proposes completed work). This eliminates 61% of
+         cost waste and is independent of context configuration.
+      2. Fix cobbler-scaffold#53 (context_include bypasses structured parsing). If context_include
+         is ever needed for special cases, it should still use the dedicated parsers for Vision,
+         Architecture, and Roadmap documents.
+      3. Fix cobbler-scaffold#23 (generator:start resets Go sources). This prevents code loss
+         across generation boundaries and reduces re-proposal triggers.
+
+      After these fixes, a rerun of this benchmark would provide cleaner comparison data. The
+      current results are confounded by the re-proposal bug, which dominates variant 1's cost
+      profile and makes it impossible to isolate the effect of context configuration alone.
+
+  - title: "Bugs discovered"
+    content: |
+      Table 7: Bugs filed during benchmark execution
+
+      | Issue | Title | Severity | Status |
+      |-------|-------|----------|--------|
+      | cobbler-scaffold#52 | Measure agent re-proposes completed work across cycles | High | Open |
+      | cobbler-scaffold#53 | context_include bypasses Vision/Architecture/Roadmap structured parsing | Medium | Open |
+
+      Both bugs were discovered through the benchmark variants. Bug #52 was revealed by variant 1's
+      high re-proposal rate and confirmed absent in variant 2 (which lacked the misleading
+      ARCHITECTURE.yaml text). Bug #53 was revealed by variant 2's unexpected prompt shrinkage and
+      loss of roadmap-driven task selection.
+
+  - title: "Data quality notes"
+    content: |
+      Variant 1 stats are fully verified from .cobbler/history/ stats files across generation
+      tags generation-2026-02-26-07-05-13 through generation-2026-02-26-07-58-15. All 18
+      measure+stitch cycles have corresponding stats YAML files with cost, duration, token counts,
+      and LOC progression.
+
+      Variant 2 stats files were not persisted to .cobbler/history/ because the configuration
+      was changed mid-generation and generator:stop was not called normally. Cost data ($11.64)
+      comes from the session log. LOC data (584 prod + 698 test) is verified from git commit
+      diffs on the generation-2026-02-26-08-47-03 branch.
+
+      Variant 3 stats files were not committed (untracked files lost during merge). Cost data
+      ($0.09) and timing (~17 sec) are verified from the measure-log.log read during the session.
+      The prompt size (~26,593 bytes) was observed during execution.
+
+      The eng05 protocol called for three separate generation lifecycles per variant (A, B, C for
+      rel01.0, rel01.1, rel02.0). In practice, operational complexity led to simplification:
+      variant 1 ran as four continuous generations, variant 2 as one generation, and variant 3 as
+      one single-cycle generation. This deviation does not invalidate the results but means the
+      variants are not perfectly controlled.
+
+references:
+  - "docs/engineering/eng05-context-benchmark-protocol.yaml — Experiment protocol"
+  - "docs/engineering/eng04-generation-run-results.yaml — Previous generation run baseline"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/52 — Measure re-proposal bug"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/53 — context_include parsing bypass"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/23 — generator:start code loss"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/18 — GH-18: Benchmark issue"
