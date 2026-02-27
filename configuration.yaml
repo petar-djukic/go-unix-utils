@@ -44,8 +44,8 @@ cobbler:
     golden_example: ""
     max_context_bytes: 0
     enforce_measure_validation: false
-    max_measure_retries: 2
-    max_requirements_per_task: 0
+    max_measure_retries: 0
+    max_requirements_per_task: 4
     history_dir: history
     doc_tag_prefix: v0.
     base_branch: main
