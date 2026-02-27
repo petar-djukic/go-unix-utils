@@ -1,0 +1,212 @@
+id: eng08-generation-run-3-results
+title: "GH-22 Generation Run 3: Iterative Measure and Stitch Timeout Analysis"
+
+introduction: |
+  We ran the cobbler pipeline against the v0.20260226.1 specification baseline on the
+  gh-22-generation-run-3 feature branch. This run incorporated two configuration changes
+  from eng07: CLAUDE_CODE_MAX_OUTPUT_TOKENS raised to 128,000 (from 32,000) and iterative
+  measure enabled with max_measure_issues=3 (from 1). Estimated task size was reduced to
+  150-250 lines (from 250-350).
+
+  The pipeline produced 1 of 3 proposed tasks (cmd/ts differential tests, 178 test LOC)
+  before entering an infinite retry loop on the second task (cmd/ts implementation, R1-R8).
+  The third task (pkg/testutils) was never attempted. The dominant failure mode shifted from
+  eng07's output token limit to a new bottleneck: the stitch agent spends its entire 15-minute
+  budget on context processing and filesystem exploration, leaving insufficient time for code
+  generation. The 128k token limit fix resolved the eng07 blocker but revealed a deeper issue
+  with task sizing relative to agent wall-clock behavior.
+
+sections:
+  - title: "Configuration"
+    content: |
+      Table 1: Generation parameters
+
+      | Parameter | Value |
+      |-----------|-------|
+      | Baseline tag | v0.20260226.1 |
+      | Generation branch | generation-2026-02-26-21-54-45 |
+      | V1 tag | v1.20260226.6 |
+      | Model | Claude Sonnet 4.6 (stitch), Claude Sonnet 4.6 (measure) |
+      | Temperature | 0 |
+      | Max time per agent | 900s (15 min) |
+      | Max measure issues | 3 (iterative, 1 per iteration) |
+      | Max stitch issues per cycle | 10 |
+      | Estimated lines | 150-250 |
+      | CLAUDE_CODE_MAX_OUTPUT_TOKENS | 128,000 |
+      | Context mode | Default (standard 9-glob discovery, 27 files) |
+      | Initial prompt bytes | ~286,595 (measure), ~295,714 (stitch) |
+
+      Configuration changes from eng07:
+      - CLAUDE_CODE_MAX_OUTPUT_TOKENS raised from 32,000 to 128,000
+      - max_measure_issues changed from 1 to 3 (iterative mode)
+      - estimated_lines_min/max changed from 250/350 to 150/250
+
+  - title: "Measure phase results"
+    content: |
+      The iterative measure ran 3 iterations, each proposing 1 task. All iterations succeeded.
+
+      Table 2: Measure iterations
+
+      | Iteration | Task proposed | Cost | Duration | Input tokens | Output tokens |
+      |-----------|--------------|------|----------|--------------|---------------|
+      | 1 | pkg/testutils: DiffTest struct and RunDiffTests (prd001 R1-R5) | $0.63 | 2m3s | 88,322 | 6,895 |
+      | 2 | cmd/ts: timestamp stdin lines (prd004-ts R1-R8) | $0.63 | 2m5s | 88,455 | 6,801 |
+      | 3 | cmd/ts differential tests (prd004-ts R9) | $0.64 | 2m7s | 88,501 | 6,908 |
+
+      Total measure cost: $1.90. Total duration: 6m28s. 3 tasks proposed.
+
+      The iterative measure worked as designed: each iteration received the previously-proposed
+      tasks as context, avoiding duplicate proposals. However, iteration 2 still proposed cmd/ts
+      R1-R8 as a single task (8 requirements). The reduced estimated_lines (150-250) did not
+      cause the measure agent to split this into smaller chunks. The max_requirements_per_task
+      feature (cobbler-scaffold#70) is needed to enforce finer granularity.
+
+  - title: "Stitch phase results"
+    content: |
+      Table 3: Stitch task execution
+
+      | Task | Attempt | Status | Cost | Duration | LOC (prod) | LOC (test) | Turns |
+      |------|---------|--------|------|----------|------------|------------|-------|
+      | tol (cmd/ts tests, R9) | 1 | timeout | $0 | 15m0s | 0 | 0 | unknown |
+      | tol (cmd/ts tests, R9) | 2 | success | $1.22 | 3m46s | 0 | +178 | 17 |
+      | g8q (cmd/ts impl, R1-R8) | 1 | timeout | $0 | 15m0s | 0 | 0 | 16 |
+      | g8q (cmd/ts impl, R1-R8) | 2 | timeout | $0 | 15m0s | 0 | 0 | unknown |
+      | g8q (cmd/ts impl, R1-R8) | 3 | killed | $0 | ~1m | 0 | 0 | unknown |
+      | 25b (pkg/testutils, R1-R5) | — | not attempted | — | — | — | — | — |
+
+      The stitch picked tol first (arbitrary ordering, not dependency-based). After tol's retry
+      succeeded, it moved to g8q. The pipeline entered an infinite retry loop on g8q (3 timeouts)
+      until manually stopped via mage generator:stop.
+
+  - title: "Failure analysis: g8q first attempt"
+    content: |
+      Container logs from the first g8q attempt (15m0s timeout) reveal the agent's behavior:
+
+      1. Turn 1 (0s-10m46s): The agent spent 10 minutes and 46 seconds on its first turn.
+         With a 295KB prompt, this time includes prompt processing, context comprehension,
+         and initial response generation. No tool calls were issued during this period.
+
+      2. Turn 2 (10m52s): The agent attempted to spawn a Task subagent to explore the
+         filesystem. This hit a rate limit error.
+
+      3. Turns 3-7 (10m55s-10m59s): Rapid filesystem exploration via Bash commands. The
+         agent ran ls, cat, find to discover the worktree structure, read go.mod, and
+         check for existing Go files. This took 4 seconds total.
+
+      4. Turns 8-9 (12m54s): After a 1m55s pause, the agent understood the state and
+         planned to create pkg/testutils/testutils.go and cmd/ts/main.go.
+
+      5. Turn 13 (13m5s): mkdir for pkg/testutils directory.
+
+      6. Turn 14 (13m57s): Wrote pkg/testutils/testutils.go. This was 53 seconds after
+         the previous turn — the agent generated the full file content in its response.
+
+      7. Timeout (15m0s): The agent was killed before writing cmd/ts/main.go. It had
+         completed 1 of 2 planned files.
+
+      The dominant time sink was turn 1 (72% of the 15-minute budget). The stitch agent's
+      first turn includes processing the 295KB prompt, reading all embedded spec files, and
+      formulating an implementation plan. With only 4 minutes remaining after turn 1, the
+      agent could not complete both files.
+
+  - title: "Failure analysis: tol retry success"
+    content: |
+      The tol task (cmd/ts tests, R9) failed identically on its first attempt (15m timeout)
+      but succeeded on retry in 3m46s with 17 turns. The retry's success demonstrates
+      non-deterministic agent behavior under temperature 0 — the same prompt produces
+      different tool-use strategies across invocations.
+
+      The successful retry used 688,529 input tokens (598,367 from cache reads) and 14,133
+      output tokens. Cost was $1.22. The agent produced 178 test lines covering differential
+      testing of cmd/ts against the reference binary.
+
+      This confirms the finding from eng07: stitch task outcomes are probabilistic. A task
+      that times out on attempt N may succeed on attempt N+1 with no changes to the prompt.
+
+  - title: "Aggregate results"
+    content: |
+      Table 4: Run totals
+
+      | Metric | Value |
+      |--------|-------|
+      | Total captured cost | $3.12 |
+      | Measure cost | $1.90 (3 iterations) |
+      | Stitch cost | $1.22 (1 success, 4 failures, 1 killed) |
+      | Uncaptured stitch cost | >$0 (4 failed attempts consumed tokens but stats not captured) |
+      | Total wall clock | 57 min |
+      | Productive time | ~12 min (measure 6m28s + tol 3m46s + overhead) |
+      | Wasted time | ~45 min (5 failed stitch attempts) |
+      | Total LOC (prod) | 0 |
+      | Total LOC (test) | 178 |
+      | Tasks completed | 1 of 3 |
+      | V1 tag | v1.20260226.6 |
+
+  - title: "Comparison with eng04 and eng07"
+    content: |
+      Table 5: Cross-run comparison
+
+      | Metric | eng04 (run 1) | eng07 (run 2) | eng08 (run 3) |
+      |--------|---------------|---------------|---------------|
+      | Specification baseline | v0.20260225.2 | v0.20260226.0 | v0.20260226.1 |
+      | Measure mode | single (1 per cycle) | single (1 per cycle) | iterative (3 total) |
+      | Total cycles | 16 | 3 (+3 retries) | 1 measure + 1 stitch (+5 retries) |
+      | Total cost | $33.29 | $3.92 | $3.12+ |
+      | Total LOC (prod) | 2,842 | 280 | 0 |
+      | Total LOC (test) | 1,744 | 0 | 178 |
+      | Packages produced | 7/7 | 1/7 | 0/3 (test file only) |
+      | Stitch failures | 0 | 3 | 5 |
+      | Dominant failure | re-proposal waste | 32k output token limit | 15m timeout exhaustion |
+      | Cost per useful LOC | $7.26 | $14.00 | $17.53 |
+
+      Across three runs, each configuration change fixes the previous blocker but reveals
+      the next one. eng04 completed all packages but wasted 72% of cycles on measure
+      re-proposals. eng07 fixed re-proposals but hit the 32k output token limit. eng08
+      fixed the output token limit but hit the 15-minute timeout wall.
+
+      The core issue is consistent: 8-requirement tasks (cmd/ts R1-R8) are too large for
+      the stitch agent to complete within 15 minutes when the first turn consumes 70-75%
+      of the time budget on a 295KB prompt.
+
+  - title: "Bugs and issues"
+    content: |
+      Table 6: Issues discovered or confirmed
+
+      | Issue | Description | Impact | Status |
+      |-------|-------------|--------|--------|
+      | First-turn time dominance | Stitch agent spends 10-11 min on turn 1 processing 295KB prompt | Leaves only 4 min for code generation | New finding |
+      | Infinite retry loop | Stitch retries same failing task indefinitely (confirmed from eng07) | Wastes time and API credits | cobbler-scaffold backlog |
+      | 8-requirement tasks too large | Measure proposes cmd/ts R1-R8 as single task despite reduced line estimates | Task exceeds stitch time budget | cobbler-scaffold#70 |
+      | Zombie containers | podman containers survive after orchestrator kills the process | Accumulates idle containers consuming resources | New finding |
+      | Beads merge overwrites | generator:stop merge replaces parent branch's .beads/issues.jsonl | Loses epic tracking issues | Known limitation |
+      | Stats not captured on timeout | Timed-out stitch reports $0 cost (confirmed from eng07) | Undercounts actual cost | cobbler-scaffold backlog |
+
+  - title: "Recommendations"
+    content: |
+      1. Implement max_requirements_per_task (cobbler-scaffold#70). Cap individual stitch
+         tasks at 3-4 requirements. cmd/ts R1-R8 should be split into 2-3 tasks. This is
+         the most impactful change: it addresses the root cause (task too large for time budget)
+         rather than symptoms.
+
+      2. Add a retry counter with a maximum of 2 retries per task. After 2 consecutive
+         timeouts, mark the task as failed and move to the next task. This prevents the
+         infinite retry loop that wasted 45 minutes in this run.
+
+      3. Investigate first-turn latency. The 10m46s first turn on a 295KB prompt suggests
+         the agent is doing extensive processing before any tool calls. Options include:
+         reducing prompt size (fewer embedded files), pre-populating the worktree with
+         skeleton code, or increasing the timeout to 25-30 minutes.
+
+      4. Clean up zombie containers. The orchestrator should explicitly run `podman kill`
+         and `podman rm` after a timeout, not rely on the pipe closure to stop the container.
+
+      5. Consider task dependency ordering. The stitch picked tol (tests) before g8q
+         (implementation), but the tests depend on the implementation. Dependency-aware
+         ordering would avoid generating tests for code that does not yet exist.
+
+references:
+  - "docs/engineering/eng04-generation-run-results.yaml — First generation run metrics"
+  - "docs/engineering/eng07-generation-run-2-results.yaml — Second generation run metrics"
+  - "v0.20260226.1 — Specification baseline tag"
+  - "v1.20260226.6 — Generation output tag"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/22 — GH-22: Recurring generation run"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/70 — max_requirements_per_task feature"
