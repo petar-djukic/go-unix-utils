@@ -10,24 +10,24 @@ overview: |
 roadmap_summary:
   - version: rel01.0
     name: "Batch 1 — ts specification and differential test"
-    use_cases_done: 0
+    use_cases_done: 1
     use_cases_total: 1
-    status: in_progress
+    status: spec_complete
   - version: rel01.1
     name: "Batch 2 — wc, cat, sponge specification and differential tests"
-    use_cases_done: 0
+    use_cases_done: 3
     use_cases_total: 3
-    status: pending
+    status: spec_complete
   - version: rel02.0
     name: "Batch 3 — ls core and du specification and differential tests"
-    use_cases_done: 0
+    use_cases_done: 2
     use_cases_total: 2
-    status: pending
+    status: spec_complete
   - version: rel02.1
     name: "Batch 4 — ls extended specification and differential tests"
-    use_cases_done: 0
+    use_cases_done: 1
     use_cases_total: 1
-    status: pending
+    status: spec_complete
 
 prd_index:
   - id: prd001-testutils
@@ -75,43 +75,43 @@ use_case_index:
   - id: rel01.0-uc001-ts
     title: "Timestamp stdin lines via ts"
     release: rel01.0
-    status: in_progress
+    status: spec_complete
     test_suite: test-rel01.0
     path: docs/specs/use-cases/rel01.0-uc001-ts.yaml
   - id: rel01.1-uc001-wc
     title: "Count lines, words, and bytes via wc"
     release: rel01.1
-    status: pending
+    status: spec_complete
     test_suite: test-rel01.1
     path: docs/specs/use-cases/rel01.1-uc001-wc.yaml
   - id: rel01.1-uc002-cat
     title: "Concatenate and display files via cat"
     release: rel01.1
-    status: pending
+    status: spec_complete
     test_suite: test-rel01.1
     path: docs/specs/use-cases/rel01.1-uc002-cat.yaml
   - id: rel01.1-uc003-sponge
     title: "Soak stdin and write to file via sponge"
     release: rel01.1
-    status: pending
+    status: spec_complete
     test_suite: test-rel01.1
     path: docs/specs/use-cases/rel01.1-uc003-sponge.yaml
   - id: rel02.0-uc001-ls
     title: "List directory contents via ls (core flags)"
     release: rel02.0
-    status: pending
+    status: spec_complete
     test_suite: test-rel02.0
     path: docs/specs/use-cases/rel02.0-uc001-ls.yaml
   - id: rel02.0-uc002-du
     title: "Report recursive directory disk usage via du"
     release: rel02.0
-    status: pending
+    status: spec_complete
     test_suite: test-rel02.0
     path: docs/specs/use-cases/rel02.0-uc002-du.yaml
   - id: rel02.1-uc001-ls-extended
     title: "List directory contents via ls (extended flags)"
     release: rel02.1
-    status: pending
+    status: spec_complete
     test_suite: test-rel02.1
     path: docs/specs/use-cases/rel02.1-uc001-ls-extended.yaml
 
@@ -183,3 +183,33 @@ coverage_gaps: |
   No coverage gaps exist in the current roadmap. Every use case has a test suite, every PRD is
   referenced by at least one use case touchpoint, and every release has a corresponding test
   suite.
+
+traceability_diagram: |
+  ```mermaid
+  graph TD
+    V["VISION.yaml<br/>Goals, risks, boundaries"]
+    A["ARCHITECTURE.yaml<br/>Components, design decisions"]
+    P1["prd001-testutils"] & P2["prd002-sys"] & P3["prd003-format"]
+    P4["prd004-ts"] & P5["prd005-wc"] & P6["prd006-cat"] & P7["prd007-sponge"]
+    P8["prd008-ls"] & P9["prd009-du"] & P10["prd010-ls-extended"]
+    UC1["rel01.0-uc001-ts"] & UC2["rel01.1-uc001-wc"] & UC3["rel01.1-uc002-cat"]
+    UC4["rel01.1-uc003-sponge"] & UC5["rel02.0-uc001-ls"] & UC6["rel02.0-uc002-du"]
+    UC7["rel02.1-uc001-ls-extended"]
+    TS1["test-rel01.0"] & TS2["test-rel01.1"] & TS3["test-rel02.0"] & TS4["test-rel02.1"]
+    V --> A
+    A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
+    P1 --> UC1
+    P2 --> UC5
+    P3 --> UC5
+    P4 --> UC1
+    P5 --> UC2
+    P6 --> UC3
+    P7 --> UC4
+    P8 --> UC5
+    P9 --> UC6
+    P10 --> UC7
+    UC1 --> TS1
+    UC2 & UC3 & UC4 --> TS2
+    UC5 & UC6 --> TS3
+    UC7 --> TS4
+  ```

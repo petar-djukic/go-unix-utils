@@ -4,7 +4,7 @@ title: "go-unix-utils Release Road Map"
 releases:
   - version: "01.0"
     name: "Batch 1 — ts specification and differential test"
-    status: in_progress
+    status: spec_complete
     description: |
       Establish the end-to-end pipeline for a single utility: derive the PRD from C/Perl
       source, write a use case, produce a test suite, and verify a passing differential
@@ -13,26 +13,26 @@ releases:
       extraction and dependency analysis artifacts.
     use_cases:
       - id: rel01.0-uc001-ts
-        status: in_progress
+        status: spec_complete
 
   - version: "01.1"
     name: "Batch 2 — wc, cat, sponge specification and differential tests"
-    status: pending
+    status: spec_complete
     description: |
       Extend the pipeline to three additional moreutils/coreutils utilities that share
       the same pkg/testutils dependency and do not require pkg/sys or pkg/format. Each
       utility gets a PRD, use case, and test suite.
     use_cases:
       - id: rel01.1-uc001-wc
-        status: pending
+        status: spec_complete
       - id: rel01.1-uc002-cat
-        status: pending
+        status: spec_complete
       - id: rel01.1-uc003-sponge
-        status: pending
+        status: spec_complete
 
   - version: "02.0"
     name: "Batch 3 — ls core and du specification and differential tests"
-    status: pending
+    status: spec_complete
     description: |
       Extend the pipeline to utilities that require the pkg/sys and pkg/format shared
       libraries. ls core covers the most common flags (default, -1, -l, -a, -A, -d,
@@ -40,17 +40,17 @@ releases:
       -c, and --apparent-size. Each utility gets a PRD, use case, and test suite.
     use_cases:
       - id: rel02.0-uc001-ls
-        status: pending
+        status: spec_complete
       - id: rel02.0-uc002-du
-        status: pending
+        status: spec_complete
 
   - version: "02.1"
     name: "Batch 4 — ls extended specification and differential tests"
-    status: pending
+    status: spec_complete
     description: |
       Extend ls with flags requiring heavier normalization or more complex layout logic:
       -C (forced multi-column), -x (horizontal), sort flags (-t, -S, -r, -U, -v),
       metadata display (-i inode, -s blocks, -n numeric IDs), -F classify, -R recursive.
     use_cases:
       - id: rel02.1-uc001-ls-extended
-        status: pending
+        status: spec_complete

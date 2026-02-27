@@ -321,8 +321,8 @@ implementation_status:
     cmd/ts, cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. No generated code is
     present on the working branch. See README Tagging Scheme and eng04 for details.
 
-    "spec complete" means PRD, use case, and code exist (code at v1 tag). "spec in
-    progress" means a PRD exists but the use case or test suite is not yet written.
+    "spec complete" means PRD, use case, and code exist (code at v1 tag). "specs written"
+    means PRD, use case, and test suite exist but code generation has not run yet.
     "pending" means no PRD yet. See road-map.yaml for the active release and
     docs/utilities.yaml for the full catalog.
   progress:
@@ -333,8 +333,8 @@ implementation_status:
     - cmd/wc: "spec complete (rel01.1), code at generation-merged tags"
     - cmd/cat: "spec complete (rel01.1), code at generation-merged tags"
     - cmd/sponge: "spec complete (rel01.1), code at generation-merged tags"
-    - cmd/ls: "spec in progress (rel02.0 core / rel02.1 extended) — PRDs complete, use cases and test suites pending"
-    - cmd/du: "spec in progress (rel02.0) — PRD complete, use case and test suite pending"
+    - cmd/ls: "specs written (rel02.0 core / rel02.1 extended) — PRD, use case, and test suite complete; code generation pending"
+    - cmd/du: "specs written (rel02.0) — PRD, use case, and test suite complete; code generation pending"
     - cmd/grep: pending
     - cmd/find: pending
     - cmd/xargs: pending

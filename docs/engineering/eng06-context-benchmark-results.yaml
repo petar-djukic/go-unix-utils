@@ -9,7 +9,7 @@ introduction: |
   The specification baseline contained 10 PRDs, 7 use cases, 4 test suites, and zero Go source
   code. All three variants used Claude Opus 4.6 at temperature 0 with identical constitutions,
   prompts, and generation lifecycle parameters. The eng05 protocol document describes the
-  experiment design; this document reports the results.
+  experiment design; we report the results here.
 
   Two bugs in cobbler-scaffold were discovered during execution: cobbler-scaffold#52 (measure
   re-proposes completed work across cycles) and cobbler-scaffold#53 (context_include bypasses
