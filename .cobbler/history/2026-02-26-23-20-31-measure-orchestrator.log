@@ -1,0 +1,4 @@
+[2026-02-26T23:20:31-05:00] [generation-2026-02-26-21-54-45] [measure +0s] starting (iterative, 3 issue(s) requested)
+[2026-02-26T23:20:31-05:00] [generation-2026-02-26-21-54-45] [measure +0s] measure config: silence=true stitchTotal=0 stitchPerCycle=10 measure=3 generationBranch="generation-2026-02-26-21-54-45"
+[2026-02-26T23:20:31-05:00] [generation-2026-02-26-21-54-45] [measure +0s] beadsInitialized: .beads/ exists=true
+[2026-02-26T23:20:31-05:00] [generation-2026-02-26-21-54-45] [measure +0s] resolveBranch failed: branch does not exist: generation-2026-02-26-21-54-45

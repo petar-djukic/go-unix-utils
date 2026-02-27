@@ -2429,3 +2429,173 @@
       - id: AC5
         text: "cmd/ts/ts_test.go compiles with no warnings under golangci-lint."
   dependency: -1
+- index: 0
+  title: Implement pkg/testutils differential testing harness (prd001 R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml
+      - docs/ARCHITECTURE.yaml (pkg/testutils component section)
+      - go.mod (module path for import declarations)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, NormalizeFunc type, RunDiffTests entry point, binary execution, comparison and reporting, file-state comparison
+      - path: pkg/testutils/normalizer.go
+        action: create
+        note: TimestampNormalizer built-in normalizer
+
+    requirements:
+      - id: R1
+        text: "Define the DiffTest struct per prd001 R1.1-R1.4 with fields Args []string, Stdin []byte, Env []string, ExitCode int, Normalizers []NormalizeFunc, FileExpectations []FileExpectation, and WDir string. Define NormalizeFunc as func([]byte) []byte. Define FileExpectation as a struct with Path string and Content []byte. Nil Stdin means immediate EOF; nil Env means the binary inherits the test process environment; nil or empty Normalizers means no normalization is applied."
+      - id: R2
+        text: "Implement binary execution per prd001 R2.1-R2.5: RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) invokes both binaries with identical Args, Stdin, and Env, captures stdout/stderr/exit code from each independently, imposes a 10-second default timeout (fail with clear timeout message if exceeded), and uses a per-test os.MkdirTemp working directory when DiffTest.WDir is empty."
+      - id: R3
+        text: "Implement comparison and reporting per prd001 R3.1-R3.6: apply DiffTest.Normalizers in order to both binaries' stdout and stderr before comparison; compare normalized stdout byte-for-byte, normalized stderr byte-for-byte, and exit codes exactly; report divergence with triggering args, stdin truncated to 256 bytes, both stdouts, both stderrs, and both exit codes; run each DiffTest as a t.Run named subtest using the DiffTest index or a name derived from its args."
+      - id: R4
+        text: "Implement normalization composition per prd001 R4.1-R4.3: the Normalizers slice on DiffTest is applied left-to-right to both binaries' outputs before comparison. Implement TimestampNormalizer in normalizer.go as a NormalizeFunc that replaces strings matching the ts default strftime format '%b %d %H:%M:%S' (e.g. 'Feb 19 14:05:32') with the fixed placeholder 'TIMESTAMP' using a compiled regexp."
+      - id: R5
+        text: "Implement file-state comparison per prd001 R5.1-R5.2: after both binaries exit, for each FileExpectation in DiffTest.FileExpectations read the file at Path (relative to the test working directory used by that binary's invocation) and compare its content byte-for-byte with FileExpectation.Content, reporting path and both file contents on divergence using the same t.Errorf format as stdout divergence."
+
+    design_decisions:
+      - id: D1
+        text: "Name the primary file difftest.go because the primary exported type is DiffTest, per the project file naming convention (testutils/testutils.go is forbidden)."
+      - id: D2
+        text: "RunDiffTests signature is RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest) per prd001 AC1. The function is the sole public entry point for the harness."
+      - id: D3
+        text: "The Normalizers field on DiffTest is []NormalizeFunc (a slice, not a single function) per prd001 R4.3. Both binaries' outputs are passed through the same normalizer sequence before byte-for-byte comparison."
+      - id: D4
+        text: "Use exec.CommandContext with context.WithTimeout for binary invocation per prd001 R2.3. Set the default timeout to 10 seconds via a package-level constant DefaultTimeout = 10 * time.Second. Do not expose a per-test timeout override in this task."
+      - id: D5
+        text: "Each binary invocation runs in its own subdirectory under the per-test temp directory so that file-state comparisons (prd001 R5) read files written by the correct binary without cross-contamination."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "A caller can define []DiffTest and invoke RunDiffTests(t, goBinaryPath, refBinaryPath, tests) with no other setup, per prd001 AC1."
+      - id: AC2
+        text: "A passing DiffTest run emits no test output. A failing run prints the triggering args, stdin (truncated to 256 bytes), and both binaries' stdout, stderr, and exit code, per prd001 AC2."
+      - id: AC3
+        text: "TimestampNormalizer replaces a string matching the ts default format (e.g. 'Feb 19 14:05:32') with 'TIMESTAMP' so that ts differential tests pass despite wall-clock differences, per prd001 AC3."
+      - id: AC4
+        text: "A DiffTest with a FileExpectation whose expected content differs from what one binary writes causes a test failure reporting the path and both file contents, per prd001 AC4."
+      - id: AC5
+        text: "A DiffTest whose binary exceeds 10 seconds fails immediately with a clear timeout message and does not hang the test run, per prd001 AC5."
+      - id: AC6
+        text: "go build ./pkg/testutils/... succeeds and golangci-lint reports no warnings on pkg/testutils/, per prd001 AC6."
+  dependency: -1
+- index: 0
+  title: Implement cmd/ts timestamp utility (prd004-ts R1-R8)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd004-ts.yaml
+      - docs/ARCHITECTURE.yaml (cmd/ component, project structure)
+      - go.mod (module path: github.com/petar-djukic/go-unix-utils)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts binary -- read stdin line by line and prepend strftime timestamps
+
+    requirements:
+      - id: R1
+        text: "Implement default behavior (prd004-ts R1.1-R1.6): read stdin line by line with bufio.NewReader ReadString, prepend a timestamp formatted with '%b %d %H:%M:%S' and a space before each line, flush stdout after every line, pass through partial last lines without trailing newline, and exit 0 on clean EOF."
+      - id: R2
+        text: "Implement custom format string (prd004-ts R2.1-R2.4): accept an optional positional argument as a strftime format string; translate standard strftime directives to Go time.Format layout strings; implement ts-specific subsecond extensions %.S (seconds.microseconds), %.s (unix-epoch.microseconds), %.T (HH:MM:SS.microseconds) by formatting the base component then appending '.' and six decimal digits from a single time.Now() call per line."
+      - id: R3
+        text: "Implement incremental mode (prd004-ts R3.1-R3.4): -i flag timestamps each line with elapsed time since the previous line (first line uses elapsed since start); default format '%H:%M:%S' with UTC for elapsed formatting; -i and -s are mutually exclusive -- print usage error to stderr and exit non-zero if both are given."
+      - id: R4
+        text: "Implement elapsed-since-start mode (prd004-ts R4.1-R4.3): -s flag timestamps each line with total elapsed time since ts started, monotonically increasing; default format '%H:%M:%S' with UTC for elapsed formatting; overridden by a custom format argument."
+      - id: R5
+        text: "Implement monotonic clock mode (prd004-ts R5.1-R5.3): -m flag selects time.Now() monotonic reading for all timestamp samples; compatible with all format modes including subsecond extensions; timestamps must not jump backwards."
+      - id: R6
+        text: "Implement relative-time conversion mode (prd004-ts R6.1-R6.5): -r flag scans each line for recognized timestamp patterns -- syslog ('Jan  5 14:30:00'), ISO-8601 ('2024-01-05T14:30:00.000Z'), RFC 2822 with optional day, lastlog ('Mon Jan  5 14:30') -- and replaces each match with a relative age string (e.g., '15m5s ago'); if a custom format argument is also given, reformat matched timestamps via that strftime format instead; lines without a recognized timestamp pass through unchanged; -r is mutually exclusive with -i and -s."
+      - id: R7
+        text: "Implement exit codes and error handling (prd004-ts R7.1-R7.3): exit 0 on clean stdin EOF; exit non-zero and print a usage message to stderr for unrecognized flags; handle SIGPIPE by installing a signal handler that calls os.Exit(0) when stdout is closed by a downstream consumer, suppressing broken-pipe errors."
+      - id: R8
+        text: "Implement TZ environment handling (prd004-ts R8.1-R8.2): honor the TZ environment variable for wall-clock timestamps in default mode by loading the time.Location from the TZ value before formatting; use UTC internally for elapsed timestamp formatting in -i and -s modes regardless of the process TZ setting, matching the TZ=GMT behavior of the Perl source."
+
+    design_decisions:
+      - id: D1
+        text: "Use time.Now() for all clock reads. Go's time.Time automatically carries a monotonic reading, so -m mode requires no special clock selection -- the same call satisfies both wall-clock and monotonic requirements (prd004-ts R5.1)."
+      - id: D2
+        text: "Implement strftime by translating standard directives (%Y, %m, %d, %H, %M, %S, %b, %j, %p, %Z, %%, etc.) to Go time.Format layout strings before calling Format(). For the three ts subsecond extensions (%.S, %.s, %.T), extract the base component via Format(), then append '.' and fmt.Sprintf('%06d', t.Nanosecond()/1000) for microsecond precision (prd004-ts R2.3)."
+      - id: D3
+        text: "For -i and -s elapsed timestamps, compute the duration, convert to whole seconds (int64), and call time.Unix(seconds, 0).UTC().Format(layout) to produce the HH:MM:SS string under UTC semantics, matching the TZ=GMT behavior of the Perl source (prd004-ts R3.2, R4.2)."
+      - id: D4
+        text: "Use bufio.NewReader(os.Stdin) with ReadString('\\n') to read lines. This correctly handles partial last lines (no trailing newline at EOF) and avoids bufio.Scanner's 64 KB default buffer limit (prd004-ts R1.5)."
+      - id: D5
+        text: "For -r mode, compile the four timestamp regexes once at startup with regexp.MustCompile. Compute relative age as time.Since(parsedTime) and format as '<Xh><Ym><Zs> ago' with only non-zero components shown, except always show seconds (prd004-ts R6.1-R6.2)."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "echo 'hello world' | go run ./cmd/ts produces a line matching '<month> <day> <HH:MM:SS> hello world' using the default '%b %d %H:%M:%S' format (prd004-ts AC1)."
+      - id: AC2
+        text: "printf 'a\\nb\\nc\\n' | go run ./cmd/ts -s produces three lines with monotonically non-decreasing elapsed timestamps in HH:MM:SS format (prd004-ts AC2)."
+      - id: AC3
+        text: "go run ./cmd/ts -z (unrecognized flag) prints a usage message to stderr and exits with a non-zero code (prd004-ts AC4)."
+      - id: AC4
+        text: "go run ./cmd/ts with empty stdin (immediate EOF) produces no output and exits 0 (prd004-ts AC5)."
+      - id: AC5
+        text: "go run ./cmd/ts -i -s prints a usage error to stderr and exits non-zero (prd004-ts R3.4)."
+      - id: AC6
+        text: "go run ./cmd/ts -r on input 'Jan  1 00:00:00 boot message' outputs a line where the syslog timestamp is replaced by a relative age string followed by the remaining content (prd004-ts R6.1-R6.2)."
+      - id: AC7
+        text: "cmd/ts compiles successfully with go build ./cmd/ts/... and produces no warnings under golangci-lint (prd004-ts AC6)."
+  dependency: -1
+- index: 0
+  title: Implement cmd/cat concatenate utility (prd006-cat R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd006-cat.yaml (all flag behaviors, transformation order, exit codes)
+      - docs/ARCHITECTURE.yaml (cmd/ package structure and conventions)
+      - go.mod (module path github.com/petar-djukic/go-unix-utils)
+
+    files:
+      - path: cmd/cat/main.go
+        action: create
+        note: cat utility -- passthrough, line numbering, blank squeezing, non-printing display, error handling
+
+    requirements:
+      - id: R1
+        text: "Implement default behavior: read named files in order, or stdin when no files are given or '-' is given as a filename; write contents verbatim to stdout; handle binary input (all byte values 0x00-0xFF) without corruption; do not add or remove newlines from the input (prd006-cat R1.1-R1.5)"
+      - id: R2
+        text: "Implement line-numbering flags -n and -b: -n prepends a right-justified 6-wide line number followed by a tab character to every output line using format '%6d\\t'; -b prepends a number only to non-blank lines, leaving blank lines without a number or tab; -b overrides -n when both are given; a blank line is defined as a line containing only a newline character (prd006-cat R2.1-R2.4)"
+      - id: R3
+        text: "Implement blank-line squeezing -s: collapse two or more consecutive blank output lines to one; the first blank line is written and subsequent consecutive blank lines are discarded; squeezing applies across file boundaries when multiple files are concatenated; apply squeezing before line numbering so suppressed blank lines do not consume line numbers (prd006-cat R3.1-R3.3)"
+      - id: R4
+        text: "Implement non-printing display flags -v, -E, -T, -A, -e, -t, -u: -v encodes control characters 0x00-0x1F (except tab 0x09 and newline 0x0A) as ^X where X is 64 positions higher, 0x7F as ^?, and bytes 0x80-0xFF with M- prefix; -E appends '$' before each newline; -T displays tab as '^I'; -A equals -v -E -T combined; -e equals -v -E; -t equals -v -T; -u accepted without effect; apply transformations in order: squeeze blanks, non-printing display, end-of-line marker, line-number prefix (prd006-cat R4.1-R4.9)"
+      - id: R5
+        text: "Implement error handling and exit codes: exit 0 on success; exit 1 when any input file cannot be opened -- print error message to stderr and continue processing remaining file arguments; exit 1 on stdout write error; do not exit non-zero due to SIGPIPE when stdout is closed by a downstream consumer (prd006-cat R5.1-R5.4)"
+
+    design_decisions:
+      - id: D1
+        text: "Module path is github.com/petar-djukic/go-unix-utils per go.mod; binary entry point is cmd/cat/main.go with package main; no external dependencies beyond the Go standard library"
+      - id: D2
+        text: "Apply transformations in the fixed order from prd006-cat R4.9: squeeze blanks (-s) first, then non-printing display (-v/-T), then end-of-line marker (-E), then line-number prefix (-n/-b); this order is non-negotiable per the spec"
+      - id: D3
+        text: "Read input line-by-line using bufio.Reader.ReadBytes('\\n') rather than bufio.Scanner, so that partial last lines (no trailing newline) are preserved without reconstruction; the newline byte (when present) is included in the returned slice and must be preserved in output"
+      - id: D4
+        text: "Handle SIGPIPE by catching syscall.SIGPIPE via os/signal and calling os.Exit(0) so that piping cat output to head or other truncating consumers exits cleanly without a broken-pipe error message, matching gcat behavior (prd006-cat R5.4)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "'go build ./cmd/cat/' succeeds with no errors and produces a runnable binary"
+      - id: AC2
+        text: "Default mode: all 256 byte values (0x00-0xFF) pass through without corruption when no flags are active; output bytes are identical to input bytes"
+      - id: AC3
+        text: "-n produces format '     N\\t' (6-wide right-justified number followed by tab) for every output line including blank lines; -b produces the same format for non-blank lines only, blank lines receive no number and no tab; -b takes precedence over -n when both are given"
+      - id: AC4
+        text: "-s with input containing four consecutive blank lines produces exactly one blank line in output; squeezing applies across file boundaries so the last blank line of one file and the first blank line of the next file count as consecutive"
+      - id: AC5
+        text: "-v encodes: 0x01 as '^A', 0x1B as '^[', 0x7F as '^?', 0x80 as 'M-^@', 0xA0 as 'M- ', 0xFF as 'M-^?'; tab (0x09) and newline (0x0A) are not altered by -v"
+      - id: AC6
+        text: "-A produces output byte-for-byte identical to applying -v, -E, -T simultaneously; -e produces output identical to -v -E; -t produces output identical to -v -T"
+      - id: AC7
+        text: "A non-existent file argument causes a descriptive error message on stderr and an exit code of 1; any remaining valid file arguments on the command line are still read and written to stdout before the process exits"
+  dependency: -1

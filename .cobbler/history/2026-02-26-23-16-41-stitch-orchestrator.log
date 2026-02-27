@@ -1,0 +1,21 @@
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] starting (limit=10)
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=10 measure=3 generationBranch="generation-2026-02-26-23-16-32"
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] beadsInitialized: .beads/ exists=true
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] resolved branch=generation-2026-02-26-23-16-32
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] repoRoot=/Users/petardjukic/2025-objectives/go-unix-utils
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] worktreeBase=/var/folders/k1/vt4zxn952wv_8xjqtntq1ycr0000gn/T/go-unix-utils-worktrees
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] baseBranch=generation-2026-02-26-23-16-32
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] recovering stale tasks
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] recoverStaleTasks: checking for stale branches with pattern task/generation-2026-02-26-23-16-32-*
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] recoverStaleBranches: no stale branches found
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +0s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] resetOrphanedIssues: found 0 in_progress task(s)
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] recoverStaleTasks: pruning worktrees
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] recoverStaleTasks: no stale state found
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] looking for next ready task (completed 0 so far)
+[2026-02-26T23:16:41-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] pickTask: calling bd ready -n 1 --type task
+[2026-02-26T23:16:42-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] pickTask: bd ready returned 3 bytes
+[2026-02-26T23:16:42-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] pickTask: JSON parse failed or empty: err=<nil> len=0 raw=[]
+
+[2026-02-26T23:16:42-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] no more tasks: failed to parse issue
+[2026-02-26T23:16:42-05:00] [generation-2026-02-26-23-16-32] [stitch +1s] completed 0 task(s) in 1s
