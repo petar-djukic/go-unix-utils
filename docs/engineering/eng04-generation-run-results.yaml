@@ -3,9 +3,9 @@ title: "GH-3 Generation Run Results: Full Codebase from Pipeline"
 
 introduction: |
   We ran the cobbler pipeline across three generations on 2026-02-25 to produce all Go code for
-  go-unix-utils releases 01.0, 01.1, and a 02.0 preview. This document records the execution
-  metrics, cost breakdown, and operational lessons from running 16 measure+stitch cycles that
-  produced 4,586 lines of Go across 22 files. The work closed GH-3 via PR #11.
+  go-unix-utils releases 01.0, 01.1, and a 02.0 preview. We record the execution metrics, cost
+  breakdown, and operational lessons from running 16 measure+stitch cycles that produced 4,586
+  lines of Go across 22 files. The work closed GH-3 via PR #11.
 
   This is the first multi-generation run of the pipeline. Earlier experiments (eng02, eng03)
   validated single measure+stitch cycles. This run exercises the full lifecycle: multiple

@@ -52,7 +52,7 @@ flow:
 
 touchpoints:
   - T1: "cmd/sponge — soak-before-write contract, atomic rename, append mode, passthrough (prd007-sponge R1, R2, R3, R4, R5)"
-  - T2: "pkg/testutils — RunDiffTests, file-state comparison (prd001-testutils R1, R2, R3, R5)"
+  - T2: "pkg/testutils — RunDiffTests, file-state comparison"
 
 success_criteria:
   - id: S1

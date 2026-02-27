@@ -20,7 +20,7 @@ graph LR
 
 ## Scope and Status
 
-We have completed specifications for the first three releases. The first generation run produced 4,586 lines of Go across 22 files in 16 measure+stitch cycles; that code is available at the generation-merged tags (see Tagging Scheme). The working branch contains specifications only.
+Specifications are complete for all four releases. The first generation run produced 4,586 lines of Go across 22 files in 16 measure+stitch cycles; that code is available at the generation-merged tags (see Tagging Scheme below). The working branch contains specifications only.
 
 | Metric | Count |
 | ------ | ----: |
@@ -32,18 +32,6 @@ We have completed specifications for the first three releases. The first generat
 | Go implementations | at generation-merged tags (2,842 production + 1,744 test LOC) |
 
 Roadmap: [docs/road-map.yaml](docs/road-map.yaml). Full utility catalog with difficulty ratings, memory models, and implementation profiles: [docs/utilities.yaml](docs/utilities.yaml).
-
-## Tagging Scheme
-
-The repository uses a two-prefix versioning convention to distinguish human-written specifications from Claude-generated code.
-
-`v0.YYYYMMDD.N` tags mark specification-only releases. The repository at a v0 tag contains PRDs, use cases, test suites, architecture documents, and build infrastructure -- everything a human wrote. No Go implementation code is present. These tags represent the input to the generation pipeline.
-
-`v1.YYYYMMDD.N` tags mark generation releases. The repository at a v1 tag contains everything from the corresponding v0 baseline plus the Go source code that the cobbler pipeline produced. Each v1 tag is the output of a complete generation run: one or more measure+stitch cycles that read the specifications and wrote the implementations.
-
-The intended lifecycle: a human writes specifications and tags v0, the pipeline generates code and tags v1, then the generated code is removed from the working branch so that the next specification edit starts from a clean v0 state. This separation makes it possible to re-generate all code from any v0 tag, compare v1 tags across generation runs, and measure specification quality independently of generation quality.
-
-The first generation run is documented in [eng04](docs/engineering/eng04-generation-run-results.yaml). A context configuration benchmark comparing default, include-all, and exclude-all prompt settings is documented in [eng06](docs/engineering/eng06-context-benchmark-results.yaml). The second generation run (partial, blocked by output token limit) is documented in [eng07](docs/engineering/eng07-generation-run-2-results.yaml). Generated code lives at v1 tags; the working branch carries specifications only.
 
 ## Methodology
 
@@ -112,3 +100,15 @@ Requires Go 1.21+, [Mage](https://magefile.org/), and Homebrew GNU coreutils/mor
 - [ARCHITECTURE.yaml](docs/ARCHITECTURE.yaml) -- Component descriptions, design decisions, technology choices
 - [SPECIFICATIONS.yaml](docs/SPECIFICATIONS.yaml) -- PRD, use case, and test suite index with traceability
 - [Engineering guidelines](docs/engineering/) -- Conventions and practices above the code
+
+## Tagging Scheme
+
+The repository uses a two-prefix versioning convention to distinguish human-written specifications from Claude-generated code.
+
+`v0.YYYYMMDD.N` tags mark specification-only releases. The repository at a v0 tag contains PRDs, use cases, test suites, architecture documents, and build infrastructure -- everything a human wrote. No Go implementation code is present. These tags represent the input to the generation pipeline.
+
+`v1.YYYYMMDD.N` tags mark generation releases. The repository at a v1 tag contains everything from the corresponding v0 baseline plus the Go source code that the cobbler pipeline produced. Each v1 tag is the output of a complete generation run: one or more measure+stitch cycles that read the specifications and wrote the implementations.
+
+The intended lifecycle: a human writes specifications and tags v0, the pipeline generates code and tags v1, then the generated code is removed from the working branch so that the next specification edit starts from a clean v0 state. This separation makes it possible to re-generate all code from any v0 tag, compare v1 tags across generation runs, and measure specification quality independently of generation quality.
+
+The first generation run is documented in [eng04](docs/engineering/eng04-generation-run-results.yaml). A context configuration benchmark comparing default, include-all, and exclude-all prompt settings is documented in [eng06](docs/engineering/eng06-context-benchmark-results.yaml). The second generation run (partial, blocked by output token limit) is documented in [eng07](docs/engineering/eng07-generation-run-2-results.yaml). Generated code lives at v1 tags; the working branch carries specifications only.

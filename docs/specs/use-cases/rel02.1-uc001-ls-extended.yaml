@@ -54,9 +54,9 @@ flow:
 
 touchpoints:
   - T1: "cmd/ls — multi-column layout, sort order, metadata display, classify, recursive (prd010-ls-extended R1, R2, R3, R4, R5, R6)"
-  - T2: "pkg/sys — TerminalWidth, Stat/Lstat for mtime, size, inode, blocks (prd002-sys R1, R2)"
-  - T3: "pkg/format — Columns for -C/-x, FileTypeColor, HumanSize for -s -h (prd003-format R1, R2, R3)"
-  - T4: "pkg/testutils — RunDiffTests, LsExtendedNormalizer (prd001-testutils R1, R2, R3, R4)"
+  - T2: "pkg/sys — TerminalWidth, Stat/Lstat for mtime, size, inode, blocks"
+  - T3: "pkg/format — Columns for -C/-x, FileTypeColor, HumanSize for -s -h"
+  - T4: "pkg/testutils — RunDiffTests, LsExtendedNormalizer"
 
 success_criteria:
   - id: S1

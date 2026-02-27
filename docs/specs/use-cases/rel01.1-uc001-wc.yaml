@@ -47,7 +47,7 @@ flow:
 
 touchpoints:
   - T1: "cmd/wc — line, word, byte, char, max-line-length counting, multi-file totals (prd005-wc R1, R2, R3, R4, R5, R6)"
-  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison (prd001-testutils R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
 
 success_criteria:
   - id: S1

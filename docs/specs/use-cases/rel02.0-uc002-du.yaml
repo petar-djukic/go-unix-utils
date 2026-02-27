@@ -46,9 +46,9 @@ flow:
 
 touchpoints:
   - T1: "cmd/du — recursive traversal, block accumulation, hard-link dedup, flag modes (prd009-du R1, R2, R3, R4, R5)"
-  - T2: "pkg/sys — Stat/Lstat for st_blocks, st_dev, st_ino, InstallSIGPIPEHandler (prd002-sys R2, R3)"
-  - T3: "pkg/format — HumanSize for -h output (prd003-format R3)"
-  - T4: "pkg/testutils — RunDiffTests, binary execution and comparison (prd001-testutils R1, R2, R3)"
+  - T2: "pkg/sys — Stat/Lstat for st_blocks, st_dev, st_ino, InstallSIGPIPEHandler"
+  - T3: "pkg/format — HumanSize for -h output"
+  - T4: "pkg/testutils — RunDiffTests, binary execution and comparison"
 
 success_criteria:
   - id: S1
