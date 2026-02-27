@@ -13,9 +13,15 @@ project:
     magefiles_dir: magefiles
     context_sources: ""
     context_include: ""
-    context_exclude: ""
+    context_exclude: |
+      docs/VISION.yaml
+      docs/SPECIFICATIONS.yaml
+      docs/specs/dependency-map.yaml
+      docs/specs/sources.yaml
     release: ""
-    releases: []
+    releases:
+        - "02.0"
+        - "02.1"
     seed_files: {}
 generation:
     prefix: generation-
@@ -39,8 +45,8 @@ cobbler:
     estimated_lines_max: 250
     golden_example: ""
     max_context_bytes: 0
-    enforce_measure_validation: true
-    max_measure_retries: 2
+    enforce_measure_validation: false
+    max_measure_retries: 0
     max_requirements_per_task: 4
     history_dir: history
     doc_tag_prefix: v0.

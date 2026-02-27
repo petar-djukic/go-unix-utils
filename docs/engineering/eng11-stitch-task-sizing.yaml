@@ -1,0 +1,166 @@
+id: eng11-stitch-task-sizing
+title: "Stitch Task Sizing: Requirements Per Task and Complexity Budget"
+
+introduction: |
+  The stitch agent has a hard execution budget of 15 minutes per task. Within that budget it
+  must read context, plan the implementation, write code, run go build (and optionally tests),
+  and produce a clean commit. Tasks that exceed the budget are killed, reset, and retried.
+  Repeated timeout is the observable symptom of task oversizing.
+
+  This guideline documents the relationship between task scope and stitch success, derives a
+  practical sizing rule from observed outcomes across eng04-eng10, and gives concrete guidance
+  for the measure agent prompt and for human reviewers decomposing PRD requirements into tasks.
+
+sections:
+  - title: "Observed task outcomes"
+    content: |
+      Table 1: Stitch tasks from eng04 and eng10, categorized by outcome
+
+      | Task | Content | Requirements | New subsystems | LOC (prod) | Outcome |
+      |------|---------|-------------|----------------|------------|---------|
+      | pkg/testutils | DiffTest harness, NormalizeFunc, RunDiffTests | R1-R5 (5) | 1 (test harness) | 250 | success |
+      | cmd/ts | ts timestamp utility, all modes | R1-R8 (8) | 1 (strftime binding) | 546 | success (eng04) |
+      | cmd/cat | cat with -n, -s, -A, -v, -E, -T, -u | R1-R5 (5) | 1 (format flags) | 357 | success |
+      | cmd/wc | wc -l -w -c -m -L, multibyte | R1-R5 (5) | 1 (unicode counting) | 629 | success |
+      | cmd/sponge | sponge with signal handling | R1-R5 (5) | 1 (temp file + rename) | 397 | success |
+      | pkg/format + pkg/sys | color, columns, humansize, sys | R1-R5 each | 4 (new packages) | ~490 | success (eng04) |
+      | cmd/du | recursive disk usage | R1-R5 (4) | 1 (filepath.Walk) | 406 | success (eng10) |
+      | cmd/ls core | default listing, -a, -A, -d, exit codes | R1, R3, R6, R7 (4) | 1 (readdir+sort) | 316 | success (eng10) |
+      | cmd/ls tests | LsNormalizer, 13 differential tests | R1 (4 AC) | 1 (test file) | 0+279 | success (eng10) |
+      | cmd/du tests | 8 differential tests | R1 (4 AC) | 1 (test file) | 0+213 | success (eng10) |
+      | cmd/ls extended | long format + color + human sizes | R2, R4, R5 (3) | 3 (stat API, ANSI, HumanSize) | 0 | failed ×2 (eng10) |
+
+      All successful tasks introduced at most one new subsystem or API boundary. The single
+      failed task introduced three simultaneously.
+
+  - title: "The subsystem boundary rule"
+    content: |
+      A subsystem boundary is any point where new external API calls, new data sources, or new
+      output modes are introduced. Examples:
+
+      - stat() / os.Lstat() for file metadata → subsystem boundary
+      - /etc/passwd or user.LookupId() for username resolution → subsystem boundary
+      - ANSI escape codes for color output → subsystem boundary
+      - pkg/format.HumanSize for size formatting → subsystem boundary
+      - os.ReadDir() for directory listing → subsystem boundary (first use)
+      - filepath.Walk() for recursive traversal → subsystem boundary (first use)
+      - bufio.NewReader for line-by-line stdin → subsystem boundary (first use)
+
+      Adding a new flag to an existing pipeline (e.g., -A to an already-working ls) is not a
+      subsystem boundary; it is a variation on existing logic.
+
+      The sizing rule: one stitch task should cross at most one subsystem boundary. A task that
+      crosses multiple boundaries bundles independent implementations that each need design,
+      code, and verification time. Under a 15-minute budget, this does not fit.
+
+  - title: "Practical sizing guidance"
+    content: |
+      When decomposing a PRD into stitch tasks, apply the following rules in order:
+
+      Rule 1: One new subsystem per task. If a set of requirements requires calling a new
+      system API or integrating a new library, that is one task. Requirements that can be
+      implemented by adding branches or parameters to existing code can be bundled freely.
+
+      Rule 2: Cap output at 400 production LOC. Successful tasks ranged from 213 to 629 LOC
+      (excluding the outlier cmd/wc at 629, which was a complex but single-subsystem task).
+      The estimated_lines_min=150 / estimated_lines_max=250 configuration is a guide for the
+      measure agent. For tasks that are inherently larger (e.g., a utility with many modes),
+      allow up to 400-500 LOC but do not exceed 600.
+
+      Rule 3: Separate implementation from test tasks. Test files (ls_test.go, du_test.go)
+      should be separate stitch tasks from the implementation they test. Test tasks are fast
+      because they follow a fixed pattern (DiffTest slice + RunDiffTests). Mixing tests with
+      implementation increases task scope unnecessarily.
+
+      Rule 4: For ls-style extended output (long format), treat each output mode as its own
+      task. The decomposition for prd008-ls R2 (long format) should be:
+        - Task A: Implement stat() calls and -l flag skeleton (plain output, no color)
+        - Task B: Add --color support using pkg/format color API
+        - Task C: Add -h human sizes using pkg/format HumanSize
+      Each of these is a single subsystem boundary crossing that adds 150-300 LOC to the
+      existing cmd/ls/main.go.
+
+      Table 2: Requirement count vs. success rate
+
+      | Requirements per task | Subsystems | Success rate |
+      |----------------------|-----------|-------------|
+      | 1-4, single subsystem | 1 | high (all observed successes) |
+      | 3-5, single subsystem | 1 | high |
+      | 5-8, single subsystem | 1 | high (eng04 cmd/ts R1-R8 succeeded) |
+      | 3, multiple subsystems | 3 | failed (eng10 cmd/ls 5el) |
+
+      Requirement count alone is not the right metric. The eng09 analysis showed that setting
+      max_requirements_per_task=4 did not improve outcomes because the measure agent cannot
+      split tasks by counting requirements. Subsystem count is the correct predictor.
+
+  - title: "Instructions for the measure agent"
+    content: |
+      When the measure prompt is assembled, the agent should apply the following heuristic
+      when scoping tasks:
+
+      For each unimplemented PRD section, identify the primary new interface it requires
+      (a new syscall, a new pkg/ API, a new output format). That interface defines one task.
+      Requirements that share the same interface belong in the same task. Requirements that
+      each need a different interface belong in separate tasks, even if they are co-located
+      in the same PRD.
+
+      Example decomposition for prd008-ls:
+        - R1 (default listing), R3 (filter flags -a/-A/-d), R6 (exit codes), R7 (signals):
+          all operate on os.ReadDir() output with flag variations → one task (4k3, succeeded)
+        - R2 (long format): introduces os.Lstat() + stat fields + formatting → one task
+        - R4 (color): introduces ANSI output mode via pkg/format.FileTypeColor → one task
+        - R5 (human sizes): introduces pkg/format.HumanSize in long format output → one task
+          (or bundle with R2 if the HumanSize call is a minor addition after long format exists)
+
+      The measure agent should not bundle R2+R4+R5 into one task even though all three are
+      related to ls output formatting. They require three separate subsystem integrations.
+
+  - title: "Multi-release generation strategy"
+    content: |
+      A related scoping question is whether to run one generation across all releases or one
+      generation per release.
+
+      The measure agent with a releases filter correctly prioritizes lower-numbered releases
+      first within the filtered set. With releases: ["01.0", "01.1", "02.0"], it will propose
+      rel01.0 work (ts, cat) before rel01.1 work (wc, sponge), and rel01.1 before rel02.0
+      (du, ls). This ordering is intrinsic to the roadmap-driven measure logic.
+
+      A single generation spanning all releases is therefore correct for most cases. A separate
+      generation per release adds overhead (generator:start, generator:stop, tagging) with no
+      benefit unless the goal is to evaluate each release independently or to checkpoint
+      intermediate results with a v1 tag per release.
+
+      The recommended approach for GH-29 (the next benchmark run):
+        releases: []  # empty = no filter; measure proposes all pending work in roadmap order
+
+      If the measure agent correctly implements roadmap ordering, it will naturally produce
+      rel01.0 tasks first, complete them in the stitch phase, and only then propose rel01.1
+      and rel02.0 tasks. No per-release generator restarts are needed.
+
+      If the measure agent is observed proposing work out of order (rel02.0 before rel01.0
+      is complete), the releases filter should be used to constrain one release at a time
+      until the ordering behavior is verified.
+
+  - title: "Prompt size and context minimization"
+    content: |
+      A secondary constraint on stitch task success is stitch agent first-turn latency. eng08
+      showed that a 295K prompt produces a 10m46s first turn on the stitch agent, leaving only
+      4m14s for code. A clean run (0 Go LOC, no seeded source files) with the 4-file exclusion
+      produces approximately 240K, and first-turn latency should stay under 3-4 minutes.
+
+      For the GH-29 run, record the following before generator:run:
+        - mage stats:tokens output: file list, byte counts, total
+        - Hypothesis for minimal viable context: architecture + roadmap + PRDs + use cases +
+          test suites is sufficient. VISION, SPECIFICATIONS, engineering guidelines, dependency-map,
+          and sources can all be excluded.
+
+      After the run, inspect the measure log and stitch history logs to determine which files
+      were actually cited or read. Remove uncited files from the standard file set via
+      context_exclude. The target is a prompt under 200K bytes.
+
+references:
+  - "docs/engineering/eng04-generation-run-results.yaml — First generation run task outcomes"
+  - "docs/engineering/eng10-generation-run-5-results.yaml — Run 5 outcomes including 5el failure"
+  - "docs/engineering/eng06-context-benchmark-results.yaml — Context file necessity analysis"
+  - "docs/engineering/eng09-generation-run-4-results.yaml — max_requirements_per_task analysis"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/29 — GH-29: Clean run with minimal context"

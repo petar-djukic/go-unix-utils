@@ -1,0 +1,225 @@
+id: eng10-generation-run-5-results
+title: "GH-26 Generation Run 5: Seeded Run With Context and Validation Tuning"
+
+introduction: |
+  We ran the cobbler pipeline against the v0.20260227.3 specification baseline on the
+  gh-26-generation-run-5 feature branch. This run was the first to apply the full set of
+  configuration tuning derived from eng06-eng09: context_exclude removed four supplementary
+  files (VISION, SPECIFICATIONS, dependency-map, sources), enforce_measure_validation was
+  disabled, max_measure_retries was set to 0 (validate-and-warn mode), max_requirements_per_task
+  was set to 4, and a releases filter restricted measure to rel02.0 and rel02.1.
+
+  The run also seeded the generation branch from v1 tags before starting, importing 2,842
+  production LOC and 1,744 test LOC from previous generation runs (rel01.0 + rel01.1 code).
+  This seeding invalidates the run as a benchmark of end-to-end code generation from specs-only.
+  The measure agent never had to propose the rel01.0 or rel01.1 work because that code was
+  already present. The run is therefore documented as a functional test of the stitch pipeline
+  for rel02.0 scope under realistic context conditions, not as an end-to-end benchmark.
+
+  Four of five stitch tasks completed successfully. One task (cmd/ls extended features: long
+  format, color, human sizes) failed twice at the 15-minute timeout and was abandoned. The
+  dominant new finding is a task sizing failure: bundling three distinct feature subsystems
+  (stat-based long format, ANSI color, human-readable sizes) into a single stitch task exceeds
+  the stitch agent's 15-minute execution budget. This finding motivates eng11.
+
+sections:
+  - title: "Configuration"
+    content: |
+      Table 1: Generation parameters
+
+      | Parameter | Value |
+      |-----------|-------|
+      | Baseline tag | v0.20260227.3 |
+      | Generation branch | generation-2026-02-27-15-12-51 |
+      | V1 tag | v1.20260227.0 |
+      | Model | Claude Sonnet 4.6 |
+      | Temperature | 0 |
+      | Max time per agent | 900s (15 min) |
+      | Max measure issues | 3 (iterative, 1 per iteration) |
+      | Max stitch issues per cycle | 10 |
+      | Estimated lines | 150-250 |
+      | CLAUDE_CODE_MAX_OUTPUT_TOKENS | 128,000 |
+      | cobbler-scaffold version | v0.20260227.3 |
+      | max_requirements_per_task | 4 |
+      | enforce_measure_validation | false |
+      | max_measure_retries | 0 |
+      | releases filter | ["02.0", "02.1"] |
+      | context_exclude | VISION, SPECIFICATIONS, dependency-map, sources (4 files) |
+      | Standard files after exclusion | 23 files (from 27) |
+      | Measure prompt bytes (with seeded src) | ~354,551 |
+      | Seeded LOC (prod) | 2,842 (from v1.20260225.x tags) |
+      | Seeded LOC (test) | 1,744 (from v1.20260225.x tags) |
+
+      Configuration changes from eng09: enforce_measure_validation disabled, max_measure_retries
+      set to 0, context_exclude applied (4 files removed), releases filter added, seeding from
+      v1 tags introduced.
+
+  - title: "Seeding approach"
+    content: |
+      Before running generator:run, we seeded the generation branch with all previously generated
+      code from v1 tags:
+
+        git checkout v1.20260225.0 -- pkg/testutils cmd/ts
+        git checkout v1.20260225.1 -- cmd/cat cmd/wc cmd/sponge cmd/ts/ts_test.go
+        git checkout v1.20260225.2 -- pkg/sys pkg/format go.mod go.sum
+
+      This imported 22 Go files totaling 4,586 LOC. The rationale was to prevent measure from
+      re-proposing already-completed rel01.0 and rel01.1 work, allowing the run to focus on
+      the rel02.0 target (cmd/du, cmd/ls).
+
+      This decision invalidates the run as an end-to-end benchmark. A valid benchmark must start
+      from 0 Go LOC. The correct approach for subsequent runs is to start clean and let measure
+      propose the full work sequence from scratch, including rel01.0 and rel01.1 tasks. The
+      releases filter can still be used but must not be combined with seeding if the goal is
+      benchmark validity. See GH-29 for the next run specification.
+
+  - title: "Measure phase results"
+    content: |
+      The pipeline ran two measure cycles. Cycle 1 ran at the start (no tasks existed). Cycle 2
+      ran after the cycle 2 stitch phase completed three tasks and needed more work.
+
+      Table 2: Measure cycle 1 (3 iterations)
+
+      | Iteration | Task | Prompt bytes | Cost | Duration | Validation |
+      |-----------|------|-------------|------|----------|------------|
+      | 1 | cmd/du (prd009-du R1-R5) | 354,551 | $0.89 | 2m21s | warns (req count 4, outside P9 5-8) |
+      | 2 | cmd/ls core (prd008-ls R1, R3, R6, R7) | 354,916 | $0.87 | 2m10s | warns (req count 4) |
+      | 3 | cmd/ls tests (test-rel02.0 ls) | 355,127 | $1.23 | 6m03s | warns (req count 4, AC count 4, P7) |
+
+      Total cycle 1 measure: $2.98, 10m40s. All tasks accepted with warnings (validate-and-warn
+      mode, no retries). Iteration 3 took 6m03s vs. 2m10s for iteration 2, likely due to rate
+      limiting (the log shows a 5m36s first-turn wait).
+
+      Table 3: Measure cycle 2 (3 iterations, partial data)
+
+      | Iteration | Task | Notes |
+      |-----------|------|-------|
+      | 1 | cmd/du differential tests (test-rel02.0 du) | task q2u |
+      | 2 | cmd/ls extended: long format, color, human sizes (prd008-ls R2, R4, R5) | task 5el |
+      | 3 | (unknown, not captured) | pipeline stopped before cycle 3 stitch completed |
+
+      Cycle 2 measure cost and duration were not captured (history files on the now-deleted
+      generation branch).
+
+  - title: "Stitch phase results"
+    content: |
+      Table 4: Stitch task outcomes
+
+      | Task | Description | Outcome | LOC prod | LOC test | Notes |
+      |------|-------------|---------|----------|----------|-------|
+      | 8og | cmd/du recursive disk usage (prd009-du R1-R5) | success | 406 | 0 | committed ~15:38 |
+      | 4k3 | cmd/ls core listing, flags, exit codes (prd008-ls R1, R3, R6, R7) | success | 316 | 0 | committed after 4k3 |
+      | wr0 | cmd/ls differential tests with LsNormalizer | success | 0 | 279 | committed after wr0 |
+      | q2u | cmd/du differential tests (test-rel02.0 du) | success | 0 | 213 | committed ~16:09 |
+      | 5el | cmd/ls long format, color, human sizes (prd008-ls R2, R4, R5) | failed | 0 | 0 | 2 timeouts, stopped |
+
+      Tasks 8og, 4k3, wr0, q2u all completed within the 15-minute window. Task 5el timed out
+      twice. See the task sizing analysis section for root cause.
+
+      Total new LOC generated this run: 722 production, 492 test.
+
+  - title: "Task 5el failure analysis"
+    content: |
+      Task 5el ("Implement cmd/ls long format, color output, and format flags") bundled three
+      major feature subsystems into a single stitch task:
+
+      - R2: Long format (-l flag) — requires stat() calls, passwd/group name lookup, permission
+        string formatting, link counts, file sizes, modification time formatting.
+      - R4: Color output (--color flag) — requires terminal detection, ANSI escape codes,
+        file-type color mapping, SetColorEnabled/ResetColorEnabled wiring from pkg/format.
+      - R5: Human-readable sizes (-h flag) — requires HumanSize integration into long format output.
+
+      Each subsystem alone represents substantial implementation work. The stitch agent must read
+      multiple source files, design the implementation, write 300-600 lines, run go build, and
+      verify correctness — all within 15 minutes. The combination of all three pushed the task
+      beyond the budget in two consecutive attempts.
+
+      This failure is not a prompt quality issue. The measure agent correctly identified the
+      requirements. The problem is architectural: the measure agent does not reason about stitch
+      execution time when scoping tasks. It treats each requirement group as one task regardless
+      of implementation complexity. A task with 3 simple flag requirements (e.g., -a, -A, -d)
+      completes in well under 15 minutes. A task with 3 requirements each requiring a separate
+      subsystem implementation may not.
+
+      See eng11 for the engineering guideline on stitch task sizing.
+
+  - title: "Context configuration effectiveness"
+    content: |
+      The context_exclude of 4 files (VISION, SPECIFICATIONS, dependency-map, sources) reduced
+      the standard file set from 27 to 23. However, because the seeded source files (22 Go files,
+      ~112KB) were added to the prompt, the measure prompt grew to 354,551 bytes — larger than
+      eng08's 295K despite the exclusions.
+
+      The context_exclude tuning was correct in isolation but was masked by the seeded source
+      code adding significant context. For runs starting from 0 Go LOC, the exclusion of these
+      four files should restore prompt size to approximately 240K, near the eng06 lower bound.
+
+      The validate-and-warn mode (enforce_measure_validation=false, max_measure_retries=0)
+      performed as designed. All tasks were accepted on the first attempt despite validation
+      warnings. Measure cost dropped from $6.14 (eng09, 9 invocations) to $2.98 (this run,
+      3 invocations) for the same number of tasks.
+
+  - title: "Aggregate results"
+    content: |
+      Table 5: Run totals
+
+      | Metric | Value |
+      |--------|-------|
+      | Total cost (captured) | ~$5.96 (measure cycle 1 $2.98 + estimated stitch costs) |
+      | Measure cost (cycle 1) | $2.98 |
+      | Stitch cost | not captured |
+      | Total wall clock | ~3h (15:12 to 16:37, including delays and restarts) |
+      | Productive stitch time | ~4 tasks × avg 10-15 min = ~50 min |
+      | Total LOC seeded | 4,586 (2,842 prod + 1,744 test) |
+      | Total LOC generated this run | 1,214 (722 prod + 492 test) |
+      | Final LOC on branch | 5,800 (3,564 prod + 2,236 test) |
+      | Tasks completed | 4 of 5 |
+      | Tasks failed (timeout) | 1 (5el, 2 attempts) |
+      | V1 tag | v1.20260227.0 |
+      | Benchmark validity | invalid (seeded run) |
+
+  - title: "Comparison with previous runs"
+    content: |
+      Table 6: Cross-run comparison
+
+      | Metric | eng04 (run 1) | eng07 (run 2) | eng08 (run 3) | eng09 (run 4) | eng10 (run 5) |
+      |--------|---------------|---------------|---------------|---------------|---------------|
+      | Spec baseline | v0.20260225.2 | v0.20260226.0 | v0.20260226.1 | v0.20260226.2 | v0.20260227.3 |
+      | cobbler-scaffold | pre-versioned | pre-versioned | v0.20260226.2 | v0.20260226.3 | v0.20260227.3 |
+      | Measure invocations | 16 | 2 | 3 | 9 | 3 (cycle 1) |
+      | Measure cost | ~$24 | $3.92 | $3.12 | $6.14 | $2.98 (cycle 1) |
+      | Total LOC (prod) | 2,842 | 280 | 0 | 0 | 722 new (+2,842 seeded) |
+      | Total LOC (test) | 1,744 | 0 | 178 | 0 | 492 new (+1,744 seeded) |
+      | Tasks completed | 7/7 | 1/7 | 1/3 | 0/3 | 4/5 |
+      | Dominant failure | none | 32k token limit | 15m timeout | validation loops | task oversizing |
+      | Benchmark valid | no (pre-scaffold) | no (token limit) | no (timeout) | no (0 LOC) | no (seeded) |
+
+      Run 5 is the first run to complete multiple stitch tasks successfully under the current
+      scaffold version. It is not a valid end-to-end benchmark due to seeding. Run 6 (GH-29)
+      is the first planned clean run.
+
+  - title: "Recommendations"
+    content: |
+      1. Do not seed from v1 tags in benchmark runs. Start from 0 Go LOC. The measure agent
+         will propose rel01.0 and rel01.1 work first, then rel02.0. This is correct behavior.
+
+      2. Apply a releases filter without seeding. Use releases: ["01.0"] for the first generation,
+         let it complete, then decide whether to run sequential generations per release or combine
+         all releases in one run. Resolve the multi-release strategy question in GH-29/eng11.
+
+      3. Reduce stitch task complexity. Do not bundle multiple independent subsystems into one
+         task. Each new syscall interface (stat, passwd lookup), each new output format (long
+         format), and each new output mode (color) should be its own stitch task. See eng11.
+
+      4. Add .gitignore for compiled binaries. The stitch agent compiled and committed `du` and
+         `ls` binaries to the generation branch. These were removed manually. A .gitignore rule
+         for cmd/*/binary-name would prevent recurrence.
+
+references:
+  - "docs/engineering/eng04-generation-run-results.yaml — First generation run metrics"
+  - "docs/engineering/eng09-generation-run-4-results.yaml — Fourth generation run metrics"
+  - "docs/engineering/eng11-stitch-task-sizing.yaml — Stitch task sizing guideline"
+  - "v0.20260227.3 — Specification baseline tag"
+  - "v1.20260227.0 — Generation output tag"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/26 — GH-26: Recurring generation run"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/29 — GH-29: Clean end-to-end run"
