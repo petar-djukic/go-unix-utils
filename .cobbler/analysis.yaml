@@ -1,0 +1,59 @@
+consistency_errors: 0
+code_status:
+    releases:
+        - version: "01.0"
+          name: Batch 1 — ts specification and differential test
+          specstatus: in_progress
+          codereadiness: none
+          usecases:
+            - id: rel01.0-uc001-ts
+              specstatus: in_progress
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "01.1"
+          name: Batch 2 — wc, cat, sponge specification and differential tests
+          specstatus: pending
+          codereadiness: none
+          usecases:
+            - id: rel01.1-uc001-wc
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel01.1-uc002-cat
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel01.1-uc003-sponge
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "02.0"
+          name: Batch 3 — ls core and du specification and differential tests
+          specstatus: pending
+          codereadiness: none
+          usecases:
+            - id: rel02.0-uc001-ls
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel02.0-uc002-du
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "02.1"
+          name: Batch 4 — ls extended specification and differential tests
+          specstatus: pending
+          codereadiness: none
+          usecases:
+            - id: rel02.1-uc001-ls-extended
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+    gaps: []

@@ -13,6 +13,7 @@ project:
     context_include: ""
     context_exclude: ""
     release: ""
+    releases: []
     seed_files: {}
 generation:
     prefix: generation-

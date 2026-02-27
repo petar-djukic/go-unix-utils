@@ -26,6 +26,8 @@ constraints: |
   - Do NOT use any tools. Do NOT explore the filesystem, read files, or run commands. All project information is in the project_context above. Your response must be text only with zero tool calls.
   - Do NOT interact with the issue tracker directly.
   - Do NOT duplicate existing issues. Review the issues in the project_context above before proposing.
+  - Issues with status "closed" represent COMPLETED work. Do not re-propose work that a closed issue already covers, even under a different title or framing. The completed_work field in project_context lists all finished tasks — treat every entry as work that must not be repeated.
+  - When source_code contains .go files for a package, that package already exists. Do not propose creating or reimplementing it. Trust the source code over prose descriptions in documentation (e.g., implementation_status sections in ARCHITECTURE.yaml may be stale).
   - Do NOT exceed {limit} tasks. If more work is needed, create additional tasks in a future session.
   - Do NOT create tasks larger than {lines_max} lines of production code. Target {lines_min}-{lines_max} lines per task, touching 5-7 files. Split aggressively: a task that creates a struct and implements its methods is two tasks.
   - Each task MUST be independently executable by an agent that has no context beyond the task description and the execution constitution.
