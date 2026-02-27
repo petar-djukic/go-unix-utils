@@ -25,7 +25,7 @@ cobbler:
     beads_dir: .beads/
     max_stitch_issues: 0
     max_stitch_issues_per_cycle: 10
-    max_measure_issues: 1
+    max_measure_issues: 3
     user_prompt: ""
     measure_prompt: docs/prompts/measure.yaml
     stitch_prompt: docs/prompts/stitch.yaml
@@ -33,8 +33,8 @@ cobbler:
     execution_constitution: docs/constitutions/execution.yaml
     design_constitution: docs/constitutions/design.yaml
     go_style_constitution: docs/constitutions/go-style.yaml
-    estimated_lines_min: 250
-    estimated_lines_max: 350
+    estimated_lines_min: 150
+    estimated_lines_max: 250
     golden_example: ""
     max_context_bytes: 0
     enforce_measure_validation: false
