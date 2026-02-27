@@ -6,7 +6,9 @@ project:
     binary_name: go-unix-utils
     binary_dir: bin
     main_package: ""
-    go_source_dirs: [pkg, cmd]
+    go_source_dirs:
+        - pkg
+        - cmd
     version_file: ""
     magefiles_dir: magefiles
     context_sources: ""
@@ -37,9 +39,12 @@ cobbler:
     estimated_lines_max: 250
     golden_example: ""
     max_context_bytes: 0
-    enforce_measure_validation: false
-    max_measure_retries: 0
+    enforce_measure_validation: true
+    max_measure_retries: 2
+    max_requirements_per_task: 4
     history_dir: history
+    doc_tag_prefix: v0.
+    base_branch: main
 podman:
     image: claude-cli
     args:
