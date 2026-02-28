@@ -14,6 +14,8 @@ releases:
     use_cases:
       - id: rel00.0-uc001-magefiles
         status: specs_written
+      - id: rel00.0-uc002-format
+        status: specs_written
 
   - version: "01.0"
     name: "Batch 1 — ts specification and differential test"

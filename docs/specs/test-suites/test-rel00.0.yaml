@@ -1,5 +1,5 @@
 id: test-rel00.0
-title: "Test Suite: rel00.0 — build lifecycle and cmd/version"
+title: "Test Suite: rel00.0 — build lifecycle, cmd/version, and pkg/format"
 release: rel00.0
 
 traces:
@@ -8,6 +8,10 @@ traces:
   - prd011-magefiles R2
   - prd011-magefiles R3
   - prd011-magefiles R4
+  - rel00.0-uc002-format
+  - prd003-format R1
+  - prd003-format R2
+  - prd003-format R3
 
 preconditions:
   - A git repository with at least one tag matching v[0-9]*.
@@ -114,3 +118,149 @@ test_cases:
       exit_code: 0
     traces:
       - prd011-magefiles R4.1
+
+  # --- uc002-format: pkg/format output formatting ---
+
+  - name: columns_20_entries_80_width
+    description: Columns distributes 20 filenames into a grid fitting 80 columns.
+    inputs:
+      function: "format.Columns(entries, 80)"
+      entries: 20 filenames of varying lengths
+    expected:
+      postcondition: each row fits within 80 characters; column count is maximized
+    traces:
+      - prd003-format R1.1
+      - prd003-format R1.4
+
+  - name: columns_empty_input
+    description: Columns returns nil for empty input.
+    inputs:
+      function: "format.Columns(nil, 80)"
+    expected:
+      result: nil
+    traces:
+      - prd003-format R1.1
+
+  - name: pad_right
+    description: PadRight pads a string with trailing spaces to the specified width.
+    inputs:
+      function: 'format.PadRight("abc", 10)'
+    expected:
+      result: '"abc       "  (abc + 7 spaces)'
+    traces:
+      - prd003-format R1.2
+
+  - name: pad_left
+    description: PadLeft pads a string with leading spaces to the specified width.
+    inputs:
+      function: 'format.PadLeft("abc", 10)'
+    expected:
+      result: '"       abc"  (7 spaces + abc)'
+    traces:
+      - prd003-format R1.2
+
+  - name: display_width_multibyte
+    description: Column width uses rune count, not byte count, for multi-byte strings.
+    inputs:
+      function: 'format.PadRight("café", 10)'
+    expected:
+      result: '"café      "  (café is 4 runes, padded to 10)'
+    traces:
+      - prd003-format R1.3
+
+  - name: file_type_color_all_types
+    description: FileTypeColor returns correct ANSI codes for all eight file types.
+    inputs:
+      function: "format.FileTypeColor(mode) for each file type"
+      setup: "format.SetColorEnabled(true)"
+    expected:
+      directory: '"\033[34m"'
+      symlink: '"\033[36m"'
+      executable: '"\033[32m"'
+      block_device: '"\033[33;1m"'
+      char_device: '"\033[33;1m"'
+      socket: '"\033[35m"'
+      pipe: '"\033[33m"'
+      regular: '""'
+    traces:
+      - prd003-format R2.1
+      - prd003-format R2.4
+
+  - name: reset_color_enabled
+    description: Reset returns ANSI reset sequence when color is enabled.
+    inputs:
+      function: "format.Reset()"
+      setup: "format.SetColorEnabled(true)"
+    expected:
+      result: '"\033[0m"'
+    traces:
+      - prd003-format R2.2
+
+  - name: color_disabled_suppresses_output
+    description: SetColorEnabled(false) causes FileTypeColor and Reset to return empty strings.
+    inputs:
+      function: "format.FileTypeColor(os.ModeDir) and format.Reset()"
+      setup: "format.SetColorEnabled(false)"
+    expected:
+      file_type_color: '""'
+      reset: '""'
+    traces:
+      - prd003-format R2.6
+
+  - name: reset_color_enabled_restores_auto
+    description: ResetColorEnabled clears the override and reverts to TTY detection.
+    inputs:
+      function: "format.ResetColorEnabled() then format.ColorEnabled(pipe)"
+      setup: "format.SetColorEnabled(true); format.ResetColorEnabled()"
+    expected:
+      color_enabled_pipe: false
+    traces:
+      - prd003-format R2.7
+
+  - name: color_enabled_pipe
+    description: ColorEnabled returns false for an os.Pipe writer.
+    inputs:
+      function: "format.ColorEnabled(pipeWriter)"
+    expected:
+      result: false
+    traces:
+      - prd003-format R2.3
+
+  - name: color_enabled_non_file
+    description: ColorEnabled returns false for a bytes.Buffer (non-*os.File).
+    inputs:
+      function: "format.ColorEnabled(&bytes.Buffer{})"
+    expected:
+      result: false
+    traces:
+      - prd003-format R2.3
+
+  - name: human_size_binary
+    description: HumanSize converts bytes using 1024-based units.
+    inputs:
+      function: "format.HumanSize(1536, HumanSizeOpts{Binary: true})"
+    expected:
+      result: '"1.5K"'
+    traces:
+      - prd003-format R3.1
+      - prd003-format R3.2
+      - prd003-format R3.3
+
+  - name: human_size_si
+    description: HumanSize converts bytes using 1000-based SI units.
+    inputs:
+      function: "format.HumanSize(1000000, HumanSizeOpts{Binary: false})"
+    expected:
+      result: '"1.0MB"'
+    traces:
+      - prd003-format R3.1
+      - prd003-format R3.2
+
+  - name: human_size_zero
+    description: HumanSize returns "0" for zero bytes.
+    inputs:
+      function: "format.HumanSize(0, HumanSizeOpts{Binary: true})"
+    expected:
+      result: '"0"'
+    traces:
+      - prd003-format R3.4
