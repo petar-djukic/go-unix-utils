@@ -1,12 +1,12 @@
 # go-unix-utils
 
-Go implementations of 123 Unix utilities (coreutils, moreutils, grep, findutils), generated from formal specifications and verified against GNU reference binaries.
+Go reimplementations of 123 Unix utilities (coreutils, moreutils, grep, findutils), generated from formal specifications and verified against GNU reference binaries through differential testing.
 
 ## Architectural Thesis
 
 Man pages are ambiguous. Unit tests with hardcoded expectations encode a human's interpretation of behavior, not the behavior itself. We take a different approach: derive specifications directly from the C source code, then verify the Go implementation by running it side-by-side with the GNU binary and comparing outputs byte-for-byte. The specification and the verification are the product; the Go binaries are a byproduct.
 
-We apply spec-driven development to systems programming. The human writes the spec. An AI orchestrator generates the code. A differential testing harness decides whether the code is correct.
+This project is a stress test for spec-driven AI code generation. The human writes the spec. An AI orchestrator generates the code. A differential testing harness decides whether the code is correct.
 
 ## Pipeline
 
@@ -20,18 +20,21 @@ graph LR
 
 ## Scope and Status
 
-Specifications are complete for all four releases. The first generation run produced 4,586 lines of Go across 22 files in 16 measure+stitch cycles; that code is available at the generation-merged tags (see Tagging Scheme below). The working branch contains specifications only.
+Specifications cover 8 releases across 11 use cases. Seven generation runs have produced code at v1 tags; the working branch carries specifications only. The most recent successful generation (run 7, eng14) produced 892 production LOC and 1,054 test LOC for foundational infrastructure packages in a single measure+stitch cycle.
 
 | Metric | Count |
 | ------ | ----: |
 | Target utilities | 123 |
-| PRDs written (utility) | 7 (ts, wc, cat, sponge, ls core, ls extended, du) |
-| PRDs written (shared components) | 3 (pkg/testutils, pkg/sys, pkg/format) |
-| Use cases written | 7 |
-| Test suites written | 4 (one per release: rel01.0, rel01.1, rel02.0, rel02.1) |
-| Go implementations | at generation-merged tags (2,842 production + 1,744 test LOC) |
+| PRDs written (utility) | 7 (wc, cat, sponge, du, ls core, ls extended, ts) |
+| PRDs written (shared components) | 4 (pkg/testutils, pkg/sys, pkg/format, magefiles) |
+| Use cases | 11 |
+| Test suites | 8 (one per release) |
+| Releases | 8 (5 active, 3 deferred) |
+| Generation runs documented | 7 (eng04 through eng14) |
+| v0 spec tags | 16 |
+| v1 generation tags | 25 |
 
-Roadmap: [docs/road-map.yaml](docs/road-map.yaml). Full utility catalog with difficulty ratings, memory models, and implementation profiles: [docs/utilities.yaml](docs/utilities.yaml).
+Active releases: rel00.0 (infrastructure), rel01.0 (wc), rel01.1 (cat), rel01.2 (sponge), rel01.3 (du). Deferred: rel99.0 (ls core), rel99.1 (ls extended), rel99.2 (ts). Each release contains one utility with its own PRD, use case, and test suite. See [road-map.yaml](docs/road-map.yaml) for status and [utilities.yaml](docs/utilities.yaml) for the full 123-utility catalog with difficulty ratings.
 
 ## Methodology
 
@@ -39,14 +42,14 @@ Extract. We clone the C or Perl source repository (GNU coreutils, moreutils, gre
 
 Specify. We write a product requirements document (PRD) with numbered requirements, acceptance criteria, and design decisions for each utility. We write a use case describing a concrete end-to-end execution path. We write a test suite with explicit inputs and expected structural outputs. Shared components (syscall abstractions, output formatting, the test harness itself) get their own PRDs when their requirements span multiple utilities.
 
-Synthesize. A Claude-based orchestrator reads the PRD and generates Go source. The human does not write Go; the orchestrator does not write specs. This separation isolates specification quality from generation quality, making each independently measurable.
+Synthesize. The cobbler pipeline (mage-claude-orchestrator) reads the PRD and generates Go source. The human does not write Go; the orchestrator does not write specs. This separation isolates specification quality from generation quality, making each independently measurable.
 
-Verify. A differential testing harness executes both the Go binary and the Homebrew GNU reference binary (e.g., `gls`, `gdu`, `gcat`) with identical arguments, environment, and stdin. It compares stdout, stderr, and exit code. Normalization hooks handle acceptable differences (e.g., mtime fields in `ls -l` output). If the outputs diverge, the harness reports the triggering input, both raw outputs, and both exit codes.
+Verify. A differential testing harness executes both the Go binary and the Homebrew GNU reference binary (e.g., `gwc`, `gdu`, `gcat`) with identical arguments, environment, and stdin. It compares stdout, stderr, and exit code. Normalization hooks handle acceptable differences (e.g., mtime fields in `ls -l` output). If the outputs diverge, the harness reports the triggering input, both raw outputs, and both exit codes.
 
 ## Repository Structure
 
 ```text
-go-unix-utils/                         Specification-only working branch
+go-unix-utils/
 ├── docs/
 │   ├── VISION.yaml                  Project goals, risks, boundaries
 │   ├── ARCHITECTURE.yaml            Components, design decisions, tech choices
@@ -57,8 +60,9 @@ go-unix-utils/                         Specification-only working branch
 │   │   ├── product-requirements/    Per-utility and shared component PRDs
 │   │   ├── use-cases/               Concrete end-to-end execution paths
 │   │   └── test-suites/             Explicit inputs and expected outputs
-│   └── engineering/                 Engineering guidelines
-└── magefiles/                       Build targets (build, lint, test, analyze)
+│   └── engineering/                 Engineering guidelines and generation run reports
+├── magefiles/                       Build targets (build, lint, analyze, cobbler)
+└── configuration.yaml               Orchestrator configuration
 
 At v1 tags only:
 ├── cmd/                             One package per utility
@@ -76,20 +80,10 @@ Differential testing against Homebrew GNU binaries rather than unit tests with e
 ## Build and Test
 
 ```bash
-# Build all utilities to bin/
-mage build
-
-# Run all tests (including differential tests)
-go test ./...
-
-# Lint
-mage lint
-
-# Cross-artifact consistency checks (PRDs, use cases, test suites, roadmap)
-mage analyze
-
-# Print lines of code and documentation word counts
-mage stats
+mage build          # Compile all utilities to bin/
+go test ./...       # Run all tests (including differential tests)
+mage lint           # Lint
+mage analyze        # Cross-artifact consistency checks (PRDs, use cases, test suites, roadmap)
 ```
 
 Requires Go 1.21+, [Mage](https://magefile.org/), and Homebrew GNU coreutils/moreutils (`brew install coreutils moreutils`).
@@ -99,11 +93,11 @@ Requires Go 1.21+, [Mage](https://magefile.org/), and Homebrew GNU coreutils/mor
 - [VISION.yaml](docs/VISION.yaml) -- Project goals, success criteria, risks, and boundaries
 - [ARCHITECTURE.yaml](docs/ARCHITECTURE.yaml) -- Component descriptions, design decisions, technology choices
 - [SPECIFICATIONS.yaml](docs/SPECIFICATIONS.yaml) -- PRD, use case, and test suite index with traceability
-- [Engineering guidelines](docs/engineering/) -- Conventions and practices above the code
+- [Engineering guidelines](docs/engineering/) -- Conventions, generation run reports, and practices above the code
 
 ## Tagging Scheme
 
-The repository uses a two-prefix versioning convention to distinguish human-written specifications from Claude-generated code.
+The repository uses a two-prefix versioning convention to distinguish human-written specifications from AI-generated code.
 
 `v0.YYYYMMDD.N` tags mark specification-only releases. The repository at a v0 tag contains PRDs, use cases, test suites, architecture documents, and build infrastructure -- everything a human wrote. No Go implementation code is present. These tags represent the input to the generation pipeline.
 
@@ -111,4 +105,4 @@ The repository uses a two-prefix versioning convention to distinguish human-writ
 
 The intended lifecycle: a human writes specifications and tags v0, the pipeline generates code and tags v1, then the generated code is removed from the working branch so that the next specification edit starts from a clean v0 state. This separation makes it possible to re-generate all code from any v0 tag, compare v1 tags across generation runs, and measure specification quality independently of generation quality.
 
-The first generation run is documented in [eng04](docs/engineering/eng04-generation-run-results.yaml). A context configuration benchmark comparing default, include-all, and exclude-all prompt settings is documented in [eng06](docs/engineering/eng06-context-benchmark-results.yaml). The second generation run (partial, blocked by output token limit) is documented in [eng07](docs/engineering/eng07-generation-run-2-results.yaml). Generated code lives at v1 tags; the working branch carries specifications only.
+Seven generation runs are documented in [engineering reports](docs/engineering/) (eng04 through eng14). Generated code lives at v1 tags; the working branch carries specifications only.
