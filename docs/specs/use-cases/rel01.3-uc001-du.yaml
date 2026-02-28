@@ -1,4 +1,4 @@
-id: rel02.0-uc002-du
+id: rel01.3-uc001-du
 title: "Report recursive directory disk usage via du"
 
 summary: |
@@ -92,4 +92,4 @@ out_of_scope:
   - Sparse file creation depends on the filesystem; --apparent-size tests use a regular file
     with known size rather than a true sparse file.
 
-test_suite: test-rel02.0
+test_suite: test-rel01.3
