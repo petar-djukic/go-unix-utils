@@ -24,7 +24,8 @@ requirements:
   R1:
     title: Multi-column layout (-C, -x)
     items:
-      - R1.1: -C must force multi-column output regardless of whether stdout is a TTY. Layout must use pkg/format.Columns (prd003-format R1.1) with the terminal width from pkg/sys.TerminalWidth (prd002-sys R1.1). When stdout is not a TTY, -C must use a default width of 80 columns (matching GNU ls behavior when stdout is not a TTY and -C is given without -w).
+      - R1.1: |
+          -C must force multi-column output regardless of whether stdout is a TTY. Layout uses pkg/format.Columns(entries []string, termWidth int) [][]string — distributes entries into the maximum number of columns fitting within termWidth, with column widths computed as per-column maxima. Terminal width is obtained via pkg/sys.TerminalWidth() (int, error) — returns current terminal column count via TIOCGWINSZ ioctl; returns error when stdout is not a terminal. When stdout is not a TTY, -C must use a default width of 80 columns (matching GNU ls behavior when stdout is not a TTY and -C is given without -w).
       - R1.2: -C must sort entries vertically (down columns, then across to the next column). This is the same sort direction as the default multi-column mode in prd008-ls R1.1.
       - R1.3: -x must produce multi-column output with entries sorted horizontally (across columns, then down to the next row). This differs from -C which sorts vertically.
       - R1.4: -C and -x are mutually exclusive with -l and -1. If -l or -1 appears after -C or -x on the command line, it overrides the multi-column mode. If -C or -x appears after -l or -1, it overrides the long or single-column format. The last format flag wins, matching GNU ls behavior.
@@ -32,8 +33,10 @@ requirements:
   R2:
     title: Sort order (-t, -S, -r, -U, -v)
     items:
-      - R2.1: -t must sort entries by modification time, newest first. Modification time must be obtained from pkg/sys.Stat (ModTime field from prd002-sys R2.2). Entries with the same modification time must be sorted by name in C locale order as a tiebreaker.
-      - R2.2: -S must sort entries by file size (st_size), largest first. Entries with the same size must be sorted by name in C locale order as a tiebreaker.
+      - R2.1: |
+          -t must sort entries by modification time, newest first. Obtain metadata via pkg/sys.Lstat(path string) (*sys.FileInfo, error); use sys.FileInfo.ModTime time.Time for comparison (fi.ModTime.After(fj.ModTime) for newest-first ordering). Entries with the same modification time must be sorted by name in C locale order as a tiebreaker.
+      - R2.2: |
+          -S must sort entries by file size (st_size), largest first. Obtain file size from sys.FileInfo.Size int64 — apparent file size in bytes (st_size). Entries with the same size must be sorted by name in C locale order as a tiebreaker.
       - R2.3: -r must reverse the current sort order. -r applies to whichever sort is active (name sort by default, -t for time, -S for size, -v for version). -r with the default sort produces reverse alphabetical order.
       - R2.4: -U must disable sorting entirely and list entries in directory order (the order returned by readdir). -U overrides -t, -S, and -v. -r with -U has no defined effect (directory order is not reversible in a meaningful way), but must be accepted without error.
       - R2.5: -v must sort entries using natural version sort semantics (strverscmp behavior). Runs of digits within filenames are compared numerically rather than lexicographically, so "file2" sorts before "file10". Must be implemented without external libraries.
@@ -42,10 +45,13 @@ requirements:
   R3:
     title: Metadata display (-i, -s, -n)
     items:
-      - R3.1: -i must prepend the inode number of each entry before the entry name (or before the permissions in -l mode). Inode number must be obtained from pkg/sys.Stat (Ino field from prd002-sys R2.2). The inode number is right-aligned in a column wide enough for the largest inode in the listing.
-      - R3.2: -s must prepend the allocated block count for each entry before the entry name (or before the permissions in -l mode). Block count must be obtained from pkg/sys.Stat (Blocks field from prd002-sys R2.2) and reported in 1024-byte block units (st_blocks / 2). The block count is right-aligned in a column wide enough for the largest count in the listing.
+      - R3.1: |
+          -i must prepend the inode number of each entry before the entry name (or before the permissions in -l mode). Obtain the inode number via pkg/sys.Lstat(path string) (*sys.FileInfo, error) and read sys.FileInfo.Ino uint64 — inode number (st_ino). The inode number is right-aligned in a column wide enough for the largest inode in the listing.
+      - R3.2: |
+          -s must prepend the allocated block count for each entry before the entry name (or before the permissions in -l mode). Obtain the block count via pkg/sys.Lstat(path string) (*sys.FileInfo, error) and read sys.FileInfo.Blocks int64 — number of 512-byte blocks allocated (st_blocks). Report in 1024-byte block units: fi.Blocks / 2. The block count is right-aligned in a column wide enough for the largest count in the listing.
       - R3.3: -s with -l must also modify the "total N" line to include block counts in the selected unit. The total is the sum of all listed entries' block allocations.
-      - R3.4: -n must activate long format (implies -l) and display numeric UID and GID instead of resolving owner and group names via os/user. This overrides the name resolution specified in prd008-ls R2.6.
+      - R3.4: |
+          -n must activate long format (implies -l) and display numeric UID and GID instead of resolving owner and group names. Format UID as strconv.FormatUint(uint64(fi.Uid), 10) and GID as strconv.FormatUint(uint64(fi.Gid), 10), where fi.Uid uint32 and fi.Gid uint32 come from pkg/sys.Lstat. Do not call os/user.LookupId or os/user.LookupGroupId.
       - R3.5: -i and -s may be combined. When both are given, inode is printed first, then block count, then the entry (or the long-format fields).
 
   R4:
@@ -71,7 +77,19 @@ requirements:
       - R6.2: -C and -x are mutually exclusive with -l and -1. The last format flag on the command line wins (see R1.4).
       - R6.3: -R with -l must produce a "total N" block line for each subdirectory listing, matching GNU ls -lR output.
       - R6.4: -i, -s, and -F may all be combined with -R. Each subdirectory listing applies the same metadata display and classification options.
-      - R6.5: -h (from prd008-ls R5) must apply to -s block counts when both -s and -h are given, converting block counts to human-readable form.
+      - R6.5: |
+          -h must apply to -s block counts when both -s and -h are given, converting block counts to human-readable form. Use the following binary HumanSize algorithm directly in cmd/ls (do not call pkg/format.HumanSize):
+
+            func humanSize(n int64) string {
+                if n == 0 { return "0" }
+                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+                f := float64(n)
+                i := 0
+                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
+                if i == 0 { return fmt.Sprintf("%d", n) }
+                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
+                return fmt.Sprintf("%.1f%s", f, suffixes[i])
+            }
 
 non_goals:
   - --hyperlink (terminal hyperlinks) remains out of scope for this project.

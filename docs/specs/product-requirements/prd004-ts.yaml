@@ -83,7 +83,8 @@ requirements:
   R9:
     title: Differential testing
     items:
-      - R9.1: Differential tests must use the TimestampNormalizer from pkg/testutils to replace wall-clock timestamps in output with a fixed placeholder before comparing Go and reference binary outputs.
+      - R9.1: |
+          Differential tests must use testutils.TimestampNormalizer (type func([]byte) []byte, defined in pkg/testutils) to replace wall-clock timestamps in output with a fixed placeholder before comparing Go and reference binary outputs. Pass it in the DiffTest.Normalize slice. The normalizer matches strftime-formatted patterns such as "Feb 19 14:05:32" and replaces them with a fixed string so that wall-clock differences do not cause test failures.
       - R9.2: 'Tests must cover: default format, custom strftime format, -s mode, -i mode, -m mode (with monotonic normalization), multi-line stdin, empty stdin, and partial last line (no trailing newline).'
 
 non_goals:

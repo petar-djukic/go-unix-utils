@@ -28,15 +28,46 @@ requirements:
     title: Default behavior
     items:
       - R1.1: Must recurse into each directory argument and print the accumulated size and path for each subdirectory and the directory itself. When no arguments are given, must default to the current directory (".").
-      - R1.2: Must report sizes in 1024-byte (1K) block units by default, matching GNU du (du.c output_block_size defaults to 1024). Each entry's size is computed from st_blocks (512-byte blocks from the stat struct) divided by 2 to yield 1K blocks. Must obtain st_blocks via pkg/sys.Stat (prd002-sys R2.1-R2.2).
+      - R1.2: |
+          Must report sizes in 1024-byte (1K) block units by default. Each entry's size is fi.Blocks / 2 where fi.Blocks (int64) is the number of 512-byte blocks allocated (st_blocks from syscall.Stat_t). Obtain metadata via pkg/sys.Stat(path string) (*sys.FileInfo, error) — follows symbolic links. sys.FileInfo.Blocks int64 holds the 512-byte block count.
+
+          sys.FileInfo struct (embedded for reference):
+            type FileInfo struct {
+                Mode    os.FileMode
+                Size    int64       // apparent file size in bytes (st_size)
+                Nlink   uint64      // hard-link count (st_nlink)
+                Uid     uint32      // owner user ID (st_uid)
+                Gid     uint32      // owner group ID (st_gid)
+                Rdev    uint64      // device ID for special files (st_rdev)
+                Dev     uint64      // device ID of the containing filesystem (st_dev)
+                Ino     uint64      // inode number (st_ino)
+                Blocks  int64       // 512-byte blocks allocated (st_blocks)
+                Blksize int64       // preferred I/O block size
+                ModTime time.Time   // modification time
+                Sys     os.FileInfo // underlying os.FileInfo
+            }
       - R1.3: Must print one line per entry in the format "SIZE\tPATH\n" where SIZE is a right-aligned integer (no leading spaces) and PATH is the relative path as given by the directory traversal.
-      - R1.4: Must not follow symbolic links during traversal. Must use pkg/sys.Lstat (prd002-sys R2.1) to obtain metadata without following symlinks.
+      - R1.4: Must not follow symbolic links during traversal. Use pkg/sys.Lstat(path string) (*sys.FileInfo, error) — does not follow symbolic links; returns the symlink's own metadata. pkg/sys.Lstat has the same return type as pkg/sys.Stat (see R1.2 for sys.FileInfo definition).
       - R1.5: Must process multiple directory arguments in the order given on the command line. Each argument is traversed independently.
 
   R2:
     title: Flag behavior
     items:
-      - R2.1: -h must display sizes as human-readable strings using binary mode (1024-based, suffixes K/M/G/T) via pkg/format.HumanSize (prd003-format R3.1-R3.4). -h applies to all output lines including the grand total line when -c is also given.
+      - R2.1: |
+          -h must display sizes as human-readable strings using binary mode (1024-based). Implement the following algorithm directly in cmd/du (do not call pkg/format.HumanSize):
+
+            func humanSize(n int64) string {
+                if n == 0 { return "0" }
+                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+                f := float64(n)
+                i := 0
+                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
+                if i == 0 { return fmt.Sprintf("%d", n) }
+                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
+                return fmt.Sprintf("%.1f%s", f, suffixes[i])
+            }
+
+          -h applies to all output lines including the grand total line when -c is also given.
       - R2.2: -s must print only one line per argument with the total size of that argument. When -s is given, subdirectory lines must not be printed. -s is equivalent to --max-depth=0.
       - R2.3: -a must print a size line for every file encountered during traversal, not just directories. Without -a, only directory entries are printed (the default).
       - R2.4: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.
@@ -49,7 +80,7 @@ requirements:
     title: Hard-link deduplication
     items:
       - R3.1: Must track files by their device number (st_dev) and inode number (st_ino) across the entire du invocation. A file that has already been counted (same st_dev and st_ino) must not be counted again. This prevents double-counting hard-linked files, matching GNU du behavior (du.c:554 inode tracking via hash table).
-      - R3.2: Must obtain st_dev and st_ino via pkg/sys.Stat or pkg/sys.Lstat (prd002-sys R2.2). The deduplication map is keyed by (st_dev, st_ino) pairs.
+      - R3.2: Must obtain dev and ino via pkg/sys.Stat or pkg/sys.Lstat (see R1.2 for sys.FileInfo). Use sys.FileInfo.Dev uint64 (device ID of the containing filesystem, st_dev) and sys.FileInfo.Ino uint64 (inode number, st_ino) as the deduplication key. The map is keyed by a struct{ Dev, Ino uint64 } pair.
       - R3.3: Hard-link deduplication applies per du invocation, not per argument. A hard-linked file counted under one argument must not be counted again under a subsequent argument.
 
   R4:
@@ -61,7 +92,7 @@ requirements:
   R5:
     title: Signal handling
     items:
-      - R5.1: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping du output to head or other truncating consumers does not produce a broken-pipe error message.
+      - R5.1: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping du output to head or other truncating consumers does not produce a broken-pipe error message. InstallSIGPIPEHandler uses signal.Notify(c, syscall.SIGPIPE) with a buffered channel; a goroutine calls os.Exit(0) on receipt. Must not use signal.Ignore.
 
 non_goals:
   - --si (1000-based units) is out of scope; we support only binary (1024-based) human-readable output.

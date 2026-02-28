@@ -23,15 +23,27 @@ requirements:
   R1:
     title: Test case data structure
     items:
-      - R1.1: Must define a DiffTest struct with fields for command-line args ([]string), stdin content ([]byte), environment overrides ([]string), expected exit code (int), and an optional normalization function.
-      - R1.2: Must allow DiffTest.Stdin to be nil, meaning the binary receives no stdin input (EOF immediately).
-      - R1.3: Must allow DiffTest.Env to be nil, meaning the binary inherits the test process environment with no overrides.
-      - R1.4: Must define a Normalize function type (func([]byte) []byte) used to transform stdout and stderr before comparison. When nil, no normalization is applied.
+      - R1.1: |
+          Must define DiffTest as the following named struct in package testutils:
+
+            type DiffTest struct {
+                Name          string                 // subtest name used with t.Run; required
+                Args          []string               // command-line arguments passed to both binaries
+                Stdin         []byte                 // nil = no stdin (both binaries receive EOF immediately)
+                Env           []string               // nil = inherit test process environment with no overrides; non-nil values are KEY=VALUE pairs that override or extend the inherited environment
+                ExitCode      int                    // expected exit code for both binaries
+                Normalize     []func([]byte) []byte  // applied in order to stdout and stderr of both binaries before comparison; nil or empty = no normalization
+                ExpectedFiles map[string][]byte      // optional: path -> expected byte content after execution, for file-output utilities (sponge, cp)
+            }
+      - R1.2: DiffTest.Stdin nil means both binaries receive EOF immediately on stdin. An empty non-nil slice ([]byte{}) also produces no bytes but is semantically distinct (open stdin that is immediately closed).
+      - R1.3: DiffTest.Env nil means both binaries inherit the test process environment unchanged. When non-nil, the slice replaces (does not append to) the process environment for that invocation.
+      - R1.4: Must define type NormalizeFunc = func([]byte) []byte as a named type alias in package testutils. The Normalize field in DiffTest uses this element type. When the slice is nil or empty, no normalization is applied to stdout or stderr.
 
   R2:
     title: Binary execution
     items:
-      - R2.1: 'Must accept two binary paths: the Go binary under test and the GNU reference binary. Both must be invoked with identical args, stdin, and environment.'
+      - R2.1: |
+          Must provide func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) that accepts the path to the Go binary under test (goBinary) and the GNU reference binary (refBinary), then runs each DiffTest as a named subtest via t.Run(test.Name, ...). Both binaries are invoked with identical Args, Stdin, and Env for each test case.
       - R2.2: Must capture stdout, stderr, and exit code from each binary independently.
       - R2.3: Must impose a configurable timeout on each binary invocation. The default timeout must be 10 seconds. The test fails if either binary exceeds the timeout.
       - R2.4: Must not write any output to the test process stdout or stderr during a passing test run.
@@ -68,7 +80,7 @@ non_goals:
   - pkg/testutils does not mock or stub the filesystem or OS for unit testing cmd/ packages.
 
 acceptance_criteria:
-  - "AC1: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t, goBinary, refBinary, tests) from a TestXxx function with no other setup."
+  - "AC1: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) from a TestXxx function with no other setup. RunDiffTests runs each DiffTest as a named subtest (t.Run(test.Name, ...)) and calls t.Fatal on the first divergence in any subtest."
   - "AC2: A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries' stdout, stderr, and exit code."
   - "AC3: TimestampNormalizer replaces strftime-formatted timestamps (e.g., \"Feb 19 12:34:56\") with a fixed placeholder so that ts differential tests pass despite wall-clock differences."
   - "AC4: A DiffTest with a file expectation field correctly fails when the Go binary writes different content than the reference binary."
