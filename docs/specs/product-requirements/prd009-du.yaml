@@ -54,20 +54,7 @@ requirements:
     title: Flag behavior
     items:
       - R2.1: |
-          -h must display sizes as human-readable strings using binary mode (1024-based). Implement the following algorithm directly in cmd/du (do not call pkg/format.HumanSize):
-
-            func humanSize(n int64) string {
-                if n == 0 { return "0" }
-                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
-                f := float64(n)
-                i := 0
-                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
-                if i == 0 { return fmt.Sprintf("%d", n) }
-                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
-                return fmt.Sprintf("%.1f%s", f, suffixes[i])
-            }
-
-          -h applies to all output lines including the grand total line when -c is also given.
+          -h must display sizes as human-readable strings using binary mode (1024-based) via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). -h applies to all output lines including the grand total line when -c is also given.
       - R2.2: -s must print only one line per argument with the total size of that argument. When -s is given, subdirectory lines must not be printed. -s is equivalent to --max-depth=0.
       - R2.3: -a must print a size line for every file encountered during traversal, not just directories. Without -a, only directory entries are printed (the default).
       - R2.4: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.

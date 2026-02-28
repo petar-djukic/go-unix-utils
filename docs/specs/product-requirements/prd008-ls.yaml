@@ -88,41 +88,16 @@ requirements:
       - R4.2: |
           --color=auto must colorize output only when stdout is a TTY. TTY detection: call pkg/sys.IsTerminal(os.Stdout) — returns true when os.Stdout's file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), false otherwise. When stdout is not a TTY, --color=auto must behave like --color=never.
       - R4.3: |
-          Colorized output uses GNU LS_COLORS default color assignments. Implement color lookup directly in cmd/ls using the following table (do not call pkg/format.FileTypeColor):
+          Colorized output uses GNU LS_COLORS default color assignments via pkg/format. Call pkg/format.FileTypeColor(mode os.FileMode) string to obtain the ANSI escape sequence for a given file type, and pkg/format.Reset() string for the reset sequence. Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
 
-            File type         ANSI escape sequence
-            ---------         --------------------
-            directory         "\033[34m"   (blue)
-            symbolic link     "\033[36m"   (cyan)
-            executable file   "\033[32m"   (green)
-            block device      "\033[33;1m" (yellow bold)
-            character device  "\033[33;1m" (yellow bold)
-            socket            "\033[35m"   (magenta)
-            named pipe/FIFO   "\033[33m"   (yellow)
-            regular file      ""           (no color)
-            reset sequence    "\033[0m"
-
-          Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
+          Set the process-global color mode based on the --color flag value: call pkg/format.SetColorEnabled(true) for --color=always, pkg/format.SetColorEnabled(false) for --color=never. For --color=auto, call pkg/sys.IsTerminal(os.Stdout.Fd()) and pass the result to pkg/format.SetColorEnabled. When color is disabled, pkg/format.FileTypeColor returns empty strings.
       - R4.4: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
 
   R5:
     title: Human-readable sizes (-h)
     items:
       - R5.1: |
-          -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed using the following binary HumanSize algorithm (do not call pkg/format.HumanSize):
-
-            func humanSize(n int64) string {
-                if n == 0 { return "0" }
-                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
-                f := float64(n)
-                i := 0
-                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
-                if i == 0 { return fmt.Sprintf("%d", n) }
-                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
-                return fmt.Sprintf("%.1f%s", f, suffixes[i])
-            }
-
-          Without -l, -h must have no visible effect on output.
+          -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). Without -l, -h must have no visible effect on output.
       - R5.2: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
       - R5.3: Without -l, -h must have no visible effect on output.
 
