@@ -1,5 +1,5 @@
 id: test-rel00.0
-title: "Test Suite: rel00.0 — build lifecycle, cmd/version, and pkg/format"
+title: "Test Suite: rel00.0 — build lifecycle, cmd/version, pkg/format, and pkg/sys"
 release: rel00.0
 
 traces:
@@ -12,6 +12,11 @@ traces:
   - prd003-format R1
   - prd003-format R2
   - prd003-format R3
+  - rel00.0-uc003-sys
+  - prd002-sys R1
+  - prd002-sys R2
+  - prd002-sys R3
+  - prd002-sys R4
 
 preconditions:
   - A git repository with at least one tag matching v[0-9]*.
@@ -264,3 +269,89 @@ test_cases:
       result: '"0"'
     traces:
       - prd003-format R3.4
+
+  # --- uc003-sys: pkg/sys syscall abstractions ---
+
+  - name: terminal_width_pipe
+    description: TerminalWidth returns an error when stdout is a pipe.
+    inputs:
+      function: "sys.TerminalWidth() with stdout redirected to a pipe"
+    expected:
+      error: non-nil
+    traces:
+      - prd002-sys R1.1
+
+  - name: is_terminal_pipe_fd
+    description: IsTerminal returns false for a pipe file descriptor.
+    inputs:
+      function: "sys.IsTerminal(pipeFd)"
+    expected:
+      result: false
+    traces:
+      - prd002-sys R1.3
+
+  - name: stat_known_file
+    description: Stat returns correct extended metadata for a known file.
+    inputs:
+      function: "sys.Stat(testFile)"
+    expected:
+      postcondition: Nlink, Uid, Gid, Dev, Ino, Blocks match stat(1) output
+    traces:
+      - prd002-sys R2.1
+      - prd002-sys R2.2
+
+  - name: lstat_symlink
+    description: Lstat on a symlink returns symlink type bits, not target's mode.
+    inputs:
+      function: "sys.Lstat(symlinkPath)"
+    expected:
+      postcondition: "Mode & os.ModeSymlink != 0"
+    traces:
+      - prd002-sys R2.1
+
+  - name: stat_modtime_populated
+    description: Stat returns a non-zero ModTime from the platform-correct field.
+    inputs:
+      function: "sys.Stat(testFile)"
+    expected:
+      postcondition: ModTime is non-zero and close to os.Stat(testFile).ModTime()
+    traces:
+      - prd002-sys R2.3
+
+  - name: stat_hard_link_count
+    description: Stat returns correct Nlink for a file with multiple hard links.
+    inputs:
+      setup: "create testFile, create hard link to testFile"
+      function: "sys.Stat(testFile)"
+    expected:
+      postcondition: Nlink == 2
+    traces:
+      - prd002-sys R2.2
+
+  - name: sigpipe_handler_exit_zero
+    description: InstallSIGPIPEHandler causes exit 0 on broken pipe.
+    inputs:
+      function: "sys.InstallSIGPIPEHandler() then write to closed pipe"
+    expected:
+      exit_code: 0
+    traces:
+      - prd002-sys R3.1
+
+  - name: on_terminal_resize_callback
+    description: OnTerminalResize registers a callback invoked on SIGWINCH.
+    inputs:
+      function: "sys.OnTerminalResize(callback) then send SIGWINCH"
+    expected:
+      postcondition: callback was called with a positive width
+    traces:
+      - prd002-sys R4.1
+      - prd002-sys R4.2
+
+  - name: cross_platform_compile
+    description: All pkg/sys code compiles on darwin/arm64 and linux/amd64.
+    inputs:
+      command: "GOOS=darwin GOARCH=arm64 go build ./pkg/sys/ && GOOS=linux GOARCH=amd64 go build ./pkg/sys/"
+    expected:
+      exit_code: 0
+    traces:
+      - prd002-sys R1.2

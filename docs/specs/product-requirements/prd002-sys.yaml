@@ -28,7 +28,13 @@ requirements:
       - R1.1: Must provide func TerminalWidth() (int, error) that returns the current terminal column count by calling ioctl(TIOCGWINSZ) on stdout. Returns an error (not panic) when stdout is not a terminal or when ioctl fails.
       - R1.2: Must use golang.org/x/sys/unix (the project's only external dependency) to perform the TIOCGWINSZ ioctl; must not shell out to tput or stty and must not import golang.org/x/term.
       - R1.3: |
-          Must provide func IsTerminal(w io.Writer) bool that returns true when w is an *os.File whose file descriptor is a terminal, and false otherwise. Implementation: attempt a type assertion to *os.File; if it fails return false; call golang.org/x/sys/unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ) and return err == nil. Returns false for pipes, regular files, bytes.Buffer, and any non-*os.File writer. Required by pkg/format to suppress color output when stdout is redirected.
+          Must provide func IsTerminal(fd uintptr) bool that returns true when the file
+          descriptor refers to a terminal, and false otherwise. Implementation: call
+          golang.org/x/sys/unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ) and return
+          err == nil. Returns false for pipes, regular files, and non-terminal descriptors.
+          The caller (pkg/format ColorEnabled) is responsible for extracting the fd from an
+          io.Writer via type assertion to *os.File. Required by pkg/format to suppress color
+          output when stdout is redirected.
       - R1.4: 'Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.'
 
   R2:
@@ -50,7 +56,7 @@ requirements:
                 Blocks  int64       // number of 512-byte blocks allocated (st_blocks)
                 Blksize int64       // preferred I/O block size (st_blksize)
                 ModTime time.Time   // modification time (st_mtime / st_mtimespec)
-                Sys     os.FileInfo // underlying os.FileInfo for os package compatibility
+                Info    os.FileInfo // underlying os.FileInfo for os package compatibility
             }
       - R2.3: Must abstract the Darwin/Linux divergence in struct field names (st_mtimespec on Darwin vs st_mtim on Linux; st_blocks interpretation) so callers use a single API regardless of target platform.
       - R2.4: 'Utility context — ls (ls.c:213, 371): ls needs Nlink, Uid, Gid, Rdev, Mode for -l format; Blocks for -s; Ino for -i.'
