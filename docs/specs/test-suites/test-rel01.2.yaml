@@ -1,0 +1,139 @@
+id: test-rel01.2
+title: "Test Suite: rel01.2 — sponge specification and differential test"
+release: rel01.2
+
+traces:
+  - rel01.2-uc001-sponge
+  - prd007-sponge R1
+  - prd007-sponge R2
+  - prd007-sponge R3
+  - prd007-sponge R4
+  - prd007-sponge R5
+  - prd007-sponge R6
+
+preconditions:
+  - ./bin/sponge exists (built via mage build).
+  - Reference binary sponge is installed via Homebrew (moreutils) and on PATH.
+  - Tests are run via go test ./cmd/sponge/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "sponge: each test creates an isolated temp directory. Comparison is on output file content (prd001-testutils R5) for tests with an output filename. Passthrough mode tests compare stdout byte-for-byte."
+
+test_cases:
+  - name: sponge_small_stdin_to_file
+    description: 100 lines piped to sponge with an output filename; compare output file content.
+    inputs:
+      args: ["outfile.txt"]
+      stdin: "seq 1 100 output (lines 1 through 100, each followed by newline)"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file outfile.txt contains "100 lines, 1\n through 100\n"'
+      stderr: ""
+    traces:
+      - prd007-sponge R1.1
+      - prd007-sponge R1.2
+      - prd007-sponge R2.1
+
+  - name: sponge_soak_before_write
+    description: 'Same input and output file (cat file | sponge file). Output must equal input, proving sponge did not truncate before reading. Setup: data.txt contains "line1\nline2\nline3\n", Pipeline: cat data.txt | sponge data.txt'
+    inputs:
+      args: ["data.txt"]
+      stdin: "content of data.txt (fed via 'cat data.txt')"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file data.txt contains "line1\nline2\nline3\n"'
+      stderr: ""
+    traces:
+      - prd007-sponge R1.1
+      - prd007-sponge R2.5
+
+  - name: sponge_passthrough_stdout
+    description: No output filename; stdin content appears on stdout.
+    inputs:
+      args: []
+      stdin: "hello world\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello world\n"
+      stderr: ""
+    traces:
+      - prd007-sponge R4.1
+      - prd007-sponge R4.3
+
+  - name: sponge_append_mode
+    description: '-a flag prepends original file content before stdin content. Setup: existing.txt contains "original line\n"'
+    inputs:
+      args: ["-a", "existing.txt"]
+      stdin: "appended line\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file existing.txt contains "original line\nappended line\n"'
+      stderr: ""
+    traces:
+      - prd007-sponge R3.1
+      - prd007-sponge R3.3
+
+  - name: sponge_append_mode_no_existing_file
+    description: '-a with a non-existent output file behaves as default mode (creates new file). Setup: newfile.txt does not exist'
+    inputs:
+      args: ["-a", "newfile.txt"]
+      stdin: "new content\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file newfile.txt contains "new content\n"'
+      stderr: ""
+    traces:
+      - prd007-sponge R3.2
+
+  - name: sponge_large_stdin
+    description: Input >= 1 MB forces temp-file spill; output file content must match.
+    inputs:
+      args: ["large_out.txt"]
+      stdin: "generated payload of 1,048,576+ bytes (e.g., seq 1 50000)"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file large_out.txt contains "identical to stdin content"'
+      stderr: ""
+    traces:
+      - prd007-sponge R1.3
+      - prd007-sponge R1.4
+
+  - name: sponge_output_file_exists_mode
+    description: 'Existing file has mode 0640; after sponge, file mode is preserved. Setup: protected.txt exists with mode 0640 and contains "old content\n"'
+    inputs:
+      args: ["protected.txt"]
+      stdin: "new content\n"
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file protected.txt contains "new content\n" with mode 0640'
+      stderr: ""
+    traces:
+      - prd007-sponge R2.3
+
+  - name: sponge_empty_stdin
+    description: Zero bytes of stdin; output file created with zero bytes.
+    inputs:
+      args: ["empty_out.txt"]
+      stdin: ""
+      env: []
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'expected file empty_out.txt contains ""'
+      stderr: ""
+    traces:
+      - prd007-sponge R1.1
+      - prd007-sponge R2.1

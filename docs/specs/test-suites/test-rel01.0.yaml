@@ -1,211 +1,210 @@
 id: test-rel01.0
-title: "Test Suite: rel01.0 — ts timestamp stdin lines"
+title: "Test Suite: rel01.0 — wc specification and differential test"
 release: rel01.0
 
 traces:
-  - rel01.0-uc001-ts
-  - prd004-ts R1
-  - prd004-ts R2
-  - prd004-ts R3
-  - prd004-ts R4
-  - prd004-ts R5
-  - prd004-ts R6
-  - prd004-ts R7
+  - rel01.0-uc001-wc
+  - prd005-wc R1
+  - prd005-wc R2
+  - prd005-wc R3
+  - prd005-wc R4
+  - prd005-wc R5
+  - prd005-wc R6
 
 preconditions:
-  - ./bin/ts exists (built via mage build).
-  - The reference binary ts is installed (brew install moreutils) and on PATH.
-  - Tests are run via go test ./cmd/ts/... which invokes RunDiffTests from pkg/testutils.
-  - TimestampNormalizer is applied to all tests whose output contains wall-clock timestamps.
-  - All tests use LC_ALL=C and TZ=America/New_York (or a fixed known zone) to ensure consistent strftime output between runs.
+  - ./bin/wc exists (built via mage build).
+  - Reference binary gwc is installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/wc/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "wc: no normalization is applied; wc output is deterministic integer counts."
 
 test_cases:
-  # --- uc001-ts: ts timestamp stdin lines ---
-
-  - name: default_format_three_lines
-    description: Default format ("%b %d %H:%M:%S") with three-line stdin.
+  - name: wc_default_three_lines
+    description: Default flags (line, word, byte count) with three-line stdin.
     inputs:
       args: []
-      stdin: "line1\nline2\nline3\n"
-      env: []
-    normalization: TimestampNormalizer replaces "%b %d %H:%M:%S"-matching prefixes with "TIMESTAMP"
-    expected:
-      exit_code: 0
-      stdout_structure: three lines, each matching "TIMESTAMP line1", "TIMESTAMP line2", "TIMESTAMP line3"
-      stderr: ""
-    traces:
-      - prd004-ts R1.1
-      - prd004-ts R1.2
-      - prd004-ts R1.4
-
-  - name: default_format_empty_stdin
-    description: Empty stdin produces no output and exits 0.
-    inputs:
-      args: []
-      stdin: ""
-      env: []
+      stdin: "foo\nbar baz\nqux\n"
+      env: ["LC_ALL=C"]
     normalization: none
     expected:
       exit_code: 0
-      stdout: ""
+      stdout_structure: 'output contains "3"'
       stderr: ""
     traces:
-      - prd004-ts R1.6
+      - prd005-wc R1.1
+      - prd005-wc R1.2
+      - prd005-wc R1.3
 
-  - name: default_format_partial_last_line
-    description: Stdin with no trailing newline; partial line must be timestamped.
+  - name: wc_lines_only
+    description: -l flag counts newline characters only.
     inputs:
-      args: []
-      stdin: "partial"
-      env: []
-    normalization: TimestampNormalizer
-    expected:
-      exit_code: 0
-      stdout_structure: one line matching "TIMESTAMP partial" (no trailing newline added)
-      stderr: ""
-    traces:
-      - prd004-ts R1.5
-
-  - name: custom_strftime_format
-    description: Custom strftime format string "%Y-%m-%dT%H:%M:%S".
-    inputs:
-      args: ["%Y-%m-%dT%H:%M:%S"]
-      stdin: "hello\nworld\n"
-      env: []
-    normalization: TimestampNormalizer replaces ISO-8601 datetime prefix with "TIMESTAMP"
-    expected:
-      exit_code: 0
-      stdout_structure: two lines matching "TIMESTAMP hello", "TIMESTAMP world"
-      stderr: ""
-    traces:
-      - prd004-ts R2.1
-      - prd004-ts R2.2
-
-  - name: subsecond_format_dotS
-    description: Subsecond extension %.S produces seconds with microsecond suffix.
-    inputs:
-      args: ["%.S"]
-      stdin: "test\n"
-      env: []
-    normalization: TimestampNormalizer replaces numeric.numeric pattern with "SECONDS.USEC"
-    expected:
-      exit_code: 0
-      stdout_structure: one line matching "SECONDS.USEC test"
-      stderr: ""
-    traces:
-      - prd004-ts R2.3
-      - prd004-ts R2.4
-
-  - name: elapsed_since_start_mode
-    description: -s mode; timestamps show time elapsed since ts started, increasing monotonically.
-    inputs:
-      args: ["-s"]
-      stdin: "a\nb\nc\n"
-      env: []
-    normalization: TimestampNormalizer replaces HH:MM:SS elapsed prefix with "ELAPSED"
-    expected:
-      exit_code: 0
-      stdout_structure: three lines each matching "ELAPSED <letter>"; elapsed values non-negative
-      stderr: ""
-    traces:
-      - prd004-ts R4.1
-      - prd004-ts R4.2
-
-  - name: incremental_mode
-    description: -i mode; each timestamp shows time since the previous line.
-    inputs:
-      args: ["-i"]
-      stdin: "first\nsecond\nthird\n"
-      env: []
-    normalization: TimestampNormalizer replaces HH:MM:SS elapsed prefix with "ELAPSED"
-    expected:
-      exit_code: 0
-      stdout_structure: three lines each matching "ELAPSED <word>"
-      stderr: ""
-    traces:
-      - prd004-ts R3.1
-      - prd004-ts R3.2
-
-  - name: incremental_and_elapsed_mutually_exclusive
-    description: Passing both -i and -s must produce a usage error and non-zero exit.
-    inputs:
-      args: ["-i", "-s"]
-      stdin: ""
-      env: []
+      args: ["-l"]
+      stdin: "one\ntwo\nthree\n"
+      env: ["LC_ALL=C"]
     normalization: none
     expected:
-      exit_code: non-zero
-      stderr_contains: "usage"
+      exit_code: 0
+      stdout_structure: 'output contains "3"'
+      stderr: ""
     traces:
-      - prd004-ts R3.4
+      - prd005-wc R2.1
+      - prd005-wc R2.6
 
-  - name: monotonic_clock_mode
-    description: -m mode with default format; output structure must match reference.
+  - name: wc_words_only
+    description: -w flag counts words (maximal sequences of non-whitespace).
+    inputs:
+      args: ["-w"]
+      stdin: "hello world\ngoodbye  cruel   world\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains "5"'
+      stderr: ""
+    traces:
+      - prd005-wc R2.2
+      - prd005-wc R2.6
+
+  - name: wc_bytes_only
+    description: -c flag counts bytes.
+    inputs:
+      args: ["-c"]
+      stdin: "abc\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains "4"'
+      stderr: ""
+    traces:
+      - prd005-wc R2.3
+
+  - name: wc_chars_lc_c
+    description: -m with LC_ALL=C; character count equals byte count under C locale.
     inputs:
       args: ["-m"]
-      stdin: "tick\n"
-      env: []
-    normalization: TimestampNormalizer (monotonic timestamps have same wall-clock format as default)
-    expected:
-      exit_code: 0
-      stdout_structure: one line matching "TIMESTAMP tick"
-      stderr: ""
-    traces:
-      - prd004-ts R5.1
-      - prd004-ts R5.2
-
-  - name: relative_mode_syslog_timestamp
-    description: -r mode converts a syslog-format timestamp in stdin to relative age.
-    inputs:
-      args: ["-r"]
-      stdin: "Jan  1 00:00:00 boot message\n"
-      env: []
-    normalization: TimestampNormalizer replaces relative age string with "AGO"
-    expected:
-      exit_code: 0
-      stdout_structure: one line containing "AGO boot message"
-      stderr: ""
-    traces:
-      - prd004-ts R6.1
-      - prd004-ts R6.2
-
-  - name: relative_mode_no_timestamp_passthrough
-    description: -r mode passes through lines with no recognized timestamp unchanged.
-    inputs:
-      args: ["-r"]
-      stdin: "no timestamp here\n"
-      env: []
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
     normalization: none
     expected:
       exit_code: 0
-      stdout: "no timestamp here\n"
+      stdout_structure: 'output contains "6"'
       stderr: ""
     traces:
-      - prd004-ts R6.4
+      - prd005-wc R2.4
+      - prd005-wc R5.1
+      - prd005-wc R5.2
 
-  - name: invalid_flag
-    description: Unrecognized flag must produce a usage error and non-zero exit.
+  - name: wc_max_line_length
+    description: -L flag reports the longest line length with tab expansion.
     inputs:
-      args: ["-z"]
+      args: ["-L"]
+      stdin: "short\na much longer line here\nmed\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains "22"'
+      stderr: ""
+    traces:
+      - prd005-wc R2.5
+
+  - name: wc_combined_flags_order
+    description: Combined flags (-l -w -c) produce counts in fixed order (lines, words, bytes).
+    inputs:
+      args: ["-w", "-l", "-c"]
+      stdin: "one two\nthree\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: counts in order lines, words, bytes regardless of flag order
+      stderr: ""
+    traces:
+      - prd005-wc R2.6
+
+  - name: wc_multi_file_total
+    description: 'Two files produce per-file lines and a total line with right-aligned columns. Setup: file1.txt contains "hello\nworld\n" (2 lines, 2 words, 12 bytes), file2.txt contains "foo bar baz\n" (1 line, 3 words, 12 bytes)'
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: three lines — file1 counts, file2 counts, total with label "total"; columns right-aligned
+      stderr: ""
+    traces:
+      - prd005-wc R1.4
+      - prd005-wc R3.1
+      - prd005-wc R3.2
+
+  - name: wc_total_only
+    description: '--total=only with two files prints only the total line. Setup: file1.txt contains "a\n", file2.txt contains "b\nc\n"'
+    inputs:
+      args: ["--total=only", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line with summed counts and label "total"
+      stderr: ""
+    traces:
+      - prd005-wc R3.3
+
+  - name: wc_total_never
+    description: '--total=never with two files prints no total line. Setup: file1.txt contains "x\n", file2.txt contains "y\n"'
+    inputs:
+      args: ["--total=never", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: two lines (one per file), no total line
+      stderr: ""
+    traces:
+      - prd005-wc R3.3
+
+  - name: wc_stdin_dash
+    description: '"-" as a filename argument reads from stdin.'
+    inputs:
+      args: ["-"]
+      stdin: "stdin content\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one line of counts (no filename label for stdin dash)
+      stderr: ""
+    traces:
+      - prd005-wc R4.1
+
+  - name: wc_empty_stdin
+    description: Zero bytes of stdin produces "0 0 0" for default flags.
+    inputs:
+      args: []
       stdin: ""
-      env: []
+      env: ["LC_ALL=C"]
     normalization: none
     expected:
-      exit_code: non-zero
-      stderr_contains: "usage"
-    traces:
-      - prd004-ts R7.2
-
-  - name: tz_environment_respected
-    description: TZ=UTC causes wall-clock timestamps to be in UTC.
-    inputs:
-      args: ["%H:%M:%S"]
-      stdin: "event\n"
-      env: ["TZ=UTC"]
-    normalization: TimestampNormalizer
-    expected:
       exit_code: 0
-      stdout_structure: one line matching "TIMESTAMP event"
+      stdout_structure: 'output contains "0"'
       stderr: ""
     traces:
-      - prd004-ts R8.1
+      - prd005-wc R4.3
+
+  - name: wc_missing_file
+    description: 'Non-existent file prints error to stderr, exits 1, processes remaining files. Setup: real.txt contains "data\n", nonexistent.txt does not exist'
+    inputs:
+      args: ["nonexistent.txt", "real.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout_structure: counts for real.txt and a total line are printed
+      stderr_contains: "nonexistent.txt"
+    traces:
+      - prd005-wc R6.2
