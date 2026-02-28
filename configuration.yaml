@@ -19,9 +19,7 @@ project:
       docs/specs/dependency-map.yaml
       docs/specs/sources.yaml
     release: ""
-    releases:
-        - "02.0"
-        - "02.1"
+    releases: []
     seed_files: {}
 generation:
     prefix: generation-
