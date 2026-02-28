@@ -33,15 +33,22 @@ requirements:
     items:
       - R2.1: Must provide a FileTypeColor(mode os.FileMode) string function that returns the ANSI escape sequence for a file's type (directory, symlink, executable, block device, character device, socket, pipe, regular file).
       - R2.2: Must provide a Reset() string constant or function that returns the ANSI reset sequence ("\033[0m").
-      - R2.3: Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. It must delegate the TTY check to pkg/sys.IsTerminal (implemented in pkg/sys using golang.org/x/sys/unix, not golang.org/x/term). When false, FileTypeColor must return an empty string and Reset must return an empty string.
+      - R2.3: |
+          Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. It must call pkg/sys.IsTerminal(w io.Writer) bool, which returns true when w is an *os.File whose file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), and false for pipes, regular files, and non-*os.File writers. When ColorEnabled returns false, FileTypeColor must return an empty string and Reset must return an empty string.
       - R2.4: 'Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).'
       - R2.5: 'Utility context — ls (ls.c:103 includes dircolors.h, ls.c:273 get_color_indicator): ls outputs ANSI escapes before and after each filename in colorized mode. Color is suppressed when stdout is not a TTY or when --color=never is set.'
 
   R3:
     title: Human-readable size conversion
     items:
-      - R3.1: Must provide a HumanSize(bytes int64, opts HumanSizeOpts) string function that converts a byte count to a human-readable string with an appropriate unit suffix.
-      - R3.2: 'HumanSizeOpts must support two rounding modes: binary (1024-based, suffixes K/M/G/T/P/E) and SI (1000-based, suffixes kB/MB/GB/TB). The default must be binary.'
+      - R3.1: |
+          Must provide func HumanSize(bytes int64, opts HumanSizeOpts) string that converts a byte count to a human-readable string. HumanSizeOpts is defined as:
+
+            type HumanSizeOpts struct {
+                Binary bool // true = 1024-based with suffixes K/M/G/T/P/E (default); false = SI 1000-based with suffixes kB/MB/GB/TB
+            }
+      - R3.2: |
+          When opts.Binary is true (the default zero value), use base 1024 and suffixes []string{"", "K", "M", "G", "T", "P", "E"}. When opts.Binary is false, use base 1000 and suffixes []string{"", "kB", "MB", "GB", "TB"}.
       - R3.3: Must format the output to at most one decimal place when the value is not an integer at the chosen unit (e.g., 1536 bytes must produce "1.5K", not "2K").
       - R3.4: Must return "0" for a zero byte count regardless of the unit mode.
       - R3.5: 'Utility context — ls (ls.c -h flag, human_output_opts): ls -h shows file sizes in human-readable form in -l output. The same conversion applies to ls -s (block counts).'
