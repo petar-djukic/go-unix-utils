@@ -1,0 +1,136 @@
+id: prd011-magefiles
+title: "magefiles and cmd/version: Build Lifecycle and Version Identity"
+
+problem: |
+  go-unix-utils has no testable artifact until its first utility passes differential tests.
+  The mage build targets (build, lint, clean, install) are inherited from cobbler-scaffold's
+  orchestrator library, but the project has no specification for what those targets must do
+  in this repository. Without a PRD the build lifecycle is an undocumented dependency of
+  every other PRD.
+
+  A second gap is version identity. The project tags documentation releases (v0.YYYYMMDD.N)
+  and code releases (v1.YYYYMMDD.N), but no binary reports which version it was built from.
+  A cmd/version binary that prints the last known version tag gives a concrete, testable
+  artifact that exercises the full build pipeline (compile, lint, test, install) before any
+  utility code exists. It also provides a version string that other cmd/ binaries can import
+  when they need to report their own version.
+
+goals:
+  - G1: Specify a cmd/version binary that prints the repository's last known version tag.
+  - G2: Specify the build target that compiles all cmd/ binaries to bin/.
+  - G3: Specify the lint target that runs golangci-lint on all Go source.
+  - G4: Specify the clean target that removes build artifacts.
+  - G5: Specify the install target that runs go install for cmd/ binaries.
+  - G6: Specify the configuration contract between magefiles/ and configuration.yaml for the fields consumed by these targets.
+
+requirements:
+  R1:
+    title: cmd/version binary
+    items:
+      - R1.1: |
+          Must provide a cmd/version/ package that compiles to a standalone binary. When
+          invoked with no arguments, the binary prints the version string to stdout followed
+          by a newline and exits 0.
+      - R1.2: |
+          The version string must be set at build time via -ldflags "-X main.version=<tag>".
+          When the linker variable is not set (development builds), the binary must print
+          "dev" as the version string.
+      - R1.3: |
+          The mage build target must resolve the version tag by running
+          git describe --tags --abbrev=0 --match "v[0-9]*" and passing the result to the
+          linker. If the git command fails (no tags, not a git repository), the build must
+          succeed with the version set to "dev".
+      - R1.4: |
+          When invoked with --version or -v, the binary must print the same version string
+          as the no-argument invocation. Any other flag must cause the binary to print a
+          usage message to stderr and exit 2.
+      - R1.5: |
+          The version package must export a variable or function so that other cmd/ packages
+          can import and report the same version string without duplicating the ldflags
+          mechanism.
+
+  R2:
+    title: Build target
+    items:
+      - R2.1: |
+          mage build must compile every package under cmd/ to a binary in the directory
+          specified by configuration.yaml project.binary_dir (default: bin/). Each binary
+          is named after its cmd/ subdirectory (e.g., cmd/version/ produces bin/version).
+      - R2.2: |
+          mage build must pass -ldflags with the version tag resolved per R1.3 to every
+          cmd/ binary that imports the version variable.
+      - R2.3: |
+          mage build must fail with a non-zero exit code if any cmd/ package fails to
+          compile. The error message must identify which package failed.
+      - R2.4: |
+          mage build must create the binary_dir if it does not exist.
+
+  R3:
+    title: Lint target
+    items:
+      - R3.1: |
+          mage lint must run golangci-lint on all Go source directories listed in
+          configuration.yaml project.go_source_dirs (default: pkg, cmd). The linter
+          must also cover magefiles/.
+      - R3.2: |
+          mage lint must fail with a non-zero exit code if golangci-lint reports any
+          warnings or errors.
+      - R3.3: |
+          The golangci-lint configuration must be committed to the repository (as
+          .golangci.yml or equivalent) so that lint results are reproducible.
+
+  R4:
+    title: Clean target
+    items:
+      - R4.1: |
+          mage clean must remove the binary_dir and all its contents. If the directory
+          does not exist, the target must succeed silently.
+      - R4.2: |
+          mage clean must not remove source files, documentation, or any directory
+          outside binary_dir.
+
+  R5:
+    title: Install target
+    items:
+      - R5.1: |
+          mage install must run go install for every package under cmd/, installing
+          binaries to the Go bin directory ($GOPATH/bin or $GOBIN).
+      - R5.2: |
+          mage install must pass the same -ldflags as mage build (R2.2).
+
+  R6:
+    title: Configuration contract
+    items:
+      - R6.1: |
+          The following fields in configuration.yaml project section are consumed by the
+          build lifecycle targets and must be present:
+
+            project.module_path    — Go module path (used by go build)
+            project.binary_dir     — output directory for compiled binaries (default: bin)
+            project.go_source_dirs — list of directories containing Go source (default: [pkg, cmd])
+            project.magefiles_dir  — directory containing mage targets (default: magefiles)
+      - R6.2: |
+          magefiles/orchestrator.go must load configuration.yaml at init time via the
+          orchestrator library. If the file does not exist, the init function must create
+          a default configuration file and log the action to stderr.
+      - R6.3: |
+          Build lifecycle targets (build, lint, clean, install) must not depend on fields
+          outside the project section of configuration.yaml. Orchestrator, cobbler, and
+          claude sections are consumed by cobbler-scaffold targets, not by this PRD's scope.
+
+non_goals:
+  - This PRD does not specify orchestrator targets (cobbler:measure, cobbler:stitch). Those are provided by cobbler-scaffold.
+  - This PRD does not specify generator lifecycle targets (generator:start, generator:run, generator:stop). Those are provided by cobbler-scaffold.
+  - This PRD does not specify beads, scaffold, prompt, or stats targets. Those are provided by cobbler-scaffold.
+  - This PRD does not specify the analyze target. Cross-artifact consistency checks are provided by cobbler-scaffold.
+  - cmd/version does not parse LS_COLORS, handle signals, or do anything beyond printing a version string.
+
+acceptance_criteria:
+  - "AC1: mage build compiles cmd/version/ to bin/version. Running bin/version prints a version tag string (matching v[0-9]*) followed by a newline and exits 0."
+  - "AC2: bin/version --version prints the same output as bin/version with no arguments."
+  - "AC3: bin/version --bogus prints a usage message to stderr and exits 2."
+  - "AC4: A development build (without ldflags) produces a binary that prints \"dev\"."
+  - "AC5: mage lint runs golangci-lint on cmd/, pkg/, and magefiles/ with no warnings."
+  - "AC6: mage clean removes bin/ and succeeds silently when bin/ does not exist."
+  - "AC7: mage build followed by mage clean followed by ls bin/ shows bin/ does not exist."
+  - "AC8: All configuration fields consumed by build lifecycle targets are documented in R6.1 and present in configuration.yaml."

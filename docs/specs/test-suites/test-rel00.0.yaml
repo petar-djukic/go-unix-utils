@@ -1,0 +1,116 @@
+id: test-rel00.0
+title: "Test Suite: rel00.0 — build lifecycle and cmd/version"
+release: rel00.0
+
+traces:
+  - rel00.0-uc001-magefiles
+  - prd011-magefiles R1
+  - prd011-magefiles R2
+  - prd011-magefiles R3
+  - prd011-magefiles R4
+
+preconditions:
+  - A git repository with at least one tag matching v[0-9]*.
+  - golangci-lint is installed and on PATH.
+  - mage is installed and on PATH.
+  - configuration.yaml exists at the project root with project.binary_dir set to bin.
+
+test_cases:
+  # --- uc001-magefiles: build lifecycle and version ---
+
+  - name: build_produces_version_binary
+    description: mage build compiles cmd/version to bin/version.
+    inputs:
+      command: "mage build"
+    expected:
+      exit_code: 0
+      postcondition: bin/version exists and is executable
+    traces:
+      - prd011-magefiles R2.1
+      - prd011-magefiles R2.4
+
+  - name: version_prints_tag
+    description: bin/version prints the latest version tag and exits 0.
+    inputs:
+      command: "bin/version"
+    expected:
+      exit_code: 0
+      stdout_pattern: "v[0-9]+\\.[0-9]+\\.[0-9]+\n"
+      stderr: ""
+    traces:
+      - prd011-magefiles R1.1
+      - prd011-magefiles R1.2
+      - prd011-magefiles R1.3
+
+  - name: version_flag_identical
+    description: bin/version --version produces the same output as bin/version.
+    inputs:
+      command: "bin/version --version"
+    expected:
+      exit_code: 0
+      stdout: same as bin/version with no arguments
+      stderr: ""
+    traces:
+      - prd011-magefiles R1.4
+
+  - name: version_v_flag_identical
+    description: bin/version -v produces the same output as bin/version.
+    inputs:
+      command: "bin/version -v"
+    expected:
+      exit_code: 0
+      stdout: same as bin/version with no arguments
+      stderr: ""
+    traces:
+      - prd011-magefiles R1.4
+
+  - name: version_unknown_flag
+    description: bin/version --bogus prints usage to stderr and exits 2.
+    inputs:
+      command: "bin/version --bogus"
+    expected:
+      exit_code: 2
+      stdout: ""
+      stderr_contains: "usage"
+    traces:
+      - prd011-magefiles R1.4
+
+  - name: version_dev_build
+    description: A build without ldflags prints "dev".
+    inputs:
+      command: "go build -o /tmp/version-dev ./cmd/version && /tmp/version-dev"
+    expected:
+      exit_code: 0
+      stdout: "dev\n"
+      stderr: ""
+    traces:
+      - prd011-magefiles R1.2
+
+  - name: lint_passes
+    description: mage lint runs golangci-lint with no warnings.
+    inputs:
+      command: "mage lint"
+    expected:
+      exit_code: 0
+    traces:
+      - prd011-magefiles R3.1
+      - prd011-magefiles R3.2
+
+  - name: clean_removes_bin
+    description: mage clean removes the bin/ directory.
+    inputs:
+      command: "mage build && mage clean"
+    expected:
+      exit_code: 0
+      postcondition: bin/ does not exist
+    traces:
+      - prd011-magefiles R4.1
+
+  - name: clean_idempotent
+    description: mage clean succeeds when bin/ does not exist.
+    inputs:
+      command: "mage clean && mage clean"
+    expected:
+      exit_code: 0
+    traces:
+      - prd011-magefiles R4.1
