@@ -13,7 +13,7 @@ actor: Human Operator
 
 trigger: |
   The operator has completed the PRD (prd008-ls.yaml) and shared component PRDs
-  (prd002-sys, prd003-format) and invokes do-work to produce a passing differential
+  (pkg/sys, pkg/format from rel00.0) and invokes do-work to produce a passing differential
   test for cmd/ls core flags.
 
 flow:
@@ -52,8 +52,8 @@ flow:
 
 touchpoints:
   - T1: "cmd/ls — directory listing, format modes, filter flags, color, human sizes (prd008-ls R1, R2, R3, R4, R5, R6, R7)"
-  - T2: "pkg/sys — TerminalWidth, Stat/Lstat, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize (prd002-sys)"
-  - T3: "pkg/format — Columns, FileTypeColor, HumanSize (prd003-format)"
+  - T2: "pkg/sys — TerminalWidth, Stat/Lstat, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize (rel00.0 infrastructure)"
+  - T3: "pkg/format — Columns, FileTypeColor, HumanSize (rel00.0 infrastructure)"
   - T4: "pkg/testutils — RunDiffTests, LsNormalizer, binary execution and comparison"
 
 success_criteria:

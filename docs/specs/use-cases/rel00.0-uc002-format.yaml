@@ -1,0 +1,80 @@
+id: rel00.0-uc002-format
+title: "Format output with columns, color, and human-readable sizes"
+
+summary: |
+  The operator verifies that pkg/format produces correct column layouts, ANSI color
+  sequences, and human-readable size strings. The test exercises each formatting
+  capability in isolation: Columns distributes entries into a grid that fits the terminal
+  width, FileTypeColor returns the correct ANSI escape for each file type, the color
+  override mechanism works for --color=always and --color=never, and HumanSize converts
+  byte counts to human-readable strings matching GNU coreutils behavior.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD revision (prd003-format.yaml) and wants to verify
+  that pkg/format satisfies its requirements via unit tests.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs go test ./pkg/format/... which executes the unit tests for
+      pkg/format. Unlike cmd/ packages, pkg/format does not use differential testing
+      because there is no reference binary — it is a library.
+  - id: F2
+    step: |
+      The Columns test creates a list of 20 filenames and calls Columns(entries, 80).
+      The function distributes entries into the maximum number of columns that fit within
+      80 characters, computing column widths from the longest entry in each column.
+  - id: F3
+    step: |
+      The PadRight and PadLeft tests verify that strings are padded to the specified
+      display width using rune count, not byte count.
+  - id: F4
+    step: |
+      The FileTypeColor test calls SetColorEnabled(true), then verifies that each of the
+      eight file types (directory, symlink, executable, block device, character device,
+      socket, pipe, regular) returns the correct ANSI escape sequence per GNU ls defaults.
+  - id: F5
+    step: |
+      The color override test calls SetColorEnabled(false) and verifies that FileTypeColor
+      and Reset return empty strings for all file types. It then calls ResetColorEnabled
+      to restore automatic detection.
+  - id: F6
+    step: |
+      The ColorEnabled test passes an os.Pipe writer and verifies it returns false.
+      It passes a bytes.Buffer and verifies it returns false.
+  - id: F7
+    step: |
+      The HumanSize test verifies binary mode (1024-based): HumanSize(1536, binary)
+      returns "1.5K", HumanSize(0, binary) returns "0". It verifies SI mode (1000-based):
+      HumanSize(1000000, SI) returns "1.0MB".
+
+touchpoints:
+  - T1: "pkg/format — Columns, PadRight, PadLeft, displayWidth (prd003-format R1)"
+  - T2: "pkg/format — FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled (prd003-format R2)"
+  - T3: "pkg/format — HumanSize (prd003-format R3)"
+  - T4: "pkg/sys — IsTerminal, called internally by ColorEnabled"
+
+success_criteria:
+  - id: S1
+    criterion: Columns(20 filenames, 80) produces a grid where each row fits within 80 characters.
+  - id: S2
+    criterion: PadRight("abc", 10) returns "abc" followed by 7 spaces. PadLeft("abc", 10) returns 7 spaces followed by "abc".
+  - id: S3
+    criterion: FileTypeColor returns the correct ANSI code for all eight file types when color is enabled.
+  - id: S4
+    criterion: SetColorEnabled(false) suppresses all ANSI output. ResetColorEnabled restores automatic detection.
+  - id: S5
+    criterion: ColorEnabled returns false for pipe and non-*os.File writers.
+  - id: S6
+    criterion: HumanSize(1536, binary) returns "1.5K". HumanSize(1000000, SI) returns "1.0MB". HumanSize(0, binary) returns "0".
+  - id: S7
+    criterion: go test ./pkg/format/... passes with no failures.
+
+out_of_scope:
+  - LS_COLORS environment variable parsing is explicitly excluded from pkg/format.
+  - Terminal hyperlinks are not in scope.
+  - East-asian full-width character width computation is deferred.
+
+test_suite: test-rel00.0

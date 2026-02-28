@@ -13,7 +13,7 @@ actor: Human Operator
 
 trigger: |
   The operator has completed the PRD (prd009-du.yaml) and shared component PRDs
-  (prd002-sys, prd003-format) and invokes do-work to produce a passing differential
+  (pkg/sys, pkg/format from rel00.0) and invokes do-work to produce a passing differential
   test for cmd/du.
 
 flow:
