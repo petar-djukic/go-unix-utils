@@ -1,0 +1,96 @@
+id: rel00.0-uc004-testutils
+title: "Execute differential tests and compare binary outputs via pkg/testutils"
+
+summary: |
+  The operator verifies that pkg/testutils correctly executes Go and reference binaries
+  with identical inputs, compares their outputs, and reports divergence. The test exercises
+  each harness capability in isolation: RunDiffTests runs named subtests and compares
+  stdout, stderr, and exit code byte-for-byte; normalization hooks strip non-deterministic
+  fields before comparison; ComposeNormalizers chains multiple hooks; file-state comparison
+  validates output files for utilities like sponge; and the timeout mechanism prevents
+  hanging test runs.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD revision (prd001-testutils.yaml) and wants to verify
+  that pkg/testutils satisfies its requirements via unit tests.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs go test ./pkg/testutils/... which executes the unit tests for
+      pkg/testutils. Unlike cmd/ packages that use differential testing against a reference
+      binary, pkg/testutils is the harness itself. Its tests use mock binaries (small shell
+      scripts or compiled test helpers) that produce known stdout, stderr, and exit codes.
+  - id: F2
+    step: |
+      The DiffTest struct test verifies that all fields are accessible and that the zero
+      value produces a valid test case: no args, nil stdin (EOF), nil env (defaults with
+      LC_ALL=C), empty WorkDir (t.TempDir), exit code 0, no normalization, no expected
+      files.
+  - id: F3
+    step: |
+      The RunDiffTests matching-output test creates two mock binaries that produce identical
+      stdout and stderr, then calls RunDiffTests. The test passes silently with no output.
+  - id: F4
+    step: |
+      The RunDiffTests divergent-output test creates two mock binaries that produce different
+      stdout. RunDiffTests calls t.Fatal with a failure message containing the args, stdin,
+      both stdouts, both stderrs, and both exit codes.
+  - id: F5
+    step: |
+      The normalization test creates mock binaries whose outputs differ only in a timestamp
+      field. TimestampNormalizer strips the timestamp before comparison, making the test pass.
+  - id: F6
+    step: |
+      The ComposeNormalizers test chains two normalizer functions and verifies they are
+      applied in order to both stdout and stderr before comparison.
+  - id: F7
+    step: |
+      The file-state comparison test uses mock binaries that write to files in the working
+      directory. DiffTest.ExpectedFiles specifies the expected content. The test verifies
+      that matching content passes and divergent content fails with the correct report.
+  - id: F8
+    step: |
+      The timeout test creates a mock binary that sleeps beyond the configured timeout.
+      RunDiffTests fails with a clear timeout message rather than hanging.
+  - id: F9
+    step: |
+      The environment default test verifies that LC_ALL=C is set when DiffTest.Env is nil,
+      and that an explicit Env entry overrides the default.
+
+touchpoints:
+  - T1: "pkg/testutils — DiffTest, NormalizeFunc (prd001-testutils R1)"
+  - T2: "pkg/testutils — RunDiffTests, WorkDir, LC_ALL default (prd001-testutils R2)"
+  - T3: "pkg/testutils — comparison and divergence reporting (prd001-testutils R3)"
+  - T4: "pkg/testutils — TimestampNormalizer, ComposeNormalizers (prd001-testutils R4)"
+  - T5: "pkg/testutils — ExpectedFiles file-state comparison (prd001-testutils R5)"
+
+success_criteria:
+  - id: S1
+    criterion: DiffTest zero value is a valid test case that runs without error.
+  - id: S2
+    criterion: RunDiffTests produces no output when both binaries match.
+  - id: S3
+    criterion: RunDiffTests reports divergence with args, stdin, both outputs, and both exit codes.
+  - id: S4
+    criterion: TimestampNormalizer strips strftime timestamps so that time-dependent outputs match.
+  - id: S5
+    criterion: ComposeNormalizers applies functions in order and the composed result works as a single normalizer.
+  - id: S6
+    criterion: ExpectedFiles comparison passes for matching files and fails for divergent files.
+  - id: S7
+    criterion: Timeout produces a clear failure message rather than hanging.
+  - id: S8
+    criterion: LC_ALL=C is the default environment and DiffTest.Env overrides it.
+  - id: S9
+    criterion: go test ./pkg/testutils/... passes with no failures.
+
+out_of_scope:
+  - Utility-specific normalizers (LsNormalizer, LsExtendedNormalizer) are defined in their
+    respective cmd/ packages, not in pkg/testutils.
+  - Binary compilation and installation are handled by magefiles, not pkg/testutils.
+  - Retry logic and filesystem mocking are explicitly excluded by the PRD.
+
+test_suite: test-rel00.0

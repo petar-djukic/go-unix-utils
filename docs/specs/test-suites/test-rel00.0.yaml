@@ -1,5 +1,5 @@
 id: test-rel00.0
-title: "Test Suite: rel00.0 — build lifecycle, cmd/version, pkg/format, and pkg/sys"
+title: "Test Suite: rel00.0 — build lifecycle, cmd/version, pkg/format, pkg/sys, and pkg/testutils"
 release: rel00.0
 
 traces:
@@ -17,6 +17,12 @@ traces:
   - prd002-sys R2
   - prd002-sys R3
   - prd002-sys R4
+  - rel00.0-uc004-testutils
+  - prd001-testutils R1
+  - prd001-testutils R2
+  - prd001-testutils R3
+  - prd001-testutils R4
+  - prd001-testutils R5
 
 preconditions:
   - A git repository with at least one tag matching v[0-9]*.
@@ -355,3 +361,132 @@ test_cases:
       exit_code: 0
     traces:
       - prd002-sys R1.2
+
+  # --- uc004-testutils: pkg/testutils differential testing harness ---
+
+  - name: difftest_zero_value
+    description: DiffTest zero value is a valid test case that runs without error.
+    inputs:
+      function: "testutils.RunDiffTests(t, echoBin, echoBin, []DiffTest{{Name: \"zero\"}})"
+    expected:
+      postcondition: test passes with no output
+    traces:
+      - prd001-testutils R1.1
+
+  - name: rundifftests_matching_output
+    description: RunDiffTests passes silently when both binaries produce identical output.
+    inputs:
+      function: "testutils.RunDiffTests(t, goBin, refBin, tests)"
+      setup: "both mock binaries print \"hello\\n\" to stdout and exit 0"
+    expected:
+      postcondition: test passes with no output to stdout or stderr
+    traces:
+      - prd001-testutils R2.1
+      - prd001-testutils R2.4
+      - prd001-testutils R3.2
+
+  - name: rundifftests_divergent_stdout
+    description: RunDiffTests reports failure when stdout differs between binaries.
+    inputs:
+      function: "testutils.RunDiffTests(t, goBin, refBin, tests)"
+      setup: "Go binary prints \"hello\\n\", reference prints \"world\\n\""
+    expected:
+      postcondition: "test fails with message containing args, stdin, both stdouts, both stderrs, and both exit codes"
+    traces:
+      - prd001-testutils R3.2
+      - prd001-testutils R3.5
+
+  - name: rundifftests_divergent_exit_code
+    description: RunDiffTests reports failure when exit codes differ.
+    inputs:
+      function: "testutils.RunDiffTests(t, goBin, refBin, tests)"
+      setup: "Go binary exits 0, reference exits 1"
+    expected:
+      postcondition: test fails with message showing both exit codes
+    traces:
+      - prd001-testutils R3.4
+      - prd001-testutils R3.5
+
+  - name: timestamp_normalizer
+    description: TimestampNormalizer strips strftime timestamps so time-dependent outputs match.
+    inputs:
+      function: "testutils.RunDiffTests with Normalize: []NormalizeFunc{TimestampNormalizer}"
+      setup: "binaries produce outputs differing only in timestamp field"
+    expected:
+      postcondition: test passes after normalization strips timestamps
+    traces:
+      - prd001-testutils R4.1
+      - prd001-testutils R4.2
+
+  - name: compose_normalizers
+    description: ComposeNormalizers chains multiple functions applied in order.
+    inputs:
+      function: "testutils.ComposeNormalizers(fn1, fn2)"
+    expected:
+      postcondition: "composed function applies fn1 then fn2; output matches fn2(fn1(input))"
+    traces:
+      - prd001-testutils R4.3
+      - prd001-testutils R4.4
+
+  - name: expected_files_match
+    description: ExpectedFiles comparison passes when Go binary writes correct file content.
+    inputs:
+      function: "testutils.RunDiffTests with ExpectedFiles"
+      setup: "mock binary writes expected content to output file"
+    expected:
+      postcondition: test passes with no output
+    traces:
+      - prd001-testutils R5.1
+      - prd001-testutils R5.2
+
+  - name: expected_files_diverge
+    description: ExpectedFiles comparison fails when Go binary writes wrong file content.
+    inputs:
+      function: "testutils.RunDiffTests with ExpectedFiles"
+      setup: "mock binary writes different content than expected"
+    expected:
+      postcondition: test fails with message showing file path, expected content, actual content
+    traces:
+      - prd001-testutils R5.1
+      - prd001-testutils R5.2
+
+  - name: timeout_exceeded
+    description: RunDiffTests fails with timeout message when binary exceeds timeout.
+    inputs:
+      function: "testutils.RunDiffTests with short timeout"
+      setup: "mock binary sleeps beyond timeout"
+    expected:
+      postcondition: test fails with clear timeout message, not a hang
+    traces:
+      - prd001-testutils R2.3
+
+  - name: env_default_lc_all
+    description: RunDiffTests sets LC_ALL=C by default when DiffTest.Env is nil.
+    inputs:
+      function: "testutils.RunDiffTests with Env: nil"
+      setup: "mock binary prints LC_ALL environment variable"
+    expected:
+      postcondition: "binary receives LC_ALL=C"
+    traces:
+      - prd001-testutils R2.6
+
+  - name: env_override_lc_all
+    description: DiffTest.Env overrides the LC_ALL=C default.
+    inputs:
+      function: 'testutils.RunDiffTests with Env: []string{"LC_ALL=en_US.UTF-8"}'
+      setup: "mock binary prints LC_ALL environment variable"
+    expected:
+      postcondition: "binary receives LC_ALL=en_US.UTF-8"
+    traces:
+      - prd001-testutils R1.3
+      - prd001-testutils R2.6
+
+  - name: workdir_default_tempdir
+    description: WorkDir defaults to t.TempDir() when empty.
+    inputs:
+      function: "testutils.RunDiffTests with WorkDir: \"\""
+      setup: "mock binary prints working directory"
+    expected:
+      postcondition: both binaries run in a temporary directory
+    traces:
+      - prd001-testutils R2.5
