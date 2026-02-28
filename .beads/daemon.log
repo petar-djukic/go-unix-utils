@@ -587,3 +587,15 @@ time=2026-02-28T13:24:20.932-05:00 level=INFO msg="JSONL removed/renamed, re-est
 time=2026-02-28T14:01:10.494-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
 time=2026-02-28T14:01:10.494-05:00 level=INFO msg="using database" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db
 time=2026-02-28T14:01:10.496-05:00 level=ERROR msg="cannot open database" error="migration closed_at_constraint failed: failed to count inconsistent issues: sqlite3: database disk image is malformed"
+time=2026-02-28T14:01:15.741-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
+time=2026-02-28T14:01:15.741-05:00 level=INFO msg="using database" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db
+time=2026-02-28T14:01:15.743-05:00 level=ERROR msg="cannot open database" error="migration closed_at_constraint failed: failed to count inconsistent issues: sqlite3: database disk image is malformed"
+time=2026-02-28T14:01:21.172-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
+time=2026-02-28T14:01:21.173-05:00 level=INFO msg="using database" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db
+time=2026-02-28T14:01:21.174-05:00 level=ERROR msg="cannot open database" error="migration closed_at_constraint failed: failed to count inconsistent issues: sqlite3: database disk image is malformed"
+time=2026-02-28T14:01:26.368-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
+time=2026-02-28T14:01:26.368-05:00 level=INFO msg="using database" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db
+time=2026-02-28T14:01:26.370-05:00 level=ERROR msg="cannot open database" error="migration closed_at_constraint failed: failed to count inconsistent issues: sqlite3: database disk image is malformed"
+time=2026-02-28T14:01:31.573-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
+time=2026-02-28T14:01:31.573-05:00 level=INFO msg="using database" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db
+time=2026-02-28T14:01:31.575-05:00 level=ERROR msg="cannot open database" error="migration closed_at_constraint failed: failed to count inconsistent issues: sqlite3: database disk image is malformed"
