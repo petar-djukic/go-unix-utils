@@ -27,7 +27,13 @@ repository_files:
     - .cobbler/history/2026-02-28-08-44-40-stitch-log.log
     - .cobbler/history/2026-02-28-08-44-40-stitch-prompt.yaml
     - .cobbler/history/2026-02-28-08-44-40-stitch-stats.yaml
+    - .cobbler/history/2026-02-28-08-59-40-stitch-log.log
     - .cobbler/history/2026-02-28-08-59-40-stitch-prompt.yaml
+    - .cobbler/history/2026-02-28-08-59-40-stitch-stats.yaml
+    - .cobbler/history/2026-02-28-09-14-42-stitch-log.log
+    - .cobbler/history/2026-02-28-09-14-42-stitch-prompt.yaml
+    - .cobbler/history/2026-02-28-09-14-42-stitch-stats.yaml
+    - .cobbler/history/2026-02-28-09-25-57-stitch-prompt.yaml
     - .gitattributes
     - .gitignore
     - .secrets/claude.json
@@ -54,6 +60,7 @@ repository_files:
     - docs/engineering/eng10-generation-run-5-results.yaml
     - docs/engineering/eng11-stitch-task-sizing.yaml
     - docs/engineering/eng12-generation-run-6-results.yaml
+    - docs/engineering/eng13-stress-test-decomposition.yaml
     - docs/prompts/measure.yaml
     - docs/prompts/stitch.yaml
     - docs/road-map.yaml
@@ -74,15 +81,19 @@ repository_files:
     - docs/specs/test-suites/test-rel01.0.yaml
     - docs/specs/test-suites/test-rel01.1.yaml
     - docs/specs/test-suites/test-rel02.0.yaml
-    - docs/specs/test-suites/test-rel02.1.yaml
+    - docs/specs/test-suites/test-rel99.0.yaml
+    - docs/specs/test-suites/test-rel99.1.yaml
     - docs/specs/use-cases/rel00.0-uc001-magefiles.yaml
+    - docs/specs/use-cases/rel00.0-uc002-format.yaml
+    - docs/specs/use-cases/rel00.0-uc003-sys.yaml
+    - docs/specs/use-cases/rel00.0-uc004-testutils.yaml
     - docs/specs/use-cases/rel01.0-uc001-ts.yaml
     - docs/specs/use-cases/rel01.1-uc001-wc.yaml
     - docs/specs/use-cases/rel01.1-uc002-cat.yaml
     - docs/specs/use-cases/rel01.1-uc003-sponge.yaml
-    - docs/specs/use-cases/rel02.0-uc001-ls.yaml
     - docs/specs/use-cases/rel02.0-uc002-du.yaml
-    - docs/specs/use-cases/rel02.1-uc001-ls-extended.yaml
+    - docs/specs/use-cases/rel99.0-uc001-ls.yaml
+    - docs/specs/use-cases/rel99.1-uc001-ls-extended.yaml
     - docs/utilities.yaml
     - magefiles/go.mod
     - magefiles/go.sum
@@ -444,15 +455,19 @@ project_context:
               use_cases:
                 - id: rel00.0-uc001-magefiles
                   status: specs_written
+                - id: rel00.0-uc002-format
+                  status: specs_written
+                - id: rel00.0-uc003-sys
+                  status: specs_written
+                - id: rel00.0-uc004-testutils
+                  status: specs_written
             - version: "01.0"
               name: Batch 1 — ts specification and differential test
               status: spec_complete
               description: |
                 Establish the end-to-end pipeline for a single utility: derive the PRD from C/Perl
                 source, write a use case, produce a test suite, and verify a passing differential
-                test against the Homebrew ts reference binary. This release also establishes the
-                shared infrastructure PRDs (pkg/testutils, pkg/sys, pkg/format) and the source
-                extraction and dependency analysis artifacts.
+                test against the Homebrew ts reference binary.
               use_cases:
                 - id: rel01.0-uc001-ts
                   status: spec_complete
@@ -471,27 +486,36 @@ project_context:
                 - id: rel01.1-uc003-sponge
                   status: spec_complete
             - version: "02.0"
-              name: Batch 3 — ls core and du specification and differential tests
+              name: Batch 3 — du specification and differential test
               status: spec_complete
               description: |
-                Extend the pipeline to utilities that require the pkg/sys and pkg/format shared
-                libraries. ls core covers the most common flags (default, -1, -l, -a, -A, -d,
-                --color, -h). du covers recursive directory sizes with -h, -s, -a, -d, -k, -m,
-                -c, and --apparent-size. Each utility gets a PRD, use case, and test suite.
+                Extend the pipeline to a utility that requires the pkg/sys and pkg/format shared
+                libraries. du covers recursive directory sizes with -h, -s, -a, -d, -k, -m, -c,
+                and --apparent-size.
               use_cases:
-                - id: rel02.0-uc001-ls
-                  status: spec_complete
                 - id: rel02.0-uc002-du
                   status: spec_complete
-            - version: "02.1"
-              name: Batch 4 — ls extended specification and differential tests
+            - version: "99.0"
+              name: Deferred — ls core specification and differential test
+              status: spec_complete
+              description: |
+                ls core covers the most common flags (default, -1, -l, -a, -A, -d, --color, -h).
+                Deferred from rel02.0 because ls has blocked every generation run due to task
+                complexity and rate-limit constraints. The dependency chain shows ls is not required
+                by other utilities in rel00.0 through rel02.0.
+              use_cases:
+                - id: rel99.0-uc001-ls
+                  status: spec_complete
+            - version: "99.1"
+              name: Deferred — ls extended specification and differential test
               status: spec_complete
               description: |
                 Extend ls with flags requiring heavier normalization or more complex layout logic:
                 -C (forced multi-column), -x (horizontal), sort flags (-t, -S, -r, -U, -v),
                 metadata display (-i inode, -s blocks, -n numeric IDs), -F classify, -R recursive.
+                Depends on rel99.0.
               use_cases:
-                - id: rel02.1-uc001-ls-extended
+                - id: rel99.1-uc001-ls-extended
                   status: spec_complete
     specs:
         product_requirements:
@@ -507,8 +531,35 @@ project_context:
                 the verification layer fragile: a bug in one cmd/'s harness copy would produce
                 different verification behavior than another cmd/'s copy.
 
-                pkg/testutils is the acceptance gate for the entire pipeline. The mage-claude-orchestrator
+                pkg/testutils is the acceptance gate for the entire pipeline. The cobbler orchestrator
                 cannot declare a utility complete until its differential tests pass through this harness.
+                This PRD is also the authoritative API reference for stitch agents implementing cmd/
+                packages: the agent reads this document, knows the full pkg/testutils API, and imports
+                the package without reinventing it.
+
+                A cmd/ test file imports pkg/testutils and defines test cases as data. The stitch agent
+                producing a new cmd/ utility writes only the test file — it does not recreate the package.
+                The canonical usage pattern is:
+
+                  package main_test
+
+                  import (
+                      "os"
+                      "testing"
+                      "github.com/petar-djukic/go-unix-utils/pkg/testutils"
+                  )
+
+                  func TestDiff(t *testing.T) {
+                      goBin := os.Getenv("GO_BINARY")
+                      refBin := os.Getenv("REF_BINARY")
+                      tests := []testutils.DiffTest{
+                          {Name: "basic", Args: []string{"-n", "testdata/input.txt"}, ExitCode: 0},
+                          {Name: "stdin", Args: []string{"-c"}, Stdin: []byte("hello\n"), ExitCode: 0},
+                          {Name: "normalized", Args: []string{"-s", "%H:%M:%S"}, Stdin: []byte("event\n"),
+                              ExitCode: 0, Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer}},
+                      }
+                      testutils.RunDiffTests(t, goBin, refBin, tests)
+                  }
               goals:
                 - G1: Provide a single execution function that runs a Go binary and a GNU reference binary with identical inputs and returns both outputs for comparison.
                 - G2: Provide a comparison function that diffs stdout, stderr, and exit code and reports divergence with the triggering input.
@@ -525,13 +576,20 @@ project_context:
                                   Name          string                 // subtest name used with t.Run; required
                                   Args          []string               // command-line arguments passed to both binaries
                                   Stdin         []byte                 // nil = no stdin (both binaries receive EOF immediately)
-                                  Env           []string               // nil = inherit test process environment with no overrides; non-nil values are KEY=VALUE pairs that override or extend the inherited environment
+                                  Env           []string               // nil = use defaults only (LC_ALL=C); non-nil = KEY=VALUE pairs merged into inherited environment
+                                  WorkDir       string                 // empty = per-test t.TempDir(); non-empty = use this directory for both binaries
                                   ExitCode      int                    // expected exit code for both binaries
                                   Normalize     []func([]byte) []byte  // applied in order to stdout and stderr of both binaries before comparison; nil or empty = no normalization
                                   ExpectedFiles map[string][]byte      // optional: path -> expected byte content after execution, for file-output utilities (sponge, cp)
                               }
                         - R1.2: DiffTest.Stdin nil means both binaries receive EOF immediately on stdin. An empty non-nil slice ([]byte{}) also produces no bytes but is semantically distinct (open stdin that is immediately closed).
-                        - R1.3: DiffTest.Env nil means both binaries inherit the test process environment unchanged. When non-nil, the slice replaces (does not append to) the process environment for that invocation.
+                        - R1.3: |
+                            DiffTest.Env nil means both binaries inherit the test process environment with
+                            default overrides applied (see R2.6). When non-nil, the KEY=VALUE pairs in the
+                            slice are merged into the inherited environment: matching keys are overridden, new
+                            keys are added. This merge behavior matches the struct comment ("override or
+                            extend") and avoids requiring callers to replicate the full environment for a
+                            single override.
                         - R1.4: Must define type NormalizeFunc = func([]byte) []byte as a named type alias in package testutils. The Normalize field in DiffTest uses this element type. When the slice is nil or empty, no normalization is applied to stdout or stderr.
                 R2:
                     title: Binary execution
@@ -541,7 +599,17 @@ project_context:
                         - R2.2: Must capture stdout, stderr, and exit code from each binary independently.
                         - R2.3: Must impose a configurable timeout on each binary invocation. The default timeout must be 10 seconds. The test fails if either binary exceeds the timeout.
                         - R2.4: Must not write any output to the test process stdout or stderr during a passing test run.
-                        - R2.5: Must support passing a working directory to each binary invocation. When not specified, both binaries run in a per-test temporary directory created by the harness.
+                        - R2.5: |
+                            Must support passing a working directory to each binary invocation via a WorkDir
+                            field on DiffTest. When WorkDir is empty, both binaries run in a per-test temporary
+                            directory created by the harness via t.TempDir(). The harness must use the same
+                            working directory for both binaries in a given test case. The DiffTest struct gains:
+
+                              WorkDir string // empty = per-test t.TempDir(); non-empty = use this directory for both binaries
+                        - R2.6: |
+                            Must set LC_ALL=C in the environment for both binaries unless the DiffTest.Env
+                            explicitly overrides LC_ALL. This ensures deterministic sort order and formatting
+                            across locales. The harness applies this default before merging DiffTest.Env.
                 R3:
                     title: Comparison and reporting
                     items:
@@ -556,12 +624,33 @@ project_context:
                     items:
                         - R4.1: Must allow per-DiffTest normalization via the Normalize field. The function receives the raw output bytes and returns the normalized bytes.
                         - R4.2: Must provide a built-in TimestampNormalizer that replaces common strftime timestamp patterns with a fixed placeholder string. This normalizer is used by cmd/ts tests.
-                        - R4.3: 'Must allow normalizers to be composed: the harness must accept a slice of Normalize functions applied in order, not a single function. When the slice is nil or empty, no normalization is applied.'
+                        - R4.3: |
+                            Must allow normalizers to be composed: the harness must accept a slice of Normalize
+                            functions applied in order, not a single function. When the slice is nil or empty,
+                            no normalization is applied.
+                        - R4.4: |
+                            Must provide func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc that returns
+                            a single NormalizeFunc applying the given functions in order. This is a convenience
+                            for cmd/ test files that combine multiple normalizers:
+
+                              normalize := testutils.ComposeNormalizers(
+                                  testutils.TimestampNormalizer,
+                                  customNormalizer,
+                              )
                 R5:
                     title: File-state comparison
                     items:
-                        - R5.1: Must support utilities whose primary output is a file rather than stdout (sponge, cp, mv). For these, DiffTest must allow specifying expected file content after execution alongside expected stdout/stderr.
-                        - R5.2: Must compare expected file content byte-for-byte and report divergence in the same format as stdout divergence.
+                        - R5.1: |
+                            Must support utilities whose primary output is a file rather than stdout (sponge,
+                            cp, mv). DiffTest.ExpectedFiles is a map[string][]byte where keys are file paths
+                            relative to the working directory and values are the expected byte content after
+                            execution. When ExpectedFiles is non-nil, the harness checks each entry after both
+                            binaries complete.
+                        - R5.2: |
+                            Must compare each ExpectedFiles entry byte-for-byte against the file produced by
+                            the Go binary. Any difference must be reported as a test failure with the same
+                            format as stdout divergence: file path, expected content (from reference), actual
+                            content (from Go binary). Missing files must also be reported as failures.
               non_goals:
                 - pkg/testutils does not build or compile the Go binaries under test.
                 - pkg/testutils does not install or manage Homebrew reference binaries.
@@ -572,9 +661,12 @@ project_context:
                 - 'AC1: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) from a TestXxx function with no other setup. RunDiffTests runs each DiffTest as a named subtest (t.Run(test.Name, ...)) and calls t.Fatal on the first divergence in any subtest.'
                 - 'AC2: A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries'' stdout, stderr, and exit code.'
                 - 'AC3: TimestampNormalizer replaces strftime-formatted timestamps (e.g., "Feb 19 12:34:56") with a fixed placeholder so that ts differential tests pass despite wall-clock differences.'
-                - 'AC4: A DiffTest with a file expectation field correctly fails when the Go binary writes different content than the reference binary.'
+                - 'AC4: A DiffTest with ExpectedFiles correctly fails when the Go binary writes different file content than expected.'
                 - 'AC5: A DiffTest that exceeds the timeout fails with a clear timeout message rather than hanging the test run.'
                 - 'AC6: All pkg/testutils code compiles with no warnings under golangci-lint.'
+                - 'AC7: ComposeNormalizers combines multiple NormalizeFunc values into a single function that applies them in order.'
+                - 'AC8: RunDiffTests sets LC_ALL=C by default. A DiffTest with Env=["LC_ALL=en_US.UTF-8"] overrides this default.'
+                - 'AC9: The usage example in the problem statement is sufficient for a stitch agent to write a cmd/ test file that imports pkg/testutils without recreating the package.'
             - file: docs/specs/product-requirements/prd002-sys.yaml
               id: prd002-sys
               title: 'pkg/sys: Syscall Abstractions'
@@ -603,7 +695,13 @@ project_context:
                         - R1.1: Must provide func TerminalWidth() (int, error) that returns the current terminal column count by calling ioctl(TIOCGWINSZ) on stdout. Returns an error (not panic) when stdout is not a terminal or when ioctl fails.
                         - R1.2: Must use golang.org/x/sys/unix (the project's only external dependency) to perform the TIOCGWINSZ ioctl; must not shell out to tput or stty and must not import golang.org/x/term.
                         - R1.3: |
-                            Must provide func IsTerminal(w io.Writer) bool that returns true when w is an *os.File whose file descriptor is a terminal, and false otherwise. Implementation: attempt a type assertion to *os.File; if it fails return false; call golang.org/x/sys/unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ) and return err == nil. Returns false for pipes, regular files, bytes.Buffer, and any non-*os.File writer. Required by pkg/format to suppress color output when stdout is redirected.
+                            Must provide func IsTerminal(fd uintptr) bool that returns true when the file
+                            descriptor refers to a terminal, and false otherwise. Implementation: call
+                            golang.org/x/sys/unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ) and return
+                            err == nil. Returns false for pipes, regular files, and non-terminal descriptors.
+                            The caller (pkg/format ColorEnabled) is responsible for extracting the fd from an
+                            io.Writer via type assertion to *os.File. Required by pkg/format to suppress color
+                            output when stdout is redirected.
                         - R1.4: 'Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.'
                 R2:
                     title: Extended file metadata
@@ -624,7 +722,7 @@ project_context:
                                   Blocks  int64       // number of 512-byte blocks allocated (st_blocks)
                                   Blksize int64       // preferred I/O block size (st_blksize)
                                   ModTime time.Time   // modification time (st_mtime / st_mtimespec)
-                                  Sys     os.FileInfo // underlying os.FileInfo for os package compatibility
+                                  Info    os.FileInfo // underlying os.FileInfo for os package compatibility
                               }
                         - R2.3: Must abstract the Darwin/Linux divergence in struct field names (st_mtimespec on Darwin vs st_mtim on Linux; st_blocks interpretation) so callers use a single API regardless of target platform.
                         - R2.4: 'Utility context — ls (ls.c:213, 371): ls needs Nlink, Uid, Gid, Rdev, Mode for -l format; Blocks for -s; Ino for -i.'
@@ -681,7 +779,7 @@ project_context:
                     items:
                         - R1.1: Must provide a Columns(entries []string, termWidth int) [][]string function that distributes entries into the maximum number of columns that fit within termWidth, using the longest entry in each column to determine column width.
                         - R1.2: Must provide a PadRight(s string, width int) string and PadLeft(s string, width int) string function for left- and right-aligned field padding within a fixed-width column.
-                        - R1.3: 'Must treat multi-byte Unicode characters correctly: column width must be computed from display width (rune count or east-asian width), not byte count.'
+                        - R1.3: 'Must treat multi-byte Unicode characters correctly: column width must be computed from display width (rune count via utf8.RuneCountInString), not byte count. East-asian full-width character handling is deferred; rune count is sufficient for ASCII-dominant utility output in the current roadmap.'
                         - R1.4: 'Utility context — ls (ls.c multi-column layout): ls default output places filenames in as many columns as fit in the terminal width. Column widths are computed from the longest filename in each column, not the global maximum.'
                 R2:
                     title: ANSI color
@@ -689,9 +787,20 @@ project_context:
                         - R2.1: Must provide a FileTypeColor(mode os.FileMode) string function that returns the ANSI escape sequence for a file's type (directory, symlink, executable, block device, character device, socket, pipe, regular file).
                         - R2.2: Must provide a Reset() string constant or function that returns the ANSI reset sequence ("\033[0m").
                         - R2.3: |
-                            Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. It must call pkg/sys.IsTerminal(w io.Writer) bool, which returns true when w is an *os.File whose file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), and false for pipes, regular files, and non-*os.File writers. When ColorEnabled returns false, FileTypeColor must return an empty string and Reset must return an empty string.
+                            Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. Implementation: attempt a type assertion to *os.File; if it fails return false; call pkg/sys.IsTerminal(f.Fd()) which returns true when the file descriptor is a terminal (detected via TIOCGWINSZ ioctl), and false for pipes, regular files, and non-terminal descriptors. When ColorEnabled returns false, FileTypeColor must return an empty string and Reset must return an empty string.
                         - R2.4: 'Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).'
                         - R2.5: 'Utility context — ls (ls.c:103 includes dircolors.h, ls.c:273 get_color_indicator): ls outputs ANSI escapes before and after each filename in colorized mode. Color is suppressed when stdout is not a TTY or when --color=never is set.'
+                        - R2.6: |
+                            Must provide func SetColorEnabled(enabled bool) that overrides the automatic TTY
+                            detection from ColorEnabled. When set to true, FileTypeColor and Reset return ANSI
+                            sequences regardless of whether stdout is a TTY. When set to false, they return
+                            empty strings regardless. This supports --color=always and --color=never flags in
+                            utilities like ls. The override is process-global.
+                        - R2.7: |
+                            Must provide func ResetColorEnabled() that clears any override set by
+                            SetColorEnabled, reverting to automatic TTY detection via ColorEnabled. Utilities
+                            must call ResetColorEnabled in deferred cleanup or test teardown to avoid leaking
+                            the override across test cases.
                 R3:
                     title: Human-readable size conversion
                     items:
@@ -717,7 +826,8 @@ project_context:
                 - 'AC2: FileTypeColor returns the correct ANSI code for each of the eight file types listed in R2.4.'
                 - 'AC3: ColorEnabled returns false when passed an io.Writer backed by an os.Pipe (not a TTY), and true when passed os.Stdout in a TTY test.'
                 - 'AC4: HumanSize(1536, binary) returns "1.5K". HumanSize(1000000, SI) returns "1.0MB". HumanSize(0, binary) returns "0".'
-                - 'AC5: All pkg/format code compiles with no warnings under golangci-lint.'
+                - 'AC5: SetColorEnabled(true) causes FileTypeColor to return ANSI codes even when stdout is a pipe. SetColorEnabled(false) causes FileTypeColor to return empty strings even when stdout is a TTY. ResetColorEnabled reverts to automatic detection.'
+                - 'AC6: All pkg/format code compiles with no warnings under golangci-lint.'
             - file: docs/specs/product-requirements/prd004-ts.yaml
               id: prd004-ts
               title: 'cmd/ts: Timestamp Stdin Lines'
@@ -1103,40 +1213,15 @@ project_context:
                         - R4.2: |
                             --color=auto must colorize output only when stdout is a TTY. TTY detection: call pkg/sys.IsTerminal(os.Stdout) — returns true when os.Stdout's file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), false otherwise. When stdout is not a TTY, --color=auto must behave like --color=never.
                         - R4.3: |
-                            Colorized output uses GNU LS_COLORS default color assignments. Implement color lookup directly in cmd/ls using the following table (do not call pkg/format.FileTypeColor):
+                            Colorized output uses GNU LS_COLORS default color assignments via pkg/format. Call pkg/format.FileTypeColor(mode os.FileMode) string to obtain the ANSI escape sequence for a given file type, and pkg/format.Reset() string for the reset sequence. Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
 
-                              File type         ANSI escape sequence
-                              ---------         --------------------
-                              directory         "\033[34m"   (blue)
-                              symbolic link     "\033[36m"   (cyan)
-                              executable file   "\033[32m"   (green)
-                              block device      "\033[33;1m" (yellow bold)
-                              character device  "\033[33;1m" (yellow bold)
-                              socket            "\033[35m"   (magenta)
-                              named pipe/FIFO   "\033[33m"   (yellow)
-                              regular file      ""           (no color)
-                              reset sequence    "\033[0m"
-
-                            Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
+                            Set the process-global color mode based on the --color flag value: call pkg/format.SetColorEnabled(true) for --color=always, pkg/format.SetColorEnabled(false) for --color=never. For --color=auto, call pkg/sys.IsTerminal(os.Stdout.Fd()) and pass the result to pkg/format.SetColorEnabled. When color is disabled, pkg/format.FileTypeColor returns empty strings.
                         - R4.4: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
                 R5:
                     title: Human-readable sizes (-h)
                     items:
                         - R5.1: |
-                            -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed using the following binary HumanSize algorithm (do not call pkg/format.HumanSize):
-
-                              func humanSize(n int64) string {
-                                  if n == 0 { return "0" }
-                                  suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
-                                  f := float64(n)
-                                  i := 0
-                                  for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
-                                  if i == 0 { return fmt.Sprintf("%d", n) }
-                                  if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
-                                  return fmt.Sprintf("%.1f%s", f, suffixes[i])
-                              }
-
-                            Without -l, -h must have no visible effect on output.
+                            -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). Without -l, -h must have no visible effect on output.
                         - R5.2: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
                         - R5.3: Without -l, -h must have no visible effect on output.
                 R6:
@@ -1222,20 +1307,7 @@ project_context:
                     title: Flag behavior
                     items:
                         - R2.1: |
-                            -h must display sizes as human-readable strings using binary mode (1024-based). Implement the following algorithm directly in cmd/du (do not call pkg/format.HumanSize):
-
-                              func humanSize(n int64) string {
-                                  if n == 0 { return "0" }
-                                  suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
-                                  f := float64(n)
-                                  i := 0
-                                  for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
-                                  if i == 0 { return fmt.Sprintf("%d", n) }
-                                  if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
-                                  return fmt.Sprintf("%.1f%s", f, suffixes[i])
-                              }
-
-                            -h applies to all output lines including the grand total line when -c is also given.
+                            -h must display sizes as human-readable strings using binary mode (1024-based) via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). -h applies to all output lines including the grand total line when -c is also given.
                         - R2.2: -s must print only one line per argument with the total size of that argument. When -s is given, subdirectory lines must not be printed. -s is equivalent to --max-depth=0.
                         - R2.3: -a must print a size line for every file encountered during traversal, not just directories. Without -a, only directory entries are printed (the default).
                         - R2.4: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.
@@ -1580,6 +1652,237 @@ project_context:
                 - mage install is exercised by the operator manually; it is not part of this use case's primary flow.
                 - Orchestrator, generator, beads, scaffold, and prompt targets are provided by cobbler-scaffold and not covered here.
               test_suite: test-rel00.0
+            - file: docs/specs/use-cases/rel00.0-uc002-format.yaml
+              id: rel00.0-uc002-format
+              title: Format output with columns, color, and human-readable sizes
+              summary: |
+                The operator verifies that pkg/format produces correct column layouts, ANSI color
+                sequences, and human-readable size strings. The test exercises each formatting
+                capability in isolation: Columns distributes entries into a grid that fits the terminal
+                width, FileTypeColor returns the correct ANSI escape for each file type, the color
+                override mechanism works for --color=always and --color=never, and HumanSize converts
+                byte counts to human-readable strings matching GNU coreutils behavior.
+              actor: Human Operator
+              trigger: |
+                The operator has completed the PRD revision (prd003-format.yaml) and wants to verify
+                that pkg/format satisfies its requirements via unit tests.
+              flow:
+                - id: F1
+                  step: |
+                    The operator runs go test ./pkg/format/... which executes the unit tests for
+                    pkg/format. Unlike cmd/ packages, pkg/format does not use differential testing
+                    because there is no reference binary — it is a library.
+                - id: F2
+                  step: |
+                    The Columns test creates a list of 20 filenames and calls Columns(entries, 80).
+                    The function distributes entries into the maximum number of columns that fit within
+                    80 characters, computing column widths from the longest entry in each column.
+                - id: F3
+                  step: |
+                    The PadRight and PadLeft tests verify that strings are padded to the specified
+                    display width using rune count, not byte count.
+                - id: F4
+                  step: |
+                    The FileTypeColor test calls SetColorEnabled(true), then verifies that each of the
+                    eight file types (directory, symlink, executable, block device, character device,
+                    socket, pipe, regular) returns the correct ANSI escape sequence per GNU ls defaults.
+                - id: F5
+                  step: |
+                    The color override test calls SetColorEnabled(false) and verifies that FileTypeColor
+                    and Reset return empty strings for all file types. It then calls ResetColorEnabled
+                    to restore automatic detection.
+                - id: F6
+                  step: |
+                    The ColorEnabled test passes an os.Pipe writer and verifies it returns false.
+                    It passes a bytes.Buffer and verifies it returns false.
+                - id: F7
+                  step: |
+                    The HumanSize test verifies binary mode (1024-based): HumanSize(1536, binary)
+                    returns "1.5K", HumanSize(0, binary) returns "0". It verifies SI mode (1000-based):
+                    HumanSize(1000000, SI) returns "1.0MB".
+              touchpoints:
+                - T1: pkg/format — Columns, PadRight, PadLeft, displayWidth (prd003-format R1)
+                - T2: pkg/format — FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled (prd003-format R2)
+                - T3: pkg/format — HumanSize (prd003-format R3)
+                - T4: pkg/sys — IsTerminal, called internally by ColorEnabled
+              success_criteria:
+                - criterion: Columns(20 filenames, 80) produces a grid where each row fits within 80 characters.
+                  id: S1
+                - criterion: PadRight("abc", 10) returns "abc" followed by 7 spaces. PadLeft("abc", 10) returns 7 spaces followed by "abc".
+                  id: S2
+                - criterion: FileTypeColor returns the correct ANSI code for all eight file types when color is enabled.
+                  id: S3
+                - criterion: SetColorEnabled(false) suppresses all ANSI output. ResetColorEnabled restores automatic detection.
+                  id: S4
+                - criterion: ColorEnabled returns false for pipe and non-*os.File writers.
+                  id: S5
+                - criterion: HumanSize(1536, binary) returns "1.5K". HumanSize(1000000, SI) returns "1.0MB". HumanSize(0, binary) returns "0".
+                  id: S6
+                - criterion: go test ./pkg/format/... passes with no failures.
+                  id: S7
+              out_of_scope:
+                - LS_COLORS environment variable parsing is explicitly excluded from pkg/format.
+                - Terminal hyperlinks are not in scope.
+                - East-asian full-width character width computation is deferred.
+              test_suite: test-rel00.0
+            - file: docs/specs/use-cases/rel00.0-uc003-sys.yaml
+              id: rel00.0-uc003-sys
+              title: Query terminal width, stat files, and handle signals via pkg/sys
+              summary: |
+                The operator verifies that pkg/sys provides correct terminal-width queries, extended
+                file metadata, and signal handling on both Darwin and Linux. The test exercises each
+                capability in isolation: TerminalWidth returns a positive column count on a TTY,
+                IsTerminal distinguishes terminals from pipes, Stat and Lstat return correct extended
+                metadata, InstallSIGPIPEHandler suppresses broken-pipe errors, and OnTerminalResize
+                invokes callbacks on SIGWINCH.
+              actor: Human Operator
+              trigger: |
+                The operator has completed the PRD revision (prd002-sys.yaml) and wants to verify that
+                pkg/sys satisfies its requirements via unit tests.
+              flow:
+                - id: F1
+                  step: |
+                    The operator runs go test ./pkg/sys/... which executes the unit tests for pkg/sys.
+                    Unlike cmd/ packages, pkg/sys does not use differential testing because there is no
+                    reference binary — it is a library.
+                - id: F2
+                  step: |
+                    The TerminalWidth test calls TerminalWidth() and verifies it returns a positive
+                    integer when stdout is a terminal, or an error when stdout is a pipe.
+                - id: F3
+                  step: |
+                    The IsTerminal test calls IsTerminal with a pipe fd and verifies it returns false.
+                    It calls IsTerminal with a TTY fd (if available in the test environment) and verifies
+                    it returns true.
+                - id: F4
+                  step: |
+                    The Stat test calls Stat on a known file and verifies Nlink, Uid, Gid, Dev, Ino,
+                    and Blocks match the output of stat(1) on the same file.
+                - id: F5
+                  step: |
+                    The Lstat test calls Lstat on a symbolic link and verifies that the returned FileInfo
+                    has type bits showing symlink, not the target's mode.
+                - id: F6
+                  step: |
+                    The fillFromStat test verifies that the Darwin/Linux abstraction correctly populates
+                    FileInfo.ModTime from st_mtimespec (Darwin) or st_mtim (Linux).
+                - id: F7
+                  step: |
+                    The InstallSIGPIPEHandler test verifies that writing to a broken pipe after installing
+                    the handler causes the process to exit 0 rather than printing a write error.
+              touchpoints:
+                - T1: pkg/sys — TerminalWidth, IsTerminal (prd002-sys R1)
+                - T2: pkg/sys — Stat, Lstat, FileInfo, fillFromStat (prd002-sys R2)
+                - T3: pkg/sys — InstallSIGPIPEHandler (prd002-sys R3)
+                - T4: pkg/sys — OnTerminalResize (prd002-sys R4)
+              success_criteria:
+                - criterion: TerminalWidth returns a positive integer on a TTY or an error on a pipe.
+                  id: S1
+                - criterion: IsTerminal(pipeFd) returns false.
+                  id: S2
+                - criterion: Stat on a known file returns correct Nlink, Uid, Gid, Dev, Ino, Blocks.
+                  id: S3
+                - criterion: Lstat on a symlink returns type bits showing symlink.
+                  id: S4
+                - criterion: FileInfo.ModTime is populated from the platform-correct field.
+                  id: S5
+                - criterion: InstallSIGPIPEHandler causes exit 0 on broken pipe.
+                  id: S6
+                - criterion: go test ./pkg/sys/... passes on darwin/arm64 with no failures.
+                  id: S7
+              out_of_scope:
+                - SIGWINCH testing requires a real terminal resize event; it is tested manually, not in the harness.
+                - Process-group management (setpgid, killpg) is deferred to the xargs PRD.
+                - SIGUSR1/SIGUSR2 handling is deferred to the find PRD.
+              test_suite: test-rel00.0
+            - file: docs/specs/use-cases/rel00.0-uc004-testutils.yaml
+              id: rel00.0-uc004-testutils
+              title: Execute differential tests and compare binary outputs via pkg/testutils
+              summary: |
+                The operator verifies that pkg/testutils correctly executes Go and reference binaries
+                with identical inputs, compares their outputs, and reports divergence. The test exercises
+                each harness capability in isolation: RunDiffTests runs named subtests and compares
+                stdout, stderr, and exit code byte-for-byte; normalization hooks strip non-deterministic
+                fields before comparison; ComposeNormalizers chains multiple hooks; file-state comparison
+                validates output files for utilities like sponge; and the timeout mechanism prevents
+                hanging test runs.
+              actor: Human Operator
+              trigger: |
+                The operator has completed the PRD revision (prd001-testutils.yaml) and wants to verify
+                that pkg/testutils satisfies its requirements via unit tests.
+              flow:
+                - id: F1
+                  step: |
+                    The operator runs go test ./pkg/testutils/... which executes the unit tests for
+                    pkg/testutils. Unlike cmd/ packages that use differential testing against a reference
+                    binary, pkg/testutils is the harness itself. Its tests use mock binaries (small shell
+                    scripts or compiled test helpers) that produce known stdout, stderr, and exit codes.
+                - id: F2
+                  step: |
+                    The DiffTest struct test verifies that all fields are accessible and that the zero
+                    value produces a valid test case: no args, nil stdin (EOF), nil env (defaults with
+                    LC_ALL=C), empty WorkDir (t.TempDir), exit code 0, no normalization, no expected
+                    files.
+                - id: F3
+                  step: |
+                    The RunDiffTests matching-output test creates two mock binaries that produce identical
+                    stdout and stderr, then calls RunDiffTests. The test passes silently with no output.
+                - id: F4
+                  step: |
+                    The RunDiffTests divergent-output test creates two mock binaries that produce different
+                    stdout. RunDiffTests calls t.Fatal with a failure message containing the args, stdin,
+                    both stdouts, both stderrs, and both exit codes.
+                - id: F5
+                  step: |
+                    The normalization test creates mock binaries whose outputs differ only in a timestamp
+                    field. TimestampNormalizer strips the timestamp before comparison, making the test pass.
+                - id: F6
+                  step: |
+                    The ComposeNormalizers test chains two normalizer functions and verifies they are
+                    applied in order to both stdout and stderr before comparison.
+                - id: F7
+                  step: |
+                    The file-state comparison test uses mock binaries that write to files in the working
+                    directory. DiffTest.ExpectedFiles specifies the expected content. The test verifies
+                    that matching content passes and divergent content fails with the correct report.
+                - id: F8
+                  step: |
+                    The timeout test creates a mock binary that sleeps beyond the configured timeout.
+                    RunDiffTests fails with a clear timeout message rather than hanging.
+                - id: F9
+                  step: |
+                    The environment default test verifies that LC_ALL=C is set when DiffTest.Env is nil,
+                    and that an explicit Env entry overrides the default.
+              touchpoints:
+                - T1: pkg/testutils — DiffTest, NormalizeFunc (prd001-testutils R1)
+                - T2: pkg/testutils — RunDiffTests, WorkDir, LC_ALL default (prd001-testutils R2)
+                - T3: pkg/testutils — comparison and divergence reporting (prd001-testutils R3)
+                - T4: pkg/testutils — TimestampNormalizer, ComposeNormalizers (prd001-testutils R4)
+                - T5: pkg/testutils — ExpectedFiles file-state comparison (prd001-testutils R5)
+              success_criteria:
+                - criterion: DiffTest zero value is a valid test case that runs without error.
+                  id: S1
+                - criterion: RunDiffTests produces no output when both binaries match.
+                  id: S2
+                - criterion: RunDiffTests reports divergence with args, stdin, both outputs, and both exit codes.
+                  id: S3
+                - criterion: TimestampNormalizer strips strftime timestamps so that time-dependent outputs match.
+                  id: S4
+                - criterion: ComposeNormalizers applies functions in order and the composed result works as a single normalizer.
+                  id: S5
+                - criterion: ExpectedFiles comparison passes for matching files and fails for divergent files.
+                  id: S6
+                - criterion: Timeout produces a clear failure message rather than hanging.
+                  id: S7
+                - criterion: LC_ALL=C is the default environment and DiffTest.Env overrides it.
+                  id: S8
+                - criterion: go test ./pkg/testutils/... passes with no failures.
+                  id: S9
+              out_of_scope:
+                - Utility-specific normalizers (LsNormalizer, LsExtendedNormalizer) are defined in their respective cmd/ packages, not in pkg/testutils.
+                - Binary compilation and installation are handled by magefiles, not pkg/testutils.
+                - Retry logic and filesystem mocking are explicitly excluded by the PRD.
+              test_suite: test-rel00.0
             - file: docs/specs/use-cases/rel01.0-uc001-ts.yaml
               id: rel01.0-uc001-ts
               title: Timestamp stdin lines via ts
@@ -1626,7 +1929,7 @@ project_context:
                     the triggering args, both raw outputs, and both normalized outputs.
               touchpoints:
                 - T1: cmd/ts — timestamp prefix logic, all flag modes (prd004-ts R1, R2, R3, R4, R5, R6, R7, R8)
-                - T2: pkg/testutils — RunDiffTests, TimestampNormalizer, binary execution and comparison (prd001-testutils)
+                - T2: pkg/testutils — RunDiffTests, TimestampNormalizer, binary execution and comparison (rel00.0 infrastructure)
                 - T3: Human Operator — triggers use case via do-work after prd004-ts is complete
               success_criteria:
                 - criterion: cmd/ts compiles and ./bin/ts exists after mage build.
@@ -1910,91 +2213,6 @@ project_context:
                 - SIGINT/SIGTERM cleanup behavior is specified in the PRD but is not directly testable in the differential harness; it is verified by manual inspection.
                 - Memory threshold tuning is not tested; the spill path is exercised by the large-input test.
               test_suite: test-rel01.1
-            - file: docs/specs/use-cases/rel02.0-uc001-ls.yaml
-              id: rel02.0-uc001-ls
-              title: List directory contents via ls (core flags)
-              summary: |
-                The operator runs the Go ls binary on a known fixture directory with core flags (default,
-                -1, -l, -a, -A, -d, --color, -h). The differential testing harness runs both the Go binary
-                and the Homebrew reference binary (gls from coreutils) with the same arguments and
-                environment, applies an LsNormalizer to both outputs (replacing mtime columns with a fixed
-                placeholder), and confirms that the normalized outputs are identical. All tests run with
-                --color=never and LC_ALL=C to eliminate ANSI and locale variance.
-              actor: Human Operator
-              trigger: |
-                The operator has completed the PRD (prd008-ls.yaml) and shared component PRDs
-                (prd002-sys, prd003-format) and invokes do-work to produce a passing differential
-                test for cmd/ls core flags.
-              flow:
-                - id: F1
-                  step: |
-                    The operator runs the Go ls binary on a fixture directory with known file types,
-                    sizes, and permissions. Example: ./bin/ls --color=never testdata/ls-fixture/
-                - id: F2
-                  step: |
-                    cmd/ls reads the directory entries, queries terminal width via pkg/sys.TerminalWidth
-                    (for default multi-column mode), and obtains file metadata via pkg/sys.Stat for long
-                    format. It formats output via pkg/format.Columns (multi-column) or inline formatting
-                    (long format with pkg/format.HumanSize for -h).
-                - id: F3
-                  step: |
-                    cmd/ls writes the formatted listing to stdout. The format depends on the active flags:
-                    multi-column (default TTY), single-column (default pipe or -1), or long format (-l).
-                - id: F4
-                  step: |
-                    The differential testing harness (pkg/testutils) executes both ./bin/ls and gls with
-                    the same arguments, environment (LC_ALL=C, --color=never), and working directory.
-                - id: F5
-                  step: |
-                    The harness applies the LsNormalizer to both outputs. The LsNormalizer replaces the
-                    modification time column in -l output (fields matching "Mon DD HH:MM" or "Mon DD  YYYY")
-                    with the placeholder "MTIME". This eliminates wall-clock divergence between runs.
-                - id: F6
-                  step: |
-                    The harness compares the normalized outputs byte-for-byte. Both binaries must produce
-                    identical entry names, sort order, column layout, and field values (permissions,
-                    hard-link count, owner, group, size).
-                - id: F7
-                  step: |
-                    If the outputs match, the test passes. If they diverge, the harness reports the
-                    triggering args, both raw outputs, both normalized outputs, and both exit codes.
-              touchpoints:
-                - T1: cmd/ls — directory listing, format modes, filter flags, color, human sizes (prd008-ls R1, R2, R3, R4, R5, R6, R7)
-                - T2: pkg/sys — TerminalWidth, Stat/Lstat, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize (prd002-sys)
-                - T3: pkg/format — Columns, FileTypeColor, HumanSize (prd003-format)
-                - T4: pkg/testutils — RunDiffTests, LsNormalizer, binary execution and comparison
-              success_criteria:
-                - criterion: cmd/ls compiles and ./bin/ls exists after mage build.
-                  id: S1
-                - criterion: |
-                    Default mode with stdout redirected (not a TTY) produces single-column output with
-                    one entry per line, matching gls output on the same fixture.
-                  id: S2
-                - criterion: |
-                    -l long format produces identical output to gls -l after MTIME normalization on the
-                    same fixture directory.
-                  id: S3
-                - criterion: |
-                    -a includes dotfiles (including . and ..) and matches gls -a output on a fixture
-                    containing dotfiles.
-                  id: S4
-                - criterion: |
-                    --color=never produces output with no ANSI escape sequences, matching gls --color=never
-                    byte-for-byte.
-                  id: S5
-                - criterion: |
-                    -lh produces human-readable file sizes that match gls -lh on files with known sizes.
-                  id: S6
-                - criterion: |
-                    The differential test passes for all core flags: default (single-col redirect),
-                    -1, -l, -lh, -a, -A, -d, --color=never. All tests use LC_ALL=C and --color=never
-                    (except color-specific tests).
-                  id: S7
-              out_of_scope:
-                - Default multi-column mode on a real TTY is difficult to test deterministically in the harness; we test -C explicitly in the ls extended use case (rel02.1).
-                - Owner/group name normalization is not applied; tests use a fixture where files are owned by the test runner's UID/GID, ensuring consistency.
-                - SIGWINCH behavior is specified in prd008-ls R7.2 but is not directly testable in the differential harness.
-              test_suite: test-rel02.0
             - file: docs/specs/use-cases/rel02.0-uc002-du.yaml
               id: rel02.0-uc002-du
               title: Report recursive directory disk usage via du
@@ -2008,7 +2226,7 @@ project_context:
               actor: Human Operator
               trigger: |
                 The operator has completed the PRD (prd009-du.yaml) and shared component PRDs
-                (prd002-sys, prd003-format) and invokes do-work to produce a passing differential
+                (pkg/sys, pkg/format from rel00.0) and invokes do-work to produce a passing differential
                 test for cmd/du.
               flow:
                 - id: F1
@@ -2080,8 +2298,93 @@ project_context:
                 - SIGPIPE handling is specified in prd009-du R5.1 but is not directly testable in the differential harness.
                 - Sparse file creation depends on the filesystem; --apparent-size tests use a regular file with known size rather than a true sparse file.
               test_suite: test-rel02.0
-            - file: docs/specs/use-cases/rel02.1-uc001-ls-extended.yaml
-              id: rel02.1-uc001-ls-extended
+            - file: docs/specs/use-cases/rel99.0-uc001-ls.yaml
+              id: rel99.0-uc001-ls
+              title: List directory contents via ls (core flags)
+              summary: |
+                The operator runs the Go ls binary on a known fixture directory with core flags (default,
+                -1, -l, -a, -A, -d, --color, -h). The differential testing harness runs both the Go binary
+                and the Homebrew reference binary (gls from coreutils) with the same arguments and
+                environment, applies an LsNormalizer to both outputs (replacing mtime columns with a fixed
+                placeholder), and confirms that the normalized outputs are identical. All tests run with
+                --color=never and LC_ALL=C to eliminate ANSI and locale variance.
+              actor: Human Operator
+              trigger: |
+                The operator has completed the PRD (prd008-ls.yaml) and shared component PRDs
+                (pkg/sys, pkg/format from rel00.0) and invokes do-work to produce a passing differential
+                test for cmd/ls core flags.
+              flow:
+                - id: F1
+                  step: |
+                    The operator runs the Go ls binary on a fixture directory with known file types,
+                    sizes, and permissions. Example: ./bin/ls --color=never testdata/ls-fixture/
+                - id: F2
+                  step: |
+                    cmd/ls reads the directory entries, queries terminal width via pkg/sys.TerminalWidth
+                    (for default multi-column mode), and obtains file metadata via pkg/sys.Stat for long
+                    format. It formats output via pkg/format.Columns (multi-column) or inline formatting
+                    (long format with pkg/format.HumanSize for -h).
+                - id: F3
+                  step: |
+                    cmd/ls writes the formatted listing to stdout. The format depends on the active flags:
+                    multi-column (default TTY), single-column (default pipe or -1), or long format (-l).
+                - id: F4
+                  step: |
+                    The differential testing harness (pkg/testutils) executes both ./bin/ls and gls with
+                    the same arguments, environment (LC_ALL=C, --color=never), and working directory.
+                - id: F5
+                  step: |
+                    The harness applies the LsNormalizer to both outputs. The LsNormalizer replaces the
+                    modification time column in -l output (fields matching "Mon DD HH:MM" or "Mon DD  YYYY")
+                    with the placeholder "MTIME". This eliminates wall-clock divergence between runs.
+                - id: F6
+                  step: |
+                    The harness compares the normalized outputs byte-for-byte. Both binaries must produce
+                    identical entry names, sort order, column layout, and field values (permissions,
+                    hard-link count, owner, group, size).
+                - id: F7
+                  step: |
+                    If the outputs match, the test passes. If they diverge, the harness reports the
+                    triggering args, both raw outputs, both normalized outputs, and both exit codes.
+              touchpoints:
+                - T1: cmd/ls — directory listing, format modes, filter flags, color, human sizes (prd008-ls R1, R2, R3, R4, R5, R6, R7)
+                - T2: pkg/sys — TerminalWidth, Stat/Lstat, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize (rel00.0 infrastructure)
+                - T3: pkg/format — Columns, FileTypeColor, HumanSize (rel00.0 infrastructure)
+                - T4: pkg/testutils — RunDiffTests, LsNormalizer, binary execution and comparison
+              success_criteria:
+                - criterion: cmd/ls compiles and ./bin/ls exists after mage build.
+                  id: S1
+                - criterion: |
+                    Default mode with stdout redirected (not a TTY) produces single-column output with
+                    one entry per line, matching gls output on the same fixture.
+                  id: S2
+                - criterion: |
+                    -l long format produces identical output to gls -l after MTIME normalization on the
+                    same fixture directory.
+                  id: S3
+                - criterion: |
+                    -a includes dotfiles (including . and ..) and matches gls -a output on a fixture
+                    containing dotfiles.
+                  id: S4
+                - criterion: |
+                    --color=never produces output with no ANSI escape sequences, matching gls --color=never
+                    byte-for-byte.
+                  id: S5
+                - criterion: |
+                    -lh produces human-readable file sizes that match gls -lh on files with known sizes.
+                  id: S6
+                - criterion: |
+                    The differential test passes for all core flags: default (single-col redirect),
+                    -1, -l, -lh, -a, -A, -d, --color=never. All tests use LC_ALL=C and --color=never
+                    (except color-specific tests).
+                  id: S7
+              out_of_scope:
+                - Default multi-column mode on a real TTY is difficult to test deterministically in the harness; we test -C explicitly in the ls extended use case (rel02.1).
+                - Owner/group name normalization is not applied; tests use a fixture where files are owned by the test runner's UID/GID, ensuring consistency.
+                - SIGWINCH behavior is specified in prd008-ls R7.2 but is not directly testable in the differential harness.
+              test_suite: test-rel99.0
+            - file: docs/specs/use-cases/rel99.1-uc001-ls-extended.yaml
+              id: rel99.1-uc001-ls-extended
               title: List directory contents via ls (extended flags)
               summary: |
                 The operator runs the Go ls binary with extended flags (-C, -x, -t, -S, -r, -U, -v, -i,
@@ -2179,11 +2482,11 @@ project_context:
                 - -v (version sort) test uses a simple fixture with files named file1, file2, file10; full strverscmp edge cases are not exercised in the differential test.
                 - -U (unsorted) output order depends on filesystem directory order; both binaries produce the same order when reading the same directory, so comparison is valid but not a test of Go-specific behavior.
                 - SIGWINCH and terminal resize behavior during -R recursive listing is not testable in the differential harness.
-              test_suite: test-rel02.1
+              test_suite: test-rel99.1
         test_suites:
             - file: docs/specs/test-suites/test-rel00.0.yaml
               id: test-rel00.0
-              title: 'Test Suite: rel00.0 — build lifecycle and cmd/version'
+              title: 'Test Suite: rel00.0 — build lifecycle, cmd/version, pkg/format, pkg/sys, and pkg/testutils'
               release: rel00.0
               traces:
                 - rel00.0-uc001-magefiles
@@ -2191,6 +2494,21 @@ project_context:
                 - prd011-magefiles R2
                 - prd011-magefiles R3
                 - prd011-magefiles R4
+                - rel00.0-uc002-format
+                - prd003-format R1
+                - prd003-format R2
+                - prd003-format R3
+                - rel00.0-uc003-sys
+                - prd002-sys R1
+                - prd002-sys R2
+                - prd002-sys R3
+                - prd002-sys R4
+                - rel00.0-uc004-testutils
+                - prd001-testutils R1
+                - prd001-testutils R2
+                - prd001-testutils R3
+                - prd001-testutils R4
+                - prd001-testutils R5
               preconditions:
                 - A git repository with at least one tag matching v[0-9]*.
                 - golangci-lint is installed and on PATH.
@@ -2285,6 +2603,326 @@ project_context:
                     exit_code: 0
                   traces:
                     - prd011-magefiles R4.1
+                - name: columns_20_entries_80_width
+                  description: Columns distributes 20 filenames into a grid fitting 80 columns.
+                  inputs:
+                    function: "format.Columns(entries, 80)"
+                    entries: 20 filenames of varying lengths
+                  expected:
+                    postcondition: each row fits within 80 characters; column count is maximized
+                  traces:
+                    - prd003-format R1.1
+                    - prd003-format R1.4
+                - name: columns_empty_input
+                  description: Columns returns nil for empty input.
+                  inputs:
+                    function: "format.Columns(nil, 80)"
+                  expected:
+                    result: nil
+                  traces:
+                    - prd003-format R1.1
+                - name: pad_right
+                  description: PadRight pads a string with trailing spaces to the specified width.
+                  inputs:
+                    function: 'format.PadRight("abc", 10)'
+                  expected:
+                    result: '"abc       "  (abc + 7 spaces)'
+                  traces:
+                    - prd003-format R1.2
+                - name: pad_left
+                  description: PadLeft pads a string with leading spaces to the specified width.
+                  inputs:
+                    function: 'format.PadLeft("abc", 10)'
+                  expected:
+                    result: '"       abc"  (7 spaces + abc)'
+                  traces:
+                    - prd003-format R1.2
+                - name: display_width_multibyte
+                  description: Column width uses rune count, not byte count, for multi-byte strings.
+                  inputs:
+                    function: 'format.PadRight("café", 10)'
+                  expected:
+                    result: '"café      "  (café is 4 runes, padded to 10)'
+                  traces:
+                    - prd003-format R1.3
+                - name: file_type_color_all_types
+                  description: FileTypeColor returns correct ANSI codes for all eight file types.
+                  inputs:
+                    function: "format.FileTypeColor(mode) for each file type"
+                    setup: "format.SetColorEnabled(true)"
+                  expected:
+                    directory: '"\033[34m"'
+                    symlink: '"\033[36m"'
+                    executable: '"\033[32m"'
+                    block_device: '"\033[33;1m"'
+                    char_device: '"\033[33;1m"'
+                    socket: '"\033[35m"'
+                    pipe: '"\033[33m"'
+                    regular: '""'
+                  traces:
+                    - prd003-format R2.1
+                    - prd003-format R2.4
+                - name: reset_color_enabled
+                  description: Reset returns ANSI reset sequence when color is enabled.
+                  inputs:
+                    function: "format.Reset()"
+                    setup: "format.SetColorEnabled(true)"
+                  expected:
+                    result: '"\033[0m"'
+                  traces:
+                    - prd003-format R2.2
+                - name: color_disabled_suppresses_output
+                  description: SetColorEnabled(false) causes FileTypeColor and Reset to return empty strings.
+                  inputs:
+                    function: "format.FileTypeColor(os.ModeDir) and format.Reset()"
+                    setup: "format.SetColorEnabled(false)"
+                  expected:
+                    file_type_color: '""'
+                    reset: '""'
+                  traces:
+                    - prd003-format R2.6
+                - name: reset_color_enabled_restores_auto
+                  description: ResetColorEnabled clears the override and reverts to TTY detection.
+                  inputs:
+                    function: "format.ResetColorEnabled() then format.ColorEnabled(pipe)"
+                    setup: "format.SetColorEnabled(true); format.ResetColorEnabled()"
+                  expected:
+                    color_enabled_pipe: false
+                  traces:
+                    - prd003-format R2.7
+                - name: color_enabled_pipe
+                  description: ColorEnabled returns false for an os.Pipe writer.
+                  inputs:
+                    function: "format.ColorEnabled(pipeWriter)"
+                  expected:
+                    result: false
+                  traces:
+                    - prd003-format R2.3
+                - name: color_enabled_non_file
+                  description: ColorEnabled returns false for a bytes.Buffer (non-*os.File).
+                  inputs:
+                    function: "format.ColorEnabled(&bytes.Buffer{})"
+                  expected:
+                    result: false
+                  traces:
+                    - prd003-format R2.3
+                - name: human_size_binary
+                  description: HumanSize converts bytes using 1024-based units.
+                  inputs:
+                    function: "format.HumanSize(1536, HumanSizeOpts{Binary: true})"
+                  expected:
+                    result: '"1.5K"'
+                  traces:
+                    - prd003-format R3.1
+                    - prd003-format R3.2
+                    - prd003-format R3.3
+                - name: human_size_si
+                  description: HumanSize converts bytes using 1000-based SI units.
+                  inputs:
+                    function: "format.HumanSize(1000000, HumanSizeOpts{Binary: false})"
+                  expected:
+                    result: '"1.0MB"'
+                  traces:
+                    - prd003-format R3.1
+                    - prd003-format R3.2
+                - name: human_size_zero
+                  description: HumanSize returns "0" for zero bytes.
+                  inputs:
+                    function: "format.HumanSize(0, HumanSizeOpts{Binary: true})"
+                  expected:
+                    result: '"0"'
+                  traces:
+                    - prd003-format R3.4
+                - name: terminal_width_pipe
+                  description: TerminalWidth returns an error when stdout is a pipe.
+                  inputs:
+                    function: "sys.TerminalWidth() with stdout redirected to a pipe"
+                  expected:
+                    error: non-nil
+                  traces:
+                    - prd002-sys R1.1
+                - name: is_terminal_pipe_fd
+                  description: IsTerminal returns false for a pipe file descriptor.
+                  inputs:
+                    function: "sys.IsTerminal(pipeFd)"
+                  expected:
+                    result: false
+                  traces:
+                    - prd002-sys R1.3
+                - name: stat_known_file
+                  description: Stat returns correct extended metadata for a known file.
+                  inputs:
+                    function: "sys.Stat(testFile)"
+                  expected:
+                    postcondition: Nlink, Uid, Gid, Dev, Ino, Blocks match stat(1) output
+                  traces:
+                    - prd002-sys R2.1
+                    - prd002-sys R2.2
+                - name: lstat_symlink
+                  description: Lstat on a symlink returns symlink type bits, not target's mode.
+                  inputs:
+                    function: "sys.Lstat(symlinkPath)"
+                  expected:
+                    postcondition: "Mode & os.ModeSymlink != 0"
+                  traces:
+                    - prd002-sys R2.1
+                - name: stat_modtime_populated
+                  description: Stat returns a non-zero ModTime from the platform-correct field.
+                  inputs:
+                    function: "sys.Stat(testFile)"
+                  expected:
+                    postcondition: ModTime is non-zero and close to os.Stat(testFile).ModTime()
+                  traces:
+                    - prd002-sys R2.3
+                - name: stat_hard_link_count
+                  description: Stat returns correct Nlink for a file with multiple hard links.
+                  inputs:
+                    setup: "create testFile, create hard link to testFile"
+                    function: "sys.Stat(testFile)"
+                  expected:
+                    postcondition: Nlink == 2
+                  traces:
+                    - prd002-sys R2.2
+                - name: sigpipe_handler_exit_zero
+                  description: InstallSIGPIPEHandler causes exit 0 on broken pipe.
+                  inputs:
+                    function: "sys.InstallSIGPIPEHandler() then write to closed pipe"
+                  expected:
+                    exit_code: 0
+                  traces:
+                    - prd002-sys R3.1
+                - name: on_terminal_resize_callback
+                  description: OnTerminalResize registers a callback invoked on SIGWINCH.
+                  inputs:
+                    function: "sys.OnTerminalResize(callback) then send SIGWINCH"
+                  expected:
+                    postcondition: callback was called with a positive width
+                  traces:
+                    - prd002-sys R4.1
+                    - prd002-sys R4.2
+                - name: cross_platform_compile
+                  description: All pkg/sys code compiles on darwin/arm64 and linux/amd64.
+                  inputs:
+                    command: "GOOS=darwin GOARCH=arm64 go build ./pkg/sys/ && GOOS=linux GOARCH=amd64 go build ./pkg/sys/"
+                  expected:
+                    exit_code: 0
+                  traces:
+                    - prd002-sys R1.2
+                - name: difftest_zero_value
+                  description: DiffTest zero value is a valid test case that runs without error.
+                  inputs:
+                    function: "testutils.RunDiffTests(t, echoBin, echoBin, []DiffTest{{Name: \"zero\"}})"
+                  expected:
+                    postcondition: test passes with no output
+                  traces:
+                    - prd001-testutils R1.1
+                - name: rundifftests_matching_output
+                  description: RunDiffTests passes silently when both binaries produce identical output.
+                  inputs:
+                    function: "testutils.RunDiffTests(t, goBin, refBin, tests)"
+                    setup: "both mock binaries print \"hello\\n\" to stdout and exit 0"
+                  expected:
+                    postcondition: test passes with no output to stdout or stderr
+                  traces:
+                    - prd001-testutils R2.1
+                    - prd001-testutils R2.4
+                    - prd001-testutils R3.2
+                - name: rundifftests_divergent_stdout
+                  description: RunDiffTests reports failure when stdout differs between binaries.
+                  inputs:
+                    function: "testutils.RunDiffTests(t, goBin, refBin, tests)"
+                    setup: "Go binary prints \"hello\\n\", reference prints \"world\\n\""
+                  expected:
+                    postcondition: "test fails with message containing args, stdin, both stdouts, both stderrs, and both exit codes"
+                  traces:
+                    - prd001-testutils R3.2
+                    - prd001-testutils R3.5
+                - name: rundifftests_divergent_exit_code
+                  description: RunDiffTests reports failure when exit codes differ.
+                  inputs:
+                    function: "testutils.RunDiffTests(t, goBin, refBin, tests)"
+                    setup: "Go binary exits 0, reference exits 1"
+                  expected:
+                    postcondition: test fails with message showing both exit codes
+                  traces:
+                    - prd001-testutils R3.4
+                    - prd001-testutils R3.5
+                - name: timestamp_normalizer
+                  description: TimestampNormalizer strips strftime timestamps so time-dependent outputs match.
+                  inputs:
+                    function: "testutils.RunDiffTests with Normalize: []NormalizeFunc{TimestampNormalizer}"
+                    setup: "binaries produce outputs differing only in timestamp field"
+                  expected:
+                    postcondition: test passes after normalization strips timestamps
+                  traces:
+                    - prd001-testutils R4.1
+                    - prd001-testutils R4.2
+                - name: compose_normalizers
+                  description: ComposeNormalizers chains multiple functions applied in order.
+                  inputs:
+                    function: "testutils.ComposeNormalizers(fn1, fn2)"
+                  expected:
+                    postcondition: "composed function applies fn1 then fn2; output matches fn2(fn1(input))"
+                  traces:
+                    - prd001-testutils R4.3
+                    - prd001-testutils R4.4
+                - name: expected_files_match
+                  description: ExpectedFiles comparison passes when Go binary writes correct file content.
+                  inputs:
+                    function: "testutils.RunDiffTests with ExpectedFiles"
+                    setup: "mock binary writes expected content to output file"
+                  expected:
+                    postcondition: test passes with no output
+                  traces:
+                    - prd001-testutils R5.1
+                    - prd001-testutils R5.2
+                - name: expected_files_diverge
+                  description: ExpectedFiles comparison fails when Go binary writes wrong file content.
+                  inputs:
+                    function: "testutils.RunDiffTests with ExpectedFiles"
+                    setup: "mock binary writes different content than expected"
+                  expected:
+                    postcondition: test fails with message showing file path, expected content, actual content
+                  traces:
+                    - prd001-testutils R5.1
+                    - prd001-testutils R5.2
+                - name: timeout_exceeded
+                  description: RunDiffTests fails with timeout message when binary exceeds timeout.
+                  inputs:
+                    function: "testutils.RunDiffTests with short timeout"
+                    setup: "mock binary sleeps beyond timeout"
+                  expected:
+                    postcondition: test fails with clear timeout message, not a hang
+                  traces:
+                    - prd001-testutils R2.3
+                - name: env_default_lc_all
+                  description: RunDiffTests sets LC_ALL=C by default when DiffTest.Env is nil.
+                  inputs:
+                    function: "testutils.RunDiffTests with Env: nil"
+                    setup: "mock binary prints LC_ALL environment variable"
+                  expected:
+                    postcondition: "binary receives LC_ALL=C"
+                  traces:
+                    - prd001-testutils R2.6
+                - name: env_override_lc_all
+                  description: DiffTest.Env overrides the LC_ALL=C default.
+                  inputs:
+                    function: 'testutils.RunDiffTests with Env: []string{"LC_ALL=en_US.UTF-8"}'
+                    setup: "mock binary prints LC_ALL environment variable"
+                  expected:
+                    postcondition: "binary receives LC_ALL=en_US.UTF-8"
+                  traces:
+                    - prd001-testutils R1.3
+                    - prd001-testutils R2.6
+                - name: workdir_default_tempdir
+                  description: WorkDir defaults to t.TempDir() when empty.
+                  inputs:
+                    function: "testutils.RunDiffTests with WorkDir: \"\""
+                    setup: "mock binary prints working directory"
+                  expected:
+                    postcondition: both binaries run in a temporary directory
+                  traces:
+                    - prd001-testutils R2.5
             - file: docs/specs/test-suites/test-rel01.0.yaml
               id: test-rel01.0
               title: 'Test Suite: rel01.0 — ts timestamp stdin lines'
@@ -3017,18 +3655,10 @@ project_context:
                     - prd007-sponge R2.1
             - file: docs/specs/test-suites/test-rel02.0.yaml
               id: test-rel02.0
-              title: 'Test Suite: rel02.0 — ls core and du specification and differential tests'
+              title: 'Test Suite: rel02.0 — du recursive directory disk usage'
               release: rel02.0
               traces:
-                - rel02.0-uc001-ls
                 - rel02.0-uc002-du
-                - prd008-ls R1
-                - prd008-ls R2
-                - prd008-ls R3
-                - prd008-ls R4
-                - prd008-ls R5
-                - prd008-ls R6
-                - prd008-ls R7
                 - prd009-du R1
                 - prd009-du R2
                 - prd009-du R3
@@ -3036,16 +3666,181 @@ project_context:
                 - prd009-du R5
               preconditions:
                 - Binaries exist under ./bin/ (built via mage build).
-                - Reference binaries are installed via Homebrew gls (coreutils) and gdu (coreutils).
-                - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+                - Reference binaries are installed via Homebrew gdu (coreutils).
+                - Tests are run via go test ./cmd/du/... which invokes RunDiffTests from pkg/testutils.
                 - All tests use LC_ALL=C to eliminate locale-dependent divergence.
-                - 'ls: all differential tests use --color=never to eliminate ANSI escape variance (except color-specific structural tests).'
-                - 'ls: for -l tests, the LsNormalizer replaces the mtime column with the placeholder MTIME before comparison.'
-                - 'ls: tests use a fixture directory (testdata/ls-fixture/) containing regular files of known sizes, a subdirectory, dotfiles, a symbolic link, and files with known permissions.'
-                - 'du: no normalization is applied; du output is deterministic when both binaries run on the same directory on the same filesystem.'
-                - 'du: all block-count tests use -k to pin output to 1024-byte blocks and eliminate platform default divergence.'
-                - 'du: tests use a fixture directory (testdata/du-fixture/) containing nested files of known sizes, a second subdirectory for multi-argument tests, and files of varied sizes.'
-                - 'du: hard-link pairs are created in test setup (not committed) to test dedup. All files in the fixture are on the same filesystem as the test runner.'
+                - No normalization is applied; du output is deterministic when both binaries run on the same directory on the same filesystem.
+                - All block-count tests use -k to pin output to 1024-byte blocks and eliminate platform default divergence.
+                - Tests use a fixture directory (testdata/du-fixture/) containing nested files of known sizes, a second subdirectory for multi-argument tests, and files of varied sizes.
+                - Hard-link pairs are created in test setup (not committed) to test dedup. All files in the fixture are on the same filesystem as the test runner.
+              test_cases:
+                - name: du_default_recursive
+                  description: Default flags with -k on fixture directory; one line per subdirectory and root.
+                  inputs:
+                    args: ["-k", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: one "SIZE\tPATH" line per subdirectory, ending with the root directory total
+                    stderr: ""
+                  traces:
+                    - prd009-du R1.1
+                    - prd009-du R1.2
+                    - prd009-du R1.3
+                - name: du_summary_mode
+                  description: -s prints only the total for each argument.
+                  inputs:
+                    args: ["-sk", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: one line with total size and path
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.2
+                - name: du_all_files
+                  description: -a prints size for every file, not just directories.
+                  inputs:
+                    args: ["-ak", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: one line per file and directory in the tree
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.3
+                - name: du_human_readable
+                  description: -h displays sizes as human-readable strings (K/M/G).
+                  inputs:
+                    args: ["-h", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: size values contain unit suffixes (K, M, G)
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.1
+                - name: du_max_depth_1
+                  description: -d 1 limits output to the argument and its immediate children.
+                  inputs:
+                    args: ["-k", "-d", "1", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: lines for immediate subdirectories and the root; no deeper entries
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.4
+                - name: du_grand_total
+                  description: -c prints a grand total "total" line after all arguments.
+                  inputs:
+                    args: ["-ck", "testdata/du-fixture/subdir1", "testdata/du-fixture/subdir2"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: per-argument lines followed by a "SIZE\ttotal" line
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.7
+                - name: du_hard_link_dedup
+                  description: 'A file hard-linked into two directories is counted only once. Setup: create testdata/du-hardlink-fixture/ with dir_a/shared.txt (a regular file) and dir_b/shared.txt (hard link to dir_a/shared.txt, same inode). The hard link is created at test time via os.Link.'
+                  inputs:
+                    args: ["-k", "testdata/du-hardlink-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: total for the root counts shared.txt blocks once, not twice
+                    stderr: ""
+                  traces:
+                    - prd009-du R3.1
+                    - prd009-du R3.2
+                    - prd009-du R3.3
+                - name: du_apparent_size
+                  description: --apparent-size reports st_size instead of st_blocks.
+                  inputs:
+                    args: ["--apparent-size", "-k", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: sizes based on file content length, not block allocation
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.8
+                - name: du_kilobyte_units
+                  description: -k reports in 1024-byte blocks (default, accepted without error).
+                  inputs:
+                    args: ["-k", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: identical to default_recursive (1K is the default)
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.5
+                - name: du_megabyte_units
+                  description: -m reports in 1048576-byte (1M) blocks.
+                  inputs:
+                    args: ["-m", "testdata/du-fixture/"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stdout_structure: sizes in megabyte units, smaller values show as 1 (rounded up)
+                    stderr: ""
+                  traces:
+                    - prd009-du R2.6
+                - name: du_missing_path
+                  description: Non-existent argument prints error to stderr, exits 1.
+                  inputs:
+                    args: ["-k", "nonexistent_dir"]
+                    stdin: null
+                    env: ["LC_ALL=C"]
+                  normalization: none
+                  expected:
+                    exit_code: 0
+                    stderr_contains: "nonexistent_dir"
+                  traces:
+                    - prd009-du R4.2
+            - file: docs/specs/test-suites/test-rel99.0.yaml
+              id: test-rel99.0
+              title: 'Test Suite: rel99.0 — ls core flag listing'
+              release: rel99.0
+              traces:
+                - rel99.0-uc001-ls
+                - prd008-ls R1
+                - prd008-ls R2
+                - prd008-ls R3
+                - prd008-ls R4
+                - prd008-ls R5
+                - prd008-ls R6
+                - prd008-ls R7
+              preconditions:
+                - Binaries exist under ./bin/ (built via mage build).
+                - Reference binaries are installed via Homebrew gls (coreutils).
+                - Tests are run via go test ./cmd/ls/... which invokes RunDiffTests from pkg/testutils.
+                - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+                - All differential tests use --color=never to eliminate ANSI escape variance (except color-specific structural tests).
+                - For -l tests, the LsNormalizer replaces the mtime column with the placeholder MTIME before comparison.
+                - Tests use a fixture directory (testdata/ls-fixture/) containing regular files of known sizes, a subdirectory, dotfiles, a symbolic link, and files with known permissions.
               test_cases:
                 - name: ls_default_single_col_redirect
                   description: No flags, stdout redirected (not a TTY); one entry per line in C locale order. stdout is a pipe (not TTY), so default format is single-column
@@ -3227,158 +4022,12 @@ project_context:
                     stderr_contains: "unrecognized option"
                   traces:
                     - prd008-ls R6.3
-                - name: du_default_recursive
-                  description: Default flags with -k on fixture directory; one line per subdirectory and root.
-                  inputs:
-                    args: ["-k", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: one "SIZE\tPATH" line per subdirectory, ending with the root directory total
-                    stderr: ""
-                  traces:
-                    - prd009-du R1.1
-                    - prd009-du R1.2
-                    - prd009-du R1.3
-                - name: du_summary_mode
-                  description: -s prints only the total for each argument.
-                  inputs:
-                    args: ["-sk", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: one line with total size and path
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.2
-                - name: du_all_files
-                  description: -a prints size for every file, not just directories.
-                  inputs:
-                    args: ["-ak", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: one line per file and directory in the tree
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.3
-                - name: du_human_readable
-                  description: -h displays sizes as human-readable strings (K/M/G).
-                  inputs:
-                    args: ["-h", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: size values contain unit suffixes (K, M, G)
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.1
-                - name: du_max_depth_1
-                  description: -d 1 limits output to the argument and its immediate children.
-                  inputs:
-                    args: ["-k", "-d", "1", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: lines for immediate subdirectories and the root; no deeper entries
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.4
-                - name: du_grand_total
-                  description: -c prints a grand total "total" line after all arguments.
-                  inputs:
-                    args: ["-ck", "testdata/du-fixture/subdir1", "testdata/du-fixture/subdir2"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: per-argument lines followed by a "SIZE\ttotal" line
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.7
-                - name: du_hard_link_dedup
-                  description: 'A file hard-linked into two directories is counted only once. Setup: create testdata/du-hardlink-fixture/ with dir_a/shared.txt (a regular file) and dir_b/shared.txt (hard link to dir_a/shared.txt, same inode). The hard link is created at test time via os.Link.'
-                  inputs:
-                    args: ["-k", "testdata/du-hardlink-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: total for the root counts shared.txt blocks once, not twice
-                    stderr: ""
-                  traces:
-                    - prd009-du R3.1
-                    - prd009-du R3.2
-                    - prd009-du R3.3
-                - name: du_apparent_size
-                  description: --apparent-size reports st_size instead of st_blocks.
-                  inputs:
-                    args: ["--apparent-size", "-k", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: sizes based on file content length, not block allocation
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.8
-                - name: du_kilobyte_units
-                  description: -k reports in 1024-byte blocks (default, accepted without error).
-                  inputs:
-                    args: ["-k", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: identical to default_recursive (1K is the default)
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.5
-                - name: du_megabyte_units
-                  description: -m reports in 1048576-byte (1M) blocks.
-                  inputs:
-                    args: ["-m", "testdata/du-fixture/"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 0
-                    stdout_structure: sizes in megabyte units, smaller values show as 1 (rounded up)
-                    stderr: ""
-                  traces:
-                    - prd009-du R2.6
-                - name: du_missing_path
-                  description: Non-existent argument prints error to stderr, exits 1.
-                  inputs:
-                    args: ["-k", "nonexistent_dir"]
-                    stdin: null
-                    env: ["LC_ALL=C"]
-                  normalization: none
-                  expected:
-                    exit_code: 1
-                    stderr_contains: "nonexistent_dir"
-                  traces:
-                    - prd009-du R4.2
-            - file: docs/specs/test-suites/test-rel02.1.yaml
-              id: test-rel02.1
-              title: 'Test Suite: rel02.1 — ls extended flag listing'
-              release: rel02.1
+            - file: docs/specs/test-suites/test-rel99.1.yaml
+              id: test-rel99.1
+              title: 'Test Suite: rel99.1 — ls extended flag listing'
+              release: rel99.1
               traces:
-                - rel02.1-uc001-ls-extended
+                - rel99.1-uc001-ls-extended
                 - prd010-ls-extended R1
                 - prd010-ls-extended R2
                 - prd010-ls-extended R3
