@@ -28,8 +28,8 @@ roadmap_summary:
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
-  - version: rel02.0
-    name: "Batch 3 — du specification and differential test"
+  - version: rel01.3
+    name: "Batch 1.3 — du specification and differential test"
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
@@ -110,12 +110,12 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel01.2
     path: docs/specs/use-cases/rel01.2-uc001-sponge.yaml
-  - id: rel02.0-uc002-du
+  - id: rel01.3-uc001-du
     title: "Report recursive directory disk usage via du"
-    release: rel02.0
+    release: rel01.3
     status: spec_complete
-    test_suite: test-rel02.0
-    path: docs/specs/use-cases/rel02.0-uc002-du.yaml
+    test_suite: test-rel01.3
+    path: docs/specs/use-cases/rel01.3-uc001-du.yaml
   - id: rel99.0-uc001-ls
     title: "List directory contents via ls (core flags)"
     release: rel99.0
@@ -154,12 +154,12 @@ test_suite_index:
       - rel01.2-uc001-sponge
     test_case_count: 8
     path: docs/specs/test-suites/test-rel01.2.yaml
-  - id: test-rel02.0
-    title: "Test Suite: rel02.0 — du recursive directory disk usage"
+  - id: test-rel01.3
+    title: "Test Suite: rel01.3 — du specification and differential test"
     traces:
-      - rel02.0-uc002-du
+      - rel01.3-uc001-du
     test_case_count: 11
-    path: docs/specs/test-suites/test-rel02.0.yaml
+    path: docs/specs/test-suites/test-rel01.3.yaml
   - id: test-rel99.0
     title: "Test Suite: rel99.0 — ls core flag listing"
     traces:
@@ -192,7 +192,7 @@ prd_to_use_case_mapping:
     prd: prd007-sponge
     why_required: sponge exercises file-state comparison in pkg/testutils and atomic write patterns.
     coverage: Full — all prd007-sponge requirement groups (R1-R6) are traced from the test suite.
-  - use_case: rel02.0-uc002-du
+  - use_case: rel01.3-uc001-du
     prd: prd009-du
     why_required: du exercises hard-link deduplication and recursive block accumulation.
     coverage: Full — all prd009-du requirement groups (R1-R5) are traced from the test suite.
@@ -228,10 +228,10 @@ traceability_diagram: |
     P4["prd004-ts"] & P5["prd005-wc"] & P6["prd006-cat"] & P7["prd007-sponge"]
     P8["prd008-ls"] & P9["prd009-du"] & P10["prd010-ls-extended"]
     UC1["rel01.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
-    UC4["rel02.0-uc002-du"] & UC5["rel99.0-uc001-ls"] & UC6["rel99.1-uc001-ls-extended"]
+    UC4["rel01.3-uc001-du"] & UC5["rel99.0-uc001-ls"] & UC6["rel99.1-uc001-ls-extended"]
     UC7["rel99.2-uc001-ts"]
     TS1["test-rel01.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
-    TS4["test-rel02.0"] & TS5["test-rel99.0"] & TS6["test-rel99.1"] & TS7["test-rel99.2"]
+    TS4["test-rel01.3"] & TS5["test-rel99.0"] & TS6["test-rel99.1"] & TS7["test-rel99.2"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
     P1 --> UC1
