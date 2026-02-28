@@ -26,7 +26,8 @@ requirements:
   R1:
     title: Default listing (multi-column and single-column)
     items:
-      - R1.1: When stdout is a TTY and no format flag is given, must produce multi-column output sorted vertically (down columns, then across). Column count must be computed from the terminal width obtained via pkg/sys.TerminalWidth and entries laid out via pkg/format.Columns.
+      - R1.1: |
+          When stdout is a TTY and no format flag is given, must produce multi-column output sorted vertically (down columns, then across). Terminal width is obtained by calling pkg/sys.TerminalWidth() (int, error) — returns the current terminal column count via TIOCGWINSZ ioctl on stdout; returns an error when stdout is not a terminal. Entries are laid out by calling pkg/format.Columns(entries []string, termWidth int) [][]string — distributes entries into the maximum number of columns fitting within termWidth, with column widths computed as per-column maxima of entry lengths.
       - R1.2: When stdout is not a TTY (pipe, file redirect) and no format flag is given, must produce single-column output with one entry per line. This matches GNU ls behavior (ls.c detects stdout is not a TTY and sets format to single-column).
       - R1.3: Must sort entries in the C locale order (LC_COLLATE=C). Differential tests must set LC_ALL=C to eliminate locale-dependent sort divergence.
       - R1.4: Must not list entries whose names start with "." unless -a or -A is given. This is the default filter behavior matching GNU ls.
@@ -35,14 +36,42 @@ requirements:
     title: Single-column mode (-1) and long format (-l)
     items:
       - R2.1: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
-      - R2.2: -l must produce long format with fields in this order, matching GNU ls (ls.c:4700-4750) -- file type and permissions (10 characters), hard-link count, owner name, group name, size in bytes, modification time, and entry name. Fields are separated by spaces; numeric fields are right-aligned.
-      - R2.3: In long format, the file type character must be one of "d" (directory), "l" (symbolic link), "c" (character device), "b" (block device), "p" (named pipe/FIFO), "s" (socket), or "-" (regular file).
-      - R2.4: In long format, permissions must be displayed as nine characters (rwxrwxrwx) with "-" replacing unset bits. Setuid is shown as "s" (or "S" when execute is unset) in the owner execute position. Setgid is shown as "s" (or "S") in the group execute position. Sticky bit is shown as "t" (or "T") in the other execute position.
-      - R2.5: In long format, hard-link count must be obtained from pkg/sys.Stat (st_nlink field from syscall.Stat_t via prd002-sys R2.1-R2.2).
-      - R2.6: In long format, owner and group names must be resolved from UID and GID obtained via pkg/sys.Stat (st_uid, st_gid from prd002-sys R2.2). Must use os/user.LookupId and os/user.LookupGroupId for name resolution. If lookup fails, must display the numeric ID.
-      - R2.7: In long format, the modification time must be displayed as "Mon DD HH:MM" for files modified within the last six months, and "Mon DD  YYYY" for files modified more than six months ago, matching GNU ls time formatting (ls.c:4572-4610).
-      - R2.8: In long format, symlinks must display the link name followed by " -> " and the link target path (obtained via os.Readlink).
-      - R2.9: In long format, must print a "total N" line before the listing, where N is the sum of 512-byte block counts (st_blocks) for all listed entries, divided by 2 to convert to 1024-byte blocks. This matches GNU ls (ls.c:3363-3377 total_blocks calculation).
+      - R2a: |
+          -l flag skeleton and permission string. When -l is given, produce long-format output. Field order (left to right): permissions (10 chars), nlink, owner, group, size, mtime, name. Fields separated by a single space. Numeric fields (nlink, size) are right-aligned in columns wide enough for the largest value in the listing.
+
+          Permission string algorithm (10 characters):
+          - Position 0 (file type): 'd' for directory (fi.Mode&os.ModeDir != 0), 'l' for symlink (fi.Mode&os.ModeSymlink != 0), 'c' for char device (fi.Mode&os.ModeDevice != 0 && fi.Mode&os.ModeCharDevice != 0), 'b' for block device (fi.Mode&os.ModeDevice != 0 && fi.Mode&os.ModeCharDevice == 0), 'p' for FIFO (fi.Mode&os.ModeNamedPipe != 0), 's' for socket (fi.Mode&os.ModeSocket != 0), '-' for regular file.
+          - Positions 1-3 (owner rwx): 'r'/'- ' for bit 0o400, 'w'/'-' for 0o200, 'x'/'-' for 0o100. If setuid (fi.Mode&os.ModeSetuid != 0): replace 'x' with 's', or replace '-' with 'S'.
+          - Positions 4-6 (group rwx): bits 0o040, 0o020, 0o010. If setgid (fi.Mode&os.ModeSetgid != 0): replace 'x' with 's', or replace '-' with 'S'.
+          - Positions 7-9 (other rwx): bits 0o004, 0o002, 0o001. If sticky (fi.Mode&os.ModeSticky != 0): replace 'x' with 't', or replace '-' with 'T'.
+      - R2b: |
+          File metadata via pkg/sys.Lstat. Obtain metadata for each listed entry by calling pkg/sys.Lstat(path string) (*sys.FileInfo, error) — does not follow symbolic links; returns the symlink's own metadata when path is a symlink.
+
+          sys.FileInfo struct (embedded here for reference):
+            type FileInfo struct {
+                Mode    os.FileMode // file mode and type bits
+                Size    int64       // apparent file size in bytes (st_size)
+                Nlink   uint64      // hard-link count (st_nlink)
+                Uid     uint32      // owner user ID (st_uid)
+                Gid     uint32      // owner group ID (st_gid)
+                Rdev    uint64      // device ID for special files (st_rdev)
+                Dev     uint64      // device ID of the containing filesystem (st_dev)
+                Ino     uint64      // inode number (st_ino)
+                Blocks  int64       // number of 512-byte blocks allocated (st_blocks)
+                Blksize int64       // preferred I/O block size (st_blksize)
+                ModTime time.Time   // modification time
+                Sys     os.FileInfo // underlying os.FileInfo
+            }
+
+          In long format: print fi.Nlink (uint64) right-aligned; print fi.Size (int64, bytes) right-aligned. Both columns sized to the widest value across all listed entries.
+      - R2c: |
+          Owner and group name resolution in long format. Resolve owner name by calling os/user.LookupId(strconv.Itoa(int(fi.Uid))); on success use u.Username; on error (user not found or lookup fails) fall back to strconv.FormatUint(uint64(fi.Uid), 10). Resolve group name by calling os/user.LookupGroupId(strconv.Itoa(int(fi.Gid))); on success use g.Name; on error fall back to strconv.FormatUint(uint64(fi.Gid), 10). Owner and group fields are left-padded to column width for alignment.
+      - R2d: |
+          Modification time formatting in long format. Use fi.ModTime (time.Time from sys.FileInfo). If time.Since(fi.ModTime) < 6*30*24*time.Hour (approximately six months), format as fi.ModTime.Format("Jan _2 15:04"). Otherwise format as fi.ModTime.Format("Jan _2  2006"). Both patterns produce a 12-character field.
+      - R2e: |
+          Total block count line and symlink display. Before the directory listing, print "total N\n" where N = sum(fi.Blocks for all listed entries) / 2. The division converts 512-byte st_blocks units to 1K-block units matching GNU ls. N is a plain integer (no trailing suffix) unless -h is active (see R5).
+
+          Symlink display: when fi.Mode&os.ModeSymlink != 0, read the link target with os.Readlink(path) and append " -> " + target to the entry name field. Use Lstat (not Stat) so the symlink's own fi.Size and fi.Nlink are used, not the target's.
 
   R3:
     title: Filter flags (-a, -A, -d)
