@@ -1,0 +1,71 @@
+id: rel00.0-uc001-magefiles
+title: "Build, lint, and version-check via mage targets"
+
+summary: |
+  The operator runs mage build to compile cmd/version to bin/version, verifies that the
+  binary prints the repository's version tag, runs mage lint to confirm no warnings, and
+  runs mage clean to remove build artifacts. This exercises the full build lifecycle
+  specified in prd011-magefiles before any utility code exists.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd011-magefiles.yaml) and wants to verify that the
+  build pipeline produces a working binary.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs mage build. The target compiles every package under cmd/ to bin/.
+      For cmd/version, the target resolves the latest version tag via
+      git describe --tags --abbrev=0 --match "v[0-9]*" and passes it through -ldflags.
+  - id: F2
+    step: |
+      The operator runs bin/version. The binary prints the version tag (e.g., "v0.20260228.0")
+      to stdout followed by a newline and exits 0.
+  - id: F3
+    step: |
+      The operator runs bin/version --version. The output is identical to F2.
+  - id: F4
+    step: |
+      The operator runs bin/version --bogus. The binary prints a usage message to stderr
+      and exits 2.
+  - id: F5
+    step: |
+      The operator runs mage lint. golangci-lint runs on cmd/, pkg/, and magefiles/ with
+      no warnings or errors.
+  - id: F6
+    step: |
+      The operator runs mage clean. The bin/ directory and its contents are removed. If
+      bin/ does not exist, the target succeeds silently.
+  - id: F7
+    step: |
+      The operator verifies that bin/ no longer exists after mage clean.
+
+touchpoints:
+  - T1: "cmd/version — version string printing, ldflags injection (prd011-magefiles R1)"
+  - T2: "magefiles/ — build, lint, clean targets (prd011-magefiles R2, R3, R4)"
+  - T3: "configuration.yaml — project.binary_dir, project.go_source_dirs (prd011-magefiles R6)"
+
+success_criteria:
+  - id: S1
+    criterion: mage build succeeds and bin/version exists.
+  - id: S2
+    criterion: bin/version prints a version tag matching v[0-9]* and exits 0.
+  - id: S3
+    criterion: bin/version --version produces the same output as bin/version.
+  - id: S4
+    criterion: bin/version --bogus prints to stderr and exits 2.
+  - id: S5
+    criterion: mage lint passes with no warnings on cmd/, pkg/, and magefiles/.
+  - id: S6
+    criterion: mage clean removes bin/ and succeeds when bin/ does not exist.
+  - id: S7
+    criterion: A development build (no ldflags) produces a binary that prints "dev".
+
+out_of_scope:
+  - Differential testing of cmd/version against a reference binary (there is no GNU version equivalent).
+  - mage install is exercised by the operator manually; it is not part of this use case's primary flow.
+  - Orchestrator, generator, beads, scaffold, and prompt targets are provided by cobbler-scaffold and not covered here.
+
+test_suite: test-rel00.0

@@ -1,0 +1,24 @@
+caller: stitch
+task_id: generation-2026-02-27-21-48-32-21v
+task_title: Implement cmd/ls metadata display and classify flags (-i, -s, -n, -F) -- prd010-ls-extended R3, R4
+status: failed
+error: 'merge failure: checking out generation-2026-02-27-21-48-32: exit status 1'
+started_at: "2026-02-28T12:34:14Z"
+duration: 11m38s
+duration_s: 698
+tokens:
+    input: 5497954
+    output: 38657
+    cache_creation: 119704
+    cache_read: 5378199
+cost_usd: 4.477916249999999
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

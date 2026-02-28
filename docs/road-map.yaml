@@ -2,6 +2,19 @@ id: go-unix-utils-roadmap
 title: "go-unix-utils Release Road Map"
 
 releases:
+  - version: "00.0"
+    name: "Batch 0 — foundational infrastructure"
+    status: in_progress
+    description: |
+      Specify and verify the build lifecycle and shared library infrastructure that all
+      subsequent releases depend on. This release covers magefiles/ (build, lint, clean,
+      install targets and cmd/version), pkg/testutils (differential testing harness),
+      pkg/sys (syscall abstractions), and pkg/format (output formatting). The cmd/version
+      binary is the first compiled artifact and the smoke test for the build pipeline.
+    use_cases:
+      - id: rel00.0-uc001-magefiles
+        status: specs_written
+
   - version: "01.0"
     name: "Batch 1 — ts specification and differential test"
     status: spec_complete
