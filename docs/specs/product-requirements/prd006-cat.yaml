@@ -60,7 +60,8 @@ requirements:
       - R5.1: Must exit 0 when all inputs are processed successfully.
       - R5.2: Must exit 1 when any input file cannot be opened. The error message must be written to stderr. cat must continue processing remaining file arguments after the error.
       - R5.3: Must exit 1 when a write error occurs on stdout (e.g., SIGPIPE or full disk). The write error must be detected and reported; the process must not hang.
-      - R5.4: Must not exit non-zero due to SIGPIPE when stdout is closed by a downstream consumer.
+      - R5.4: |
+          Must not exit non-zero due to SIGPIPE when stdout is closed by a downstream consumer. At startup, install a SIGPIPE handler: use signal.Notify(c, syscall.SIGPIPE) with a buffered channel of size 1; in a dedicated goroutine call os.Exit(0) when the channel receives. Do not use signal.Ignore (deferred cleanup functions must not run on SIGPIPE, matching GNU behavior).
 
 non_goals:
   - cmd/cat does not implement the FIONREAD ioctl optimization from cat.c:298; it uses standard io.Copy which is sufficient for correctness.
