@@ -1,0 +1,586 @@
+time=2026-02-28T11:56:08.878-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
+time=2026-02-28T11:56:08.878-05:00 level=INFO msg="using database" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db
+time=2026-02-28T11:56:08.886-05:00 level=INFO msg="database opened" path=/Users/pdiddy/COBBLER/go-unix-utils/.beads/beads.db freshness_checking=true
+time=2026-02-28T11:56:08.886-05:00 level=INFO msg="upgrading .beads/.gitignore"
+time=2026-02-28T11:56:08.886-05:00 level=WARN msg="failed to upgrade .gitignore" error="open .beads/.gitignore: no such file or directory"
+time=2026-02-28T11:56:08.901-05:00 level=INFO msg="Repository fingerprint validated: %s" !BADKEY=c173b2e7
+time=2026-02-28T11:56:08.901-05:00 level=INFO msg="starting RPC server" socket=/Users/pdiddy/COBBLER/go-unix-utils/.beads/bd.sock
+time=2026-02-28T11:56:08.901-05:00 level=INFO msg="RPC server ready (socket listening)"
+time=2026-02-28T11:56:08.931-05:00 level=INFO msg="registered in global registry"
+time=2026-02-28T11:56:08.931-05:00 level=INFO msg="Starting %s..." !BADKEY="sync cycle"
+time=2026-02-28T11:56:08.935-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T11:56:09.248-05:00 level=INFO msg="Pull failed: %v" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n"
+time=2026-02-28T11:56:09.248-05:00 level=INFO msg="monitoring parent process" pid=0
+time=2026-02-28T11:56:09.248-05:00 level=INFO msg="using event-driven mode"
+time=2026-02-28T11:56:09.249-05:00 level=INFO msg="Auto-pull disabled: use 'git pull' manually to sync remote changes"
+time=2026-02-28T11:56:09.499-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T11:56:10.500-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T11:56:10.500-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T11:56:10.502-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-02-28T11:56:24.853-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-ll2
+time=2026-02-28T11:56:24.923-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-ll2
+time=2026-02-28T11:56:25.423-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T11:56:25.423-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T11:56:25.425-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T11:56:25.425-05:00 level=INFO msg="Export complete"
+time=2026-02-28T11:56:25.425-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T11:56:25.475-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T11:56:25.475-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:56:25.516-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T11:56:25.523-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:56:26.524-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T11:56:26.525-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T11:56:26.525-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-02-28T11:59:48.375-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-487
+time=2026-02-28T11:59:48.876-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T11:59:48.876-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T11:59:48.878-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T11:59:48.878-05:00 level=INFO msg="Export complete"
+time=2026-02-28T11:59:48.878-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T11:59:48.928-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T11:59:48.928-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:59:48.991-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:59:49.080-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-487
+time=2026-02-28T11:59:49.152-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-ll2
+time=2026-02-28T11:59:49.220-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-ll2
+time=2026-02-28T11:59:49.290-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-ll2
+time=2026-02-28T11:59:49.791-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T11:59:49.791-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T11:59:49.792-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T11:59:49.792-05:00 level=INFO msg="Export complete"
+time=2026-02-28T11:59:49.792-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T11:59:49.843-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T11:59:49.843-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:59:49.845-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:59:49.993-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T11:59:49.993-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T11:59:49.993-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-02-28T11:59:50.395-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-487
+time=2026-02-28T11:59:50.848-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T11:59:50.848-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T11:59:50.849-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-02-28T11:59:50.896-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T11:59:50.896-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T11:59:50.898-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T11:59:50.898-05:00 level=INFO msg="Export complete"
+time=2026-02-28T11:59:50.898-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T11:59:50.948-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T11:59:50.948-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:59:51.949-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T11:59:51.950-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T11:59:51.950-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T11:59:51.967-05:00 level=INFO msg="⚠️  WARNING: Uncommitted local changes detected in %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T11:59:51.967-05:00 level=INFO msg="   Pulling from remote may overwrite local unpushed changes."
+time=2026-02-28T11:59:51.967-05:00 level=INFO msg="   Consider running 'bd sync' to commit and push your changes first."
+time=2026-02-28T11:59:52.230-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=30s
+time=2026-02-28T12:02:36.125-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:02:36.604-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:36.744-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-487
+time=2026-02-28T12:02:36.816-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-487
+time=2026-02-28T12:02:36.972-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:02:37.022-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:02:37.022-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:37.317-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:02:37.317-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:02:37.321-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:02:37.321-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:02:37.321-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:02:37.372-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:02:37.372-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:37.383-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:02:37.389-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:37.727-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-0db
+time=2026-02-28T12:02:37.801-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-0db
+time=2026-02-28T12:02:38.301-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:02:38.301-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:02:38.303-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:02:38.303-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:02:38.303-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:02:38.353-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:02:38.353-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:38.391-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:02:38.391-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:02:38.391-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T12:02:38.407-05:00 level=INFO msg="⚠️  WARNING: Uncommitted local changes detected in %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:38.407-05:00 level=INFO msg="   Pulling from remote may overwrite local unpushed changes."
+time=2026-02-28T12:02:38.407-05:00 level=INFO msg="   Consider running 'bd sync' to commit and push your changes first."
+time=2026-02-28T12:02:38.441-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:02:38.448-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:02:38.686-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=1m0s
+time=2026-02-28T12:02:39.449-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:02:39.449-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:08:15.099-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-0w0
+time=2026-02-28T12:08:15.600-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:08:15.600-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:08:15.602-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:08:15.603-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:08:15.603-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:08:15.654-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:08:15.654-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:08:15.688-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:08:15.695-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:08:15.784-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-0w0
+time=2026-02-28T12:08:15.858-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-0db
+time=2026-02-28T12:08:15.931-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-0db
+time=2026-02-28T12:08:16.005-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-0db
+time=2026-02-28T12:08:16.506-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:08:16.506-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:08:16.509-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:08:16.509-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:08:16.509-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:08:16.559-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:08:16.559-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:08:16.594-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:08:16.600-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:08:16.696-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:08:16.696-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:08:16.696-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-02-28T12:08:17.157-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-0w0
+time=2026-02-28T12:08:17.602-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:08:17.602-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:08:17.603-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-02-28T12:08:17.658-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:08:17.658-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:08:17.660-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:08:17.660-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:08:17.660-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:08:17.711-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:08:17.711-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:08:18.713-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:08:18.713-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:08:18.714-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T12:08:18.729-05:00 level=INFO msg="⚠️  WARNING: Uncommitted local changes detected in %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:08:18.729-05:00 level=INFO msg="   Pulling from remote may overwrite local unpushed changes."
+time=2026-02-28T12:08:18.729-05:00 level=INFO msg="   Consider running 'bd sync' to commit and push your changes first."
+time=2026-02-28T12:08:19.033-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=2m0s
+time=2026-02-28T12:10:30.848-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:10:30.988-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:10:31.127-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-0w0
+time=2026-02-28T12:10:31.198-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-0w0
+time=2026-02-28T12:10:31.365-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:10:31.416-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:10:31.416-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:10:31.699-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:10:31.699-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:10:31.703-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:10:31.703-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:10:31.703-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:10:31.754-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:10:31.754-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:10:31.803-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:10:31.809-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:10:32.133-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-5bi
+time=2026-02-28T12:10:32.204-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-5bi
+time=2026-02-28T12:10:32.705-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:10:32.705-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:10:32.707-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:10:32.707-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:10:32.707-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:10:32.758-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:10:32.758-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:10:32.780-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:10:32.786-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:10:32.811-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:10:32.811-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:10:32.811-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T12:10:33.130-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=5m0s
+time=2026-02-28T12:10:33.787-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:10:33.787-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:13:45.727-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-44f
+time=2026-02-28T12:13:46.228-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:13:46.228-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:13:46.231-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:13:46.231-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:13:46.231-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:13:46.281-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:13:46.281-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:13:46.359-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:13:46.463-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-44f
+time=2026-02-28T12:13:46.534-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-5bi
+time=2026-02-28T12:13:46.603-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-5bi
+time=2026-02-28T12:13:46.673-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-5bi
+time=2026-02-28T12:13:47.175-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:13:47.175-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:13:47.177-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:13:47.177-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:13:47.177-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:13:47.228-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:13:47.228-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:13:47.362-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:13:47.362-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:13:47.774-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-44f
+time=2026-02-28T12:13:48.229-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:13:48.229-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:13:48.275-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:13:48.275-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:13:48.277-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:13:48.277-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:13:48.277-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:13:48.328-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:13:48.328-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:13:49.330-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:13:49.330-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:16:50.548-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:16:50.689-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:16:50.834-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-44f
+time=2026-02-28T12:16:50.906-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-44f
+time=2026-02-28T12:16:51.078-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:16:51.128-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:16:51.128-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:16:51.407-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:16:51.407-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:16:51.412-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:16:51.412-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:16:51.412-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:16:51.463-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:16:51.463-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:16:51.512-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:16:51.518-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:16:51.848-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-sah
+time=2026-02-28T12:16:51.926-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-sah
+time=2026-02-28T12:16:52.427-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:16:52.427-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:16:52.430-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:16:52.430-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:16:52.431-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:16:52.481-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:16:52.481-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:16:52.520-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:16:52.521-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:16:52.521-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T12:16:52.528-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:16:52.838-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=10m0s
+time=2026-02-28T12:16:53.530-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:16:53.530-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:18:28.925-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-dwy
+time=2026-02-28T12:18:29.426-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:18:29.426-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:18:29.428-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:18:29.428-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:18:29.429-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:18:29.479-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:18:29.479-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:18:29.521-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:18:29.528-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:18:29.619-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-dwy
+time=2026-02-28T12:18:29.692-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-sah
+time=2026-02-28T12:18:29.766-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-sah
+time=2026-02-28T12:18:29.838-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-sah
+time=2026-02-28T12:18:30.338-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:18:30.338-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:18:30.341-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:18:30.341-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:18:30.341-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:18:30.391-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:18:30.391-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:18:30.530-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:18:30.530-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:18:30.934-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dwy
+time=2026-02-28T12:18:31.392-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:18:31.393-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:18:31.434-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:18:31.434-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:18:31.437-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:18:31.437-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:18:31.437-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:18:31.488-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:18:31.488-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:18:32.489-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:18:32.489-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:20:00.417-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:20:00.566-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:20:00.711-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-dwy
+time=2026-02-28T12:20:00.787-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dwy
+time=2026-02-28T12:20:00.941-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:20:00.992-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:20:00.992-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:20:01.288-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:20:01.288-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:20:01.294-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:20:01.294-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:20:01.294-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:20:01.344-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:20:01.344-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:20:01.385-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:20:01.392-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:20:01.703-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-1og
+time=2026-02-28T12:20:01.774-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-1og
+time=2026-02-28T12:20:02.274-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:20:02.274-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:20:02.277-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:20:02.277-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:20:02.277-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:20:02.327-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:20:02.327-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:20:02.354-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:20:02.360-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:20:02.392-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:20:02.392-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:20:03.361-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:20:03.361-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:23:23.935-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-paf
+time=2026-02-28T12:23:24.437-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:23:24.437-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:23:24.441-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:23:24.441-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:23:24.441-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:23:24.492-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:23:24.492-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:23:24.544-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:23:24.636-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-paf
+time=2026-02-28T12:23:24.708-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-1og
+time=2026-02-28T12:23:24.777-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-1og
+time=2026-02-28T12:23:24.846-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-1og
+time=2026-02-28T12:23:25.347-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:23:25.347-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:23:25.349-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:23:25.349-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:23:25.350-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:23:25.400-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:23:25.400-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:23:25.427-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:23:25.433-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:23:25.546-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:23:25.546-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:23:25.997-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-paf
+time=2026-02-28T12:23:26.433-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:23:26.434-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:23:26.498-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:23:26.498-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:23:26.500-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:23:26.500-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:23:26.500-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:23:26.551-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:23:26.551-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:23:27.552-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:23:27.552-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:30:21.670-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:30:21.813-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:21.962-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-paf
+time=2026-02-28T12:30:22.034-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-paf
+time=2026-02-28T12:30:22.193-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:30:22.243-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:30:22.244-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:22.534-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:30:22.535-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:30:22.539-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:30:22.539-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:30:22.540-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:30:22.590-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:30:22.591-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:22.649-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:30:22.655-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:22.983-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-xml
+time=2026-02-28T12:30:23.053-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-xml
+time=2026-02-28T12:30:23.554-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:30:23.554-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:30:23.557-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:30:23.557-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:30:23.557-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:30:23.608-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:30:23.608-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:23.656-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:30:23.657-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T12:30:23.657-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T12:30:23.673-05:00 level=INFO msg="⚠️  WARNING: Uncommitted local changes detected in %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:23.673-05:00 level=INFO msg="   Pulling from remote may overwrite local unpushed changes."
+time=2026-02-28T12:30:23.673-05:00 level=INFO msg="   Consider running 'bd sync' to commit and push your changes first."
+time=2026-02-28T12:30:23.693-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:30:23.699-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:30:23.998-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=30m0s
+time=2026-02-28T12:30:24.700-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:30:24.701-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:35:29.273-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:35:30.275-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:35:30.275-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:35:36.547-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:35:37.548-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:35:37.549-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:35:53.778-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-5w2
+time=2026-02-28T12:35:54.278-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:35:54.278-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:35:54.283-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:35:54.283-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:35:54.283-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:35:54.333-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:35:54.333-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:35:54.386-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:35:54.407-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:35:54.515-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-5w2
+time=2026-02-28T12:35:54.593-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-xml
+time=2026-02-28T12:35:54.669-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-xml
+time=2026-02-28T12:35:54.756-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-xml
+time=2026-02-28T12:35:54.892-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:35:55.256-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:35:55.256-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:35:55.259-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:35:55.259-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:35:55.259-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:35:55.310-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:35:55.310-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:35:55.317-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:35:55.410-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:35:55.897-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-5w2
+time=2026-02-28T12:35:56.397-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:35:56.397-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:35:56.400-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:35:56.400-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:35:56.400-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:35:56.412-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:35:56.412-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:35:56.450-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:35:56.450-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:35:57.452-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:35:57.452-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:36:08.632-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:36:08.652-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:36:08.703-05:00 level=INFO msg="JSONL still missing after %v, retrying..." !BADKEY=50ms
+time=2026-02-28T12:36:08.804-05:00 level=INFO msg="JSONL still missing after %v, retrying..." !BADKEY=100ms
+time=2026-02-28T12:36:09.005-05:00 level=INFO msg="JSONL still missing after %v, retrying..." !BADKEY=200ms
+time=2026-02-28T12:36:09.405-05:00 level=INFO msg="JSONL still missing after %v, retrying..." !BADKEY=400ms
+time=2026-02-28T12:36:09.405-05:00 level=INFO msg="Failed to re-establish JSONL watch after all retries"
+time=2026-02-28T12:36:09.405-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:36:09.633-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:36:09.633-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:36:10.407-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:36:10.408-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:37:41.205-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:41.205-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:41.215-05:00 level=INFO msg="Git HEAD change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/HEAD
+time=2026-02-28T12:37:41.548-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-5w2
+time=2026-02-28T12:37:41.642-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-5w2
+time=2026-02-28T12:37:41.757-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:42.143-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:37:42.144-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:37:42.147-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:37:42.147-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:37:42.147-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:37:42.197-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:37:42.197-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:42.275-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:42.648-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-x4o
+time=2026-02-28T12:37:42.722-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-x4o
+time=2026-02-28T12:37:42.824-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:43.223-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:37:43.223-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:37:43.228-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:37:43.228-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:37:43.228-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:37:43.278-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:37:43.278-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:43.324-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:37:43.331-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:37:44.430-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:37:44.431-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:45:15.627-05:00 level=INFO msg="Mutation detected: %s %s" create=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T12:45:15.725-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:45:16.128-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:45:16.128-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:45:16.136-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:45:16.136-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:45:16.136-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:45:16.186-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:45:16.186-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:45:16.217-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:45:16.309-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:45:16.317-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T12:45:16.390-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-x4o
+time=2026-02-28T12:45:16.460-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-x4o
+time=2026-02-28T12:45:16.533-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-x4o
+time=2026-02-28T12:45:17.033-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:45:17.033-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:45:17.037-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:45:17.037-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:45:17.038-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:45:17.088-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:45:17.088-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:45:17.096-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:45:17.116-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T12:45:17.671-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T12:45:18.172-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T12:45:18.172-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T12:45:18.176-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T12:45:18.176-05:00 level=INFO msg="Export complete"
+time=2026-02-28T12:45:18.176-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T12:45:18.203-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:45:18.203-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T12:45:18.227-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T12:45:18.228-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T12:45:19.229-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T12:45:19.229-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T13:05:17.680-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T13:05:17.911-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:05:17.962-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:05:17.962-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:05:18.181-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T13:05:18.181-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T13:05:18.187-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T13:05:18.187-05:00 level=INFO msg="Export complete"
+time=2026-02-28T13:05:18.187-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:05:18.238-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:05:18.238-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:05:18.350-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:05:18.372-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T13:05:18.629-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T13:05:19.130-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T13:05:19.130-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T13:05:19.132-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T13:05:19.132-05:00 level=INFO msg="Export complete"
+time=2026-02-28T13:05:19.132-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:05:19.183-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:05:19.183-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:05:19.465-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T13:05:19.465-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-02-28T13:05:19.465-05:00 level=INFO msg="JSONL content changed, proceeding with %s..." !BADKEY=auto-import
+time=2026-02-28T13:05:19.483-05:00 level=INFO msg="⚠️  WARNING: Uncommitted local changes detected in %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:05:19.483-05:00 level=INFO msg="   Pulling from remote may overwrite local unpushed changes."
+time=2026-02-28T13:05:19.483-05:00 level=INFO msg="   Consider running 'bd sync' to commit and push your changes first."
+time=2026-02-28T13:05:19.776-05:00 level=INFO msg="Pull failed: %v (backoff: %v)" !BADKEY="git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n" !BADKEY=30m0s
+time=2026-02-28T13:05:20.185-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T13:05:20.185-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T13:20:18.941-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T13:20:19.162-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:20:19.213-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:20:19.213-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:20:19.444-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T13:20:19.444-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T13:20:19.450-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T13:20:19.450-05:00 level=INFO msg="Export complete"
+time=2026-02-28T13:20:19.450-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:20:19.500-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:20:19.501-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:20:19.584-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:20:19.605-05:00 level=INFO msg="Git ref change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.git/refs/heads/generation-2026-02-28-11-56-07.lock
+time=2026-02-28T13:20:19.843-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T13:20:20.343-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T13:20:20.343-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T13:20:20.347-05:00 level=INFO msg="Exported to JSONL"
+time=2026-02-28T13:20:20.347-05:00 level=INFO msg="Export complete"
+time=2026-02-28T13:20:20.347-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:20:20.399-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:20:20.399-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:20:20.695-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T13:20:20.696-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T13:20:21.401-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T13:20:21.402-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T13:24:05.895-05:00 level=INFO msg="Mutation detected: %s %s" comment=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T13:24:06.398-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T13:24:06.398-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T13:24:06.400-05:00 level=INFO msg="Pre-export validation failed: %v" !BADKEY="refusing to export: JSONL content has changed since last import (import first to avoid data loss)"
+time=2026-02-28T13:24:08.869-05:00 level=INFO msg="Mutation detected: %s %s" status=generation-2026-02-28-11-56-07-dx0
+time=2026-02-28T13:24:09.371-05:00 level=INFO msg="Export triggered by mutation events"
+time=2026-02-28T13:24:09.371-05:00 level=INFO msg="Starting %s..." !BADKEY=export
+time=2026-02-28T13:24:09.373-05:00 level=INFO msg="Pre-export validation failed: %v" !BADKEY="refusing to export: JSONL content has changed since last import (import first to avoid data loss)"
+time=2026-02-28T13:24:11.779-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:24:11.832-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:24:11.832-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:24:12.836-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T13:24:12.836-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T13:24:16.351-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:24:16.756-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T13:24:16.808-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T13:24:16.808-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:24:17.811-05:00 level=INFO msg="Import triggered by file change"
+time=2026-02-28T13:24:17.812-05:00 level=INFO msg="Skipping %s: in backoff period" !BADKEY=auto-import
+time=2026-02-28T13:24:20.930-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T13:24:20.932-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
