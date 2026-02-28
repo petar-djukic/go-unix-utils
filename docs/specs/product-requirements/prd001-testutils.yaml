@@ -10,8 +10,35 @@ problem: |
   the verification layer fragile: a bug in one cmd/'s harness copy would produce
   different verification behavior than another cmd/'s copy.
 
-  pkg/testutils is the acceptance gate for the entire pipeline. The mage-claude-orchestrator
+  pkg/testutils is the acceptance gate for the entire pipeline. The cobbler orchestrator
   cannot declare a utility complete until its differential tests pass through this harness.
+  This PRD is also the authoritative API reference for stitch agents implementing cmd/
+  packages: the agent reads this document, knows the full pkg/testutils API, and imports
+  the package without reinventing it.
+
+  A cmd/ test file imports pkg/testutils and defines test cases as data. The stitch agent
+  producing a new cmd/ utility writes only the test file — it does not recreate the package.
+  The canonical usage pattern is:
+
+    package main_test
+
+    import (
+        "os"
+        "testing"
+        "github.com/petar-djukic/go-unix-utils/pkg/testutils"
+    )
+
+    func TestDiff(t *testing.T) {
+        goBin := os.Getenv("GO_BINARY")
+        refBin := os.Getenv("REF_BINARY")
+        tests := []testutils.DiffTest{
+            {Name: "basic", Args: []string{"-n", "testdata/input.txt"}, ExitCode: 0},
+            {Name: "stdin", Args: []string{"-c"}, Stdin: []byte("hello\n"), ExitCode: 0},
+            {Name: "normalized", Args: []string{"-s", "%H:%M:%S"}, Stdin: []byte("event\n"),
+                ExitCode: 0, Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer}},
+        }
+        testutils.RunDiffTests(t, goBin, refBin, tests)
+    }
 
 goals:
   - G1: Provide a single execution function that runs a Go binary and a GNU reference binary with identical inputs and returns both outputs for comparison.
@@ -30,13 +57,20 @@ requirements:
                 Name          string                 // subtest name used with t.Run; required
                 Args          []string               // command-line arguments passed to both binaries
                 Stdin         []byte                 // nil = no stdin (both binaries receive EOF immediately)
-                Env           []string               // nil = inherit test process environment with no overrides; non-nil values are KEY=VALUE pairs that override or extend the inherited environment
+                Env           []string               // nil = use defaults only (LC_ALL=C); non-nil = KEY=VALUE pairs merged into inherited environment
+                WorkDir       string                 // empty = per-test t.TempDir(); non-empty = use this directory for both binaries
                 ExitCode      int                    // expected exit code for both binaries
                 Normalize     []func([]byte) []byte  // applied in order to stdout and stderr of both binaries before comparison; nil or empty = no normalization
                 ExpectedFiles map[string][]byte      // optional: path -> expected byte content after execution, for file-output utilities (sponge, cp)
             }
       - R1.2: DiffTest.Stdin nil means both binaries receive EOF immediately on stdin. An empty non-nil slice ([]byte{}) also produces no bytes but is semantically distinct (open stdin that is immediately closed).
-      - R1.3: DiffTest.Env nil means both binaries inherit the test process environment unchanged. When non-nil, the slice replaces (does not append to) the process environment for that invocation.
+      - R1.3: |
+          DiffTest.Env nil means both binaries inherit the test process environment with
+          default overrides applied (see R2.6). When non-nil, the KEY=VALUE pairs in the
+          slice are merged into the inherited environment: matching keys are overridden, new
+          keys are added. This merge behavior matches the struct comment ("override or
+          extend") and avoids requiring callers to replicate the full environment for a
+          single override.
       - R1.4: Must define type NormalizeFunc = func([]byte) []byte as a named type alias in package testutils. The Normalize field in DiffTest uses this element type. When the slice is nil or empty, no normalization is applied to stdout or stderr.
 
   R2:
@@ -47,7 +81,17 @@ requirements:
       - R2.2: Must capture stdout, stderr, and exit code from each binary independently.
       - R2.3: Must impose a configurable timeout on each binary invocation. The default timeout must be 10 seconds. The test fails if either binary exceeds the timeout.
       - R2.4: Must not write any output to the test process stdout or stderr during a passing test run.
-      - R2.5: Must support passing a working directory to each binary invocation. When not specified, both binaries run in a per-test temporary directory created by the harness.
+      - R2.5: |
+          Must support passing a working directory to each binary invocation via a WorkDir
+          field on DiffTest. When WorkDir is empty, both binaries run in a per-test temporary
+          directory created by the harness via t.TempDir(). The harness must use the same
+          working directory for both binaries in a given test case. The DiffTest struct gains:
+
+            WorkDir string // empty = per-test t.TempDir(); non-empty = use this directory for both binaries
+      - R2.6: |
+          Must set LC_ALL=C in the environment for both binaries unless the DiffTest.Env
+          explicitly overrides LC_ALL. This ensures deterministic sort order and formatting
+          across locales. The harness applies this default before merging DiffTest.Env.
 
   R3:
     title: Comparison and reporting
@@ -64,13 +108,34 @@ requirements:
     items:
       - R4.1: Must allow per-DiffTest normalization via the Normalize field. The function receives the raw output bytes and returns the normalized bytes.
       - R4.2: Must provide a built-in TimestampNormalizer that replaces common strftime timestamp patterns with a fixed placeholder string. This normalizer is used by cmd/ts tests.
-      - R4.3: 'Must allow normalizers to be composed: the harness must accept a slice of Normalize functions applied in order, not a single function. When the slice is nil or empty, no normalization is applied.'
+      - R4.3: |
+          Must allow normalizers to be composed: the harness must accept a slice of Normalize
+          functions applied in order, not a single function. When the slice is nil or empty,
+          no normalization is applied.
+      - R4.4: |
+          Must provide func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc that returns
+          a single NormalizeFunc applying the given functions in order. This is a convenience
+          for cmd/ test files that combine multiple normalizers:
+
+            normalize := testutils.ComposeNormalizers(
+                testutils.TimestampNormalizer,
+                customNormalizer,
+            )
 
   R5:
     title: File-state comparison
     items:
-      - R5.1: Must support utilities whose primary output is a file rather than stdout (sponge, cp, mv). For these, DiffTest must allow specifying expected file content after execution alongside expected stdout/stderr.
-      - R5.2: Must compare expected file content byte-for-byte and report divergence in the same format as stdout divergence.
+      - R5.1: |
+          Must support utilities whose primary output is a file rather than stdout (sponge,
+          cp, mv). DiffTest.ExpectedFiles is a map[string][]byte where keys are file paths
+          relative to the working directory and values are the expected byte content after
+          execution. When ExpectedFiles is non-nil, the harness checks each entry after both
+          binaries complete.
+      - R5.2: |
+          Must compare each ExpectedFiles entry byte-for-byte against the file produced by
+          the Go binary. Any difference must be reported as a test failure with the same
+          format as stdout divergence: file path, expected content (from reference), actual
+          content (from Go binary). Missing files must also be reported as failures.
 
 non_goals:
   - pkg/testutils does not build or compile the Go binaries under test.
@@ -83,6 +148,9 @@ acceptance_criteria:
   - "AC1: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) from a TestXxx function with no other setup. RunDiffTests runs each DiffTest as a named subtest (t.Run(test.Name, ...)) and calls t.Fatal on the first divergence in any subtest."
   - "AC2: A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries' stdout, stderr, and exit code."
   - "AC3: TimestampNormalizer replaces strftime-formatted timestamps (e.g., \"Feb 19 12:34:56\") with a fixed placeholder so that ts differential tests pass despite wall-clock differences."
-  - "AC4: A DiffTest with a file expectation field correctly fails when the Go binary writes different content than the reference binary."
+  - "AC4: A DiffTest with ExpectedFiles correctly fails when the Go binary writes different file content than expected."
   - "AC5: A DiffTest that exceeds the timeout fails with a clear timeout message rather than hanging the test run."
   - "AC6: All pkg/testutils code compiles with no warnings under golangci-lint."
+  - "AC7: ComposeNormalizers combines multiple NormalizeFunc values into a single function that applies them in order."
+  - "AC8: RunDiffTests sets LC_ALL=C by default. A DiffTest with Env=[\"LC_ALL=en_US.UTF-8\"] overrides this default."
+  - "AC9: The usage example in the problem statement is sufficient for a stitch agent to write a cmd/ test file that imports pkg/testutils without recreating the package."
