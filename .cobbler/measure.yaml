@@ -1,0 +1,43 @@
+- index: 0
+  title: 'rel01.0-uc001 ts: Implement cmd/ts timestamp prepend utility'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (project structure, cmd/ package layout, design decisions)
+      - docs/specs/product-requirements/prd004-ts.yaml (ts utility PRD; if this path is incorrect, locate the ts PRD in docs/specs/product-requirements/ matching prd*-ts.yaml)
+      - docs/specs/use-cases/rel01.0-uc001-ts.yaml (ts use case with end-to-end execution flow)
+      - docs/specs/test-suites/test-rel-01.0.yaml (test suite defining inputs and expected outputs)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API for pipeline signal handling)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility entry point: reads stdin line-by-line, prepends formatted timestamps, writes to stdout"
+
+    requirements:
+      - id: R1
+        text: "Read stdin line-by-line and write each line to stdout with a formatted timestamp prepended, as specified in the ts utility PRD"
+      - id: R2
+        text: "Support the default timestamp format and a custom strftime-compatible format string passed as a positional argument, as specified in the ts utility PRD"
+      - id: R3
+        text: "Support -s flag (elapsed time since program start) and -i flag (incremental time since last line) for relative timestamp modes, as specified in the ts utility PRD"
+      - id: R4
+        text: "Install SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler() at startup and exit with correct codes (0 on success, non-zero on error), as specified in the ts utility PRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call pkg/sys.InstallSIGPIPEHandler() at the start of main() for pipeline SIGPIPE behavior, per prd002-sys R3.1 and R3.2"
+      - id: D2
+        text: "Single cmd/ts/main.go file per ARCHITECTURE.yaml convention: each cmd/ sub-package contains main.go for the implementation"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/ts/ compiles without errors"
+      - id: AC2
+        text: "echo 'hello' | go run ./cmd/ts/ prepends a timestamp to the output line in the default format"
+      - id: AC3
+        text: "All flags specified in the ts PRD (-s, -i, custom format string) produce correct timestamp output"
+      - id: AC4
+        text: "Binary exits 0 on normal EOF and handles SIGPIPE cleanly without error output when stdout is closed"
+  dependency: -1

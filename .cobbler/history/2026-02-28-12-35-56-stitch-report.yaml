@@ -1,0 +1,119 @@
+task_id: generation-2026-02-28-11-56-07-5w2
+task_title: 'rel00.0-uc003 sys: Unit tests for prd002-sys R1 (terminal), R2 (metadata), R3 (SIGPIPE), R4 (SIGWINCH)'
+status: success
+branch: task/generation-2026-02-28-11-56-07-generation-2026-02-28-11-56-07-5w2
+diff:
+    files: 26
+    insertions: 2157
+    deletions: 0
+files:
+    - path: .beads/.gitignore
+      status: A
+      insertions: 39
+      deletions: 0
+    - path: .beads/README.md
+      status: A
+      insertions: 81
+      deletions: 0
+    - path: .beads/config.yaml
+      status: A
+      insertions: 62
+      deletions: 0
+    - path: .beads/interactions.jsonl
+      status: A
+      insertions: 0
+      deletions: 0
+    - path: .beads/issues.jsonl
+      status: A
+      insertions: 12
+      deletions: 0
+    - path: .beads/metadata.json
+      status: A
+      insertions: 4
+      deletions: 0
+    - path: .cobbler/base-branch
+      status: A
+      insertions: 1
+      deletions: 0
+    - path: .gitattributes
+      status: M
+      insertions: 3
+      deletions: 0
+    - path: go.mod
+      status: A
+      insertions: 7
+      deletions: 0
+    - path: go.sum
+      status: A
+      insertions: 2
+      deletions: 0
+    - path: pkg/format/color.go
+      status: A
+      insertions: 173
+      deletions: 0
+    - path: pkg/format/color_test.go
+      status: A
+      insertions: 149
+      deletions: 0
+    - path: pkg/format/columns.go
+      status: A
+      insertions: 121
+      deletions: 0
+    - path: pkg/format/columns_test.go
+      status: A
+      insertions: 194
+      deletions: 0
+    - path: pkg/format/size.go
+      status: A
+      insertions: 81
+      deletions: 0
+    - path: pkg/format/size_test.go
+      status: A
+      insertions: 92
+      deletions: 0
+    - path: pkg/sys/signal.go
+      status: A
+      insertions: 84
+      deletions: 0
+    - path: pkg/sys/signal_test.go
+      status: A
+      insertions: 81
+      deletions: 0
+    - path: pkg/sys/stat.go
+      status: A
+      insertions: 36
+      deletions: 0
+    - path: pkg/sys/stat_darwin.go
+      status: A
+      insertions: 27
+      deletions: 0
+    - path: pkg/sys/stat_linux.go
+      status: A
+      insertions: 27
+      deletions: 0
+    - path: pkg/sys/stat_test.go
+      status: A
+      insertions: 128
+      deletions: 0
+    - path: pkg/sys/terminal.go
+      status: A
+      insertions: 65
+      deletions: 0
+    - path: pkg/sys/terminal_test.go
+      status: A
+      insertions: 119
+      deletions: 0
+    - path: pkg/testutils/difftest.go
+      status: A
+      insertions: 278
+      deletions: 0
+    - path: pkg/testutils/difftest_test.go
+      status: A
+      insertions: 291
+      deletions: 0
+loc_before:
+    production: 892
+    test: 726
+loc_after:
+    production: 892
+    test: 1054
