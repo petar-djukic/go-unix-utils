@@ -85,15 +85,45 @@ requirements:
     title: Color output (--color)
     items:
       - R4.1: Must support --color=always, --color=auto, and --color=never. When --color is given without a value, it must default to "always".
-      - R4.2: --color=auto must colorize output only when stdout is a TTY. TTY detection must use pkg/sys.IsTerminal (prd002-sys). When stdout is not a TTY, --color=auto must behave like --color=never.
-      - R4.3: Colorized output must use GNU LS_COLORS default color assignments via pkg/format.FileTypeColor (prd003-format R2.1-R2.4). Each entry name is wrapped in the appropriate ANSI escape sequence and followed by the reset sequence from pkg/format.Reset.
+      - R4.2: |
+          --color=auto must colorize output only when stdout is a TTY. TTY detection: call pkg/sys.IsTerminal(os.Stdout) — returns true when os.Stdout's file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), false otherwise. When stdout is not a TTY, --color=auto must behave like --color=never.
+      - R4.3: |
+          Colorized output uses GNU LS_COLORS default color assignments. Implement color lookup directly in cmd/ls using the following table (do not call pkg/format.FileTypeColor):
+
+            File type         ANSI escape sequence
+            ---------         --------------------
+            directory         "\033[34m"   (blue)
+            symbolic link     "\033[36m"   (cyan)
+            executable file   "\033[32m"   (green)
+            block device      "\033[33;1m" (yellow bold)
+            character device  "\033[33;1m" (yellow bold)
+            socket            "\033[35m"   (magenta)
+            named pipe/FIFO   "\033[33m"   (yellow)
+            regular file      ""           (no color)
+            reset sequence    "\033[0m"
+
+          Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
       - R4.4: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
 
   R5:
     title: Human-readable sizes (-h)
     items:
-      - R5.1: -h must only take effect with -l (long format). When -h is given with -l, file sizes must be displayed as human-readable strings using binary mode (1024-based, suffixes K/M/G/T) via pkg/format.HumanSize (prd003-format R3.1-R3.4).
-      - R5.2: -h must also apply to the "total N" block count line in long format, converting the total block count to a human-readable string.
+      - R5.1: |
+          -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed using the following binary HumanSize algorithm (do not call pkg/format.HumanSize):
+
+            func humanSize(n int64) string {
+                if n == 0 { return "0" }
+                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+                f := float64(n)
+                i := 0
+                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
+                if i == 0 { return fmt.Sprintf("%d", n) }
+                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
+                return fmt.Sprintf("%.1f%s", f, suffixes[i])
+            }
+
+          Without -l, -h must have no visible effect on output.
+      - R5.2: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
       - R5.3: Without -l, -h must have no visible effect on output.
 
   R6:
@@ -106,8 +136,9 @@ requirements:
   R7:
     title: Signal handling
     items:
-      - R7.1: Must install a SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler (prd002-sys R3.1-R3.2) so that piping ls output to head or other truncating consumers does not produce a broken-pipe error message.
-      - R7.2: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize (prd002-sys R4.1-R4.2) that re-queries the terminal width. This allows ls to adapt column layout if the terminal is resized during a long listing.
+      - R7.1: |
+          Must install a SIGPIPE handler at startup so that piping ls output to head or other truncating consumers does not produce a broken-pipe error message. Implementation: call pkg/sys.InstallSIGPIPEHandler() — this uses signal.Notify(c, syscall.SIGPIPE) with a buffered channel of size 1; a dedicated goroutine calls os.Exit(0) when the channel receives. Must not use signal.Ignore (deferred cleanup functions must not run on SIGPIPE, matching GNU ls behavior).
+      - R7.2: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize(callback func(width int)) that re-queries the terminal width and updates the column layout. pkg/sys.OnTerminalResize registers a SIGWINCH listener that calls pkg/sys.TerminalWidth() and invokes the callback with the new width; multiple callbacks may be registered. This allows ls to adapt column layout if the terminal is resized during a long listing.
 
 non_goals:
   - -C (force multi-column), -x (sort across), -t (sort by mtime), -S (sort by size), -r (reverse sort), -U (unsorted), -v (version sort), -i (inode number), -s (block size), -n (numeric UID/GID), -R (recursive), -F (classify with indicator) are deferred to prd010-ls-extended.
