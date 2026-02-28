@@ -19,12 +19,17 @@ roadmap_summary:
     use_cases_total: 3
     status: spec_complete
   - version: rel02.0
-    name: "Batch 3 — ls core and du specification and differential tests"
-    use_cases_done: 2
-    use_cases_total: 2
+    name: "Batch 3 — du specification and differential test"
+    use_cases_done: 1
+    use_cases_total: 1
     status: spec_complete
-  - version: rel02.1
-    name: "Batch 4 — ls extended specification and differential tests"
+  - version: rel99.0
+    name: "Deferred — ls core specification and differential test"
+    use_cases_done: 1
+    use_cases_total: 1
+    status: spec_complete
+  - version: rel99.1
+    name: "Deferred — ls extended specification and differential test"
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
@@ -96,24 +101,24 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel01.1
     path: docs/specs/use-cases/rel01.1-uc003-sponge.yaml
-  - id: rel02.0-uc001-ls
-    title: "List directory contents via ls (core flags)"
-    release: rel02.0
-    status: spec_complete
-    test_suite: test-rel02.0
-    path: docs/specs/use-cases/rel02.0-uc001-ls.yaml
   - id: rel02.0-uc002-du
     title: "Report recursive directory disk usage via du"
     release: rel02.0
     status: spec_complete
     test_suite: test-rel02.0
     path: docs/specs/use-cases/rel02.0-uc002-du.yaml
-  - id: rel02.1-uc001-ls-extended
-    title: "List directory contents via ls (extended flags)"
-    release: rel02.1
+  - id: rel99.0-uc001-ls
+    title: "List directory contents via ls (core flags)"
+    release: rel99.0
     status: spec_complete
-    test_suite: test-rel02.1
-    path: docs/specs/use-cases/rel02.1-uc001-ls-extended.yaml
+    test_suite: test-rel99.0
+    path: docs/specs/use-cases/rel99.0-uc001-ls.yaml
+  - id: rel99.1-uc001-ls-extended
+    title: "List directory contents via ls (extended flags)"
+    release: rel99.1
+    status: spec_complete
+    test_suite: test-rel99.1
+    path: docs/specs/use-cases/rel99.1-uc001-ls-extended.yaml
 
 test_suite_index:
   - id: test-rel01.0
@@ -131,18 +136,23 @@ test_suite_index:
     test_case_count: 25
     path: docs/specs/test-suites/test-rel01.1.yaml
   - id: test-rel02.0
-    title: "Test Suite: rel02.0 — ls core and du specification and differential tests"
+    title: "Test Suite: rel02.0 — du recursive directory disk usage"
     traces:
-      - rel02.0-uc001-ls
       - rel02.0-uc002-du
-    test_case_count: 22
+    test_case_count: 11
     path: docs/specs/test-suites/test-rel02.0.yaml
-  - id: test-rel02.1
-    title: "Test Suite: rel02.1 — ls extended flag listing"
+  - id: test-rel99.0
+    title: "Test Suite: rel99.0 — ls core flag listing"
     traces:
-      - rel02.1-uc001-ls-extended
+      - rel99.0-uc001-ls
+    test_case_count: 13
+    path: docs/specs/test-suites/test-rel99.0.yaml
+  - id: test-rel99.1
+    title: "Test Suite: rel99.1 — ls extended flag listing"
+    traces:
+      - rel99.1-uc001-ls-extended
     test_case_count: 14
-    path: docs/specs/test-suites/test-rel02.1.yaml
+    path: docs/specs/test-suites/test-rel99.1.yaml
 
 prd_to_use_case_mapping:
   - use_case: rel01.0-uc001-ts
@@ -161,28 +171,28 @@ prd_to_use_case_mapping:
     prd: prd007-sponge
     why_required: sponge exercises file-state comparison in pkg/testutils and atomic write patterns.
     coverage: Full — all prd007-sponge requirement groups (R1-R6) are traced from the test suite.
-  - use_case: rel02.0-uc001-ls
-    prd: prd008-ls
-    why_required: ls core exercises pkg/sys and pkg/format for the first time in the pipeline.
-    coverage: Full — all prd008-ls requirement groups (R1-R7) are traced from the test suite.
   - use_case: rel02.0-uc002-du
     prd: prd009-du
     why_required: du exercises hard-link deduplication and recursive block accumulation.
     coverage: Full — all prd009-du requirement groups (R1-R5) are traced from the test suite.
-  - use_case: rel02.1-uc001-ls-extended
+  - use_case: rel99.0-uc001-ls
+    prd: prd008-ls
+    why_required: ls core exercises pkg/sys and pkg/format for the first time in the pipeline.
+    coverage: Full — all prd008-ls requirement groups (R1-R7) are traced from the test suite.
+  - use_case: rel99.1-uc001-ls-extended
     prd: prd010-ls-extended
     why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing.
     coverage: Full — all prd010-ls-extended requirement groups (R1-R6) are traced from the test suite.
 
 coverage_gaps: |
-  Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) do not have dedicated use
-  cases or test suites. They are exercised indirectly through the utility use cases that depend
-  on them. This is by design: shared libraries are validated through their consumers, not
-  independently.
+  Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) have dedicated use cases
+  and test suites in rel00.0 (foundational infrastructure). They are also exercised indirectly
+  through the utility use cases that depend on them.
 
   No coverage gaps exist in the current roadmap. Every use case has a test suite, every PRD is
   referenced by at least one use case touchpoint, and every release has a corresponding test
-  suite.
+  suite. ls (prd008-ls, prd010-ls-extended) is deferred to rel99.0/rel99.1 but retains full
+  specification coverage.
 
 traceability_diagram: |
   ```mermaid
@@ -193,9 +203,9 @@ traceability_diagram: |
     P4["prd004-ts"] & P5["prd005-wc"] & P6["prd006-cat"] & P7["prd007-sponge"]
     P8["prd008-ls"] & P9["prd009-du"] & P10["prd010-ls-extended"]
     UC1["rel01.0-uc001-ts"] & UC2["rel01.1-uc001-wc"] & UC3["rel01.1-uc002-cat"]
-    UC4["rel01.1-uc003-sponge"] & UC5["rel02.0-uc001-ls"] & UC6["rel02.0-uc002-du"]
-    UC7["rel02.1-uc001-ls-extended"]
-    TS1["test-rel01.0"] & TS2["test-rel01.1"] & TS3["test-rel02.0"] & TS4["test-rel02.1"]
+    UC4["rel01.1-uc003-sponge"] & UC5["rel99.0-uc001-ls"] & UC6["rel02.0-uc002-du"]
+    UC7["rel99.1-uc001-ls-extended"]
+    TS1["test-rel01.0"] & TS2["test-rel01.1"] & TS3["test-rel02.0"] & TS4["test-rel99.0"] & TS5["test-rel99.1"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
     P1 --> UC1
@@ -210,6 +220,7 @@ traceability_diagram: |
     P10 --> UC7
     UC1 --> TS1
     UC2 & UC3 & UC4 --> TS2
-    UC5 & UC6 --> TS3
-    UC7 --> TS4
+    UC6 --> TS3
+    UC5 --> TS4
+    UC7 --> TS5
   ```

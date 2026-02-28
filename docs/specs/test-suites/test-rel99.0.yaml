@@ -1,0 +1,216 @@
+id: test-rel99.0
+title: "Test Suite: rel99.0 — ls core flag listing"
+release: rel99.0
+
+traces:
+  - rel99.0-uc001-ls
+  - prd008-ls R1
+  - prd008-ls R2
+  - prd008-ls R3
+  - prd008-ls R4
+  - prd008-ls R5
+  - prd008-ls R6
+  - prd008-ls R7
+
+preconditions:
+  - Binaries exist under ./bin/ (built via mage build).
+  - Reference binaries are installed via Homebrew gls (coreutils).
+  - Tests are run via go test ./cmd/ls/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - All differential tests use --color=never to eliminate ANSI escape variance (except color-specific structural tests).
+  - For -l tests, the LsNormalizer replaces the mtime column with the placeholder MTIME before comparison.
+  - Tests use a fixture directory (testdata/ls-fixture/) containing regular files of known sizes, a subdirectory, dotfiles, a symbolic link, and files with known permissions.
+
+test_cases:
+  - name: ls_default_single_col_redirect
+    description: 'No flags, stdout redirected (not a TTY); one entry per line in C locale order. stdout is a pipe (not TTY), so default format is single-column'
+    inputs:
+      args: ["--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one entry per line, sorted in C locale order, no dotfiles
+      stderr: ""
+    traces:
+      - prd008-ls R1.2
+      - prd008-ls R1.3
+      - prd008-ls R1.4
+
+  - name: ls_default_multi_col_tty
+    description: 'Default on TTY (or forced with -C and --width=80); multi-column output. -C forces multi-column even without TTY; -w 80 sets column width'
+    inputs:
+      args: ["-C", "--color=never", "-w", "80", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: entries arranged in columns fitting within 80 characters
+      stderr: ""
+    traces:
+      - prd008-ls R1.1
+
+  - name: ls_single_col_flag
+    description: -1 forces single-column output regardless of TTY.
+    inputs:
+      args: ["-1", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: one entry per line, sorted in C locale order
+      stderr: ""
+    traces:
+      - prd008-ls R2.1
+
+  - name: ls_long_format
+    description: -l produces long format with permissions, nlink, owner, group, size, mtime, name.
+    inputs:
+      args: ["-l", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: LsNormalizer replaces mtime column with MTIME placeholder
+    expected:
+      exit_code: 0
+      stdout_structure: |
+        "total N" line followed by one long-format line per entry.
+        Each line has: type+perms, nlink, owner, group, size, MTIME, name.
+      stderr: ""
+    traces:
+      - prd008-ls R2.2
+      - prd008-ls R2.3
+      - prd008-ls R2.4
+      - prd008-ls R2.5
+      - prd008-ls R2.6
+      - prd008-ls R2.7
+      - prd008-ls R2.9
+
+  - name: ls_long_format_symlink
+    description: -l on a directory containing a symlink shows "name -> target".
+    inputs:
+      args: ["-l", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: LsNormalizer replaces mtime column with MTIME placeholder
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains " -> "'
+      stderr: ""
+    traces:
+      - prd008-ls R2.8
+
+  - name: ls_long_human
+    description: -lh displays human-readable file sizes matching gls -lh.
+    inputs:
+      args: ["-lh", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: LsNormalizer replaces mtime column with MTIME placeholder
+    expected:
+      exit_code: 0
+      stdout_structure: long format with sizes like "1.0K", "1.5K", "1.0M" instead of byte counts
+      stderr: ""
+    traces:
+      - prd008-ls R5.1
+      - prd008-ls R5.2
+
+  - name: ls_filter_all
+    description: -a includes all entries including . and .. and dotfiles.
+    inputs:
+      args: ["-a", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains ".", "..", and ".hidden"'
+      stderr: ""
+    traces:
+      - prd008-ls R3.1
+
+  - name: ls_filter_almost_all
+    description: -A includes dotfiles but excludes . and .. entries.
+    inputs:
+      args: ["-A", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains ".hidden" and must not contain standalone "." or ".." entries'
+      stderr: ""
+    traces:
+      - prd008-ls R3.2
+
+  - name: ls_directory_itself
+    description: -d shows the directory entry itself, not its contents.
+    inputs:
+      args: ["-d", "--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "testdata/ls-fixture/\n"
+      stderr: ""
+    traces:
+      - prd008-ls R3.3
+
+  - name: ls_color_suppressed
+    description: --color=never produces no ANSI escape sequences.
+    inputs:
+      args: ["--color=never", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output must not contain "\\033["'
+      stderr: ""
+    traces:
+      - prd008-ls R4.4
+
+  - name: ls_color_always
+    description: '--color=always produces ANSI escape sequences for file types. structural check only, not a diff test (ANSI codes must be present)'
+    inputs:
+      args: ["--color=always", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_structure: 'output contains "\\033["'
+      stderr: ""
+    traces:
+      - prd008-ls R4.1
+      - prd008-ls R4.3
+
+  - name: ls_missing_file
+    description: Non-existent argument prints error to stderr, exits 1, lists other args.
+    inputs:
+      args: ["--color=never", "nonexistent", "testdata/ls-fixture/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout_structure: listing of testdata/ls-fixture/ entries
+      stderr_contains: "nonexistent"
+    traces:
+      - prd008-ls R6.2
+
+  - name: ls_bad_option
+    description: Unknown flag produces error and exits 2.
+    inputs:
+      args: ["--invalid-flag"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 2
+      stderr_contains: "unrecognized option"
+    traces:
+      - prd008-ls R6.3
