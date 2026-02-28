@@ -609,3 +609,9 @@ time=2026-02-28T14:41:37.072-05:00 level=INFO msg="JSONL removed/renamed, re-est
 time=2026-02-28T14:41:37.123-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
 time=2026-02-28T14:41:37.123-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
 time=2026-02-28T14:41:37.129-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T14:41:37.256-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T14:41:37.307-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T14:41:37.307-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
+time=2026-02-28T14:41:37.803-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-02-28T14:41:37.854-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-02-28T14:41:37.854-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/pdiddy/COBBLER/go-unix-utils/.beads/issues.jsonl
