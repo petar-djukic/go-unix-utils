@@ -22,29 +22,34 @@ releases:
         status: spec_complete
 
   - version: "01.0"
-    name: "Batch 1 — ts specification and differential test"
+    name: "Batch 1 — wc specification and differential test"
     status: spec_complete
     description: |
-      Establish the end-to-end pipeline for a single utility: derive the PRD from C/Perl
-      source, write a use case, produce a test suite, and verify a passing differential
-      test against the Homebrew ts reference binary.
+      Implement the wc word, line, and byte counter. wc depends on pkg/testutils from
+      rel00.0 for differential testing and does not require pkg/sys or pkg/format.
     use_cases:
-      - id: rel01.0-uc001-ts
+      - id: rel01.0-uc001-wc
         status: spec_complete
 
   - version: "01.1"
-    name: "Batch 2 — wc, cat, sponge specification and differential tests"
+    name: "Batch 1.1 — cat specification and differential test"
     status: spec_complete
     description: |
-      Extend the pipeline to three additional moreutils/coreutils utilities that share
-      the same pkg/testutils dependency and do not require pkg/sys or pkg/format. Each
-      utility gets a PRD, use case, and test suite.
+      Implement cat for file concatenation and display. cat depends on pkg/testutils from
+      rel00.0 for differential testing and does not require pkg/sys or pkg/format.
     use_cases:
-      - id: rel01.1-uc001-wc
+      - id: rel01.1-uc001-cat
         status: spec_complete
-      - id: rel01.1-uc002-cat
-        status: spec_complete
-      - id: rel01.1-uc003-sponge
+
+  - version: "01.2"
+    name: "Batch 1.2 — sponge specification and differential test"
+    status: spec_complete
+    description: |
+      Implement sponge for soak-before-write stdin buffering. sponge depends on
+      pkg/testutils from rel00.0 for differential testing and does not require pkg/sys
+      or pkg/format.
+    use_cases:
+      - id: rel01.2-uc001-sponge
         status: spec_complete
 
   - version: "02.0"
@@ -80,4 +85,16 @@ releases:
       Depends on rel99.0.
     use_cases:
       - id: rel99.1-uc001-ls-extended
+        status: spec_complete
+
+  - version: "99.2"
+    name: "Deferred — ts specification and differential test"
+    status: spec_complete
+    description: |
+      Implement ts for prepending timestamps to stdin lines. Deferred from rel01.0 because
+      ts has failed in multiple generation runs due to task complexity from subrequirements
+      (R1-R8) and rate-limit constraints. Moved to deferred status pending cobbler-scaffold
+      improvements to subrequirement handling.
+    use_cases:
+      - id: rel99.2-uc001-ts
         status: spec_complete

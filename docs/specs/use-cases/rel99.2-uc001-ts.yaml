@@ -1,4 +1,4 @@
-id: rel01.0-uc001-ts
+id: rel99.2-uc001-ts
 title: "Timestamp stdin lines via ts"
 
 summary: |
@@ -80,4 +80,4 @@ out_of_scope:
   - -m mode (monotonic clock) differential testing is noted in the test suite but excluded from the primary flow because the reference binary and Go binary may use different monotonic sources.
   - The use case does not cover cmd/ts code generation by the orchestrator; that is handled by the cobbler:stitch mage target.
 
-test_suite: test-rel01.0
+test_suite: test-rel99.2
