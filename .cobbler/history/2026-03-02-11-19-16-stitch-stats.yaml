@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "100"
+task_title: 'pkg/testutils: DiffTest struct and RunDiffTests execution harness'
+status: success
+started_at: "2026-03-02T16:19:16Z"
+duration: 1m53s
+duration_s: 113
+tokens:
+    input: 535542
+    output: 6517
+    cache_creation: 37931
+    cache_read: 497599
+cost_usd: 0.65091725
+loc_before:
+    production: 461
+    test: 0
+loc_after:
+    production: 876
+    test: 0
+diff:
+    files: 2
+    insertions: 594
+    deletions: 0

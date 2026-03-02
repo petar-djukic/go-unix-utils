@@ -1,0 +1,142 @@
+[2026-03-02T11:23:01-05:00] [generation-2026-03-02-10-55-24] [stitch +0s] starting (limit=1)
+[2026-03-02T11:23:01-05:00] [generation-2026-03-02-10-55-24] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=1 generationBranch="generation-2026-03-02-10-55-24"
+[2026-03-02T11:23:01-05:00] [generation-2026-03-02-10-55-24] [stitch +0s] resolved branch=generation-2026-03-02-10-55-24
+[2026-03-02T11:23:01-05:00] [generation-2026-03-02-10-55-24] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/go-unix-utils
+[2026-03-02T11:23:01-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] using GitHub repo petar-djukic/go-unix-utils generation generation-2026-03-02-10-55-24 for issues
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] baseBranch=generation-2026-03-02-10-55-24
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] recovering stale tasks
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] recoverStaleTasks: checking for stale branches with pattern task/generation-2026-03-02-10-55-24-*
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] recoverStaleBranches: no stale branches found
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +1s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +2s] recoverStaleTasks: pruning worktrees
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +2s] recoverStaleTasks: no stale state found
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +2s] looking for next ready task (completed 0 so far)
+[2026-03-02T11:23:02-05:00] [generation-2026-03-02-10-55-24] [stitch +2s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-2026-03-02-10-55-24
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] pickReadyIssue: picked #101 "pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5)" gen=generation-2026-03-02-10-55-24
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] pickTask: picked #101 id=101 branch=task/generation-2026-03-02-10-55-24-101 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] pickTask: title="pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5)"
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] pickTask: descriptionLen=3042
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] executing task 1: id=101 title="pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5)"
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: starting task 101 (pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5))
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: task #101 claimed via pickReadyIssue label
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: creating worktree for 101
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] createWorktree: dir=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101 branch=task/generation-2026-03-02-10-55-24-101
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] createWorktree: branch task/generation-2026-03-02-10-55-24-101 does not exist, creating
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] createWorktree: branch task/generation-2026-03-02-10-55-24-101 created
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] createWorktree: adding worktree
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] createWorktree: worktree ready at /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101 on branch task/generation-2026-03-02-10-55-24-101
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: worktree created in 0s
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] resolveStandardFiles: 9 pattern(s) -> 36 file(s)
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: locBefore prod=876 test=0
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildStitchPrompt: no phase context file, using config defaults
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] resolveFileSet: 2 pattern(s) -> 2 file(s)
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildProjectContext: exclude set has 2 file(s)
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] resolveContextSources: 2 pattern(s) -> 2 file(s)
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] ensureTypedDocs: added missing typed doc docs/SPECIFICATIONS.yaml
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] ensureTypedDocs: added missing typed doc docs/road-map.yaml
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildProjectContext: using context_include (4 file(s))
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] loadSourceFiles: 8 file(s) from 2 dir(s)
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildProjectContext: vision=true arch=true roadmap=false specs=false eng=0 analysis=true issues=0 extra=0 src=8 files=2
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildStitchPrompt: projectCtx=true
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildStitchPrompt: filtered source files 8 -> 1 (required_reading has 1 source paths)
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] buildStitchPrompt: 89093 bytes
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: prompt built, length=89093 bytes
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] saveHistoryPrompt: saved .cobbler/history/2026-03-02-11-23-05-stitch-prompt.yaml
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] doOneTask: invoking Claude for task 101
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] runClaude: promptLen=89093 dir="/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101" silence=true
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] credentials: extracting to .secrets/claude.json
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] credentials: written to .secrets/claude.json
+[2026-03-02T11:23:05-05:00] [generation-2026-03-02-10-55-24] [stitch +4s] runClaude: exec podman [run --rm -i -v /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101:/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101 -w /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101 -v /Users/pdiddy/COBBLER/go-unix-utils/.secrets/claude.json:/home/crumbs/.claude/.credentials.json:ro -e CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000 claude-cli claude --dangerously-skip-permissions -p --verbose --output-format stream-json] (timeout=15m0s)
+[2026-03-02T11:23:06-05:00] [generation-2026-03-02-10-55-24] [stitch +5s] claude: [1s] first output
+[2026-03-02T11:23:06-05:00] [generation-2026-03-02-10-55-24] [stitch +5s] claude: [1s] ready
+[2026-03-02T11:23:14-05:00] [generation-2026-03-02-10-55-24] [stitch +13s] claude: [9s +7s] turn 1
+[2026-03-02T11:23:15-05:00] [generation-2026-03-02-10-55-24] [stitch +14s] claude: [10s +1s] turn 2
+[2026-03-02T11:23:15-05:00] [generation-2026-03-02-10-55-24] [stitch +14s] claude: [10s] turn 2: tool TodoWrite 
+[2026-03-02T11:23:15-05:00] [generation-2026-03-02-10-55-24] [stitch +14s] claude: [10s] rate_limit
+[2026-03-02T11:23:15-05:00] [generation-2026-03-02-10-55-24] [stitch +14s] claude: [10s +0s] tools done, waiting for LLM
+[2026-03-02T11:23:20-05:00] [generation-2026-03-02-10-55-24] [stitch +19s] claude: [15s +5s] turn 3
+[2026-03-02T11:23:20-05:00] [generation-2026-03-02-10-55-24] [stitch +19s] claude: [15s] turn 3: tool Read /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101/docs/specs/product-requirements/prd001-testutils.yaml
+[2026-03-02T11:23:20-05:00] [generation-2026-03-02-10-55-24] [stitch +19s] claude: [15s +0s] tools done, waiting for LLM
+[2026-03-02T11:23:21-05:00] [generation-2026-03-02-10-55-24] [stitch +20s] claude: [16s +0s] turn 4
+[2026-03-02T11:23:21-05:00] [generation-2026-03-02-10-55-24] [stitch +20s] claude: [16s] turn 4: tool Read /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101/go.mod
+[2026-03-02T11:23:21-05:00] [generation-2026-03-02-10-55-24] [stitch +20s] claude: [16s +0s] tools done, waiting for LLM
+[2026-03-02T11:23:21-05:00] [generation-2026-03-02-10-55-24] [stitch +20s] claude: [16s] rate_limit
+[2026-03-02T11:29:20-05:00] [generation-2026-03-02-10-55-24] [stitch +6m19s] claude: [6m15s +5m59s] turn 5
+[2026-03-02T11:29:21-05:00] [generation-2026-03-02-10-55-24] [stitch +6m20s] claude: [6m15s +1s] turn 6
+[2026-03-02T11:29:21-05:00] [generation-2026-03-02-10-55-24] [stitch +6m20s] claude: [6m15s] turn 6: tool TodoWrite 
+[2026-03-02T11:29:21-05:00] [generation-2026-03-02-10-55-24] [stitch +6m20s] claude: [6m16s +0s] tools done, waiting for LLM
+[2026-03-02T11:29:27-05:00] [generation-2026-03-02-10-55-24] [stitch +6m26s] claude: [6m22s +7s] turn 7: Now I have a clear picture. Let me implement the test file. Key design:  1. **TestMain** compiles two helper binaries: a...
+[2026-03-02T11:30:09-05:00] [generation-2026-03-02-10-55-24] [stitch +7m9s] claude: [7m4s +42s] turn 8
+[2026-03-02T11:30:09-05:00] [generation-2026-03-02-10-55-24] [stitch +7m9s] claude: [7m4s] turn 8: tool Write /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101/pkg/testutils/difftest_test.go
+[2026-03-02T11:30:09-05:00] [generation-2026-03-02-10-55-24] [stitch +7m9s] claude: [7m4s +0s] tools done, waiting for LLM
+[2026-03-02T11:30:15-05:00] [generation-2026-03-02-10-55-24] [stitch +7m14s] claude: [7m10s +5s] turn 9
+[2026-03-02T11:30:15-05:00] [generation-2026-03-02-10-55-24] [stitch +7m14s] claude: [7m10s] turn 9: tool TodoWrite 
+[2026-03-02T11:30:15-05:00] [generation-2026-03-02-10-55-24] [stitch +7m14s] claude: [7m10s +0s] tools done, waiting for LLM
+[2026-03-02T11:30:17-05:00] [generation-2026-03-02-10-55-24] [stitch +7m17s] claude: [7m12s +3s] turn 10: Now let me verify the code compiles and tests pass.
+[2026-03-02T11:30:19-05:00] [generation-2026-03-02-10-55-24] [stitch +7m18s] claude: [7m14s +1s] turn 11
+[2026-03-02T11:30:19-05:00] [generation-2026-03-02-10-55-24] [stitch +7m18s] claude: [7m14s] turn 11: tool Bash go vet ./pkg/testutils/...
+[2026-03-02T11:30:21-05:00] [generation-2026-03-02-10-55-24] [stitch +7m21s] claude: [7m16s +3s] tools done, waiting for LLM
+[2026-03-02T11:30:25-05:00] [generation-2026-03-02-10-55-24] [stitch +7m25s] claude: [7m20s +4s] turn 12
+[2026-03-02T11:30:25-05:00] [generation-2026-03-02-10-55-24] [stitch +7m25s] claude: [7m20s] turn 12: tool Bash go test -v -count=1 ./pkg/testutils/... 2>&1
+[2026-03-02T11:30:27-05:00] [generation-2026-03-02-10-55-24] [stitch +7m26s] claude: [7m22s +2s] tools done, waiting for LLM
+[2026-03-02T11:30:33-05:00] [generation-2026-03-02-10-55-24] [stitch +7m32s] claude: [7m28s +6s] turn 13
+[2026-03-02T11:30:34-05:00] [generation-2026-03-02-10-55-24] [stitch +7m33s] claude: [7m29s +1s] turn 14: The compiled binaries have permission denied. This could be a `noexec` mount on `/tmp`. Let me investigate and fix.
+[2026-03-02T11:30:36-05:00] [generation-2026-03-02-10-55-24] [stitch +7m35s] claude: [7m31s +2s] turn 15
+[2026-03-02T11:30:36-05:00] [generation-2026-03-02-10-55-24] [stitch +7m35s] claude: [7m31s] turn 15: tool Bash mount | grep tmp 2>/dev/null; echo "---"; ls -la /tmp/testutils-helpers-*/echo-h...
+[2026-03-02T11:30:36-05:00] [generation-2026-03-02-10-55-24] [stitch +7m35s] claude: [7m31s +0s] tools done, waiting for LLM
+[2026-03-02T11:30:42-05:00] [generation-2026-03-02-10-55-24] [stitch +7m41s] claude: [7m37s +6s] turn 16
+[2026-03-02T11:30:42-05:00] [generation-2026-03-02-10-55-24] [stitch +7m41s] claude: [7m37s] turn 16: tool Bash tmpdir=$(mktemp -d) && mkdir -p "$tmpdir/testprog" && cat > "$tmpdir/testprog/ma...
+[2026-03-02T11:30:42-05:00] [generation-2026-03-02-10-55-24] [stitch +7m41s] claude: [7m37s +0s] tools done, waiting for LLM
+[2026-03-02T11:30:46-05:00] [generation-2026-03-02-10-55-24] [stitch +7m45s] claude: [7m41s +5s] turn 17
+[2026-03-02T11:30:46-05:00] [generation-2026-03-02-10-55-24] [stitch +7m45s] claude: [7m41s] turn 17: tool Bash tmpdir=$(mktemp -d) && mkdir -p "$tmpdir/testprog" && cat > "$tmpdir/testprog/ma...
+[2026-03-02T11:30:46-05:00] [generation-2026-03-02-10-55-24] [stitch +7m46s] claude: [7m41s +0s] tools done, waiting for LLM
+[2026-03-02T11:31:15-05:00] [generation-2026-03-02-10-55-24] [stitch +8m14s] claude: [8m10s +29s] turn 18
+[2026-03-02T11:31:15-05:00] [generation-2026-03-02-10-55-24] [stitch +8m15s] claude: [8m10s +0s] turn 19: The issue is a path collision - `srcDir` and `binPath` use the same path (`parentDir/name`). The source directory exists...
+[2026-03-02T11:31:23-05:00] [generation-2026-03-02-10-55-24] [stitch +8m22s] claude: [8m18s +7s] turn 20
+[2026-03-02T11:31:23-05:00] [generation-2026-03-02-10-55-24] [stitch +8m22s] claude: [8m18s] turn 20: tool Edit /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101/pkg/testutils/difftest_test.go
+[2026-03-02T11:31:23-05:00] [generation-2026-03-02-10-55-24] [stitch +8m22s] claude: [8m18s +0s] tools done, waiting for LLM
+[2026-03-02T11:31:27-05:00] [generation-2026-03-02-10-55-24] [stitch +8m27s] claude: [8m22s +5s] turn 21
+[2026-03-02T11:31:27-05:00] [generation-2026-03-02-10-55-24] [stitch +8m27s] claude: [8m22s] turn 21: tool Bash go test -v -count=1 ./pkg/testutils/... 2>&1
+[2026-03-02T11:31:28-05:00] [generation-2026-03-02-10-55-24] [stitch +8m28s] claude: [8m23s +1s] tools done, waiting for LLM
+[2026-03-02T11:31:32-05:00] [generation-2026-03-02-10-55-24] [stitch +8m31s] claude: [8m27s +3s] turn 22: All 10 tests pass. Let me verify the final acceptance criteria checklist.
+[2026-03-02T11:31:32-05:00] [generation-2026-03-02-10-55-24] [stitch +8m32s] claude: [8m27s +1s] turn 23
+[2026-03-02T11:31:32-05:00] [generation-2026-03-02-10-55-24] [stitch +8m32s] claude: [8m27s] turn 23: tool Bash go vet ./pkg/testutils/... 2>&1
+[2026-03-02T11:31:33-05:00] [generation-2026-03-02-10-55-24] [stitch +8m32s] claude: [8m27s +0s] tools done, waiting for LLM
+[2026-03-02T11:31:36-05:00] [generation-2026-03-02-10-55-24] [stitch +8m35s] claude: [8m31s +4s] turn 24
+[2026-03-02T11:31:36-05:00] [generation-2026-03-02-10-55-24] [stitch +8m35s] claude: [8m31s] turn 24: tool TodoWrite 
+[2026-03-02T11:31:36-05:00] [generation-2026-03-02-10-55-24] [stitch +8m35s] claude: [8m31s +0s] tools done, waiting for LLM
+[2026-03-02T11:31:48-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] claude: [8m43s +12s] turn 25: All acceptance criteria verified:  - **AC1**: `pkg/testutils/difftest_test.go` exists and compiles with no errors under ...
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] claude: [8m43s] done: 25 turn(s), in=1079198 (base=16 cache_create=94254 cache_read=984928) out=34243 cost=$1.9422
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] parseClaudeTokens: in=1079198 (base=16 cache_create=94254 cache_read=984928) out=34243 cost=$1.9422
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] runClaude: finished in 8m44s in=1079198 (cache_create=94254 cache_read=984928) out=34243 cost=$1.9422 (err=<nil>)
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] saveHistoryLog: saved .cobbler/history/2026-03-02-11-23-05-stitch-log.log
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: Claude completed for 101 in 8m44s
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] commitWorktreeChanges: staging changes in /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] commitWorktreeChanges: committing "Task 101: pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5)"
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] commitWorktreeChanges: committed in worktree for 101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: merging task/generation-2026-03-02-10-55-24-101 into generation-2026-03-02-10-55-24
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] mergeBranch: task/generation-2026-03-02-10-55-24-101 into generation-2026-03-02-10-55-24 (repoRoot=/Users/pdiddy/COBBLER/go-unix-utils)
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] mergeBranch: checking out generation-2026-03-02-10-55-24
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] mergeBranch: checked out generation-2026-03-02-10-55-24
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] mergeBranch: merging task/generation-2026-03-02-10-55-24-101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] mergeBranch: merge successful
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: merge completed in 0s
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: diff files=2 ins=668 del=0
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: fileChanges=2 entries
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] resolveStandardFiles: 9 pattern(s) -> 36 file(s)
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: locAfter prod=876 test=444
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: cleaning up worktree for 101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] cleanupWorktree: removing worktree /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] cleanupWorktree: deleting branch task/generation-2026-03-02-10-55-24-101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] cleanupWorktree: done for task 101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] saveHistoryStats: saved .cobbler/history/2026-03-02-11-23-05-stitch-stats.yaml
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] saveHistoryReport: saved .cobbler/history/2026-03-02-11-23-05-stitch-report.yaml
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] doOneTask: closing task 101
+[2026-03-02T11:31:49-05:00] [generation-2026-03-02-10-55-24] [stitch +8m48s] closeStitchTask: closing #101 "pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5)"
+[2026-03-02T11:31:51-05:00] [generation-2026-03-02-10-55-24] [stitch +8m50s] closeCobblerIssue: closed #101
+[2026-03-02T11:31:51-05:00] [generation-2026-03-02-10-55-24] [stitch +8m50s] closeStitchTask: #101 closed
+[2026-03-02T11:31:51-05:00] [generation-2026-03-02-10-55-24] [stitch +8m50s] doOneTask: task 101 finished in 8m46s
+[2026-03-02T11:31:51-05:00] [generation-2026-03-02-10-55-24] [stitch +8m50s] task 101 completed in 8m46s
+[2026-03-02T11:31:51-05:00] [generation-2026-03-02-10-55-24] [stitch +8m50s] reached per-cycle limit (1), pausing for measure
+[2026-03-02T11:31:51-05:00] [generation-2026-03-02-10-55-24] [stitch +8m50s] completed 1 task(s) in 8m50s

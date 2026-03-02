@@ -1,0 +1,39 @@
+task_id: "98"
+task_title: Implement pkg/format -- size formatting, column alignment, ANSI color (rel00.0-uc002-format)
+status: success
+branch: task/generation-2026-03-02-10-55-24-98
+diff:
+    files: 6
+    insertions: 372
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 50
+      deletions: 0
+    - path: go.mod
+      status: M
+      insertions: 2
+      deletions: 0
+    - path: go.sum
+      status: A
+      insertions: 2
+      deletions: 0
+    - path: pkg/format/color.go
+      status: A
+      insertions: 133
+      deletions: 0
+    - path: pkg/format/column.go
+      status: A
+      insertions: 114
+      deletions: 0
+    - path: pkg/format/size.go
+      status: A
+      insertions: 71
+      deletions: 0
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 318
+    test: 0

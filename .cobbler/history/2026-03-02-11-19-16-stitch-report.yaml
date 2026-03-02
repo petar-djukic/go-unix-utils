@@ -1,0 +1,23 @@
+task_id: "100"
+task_title: 'pkg/testutils: DiffTest struct and RunDiffTests execution harness'
+status: success
+branch: task/generation-2026-03-02-10-55-24-100
+diff:
+    files: 2
+    insertions: 594
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 179
+      deletions: 0
+    - path: pkg/testutils/difftest.go
+      status: A
+      insertions: 415
+      deletions: 0
+loc_before:
+    production: 461
+    test: 0
+loc_after:
+    production: 876
+    test: 0

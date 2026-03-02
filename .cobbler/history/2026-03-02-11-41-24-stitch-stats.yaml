@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "104"
+task_title: 'prd011-magefiles: implement cmd/version'
+status: success
+started_at: "2026-03-02T16:41:24Z"
+duration: 1m33s
+duration_s: 92
+tokens:
+    input: 845073
+    output: 3193
+    cache_creation: 56596
+    cache_read: 788464
+cost_usd: 0.8323219999999999
+loc_before:
+    production: 876
+    test: 1265
+loc_after:
+    production: 923
+    test: 1265
+diff:
+    files: 2
+    insertions: 417
+    deletions: 0

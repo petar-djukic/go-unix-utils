@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "101"
+task_title: 'pkg/testutils: tests for differential testing harness (prd001-testutils R2, R3, R4, R5)'
+status: success
+started_at: "2026-03-02T16:23:05Z"
+duration: 8m44s
+duration_s: 524
+tokens:
+    input: 1079198
+    output: 34243
+    cache_creation: 94254
+    cache_read: 984928
+cost_usd: 1.9422445000000006
+loc_before:
+    production: 876
+    test: 0
+loc_after:
+    production: 876
+    test: 444
+diff:
+    files: 2
+    insertions: 668
+    deletions: 0
