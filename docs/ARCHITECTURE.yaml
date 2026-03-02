@@ -144,7 +144,7 @@ components:
       - mage lint runs golangci-lint
       - mage stats:loc prints LOC and doc word counts
       - mage analyze runs cross-artifact consistency checks
-      - mage init initializes project (beads)
+      - mage init initializes the project
       - mage credentials extracts Claude credentials from macOS Keychain
       - mage cobbler:measure and mage cobbler:stitch run the orchestrator generation cycle
     references:

@@ -14,7 +14,7 @@ introduction: |
 
   The rel01.0 generation failed due to pipeline bugs in the cobbler-scaffold. The measure agent
   ignored the releases configuration filter and proposed tasks outside the target release. A
-  beads history leak caused the measure agent to see stale completed tasks, leading it to skip
+  issue tracker history leak caused the measure agent to see stale completed tasks, leading it to skip
   rel01.0 entirely. We filed six cobbler-scaffold bugs and two go-unix-utils roadmap
   restructuring issues. Generation was stopped after rel00.0 to avoid wasting further cycles
   on broken pipeline components.
@@ -100,16 +100,16 @@ sections:
       started a new generation branch (generation-2026-02-28-13-42-29, then
       generation-2026-02-28-13-52-17).
 
-      The first attempt failed immediately: bd init imported 14 stale entries from
-      beads.left.jsonl (a git merge artifact). The measure agent saw dx0 (ts) as COMPLETED and
+      The first attempt failed immediately: the issue tracker init imported 14 stale entries from
+      a git merge artifact. The measure agent saw dx0 (ts) as COMPLETED and
       skipped rel01.0 entirely, proposing a rel01.1 wc task instead. The generator exited after
       one cycle saying "no open issues remain."
 
-      Filed as cobbler-scaffold #118: beads.left.jsonl re-imports stale history on init.
+      Filed as cobbler-scaffold #118: issue tracker re-imports stale history on init.
 
-      The second attempt required destroying and reinitializing the beads database from scratch
-      (rm -rf .beads/) because the SQLite database had become corrupted after multiple resets.
-      Filed as cobbler-scaffold #120: SQLite DB corruption after multiple beads resets.
+      The second attempt required destroying and reinitializing the issue tracker database from
+      scratch because the SQLite database had become corrupted after multiple resets.
+      Filed as cobbler-scaffold #120: SQLite DB corruption after multiple issue tracker resets.
 
       After a clean reinit, the measure phase started but we stopped the generator before stitch
       could execute, deciding to address the pipeline bugs before spending more cycles.
@@ -123,9 +123,9 @@ sections:
       | Issue | Title | Severity | Impact |
       |-------|-------|----------|--------|
       | #117 | Measure agent ignores releases config filter | high | Wrong-release tasks waste stitch cycles |
-      | #118 | beads.left.jsonl re-imports stale history on init | high | Measure sees completed tasks, skips work |
+      | #118 | Issue tracker re-imports stale history on init | high | Measure sees completed tasks, skips work |
       | #119 | Generator retries failed tasks without changes | medium | Identical retries waste API budget |
-      | #120 | SQLite DB corruption after multiple beads resets | medium | Requires rm -rf .beads/ to recover |
+      | #120 | SQLite DB corruption after multiple issue tracker resets | medium | Requires re-initialization to recover |
       | #121 | generator:run should accept cycle count argument | low | Must edit config.yaml instead of CLI arg |
       | #122 | Subrequirements in PRDs may prevent measure from splitting | medium | Tasks sized by top-level count, not actual scope |
 
@@ -179,7 +179,7 @@ sections:
       Run 7 is the first to produce both production and test LOC in a single stitch pass for
       infrastructure packages. The per-release model reduced measure cost because fewer tasks
       were proposed per cycle. However, the releases filter bug (#117) undermined the intended
-      scoping, and the beads history leak (#118) prevented the second release from starting.
+      scoping, and the issue tracker history leak (#118) prevented the second release from starting.
 
   - title: "Recommendations"
     content: |
@@ -208,7 +208,7 @@ references:
   - "https://github.com/petar-djukic/go-unix-utils/issues/36 — GH-36: Per-release generation"
   - "https://github.com/petar-djukic/go-unix-utils/issues/53 — GH-53: rel00.0 generation"
   - "https://github.com/petar-djukic/cobbler-scaffold/issues/117 — Measure ignores releases filter"
-  - "https://github.com/petar-djukic/cobbler-scaffold/issues/118 — beads.left.jsonl stale history"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/118 — Issue tracker stale history on init"
   - "https://github.com/petar-djukic/cobbler-scaffold/issues/119 — Retry without changes"
   - "https://github.com/petar-djukic/cobbler-scaffold/issues/120 — SQLite DB corruption"
   - "https://github.com/petar-djukic/cobbler-scaffold/issues/121 — generator:run cycle count arg"
