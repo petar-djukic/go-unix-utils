@@ -93,6 +93,40 @@ type binResult struct {
 	exitCode int
 }
 
+// DiffResult holds the comparison result from a single differential test
+// invocation. When Match is true, all outputs were identical after
+// normalization. When false, Divergences lists which streams differed.
+//
+// prd001-testutils R3.
+type DiffResult struct {
+	// Match is true when normalized stdout, stderr, and exit codes are identical.
+	Match bool
+
+	// Args are the input arguments that were used for both binaries.
+	Args []string
+
+	// RefStdout is the reference binary's stdout after normalization.
+	RefStdout []byte
+
+	// GoStdout is the Go binary's stdout after normalization.
+	GoStdout []byte
+
+	// RefStderr is the reference binary's stderr after normalization.
+	RefStderr []byte
+
+	// GoStderr is the Go binary's stderr after normalization.
+	GoStderr []byte
+
+	// RefExitCode is the reference binary's exit code.
+	RefExitCode int
+
+	// GoExitCode is the Go binary's exit code.
+	GoExitCode int
+
+	// Divergences lists which streams diverged: "stdout", "stderr", "exit code".
+	Divergences []string
+}
+
 // RunDiffTests executes each DiffTest as a named subtest via t.Run. For each
 // test case, both goBinary and refBinary are invoked with identical Args,
 // Stdin, and Env. Outputs are compared byte-for-byte after normalization.
@@ -108,6 +142,68 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 			runSingleDiffTest(t, goBinary, refBinary, tc)
 		})
 	}
+}
+
+// RunDiffTest executes a single differential test case. Both goBinary and
+// refBinary are invoked with the DiffTest's Args, Stdin, and Env. Outputs are
+// compared byte-for-byte after applying normalization hooks. Returns a
+// DiffResult describing the comparison. Unlike RunDiffTests, this function
+// does not depend on *testing.T and returns errors directly.
+//
+// prd001-testutils R2, R3.
+func RunDiffTest(goBinary, refBinary string, tc DiffTest) (DiffResult, error) {
+	workDir := tc.WorkDir
+	if workDir == "" {
+		tmpDir, err := os.MkdirTemp("", "difftest-*")
+		if err != nil {
+			return DiffResult{}, fmt.Errorf("creating temp dir: %w", err)
+		}
+		defer os.RemoveAll(tmpDir) // best-effort cleanup
+		workDir = tmpDir
+	}
+
+	env := buildEnv(tc.Env)
+
+	refResult, err := execBinary(refBinary, tc.Args, tc.Stdin, env, workDir)
+	if err != nil {
+		return DiffResult{}, fmt.Errorf("reference binary: %w", err)
+	}
+
+	goResult, err := execBinary(goBinary, tc.Args, tc.Stdin, env, workDir)
+	if err != nil {
+		return DiffResult{}, fmt.Errorf("go binary: %w", err)
+	}
+
+	refStdout := applyNormalizers(refResult.stdout, tc.Normalize)
+	refStderr := applyNormalizers(refResult.stderr, tc.Normalize)
+	goStdout := applyNormalizers(goResult.stdout, tc.Normalize)
+	goStderr := applyNormalizers(goResult.stderr, tc.Normalize)
+
+	result := DiffResult{
+		Match:       true,
+		Args:        tc.Args,
+		RefStdout:   refStdout,
+		GoStdout:    goStdout,
+		RefStderr:   refStderr,
+		GoStderr:    goStderr,
+		RefExitCode: refResult.exitCode,
+		GoExitCode:  goResult.exitCode,
+	}
+
+	if !bytes.Equal(refStdout, goStdout) {
+		result.Match = false
+		result.Divergences = append(result.Divergences, "stdout")
+	}
+	if !bytes.Equal(refStderr, goStderr) {
+		result.Match = false
+		result.Divergences = append(result.Divergences, "stderr")
+	}
+	if refResult.exitCode != goResult.exitCode {
+		result.Match = false
+		result.Divergences = append(result.Divergences, "exit code")
+	}
+
+	return result, nil
 }
 
 // runSingleDiffTest runs a single DiffTest case against both binaries and
@@ -228,13 +324,13 @@ func parseEnvEntry(entry string) (key, value string, ok bool) {
 	return entry[:idx], entry[idx+1:], true
 }
 
-// runBinary executes a binary with the given arguments, stdin, environment,
+// execBinary executes a binary with the given arguments, stdin, environment,
 // and working directory. Returns captured stdout, stderr, and exit code.
+// Unlike runBinary, it does not depend on *testing.T and returns errors
+// directly.
 //
 // prd001-testutils R2.2, R2.3.
-func runBinary(t *testing.T, binary string, args []string, stdin []byte, env []string, workDir string) binResult {
-	t.Helper()
-
+func execBinary(binary string, args []string, stdin []byte, env []string, workDir string) (binResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
 
@@ -255,12 +351,12 @@ func runBinary(t *testing.T, binary string, args []string, stdin []byte, env []s
 	exitCode := 0
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			t.Fatalf("timeout: %s exceeded %v with args %v", binary, DefaultTimeout, args)
+			return binResult{}, fmt.Errorf("timeout: %s exceeded %v with args %v", binary, DefaultTimeout, args)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			t.Fatalf("executing %s: %v", binary, err)
+			return binResult{}, fmt.Errorf("executing %s: %w", binary, err)
 		}
 	}
 
@@ -268,7 +364,18 @@ func runBinary(t *testing.T, binary string, args []string, stdin []byte, env []s
 		stdout:   stdoutBuf.Bytes(),
 		stderr:   stderrBuf.Bytes(),
 		exitCode: exitCode,
+	}, nil
+}
+
+// runBinary executes a binary and captures its output, failing the test on
+// timeout or execution error.
+func runBinary(t *testing.T, binary string, args []string, stdin []byte, env []string, workDir string) binResult {
+	t.Helper()
+	result, err := execBinary(binary, args, stdin, env, workDir)
+	if err != nil {
+		t.Fatalf("%v", err)
 	}
+	return result
 }
 
 // applyNormalizers applies each NormalizeFunc in order to the data.
