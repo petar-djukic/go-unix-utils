@@ -159,8 +159,9 @@ sections:
       Both issues required manual intervention after every generation boundary. We filed
       cobbler-scaffold issues #23 and #24 for these.
 
-      A third issue (cobbler-scaffold#25): after a stitch timeout, the beads task enters a state
-      where bd ready cannot find it. The workaround is bd update <id> --status open.
+      A third issue (cobbler-scaffold#25): after a stitch timeout, the issue tracker task enters a
+      state where it cannot be found by the ready query. The workaround is manually resetting the
+      task status to open.
 
   - title: "Code quality observations"
     content: |
@@ -219,4 +220,4 @@ references:
   - "https://github.com/petar-djukic/go-unix-utils/pull/11 — PR #11: GH-3 code generation"
   - "https://github.com/petar-djukic/cobbler-scaffold/issues/23 — generator:stop destroys earlier code"
   - "https://github.com/petar-djukic/cobbler-scaffold/issues/24 — generator:start should seed existing code"
-  - "https://github.com/petar-djukic/cobbler-scaffold/issues/25 — bd ready stale after stitch timeout"
+  - "https://github.com/petar-djukic/cobbler-scaffold/issues/25 — issue tracker ready query stale after stitch timeout"

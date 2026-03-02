@@ -156,7 +156,7 @@ sections:
 
       The zero re-proposal rate in variant 2 is explained by the absence of ARCHITECTURE.yaml's
       misleading implementation_status text. Without the "specifications only" assertion, the
-      measure agent trusted the beads issue state and did not re-propose completed work.
+      measure agent trusted the issue tracker state and did not re-propose completed work.
 
   - title: "Variant 3 results (exclude-all context)"
     content: |
@@ -187,7 +187,7 @@ sections:
       | road-map.yaml | Yes | Yes (raw) | Required |
       | PRDs | Yes | Yes | Required |
       | Use cases | Yes | Yes | Required |
-      | Existing issues | Yes (via beads) | Yes (via beads) | Required |
+      | Existing issues | Yes (via issue tracker) | Yes (via issue tracker) | Required |
       | Source code | Yes (go_source_dirs) | No | Required |
 
       The measure agent requested exactly the standard discovery set minus VISION, SPECIFICATIONS,

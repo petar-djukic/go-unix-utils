@@ -203,7 +203,7 @@ sections:
       | Iteration protocol limits to 1 task | Measure produces exactly 1 task per iteration, cannot split on retry | Structural limitation of current measure design | New finding |
       | Re-prompt lacks rejection context | Agent does not receive specific rejection reason on retry | Agent cannot adjust behavior intelligently | New finding |
       | P7 violation on cmd/ts test files | ts_test.go matches package name convention | Agent avoids by switching to different package | Confirmed |
-      | Beads merge warning | generator:stop merge import branch had conflicts | .beads tracking may lose data | Confirmed from eng08 |
+      | Issue tracker merge warning | generator:stop merge import branch had conflicts | Issue tracking may lose data | Confirmed from eng08 |
       | scaffold:push overwrites config | writeScaffoldConfig() destroys custom configuration.yaml settings | Must manually restore config after every scaffold:push | Confirmed from this session |
 
   - title: "Recommendations"

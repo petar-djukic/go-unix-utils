@@ -177,7 +177,7 @@ sections:
       | Infinite retry loop | Stitch retries same failing task indefinitely (confirmed from eng07) | Wastes time and API credits | cobbler-scaffold backlog |
       | 8-requirement tasks too large | Measure proposes cmd/ts R1-R8 as single task despite reduced line estimates | Task exceeds stitch time budget | cobbler-scaffold#70 |
       | Zombie containers | podman containers survive after orchestrator kills the process | Accumulates idle containers consuming resources | New finding |
-      | Beads merge overwrites | generator:stop merge replaces parent branch's .beads/issues.jsonl | Loses epic tracking issues | Known limitation |
+      | Issue tracker merge overwrites | generator:stop merge replaces parent branch's issue tracker state | Loses epic tracking issues | Known limitation |
       | Stats not captured on timeout | Timed-out stitch reports $0 cost (confirmed from eng07) | Undercounts actual cost | cobbler-scaffold backlog |
 
   - title: "Recommendations"

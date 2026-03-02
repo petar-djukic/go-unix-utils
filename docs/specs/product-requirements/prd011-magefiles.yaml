@@ -121,7 +121,7 @@ requirements:
 non_goals:
   - This PRD does not specify orchestrator targets (cobbler:measure, cobbler:stitch). Those are provided by cobbler-scaffold.
   - This PRD does not specify generator lifecycle targets (generator:start, generator:run, generator:stop). Those are provided by cobbler-scaffold.
-  - This PRD does not specify beads, scaffold, prompt, or stats targets. Those are provided by cobbler-scaffold.
+  - This PRD does not specify scaffold, prompt, or stats targets. Those are provided by cobbler-scaffold.
   - This PRD does not specify the analyze target. Cross-artifact consistency checks are provided by cobbler-scaffold.
   - cmd/version does not parse LS_COLORS, handle signals, or do anything beyond printing a version string.
 

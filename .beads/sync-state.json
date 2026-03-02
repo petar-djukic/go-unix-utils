@@ -1,7 +1,0 @@
-{
-  "last_failure": "0001-01-01T00:00:00Z",
-  "failure_count": 0,
-  "backoff_until": "0001-01-01T00:00:00Z",
-  "needs_manual_sync": true,
-  "failure_reason": "git pull failed: exit status 1\nfatal: couldn't find remote ref generation-2026-02-28-11-56-07\n"
-}
