@@ -1,0 +1,99 @@
+consistency_errors: 0
+code_status:
+    releases:
+        - version: "00.0"
+          name: Batch 0 — foundational infrastructure
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel00.0-uc001-magefiles
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc002-format
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc003-sys
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc004-testutils
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "01.0"
+          name: Batch 1 — wc specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel01.0-uc001-wc
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "01.1"
+          name: Batch 1.1 — cat specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel01.1-uc001-cat
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "01.2"
+          name: Batch 1.2 — sponge specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel01.2-uc001-sponge
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "01.3"
+          name: Batch 1.3 — du specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel01.3-uc001-du
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "99.0"
+          name: Deferred — ls core specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel99.0-uc001-ls
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "99.1"
+          name: Deferred — ls extended specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel99.1-uc001-ls-extended
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "99.2"
+          name: Deferred — ts specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel99.2-uc001-ts
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+    gaps: []

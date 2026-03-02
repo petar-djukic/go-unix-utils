@@ -1,0 +1,240 @@
+- index: 0
+  title: 'pkg/testutils: DiffTest struct and differential test runner -- rel00.0-uc004-testutils'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/testutils component section and Design Decision 2)
+      - docs/specs/product-requirements/ (find and read the testutils PRD in this directory)
+      - docs/specs/use-cases/rel00.0-uc004-testutils.yaml
+      - docs/specs/test-suites/test-rel-00.0.yaml (testutils test suite section)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct definition and differential test runner function
+
+    requirements:
+      - id: R1
+        text: Define the DiffTest struct with fields for command-line arguments, stdin input, environment variables, expected exit code, and optional expected stdout/stderr content, as specified in the testutils PRD
+      - id: R2
+        text: Implement a runner function that executes both the Go binary under test and the GNU reference binary with identical stdin, arguments, and environment, then captures stdout, stderr, and exit code from each
+      - id: R3
+        text: Compare stdout, stderr, and exit code between the two binaries byte-for-byte by default, reporting divergences with the input that triggered them, the expected output (reference binary), and the actual output (Go binary)
+      - id: R4
+        text: Support configurable normalization hooks that transform output before comparison to handle known acceptable differences such as timestamps or path prefixes
+
+    design_decisions:
+      - id: D1
+        text: "Primary file is difftest.go, named after the primary exported type DiffTest (project convention: name source files after the primary exported type, not the package name)"
+      - id: D2
+        text: Byte-for-byte comparison is the default mode per ARCHITECTURE.yaml Design Decision 2; normalization hooks are opt-in per test case
+      - id: D3
+        text: Both binaries receive identical stdin, arguments, and environment variables as specified in the ARCHITECTURE.yaml pkg/testutils capabilities
+
+    acceptance_criteria:
+      - id: AC1
+        text: pkg/testutils/difftest.go exists and declares package testutils
+      - id: AC2
+        text: DiffTest struct is exported and contains all fields necessary to define a differential test case
+      - id: AC3
+        text: Runner function is exported and executes two binaries with matching inputs, returning structured comparison results
+      - id: AC4
+        text: Normalization hooks can be configured per DiffTest instance and are applied before comparison
+      - id: AC5
+        text: "go build ./pkg/testutils/ succeeds with no errors"
+  dependency: -1
+- index: 0
+  title: Implement magefiles core build targets -- rel00.0-uc001-magefiles
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (magefiles component description, interfaces section for mage target specifications, technology choices for Mage)
+      - docs/specs/use-cases/rel00.0-uc001-magefiles.yaml (use case specification for magefiles)
+      - docs/specs/test-suites/test-rel-00.0.yaml (test expectations for release 00.0)
+      - configuration.yaml (orchestrator configuration consumed by magefiles)
+      - go.mod (module path and existing dependencies)
+
+    files:
+      - path: magefiles/build.go
+        action: create
+        note: "Build and Lint mage targets as exported functions"
+      - path: magefiles/stats.go
+        action: create
+        note: "Stats namespace type with Loc method for stats:loc target"
+      - path: magefiles/init.go
+        action: create
+        note: "Init mage target for project directory setup"
+      - path: go.mod
+        action: modify
+        note: "Add mage dependency if not already present"
+
+    requirements:
+      - id: R1
+        text: "Implement Build target that discovers all subdirectories under cmd/ using os.ReadDir and compiles each to bin/<directory-name> using go build. Create bin/ directory if it does not exist."
+      - id: R2
+        text: "Implement Lint target that runs golangci-lint on ./cmd/... and ./pkg/... via os/exec and returns a non-nil error if the linter is not installed or if linting fails."
+      - id: R3
+        text: "Implement Init target that ensures the bin/ output directory exists and validates that go.mod is present in the project root."
+      - id: R4
+        text: "Implement Stats namespace with Loc method that walks Go source files under cmd/ and pkg/, counts production lines and test lines separately, walks docs/ for .yaml and .md files to count words, and prints a summary table to stdout."
+
+    design_decisions:
+      - id: D1
+        text: "Use Mage conventions per ARCHITECTURE.yaml technology choices: exported functions in magefiles/ become top-level targets, a type with exported methods creates a namespace (e.g., Stats type with Loc method becomes stats:loc)."
+      - id: D2
+        text: "Build target discovers cmd/ subdirectories dynamically using os.ReadDir, not a hardcoded list, because cmd/ grows as utilities are added per road-map.yaml."
+      - id: D3
+        text: "All magefiles use the //go:build mage build constraint tag per Mage conventions."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "mage build compiles all cmd/ packages and places output binaries in bin/"
+      - id: AC2
+        text: "mage lint invokes golangci-lint on cmd/ and pkg/ trees and returns non-nil error on lint failure"
+      - id: AC3
+        text: "mage init creates the bin/ directory if it does not exist"
+      - id: AC4
+        text: "mage stats:loc prints production .go line count, test .go line count, and docs word count as a formatted table"
+      - id: AC5
+        text: "All files in magefiles/ compile without errors: go vet ./magefiles/... exits 0"
+  dependency: -1
+- index: 0
+  title: Implement magefiles -- Build, Lint, Stats:Loc, Analyze (rel00.0-uc001-magefiles)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (magefiles/ component -- responsibility, capabilities, project_structure, and technology_choices for Mage)
+      - docs/specs/product-requirements/ (find and read the magefiles PRD -- match prd*-mage*.yaml or similar naming)
+      - docs/specs/use-cases/rel00.0-uc001-magefiles.yaml (use case for magefiles build targets)
+      - go.mod (module path and existing dependencies)
+
+    files:
+      - path: magefiles/build.go
+        action: create
+        note: "Build and Lint mage targets -- compile cmd/ packages to bin/, run golangci-lint"
+      - path: magefiles/stats.go
+        action: create
+        note: "Stats namespace with Loc target for Go LOC and documentation word counts"
+      - path: magefiles/analyze.go
+        action: create
+        note: "Analyze target for cross-artifact consistency checks on docs/"
+      - path: go.mod
+        action: modify
+        note: "Add github.com/magefile/mage dependency if not already present"
+
+    requirements:
+      - id: R1
+        text: "Implement Build mage target that discovers all cmd/*/main.go packages and compiles each to bin/<utility> using go build; create bin/ directory if it does not exist; succeed gracefully if no cmd/ packages are found"
+      - id: R2
+        text: "Implement Lint mage target that runs golangci-lint on all Go source under cmd/ and pkg/; return the lint exit code as the target result"
+      - id: R3
+        text: "Implement Stats:Loc mage target (Stats namespace, Loc method) that counts Go lines of code separated into production (.go excluding _test.go) and test (_test.go) categories, plus word counts for .yaml and .md files in docs/"
+      - id: R4
+        text: "Implement Analyze mage target that parses YAML files in docs/specs/ and checks cross-artifact consistency: verify referenced PRD files exist, verify referenced use case files exist, report any missing or broken references"
+
+    design_decisions:
+      - id: D1
+        text: "Mage targets live in magefiles/ directory with package main per ARCHITECTURE.yaml project_structure; use github.com/magefile/mage/mg for namespaces and github.com/magefile/mage/sh for shell execution"
+      - id: D2
+        text: "Build target outputs binaries to bin/ directory at the project root, matching the architecture convention that binaries live in bin/"
+      - id: D3
+        text: "Read the magefiles PRD (in docs/specs/product-requirements/) for detailed specifications of each target; follow PRD requirement IDs and acceptance criteria as the source of truth for behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "`mage -l` lists Build, Lint, Stats:Loc, and Analyze targets with descriptions"
+      - id: AC2
+        text: "`mage build` succeeds and creates bin/ directory even if no cmd/ packages exist"
+      - id: AC3
+        text: "`mage lint` invokes golangci-lint and exits cleanly when no violations exist"
+      - id: AC4
+        text: "`mage stats:loc` prints production LOC, test LOC, and documentation word counts to stdout"
+      - id: AC5
+        text: "`mage analyze` reports zero errors when all cross-references in docs/ are valid"
+      - id: AC6
+        text: "golangci-lint reports zero warnings for all files in magefiles/"
+      - id: AC7
+        text: "All targets handle empty directories gracefully -- no cmd/ packages, no pkg/ packages, no docs/ files"
+  dependency: -1
+- index: 0
+  title: Implement pkg/sys file metadata and terminal size abstractions (rel00.0-uc003)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/sys component -- responsibilities, capabilities, technology choices section for golang.org/x/sys)
+      - "docs/specs/product-requirements/ (glob for prd*sys*.yaml -- read the PRD for pkg/sys to identify requirement IDs and struct shapes)"
+      - "docs/specs/use-cases/ (glob for *uc*sys*.yaml -- read the use case for pkg/sys)"
+      - pkg/testutils/difftest.go (coding style reference -- copyright header, SPDX identifier, package doc comment with Implements tag)
+      - go.mod (check if golang.org/x/sys dependency already exists; add it if not)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: create
+        note: "FileInfo struct with platform-independent fields (ModTime, AccessTime, Blocks, BlockSize, underlying os.FileInfo); Stat and Lstat functions returning (*FileInfo, error)"
+      - path: pkg/sys/fileinfo_darwin.go
+        action: create
+        note: "Darwin-specific extraction from syscall.Stat_t (Mtimespec, Atimespec, Blocks fields)"
+      - path: pkg/sys/fileinfo_linux.go
+        action: create
+        note: "Linux-specific extraction from syscall.Stat_t (Mtim, Atim, Blocks fields)"
+      - path: pkg/sys/terminal.go
+        action: create
+        note: "WinSize struct and TerminalSize function using TIOCGWINSZ ioctl"
+      - path: pkg/sys/doc.go
+        action: create
+        note: "Package documentation with Implements tag referencing PRD requirement IDs"
+
+    requirements:
+      - id: R1
+        text: |
+          Define a FileInfo struct that exposes modification time (time.Time), access time
+          (time.Time), block count (int64), and block size (int64) with consistent field names
+          across Darwin and Linux. Include the original os.FileInfo so callers can access standard
+          fields (Name, Size, Mode, IsDir). Implement Stat(path string) (*FileInfo, error) and
+          Lstat(path string) (*FileInfo, error) that call os.Stat/os.Lstat, extract the underlying
+          syscall.Stat_t via a platform-specific helper, and populate all FileInfo fields.
+      - id: R2
+        text: |
+          Implement TerminalSize(fd uintptr) (*WinSize, error) that queries terminal dimensions
+          via the TIOCGWINSZ ioctl using golang.org/x/sys/unix. WinSize must have Width (columns)
+          and Height (rows) fields, both uint16. Return a descriptive error when fd is not a
+          terminal.
+      - id: R3
+        text: |
+          Isolate all platform-specific Stat_t field access into build-tagged files:
+          fileinfo_darwin.go with //go:build darwin and fileinfo_linux.go with //go:build linux.
+          Each platform file implements an extractFileInfo function that takes a syscall.Stat_t
+          pointer and returns the platform-specific time and block fields. The shared fileinfo.go
+          and terminal.go must not import platform-specific packages directly.
+      - id: R4
+        text: |
+          Use golang.org/x/sys/unix for ioctl operations and TIOCGWINSZ constant. If go.mod does
+          not already include golang.org/x/sys, add it via go get. Do not use the deprecated
+          syscall package where golang.org/x/sys/unix provides the equivalent.
+
+    design_decisions:
+      - id: D1
+        text: "golang.org/x/sys is the only approved external dependency per ARCHITECTURE.yaml. cmd/ packages must not import golang.org/x/sys directly -- they import pkg/sys as the abstraction layer."
+      - id: D2
+        text: "Primary source files named after their primary exported type per project convention: fileinfo.go for FileInfo, terminal.go for WinSize. Platform-specific files use _darwin/_linux suffixes."
+      - id: D3
+        text: "Follow coding style from pkg/testutils/difftest.go: copyright header with year and author, SPDX-License-Identifier: MIT, package doc comment, Implements comment referencing PRD requirement IDs."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/sys/fileinfo.go exports FileInfo struct, Stat function, and Lstat function with documented signatures"
+      - id: AC2
+        text: "pkg/sys/fileinfo_darwin.go has //go:build darwin tag and extracts Mtimespec, Atimespec, and Blocks from Darwin Stat_t"
+      - id: AC3
+        text: "pkg/sys/fileinfo_linux.go has //go:build linux tag and extracts Mtim, Atim, and Blocks from Linux Stat_t"
+      - id: AC4
+        text: "pkg/sys/terminal.go exports WinSize struct and TerminalSize function"
+      - id: AC5
+        text: "go build ./pkg/sys/ succeeds with no errors on the current platform"
+      - id: AC6
+        text: "go vet ./pkg/sys/ reports no issues"
+  dependency: -1

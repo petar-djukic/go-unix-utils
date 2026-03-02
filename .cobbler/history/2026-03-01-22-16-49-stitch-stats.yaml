@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "78"
+task_title: 'pkg/testutils: DiffTest struct and differential test runner -- rel00.0-uc004-testutils'
+status: success
+started_at: "2026-03-02T03:16:49Z"
+duration: 3m53s
+duration_s: 233
+tokens:
+    input: 477642
+    output: 15084
+    cache_creation: 45433
+    cache_read: 432199
+cost_usd: 0.91638025
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 276
+    test: 0
+diff:
+    files: 2
+    insertions: 277
+    deletions: 1
