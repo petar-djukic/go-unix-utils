@@ -28,6 +28,7 @@ type options struct {
 	humanReadable bool // -h: human-readable output via pkg/format.HumanSize
 	apparentSize  bool // --apparent-size: use st_size instead of st_blocks
 	bytesMode     bool // -b: apparent size displayed in raw bytes
+	megaMode      bool // -m: report sizes in 1048576-byte (1M) blocks
 	total         bool // -c: print grand total after all arguments
 	all           bool // -a: write counts for all files, not just directories
 	maxDepth      int  // -d N: limit reported depth (-1 means unlimited)
@@ -53,6 +54,7 @@ func run(args []string) int {
 	fs.BoolVar(&opts.humanReadable, "h", false, "print sizes in human readable format")
 	fs.BoolVar(&opts.apparentSize, "apparent-size", false, "print apparent sizes rather than disk usage")
 	fs.BoolVar(&opts.bytesMode, "b", false, "equivalent to --apparent-size, in bytes")
+	fs.BoolVar(&opts.megaMode, "m", false, "like --block-size=1M")
 
 	var summarize bool
 	fs.BoolVar(&summarize, "s", false, "display only a total for each argument")
@@ -193,6 +195,10 @@ func printSize(bytes int64, path string, opts *options) {
 		sizeStr = format.HumanSize(bytes, format.HumanSizeOpts{Binary: true})
 	case opts.bytesMode:
 		sizeStr = fmt.Sprintf("%d", bytes)
+	case opts.megaMode:
+		// 1048576-byte (1M) blocks with ceiling division (R2.6).
+		blocks := (bytes + 1048575) / 1048576
+		sizeStr = fmt.Sprintf("%d", blocks)
 	default:
 		// 1024-byte blocks with ceiling division.
 		blocks := (bytes + 1023) / 1024
