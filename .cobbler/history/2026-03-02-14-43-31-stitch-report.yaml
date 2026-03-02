@@ -1,0 +1,19 @@
+task_id: "130"
+task_title: Implement pkg/testutils DiffTest struct and differential test runner
+status: success
+branch: task/generation-2026-03-02-13-22-04-130
+diff:
+    files: 1
+    insertions: 824
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 824
+      deletions: 0
+loc_before:
+    production: 821
+    test: 0
+loc_after:
+    production: 821
+    test: 0

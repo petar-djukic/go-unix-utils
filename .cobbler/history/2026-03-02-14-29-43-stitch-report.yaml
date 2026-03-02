@@ -1,0 +1,23 @@
+task_id: "128"
+task_title: 'rel00.0-uc004-testutils: implement DiffTest struct and differential test runner'
+status: success
+branch: task/generation-2026-03-02-13-22-04-128
+diff:
+    files: 2
+    insertions: 973
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 636
+      deletions: 0
+    - path: pkg/testutils/difftest.go
+      status: A
+      insertions: 337
+      deletions: 0
+loc_before:
+    production: 484
+    test: 0
+loc_after:
+    production: 821
+    test: 0
