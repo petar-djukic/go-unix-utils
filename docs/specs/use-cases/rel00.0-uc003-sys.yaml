@@ -48,10 +48,9 @@ flow:
       the handler causes the process to exit 0 rather than printing a write error.
 
 touchpoints:
-  - T1: "pkg/sys — TerminalWidth, IsTerminal (prd002-sys R1)"
+  - T1: "pkg/sys — TerminalWidth, IsTerminal, InstallSIGPIPEHandler (prd002-sys R1)"
   - T2: "pkg/sys — Stat, Lstat, FileInfo, fillFromStat (prd002-sys R2)"
-  - T3: "pkg/sys — InstallSIGPIPEHandler (prd002-sys R3)"
-  - T4: "pkg/sys — OnTerminalResize (prd002-sys R4)"
+  - T3: "pkg/sys — OnTerminalResize (prd002-sys R3)"
 
 success_criteria:
   - id: S1

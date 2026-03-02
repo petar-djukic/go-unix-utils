@@ -31,6 +31,15 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Compiled Go binaries (go build produces extensionless binaries on Unix)
+/bin/
+/cat
+/du
+/sponge
+/wc
+/version
+/ls
+
 bootstrap-prompt.md
 .claude/
 AGENTS.md

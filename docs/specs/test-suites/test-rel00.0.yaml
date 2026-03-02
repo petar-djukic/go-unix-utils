@@ -16,7 +16,6 @@ traces:
   - prd002-sys R1
   - prd002-sys R2
   - prd002-sys R3
-  - prd002-sys R4
   - rel00.0-uc004-testutils
   - prd001-testutils R1
   - prd001-testutils R2
@@ -341,7 +340,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd002-sys R3.1
+      - prd002-sys R1.5
 
   - name: on_terminal_resize_callback
     description: OnTerminalResize registers a callback invoked on SIGWINCH.
@@ -350,8 +349,8 @@ test_cases:
     expected:
       postcondition: callback was called with a positive width
     traces:
-      - prd002-sys R4.1
-      - prd002-sys R4.2
+      - prd002-sys R3.1
+      - prd002-sys R3.2
 
   - name: cross_platform_compile
     description: All pkg/sys code compiles on darwin/arm64 and linux/amd64.
