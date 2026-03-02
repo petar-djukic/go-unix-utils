@@ -25,6 +25,7 @@ task: |
 constraints: |
   - Do NOT use any tools. Do NOT explore the filesystem, read files, or run commands. All project information is in the project_context above. Your response must be text only with zero tool calls.
   - Do NOT interact with the issue tracker directly.
+  - Do NOT propose tasks for magefiles/. The mage targets (build, lint, clean, install, stats, analyze, cobbler, generator) are provided by cobbler-scaffold's orchestrator library. orchestrator.go is scaffolded and must not be modified or recreated. The only code generation target in prd011-magefiles is cmd/version.
   - Do NOT duplicate existing issues. Review the issues in the project_context above before proposing.
   - Issues with status "closed" represent COMPLETED work. Do not re-propose work that a closed issue already covers, even under a different title or framing. The completed_work field in project_context lists all finished tasks — treat every entry as work that must not be repeated.
   - When source_code contains .go files for a package, that package already exists. Do not propose creating or reimplementing it. Trust the source code over prose descriptions in documentation (e.g., implementation_status sections in ARCHITECTURE.yaml may be stale).

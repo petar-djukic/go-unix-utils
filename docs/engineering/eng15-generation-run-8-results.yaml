@@ -1,0 +1,209 @@
+id: eng15-generation-run-8-results
+title: "GH-62 Generation Run 8: Scaffolded File Rewriting and Context Gap Discovery"
+
+introduction: |
+  We ran the cobbler pipeline on generation branch generation-2026-03-01-22-12-28 targeting
+  rel00.0 with 10 cycles budgeted. The run produced 276 production LOC (pkg/testutils) in
+  cycle 1, then spent cycles 2-4 attempting to generate magefiles/ code that conflicts with
+  cobbler-scaffold. Cycle 5 failed on API rate limit exhaustion. The generator was stopped
+  after 75 minutes with one successful task out of five attempted.
+
+  The root cause is a context gap: the measure agent sees ARCHITECTURE.yaml (which describes
+  magefiles/ as a component with capabilities) but never sees prd011 (which documents that
+  those capabilities are provided by cobbler-scaffold, not generated). The measure agent
+  proposed magefiles tasks three times because nothing in its visible context indicated that
+  magefiles/ is scaffolded infrastructure. Each stitch attempt then rewrote orchestrator.go
+  and created build.go, init.go, and stats.go — files that already exist as part of the
+  scaffold — and timed out at 15 minutes.
+
+  This run's primary value is diagnostic. We identified the specification gap that causes
+  magefiles proposals and documented the fix: update ARCHITECTURE.yaml to mark magefiles/
+  as provided by cobbler-scaffold, and add a measure prompt constraint. The 276 LOC of
+  pkg/testutils code was successfully tagged as v1.20260301.0.
+
+sections:
+  - title: "Configuration"
+    content: |
+      Table 1: Generation parameters
+
+      | Parameter | Value |
+      |-----------|-------|
+      | Spec baseline tag | v0.20260301.0 |
+      | Generation branch | generation-2026-03-01-22-12-28 |
+      | Model | Claude Sonnet 4.6 |
+      | Temperature | 0 |
+      | Max time per agent | 900s (15 min) |
+      | Max measure issues | 1 |
+      | Max stitch issues per cycle | 1 |
+      | CLAUDE_CODE_MAX_OUTPUT_TOKENS | 128,000 |
+      | max_requirements_per_task | 4 |
+      | enforce_measure_validation | false |
+      | max_measure_retries | 0 |
+      | releases filter | ["00.0"] |
+      | context_include | VISION.yaml, ARCHITECTURE.yaml |
+      | context_exclude | SPECIFICATIONS.yaml, road-map.yaml |
+      | Seeded LOC | 0 (clean start) |
+      | Budgeted cycles | 10 |
+      | Actual cycles | 5 (rate limit on cycle 5) |
+
+      This is the second generation run after upgrading cobbler-scaffold to v0.20260301.2,
+      which replaced beads with GitHub Issues as the task tracker. The upgrade (GH-74) also
+      changed GeneratorRun to accept a cycle count parameter.
+
+  - title: "rel00.0 generation results"
+    content: |
+      Cycle 1 succeeded. The measure agent proposed task #78 (pkg/testutils: DiffTest struct
+      and differential test runner) mapped to rel00.0-uc004. The stitch agent completed it,
+      producing one file with 276 production LOC.
+
+      Table 2: rel00.0 stitch outcome
+
+      | Phase | Task | Description | Duration | Cost | Outcome |
+      |-------|------|-------------|----------|------|---------|
+      | Measure (cycle 1) | — | Proposed #78 | ~4m | ~$0.43 | success |
+      | Stitch (cycle 1) | #78 | pkg/testutils difftest.go | ~5m | ~$0.40 | success |
+      | Stitch (cycle 2) | #79 | magefiles core build | 15m | ~$0.00 | timeout |
+      | Stitch (cycle 3) | #79 | magefiles retry | 15m | ~$0.00 | timeout |
+      | Stitch (cycle 4) | #80 | magefiles variant | 15m | ~$0.00 | timeout |
+      | Measure (cycle 5) | — | Rate limit | 5m | $0.00 | API timeout |
+
+      Table 3: Generated packages
+
+      | Package | Files | Prod LOC | Test LOC | Description |
+      |---------|-------|----------|----------|-------------|
+      | pkg/testutils | 1 | 276 | 0 | DiffTest harness |
+      | Total | 1 | 276 | 0 | |
+
+      Compared to run 7, which produced 892 prod + 1054 test LOC for the same three rel00.0
+      packages (testutils, sys, format) in a single stitch pass, this run produced only
+      testutils. The difference is that run 7's measure agent proposed all three packages in
+      one task, while run 8's measure agent proposed them individually — and was derailed by
+      magefiles before reaching sys and format.
+
+  - title: "Scaffolded file rewriting failure"
+    content: |
+      The measure agent proposed magefiles tasks in three consecutive cycles (#79, #79 retry,
+      #80). Each time, the stitch agent attempted to implement the magefiles use case
+      (rel00.0-uc001) by rewriting orchestrator.go and creating three new files: build.go,
+      init.go, and stats.go. These files duplicate functionality already provided by
+      cobbler-scaffold's orchestrator library.
+
+      Table 4: Stitch agent file operations during magefiles attempts
+
+      | File | Action | Problem |
+      |------|--------|---------|
+      | magefiles/orchestrator.go | Rewrite | Overwrites scaffold-generated code |
+      | magefiles/build.go | Create | Duplicates scaffold Build target |
+      | magefiles/init.go | Create | Duplicates scaffold Init target |
+      | magefiles/stats.go | Create | Duplicates scaffold Stats namespace |
+
+      The stitch agent cannot distinguish scaffolded files from implementation targets. It
+      reads orchestrator.go, sees mage targets, and attempts to implement the PRD requirements
+      by rewriting them. The 15-minute timeout occurs because the agent enters a loop of
+      writing code, running mage build (which fails due to conflicts with the scaffold), and
+      attempting repairs.
+
+      Root cause: the measure agent proposed these tasks because ARCHITECTURE.yaml describes
+      magefiles/ as a component with well-defined capabilities (build, lint, stats, analyze)
+      but does not indicate that those capabilities are provided by cobbler-scaffold. The
+      measure agent never sees prd011's non_goals section (which explicitly states "provided
+      by cobbler-scaffold") because prd011 is not in context_include.
+
+  - title: "Context gap analysis"
+    content: |
+      The measure agent's visible context consists of VISION.yaml and ARCHITECTURE.yaml only.
+      This is intentional (the minimal context experiment from GH-62). The agent has tool
+      access to read any file, but the measure prompt instructs it to work from the provided
+      context without exploring the filesystem.
+
+      Table 5: Information available vs needed for correct task proposals
+
+      | Information | Available to measure? | Source |
+      |-------------|----------------------|--------|
+      | magefiles/ exists as a component | yes | ARCHITECTURE.yaml components |
+      | magefiles/ capabilities (build, lint, etc.) | yes | ARCHITECTURE.yaml components |
+      | magefiles/ is scaffolded by cobbler-scaffold | no | prd011 non_goals (not in context) |
+      | orchestrator.go is auto-generated | no | not documented anywhere |
+      | rel00.0-uc001 scope excludes scaffold targets | no | uc001 out_of_scope (not in context) |
+
+      The fix is to add scaffolding status directly to ARCHITECTURE.yaml, which the measure
+      agent already reads. Adding a design decision and updating the component description
+      ensures the measure agent sees the exclusion without requiring additional context files.
+
+  - title: "Cost analysis"
+    content: |
+      Table 6: Cost breakdown
+
+      | Phase | Cost | Duration | Notes |
+      |-------|------|----------|-------|
+      | Measure (cycle 1) | ~$0.43 | ~4m | Proposed #78 |
+      | Stitch #78 | ~$0.40 | ~5m | 276 prod LOC |
+      | Stitch #79 (2x) | ~$0.00 | 30m | Both timed out (0 tokens) |
+      | Measure (cycles 2-4) | ~$0.86 | ~8m | Proposed #79, #80 |
+      | Stitch #80 | ~$0.00 | 15m | Timed out (0 tokens) |
+      | Measure (cycle 5) | $0.00 | 5m | API rate limit |
+      | Total | ~$1.69 | ~67m | Productive: ~9m |
+
+      The effective cost per production LOC was $0.003 ($0.83 for 276 LOC). This is higher
+      than run 7's $0.0017/LOC because three cycles were wasted on magefiles. Without the
+      magefiles detour, the run would have completed in approximately 20 minutes with the
+      same pkg/testutils output.
+
+  - title: "Comparison with previous runs"
+    content: |
+      Table 7: Cross-run comparison
+
+      | Metric | eng12 (run 6) | eng14 (run 7) | eng15 (run 8) |
+      |--------|---------------|---------------|---------------|
+      | Spec baseline | v0.20260227.3 | v0.20260228.0 | v0.20260301.0 |
+      | Scaffold version | v0.20260227.3 | v0.20260227.3 | v0.20260301.2 |
+      | Seeded LOC | 0 | 0 | 0 |
+      | Target releases | all | per-release | per-release |
+      | Task tracker | beads | beads | GitHub Issues |
+      | Measure invocations | 3 | 2 | 5 |
+      | Tasks completed | 2/3 | 1/2 | 1/5 |
+      | Prod LOC generated | 640 | 892 | 276 |
+      | Test LOC generated | 0 | 1,054 | 0 |
+      | Dominant failure | rate limit | pipeline bugs | scaffolded file rewriting |
+
+      Run 8 is the first to use GitHub Issues instead of beads for task tracking (after
+      cobbler-scaffold v0.20260301.2). The task tracking itself worked correctly; the failure
+      was in measure task selection, not in issue management.
+
+      The testutils-only output (276 LOC) is smaller than run 7's combined infrastructure
+      output (892 LOC) because the measure agent proposed tasks individually rather than as
+      a combined package. Run 7 bundled sys, format, and testutils into one task; run 8
+      proposed testutils alone, then got stuck on magefiles.
+
+  - title: "Recommendations"
+    content: |
+      1. Update ARCHITECTURE.yaml to mark magefiles/ as provided by cobbler-scaffold. Add a
+         design decision (DD7) explaining that magefiles/ is scaffolded infrastructure, not a
+         code generation target. Update the component description to state this explicitly.
+
+      2. Add a constraint to docs/prompts/measure.yaml prohibiting task proposals for
+         magefiles/. The measure prompt's constraints section is the correct location because
+         the measure agent reads it before proposing tasks.
+
+      3. The rel00.0 use case uc001-magefiles describes cmd/version (the only non-scaffolded
+         deliverable in that use case). Consider splitting cmd/version into its own use case
+         or documenting that uc001 is partially satisfied by scaffold and only cmd/version
+         requires generation.
+
+      4. Re-run generation for rel00.0 after applying the spec fixes. The remaining rel00.0
+         tasks are pkg/sys (uc003), pkg/format (uc002), and cmd/version (uc001 partial).
+         With the magefiles exclusion in place, these should complete in 3-4 cycles.
+
+      5. The pkg/testutils code at v1.20260301.0 does not include test LOC. Run 7 produced
+         291 test LOC for testutils. Consider whether the next run should seed from
+         v1.20260301.0 or regenerate testutils with tests.
+
+references:
+  - "docs/engineering/eng14-generation-run-7-results.yaml — Previous run results"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/62 — GH-62: Recurring generation"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/78 — Task 78: pkg/testutils"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/79 — Task 79: magefiles (failed)"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/80 — Task 80: magefiles variant (failed)"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/81 — Task 81: pkg/sys (orphaned)"
+  - "v1.20260301.0 — rel00.0 generated code tag"
+  - "generation-2026-03-01-22-12-28 — Generation branch"
