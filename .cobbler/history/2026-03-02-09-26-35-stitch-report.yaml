@@ -1,0 +1,27 @@
+task_id: "89"
+task_title: prd003-format R1 -- Column alignment for tabular output
+status: success
+branch: task/generation-2026-03-02-08-43-36-89
+diff:
+    files: 3
+    insertions: 374
+    deletions: 1
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 240
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/format/align.go
+      status: A
+      insertions: 133
+      deletions: 0
+loc_before:
+    production: 628
+    test: 0
+loc_after:
+    production: 761
+    test: 0

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "88"
+task_title: pkg/sys file metadata -- Stat and Lstat platform abstraction
+status: success
+started_at: "2026-03-02T14:16:45Z"
+duration: 2m43s
+duration_s: 162
+tokens:
+    input: 480869
+    output: 10535
+    cache_creation: 36878
+    cache_read: 443980
+cost_usd: 0.7179085
+loc_before:
+    production: 510
+    test: 0
+loc_after:
+    production: 628
+    test: 0
+diff:
+    files: 5
+    insertions: 314
+    deletions: 1

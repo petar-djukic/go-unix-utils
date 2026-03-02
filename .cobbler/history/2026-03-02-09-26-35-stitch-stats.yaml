@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "89"
+task_title: prd003-format R1 -- Column alignment for tabular output
+status: success
+started_at: "2026-03-02T14:26:35Z"
+duration: 2m29s
+duration_s: 149
+tokens:
+    input: 513972
+    output: 6835
+    cache_creation: 39824
+    cache_read: 474137
+cost_usd: 0.6589075
+loc_before:
+    production: 628
+    test: 0
+loc_after:
+    production: 761
+    test: 0
+diff:
+    files: 3
+    insertions: 374
+    deletions: 1

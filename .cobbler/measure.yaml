@@ -238,3 +238,523 @@
       - id: AC6
         text: "go vet ./pkg/sys/ reports no issues"
   dependency: -1
+- index: 0
+  title: pkg/testutils DiffTest struct and runner -- rel00.0-uc004-testutils
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/testutils component, DiffTest data structure definition, DD2 differential testing, DD6 locale handling)
+      - docs/specs/product-requirements/ (find the testutils PRD -- filename matches prd*testutils*.yaml)
+      - docs/specs/use-cases/rel00.0-uc004-testutils.yaml (use case for this task)
+      - docs/specs/test-suites/test-rel-00.0.yaml (test suite covering rel00.0 use cases)
+      - go.mod (module path for import references)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, DiffResult type, RunDiffTests public API, normalization hook type
+      - path: pkg/testutils/runner.go
+        action: create
+        note: Internal binary execution, output capture, comparison, and divergence reporting
+
+    requirements:
+      - id: R1
+        text: |
+          Define the DiffTest struct in pkg/testutils/ with fields for input
+          arguments ([]string), stdin (string or io.Reader), environment variables
+          ([]string), expected exit code (int), and a test name (string), per the
+          ARCHITECTURE.yaml data structures section which specifies "DiffTest: Go
+          struct in pkg/testutils/ defining a single differential test case with
+          fields for input arguments, stdin, environment, expected exit code, and
+          expected output."
+      - id: R2
+        text: |
+          Implement a runner function that executes both the Go binary under test
+          and the reference GNU binary with identical stdin, arguments, and
+          environment. Capture stdout, stderr, and exit code from each execution.
+          Use os/exec to invoke both binaries.
+      - id: R3
+        text: |
+          Compare stdout, stderr, and exit code between the Go binary and the
+          reference binary. When any of the three diverge, report a test failure
+          that includes the input arguments that triggered the divergence, the
+          expected output (from the reference binary), and the actual output
+          (from the Go binary).
+      - id: R4
+        text: |
+          Support normalization hooks -- caller-provided functions with signature
+          func(string) string -- applied to stdout and stderr before comparison,
+          for known acceptable differences such as timestamps or binary name in
+          error messages.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Primary type is DiffTest; primary source file is difftest.go per
+          ARCHITECTURE.yaml file naming convention (testutils/testutils.go is
+          explicitly forbidden; file is named after the primary exported type).
+      - id: D2
+        text: |
+          The runner is a test helper called from _test.go files in cmd/ packages.
+          It accepts a *testing.T for failure reporting. Each DiffTest case runs
+          as a t.Run subtest named after the DiffTest.Name field so failures are
+          individually identifiable.
+      - id: D3
+        text: |
+          Set LC_ALL=C in the environment for every binary execution per
+          ARCHITECTURE.yaml DD6 (all differential tests run with LC_ALL=C so Go
+          and reference binary outputs agree). Merge LC_ALL=C with any
+          caller-provided environment variables, with LC_ALL=C taking precedence.
+
+    acceptance_criteria:
+      - id: AC1
+        text: |
+          DiffTest struct is exported from pkg/testutils with all fields described
+          in ARCHITECTURE.yaml (input arguments, stdin, environment, expected exit
+          code, test name).
+      - id: AC2
+        text: |
+          RunDiffTests is an exported function that accepts *testing.T, the Go
+          binary path, the reference binary path, an optional slice of
+          normalization functions, and a slice of DiffTest cases.
+      - id: AC3
+        text: |
+          When stdout, stderr, or exit code diverge between the two binaries, the
+          test failure message includes the input arguments, the expected value
+          (reference binary), and the actual value (Go binary).
+      - id: AC4
+        text: |
+          Package compiles cleanly -- go build ./pkg/testutils/... and
+          go vet ./pkg/testutils/... produce no errors.
+  dependency: -1
+- index: 0
+  title: 'pkg/format: size formatting and ANSI color output (rel00.0-uc002-format)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format/ component -- capabilities, design decisions, technology choices)
+      - docs/specs/product-requirements/ (locate and read the PRD for pkg/format; filename follows pattern prd[NNN]-format.yaml)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (use case for the format package)
+
+    files:
+      - path: pkg/format/size.go
+        action: create
+        note: Human-readable byte size formatting for binary and SI units
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI color code definitions and file-type colorization
+
+    requirements:
+      - id: R1
+        text: "Implement human-readable byte size formatting with binary (1024-based) units matching GNU coreutils --human-readable output, per the pkg/format PRD size-formatting requirements"
+      - id: R2
+        text: "Implement human-readable byte size formatting with SI (1000-based) units matching GNU coreutils --si output, per the pkg/format PRD size-formatting requirements"
+      - id: R3
+        text: "Implement ANSI color code definitions and a colorization function for standard file types (directory, symlink, executable, pipe, socket, block device, char device, setuid, setgid, sticky, other-writable), per the pkg/format PRD color requirements"
+      - id: R4
+        text: "Implement ANSI SGR reset and color disable toggle so callers can enable or disable color output, per the pkg/format PRD color requirements"
+
+    design_decisions:
+      - id: D1
+        text: "Use only Go standard library for pkg/format -- no external dependencies. golang.org/x/sys is reserved for pkg/sys per ARCHITECTURE.yaml."
+      - id: D2
+        text: "Follow all design decisions in the pkg/format PRD verbatim. Copy struct definitions, function signatures, and naming conventions from the PRD."
+      - id: D3
+        text: "Copyright header on every .go file: Copyright (c) 2026 Petar Djukic. All rights reserved. SPDX-License-Identifier: MIT"
+      - id: D4
+        text: "Package name is format, matching the ARCHITECTURE.yaml component name pkg/format/."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... compiles with no errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... reports no issues"
+      - id: AC3
+        text: "Binary (1024-based) size formatting handles: 0 bytes, values at exact unit boundaries (1024, 1048576), and values up to the exabyte range"
+      - id: AC4
+        text: "SI (1000-based) size formatting handles: 0 bytes, values at exact unit boundaries (1000, 1000000), and values up to the exabyte range"
+      - id: AC5
+        text: "Color output produces valid ANSI SGR escape sequences for all standard file types listed in R3"
+      - id: AC6
+        text: "When color is disabled, colorization functions return the input string without any ANSI escape sequences"
+  dependency: -1
+- index: 0
+  title: pkg/sys file metadata -- Stat and Lstat platform abstraction
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/sys/ component description, design decisions, technology choices for golang.org/x/sys)
+      - docs/specs/product-requirements/prd002-sys.yaml (full PRD for pkg/sys -- read for exact requirement IDs and field specifications)
+      - docs/specs/use-cases/rel00.0-uc003-sys.yaml (use case for pkg/sys)
+      - go.mod (verify golang.org/x/sys dependency is declared)
+      - pkg/format/color.go (reference for package style, copyright header, SPDX identifier, and PRD-reference comment conventions)
+
+    files:
+      - path: pkg/sys/stat.go
+        action: create
+        note: Platform-independent FileMetadata struct and public Stat/Lstat functions
+      - path: pkg/sys/stat_darwin.go
+        action: create
+        note: Darwin-specific Stat_t field extraction using build tag
+      - path: pkg/sys/stat_linux.go
+        action: create
+        note: Linux-specific Stat_t field extraction using build tag
+
+    requirements:
+      - id: R1
+        text: "Define an exported FileMetadata struct in pkg/sys/stat.go with platform-independent fields covering the stat metadata that diverges between Darwin and Linux: modification time (time.Time), access time (time.Time), block count (int64), block size (int64), device number (uint64), inode number (uint64), hard link count (uint64), UID (uint32), GID (uint32). This struct abstracts the Stat_t field-name divergence so cmd/ packages never import platform-specific syscall types."
+      - id: R2
+        text: "Implement an exported Stat(path string) (FileMetadata, error) function that calls os.Stat, extracts the underlying *syscall.Stat_t via FileInfo.Sys(), and delegates to an unexported extractMetadata function (defined in platform files) to populate FileMetadata. Return a wrapped error if os.Stat fails or the Sys() type assertion fails."
+      - id: R3
+        text: "Implement an exported Lstat(path string) (FileMetadata, error) function with identical logic to Stat but calling os.Lstat so symlinks are not followed. Reuse the same extractMetadata platform function."
+      - id: R4
+        text: "Isolate platform-specific Stat_t field access into stat_darwin.go (//go:build darwin) and stat_linux.go (//go:build linux). Each file implements extractMetadata(*syscall.Stat_t) FileMetadata. On Darwin, read Mtimespec/Atimespec for timestamps. On Linux, read Mtim/Atim. Both platforms read Blocks, Blksize, Dev, Ino, Nlink, Uid, Gid from their respective Stat_t field names."
+
+    design_decisions:
+      - id: D1
+        text: "stat.go contains no build tags. Only stat_darwin.go and stat_linux.go carry build constraints. stat.go defines the struct and public API; platform files supply extractMetadata."
+      - id: D2
+        text: "Follow the copyright header, SPDX license identifier, and PRD-reference comment style established in pkg/format/color.go -- e.g., '// Implements: prd002-sys (RN)' at the package doc comment level."
+      - id: D3
+        text: "Use the standard library syscall.Stat_t (obtained via FileInfo.Sys()) for field access. Import golang.org/x/sys/unix only if the PRD or go.mod indicates it is needed for fields not available in the standard syscall package."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "FileMetadata struct is exported from package sys with all nine fields listed in R1."
+      - id: AC2
+        text: "Stat() and Lstat() functions are exported and return (FileMetadata, error). Both compile without errors when building for the current platform."
+      - id: AC3
+        text: "stat_darwin.go has //go:build darwin and stat_linux.go has //go:build linux. Neither platform file imports the other's types."
+      - id: AC4
+        text: "go vet ./pkg/sys/... passes with no errors on the current platform."
+      - id: AC5
+        text: "Copyright header, SPDX identifier, and PRD-reference comments are present in all three files, matching the style in pkg/format/color.go."
+  dependency: -1
+- index: 0
+  title: prd003-format R1 -- Column alignment for tabular output
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd003-format.yaml (full PRD for format package -- R1 covers column alignment)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (use case for format package in release 00.0)
+      - docs/specs/test-suites/test-rel-00.0.yaml (test suite covering release 00.0 acceptance criteria)
+      - pkg/format/color.go (existing R2 implementation -- follow copyright header, package doc, and requirement tracing conventions)
+      - pkg/format/size.go (existing R3 implementation -- follow HumanSizeOpts pattern for configuration structs)
+
+    files:
+      - path: pkg/format/align.go
+        action: create
+        note: Column alignment implementation for tabular output (ls -l style)
+
+    requirements:
+      - id: R1
+        text: "Implement column alignment per prd003-format R1: compute column widths from a set of rows and pad each cell to produce aligned tabular output matching GNU ls -l formatting"
+      - id: R2
+        text: "Support both left-aligned (text) and right-aligned (numeric) columns per prd003-format R1 sub-requirements"
+      - id: R3
+        text: "Follow existing pkg/format conventions: copyright header (2026 Petar Djukic, MIT SPDX), package doc comment, prd003-format R1 requirement tracing comments on all exported symbols"
+      - id: R4
+        text: "Use only Go standard library (fmt, strings); no external dependencies per project technology choices"
+
+    design_decisions:
+      - id: D1
+        text: "File named align.go, derived from the alignment feature described in ARCHITECTURE.yaml pkg/format component"
+      - id: D2
+        text: "Follow the options-struct pattern established by HumanSizeOpts in size.go if configuration is needed"
+      - id: D3
+        text: "All exported functions include prd003-format R1.x requirement tracing comments matching the // (prd003-format R1.x) pattern used in color.go and size.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/format/align.go exists and compiles with go build ./pkg/format/"
+      - id: AC2
+        text: "Exported alignment functions produce correctly padded tabular output for mixed-width input"
+      - id: AC3
+        text: "golangci-lint passes on pkg/format/ with no warnings"
+      - id: AC4
+        text: "Every prd003-format R1 sub-requirement is implemented and traced with a source comment"
+  dependency: -1
+- index: 0
+  title: Implement pkg/sys terminal size queries -- prd002-sys R1
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd002-sys.yaml (R1 terminal requirements)
+      - pkg/sys/stat.go (existing platform-abstraction pattern and FileMetadata API style)
+      - pkg/sys/stat_darwin.go (Darwin build-tag pattern)
+      - pkg/sys/stat_linux.go (Linux build-tag pattern)
+      - pkg/format/color.go (lines 161-168 -- local isTerminal implementation that pkg/sys R1 should provide)
+      - docs/ARCHITECTURE.yaml (pkg/sys component -- terminal size queries capability)
+
+    files:
+      - path: pkg/sys/terminal.go
+        action: create
+        note: "WinSize struct, IsTerminal(fd) and GetWinSize(fd) public API"
+
+    requirements:
+      - id: R1
+        text: "Implement IsTerminal(fd uintptr) bool that reports whether a file descriptor refers to a terminal, using the TIOCGWINSZ ioctl. A successful ioctl indicates a terminal; any error indicates non-terminal. This matches the detection technique already used locally in pkg/format/color.go (lines 164-168). Implements prd002-sys R1."
+      - id: R2
+        text: "Implement GetWinSize(fd uintptr) (WinSize, error) that returns the terminal dimensions (rows and columns) by reading the TIOCGWINSZ ioctl result into a WinSize struct. Return an error if the fd is not a terminal. Implements prd002-sys R1."
+      - id: R3
+        text: "Export a WinSize struct with Rows and Cols fields (both uint16), following the same exported-struct pattern as FileMetadata in stat.go. The struct layout matches C struct winsize. Implements prd002-sys R1."
+      - id: R4
+        text: "Use the same copyright header, SPDX identifier, and Implements comment style as the existing stat.go file. The Implements comment should reference prd002-sys (R1)."
+
+    design_decisions:
+      - id: D1
+        text: "Use a single terminal.go file without platform-specific build tags. Unlike stat.go (which needs separate Darwin/Linux files because syscall.Stat_t field names diverge), the TIOCGWINSZ ioctl and struct winsize layout are identical on Darwin and Linux. Go's syscall.TIOCGWINSZ constant is available on both platforms."
+      - id: D2
+        text: "Use syscall.Syscall with syscall.SYS_IOCTL and syscall.TIOCGWINSZ, matching the technique in pkg/format/color.go lines 164-168. Use unsafe.Pointer to pass the winsize buffer."
+      - id: D3
+        text: "Follow the existing pkg/sys API style: functions take primitive arguments (uintptr for fd), return exported structs, and wrap errors with context using fmt.Errorf."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/sys/terminal.go exists with the copyright header, SPDX identifier, package sys declaration, and Implements comment referencing prd002-sys (R1)."
+      - id: AC2
+        text: "WinSize struct is exported with Rows (uint16) and Cols (uint16) fields."
+      - id: AC3
+        text: "IsTerminal(fd uintptr) bool is exported and returns true when fd refers to a terminal."
+      - id: AC4
+        text: "GetWinSize(fd uintptr) (WinSize, error) is exported and returns terminal dimensions or an error for non-terminal fds."
+      - id: AC5
+        text: "go build ./pkg/sys/ succeeds on both darwin and linux with no compilation errors."
+  dependency: -1
+- index: 0
+  title: 'prd001-testutils R2-R5: Unit tests for differential testing harness'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (requirements R2, R3, R4, R5)
+      - pkg/testutils/difftest.go (DiffTest struct, NormalizeFunc type, TimestampNormalizer, ComposeNormalizers)
+      - pkg/testutils/runner.go (runSingleDiffTest, runBinary, buildEnv, setEnvVar, applyNormalizers, formatDivergence, truncateBytes, compareExpectedFiles)
+
+    files:
+      - path: pkg/testutils/runner_test.go
+        action: create
+        note: Unit tests for runner.go functions -- buildEnv, setEnvVar, formatDivergence, truncateBytes, compareExpectedFiles
+      - path: pkg/testutils/difftest_test.go
+        action: create
+        note: Unit tests for difftest.go functions -- TimestampNormalizer, ComposeNormalizers, applyNormalizers
+
+    requirements:
+      - id: R1
+        text: "Test buildEnv and setEnvVar: verify LC_ALL=C is applied by default, caller-provided KEY=VALUE pairs are merged on top, and existing variables are overridden rather than duplicated (prd001-testutils R2.6)"
+      - id: R2
+        text: "Test TimestampNormalizer and ComposeNormalizers: verify all three timestamp regex patterns (month-day-time, ISO datetime, HH:MM:SS) are replaced with <TIMESTAMP>, and that ComposeNormalizers chains multiple NormalizeFuncs in order (prd001-testutils R4.2, R4.4)"
+      - id: R3
+        text: "Test formatDivergence and truncateBytes: verify the divergence report includes args, stdin, ref/go stdout, ref/go stderr, and ref/go exit code fields; verify truncateBytes returns <nil> for nil input, full content for short input, and truncated content with byte count for long input (prd001-testutils R3.5)"
+      - id: R4
+        text: "Test compareExpectedFiles: verify file content comparison passes when file matches expected bytes, fails when content differs, and fails when the expected file does not exist (prd001-testutils R5.1, R5.2)"
+
+    design_decisions:
+      - id: D1
+        text: "Test file naming follows project convention: runner_test.go mirrors runner.go, difftest_test.go mirrors difftest.go"
+      - id: D2
+        text: "Use t.TempDir() for filesystem-dependent tests (compareExpectedFiles) to ensure cleanup"
+      - id: D3
+        text: "Test unexported pure functions directly (buildEnv, setEnvVar, applyNormalizers, truncateBytes, formatDivergence) -- test files are in package testutils so they have access"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./pkg/testutils/... passes with zero failures"
+      - id: AC2
+        text: "buildEnv tests verify LC_ALL=C is present in output, a caller-provided variable appears in output, and overriding an existing variable replaces rather than duplicates it"
+      - id: AC3
+        text: "TimestampNormalizer tests cover all three patterns: 'Feb 19 12:34:56' (month-day-time), '2026-02-19 12:34:56' (ISO), and '12:34:56' (time-only) are each replaced with '<TIMESTAMP>'"
+      - id: AC4
+        text: "compareExpectedFiles tests create temporary files via t.TempDir() and verify match, mismatch, and missing-file cases"
+      - id: AC5
+        text: "No test depends on external binaries, network access, or specific host environment beyond the Go toolchain"
+  dependency: -1
+- index: 0
+  title: 'pkg/format: Unit tests for alignment, color, and size (prd003-format R1, R2, R3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd003-format.yaml (PRD with requirements R1, R2, R3)
+      - pkg/format/align.go (column alignment implementation to test)
+      - pkg/format/color.go (ANSI color implementation to test)
+      - pkg/format/size.go (human-readable size implementation to test)
+
+    files:
+      - path: pkg/format/align_test.go
+        action: create
+        note: Tests for PadRight, PadLeft, Columns, displayWidth, columnWidths, totalWidth
+      - path: pkg/format/color_test.go
+        action: create
+        note: Tests for FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled
+      - path: pkg/format/size_test.go
+        action: create
+        note: Tests for HumanSize in binary and SI modes
+
+    requirements:
+      - id: R1
+        text: "Test column alignment functions per prd003-format R1: PadRight and PadLeft with widths shorter than, equal to, and exceeding the input; displayWidth for ASCII and multi-byte UTF-8 strings; Columns with varying entry counts and terminal widths including single entry, entries exceeding terminal width, and empty input; columnWidths and totalWidth for correct column-width computation with two-space separators"
+      - id: R2
+        text: "Test ANSI color functions per prd003-format R2: FileTypeColor returns correct escape sequences for each file type (directory, symlink, executable, block device, char device, socket, pipe, regular) and permission-based overrides (setuid, setgid, sticky, other-writable, sticky+other-writable); Reset returns reset sequence when color is enabled and empty string when disabled; SetColorEnabled and ResetColorEnabled toggle forced color mode"
+      - id: R3
+        text: "Test human-readable size formatting per prd003-format R3: HumanSize with binary mode (base 1024, K/M/G/T/P/E suffixes) and SI mode (base 1000, kB/MB/GB/TB suffixes); zero bytes returns \"0\" in both modes; boundary values at each unit threshold; output uses at most one decimal place"
+
+    design_decisions:
+      - id: D1
+        text: "Test files mirror source files per project convention: align_test.go, color_test.go, size_test.go"
+      - id: D2
+        text: "Use table-driven tests with t.Run subtests, matching the pattern established in pkg/testutils/difftest_test.go and runner_test.go"
+      - id: D3
+        text: "Color tests call SetColorEnabled(true) to force color on without requiring a TTY, and call ResetColorEnabled in cleanup via t.Cleanup to avoid polluting other tests"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./pkg/format/... passes with zero failures"
+      - id: AC2
+        text: "Every exported function in align.go, color.go, and size.go has at least one test case"
+      - id: AC3
+        text: "Edge cases covered: empty slice for Columns, zero bytes for HumanSize, all os.FileMode type bits for FileTypeColor, multi-byte UTF-8 input for displayWidth"
+      - id: AC4
+        text: "go vet ./pkg/format/... passes with no warnings"
+  dependency: -1
+- index: 0
+  title: Implement cmd/version binary -- prd011-magefiles
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd011-magefiles.yaml (all requirements for the version binary)
+      - docs/specs/use-cases/rel00.0-uc001-magefiles.yaml (use case context for magefiles and version)
+      - docs/ARCHITECTURE.yaml (cmd/ component pattern and design decision DD7 on generation scope)
+      - go.mod (module path for imports)
+
+    files:
+      - path: cmd/version/main.go
+        action: create
+        note: Version binary entry point; prints version metadata to stdout and exits 0
+
+    requirements:
+      - id: R1
+        text: "Create cmd/version/main.go implementing all requirements from prd011-magefiles that apply to the cmd/version binary. Read prd011-magefiles.yaml thoroughly and implement every requirement it specifies for version output format, content, and behavior."
+      - id: R2
+        text: "The binary must compile as a standalone executable via go build ./cmd/version/ and print version information to stdout, exiting with code 0 on success."
+      - id: R3
+        text: "Support build-time injection of version metadata via Go ldflags (-X main.varName=value). Define package-level string variables for each metadata field. When ldflags are not provided at build time, use sensible defaults (e.g., 'dev' for version)."
+      - id: R4
+        text: "Follow project file conventions observed in existing packages: copyright header (Copyright (c) 2026 Petar Djukic. All rights reserved.), SPDX-License-Identifier: MIT, and an Implements: prd011-magefiles comment."
+
+    design_decisions:
+      - id: D1
+        text: "cmd/version is the sole code generation target within prd011-magefiles. The magefiles/ directory is scaffolded infrastructure excluded from generation per ARCHITECTURE.yaml design decision DD7. Do not create or modify any files under magefiles/."
+      - id: D2
+        text: "Follow the cmd/ package convention established in ARCHITECTURE.yaml: one package per utility under cmd/<name>/ with main.go as the entry point, compiling to a standalone binary."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/version/main.go exists and compiles without errors via go build ./cmd/version/."
+      - id: AC2
+        text: "Running the compiled binary prints version information to stdout and exits with code 0."
+      - id: AC3
+        text: "Package-level string variables for ldflags injection are defined and used in output. When unset, defaults are printed instead."
+      - id: AC4
+        text: "Copyright header (2026 Petar Djukic), SPDX-License-Identifier: MIT, and Implements: prd011-magefiles comment are present."
+  dependency: -1
+- index: 0
+  title: prd002-sys R1, R2 -- Unit tests for pkg/sys terminal and stat
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd002-sys.yaml (requirement definitions for R1 and R2)
+      - pkg/sys/terminal.go (IsTerminal and GetWinSize implementations under test)
+      - pkg/sys/stat.go (Stat, Lstat, metadataFromFileInfo implementations under test)
+      - pkg/sys/stat_darwin.go (Darwin extractMetadata under test)
+      - pkg/sys/stat_linux.go (Linux extractMetadata under test)
+      - pkg/format/color_test.go (reference for pipe/TTY test patterns used in this project)
+
+    files:
+      - path: pkg/sys/terminal_test.go
+        action: create
+        note: Tests for IsTerminal and GetWinSize
+      - path: pkg/sys/stat_test.go
+        action: create
+        note: Tests for Stat, Lstat, and FileMetadata extraction
+
+    requirements:
+      - id: R1
+        text: "Test IsTerminal with pipe file descriptors (must return false) and verify error-free execution per prd002-sys R1.3"
+      - id: R2
+        text: "Test GetWinSize returns an error for non-terminal file descriptors (pipes) per prd002-sys R1"
+      - id: R3
+        text: "Test Stat and Lstat populate FileMetadata fields correctly (ModTime, Blocks, Ino, Uid, Gid, Nlink, Dev, Blksize) using temporary files per prd002-sys R2.1"
+      - id: R4
+        text: "Test Lstat does not follow symbolic links -- returns symlink metadata, not target metadata -- per prd002-sys R2.1"
+
+    design_decisions:
+      - id: D1
+        text: "Use table-driven tests with t.Run subtests, matching the existing test style in pkg/format/*_test.go"
+      - id: D2
+        text: "Test terminal detection using os.Pipe file descriptors as known non-TTY fds, since test environments do not have real terminal fds"
+      - id: D3
+        text: "Create temporary files and symlinks in t.TempDir() for stat tests; verify FileMetadata fields against os.Stat/os.Lstat for cross-check"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./pkg/sys/... passes with both darwin and linux build tags"
+      - id: AC2
+        text: "terminal_test.go covers IsTerminal (pipe fd returns false) and GetWinSize (pipe fd returns error)"
+      - id: AC3
+        text: "stat_test.go covers Stat and Lstat with real temp files and verifies FileMetadata fields match os.Stat values"
+      - id: AC4
+        text: "stat_test.go includes a symlink test verifying Lstat returns symlink inode, not target inode"
+      - id: AC5
+        text: "Both test files include copyright header and prd002-sys implements comment matching project convention"
+  dependency: -1
+- index: 0
+  title: Implement pkg/sys signal handling -- prd002-sys R3
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd002-sys.yaml (signal handling requirements -- R3 and sub-requirements)
+      - docs/specs/use-cases/rel00.0-uc003-sys.yaml (pkg/sys use case for release 00.0)
+      - docs/ARCHITECTURE.yaml (pkg/sys component -- signal handling listed under capabilities)
+      - pkg/sys/terminal.go (existing export pattern, doc comment style, and naming conventions)
+      - pkg/sys/stat.go (existing export pattern and error handling conventions)
+
+    files:
+      - path: pkg/sys/signal.go
+        action: create
+        note: Signal handling API for SIGPIPE, SIGHUP, SIGWINCH per prd002-sys R3
+
+    requirements:
+      - id: R1
+        text: "Implement signal handling per prd002-sys R3 covering SIGPIPE, SIGHUP, and SIGWINCH as listed in ARCHITECTURE.yaml pkg/sys capabilities. Read prd002-sys.yaml to identify the exact sub-requirement IDs (R3.1, R3.2, etc.) and implement each."
+      - id: R2
+        text: "Provide a public API consistent with existing pkg/sys exports (IsTerminal, GetWinSize, Stat, Lstat) so cmd/ packages install signal handlers without importing os/signal directly."
+      - id: R3
+        text: "Use Go os/signal package for portable signal registration across Darwin and Linux, following the pkg/sys cross-platform abstraction pattern established in stat_darwin.go and stat_linux.go (prd002-sys R2.3 precedent)."
+
+    design_decisions:
+      - id: D1
+        text: "Use os/signal.Notify for signal registration -- Go standard library provides portable signal handling across Darwin and Linux without platform-specific build tags, consistent with ARCHITECTURE.yaml technology choice of Go standard library for I/O and OS operations."
+      - id: D2
+        text: "Name the file signal.go per project convention -- primary source file named after the exported concept, matching terminal.go and stat.go (planning constitution P7)."
+      - id: D3
+        text: "Copyright header and Implements comment must follow the exact pattern from terminal.go and stat.go: SPDX-License-Identifier MIT, then Implements line referencing prd002-sys requirement IDs."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/sys/signal.go exists and compiles with no errors under go build ./pkg/sys/..."
+      - id: AC2
+        text: "Exported functions cover all three signals listed in ARCHITECTURE.yaml pkg/sys capabilities: SIGPIPE, SIGHUP, SIGWINCH."
+      - id: AC3
+        text: "All exported functions have doc comments referencing prd002-sys requirement IDs, following the style in terminal.go (e.g., // Implements: prd002-sys (R3))."
+      - id: AC4
+        text: "No new external dependencies introduced -- implementation uses only Go standard library (os/signal, os, syscall). golang.org/x/sys is acceptable only if already used by the package."
+  dependency: -1
