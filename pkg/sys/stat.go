@@ -68,6 +68,22 @@ func Lstat(path string) (*FileInfo, error) {
 	return newFileInfo(&st, osInfo), nil
 }
 
+// DevMajor returns the major device number extracted from the Rdev field.
+// For non-device files the value is meaningless.
+//
+// prd002-sys R2.2.
+func (fi *FileInfo) DevMajor() uint32 {
+	return unix.Major(fi.Rdev)
+}
+
+// DevMinor returns the minor device number extracted from the Rdev field.
+// For non-device files the value is meaningless.
+//
+// prd002-sys R2.2.
+func (fi *FileInfo) DevMinor() uint32 {
+	return unix.Minor(fi.Rdev)
+}
+
 // newFileInfo populates a FileInfo from a unix.Stat_t and the corresponding
 // os.FileInfo. Fields with identical types across Darwin and Linux are set
 // here. Platform-divergent fields (ModTime, Nlink, Dev, Rdev, Blksize) are
