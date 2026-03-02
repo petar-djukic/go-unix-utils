@@ -27,12 +27,12 @@ func IsTerminal(fd uintptr) bool {
 	return err == nil
 }
 
-// GetWinSize queries the terminal dimensions (rows and columns) for the given
+// TerminalSize queries the terminal dimensions (rows and columns) for the given
 // file descriptor using the TIOCGWINSZ ioctl via golang.org/x/sys/unix.
 // Returns an error when fd is not a terminal or the ioctl fails.
 //
 // prd002-sys R1.1, R1.2.
-func GetWinSize(fd uintptr) (rows int, cols int, err error) {
+func TerminalSize(fd uintptr) (rows int, cols int, err error) {
 	ws, err := unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ)
 	if err != nil {
 		return 0, 0, fmt.Errorf("querying terminal size: %w", err)
