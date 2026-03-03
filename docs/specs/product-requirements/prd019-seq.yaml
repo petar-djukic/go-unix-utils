@@ -1,0 +1,66 @@
+id: prd019-seq
+title: "cmd/seq: Print a Sequence of Numbers"
+
+problem: |
+  Shell scripts and pipelines use seq to generate number sequences for loop iteration,
+  test data generation, and formatted output. The macOS BSD system does not include seq
+  (it is a GNU extension). The Go implementation must match the Homebrew GNU reference
+  binary (gseq, installed by coreutils) byte-for-byte on all argument forms and formatting
+  options, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print a sequence of numbers from FIRST to LAST with a configurable STEP, one per line.
+  - G2: Support printf-style format strings (-f) for controlling number output format.
+  - G3: Support equal-width padding (-w) that zero-pads numbers to the width of the widest endpoint.
+  - G4: Support custom separators (-s) between numbers.
+
+requirements:
+  R1:
+    title: Argument forms and sequence generation
+    items:
+      - R1.1: "Must support three argument forms: 'seq LAST' (FIRST=1, STEP=1), 'seq FIRST LAST' (STEP=1), and 'seq FIRST STEP LAST'. All three arguments are interpreted as floating-point numbers."
+      - R1.2: Must generate numbers starting at FIRST, incrementing by STEP, and stopping when the next number would exceed LAST (for positive STEP) or fall below LAST (for negative STEP).
+      - R1.3: When FIRST equals LAST, must print exactly one number (FIRST).
+      - R1.4: When STEP is positive and FIRST is greater than LAST, must produce no output and exit 0. When STEP is negative and FIRST is less than LAST, must produce no output and exit 0.
+      - R1.5: STEP must not be zero. Must exit 1 with an error message when STEP is zero.
+
+  R2:
+    title: Output formatting
+    items:
+      - R2.1: By default, must separate each number with a newline character. The last number must also be followed by a newline.
+      - R2.2: -s STRING or --separator=STRING must use STRING as the separator between numbers instead of newline. A trailing newline is still printed after the last number.
+      - R2.3: "The default format for integer sequences (all arguments are integers with no decimal point) must produce integers with no decimal point. The default format for floating-point sequences must use the minimum precision needed to represent the values exactly, matching the precision of the input arguments."
+      - R2.4: Must handle large integers exactly up to 2^53. Beyond that range, floating-point approximation is acceptable.
+
+  R3:
+    title: Format string (-f) and equal-width (-w)
+    items:
+      - R3.1: "-f FORMAT or --format=FORMAT must apply a printf-style format string to each number. FORMAT must contain exactly one floating-point conversion specifier from the set: %a, %e, %f, %g, %A, %E, %F, %G. The specifier may include flags (-+#0 and space), width, and precision fields."
+      - R3.2: Must exit 1 with an error message when the format string contains no conversion specifier, contains more than one conversion specifier, or contains an invalid specifier (not in the allowed set).
+      - R3.3: -w or --equal-width must pad each number with leading zeros so that all numbers in the sequence have the same width. The width is determined by the widest of FIRST and LAST (formatted with the default format).
+      - R3.4: -f and -w are mutually exclusive in effect. When -f is given, -w is ignored (the format string controls the output width). When only -w is given, the default format is used with zero-padding.
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 on success, including when the sequence is empty (FIRST > LAST with positive STEP).
+      - R4.2: "Must exit 1 on error: zero STEP, invalid format string, non-numeric arguments, or NaN arguments."
+      - R4.3: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
+      - R4.4: "Tests must cover: single argument (seq 5), two arguments (seq 2 5), three arguments (seq 1 2 10), descending sequence (seq 5 -1 1), floating-point sequence (seq 0.1 0.1 0.5), equal-width (seq -w 8 12), custom separator (seq -s ', ' 1 5), format string (seq -f '%.2f' 1 3), empty sequence, zero step error, and invalid format error."
+
+non_goals:
+  - cmd/seq does not implement hexadecimal integer output; use -f '%a' for hex floating-point.
+  - cmd/seq does not implement infinity (inf) as an endpoint; the sequence must be bounded.
+  - cmd/seq does not read from stdin; all input comes from command-line arguments.
+  - cmd/seq does not implement locale-aware decimal separators; output always uses '.' as the decimal point.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/seq 5 produces lines 1 through 5, matching gseq 5."
+  - "AC2: go run ./cmd/seq 2 5 produces lines 2 through 5, matching gseq."
+  - "AC3: go run ./cmd/seq 1 2 10 produces 1, 3, 5, 7, 9, matching gseq."
+  - "AC4: go run ./cmd/seq 5 -1 1 produces 5, 4, 3, 2, 1 (descending), matching gseq."
+  - "AC5: go run ./cmd/seq -w 8 12 produces 08, 09, 10, 11, 12 (zero-padded), matching gseq."
+  - "AC6: go run ./cmd/seq -f '%.2f' 1 3 produces 1.00, 2.00, 3.00, matching gseq."
+  - "AC7: go run ./cmd/seq -s ', ' 1 3 produces '1, 2, 3' on a single line followed by a newline, matching gseq."
+  - "AC8: Differential test against gseq passes for all argument forms, -w, -f, -s, descending, floating-point, and error cases."
+  - "AC9: cmd/seq compiles with no warnings under golangci-lint."

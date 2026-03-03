@@ -1,0 +1,58 @@
+id: prd016-dirname
+title: "cmd/dirname: Strip Last Component from File Paths"
+
+problem: |
+  Shell scripts extract directory components from paths using dirname. The macOS BSD
+  dirname processes only a single argument, while GNU dirname accepts multiple arguments
+  and supports NUL-delimited output. The Go implementation must match the Homebrew GNU
+  reference binary (gdirname, installed by coreutils) byte-for-byte on all argument
+  combinations and edge cases, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Strip the last component from one or more file paths, outputting the directory portion.
+  - G2: Handle edge cases (root, trailing slashes, no directory component) per POSIX and GNU behavior.
+  - G3: Support NUL-delimited output (-z) for safe handling of directory names containing newlines.
+
+requirements:
+  R1:
+    title: Core path stripping behavior
+    items:
+      - R1.1: Must strip trailing slashes from NAME, then remove the last component (everything after the final '/') and print the result.
+      - R1.2: "When NAME contains no '/' after trailing-slash removal, must output '.' (the current directory)."
+      - R1.3: "When NAME is '/' or consists entirely of slashes, must output '/'."
+      - R1.4: Must strip trailing slashes from the result. If the result after stripping would be empty, output the root slash instead.
+      - R1.5: Must process multiple NAME arguments, printing one result per argument.
+
+  R2:
+    title: Output formatting
+    items:
+      - R2.1: Each result must be followed by a newline character, or by a NUL byte (0x00) if -z or --zero is given.
+      - R2.2: Results must be printed in the order the arguments are given, one per line.
+
+  R3:
+    title: Exit codes and error handling
+    items:
+      - R3.1: Must exit 0 on success.
+      - R3.2: Must exit 1 when called with no arguments. Must print an error message to stderr.
+      - R3.3: Must exit 1 when a write error occurs on stdout.
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
+      - R4.2: "Tests must cover: simple path (dir/file), nested path (a/b/c), trailing slashes, root path (/), relative path with no directory (file.txt -> '.'), dot path (.), double-dot path (..), multiple arguments, and NUL-delimited output (-z)."
+      - R4.3: Tests must verify error output and exit code when no arguments are given.
+
+non_goals:
+  - cmd/dirname does not resolve symlinks or canonicalize paths; it operates on the string representation only.
+  - cmd/dirname does not read from stdin; all input comes from command-line arguments.
+  - cmd/dirname does not handle encoding; paths are treated as byte sequences with '/' as the separator.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/dirname /usr/bin/sort produces '/usr/bin', matching gdirname."
+  - "AC2: go run ./cmd/dirname stdio.h produces '.', matching gdirname."
+  - "AC3: go run ./cmd/dirname /usr/bin/ produces '/usr', matching gdirname (trailing slash stripped)."
+  - "AC4: go run ./cmd/dirname / produces '/', matching gdirname."
+  - "AC5: go run ./cmd/dirname dir1/file dir2/file produces 'dir1' and 'dir2' on separate lines, matching gdirname."
+  - "AC6: Differential test against gdirname passes for simple paths, nested paths, trailing slashes, root, relative paths, dots, multiple arguments, and -z mode."
+  - "AC7: cmd/dirname compiles with no warnings under golangci-lint."
