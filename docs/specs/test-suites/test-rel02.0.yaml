@@ -1,0 +1,398 @@
+id: test-rel02.0
+title: "Test Suite: rel02.0 — trivial utilities (true, false, yes, basename, dirname)"
+release: rel02.0
+
+traces:
+  - rel02.0-uc001-true
+  - rel02.0-uc002-false
+  - rel02.0-uc003-yes
+  - rel02.0-uc004-basename
+  - rel02.0-uc005-dirname
+  - prd013-true R1
+  - prd013-true R2
+  - prd013-true R3
+  - prd013-true R4
+  - prd014-false R1
+  - prd014-false R2
+  - prd014-false R3
+  - prd014-false R4
+  - prd012-yes R1
+  - prd012-yes R2
+  - prd012-yes R3
+  - prd012-yes R4
+  - prd015-basename R1
+  - prd015-basename R2
+  - prd015-basename R3
+  - prd015-basename R4
+  - prd016-dirname R1
+  - prd016-dirname R2
+  - prd016-dirname R3
+  - prd016-dirname R4
+
+preconditions:
+  - All binaries exist in ./bin/ (built via mage build).
+  - Reference binaries gtrue, gfalse, gyes, gbasename, gdirname are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "yes tests pipe output through 'head -n N' to capture a finite number of lines."
+
+test_cases:
+  # --- true ---
+  - name: true_no_args
+    description: Invoke true with no arguments; expect exit 0, no output.
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd013-true R1.1
+
+  - name: true_arbitrary_args
+    description: Invoke true with arbitrary arguments; expect exit 0, no output.
+    inputs:
+      args: ["foo", "bar", "--baz"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd013-true R1.2
+
+  # --- false ---
+  - name: false_no_args
+    description: Invoke false with no arguments; expect exit 1, no output.
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd014-false R1.1
+
+  - name: false_arbitrary_args
+    description: Invoke false with arbitrary arguments; expect exit 1, no output.
+    inputs:
+      args: ["foo", "bar", "--baz"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd014-false R1.2
+
+  # --- yes ---
+  - name: yes_default_output
+    description: "yes with no arguments piped through head -n 5; expect 5 lines of 'y'."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+      pipe_through: "head -n 5"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "y\ny\ny\ny\ny\n"
+      stderr: ""
+    traces:
+      - prd012-yes R1.1
+
+  - name: yes_single_arg
+    description: "yes hello piped through head -n 3; expect 3 lines of 'hello'."
+    inputs:
+      args: ["hello"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      pipe_through: "head -n 3"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello\nhello\nhello\n"
+      stderr: ""
+    traces:
+      - prd012-yes R1.2
+
+  - name: yes_multi_arg
+    description: "yes hello world piped through head -n 2; expect 2 lines of 'hello world'."
+    inputs:
+      args: ["hello", "world"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      pipe_through: "head -n 2"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello world\nhello world\n"
+      stderr: ""
+    traces:
+      - prd012-yes R1.2
+
+  - name: yes_double_dash_separator
+    description: "yes -- --help piped through head -n 1; expect '--help'."
+    inputs:
+      args: ["--", "--help"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      pipe_through: "head -n 1"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "--help\n"
+      stderr: ""
+    traces:
+      - prd012-yes R1.3
+
+  # --- basename ---
+  - name: basename_simple_path
+    description: "basename /usr/bin/sort; expect 'sort'."
+    inputs:
+      args: ["/usr/bin/sort"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "sort\n"
+      stderr: ""
+    traces:
+      - prd015-basename R1.1
+
+  - name: basename_suffix_removal
+    description: "basename include/stdio.h .h; expect 'stdio'."
+    inputs:
+      args: ["include/stdio.h", ".h"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "stdio\n"
+      stderr: ""
+    traces:
+      - prd015-basename R1.2
+
+  - name: basename_trailing_slashes
+    description: "basename /usr/bin/sort///; expect 'sort' (trailing slashes stripped)."
+    inputs:
+      args: ["/usr/bin/sort///"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "sort\n"
+      stderr: ""
+    traces:
+      - prd015-basename R1.3
+
+  - name: basename_root_path
+    description: "basename /; expect '/'."
+    inputs:
+      args: ["/"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/\n"
+      stderr: ""
+    traces:
+      - prd015-basename R1.4
+
+  - name: basename_empty_string
+    description: "basename ''; expect empty line."
+    inputs:
+      args: [""]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "\n"
+      stderr: ""
+    traces:
+      - prd015-basename R1.5
+
+  - name: basename_multi_argument_mode
+    description: "basename -a /usr/bin/sort /usr/bin/cat; expect 'sort' and 'cat' on separate lines."
+    inputs:
+      args: ["-a", "/usr/bin/sort", "/usr/bin/cat"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "sort\ncat\n"
+      stderr: ""
+    traces:
+      - prd015-basename R2.1
+
+  - name: basename_suffix_mode
+    description: "basename -s .h include/stdio.h include/stdlib.h; expect 'stdio' and 'stdlib'."
+    inputs:
+      args: ["-s", ".h", "include/stdio.h", "include/stdlib.h"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "stdio\nstdlib\n"
+      stderr: ""
+    traces:
+      - prd015-basename R2.2
+
+  - name: basename_nul_delimited
+    description: "basename -z /usr/bin/sort; expect 'sort' followed by NUL byte instead of newline."
+    inputs:
+      args: ["-z", "/usr/bin/sort"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "sort\x00"
+      stderr: ""
+    traces:
+      - prd015-basename R3.1
+
+  # --- dirname ---
+  - name: dirname_simple_path
+    description: "dirname /usr/bin/sort; expect '/usr/bin'."
+    inputs:
+      args: ["/usr/bin/sort"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/usr/bin\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.1
+
+  - name: dirname_no_directory
+    description: "dirname stdio.h; expect '.' (current directory)."
+    inputs:
+      args: ["stdio.h"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ".\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.2
+
+  - name: dirname_root_path
+    description: "dirname /; expect '/'."
+    inputs:
+      args: ["/"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.3
+
+  - name: dirname_trailing_slashes
+    description: "dirname /usr/bin/; expect '/usr' (trailing slash stripped before processing)."
+    inputs:
+      args: ["/usr/bin/"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/usr\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.1
+      - prd016-dirname R1.4
+
+  - name: dirname_dot_path
+    description: "dirname .; expect '.'."
+    inputs:
+      args: ["."]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ".\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.2
+
+  - name: dirname_dotdot_path
+    description: "dirname ..; expect '.'."
+    inputs:
+      args: [".."]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ".\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.2
+
+  - name: dirname_multiple_args
+    description: "dirname dir1/file dir2/file; expect 'dir1' and 'dir2' on separate lines."
+    inputs:
+      args: ["dir1/file", "dir2/file"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "dir1\ndir2\n"
+      stderr: ""
+    traces:
+      - prd016-dirname R1.5
+
+  - name: dirname_nul_delimited
+    description: "dirname -z /usr/bin/sort; expect '/usr/bin' followed by NUL byte."
+    inputs:
+      args: ["-z", "/usr/bin/sort"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/usr/bin\x00"
+      stderr: ""
+    traces:
+      - prd016-dirname R2.1
+
+  - name: dirname_no_args_error
+    description: "dirname with no arguments; expect exit 1 and error message on stderr."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd016-dirname R3.2

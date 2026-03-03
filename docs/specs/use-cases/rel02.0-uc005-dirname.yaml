@@ -1,0 +1,65 @@
+id: rel02.0-uc005-dirname
+title: "Strip last component from file paths via dirname"
+
+summary: |
+  The operator invokes the Go dirname binary with file paths to extract the directory
+  component. The differential testing harness runs both the Go binary and the Homebrew
+  reference binary (gdirname from coreutils) with the same arguments and compares stdout
+  byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd016-dirname.yaml) and invokes do-work to
+  produce a passing differential test for cmd/dirname.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/dirname /usr/bin/sort". dirname strips the last
+      component and prints "/usr/bin" followed by a newline.
+  - id: F2
+    step: |
+      The operator runs "./bin/dirname stdio.h". dirname finds no directory component
+      and prints "." (current directory).
+  - id: F3
+    step: |
+      The operator runs "./bin/dirname /usr/bin/ /etc/hosts" to process multiple
+      paths. dirname prints "/usr" and "/etc" on separate lines.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/dirname
+      and gdirname with the same arguments and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/dirname — path stripping, trailing slash handling, NUL output (prd016-dirname R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/dirname compiles and ./bin/dirname exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/dirname /usr/bin/sort" produces "/usr/bin", matching gdirname.
+  - id: S3
+    criterion: |
+      No-directory case works: "./bin/dirname stdio.h" produces ".".
+  - id: S4
+    criterion: |
+      Edge cases match: root path ("/"), trailing slashes, ".", "..", multiple
+      arguments all produce output identical to gdirname.
+  - id: S5
+    criterion: |
+      The differential test passes for simple paths, nested paths, trailing slashes,
+      root, relative paths, dots, multiple arguments, and -z mode.
+
+out_of_scope:
+  - Symlink resolution is not tested; dirname operates on string representation only.
+  - NUL-delimited output (-z) is tested for byte correctness but not for consumption by
+    downstream tools.
+
+test_suite: test-rel02.0
