@@ -21,16 +21,6 @@ releases:
       - id: rel00.0-uc004-testutils
         status: spec_complete
 
-  - version: "01.0"
-    name: "Batch 1 — wc specification and differential test"
-    status: spec_complete
-    description: |
-      Implement the wc word, line, and byte counter. wc depends on pkg/testutils from
-      rel00.0 for differential testing and does not require pkg/sys or pkg/format.
-    use_cases:
-      - id: rel01.0-uc001-wc
-        status: spec_complete
-
   - version: "01.1"
     name: "Batch 1.1 — cat specification and differential test"
     status: spec_complete
@@ -109,28 +99,40 @@ releases:
       - id: rel02.2-uc002-seq
         status: pending
 
-  - version: "99.0"
-    name: "Deferred — ls core specification and differential test"
+  - version: "03.0"
+    name: "Batch 3 — wc specification and differential test"
+    status: spec_complete
+    description: |
+      Implement the wc word, line, and byte counter. wc depends on pkg/testutils from
+      rel00.0 for differential testing and does not require pkg/sys or pkg/format.
+      Moved from rel01.0 because wc has repeatedly timed out during generation runs
+      due to task complexity from expanded sub-requirements.
+    use_cases:
+      - id: rel03.0-uc001-wc
+        status: spec_complete
+
+  - version: "04.0"
+    name: "Batch 4 — ls core specification and differential test"
     status: spec_complete
     description: |
       ls core covers the most common flags (default, -1, -l, -a, -A, -d, --color, -h).
-      Deferred from rel02.0 because ls has blocked every generation run due to task
-      complexity and rate-limit constraints. The dependency chain shows ls is not required
-      by other utilities in rel00.0 through rel02.0.
+      Previously deferred to rel99.0 because ls blocked generation runs due to task
+      complexity. Now scheduled as rel04.0 after cobbler-scaffold improvements to
+      sub-requirement counting.
     use_cases:
-      - id: rel99.0-uc001-ls
+      - id: rel04.0-uc001-ls
         status: spec_complete
 
-  - version: "99.1"
-    name: "Deferred — ls extended specification and differential test"
+  - version: "04.1"
+    name: "Batch 4.1 — ls extended specification and differential test"
     status: spec_complete
     description: |
       Extend ls with flags requiring heavier normalization or more complex layout logic:
       -C (forced multi-column), -x (horizontal), sort flags (-t, -S, -r, -U, -v),
       metadata display (-i inode, -s blocks, -n numeric IDs), -F classify, -R recursive.
-      Depends on rel99.0.
+      Depends on rel04.0.
     use_cases:
-      - id: rel99.1-uc001-ls-extended
+      - id: rel04.1-uc001-ls-extended
         status: spec_complete
 
   - version: "99.2"

@@ -13,11 +13,6 @@ roadmap_summary:
     use_cases_done: 4
     use_cases_total: 4
     status: spec_complete
-  - version: rel01.0
-    name: "Batch 1 — wc specification and differential test"
-    use_cases_done: 1
-    use_cases_total: 1
-    status: spec_complete
   - version: rel01.1
     name: "Batch 1.1 — cat specification and differential test"
     use_cases_done: 1
@@ -48,13 +43,18 @@ roadmap_summary:
     use_cases_done: 1
     use_cases_total: 1
     status: pending
-  - version: rel99.0
-    name: "Deferred — ls core specification and differential test"
+  - version: rel03.0
+    name: "Batch 3 — wc specification and differential test"
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
-  - version: rel99.1
-    name: "Deferred — ls extended specification and differential test"
+  - version: rel04.0
+    name: "Batch 4 — ls core specification and differential test"
+    use_cases_done: 1
+    use_cases_total: 1
+    status: spec_complete
+  - version: rel04.1
+    name: "Batch 4.1 — ls extended specification and differential test"
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
@@ -136,12 +136,12 @@ prd_index:
     path: docs/specs/product-requirements/prd018-head.yaml
 
 use_case_index:
-  - id: rel01.0-uc001-wc
+  - id: rel03.0-uc001-wc
     title: "Count lines, words, and bytes via wc"
-    release: rel01.0
+    release: rel03.0
     status: spec_complete
-    test_suite: test-rel01.0
-    path: docs/specs/use-cases/rel01.0-uc001-wc.yaml
+    test_suite: test-rel03.0
+    path: docs/specs/use-cases/rel03.0-uc001-wc.yaml
   - id: rel01.1-uc001-cat
     title: "Concatenate and display files via cat"
     release: rel01.1
@@ -160,18 +160,18 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel01.3
     path: docs/specs/use-cases/rel01.3-uc001-du.yaml
-  - id: rel99.0-uc001-ls
+  - id: rel04.0-uc001-ls
     title: "List directory contents via ls (core flags)"
-    release: rel99.0
+    release: rel04.0
     status: spec_complete
-    test_suite: test-rel99.0
-    path: docs/specs/use-cases/rel99.0-uc001-ls.yaml
-  - id: rel99.1-uc001-ls-extended
+    test_suite: test-rel04.0
+    path: docs/specs/use-cases/rel04.0-uc001-ls.yaml
+  - id: rel04.1-uc001-ls-extended
     title: "List directory contents via ls (extended flags)"
-    release: rel99.1
+    release: rel04.1
     status: spec_complete
-    test_suite: test-rel99.1
-    path: docs/specs/use-cases/rel99.1-uc001-ls-extended.yaml
+    test_suite: test-rel04.1
+    path: docs/specs/use-cases/rel04.1-uc001-ls-extended.yaml
   - id: rel99.2-uc001-ts
     title: "Timestamp stdin lines via ts"
     release: rel99.2
@@ -223,12 +223,12 @@ use_case_index:
     path: docs/specs/use-cases/rel02.2-uc001-head.yaml
 
 test_suite_index:
-  - id: test-rel01.0
-    title: "Test Suite: rel01.0 — wc specification and differential test"
+  - id: test-rel03.0
+    title: "Test Suite: rel03.0 — wc specification and differential test"
     traces:
-      - rel01.0-uc001-wc
+      - rel03.0-uc001-wc
     test_case_count: 13
-    path: docs/specs/test-suites/test-rel01.0.yaml
+    path: docs/specs/test-suites/test-rel03.0.yaml
   - id: test-rel01.1
     title: "Test Suite: rel01.1 — cat specification and differential test"
     traces:
@@ -247,18 +247,18 @@ test_suite_index:
       - rel01.3-uc001-du
     test_case_count: 11
     path: docs/specs/test-suites/test-rel01.3.yaml
-  - id: test-rel99.0
-    title: "Test Suite: rel99.0 — ls core flag listing"
+  - id: test-rel04.0
+    title: "Test Suite: rel04.0 — ls core flag listing"
     traces:
-      - rel99.0-uc001-ls
+      - rel04.0-uc001-ls
     test_case_count: 13
-    path: docs/specs/test-suites/test-rel99.0.yaml
-  - id: test-rel99.1
-    title: "Test Suite: rel99.1 — ls extended flag listing"
+    path: docs/specs/test-suites/test-rel04.0.yaml
+  - id: test-rel04.1
+    title: "Test Suite: rel04.1 — ls extended flag listing"
     traces:
-      - rel99.1-uc001-ls-extended
+      - rel04.1-uc001-ls-extended
     test_case_count: 14
-    path: docs/specs/test-suites/test-rel99.1.yaml
+    path: docs/specs/test-suites/test-rel04.1.yaml
   - id: test-rel99.2
     title: "Test Suite: rel99.2 — ts timestamp stdin lines"
     traces:
@@ -290,7 +290,7 @@ test_suite_index:
     path: docs/specs/test-suites/test-rel02.2.yaml
 
 prd_to_use_case_mapping:
-  - use_case: rel01.0-uc001-wc
+  - use_case: rel03.0-uc001-wc
     prd: prd005-wc
     why_required: wc exercises multi-file output, column alignment, and locale handling.
     coverage: Full — all prd005-wc requirement groups (R1-R6) are traced from the test suite.
@@ -306,11 +306,11 @@ prd_to_use_case_mapping:
     prd: prd009-du
     why_required: du exercises hard-link deduplication and recursive block accumulation.
     coverage: Full — all prd009-du requirement groups (R1-R5) are traced from the test suite.
-  - use_case: rel99.0-uc001-ls
+  - use_case: rel04.0-uc001-ls
     prd: prd008-ls
     why_required: ls core exercises pkg/sys and pkg/format for the first time in the pipeline.
     coverage: Full — all prd008-ls requirement groups (R1-R7) are traced from the test suite.
-  - use_case: rel99.1-uc001-ls-extended
+  - use_case: rel04.1-uc001-ls-extended
     prd: prd010-ls-extended
     why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing.
     coverage: Full — all prd010-ls-extended requirement groups (R1-R6) are traced from the test suite.
@@ -353,11 +353,9 @@ coverage_gaps: |
   and test suites in rel00.0 (foundational infrastructure). They are also exercised indirectly
   through the utility use cases that depend on them.
 
-  prd019-seq has no use case yet; it is planned for rel03.0. prd011-magefiles is an
-  infrastructure PRD covered indirectly by rel00.0 use cases.
+  prd011-magefiles is an infrastructure PRD covered indirectly by rel00.0 use cases.
 
-  ls (prd008-ls, prd010-ls-extended) is deferred to rel99.0/rel99.1 and ts (prd004-ts)
-  is deferred to rel99.2, but all retain full specification coverage.
+  ts (prd004-ts) is deferred to rel99.2 but retains full specification coverage.
 
 traceability_diagram: |
   ```mermaid
@@ -370,14 +368,14 @@ traceability_diagram: |
     P12["prd012-yes"] & P13["prd013-true"] & P14["prd014-false"]
     P15["prd015-basename"] & P16["prd016-dirname"]
     P17["prd017-tee"] & P18["prd018-head"]
-    UC1["rel01.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
-    UC4["rel01.3-uc001-du"] & UC5["rel99.0-uc001-ls"] & UC6["rel99.1-uc001-ls-extended"]
+    UC1["rel03.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
+    UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.1-uc001-ls-extended"]
     UC7["rel99.2-uc001-ts"]
     UC8["rel02.0-uc001-true"] & UC9["rel02.0-uc002-false"] & UC10["rel02.0-uc003-yes"]
     UC11["rel02.0-uc004-basename"] & UC12["rel02.0-uc005-dirname"]
     UC13["rel02.1-uc001-tee"] & UC14["rel02.2-uc001-head"]
-    TS1["test-rel01.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
-    TS4["test-rel01.3"] & TS5["test-rel99.0"] & TS6["test-rel99.1"] & TS7["test-rel99.2"]
+    TS1["test-rel03.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
+    TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.1"] & TS7["test-rel99.2"]
     TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10

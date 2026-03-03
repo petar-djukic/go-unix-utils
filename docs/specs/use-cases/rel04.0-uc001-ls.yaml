@@ -1,4 +1,4 @@
-id: rel99.0-uc001-ls
+id: rel04.0-uc001-ls
 title: "List directory contents via ls (core flags)"
 
 summary: |
@@ -86,10 +86,10 @@ success_criteria:
 
 out_of_scope:
   - Default multi-column mode on a real TTY is difficult to test deterministically in the
-    harness; we test -C explicitly in the ls extended use case (rel02.1).
+    harness; we test -C explicitly in the ls extended use case (rel04.1).
   - Owner/group name normalization is not applied; tests use a fixture where files are owned
     by the test runner's UID/GID, ensuring consistency.
   - SIGWINCH behavior is specified in prd008-ls R7.2 but is not directly testable in the
     differential harness.
 
-test_suite: test-rel99.0
+test_suite: test-rel04.0

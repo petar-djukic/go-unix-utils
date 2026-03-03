@@ -1,9 +1,9 @@
-id: test-rel99.0
-title: "Test Suite: rel99.0 — ls core flag listing"
-release: rel99.0
+id: test-rel04.0
+title: "Test Suite: rel04.0 — ls core flag listing"
+release: rel04.0
 
 traces:
-  - rel99.0-uc001-ls
+  - rel04.0-uc001-ls
   - prd008-ls R1
   - prd008-ls R2
   - prd008-ls R3
