@@ -1,0 +1,83 @@
+id: rel02.2-uc001-head
+title: "Print the first lines or bytes of files via head"
+
+summary: |
+  The operator invokes the Go head binary to extract the beginning of files or pipeline
+  output. The differential testing harness runs both the Go binary and the Homebrew
+  reference binary (ghead from coreutils) with the same arguments, stdin, and environment,
+  then compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd018-head.yaml) and invokes do-work to
+  produce a passing differential test for cmd/head.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "seq 1 20 | ./bin/head". head prints the first 10 lines
+      (the default count) to stdout.
+  - id: F2
+    step: |
+      The operator runs "seq 1 20 | ./bin/head -n 5" to print only the first 5 lines.
+  - id: F3
+    step: |
+      The operator runs "seq 1 20 | ./bin/head -n -5" to print all lines except the
+      last 5 (lines 1 through 15).
+  - id: F4
+    step: |
+      The operator runs "printf 'abcdefghij' | ./bin/head -c 5" to print the first
+      5 bytes.
+  - id: F5
+    step: |
+      The operator runs "./bin/head file1.txt file2.txt" to test multi-file output
+      with headers in the format "==> FILENAME <==".
+  - id: F6
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/head and
+      ghead with the same arguments and environment.
+  - id: F7
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/head — line-count, byte-count, negative counts, multi-file headers, quiet/verbose (prd018-head R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/head compiles and ./bin/head exists after mage build.
+  - id: S2
+    criterion: |
+      "seq 1 20 | ./bin/head" produces lines 1 through 10, matching ghead.
+  - id: S3
+    criterion: |
+      Explicit line count works: "head -n 5" produces exactly 5 lines.
+  - id: S4
+    criterion: |
+      Negative line count works: "head -n -5" prints all lines except the last 5.
+  - id: S5
+    criterion: |
+      Byte count works: "head -c 5" prints exactly 5 bytes.
+  - id: S6
+    criterion: |
+      Multi-file headers are printed in the format "==> FILENAME <==", matching ghead.
+  - id: S7
+    criterion: |
+      Header suppression (-q) and forced headers (-v) work correctly.
+  - id: S8
+    criterion: |
+      Error handling works: non-existent file produces stderr error, exits 1, and
+      remaining files are still processed.
+  - id: S9
+    criterion: |
+      The differential test passes for default, -n, -c, negative counts, multi-file,
+      -q, -v, stdin, and error cases.
+
+out_of_scope:
+  - Zero-terminated line mode (-z) is excluded per the PRD.
+  - Decimal multiplier suffixes (kB, MB, GB) are excluded per the PRD.
+
+test_suite: test-rel02.2

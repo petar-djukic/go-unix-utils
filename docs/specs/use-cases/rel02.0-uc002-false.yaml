@@ -1,0 +1,54 @@
+id: rel02.0-uc002-false
+title: "Exit unsuccessfully via false"
+
+summary: |
+  The operator invokes the Go false binary, which exits with status 1 unconditionally. The
+  differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gfalse from coreutils) with the same arguments and compares exit codes. false ignores
+  all arguments and produces no output under normal operation.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd014-false.yaml) and invokes do-work to produce
+  a passing differential test for cmd/false.
+
+flow:
+  - id: F1
+    step: |
+      The operator invokes ./bin/false with no arguments. The binary exits immediately
+      with status 1.
+  - id: F2
+    step: |
+      The operator invokes ./bin/false with arbitrary arguments (e.g., "foo", "--bar").
+      The binary ignores all arguments and exits with status 1.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/false and gfalse
+      with the same arguments and environment.
+  - id: F4
+    step: |
+      The harness compares exit codes. Both binaries must exit 1 for normal invocations.
+      No stdout or stderr comparison is needed for the default case.
+
+touchpoints:
+  - T1: "cmd/false — unconditional exit 1, argument ignoring (prd014-false R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/false compiles and ./bin/false exists after mage build.
+  - id: S2
+    criterion: ./bin/false exits with status 1 when invoked with no arguments.
+  - id: S3
+    criterion: ./bin/false exits with status 1 when invoked with arbitrary arguments.
+  - id: S4
+    criterion: |
+      The differential test passes for no-args and arbitrary-args cases, confirming
+      exit code parity with gfalse.
+
+out_of_scope:
+  - --help and --version output formatting is verified manually, not via differential testing.
+  - Write-error exit code (R2.3) is not tested in the differential harness.
+
+test_suite: test-rel02.0

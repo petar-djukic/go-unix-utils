@@ -1,0 +1,259 @@
+id: test-rel02.2
+title: "Test Suite: rel02.2 — head"
+release: rel02.2
+
+traces:
+  - rel02.2-uc001-head
+  - prd018-head R1
+  - prd018-head R2
+  - prd018-head R3
+  - prd018-head R4
+
+preconditions:
+  - ./bin/head exists (built via mage build).
+  - Reference binary ghead is installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/head/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "head: no output normalization is needed; head output is deterministic."
+
+test_cases:
+  # --- default line count ---
+  - name: head_default_10_lines
+    description: "head with no flags prints the first 10 lines of stdin."
+    inputs:
+      args: []
+      stdin: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
+      stderr: ""
+    traces:
+      - prd018-head R1.1
+
+  # --- explicit line count ---
+  - name: head_n_5
+    description: "head -n 5 prints the first 5 lines."
+    inputs:
+      args: ["-n", "5"]
+      stdin: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n3\n4\n5\n"
+      stderr: ""
+    traces:
+      - prd018-head R1.2
+
+  # --- negative line count ---
+  - name: head_n_negative_5
+    description: "head -n -5 prints all lines except the last 5."
+    inputs:
+      args: ["-n", "-5"]
+      stdin: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n3\n4\n5\n"
+      stderr: ""
+    traces:
+      - prd018-head R1.3
+
+  # --- byte count ---
+  - name: head_c_5
+    description: "head -c 5 prints the first 5 bytes."
+    inputs:
+      args: ["-c", "5"]
+      stdin: "abcdefghij"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "abcde"
+      stderr: ""
+    traces:
+      - prd018-head R2.1
+
+  # --- negative byte count ---
+  - name: head_c_negative_100
+    description: "head -c -100 on short input produces no output (all bytes are within the last 100)."
+    inputs:
+      args: ["-c", "-100"]
+      stdin: "short\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd018-head R2.2
+
+  # --- negative byte count with sufficient input ---
+  - name: head_c_negative_3
+    description: "head -c -3 prints all bytes except the last 3."
+    inputs:
+      args: ["-c", "-3"]
+      stdin: "abcdefgh"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "abcde"
+      stderr: ""
+    traces:
+      - prd018-head R2.2
+
+  # --- stdin with dash ---
+  - name: head_stdin_dash
+    description: "head with '-' as file argument reads from stdin."
+    inputs:
+      args: ["-n", "2", "-"]
+      stdin: "a\nb\nc\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\nb\n"
+      stderr: ""
+    traces:
+      - prd018-head R1.4
+
+  # --- multi-file headers ---
+  - name: head_multi_file_headers
+    description: "head with two files prints headers '==> FILENAME <==' before each file's output. Setup: file1.txt contains '1\\n2\\n', file2.txt contains '3\\n4\\n'."
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "==> file1.txt <==\n1\n2\n\n==> file2.txt <==\n3\n4\n"
+      stderr: ""
+    traces:
+      - prd018-head R3.1
+
+  # --- single file no header ---
+  - name: head_single_file_no_header
+    description: "head with a single file does not print a header. Setup: file.txt contains '1\\n2\\n3\\n'."
+    inputs:
+      args: ["file.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n3\n"
+      stderr: ""
+    traces:
+      - prd018-head R3.2
+
+  # --- quiet mode ---
+  - name: head_quiet_multi_file
+    description: "head -q suppresses headers even with multiple files. Setup: file1.txt contains '1\\n', file2.txt contains '2\\n'."
+    inputs:
+      args: ["-q", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n"
+      stderr: ""
+    traces:
+      - prd018-head R3.3
+
+  # --- verbose mode ---
+  - name: head_verbose_single_file
+    description: "head -v prints a header even for a single file. Setup: file.txt contains 'data\\n'."
+    inputs:
+      args: ["-v", "file.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "==> file.txt <==\ndata\n"
+      stderr: ""
+    traces:
+      - prd018-head R3.4
+
+  # --- non-existent file error ---
+  - name: head_missing_file
+    description: "head with a non-existent file prints error to stderr and exits 1. Setup: real.txt contains 'data\\n', missing.txt does not exist."
+    inputs:
+      args: ["missing.txt", "real.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout_contains: "data"
+      stderr_contains: "missing.txt"
+    traces:
+      - prd018-head R3.5
+      - prd018-head R4.2
+
+  # --- fewer lines than requested ---
+  - name: head_fewer_lines_than_n
+    description: "head -n 100 on short input prints all available lines."
+    inputs:
+      args: ["-n", "100"]
+      stdin: "a\nb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\nb\n"
+      stderr: ""
+    traces:
+      - prd018-head R1.2
+
+  # --- empty stdin ---
+  - name: head_empty_stdin
+    description: "head on empty stdin produces no output."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd018-head R1.1
+
+  # --- no trailing newline ---
+  - name: head_no_trailing_newline
+    description: "head counts a final line without a trailing newline as a line."
+    inputs:
+      args: ["-n", "2"]
+      stdin: "a\nb"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\nb"
+      stderr: ""
+    traces:
+      - prd018-head R1.5
+
+  # --- byte count with suffix ---
+  - name: head_c_1K
+    description: "head -c 1K prints the first 1024 bytes. Input is 2048 bytes of 'a'."
+    inputs:
+      args: ["-c", "1K"]
+      stdin: "2048 bytes of 'a'"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "first 1024 bytes"
+      stderr: ""
+    traces:
+      - prd018-head R2.3

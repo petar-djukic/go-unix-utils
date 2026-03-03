@@ -63,6 +63,48 @@ releases:
       - id: rel01.3-uc001-du
         status: spec_complete
 
+  - version: "02.0"
+    name: "Batch 2 — trivial utilities (true, false, yes, basename, dirname)"
+    status: pending
+    description: |
+      Implement five trivial utilities that require minimal logic and no shared library
+      dependencies beyond pkg/testutils. true and false are exit-code-only programs. yes
+      outputs repeated lines. basename and dirname perform string-based path manipulation.
+      All are verified by differential testing against GNU coreutils reference binaries.
+    use_cases:
+      - id: rel02.0-uc001-true
+        status: pending
+      - id: rel02.0-uc002-false
+        status: pending
+      - id: rel02.0-uc003-yes
+        status: pending
+      - id: rel02.0-uc004-basename
+        status: pending
+      - id: rel02.0-uc005-dirname
+        status: pending
+
+  - version: "02.1"
+    name: "Batch 2.1 — tee specification and differential test"
+    status: pending
+    description: |
+      Implement tee for copying stdin to stdout and one or more output files simultaneously.
+      tee depends on pkg/testutils from rel00.0 for differential testing. Supports append
+      mode (-a) and SIGINT suppression (-i).
+    use_cases:
+      - id: rel02.1-uc001-tee
+        status: pending
+
+  - version: "02.2"
+    name: "Batch 2.2 — head specification and differential test"
+    status: pending
+    description: |
+      Implement head for printing the first N lines or bytes of files. head depends on
+      pkg/testutils from rel00.0 for differential testing. Supports line-count (-n),
+      byte-count (-c), negative counts, and multi-file headers with -q/-v control.
+    use_cases:
+      - id: rel02.2-uc001-head
+        status: pending
+
   - version: "99.0"
     name: "Deferred — ls core specification and differential test"
     status: spec_complete

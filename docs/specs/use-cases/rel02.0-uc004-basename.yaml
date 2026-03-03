@@ -1,0 +1,72 @@
+id: rel02.0-uc004-basename
+title: "Strip directory and suffix from filenames via basename"
+
+summary: |
+  The operator invokes the Go basename binary with file paths to extract the filename
+  component, optionally removing a suffix. The differential testing harness runs both
+  the Go binary and the Homebrew reference binary (gbasename from coreutils) with the
+  same arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd015-basename.yaml) and invokes do-work to
+  produce a passing differential test for cmd/basename.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/basename /usr/bin/sort". basename strips the directory
+      prefix and prints "sort" followed by a newline.
+  - id: F2
+    step: |
+      The operator runs "./bin/basename include/stdio.h .h". basename strips the
+      directory prefix and removes the ".h" suffix, printing "stdio".
+  - id: F3
+    step: |
+      The operator runs "./bin/basename -a /usr/bin/sort /usr/bin/cat" to process
+      multiple paths. basename prints "sort" and "cat" on separate lines.
+  - id: F4
+    step: |
+      The operator runs "./bin/basename -s .h include/stdio.h include/stdlib.h" to
+      strip a suffix from multiple paths. basename prints "stdio" and "stdlib".
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/basename
+      and gbasename with the same arguments and environment.
+  - id: F6
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/basename — path stripping, suffix removal, multi-argument mode, NUL output (prd015-basename R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/basename compiles and ./bin/basename exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/basename /usr/bin/sort" produces "sort", matching gbasename.
+  - id: S3
+    criterion: |
+      Suffix removal works: "./bin/basename include/stdio.h .h" produces "stdio".
+  - id: S4
+    criterion: |
+      Multi-argument mode works: "-a" processes each path independently.
+  - id: S5
+    criterion: |
+      Edge cases match: root path ("/"), trailing slashes, empty string all produce
+      output identical to gbasename.
+  - id: S6
+    criterion: |
+      The differential test passes for simple paths, suffix removal, -a, -s, -z,
+      root, trailing slashes, and empty string.
+
+out_of_scope:
+  - Encoding-specific path handling is not tested; paths are byte sequences with "/" as separator.
+  - NUL-delimited output (-z) is tested for byte correctness but not for consumption by
+    downstream tools (xargs -0).
+
+test_suite: test-rel02.0
