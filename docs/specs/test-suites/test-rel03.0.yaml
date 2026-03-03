@@ -1,9 +1,9 @@
-id: test-rel01.0
-title: "Test Suite: rel01.0 — wc specification and differential test"
-release: rel01.0
+id: test-rel03.0
+title: "Test Suite: rel03.0 — wc specification and differential test"
+release: rel03.0
 
 traces:
-  - rel01.0-uc001-wc
+  - rel03.0-uc001-wc
   - prd005-wc R1
   - prd005-wc R2
   - prd005-wc R3

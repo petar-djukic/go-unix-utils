@@ -1,4 +1,4 @@
-id: rel99.1-uc001-ls-extended
+id: rel04.1-uc001-ls-extended
 title: "List directory contents via ls (extended flags)"
 
 summary: |
@@ -108,4 +108,4 @@ out_of_scope:
   - SIGWINCH and terminal resize behavior during -R recursive listing is not testable in the
     differential harness.
 
-test_suite: test-rel99.1
+test_suite: test-rel04.1

@@ -1,9 +1,9 @@
-id: test-rel99.1
-title: "Test Suite: rel99.1 — ls extended flag listing"
-release: rel99.1
+id: test-rel04.1
+title: "Test Suite: rel04.1 — ls extended flag listing"
+release: rel04.1
 
 traces:
-  - rel99.1-uc001-ls-extended
+  - rel04.1-uc001-ls-extended
   - prd010-ls-extended R1
   - prd010-ls-extended R2
   - prd010-ls-extended R3
