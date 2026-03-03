@@ -1,20 +1,26 @@
 id: test-rel02.2
-title: "Test Suite: rel02.2 — head"
+title: "Test Suite: rel02.2 — head and seq"
 release: rel02.2
 
 traces:
   - rel02.2-uc001-head
+  - rel02.2-uc002-seq
   - prd018-head R1
   - prd018-head R2
   - prd018-head R3
   - prd018-head R4
+  - prd019-seq R1
+  - prd019-seq R2
+  - prd019-seq R3
+  - prd019-seq R4
 
 preconditions:
-  - ./bin/head exists (built via mage build).
-  - Reference binary ghead is installed via Homebrew (coreutils) and on PATH.
-  - Tests are run via go test ./cmd/head/... which invokes RunDiffTests from pkg/testutils.
+  - ./bin/head and ./bin/seq exist (built via mage build).
+  - Reference binaries ghead and gseq are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
   - All tests use LC_ALL=C to eliminate locale-dependent divergence.
   - "head: no output normalization is needed; head output is deterministic."
+  - "seq: no output normalization is needed; seq output is deterministic."
 
 test_cases:
   # --- default line count ---
@@ -257,3 +263,188 @@ test_cases:
       stderr: ""
     traces:
       - prd018-head R2.3
+
+  # --- seq: single argument ---
+  - name: seq_single_arg
+    description: "seq 5 prints lines 1 through 5."
+    inputs:
+      args: ["5"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n3\n4\n5\n"
+      stderr: ""
+    traces:
+      - prd019-seq R1.1
+
+  # --- seq: two arguments ---
+  - name: seq_two_args
+    description: "seq 2 5 prints lines 2 through 5."
+    inputs:
+      args: ["2", "5"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "2\n3\n4\n5\n"
+      stderr: ""
+    traces:
+      - prd019-seq R1.1
+
+  # --- seq: three arguments ---
+  - name: seq_three_args
+    description: "seq 1 2 10 prints odd numbers 1 through 9."
+    inputs:
+      args: ["1", "2", "10"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n3\n5\n7\n9\n"
+      stderr: ""
+    traces:
+      - prd019-seq R1.1
+      - prd019-seq R1.2
+
+  # --- seq: descending ---
+  - name: seq_descending
+    description: "seq 5 -1 1 prints 5, 4, 3, 2, 1."
+    inputs:
+      args: ["5", "-1", "1"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "5\n4\n3\n2\n1\n"
+      stderr: ""
+    traces:
+      - prd019-seq R1.2
+
+  # --- seq: first equals last ---
+  - name: seq_first_equals_last
+    description: "seq 3 3 prints exactly one number."
+    inputs:
+      args: ["3", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "3\n"
+      stderr: ""
+    traces:
+      - prd019-seq R1.3
+
+  # --- seq: empty sequence ---
+  - name: seq_empty_ascending
+    description: "seq 5 1 with default step 1 produces no output (FIRST > LAST)."
+    inputs:
+      args: ["5", "1"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd019-seq R1.4
+      - prd019-seq R4.1
+
+  # --- seq: floating point ---
+  - name: seq_floating_point
+    description: "seq 0.1 0.1 0.5 prints floating-point sequence."
+    inputs:
+      args: ["0.1", "0.1", "0.5"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "0.1\n0.2\n0.3\n0.4\n0.5\n"
+      stderr: ""
+    traces:
+      - prd019-seq R1.1
+      - prd019-seq R2.3
+
+  # --- seq: custom separator ---
+  - name: seq_custom_separator
+    description: "seq -s ', ' 1 3 prints '1, 2, 3' on one line."
+    inputs:
+      args: ["-s", ", ", "1", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1, 2, 3\n"
+      stderr: ""
+    traces:
+      - prd019-seq R2.2
+
+  # --- seq: equal width ---
+  - name: seq_equal_width
+    description: "seq -w 8 12 prints zero-padded numbers 08 through 12."
+    inputs:
+      args: ["-w", "8", "12"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "08\n09\n10\n11\n12\n"
+      stderr: ""
+    traces:
+      - prd019-seq R3.3
+
+  # --- seq: format string ---
+  - name: seq_format_string
+    description: "seq -f '%.2f' 1 3 prints numbers with two decimal places."
+    inputs:
+      args: ["-f", "%.2f", "1", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1.00\n2.00\n3.00\n"
+      stderr: ""
+    traces:
+      - prd019-seq R3.1
+
+  # --- seq: zero step error ---
+  - name: seq_zero_step_error
+    description: "seq 1 0 5 exits 1 with error for zero step."
+    inputs:
+      args: ["1", "0", "5"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr_contains: "zero"
+    traces:
+      - prd019-seq R1.5
+      - prd019-seq R4.2
+
+  # --- seq: invalid format error ---
+  - name: seq_invalid_format_error
+    description: "seq -f '%s' 1 3 exits 1 for invalid format specifier."
+    inputs:
+      args: ["-f", "%s", "1", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr_contains: "format"
+    traces:
+      - prd019-seq R3.2
+      - prd019-seq R4.2
