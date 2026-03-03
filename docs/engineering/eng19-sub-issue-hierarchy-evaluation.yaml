@@ -1,0 +1,217 @@
+id: eng19-sub-issue-hierarchy-evaluation
+title: "Evaluation: Sub-Issue Hierarchy vs Flat Issue List for Stitch Scope Control"
+
+introduction: |
+  We evaluate whether the sub-issue hierarchy used in /git-issue-pop decomposition is
+  necessary for controlling stitch session scope, or whether a flat issue list with tighter
+  per-task requirement caps would produce better outcomes. The analysis draws on data from
+  generation runs 9-11 (eng16-eng18), the stitch task sizing guideline (eng11), the stress
+  test decomposition (eng13), and recent interactive issue decompositions (GH-170, GH-174).
+
+  The evaluation addresses four questions: (1) why does the hierarchy exist, (2) do sub-issues
+  have true ordering dependencies, (3) can a flat-list alternative improve stitch scope
+  control, and (4) what is the estimated impact on success rate and duration.
+
+sections:
+  - title: "Two distinct hierarchies"
+    content: |
+      The project uses sub-issue hierarchies in two separate contexts that should not be
+      conflated.
+
+      Table 1: Hierarchy contexts
+
+      | Context | Tool | Purpose | Examples |
+      |---------|------|---------|----------|
+      | Interactive decomposition | /git-issue-pop | Human decomposes an epic into sub-issues for manual execution via /do-work | GH-170 (#171, #172), GH-174 (#175, #176, #177) |
+      | Generator orchestration | GH-168 body | Human tracks sequential generation steps as numbered sub-issues in prose | GH-149, GH-168 (cleanup, reset, config, per-release runs, eng report) |
+
+      Neither hierarchy feeds into the measure/stitch pipeline. The measure agent proposes
+      tasks from PRD requirements; the stitch agent executes them. Both operate on their
+      internal work queue (formerly beads, now GitHub issues created by the measure agent on
+      the generation branch). The /git-issue-pop hierarchy and the generator orchestration
+      hierarchy are human-facing tracking mechanisms that do not affect stitch session scope.
+
+      The original question — does the hierarchy affect stitch scope — has a simple answer:
+      it does not. Stitch scope is controlled by the measure agent's task proposals, bounded
+      by max_requirements_per_task (currently 4) and the subsystem boundary rule from eng11.
+
+  - title: "Original rationale for sub-issue hierarchy"
+    content: |
+      The /git-issue-pop skill creates sub-issues for two reasons.
+
+      Readability. A parent issue like GH-174 ("Add rel02.0 use cases, test suites, and
+      roadmap entry") decomposes into logically distinct deliverables: use cases for trivial
+      utilities (#175), use cases for stream utilities (#176), and roadmap updates (#177).
+      Each sub-issue has its own required reading, output files, and acceptance criteria.
+      Tracking them separately makes progress visible on the parent issue page.
+
+      Sizing. The /do-work skill executes one sub-issue at a time. Each sub-issue is scoped
+      to produce a single commit's worth of work. Without decomposition, a large epic would
+      require the agent to hold the entire scope in context, increasing the risk of
+      incomplete or inconsistent output. Decomposition bounds the context window load per
+      /do-work invocation.
+
+      The generator orchestration hierarchy (GH-168, GH-149) exists for a third reason:
+      sequential execution ordering. Sub-issues 2 (reset) through N (per-release generation)
+      must execute in order because each release depends on the previous release's output
+      being present on the generation branch. Sub-issue 1 (cleanup) is created first but
+      executed last. This ordering is described in prose, not enforced by GitHub.
+
+  - title: "Ordering dependencies in recent runs"
+    content: |
+      We examined sub-issues from the three most recent interactive issues (GH-147, GH-170,
+      GH-174) and the two generator orchestration issues (GH-149, GH-168).
+
+      Table 2: Sub-issue dependency analysis
+
+      | Parent | Sub-issues | True ordering dependency? | Reason |
+      |--------|-----------|-------------------------|--------|
+      | GH-170 | #171 (trivial PRDs), #172 (stream PRDs) | No | PRD files are independent; neither references the other |
+      | GH-174 | #175 (rel02.0 UCs), #176 (rel02.1-02.2 UCs), #177 (roadmap) | Partial | #177 depends on #175 and #176 (needs UC IDs for roadmap entries) |
+      | GH-149 | Sub-issues 1-N (sequential generator steps) | Yes | Each release depends on previous release's generated code |
+      | GH-168 | Sub-issues 1-N (sequential generator steps) | Yes | Same as GH-149 |
+
+      For interactive documentation work, most sub-issues are independent. The only
+      dependency observed was #177 depending on #175 and #176 for use case IDs — a data
+      dependency, not an ordering constraint (the IDs are predictable from naming conventions).
+
+      For generator orchestration, ordering is genuinely required: the stitch agent for
+      rel01.0 needs pkg/testutils from rel00.0 to exist. However, this ordering is enforced
+      by the generator workflow (sequential mage generator:run calls), not by sub-issue
+      linkage. Flattening would not change this.
+
+  - title: "Stitch scope control mechanisms"
+    content: |
+      Stitch session scope is controlled by four mechanisms, none of which involve the
+      sub-issue hierarchy.
+
+      Table 3: Scope control mechanisms
+
+      | Mechanism | Where enforced | Current setting | Effect |
+      |-----------|---------------|-----------------|--------|
+      | max_requirements_per_task | configuration.yaml | 4 | Caps requirement groups per measure proposal |
+      | Subsystem boundary rule | eng11, planning constitution P2 | 1 new subsystem per task | Prevents multi-boundary tasks that cause timeouts |
+      | max_time_sec | configuration.yaml | 900 (15 min) | Hard timeout; kills oversized stitch sessions |
+      | Implementation/test split | planning constitution P2 | Always separate | Halves per-task scope |
+
+      The max_requirements_per_task=4 cap was validated across runs 10 and 11. All 13 unique
+      tasks in run 11 had exactly 4 top-level requirements and all succeeded. The actual
+      coding time (excluding rate-limit pauses) ranged from 3 to 5 minutes per task (eng18
+      Table 9), well within the 15-minute budget.
+
+      The subsystem boundary rule from eng11 is the stronger predictor of success. A task
+      crossing one subsystem boundary succeeds consistently regardless of requirement count
+      (even cmd/ts with 8 requirements). A task crossing three boundaries failed twice
+      (cmd/ls extended in eng10). Requirement count caps are a proxy; subsystem count is
+      the actual constraint.
+
+  - title: "Flat-list alternative proposal"
+    content: |
+      A flat issue list for /git-issue-pop would eliminate the parent-child relationship
+      and create all work items at the same level. We evaluate this against the current
+      approach.
+
+      Table 4: Flat vs hierarchical comparison for interactive decomposition
+
+      | Dimension | Hierarchical (current) | Flat alternative |
+      |-----------|----------------------|-----------------|
+      | Progress visibility | Parent issue shows checklist of sub-issues | No automatic grouping; must manually track related issues |
+      | Context per /do-work | One sub-issue scope | Same; each issue still scoped individually |
+      | PR scope | One PR per parent (all sub-issues) | One PR per issue, or must manually group |
+      | Dependency tracking | Implicit (prose or creation order) | Same; GitHub does not enforce execution order either way |
+      | Overhead | Create parent + N sub-issues + link API calls | Create N issues directly |
+
+      The flat alternative saves ~3 API calls per sub-issue (create + get database ID + link
+      to parent) but loses the progress checklist on the parent issue. For documentation epics
+      (GH-170, GH-174), the progress checklist is valuable because the human operator can see
+      at a glance how many sub-issues remain.
+
+      For generator orchestration (GH-168), the hierarchy is pure prose — sub-issues are
+      described in the body text and created at execution time. A flat list would work
+      identically; the numbered steps are a sequential execution plan, not a GitHub linkage.
+
+      Recommendation: Keep the sub-issue hierarchy for interactive decomposition. It costs
+      minimal overhead and provides useful progress visibility. For generator orchestration,
+      the hierarchy is already effectively flat (prose-described steps) and needs no change.
+
+  - title: "Tighter per-task requirement caps"
+    content: |
+      The issue body hypothesizes that reducing max_requirements_per_task below 4 could
+      improve stitch success rate. We evaluate this using run 11 data.
+
+      Table 5: Impact of reducing max_requirements_per_task
+
+      | Setting | Tasks generated | Avg coding time | Overhead | Estimated cost impact |
+      |---------|----------------|-----------------|----------|-----------------------|
+      | 4 (current) | 13 | 3-5 min | 13 measure cycles | ~$23 baseline |
+      | 3 | ~17 | 2-4 min | 17 measure cycles | ~$28 (+22%) |
+      | 2 | ~26 | 1-3 min | 26 measure cycles | ~$38 (+65%) |
+
+      Reducing from 4 to 3 would split each 4-requirement task into a 3-requirement task
+      and a 1-requirement task. The 1-requirement task carries the same fixed overhead
+      (measure proposal, stitch startup, file reads, go build) as a 4-requirement task.
+      The marginal coding time saved is minimal because the actual coding for each
+      requirement is 1-2 minutes regardless of batch size.
+
+      The cmd/wc case from the issue body (4 R-groups expanding to "17+ sub-items") is
+      misleading. The 17 sub-items are acceptance criteria within the 4 R-groups, not
+      independent requirements. The stitch agent implements R-groups, not individual
+      sub-items. The actual coding time for cmd/wc was 4m37s once the service was stable.
+
+      The three timeout failures for cmd/wc were caused by Claude API service instability
+      (0 tokens over 45 minutes), not by task oversizing. Reducing requirement count would
+      not have prevented these timeouts.
+
+      Recommendation: Keep max_requirements_per_task=4. The data does not support reducing
+      it. The subsystem boundary rule (eng11) is the correct lever for scope control.
+
+  - title: "Impact estimate"
+    content: |
+      Table 6: Estimated impact of proposed changes
+
+      | Change | Success rate impact | Duration impact | Cost impact |
+      |--------|-------------------|-----------------|-------------|
+      | Flatten interactive sub-issues | None (does not affect stitch) | None | Saves ~30s per sub-issue (API calls) |
+      | Flatten generator orchestration | None (already effectively flat) | None | None |
+      | Reduce max_requirements to 3 | No improvement (failures are service-caused) | +30% wall time (more cycles) | +22% cost (more measure rounds) |
+      | Reduce max_requirements to 2 | No improvement | +100% wall time | +65% cost |
+      | Add 0-token health check (eng18 rec 2) | Prevents 45-min waste from service outages | -45 min per outage event | Saves wasted wait time |
+
+      The highest-impact change is not a decomposition change at all. It is the health check
+      timeout recommended in eng18: terminate stitch sessions that produce 0 tokens for 60
+      seconds, rather than waiting the full 15 minutes. This single change would have saved
+      45 minutes in run 11 and would prevent future service-instability waste.
+
+  - title: "Conclusions"
+    content: |
+      1. The sub-issue hierarchy does not affect stitch scope. Stitch scope is controlled by
+         max_requirements_per_task and the subsystem boundary rule, both of which operate
+         within the measure/stitch pipeline independently of GitHub issue structure.
+
+      2. Interactive sub-issues (from /git-issue-pop) have minimal true ordering dependencies.
+         Most are independent documentation tasks. The hierarchy exists for progress visibility,
+         not execution ordering.
+
+      3. Generator orchestration sub-issues have genuine ordering dependencies (release
+         sequencing), but these are enforced by the generator workflow, not by GitHub linkage.
+
+      4. Reducing max_requirements_per_task below 4 is not recommended. The current setting
+         produces tasks that complete in 3-5 minutes of actual coding time. Failures in run 11
+         were caused by Claude service instability, not task oversizing.
+
+      5. The highest-impact improvement is the eng18 health check recommendation: early
+         termination of 0-token stitch sessions. This is an infrastructure change, not a
+         decomposition change.
+
+      6. Keep the current /git-issue-pop sub-issue hierarchy. It provides useful progress
+         visibility for interactive work at minimal overhead.
+
+references:
+  - "docs/engineering/eng11-stitch-task-sizing.yaml -- Subsystem boundary rule and sizing guidance"
+  - "docs/engineering/eng13-stress-test-decomposition.yaml -- PRD decomposition validation"
+  - "docs/engineering/eng18-generation-run-11-results.yaml -- Run 11 task timing and failure data"
+  - "docs/constitutions/planning.yaml -- Articles P2, P6, P8, P9 on task sizing"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/167 -- This evaluation issue"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/168 -- Generator orchestration"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/170 -- Interactive decomposition example"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/174 -- Interactive decomposition example"
