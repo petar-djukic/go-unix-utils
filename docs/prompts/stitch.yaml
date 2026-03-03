@@ -16,6 +16,7 @@ task: |
   4. **Verify** — Check every item in Acceptance Criteria. Run tests if the criteria require it. Do not skip any criterion.
 
 constraints: |
+  - Do NOT read any file in the repository to infer style, patterns, or conventions. All style guidance is provided in go_style_constitution above. All source patterns are provided in project_context above. If a file you need is absent from project_context, write it from scratch following go_style_constitution — do not read the filesystem to fill the gap.
   - Do NOT read files already provided in project_context. They are already inline above.
   - Do NOT explore the filesystem. Do NOT run ls, find, tree, or similar commands.
   - Do NOT modify files outside the Files to Create/Modify list unless a requirement explicitly demands it.
