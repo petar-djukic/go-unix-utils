@@ -1,7 +1,7 @@
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
 github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
-github.com/mesh-intelligence/cobbler-scaffold v0.20260303.0 h1:ACyMCRwBDBwFzYlyBdS6uZrEmqN/kea3FATj8+vIIUc=
-github.com/mesh-intelligence/cobbler-scaffold v0.20260303.0/go.mod h1:Gckwhzbo48sx2lNxv46vZCHIZRm+8GMffFJrvK0ZMqM=
+github.com/mesh-intelligence/cobbler-scaffold v0.20260303.2 h1:DcilDZE0l5utOwyOdzALN4B7vjuBNSmOC9/8LxCthbA=
+github.com/mesh-intelligence/cobbler-scaffold v0.20260303.2/go.mod h1:Gckwhzbo48sx2lNxv46vZCHIZRm+8GMffFJrvK0ZMqM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
