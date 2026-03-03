@@ -66,7 +66,7 @@ func logf(format string, args ...any) {
 // Init initializes the project.
 func Init() error { return newOrch().Init() }
 
-// Reset performs a full reset: cobbler, generator.
+// Reset performs a full reset: cobbler and generator.
 func Reset() error { return newOrch().FullReset() }
 
 // Build compiles the project binary.
@@ -113,9 +113,13 @@ func (Cobbler) Reset() error { return newOrch().CobblerReset() }
 // Start begins a new generation trail.
 func (Generator) Start() error { return newOrch().GeneratorStart() }
 
-// Run executes N cycles of measure + stitch within the current generation.
-// Pass 0 to use the configured cycle count from configuration.yaml.
-func (Generator) Run(cycles int) error { return newOrch().GeneratorRun(cycles) }
+// Run executes measure + stitch cycles using the generation.cycles value in configuration.yaml.
+// Use RunN to override the cycle count for a single invocation.
+func (Generator) Run() error { return newOrch().GeneratorRun(0) }
+
+// RunN executes exactly n cycles of measure + stitch within the current generation.
+// Pass n > 0 to override generation.cycles in configuration.yaml for this run only.
+func (Generator) RunN(n int) error { return newOrch().GeneratorRun(n) }
 
 // Resume recovers from an interrupted run and continues.
 func (Generator) Resume() error { return newOrch().GeneratorResume() }
