@@ -1889,3 +1889,1546 @@
       - id: AC3
         text: "File includes copyright header (matching pkg/sys/fileinfo.go), SPDX-License-Identifier: MIT, and doc comments with Implements: references to the prd002-sys requirement IDs found in the PRD."
   dependency: -1
+- index: 0
+  title: pkg/testutils -- DiffTest struct and RunDiffTests harness (rel00.0-uc004-testutils)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (read the pkg/testutils component description, the data structures section for the DiffTest struct definition, and design decisions DD2, DD4, and DD6)
+      - docs/specs/test-suites/test-rel-00.0.yaml (test suite for release 00.0 -- read the testutils section for expected test case structure and inputs)
+      - docs/specs/use-cases/ (list this directory and read the use case file for testutils)
+      - docs/specs/product-requirements/ (list this directory and read the PRD file whose name contains "testutils")
+      - go.mod (module path and Go version)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, NormalizeFn type alias, RunDiffTests function, binary execution and output comparison logic
+
+    requirements:
+      - id: R1
+        text: "Define and export a DiffTest struct with fields for: a descriptive test name (string), command-line arguments ([]string), standard input content (string), and environment variables ([]string). This struct represents a single differential test case per the ARCHITECTURE.yaml data structures definition."
+      - id: R2
+        text: "Implement and export a RunDiffTests function that accepts a *testing.T, the path to the Go binary under test, the path to the reference GNU binary, an optional slice of normalization functions, and a slice of DiffTest cases. For each test case, execute both binaries with identical arguments, stdin, and environment."
+      - id: R3
+        text: "Compare stdout, stderr, and exit code between the Go binary and the reference binary for each test case. On any divergence, fail the test using t.Errorf and report: the test case name, the input arguments, the expected output from the reference binary, and the actual output from the Go binary."
+      - id: R4
+        text: "Support normalization hooks -- caller-provided functions with signature func([]byte) []byte -- that transform stdout and stderr content before comparison. This enables callers to strip timestamps, normalize absolute paths, or handle other known acceptable differences."
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go, not testutils.go -- named after the primary exported type DiffTest per project file naming convention."
+      - id: D2
+        text: "Reference binaries are Homebrew GNU g-prefixed binaries (e.g., gwc, gcat, gls) per architecture design decision DD4. The caller provides the reference binary path; RunDiffTests does not resolve it."
+      - id: D3
+        text: "RunDiffTests prepends LC_ALL=C to the environment for both binaries per architecture design decision DD6, ensuring locale-independent output comparison."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest.go exists and compiles -- go build ./pkg/testutils/... succeeds with no errors"
+      - id: AC2
+        text: "DiffTest struct is exported with fields for Name, Args, Stdin, and Env"
+      - id: AC3
+        text: "RunDiffTests is exported and accepts *testing.T, Go binary path, reference binary path, normalization functions, and []DiffTest"
+      - id: AC4
+        text: "On stdout/stderr/exit-code divergence, t.Errorf is called with test name, input args, expected output, and actual output"
+      - id: AC5
+        text: "Normalization functions are applied to both stdout and stderr before comparison"
+      - id: AC6
+        text: "go vet ./pkg/testutils/... reports no issues"
+  dependency: -1
+- index: 0
+  title: pkg/testutils -- unit tests for RunDiffTests harness (prd001 R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (full PRD with requirements R1-R4)
+      - pkg/testutils/difftest.go (implementation under test -- DiffTest, RunDiffTests, buildEnv, setEnvVar, runBinary, NormalizeFunc)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component, design decisions DD2 and DD6)
+      - docs/specs/test-suites/test-rel-00.0.yaml (test case specifications for rel00.0-uc004-testutils)
+
+    files:
+      - path: pkg/testutils/difftest_test.go
+        action: create
+        note: Unit tests for RunDiffTests harness and supporting functions (buildEnv, setEnvVar, NormalizeFunc application)
+      - path: pkg/testutils/testdata/testbin/main.go
+        action: create
+        note: Configurable helper binary -- flags control stdout content, stderr content, and exit code for use as mock goBinary/refBinary in tests
+
+    requirements:
+      - id: R1
+        text: "Test that RunDiffTests reports no failure when both binaries produce identical stdout, stderr, and exit code (prd001 R2)"
+      - id: R2
+        text: "Test that RunDiffTests detects divergence in stdout, stderr, or exit code between the two binaries and reports it via t.Errorf (prd001 R2)"
+      - id: R3
+        text: "Test that buildEnv sets LC_ALL=C by default and merges DiffTest.Env overrides correctly, including replacement of existing variables (prd001 R3, ARCHITECTURE DD6)"
+      - id: R4
+        text: "Test that NormalizeFunc functions are applied to both binaries' stdout and stderr before comparison (prd001 R4)"
+
+    design_decisions:
+      - id: D1
+        text: "Create a single configurable Go program at pkg/testutils/testdata/testbin/main.go that accepts flags to control stdout content, stderr content, and exit code. Compile it once in TestMain and use the resulting binary as both goBinary and refBinary arguments to RunDiffTests with different flag inputs."
+      - id: D2
+        text: "All test cases run with LC_ALL=C per ARCHITECTURE.yaml design decision DD6"
+      - id: D3
+        text: "buildEnv and setEnvVar are unexported but accessible from difftest_test.go because the test file is in package testutils. Test them directly as unit tests."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest_test.go compiles and go vet reports no issues"
+      - id: AC2
+        text: "Tests verify RunDiffTests passes when both binaries produce identical stdout, stderr, and exit code"
+      - id: AC3
+        text: "Tests verify RunDiffTests detects divergence for each of: different stdout, different stderr, and different exit code"
+      - id: AC4
+        text: "Tests verify buildEnv includes LC_ALL=C by default and correctly applies DiffTest.Env overrides"
+      - id: AC5
+        text: "Tests verify NormalizeFunc transforms are applied to output before comparison"
+      - id: AC6
+        text: "go test ./pkg/testutils/... passes with all tests green"
+  dependency: -1
+- index: 0
+  title: 'pkg/sys: implement file metadata, signals, and terminal size (rel00.0-uc003-sys)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/sys/ component description, technology choices for golang.org/x/sys, design decisions DD4 and DD6)
+      - docs/specs/product-requirements/ (list this directory and read the PRD for pkg/sys -- filename pattern prd*-sys*.yaml)
+      - docs/specs/use-cases/rel00.0-uc003-sys.yaml (use case for this implementation)
+      - go.mod (module path and golang.org/x/sys dependency)
+      - pkg/testutils/difftest.go (existing package for copyright header and code style reference)
+
+    files:
+      - path: pkg/sys/doc.go
+        action: create
+        note: Package-level documentation for pkg/sys
+      - path: pkg/sys/stat.go
+        action: create
+        note: Platform-independent file metadata types and stat/lstat wrapper functions
+      - path: pkg/sys/stat_darwin.go
+        action: create
+        note: Darwin-specific Stat_t field access (Mtimespec, Blocks)
+      - path: pkg/sys/stat_linux.go
+        action: create
+        note: Linux-specific Stat_t field access (Mtim, Blocks)
+      - path: pkg/sys/signal.go
+        action: create
+        note: Signal handling utilities for SIGPIPE, SIGHUP, SIGWINCH
+      - path: pkg/sys/terminal.go
+        action: create
+        note: Terminal size query via TIOCGWINSZ ioctl
+
+    requirements:
+      - id: R1
+        text: |
+          Implement file metadata abstraction that wraps os.Stat and os.Lstat,
+          providing platform-independent access to modification time (time.Time)
+          and disk block count (int64). Use build-tagged source files to abstract
+          the st_mtimespec (Darwin) vs st_mtim (Linux) and st_blocks divergence
+          in syscall.Stat_t. Anchor to the file metadata requirements in the
+          pkg/sys PRD found via required_reading.
+      - id: R2
+        text: |
+          Implement signal handling utilities for SIGPIPE, SIGHUP, and SIGWINCH.
+          Provide functions to install a handler channel for a given set of
+          signals and to reset signal disposition to the default. Anchor to
+          the signal handling requirements in the pkg/sys PRD.
+      - id: R3
+        text: |
+          Implement terminal size query using the TIOCGWINSZ ioctl via
+          golang.org/x/sys/unix. Return terminal dimensions as rows and
+          columns. Anchor to the terminal query requirements in the pkg/sys PRD.
+      - id: R4
+        text: |
+          Structure the package with Go build constraints (//go:build darwin,
+          //go:build linux) for all platform-specific files. The
+          platform-independent API must be importable by cmd/ packages without
+          those packages importing golang.org/x/sys directly.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use golang.org/x/sys/unix for all platform-specific syscall access
+          (ioctl constants, Stat_t field access, signal constants). This is the
+          only permitted external dependency per ARCHITECTURE.yaml technology
+          choices. No cmd/ package may import golang.org/x/sys directly --
+          they import pkg/sys/ as the abstraction layer.
+      - id: D2
+        text: |
+          Use Go build constraints (//go:build darwin and //go:build linux) to
+          separate platform-specific code into _darwin.go and _linux.go suffixed
+          files, per the ARCHITECTURE.yaml pkg/sys/ component description.
+      - id: D3
+        text: |
+          Match the copyright header, package doc comment style, and code
+          conventions visible in pkg/testutils/difftest.go. Use the same
+          "Copyright (c) 2026 Petar Djukic. All rights reserved." and
+          "SPDX-License-Identifier: MIT" header format.
+
+    acceptance_criteria:
+      - id: AC1
+        text: pkg/sys/ compiles without errors on both darwin and linux (go build ./pkg/sys/...)
+      - id: AC2
+        text: File metadata wrapper returns modification time as time.Time and block count as int64 from os.FileInfo and underlying Stat_t
+      - id: AC3
+        text: Signal handler functions accept os.Signal values (SIGPIPE, SIGHUP, SIGWINCH) and return a channel or cleanup mechanism
+      - id: AC4
+        text: Terminal size function returns rows and columns as integers from the controlling terminal
+      - id: AC5
+        text: All platform-specific code is in files with _darwin.go or _linux.go suffixes with matching //go:build constraints
+      - id: AC6
+        text: All .go files include the project copyright header -- "Copyright (c) 2026 Petar Djukic. All rights reserved." and "SPDX-License-Identifier: MIT"
+  dependency: -1
+- index: 0
+  title: Implement pkg/format/ human-readable size formatting and column alignment (rel00.0-uc002-format)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format/ component -- responsibility, capabilities, and design decisions)
+      - docs/specs/product-requirements/ (find the format package PRD -- search for a file matching prd*format*.yaml; read all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (format use case)
+      - docs/specs/test-suites/test-rel-00.0.yaml (test suite for release 00.0 -- format section)
+      - pkg/sys/doc.go (reference pattern for doc.go copyright header and package comment style)
+      - pkg/sys/stat.go (reference pattern for exported types, GoDoc comments, and file structure)
+      - pkg/testutils/difftest.go (reference pattern for naming the primary source file after the primary exported type, not after the package name)
+
+    files:
+      - path: pkg/format/doc.go
+        action: create
+        note: Package documentation with copyright header and PRD requirement references
+      - path: pkg/format/size.go
+        action: create
+        note: Human-readable size formatting -- bytes to K/M/G/T/P/E with IEC and SI unit systems
+      - path: pkg/format/columns.go
+        action: create
+        note: Column alignment for tabular output -- right-aligned numeric columns, left-aligned text columns
+
+    requirements:
+      - id: R1
+        text: |
+          Implement human-readable size formatting that converts byte counts to
+          human-readable strings matching GNU coreutils --human-readable output format.
+          Support both 1024-based (IEC) and 1000-based (SI) unit systems. The exact
+          function signatures, unit suffixes, rounding rules, and edge-case behavior
+          (zero bytes, negative values, exact multiples) must follow the format PRD.
+          Read the PRD before implementing.
+      - id: R2
+        text: |
+          Implement column alignment for tabular output. Support right-aligned
+          numeric columns and left-aligned text columns for multi-row data. Accept
+          a representation of rows and columns and produce formatted output with
+          consistent column widths. This capability is used by wc (right-aligned
+          counts) and du (right-aligned sizes with left-aligned paths). Follow the
+          format PRD for the exact API.
+      - id: R3
+        text: |
+          Create doc.go with package documentation following the pattern in
+          pkg/sys/doc.go. Include the copyright header, SPDX license identifier,
+          a doc comment describing the package purpose and listing implemented
+          PRD requirement IDs, and the package declaration.
+      - id: R4
+        text: |
+          All exported functions and types must have GoDoc comments. Use only the
+          Go standard library -- no external dependencies beyond what is already
+          in go.mod. Follow the project file naming convention: name each source
+          file after its primary exported functionality (e.g., size.go for size
+          formatting, columns.go for column alignment), not after the package name.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the copyright header pattern from pkg/sys/doc.go verbatim:
+          line 1 is "// Copyright (c) 2026 Petar Djukic. All rights reserved."
+          and line 2 is "// SPDX-License-Identifier: MIT". A blank line separates
+          the copyright from the package doc comment.
+      - id: D2
+        text: |
+          pkg/format/ uses only the Go standard library (fmt, strings, math,
+          strconv as needed). It does NOT depend on golang.org/x/sys or any other
+          external module. This is per ARCHITECTURE.yaml technology choices which
+          list golang.org/x/sys as the only external dependency, scoped to pkg/sys/.
+      - id: D3
+        text: |
+          ANSI color output is NOT in scope for this task. Only implement
+          human-readable size formatting (R1) and column alignment (R2). Color
+          support is an ARCHITECTURE.yaml capability for pkg/format/ but its
+          primary consumer (ls) is deferred to rel99.0. It will be added in a
+          separate task when needed.
+
+    acceptance_criteria:
+      - id: AC1
+        text: pkg/format/doc.go exists with copyright header, SPDX identifier, package doc comment referencing PRD requirement IDs, and package declaration
+      - id: AC2
+        text: pkg/format/size.go exports at least one function that formats byte counts as human-readable strings with unit suffixes, supporting both IEC (1024-based) and SI (1000-based) modes
+      - id: AC3
+        text: pkg/format/columns.go exports at least one function that produces column-aligned tabular output with right-aligned numeric fields and consistent column widths
+      - id: AC4
+        text: "go build ./pkg/format/ succeeds with no compilation errors"
+      - id: AC5
+        text: "go vet ./pkg/format/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Test pkg/sys terminal, stat, and signal operations (prd002-sys R1-R3)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd002-sys.yaml (sys PRD with full requirements R1-R3)
+      - pkg/sys/terminal.go (TerminalWidth and IsTerminal implementations)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler and OnTerminalResize implementations)
+      - pkg/sys/stat.go (Stat, Lstat, FileInfo struct, newFileInfo)
+      - pkg/sys/stat_linux.go (Linux fillFromStat with Mtim)
+      - pkg/sys/stat_darwin.go (Darwin fillFromStat with Mtimespec)
+      - pkg/testutils/difftest_test.go (project test patterns and conventions)
+
+    files:
+      - path: pkg/sys/terminal_test.go
+        action: create
+        note: Tests for TerminalWidth and IsTerminal
+      - path: pkg/sys/stat_test.go
+        action: create
+        note: Tests for Stat, Lstat, and FileInfo field population
+      - path: pkg/sys/signal_test.go
+        action: create
+        note: Tests for InstallSIGPIPEHandler and OnTerminalResize
+
+    requirements:
+      - id: R1
+        text: "Test terminal operations: TerminalWidth returns error for non-terminal fd (prd002-sys R1.1, R1.2) and IsTerminal returns false for pipe fd and true for terminal fd (prd002-sys R1.3)"
+      - id: R2
+        text: "Test SIGPIPE handler: InstallSIGPIPEHandler installs without panic and is safe to call multiple times (prd002-sys R1.5, R1.6)"
+      - id: R3
+        text: "Test file metadata: Stat and Lstat return correct FileInfo fields for regular files and symlinks, including Mode, Size, Nlink, Uid, Gid, Blocks, Blksize, and ModTime (prd002-sys R2.1, R2.2, R2.3)"
+      - id: R4
+        text: "Test terminal resize: OnTerminalResize registers a callback without error and the callback list is maintained across multiple registrations (prd002-sys R3.1, R3.2)"
+
+    design_decisions:
+      - id: D1
+        text: "Test files mirror source file names per project convention: terminal_test.go, stat_test.go, signal_test.go"
+      - id: D2
+        text: "Platform-specific fillFromStat is tested indirectly through Stat and Lstat; build tags select the correct implementation per prd002-sys R2.3"
+      - id: D3
+        text: "Tests use package sys (not sys_test) for white-box access, following the pattern in pkg/testutils/difftest_test.go which uses package testutils"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./pkg/sys/... passes on the current platform"
+      - id: AC2
+        text: "Terminal tests verify TerminalWidth returns an error when fd is a pipe and IsTerminal returns false for a pipe file descriptor"
+      - id: AC3
+        text: "Stat tests verify all FileInfo fields (Mode, Size, Nlink, Uid, Gid, Dev, Ino, Blocks, Blksize, ModTime, Info) are populated correctly for a temporary file with known properties"
+      - id: AC4
+        text: "Lstat test creates a symlink and verifies FileInfo reflects the symlink itself, not the target"
+      - id: AC5
+        text: "Stat test with a nonexistent path returns a non-nil error"
+      - id: AC6
+        text: "Signal tests verify InstallSIGPIPEHandler and OnTerminalResize can be called without panic"
+  dependency: -1
+- index: 0
+  title: cmd/wc implementation -- rel01.0-uc001-wc flag parsing, counting, and output formatting
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel01.0-uc001-wc.yaml (use case -- read first to find the PRD reference and execution flow)
+      - docs/specs/product-requirements/ (locate and read the wc PRD referenced by the use case above, matching prd*-wc.yaml)
+      - docs/specs/test-suites/test-rel-01.0.yaml (differential test cases that the implementation must satisfy)
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, design decisions DD2 and DD6)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests pattern -- understand how differential tests invoke the binary)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler for SIGPIPE handling)
+      - pkg/sys/terminal.go (IsTerminal if output detection is needed)
+
+    files:
+      - path: cmd/wc/main.go
+        action: create
+        note: "wc utility implementation -- flag parsing, counting logic, file handling, output formatting"
+
+    requirements:
+      - id: R1
+        text: "Implement all flags and default behavior specified in the wc PRD -- at minimum -l (lines), -w (words), -c (bytes), -m (chars), and the default mode that prints lines, words, and bytes when no flags are given"
+      - id: R2
+        text: "Implement counting logic per the wc PRD -- line counting (newline-delimited), word counting (whitespace-delimited per C isspace), byte counting (raw bytes), and character counting (rune-based for multibyte input)"
+      - id: R3
+        text: "Implement file argument handling per the wc PRD -- read stdin when no file arguments are given, process multiple files sequentially, print a totals line when more than one file is provided, and treat the argument '-' as stdin"
+      - id: R4
+        text: "Implement output formatting per the wc PRD -- right-aligned numeric columns with field widths matching GNU wc behavior, filename printed after counts, exit code 0 on success, exit code 1 when any file cannot be opened or read"
+
+    design_decisions:
+      - id: D1
+        text: "Create cmd/wc/ package with main.go per ARCHITECTURE.yaml cmd/ component structure -- one package per utility compiling to a standalone binary"
+      - id: D2
+        text: "Call pkg/sys.InstallSIGPIPEHandler() at the start of main() so the process exits silently on broken pipe, matching GNU behavior (prd002-sys R1.5)"
+      - id: D3
+        text: "Target LC_ALL=C behavior only per ARCHITECTURE design decision DD6 -- use byte-oriented whitespace detection, no locale-aware character classification"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/wc/main.go exists and 'go build ./cmd/wc/' compiles without errors"
+      - id: AC2
+        text: "Running the binary with each of -l, -w, -c, -m individually produces output for only the requested count"
+      - id: AC3
+        text: "Running the binary with no flags produces line, word, and byte counts in that column order"
+      - id: AC4
+        text: "Running the binary with no file arguments reads from stdin until EOF and prints counts"
+      - id: AC5
+        text: "Running the binary with two or more file arguments prints per-file lines followed by a totals line labeled 'total'"
+      - id: AC6
+        text: "go vet ./cmd/wc/ passes with no diagnostics"
+  dependency: -1
+- index: 0
+  title: cmd/wc differential tests (prd005-wc R1, R2, R3, R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - cmd/wc/main.go (implementation under test -- covers prd005-wc R1 through R6)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness)
+      - pkg/testutils/difftest_test.go (reference pattern for building test binaries in TestMain and structuring differential tests)
+      - docs/specs/product-requirements/prd005-wc.yaml (requirements to verify)
+      - docs/specs/test-suites/test-rel-01.0.yaml (test case inventory for this release)
+
+    files:
+      - path: cmd/wc/wc_test.go
+        action: create
+        note: Differential tests comparing Go wc against GNU gwc reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Create a TestMain function that builds the Go wc binary from the current
+          package (go build -o <tmpdir>/wc .) and locates the GNU reference binary
+          gwc (Homebrew-installed GNU coreutils). Skip all tests if gwc is not found
+          on PATH. Clean up the built binary after tests complete.
+      - id: R2
+        text: |
+          Create differential test cases for default behavior and stdin processing
+          (prd005-wc R1). Test cases must cover: reading from stdin with no flags
+          (default lines + words + bytes), reading from one named file, reading from
+          multiple named files with total line, and "-" as explicit stdin argument.
+          Use pkg/testutils.RunDiffTests with the Go binary and gwc reference binary.
+      - id: R3
+        text: |
+          Create differential test cases for flag behavior (prd005-wc R2, R5). Test
+          cases must cover: individual flags -l, -w, -c, -m, -L; combined short
+          flags -lwc; -m precedence over -c when both given (R2.3); long flag forms
+          --lines, --words, --bytes, --chars, --max-line-length; and tab expansion
+          for -L (R2.5). All tests run under LC_ALL=C (R5.2).
+      - id: R4
+        text: |
+          Create differential test cases for output formatting and edge cases
+          (prd005-wc R3, R4, R6). Test cases must cover: --total=always,
+          --total=never, --total=only modes (R3.3); empty file input; file with no
+          trailing newline; nonexistent file producing error on stderr with exit
+          code 1 (R6.1); and column width alignment matching GNU output (R2.6).
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the TestMain binary-build pattern from pkg/testutils/difftest_test.go:
+          build the Go binary once in TestMain, store the path in a package-level
+          variable, and clean up with os.RemoveAll after m.Run().
+      - id: D2
+        text: |
+          Locate the GNU reference binary using exec.LookPath("gwc"). If gwc is not
+          found, print a skip message and exit 0 from TestMain so that tests are
+          skipped gracefully in environments without Homebrew GNU coreutils.
+      - id: D3
+        text: |
+          All DiffTest entries must set LC_ALL=C in their Env field (or rely on
+          the default LC_ALL=C from pkg/testutils.buildEnv) per architecture
+          design decision DD6.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/wc/wc_test.go compiles with no errors (go vet ./cmd/wc/...).
+      - id: AC2
+        text: |
+          When gwc is available on PATH, go test ./cmd/wc/ runs all differential
+          tests and they pass -- stdout, stderr, and exit code match between the
+          Go binary and gwc for every test case.
+      - id: AC3
+        text: |
+          When gwc is not available on PATH, go test ./cmd/wc/ skips gracefully
+          with no failures.
+      - id: AC4
+        text: |
+          At least 15 DiffTest entries are defined, covering the requirement areas
+          in R2, R3, and R4 (default behavior, flag combinations, output formatting,
+          edge cases).
+  dependency: -1
+- index: 0
+  title: 'Implement cmd/cat: file concatenation and output transformation (cat PRD)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - "docs/specs/product-requirements/ (list this directory; find and read the PRD for cat, named prdNNN-cat.yaml)"
+      - docs/specs/use-cases/rel01.1-uc001-cat.yaml (cat use case)
+      - docs/specs/test-suites/test-rel-01.1.yaml (cat test suite)
+      - docs/ARCHITECTURE.yaml (cmd/ component, design decisions DD1-DD7)
+      - cmd/wc/main.go (reference implementation pattern for cmd/ utilities)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/cat/main.go
+        action: create
+        note: "cat utility: flag parsing, file concatenation, output transformations"
+
+    requirements:
+      - id: R1
+        text: "Implement file concatenation per the cat PRD: read named files in argument order, read stdin when no files are given, and treat '-' as explicit stdin. Write all content to stdout."
+      - id: R2
+        text: "Parse all flags defined in the cat PRD using manual GNU-style argument parsing (no flag package). Support combined short flags (e.g. -vET), long flags (e.g. --show-all, --number, --number-nonblank, --show-ends, --show-tabs, --show-nonprinting, --squeeze-blank), and the '--' end-of-options delimiter. Follow the parseArgs pattern established in cmd/wc/main.go."
+      - id: R3
+        text: "Implement all output transformations defined in the cat PRD: line numbering (-n/--number, -b/--number-nonblank), show line ends (-E/--show-ends appends '$'), show tabs (-T/--show-tabs displays as ^I), show non-printing characters (-v/--show-nonprinting using caret and M- notation), squeeze consecutive blank lines (-s/--squeeze-blank), and composite flags (-A/--show-all equivalent to -vET, -e equivalent to -vE, -t equivalent to -vT). All under LC_ALL=C semantics."
+      - id: R4
+        text: "Handle exit codes and errors per the cat PRD: exit 0 on success, exit 1 if any file cannot be opened or read. Report errors to stderr in the format 'cat: <path>: <error message>' and continue processing remaining files. Call sys.InstallSIGPIPEHandler() at program start."
+
+    design_decisions:
+      - id: D1
+        text: "Follow the cmd/wc implementation pattern: define a config struct for parsed flags, implement parseArgs() with manual GNU-style argument parsing, use bufio.NewWriter(os.Stdout) for buffered output, and call sys.InstallSIGPIPEHandler() at program start."
+      - id: D2
+        text: "Process output byte-by-byte to support position-dependent transformations (line numbering at line start, end-of-line markers, non-printing character expansion). Track start-of-line state and consecutive blank line count across buffer reads."
+      - id: D3
+        text: "Target LC_ALL=C semantics per ARCHITECTURE design decision DD6. Under LC_ALL=C, one byte equals one character. Non-printing character display uses caret notation (^X for 0x00-0x1F, ^? for 0x7F) and M- notation (M-^X for 0x80-0x9F, M-x for 0xA0-0xFE, M-^? for 0xFF), matching GNU cat."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/cat/main.go compiles successfully with 'go build ./cmd/cat/' with no errors."
+      - id: AC2
+        text: "All flags defined in the cat PRD are parsed correctly, including combined short flags (-vET), long flags (--show-all), and the '--' end-of-options delimiter."
+      - id: AC3
+        text: "Output transformations produce correct output: -n numbers all lines starting at 1, -b numbers only non-blank lines, -E appends '$' at each line end, -T displays tabs as ^I, -v displays non-printing bytes in ^X/M- notation, -s collapses consecutive blank lines to one, and composite flags -A/-e/-t expand to their component flags."
+      - id: AC4
+        text: "Error handling matches GNU cat: nonexistent files produce 'cat: <file>: No such file or directory' on stderr, exit code is 1 when any file fails, and remaining files continue processing after an error."
+  dependency: -1
+- index: 0
+  title: Implement cmd/cat differential tests (prd006-cat R1, R2, R4, R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd006-cat.yaml (PRD with all requirements and acceptance criteria for cat)
+      - docs/specs/test-suites/test-rel-01.1.yaml (test suite specification for release 01.1)
+      - cmd/cat/main.go (implementation under test -- understand all flags, transformations, and error paths)
+      - cmd/wc/wc_test.go (reference pattern for differential test file structure, TestMain setup, and test grouping)
+      - pkg/testutils/difftest.go (RunDiffTests API, DiffTest struct, and NormalizeFunc type)
+
+    files:
+      - path: cmd/cat/cat_test.go
+        action: create
+        note: Differential tests for cmd/cat against GNU gcat reference binary
+
+    requirements:
+      - id: R1
+        text: "Test default concatenation and stdin processing: reading from stdin when no files given, reading named files, concatenating multiple files in order, '-' as explicit stdin, and empty stdin per prd006-cat R1"
+      - id: R2
+        text: "Test all output transformation flags and their interactions: -n (number all lines), -b (number non-blank, overrides -n), -s (squeeze consecutive blank lines to one), -v (show non-printing in caret/M- notation), -E (show $ at end of lines), -T (show ^I for tabs), -A (equivalent to -vET), -e (equivalent to -vE), -t (equivalent to -vT), -u (accepted, no effect), combined short flags (e.g. -vET), long flags (--number, --number-nonblank, --show-ends, --show-tabs, --show-nonprinting, --squeeze-blank, --show-all), and the transformation application order (squeeze, then non-printing, then end marker, then line number) per prd006-cat R2, R4"
+      - id: R3
+        text: "Test cross-file state continuity: line numbering continues across multiple concatenated files and blank-line squeeze count carries across file boundaries per prd006-cat R3"
+      - id: R4
+        text: "Test error handling and exit codes: nonexistent file produces a stderr error message and exit code 1 while continuing to process remaining files, and '--' terminates flag parsing so subsequent arguments starting with '-' are treated as filenames per prd006-cat R5"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/testutils.RunDiffTests as the differential testing harness, passing goBinaryPath and refBinaryPath per ARCHITECTURE design decision 2"
+      - id: D2
+        text: "Reference binary is gcat (Homebrew GNU coreutils) per ARCHITECTURE design decision 4. Locate via exec.LookPath(\"gcat\") in TestMain. If gcat is not found, print a message and exit 0 to skip gracefully"
+      - id: D3
+        text: "All tests run with LC_ALL=C (the default set by testutils.RunDiffTests buildEnv) per ARCHITECTURE design decision 6"
+      - id: D4
+        text: "Follow the cmd/wc/wc_test.go pattern exactly: TestMain builds the Go binary via exec.Command(\"go\", \"build\", \"-o\", goBinaryPath, \".\") into a temp directory and locates the reference binary; test functions are grouped by requirement area; each function creates a []testutils.DiffTest slice and calls testutils.RunDiffTests; cleanup removes the temp directory"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/cat/cat_test.go compiles without errors: go vet ./cmd/cat/ succeeds"
+      - id: AC2
+        text: "TestMain builds the Go cat binary and locates gcat via exec.LookPath; skips gracefully if gcat is not found"
+      - id: AC3
+        text: "Test functions cover all four requirement areas: default/stdin (R1), flags and transformations (R2), cross-file state (R3), and error handling/exit codes (R4)"
+      - id: AC4
+        text: "Every DiffTest case uses testutils.RunDiffTests with goBinaryPath and refBinaryPath -- no hardcoded expected output values anywhere in the test file"
+      - id: AC5
+        text: "Test cases include at minimum: empty stdin, single file, multiple files, each short flag individually, combined short flags, long flags, -b overriding -n, squeeze blank with consecutive blank lines, non-printing byte display, cross-file line numbering, nonexistent file mixed with real files, and '--' flag terminator"
+  dependency: -1
+- index: 0
+  title: Test prd003-format R1 (columns/padding) and R3 (human-readable sizes)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - pkg/format/columns.go (Columns, PadRight, PadLeft implementations to test)
+      - pkg/format/size.go (HumanSize implementation to test)
+      - pkg/format/doc.go (package documentation referencing prd003-format R1, R3)
+      - docs/specs/product-requirements/prd003-format.yaml (PRD with R1 and R3 requirements)
+
+    files:
+      - path: pkg/format/columns_test.go
+        action: create
+        note: Tests for Columns, PadRight, PadLeft
+      - path: pkg/format/size_test.go
+        action: create
+        note: Tests for HumanSize
+
+    requirements:
+      - id: R1
+        text: Test Columns function distributes entries into a column-major grid fitting within the given terminal width (prd003-format R1.1, R1.4), including edge cases for empty input (returns nil), single entry, all entries fitting in one row, and entries wider than terminal width forcing single-column layout.
+      - id: R2
+        text: Test PadRight and PadLeft pad strings to the specified display width using rune count not byte count (prd003-format R1.2, R1.3), verifying correct behavior with ASCII strings, multi-byte UTF-8 strings, and strings already at or exceeding the target width (returned unchanged).
+      - id: R3
+        text: Test HumanSize converts byte counts to human-readable strings in both binary (1024-based with K/M/G/T/P/E suffixes) and SI (1000-based with kB/MB/GB/TB suffixes) unit systems, with one decimal place for values below 10 at the chosen unit and no decimal for values at 10 or above (prd003-format R3.1, R3.2, R3.3).
+      - id: R4
+        text: Test HumanSize returns "0" for zero bytes and formats values below the first unit threshold as plain integers without suffix (prd003-format R3.4).
+
+    design_decisions:
+      - id: D1
+        text: Use table-driven tests with named sub-tests via t.Run, matching the project test style in pkg/sys/stat_test.go and pkg/testutils/difftest_test.go.
+      - id: D2
+        text: The columnGap constant is 2 spaces between adjacent columns (columns.go line 12). Tests must account for this gap when computing expected column layouts.
+      - id: D3
+        text: "Copyright header on every file: '// Copyright (c) 2026 Petar Djukic. All rights reserved.' followed by '// SPDX-License-Identifier: MIT', matching all existing source files in the project."
+
+    acceptance_criteria:
+      - id: AC1
+        text: pkg/format/columns_test.go and pkg/format/size_test.go compile with no errors.
+      - id: AC2
+        text: go test ./pkg/format/... passes with all tests green.
+      - id: AC3
+        text: Tests cover all four exported functions -- Columns, PadRight, PadLeft, and HumanSize -- with both normal inputs and edge cases.
+      - id: AC4
+        text: Columns tests verify column-major ordering (entries fill down the first column then the second) by checking the row contents returned for a known input set.
+  dependency: -1
+- index: 0
+  title: Implement pkg/format ANSI color output per prd003-format R2
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd003-format.yaml (format PRD -- implement all R2 sub-requirements for ANSI color output)
+      - pkg/format/doc.go (existing package docs -- currently says 'Implements prd003-format R1, R3' and must be updated to include R2)
+      - pkg/format/columns.go (R1 implementation -- reference for coding style, exported function naming, and godoc comment conventions)
+      - pkg/format/size.go (R3 implementation -- reference for HumanSizeOpts configuration struct pattern and formatting function signatures)
+      - docs/ARCHITECTURE.yaml (pkg/format/ component description: "ANSI color codes for file types and permissions")
+
+    files:
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI color output functions for file types and permissions per prd003-format R2
+      - path: pkg/format/doc.go
+        action: modify
+        note: "Update implements line from 'Implements prd003-format R1, R3' to 'Implements prd003-format R1, R2, R3'"
+
+    requirements:
+      - id: R1
+        text: "Implement all prd003-format R2 sub-requirements as specified in the PRD -- read prd003-format.yaml and implement every R2.x requirement for ANSI color output"
+      - id: R2
+        text: "Follow the exported function and configuration struct pattern from size.go (HumanSizeOpts) and columns.go -- if the PRD specifies configurable color behavior, use an options struct matching this convention"
+      - id: R3
+        text: "Use raw ANSI escape sequences only -- do not import external color libraries; only Go standard library imports are permitted per ARCHITECTURE.yaml technology choices"
+      - id: R4
+        text: "Update the package doc comment in pkg/format/doc.go to include R2 in the implements line (change 'Implements prd003-format R1, R3' to 'Implements prd003-format R1, R2, R3')"
+
+    design_decisions:
+      - id: D1
+        text: "One feature per file following the existing pattern -- columns.go for R1, size.go for R3, color.go for R2"
+      - id: D2
+        text: "Godoc comments on exported functions must reference the prd003-format R2.x requirement they implement, matching the style in columns.go and size.go"
+      - id: D3
+        text: "Do NOT write tests in this task -- tests belong in a separate color_test.go task"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/format/color.go compiles with no errors via 'go build ./pkg/format/'"
+      - id: AC2
+        text: "Every R2.x sub-requirement from prd003-format.yaml is implemented in color.go"
+      - id: AC3
+        text: "pkg/format/doc.go implements line updated to 'Implements prd003-format R1, R2, R3'"
+      - id: AC4
+        text: "No external dependencies added -- only Go standard library imports in color.go"
+      - id: AC5
+        text: "Production code in color.go is between 100 and 250 lines"
+  dependency: -1
+- index: 0
+  title: Implement cmd/sponge main.go per sponge PRD
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel01.2-uc001-sponge.yaml (sponge use case -- contains reference to the sponge PRD file)
+      - docs/specs/test-suites/test-rel-01.2.yaml (sponge test suite with expected behaviors and edge cases)
+      - cmd/cat/main.go (reference implementation pattern for argument parsing, SIGPIPE handling, and error formatting)
+      - cmd/wc/main.go (reference implementation for parseArgs pattern with long flags and -- terminator)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler called by all cmd/ utilities)
+      - go.mod (module path github.com/petar-djukic/go-unix-utils for import statements)
+
+    files:
+      - path: cmd/sponge/main.go
+        action: create
+        note: "sponge utility -- reads all stdin then writes to output file"
+
+    requirements:
+      - id: R1
+        text: "Implement core sponge behavior per the sponge PRD: read all of stdin into memory, then write the buffered content to the output file specified as the positional command-line argument. If no file argument is given, write buffered stdin to stdout. The two-phase approach (read all, then write) enables safe in-place file modification in pipelines like 'grep pattern file | sponge file'."
+      - id: R2
+        text: "Implement the -a (append) flag per the sponge PRD: when -a is specified, open the output file in append mode instead of truncating. Without -a, create or truncate the output file before writing."
+      - id: R3
+        text: "Implement error handling and exit codes per the sponge PRD: exit 0 on success, exit 1 on any error (stdin read failure, file open/create failure, write failure). Write error messages to stderr in the format 'sponge: <description>'. Install SIGPIPE handler via sys.InstallSIGPIPEHandler() at program start."
+      - id: R4
+        text: "Parse command-line arguments following the sponge PRD flag specification. Support -a, the -- flag terminator, and any additional flags specified in the PRD. Use manual argument parsing (not the flag package) matching the pattern in cmd/cat/main.go and cmd/wc/main.go."
+
+    design_decisions:
+      - id: D1
+        text: "Follow the cmd/ package structure established by cmd/cat/main.go: package main, const progName, main() calls sys.InstallSIGPIPEHandler() then parseArgs() then core logic. Import github.com/petar-djukic/go-unix-utils/pkg/sys for signal handling."
+      - id: D2
+        text: "Use manual argument parsing (not the flag standard library package) matching the pattern in cmd/cat/main.go. Support '--' as flag terminator and combined short flags. Handle '-' as a positional argument if the PRD requires it."
+      - id: D3
+        text: "The sponge PRD (located in docs/specs/product-requirements/, referenced by the use case) is the authoritative specification. All flag names, error message formats, exit code semantics, and behavioral edge cases must match the PRD exactly. Implement all requirements found in the PRD."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/sponge/main.go exists and compiles successfully with 'go build ./cmd/sponge/' with no errors."
+      - id: AC2
+        text: "The program reads all of stdin completely before opening or writing to the output file."
+      - id: AC3
+        text: "With -a flag, content is appended to the output file. Without -a, the output file is created or truncated before writing."
+      - id: AC4
+        text: "When no file argument is provided, buffered stdin is written to stdout."
+      - id: AC5
+        text: "Error messages are written to stderr prefixed with 'sponge:' and the program exits with code 1 on any error."
+  dependency: -1
+- index: 0
+  title: Implement cmd/du main.go -- directory traversal and disk usage reporting (rel01.3-uc001-du)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel01.3-uc001-du.yaml (use case for du, references the PRD by name)
+      - docs/specs/test-suites/test-rel-01.3.yaml (test suite for du with concrete test cases)
+      - docs/specs/product-requirements/ (find the du PRD referenced from the use case above -- likely prd008-du.yaml or similar)
+      - docs/ARCHITECTURE.yaml (cmd/ component, pkg/sys and pkg/format responsibilities, DD6 locale constraint)
+      - cmd/wc/main.go (pattern for manual flag parsing with combined short flags, long flags, output formatting with bufio.Writer)
+      - cmd/cat/main.go (pattern for manual flag parsing, processFile structure, error message format)
+      - pkg/sys/stat.go (FileInfo struct -- Blocks field for disk usage, Lstat for symlink-safe metadata)
+      - pkg/format/size.go (HumanSize function and HumanSizeOpts for -h and --si output)
+
+    files:
+      - path: cmd/du/main.go
+        action: create
+        note: "du implementation: flag parsing, recursive directory traversal, size accumulation, formatted output"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement manual command-line flag parsing for du following the same
+          pattern used in cmd/wc/main.go and cmd/cat/main.go: loop over
+          os.Args[1:], handle combined short flags (e.g., -sh), long flags with
+          -- prefix and = or space-separated values (e.g., --max-depth=3), and
+          the -- flag terminator. Support the flags specified in the du PRD. At
+          minimum support: -a (all entries not just directories), -s (summarize
+          -- display only total for each argument), -c (produce grand total),
+          -h (human-readable 1024-based), -k (1024-byte blocks), -d N /
+          --max-depth=N (limit output depth), --si (1000-based human-readable),
+          -L (dereference symlinks), -P (do not dereference, default), -0
+          (null-terminated output), -b/--apparent-size (use apparent size not
+          disk usage), and --block-size=SIZE.
+      - id: R2
+        text: |
+          Implement recursive directory traversal that accumulates disk usage
+          using pkg/sys.Lstat (or pkg/sys.Stat when -L is active) for file
+          metadata. Calculate disk usage from FileInfo.Blocks * 512 (matching
+          GNU du block-count semantics). Track visited inodes by dev+ino pair
+          to avoid double-counting hard-linked files. Default output unit is
+          1024-byte blocks. When -b/--apparent-size is active, use
+          FileInfo.Size instead of Blocks.
+      - id: R3
+        text: |
+          Implement output formatting matching GNU du: each line is the size
+          value followed by a tab character followed by the path, terminated by
+          newline (or NUL with -0). Use pkg/format.HumanSize with Binary=true
+          for -h and Binary=false for --si. When -c is specified, print a grand
+          total line with label "total". Output goes through bufio.Writer
+          flushed before exit. When -s is active, print only the total for each
+          top-level argument (suppress per-file output within directories).
+          When --max-depth is active, suppress output for entries deeper than
+          the specified level.
+      - id: R4
+        text: |
+          Implement error handling matching GNU du: on permission denied,
+          nonexistent path, or other I/O errors, print a diagnostic to stderr
+          with "du: " prefix followed by path and system error message, then
+          continue processing remaining arguments. Exit 0 on full success,
+          exit 1 if any error occurred during traversal. Call
+          sys.InstallSIGPIPEHandler() before any output. Flush bufio.Writer
+          before os.Exit; exit 1 on flush failure.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use manual flag parsing (loop over os.Args[1:]) matching the pattern
+          in cmd/wc and cmd/cat. Do not use the flag package. This matches the
+          project convention for GNU-compatible flag handling with combined
+          short flags.
+      - id: D2
+        text: |
+          Use pkg/sys.Lstat (or pkg/sys.Stat with -L) for all file metadata
+          rather than os.Lstat or raw syscall. pkg/sys provides the Blocks
+          field from syscall.Stat_t and handles Darwin/Linux divergence in
+          Stat_t field names (prd002-sys R2.3).
+      - id: D3
+        text: |
+          Track visited files by dev+ino pair to avoid double-counting hard
+          links. Use map[uint64]map[uint64]bool keyed by Dev then Ino. This
+          matches GNU du behavior where each file's blocks are counted once
+          regardless of hard link count.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/du/main.go compiles successfully with "go build ./cmd/du/"
+      - id: AC2
+        text: "go vet ./cmd/du/" reports no issues
+      - id: AC3
+        text: |
+          The implementation uses pkg/sys.Lstat (or pkg/sys.Stat for -L) for
+          file metadata and pkg/format.HumanSize for -h/--si output -- no
+          duplication of syscall wrapping or size formatting logic from pkg/
+      - id: AC4
+        text: |
+          Error messages are written to stderr with "du: " prefix including
+          the path and system error, and the program continues processing
+          remaining arguments after each error
+      - id: AC5
+        text: |
+          main() calls sys.InstallSIGPIPEHandler() before any output,
+          matching the pattern established in cmd/wc and cmd/cat
+      - id: AC6
+        text: |
+          Flag parsing supports combined short flags (-sh means -s -h),
+          long flags with = separator (--max-depth=3), and the -- flag
+          terminator, consistent with cmd/wc and cmd/cat patterns
+      - id: AC7
+        text: |
+          Hard-linked files are counted only once by tracking dev+ino pairs
+          across the traversal
+  dependency: -1
+- index: 0
+  title: Implement differential tests for cmd/sponge (prd007-sponge R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd007-sponge.yaml (sponge requirements and acceptance criteria)
+      - docs/specs/test-suites/test-rel-01.2.yaml (test suite spec for sponge release)
+      - cmd/sponge/main.go (implementation under test -- review all flags and behaviors)
+      - cmd/cat/cat_test.go (TestMain pattern and RunDiffTests usage reference)
+      - cmd/wc/wc_test.go (additional TestMain and differential test pattern reference)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/sponge/sponge_test.go
+        action: create
+        note: Differential tests for sponge against Homebrew moreutils reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement TestMain that locates the reference binary 'sponge' (Homebrew moreutils) via exec.LookPath, builds the Go sponge binary from the current package to a temp directory, and cleans up after tests complete. Skip all tests gracefully (os.Exit(0) with message) if the reference binary is not found on PATH. Follow the exact TestMain pattern from cmd/cat/cat_test.go."
+      - id: R2
+        text: "Implement passthrough mode tests (prd007-sponge R4) using pkg/testutils.RunDiffTests. Test stdin-to-stdout behavior when no output file argument is given: empty stdin, simple text, multi-line input, and binary data. These tests compare stdout, stderr, and exit code between the Go and reference binaries."
+      - id: R3
+        text: "Implement file output mode tests (prd007-sponge R1, R2). Run both Go and reference binaries with a temp output file argument, piping identical stdin to each. After execution, compare the output files byte-for-byte and compare stderr and exit codes. Test cases: simple write to new file, overwrite of existing file, and write with stdin containing no trailing newline."
+      - id: R4
+        text: "Implement append mode tests (prd007-sponge R3). Test the -a flag by creating an existing file with known content, running both binaries with -a and the same stdin, then comparing the resulting file contents. Verify that original content is preserved and new content is appended."
+
+    design_decisions:
+      - id: D1
+        text: "The reference binary name is 'sponge' (Homebrew moreutils, no g-prefix). moreutils binaries do not conflict with macOS built-ins and are not g-prefixed."
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for passthrough mode tests where sponge writes to stdout. For file output mode tests, run each binary separately using exec.Command with identical stdin and environment, then compare the output files byte-for-byte and stderr/exit code manually, since RunDiffTests only compares stdout, stderr, and exit code."
+      - id: D3
+        text: "Follow the TestMain build pattern from cmd/cat/cat_test.go: build the Go binary with exec.Command('go', 'build', '-o', goBinaryPath, '.'), store paths in package-level vars goBinaryPath and refBinaryPath, clean up the temp directory after m.Run()."
+      - id: D4
+        text: "Set LC_ALL=C in the environment for all test executions, consistent with the project-wide locale constraint (ARCHITECTURE.yaml DD6). For file output tests that run binaries directly via exec.Command, set the environment explicitly."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/sponge/sponge_test.go compiles without errors (go build ./cmd/sponge/ succeeds)"
+      - id: AC2
+        text: "Tests skip gracefully with a descriptive message when the sponge reference binary is not found on PATH"
+      - id: AC3
+        text: "Tests cover passthrough mode (no file argument), file output mode (write to named file), and append mode (-a flag)"
+      - id: AC4
+        text: "go test ./cmd/sponge/ passes when both the Go binary and the sponge reference binary are available"
+  dependency: -1
+- index: 0
+  title: Implement du differential tests (prd009-du R1, R2, R3, R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd009-du.yaml (PRD requirements R1 through R4)
+      - cmd/du/main.go (implementation under test -- parseArgs, walkPath, formatSize, error handling)
+      - cmd/cat/cat_test.go (reference pattern for differential test file structure and TestMain)
+      - cmd/wc/wc_test.go (reference pattern for differential test file structure with named files)
+      - pkg/testutils/difftest.go (RunDiffTests API, DiffTest struct, NormalizeFunc type)
+
+    files:
+      - path: cmd/du/du_test.go
+        action: create
+        note: Differential tests for cmd/du against GNU reference binary gdu
+
+    requirements:
+      - id: R1
+        text: |
+          Implement differential tests for default recursive disk usage behavior
+          (prd009-du R1). Test cases: single directory argument with subdirectories
+          and files, multiple directory arguments processed in order, single regular
+          file argument. Create a temporary directory tree with at least two levels
+          of subdirectories and multiple files of known content so both binaries
+          operate on identical filesystem state.
+      - id: R2
+        text: |
+          Implement differential tests for size mode and output format flags
+          (prd009-du R2). Test cases: -h (human-readable binary), --si
+          (human-readable SI), -k (kilobyte blocks, default), -m (megabyte blocks),
+          -b/--apparent-size, --block-size=N, -s/--summarize, -a/--all, -c/--total,
+          -d N/--max-depth=N, -0/--null.
+      - id: R3
+        text: |
+          Implement differential tests for traversal behavior (prd009-du R3). Test
+          cases: hard-link deduplication (create two hard links to the same file via
+          os.Link, verify size counted once), symlink handling with -L/--dereference
+          vs default -P behavior, combined short flags (-sh, -sc, -ah).
+      - id: R4
+        text: |
+          Implement differential tests for error handling and exit codes
+          (prd009-du R4). Test cases: nonexistent path returns exit code 1,
+          nonexistent path mixed with valid path returns exit code 1 but still
+          prints valid output, -- flag terminator with a filename that resembles
+          a flag (e.g., a file named "-s").
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow TestMain pattern from cmd/cat/cat_test.go and cmd/wc/wc_test.go:
+          build Go binary with exec.Command("go", "build", "-o", goBinaryPath, "."),
+          locate reference binary gdu via exec.LookPath("gdu"), skip all tests with
+          os.Exit(0) if gdu is not found. Package declaration is "package main".
+          Use the same goBinaryPath/refBinaryPath package-level variable pattern.
+      - id: D2
+        text: |
+          Use pkg/testutils.RunDiffTests for all test functions. Each test function
+          creates a []testutils.DiffTest slice and passes goBinaryPath, refBinaryPath,
+          nil normalizers, and the test slice. No custom normalizers are needed
+          because both binaries operate on the same filesystem paths and produce
+          deterministic size output for the same files.
+      - id: D3
+        text: |
+          Create filesystem fixtures in t.TempDir() within each test function. Build
+          directory trees with os.MkdirAll, regular files with os.WriteFile, hard
+          links with os.Link, and symlinks with os.Symlink. Both binaries receive
+          the same absolute temp directory paths as arguments, so output paths match
+          exactly. Use known file content to ensure reproducible block allocation.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/du/du_test.go compiles without errors via "go vet ./cmd/du/..."
+      - id: AC2
+        text: |
+          All test functions use testutils.RunDiffTests for stdout, stderr, and
+          exit code comparison against the gdu reference binary
+      - id: AC3
+        text: |
+          TestMain builds the Go du binary and locates the gdu reference binary,
+          skipping gracefully with os.Exit(0) when gdu is not found on PATH
+      - id: AC4
+        text: |
+          Tests cover all short and long flag forms: -a/--all, -s/--summarize,
+          -c/--total, -h/--human-readable, --si, -k, -m, -b/--apparent-size,
+          -L/--dereference, -P, -0/--null, -d N/--max-depth=N, --block-size=N,
+          and -- flag terminator
+      - id: AC5
+        text: |
+          At least one test exercises hard-link deduplication by creating a hard
+          link with os.Link and verifying both binaries count the inode size once
+      - id: AC6
+        text: |
+          Test functions are organized by PRD requirement section (R1, R2, R3, R4)
+          with section-header comments matching the pattern in cmd/cat/cat_test.go
+  dependency: -1
+- index: 0
+  title: Add unit tests for pkg/format color output (prd003-format R2.1, R2.2, R2.3, R2.4, R2.6, R2.7)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - pkg/format/color.go (ANSI color implementation to test)
+      - docs/specs/product-requirements/prd003-format.yaml (color output requirements R2)
+      - pkg/format/columns_test.go (table-driven test pattern reference)
+      - pkg/format/size_test.go (table-driven test pattern reference)
+      - pkg/sys/terminal.go (IsTerminal used by ColorEnabled)
+
+    files:
+      - path: pkg/format/color_test.go
+        action: create
+        note: Unit tests for FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled
+
+    requirements:
+      - id: R1
+        text: "Test FileTypeColor returns correct ANSI escape sequences for each file type category (directory, symlink, executable regular file, block device, character device, socket, named pipe, non-executable regular file) when color is force-enabled via SetColorEnabled(true), per prd003-format R2.1, R2.4."
+      - id: R2
+        text: "Test Reset returns the ANSI reset sequence when color is enabled and an empty string when color is disabled, per prd003-format R2.2."
+      - id: R3
+        text: "Test ColorEnabled returns false for non-TTY writers (os.Pipe read/write ends, regular files) and returns false when the writer is not an *os.File, per prd003-format R2.3."
+      - id: R4
+        text: "Test SetColorEnabled(true) forces color on regardless of TTY state, SetColorEnabled(false) forces color off, and ResetColorEnabled reverts to automatic TTY detection, per prd003-format R2.6, R2.7."
+
+    design_decisions:
+      - id: D1
+        text: "Use SetColorEnabled(true) and SetColorEnabled(false) to control color state deterministically in tests, avoiding TTY dependency. Call ResetColorEnabled in t.Cleanup to prevent test pollution across subtests, per prd003-format R2.6, R2.7."
+      - id: D2
+        text: "Follow the table-driven test pattern established in columns_test.go and size_test.go -- each test function uses a []struct with name, input, and expected fields, iterating with t.Run."
+      - id: D3
+        text: "Test FileTypeColor using os.FileMode constants (os.ModeDir, os.ModeSymlink, os.ModeDevice, os.ModeCharDevice, os.ModeSocket, os.ModeNamedPipe) combined with permission bits (0o111) for executable detection, matching the switch cases in fileTypeCode."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/format/color_test.go exists and compiles without errors."
+      - id: AC2
+        text: "go test ./pkg/format/... passes with all new color tests passing."
+      - id: AC3
+        text: "Tests cover FileTypeColor for all 8 file type categories: directory, symlink, executable regular, block device, character device, socket, named pipe, and non-executable regular file."
+      - id: AC4
+        text: "Tests verify that SetColorEnabled overrides automatic detection and ResetColorEnabled reverts to automatic behavior."
+  dependency: -1
+- index: 0
+  title: Implement cmd/version per prd011-magefiles
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd011-magefiles.yaml (PRD -- authoritative spec for cmd/version requirements and output format)
+      - docs/specs/use-cases/rel00.0-uc001-magefiles.yaml (use case covering cmd/version execution path)
+      - docs/ARCHITECTURE.yaml (DD7 confirms cmd/version is the only code generation target from prd011-magefiles)
+      - cmd/cat/main.go (reference for cmd/ package conventions -- progName, SIGPIPE handler, flag parsing, exit codes)
+      - cmd/wc/main.go (reference for cmd/ package conventions -- buffered output, error formatting)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler used by all cmd/ packages)
+
+    files:
+      - path: cmd/version/main.go
+        action: create
+        note: Version command implementation per prd011-magefiles
+
+    requirements:
+      - id: R1
+        text: Read prd011-magefiles.yaml and implement all requirements that apply to cmd/version. Architecture DD7 confirms cmd/version is the only code generation target from this PRD. Implement exactly what the PRD specifies.
+      - id: R2
+        text: Follow cmd/ package conventions established in cmd/cat and cmd/wc -- package main, const progName, sys.InstallSIGPIPEHandler() as first call in main(), error messages to stderr formatted as progName colon space message, buffered stdout via bufio.Writer.
+      - id: R3
+        text: Print version information to stdout and exit 0 on success. The exact output content and format must match what prd011-magefiles specifies.
+      - id: R4
+        text: Handle all flags and exit codes specified in prd011-magefiles for cmd/version. Handle unrecognized flags with an error message to stderr and exit 1, following the pattern in cmd/cat parseArgs.
+
+    design_decisions:
+      - id: D1
+        text: "Follow existing cmd/ patterns: package main, const progName, sys.InstallSIGPIPEHandler() as first statement in main(), manual flag parsing (no flag package), buffered stdout flushed before os.Exit."
+      - id: D2
+        text: prd011-magefiles.yaml is the single source of truth for cmd/version behavior. Implement exactly what the PRD specifies -- do not add features, flags, or output fields not in the PRD.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/version/main.go exists and compiles with no errors (go build ./cmd/version/)
+      - id: AC2
+        text: All prd011-magefiles requirements applicable to cmd/version are implemented
+      - id: AC3
+        text: go vet ./cmd/version/ reports no issues
+      - id: AC4
+        text: Output format and content match prd011-magefiles specification exactly
+  dependency: -1
+- index: 0
+  title: Test cmd/version (prd011-magefiles R1)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - cmd/version/main.go (existing implementation under test)
+      - docs/specs/product-requirements/prd011-magefiles.yaml (PRD requirements for version command)
+      - cmd/cat/cat_test.go (reference test pattern -- TestMain builds binary to temp dir)
+      - cmd/wc/wc_test.go (reference test pattern -- subprocess execution and cleanup)
+
+    files:
+      - path: cmd/version/version_test.go
+        action: create
+        note: Unit tests for the version command covering prd011-magefiles R1 sub-requirements
+
+    requirements:
+      - id: R1
+        text: "Test that running the binary with no arguments prints the version string followed by a newline to stdout and exits 0 (prd011-magefiles R1.1)"
+      - id: R2
+        text: "Test that --version and -v flags each print the version string followed by a newline to stdout and exit 0 (prd011-magefiles R1.1)"
+      - id: R3
+        text: "Test that the default version string is 'dev' when no ldflags are injected at build time (prd011-magefiles R1.2)"
+      - id: R4
+        text: "Test that unrecognized flags (e.g., --unknown) and unexpected non-flag arguments (e.g., 'foo') cause exit code 2 with a usage message on stderr (prd011-magefiles R1.4)"
+
+    design_decisions:
+      - id: D1
+        text: "Build the binary in TestMain using exec.Command('go', 'build', '-o', path, '.') to a temp directory, matching the pattern in cmd/cat/cat_test.go and cmd/wc/wc_test.go. Clean up the temp directory after m.Run() completes."
+      - id: D2
+        text: "Run the built binary as a subprocess using exec.Command, capturing stdout, stderr, and exit code for assertion. Use exec.ExitError to extract non-zero exit codes."
+      - id: D3
+        text: "No differential testing -- cmd/version is a project-specific utility with no GNU reference binary. Use direct assertions on stdout content, stderr content, and exit codes instead."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/version/version_test.go exists and compiles with go build ./cmd/version/"
+      - id: AC2
+        text: "go test ./cmd/version/ passes with all tests green"
+      - id: AC3
+        text: "Tests cover all four scenarios -- no-args output, --version flag, -v flag, unrecognized flag rejection, and unexpected argument rejection"
+      - id: AC4
+        text: "TestMain builds the binary to a temp directory and removes it after tests complete, matching the existing cmd/ test pattern"
+  dependency: -1
+- index: 0
+  title: Implement pkg/testutils differential testing harness (prd001-testutils R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd001-testutils.yaml (primary specification for the differential testing harness)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component description, DD2 differential testing as primary verification, DD6 LC_ALL=C constraint)
+      - docs/specs/use-cases/rel00.0-uc004-testutils.yaml (use case for the testutils package)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, NormalizeFunc type, RunDiffTests function, buildEnv, setEnvVar, runBinary helpers
+
+    requirements:
+      - id: R1
+        text: "Define DiffTest struct with Name (string), Args ([]string), Stdin (string), Env ([]string) fields and define NormalizeFunc as func([]byte) []byte per prd001-testutils R1"
+      - id: R2
+        text: "Implement RunDiffTests that iterates DiffTest cases as named subtests, executes both the Go binary and reference GNU binary with identical args/stdin/env, applies normalizers to stdout and stderr, and reports divergence of stdout, stderr, or exit code via t.Errorf per prd001-testutils R2, R4"
+      - id: R3
+        text: "Implement buildEnv that constructs the execution environment by inheriting os.Environ, setting LC_ALL=C as default, and merging per-test DiffTest.Env overrides per prd001-testutils R3 and ARCHITECTURE.yaml DD6"
+      - id: R4
+        text: "Implement runBinary that executes a binary with context.WithTimeout, captures stdout and stderr into byte buffers, and returns stdout, stderr, and exit code per prd001-testutils R2.3"
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go, named after the primary exported type DiffTest per project file naming convention (P7)"
+      - id: D2
+        text: "Use context.WithTimeout with a defaultTimeout constant for per-binary execution timeout per prd001-testutils R2.3"
+      - id: D3
+        text: "LC_ALL=C is prepended to the environment for both binaries unless overridden by DiffTest.Env per ARCHITECTURE.yaml DD6"
+      - id: D4
+        text: "Package doc comment is in difftest.go, not a separate doc.go, since there is only one source file"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest.go exists and compiles without errors (go build ./pkg/testutils/)"
+      - id: AC2
+        text: "DiffTest struct exports Name, Args, Stdin, Env fields; NormalizeFunc is exported as a type alias for func([]byte) []byte"
+      - id: AC3
+        text: "RunDiffTests creates a named subtest per DiffTest, runs both binaries via runBinary, applies all normalizers in order, and calls t.Errorf with args, stdin, ref/go stdout, ref/go stderr, and ref/go exit code on any divergence"
+      - id: AC4
+        text: "buildEnv returns an environment slice with LC_ALL=C set; setEnvVar replaces existing keys or appends new ones"
+      - id: AC5
+        text: "runBinary uses exec.CommandContext with the default timeout, pipes Stdin via strings.NewReader when non-empty, captures stdout and stderr into bytes.Buffer, and extracts exit code from exec.ExitError"
+  dependency: -1
+- index: 0
+  title: 'prd020-true: Write PRD for true utility (rel02.0-uc001-true)'
+  description: |-
+    deliverable_type: documentation
+    format_rule: prd-format
+
+    required_reading:
+      - docs/specs/product-requirements/prd006-cat.yaml (PRD format reference -- follow the same YAML structure, section ordering, and requirement numbering scheme)
+      - docs/ARCHITECTURE.yaml (design decisions DD2 differential testing, DD4 Homebrew GNU reference binaries, DD5 human-guided specification, DD6 LC_ALL=C constraint)
+      - docs/VISION.yaml (success criteria SC1 differential test parity, SC2 PRD coverage)
+      - cmd/cat/main.go (existing utility implementation pattern -- SIGPIPE handler via pkg/sys, manual parseArgs, progName constant, exit code contract)
+
+    files:
+      - path: docs/specs/product-requirements/prd020-true.yaml
+        action: create
+        note: PRD for the true utility covering all GNU true behaviors
+
+    required_sections:
+      - "Problem: true must match GNU true behavior exactly for differential testing"
+      - "Goals: G1 match GNU true exit behavior, G2 match GNU true flag handling"
+      - "Requirements: R1.x covering exit status, flag handling, operand behavior, SIGPIPE, error format"
+      - "Non-Goals: what true does not implement"
+      - "Acceptance Criteria: checkable outcomes including differential test parity"
+
+    requirements:
+      - id: R1
+        text: |
+          Write a PRD covering GNU true core behavior: true exits with status 0
+          unconditionally. When invoked with exactly one argument that is "--help",
+          it prints a usage message to stdout and exits 0. When invoked with exactly
+          one argument that is "--version", it prints version information to stdout
+          and exits 0. All other arguments (including unrecognized flags) are
+          silently ignored and true still exits 0.
+      - id: R2
+        text: |
+          Include requirements for SIGPIPE handling (silent exit matching other
+          utilities in the project, per pkg/sys.InstallSIGPIPEHandler pattern),
+          and the exit code contract (always 0 regardless of arguments or input).
+      - id: R3
+        text: |
+          Include acceptance criteria that are verifiable through differential
+          testing against the GNU reference binary gtrue (Homebrew coreutils).
+          All differential tests must run with LC_ALL=C per ARCHITECTURE.yaml DD6.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the YAML PRD format established by prd006-cat.yaml. Use the same
+          section ordering, requirement numbering scheme (R1, R1.1, R1.2, etc.),
+          and acceptance criteria format.
+      - id: D2
+        text: |
+          The GNU reference binary is gtrue (Homebrew coreutils, g-prefixed),
+          per ARCHITECTURE.yaml DD4.
+      - id: D3
+        text: |
+          true is one of the five trivial utilities in rel02.0. The PRD should be
+          concise -- true has minimal flag interaction and no complex edge cases.
+
+    acceptance_criteria:
+      - id: AC1
+        text: PRD file exists at docs/specs/product-requirements/prd020-true.yaml and is valid YAML
+      - id: AC2
+        text: PRD contains all required sections -- Problem, Goals, Requirements, Non-Goals, Acceptance Criteria
+      - id: AC3
+        text: Requirements are numbered sequentially (R1, R1.1, etc.) and each is specific enough to drive code generation without ambiguity
+      - id: AC4
+        text: Acceptance criteria reference differential testing against gtrue with LC_ALL=C
+  dependency: -1
+- index: 0
+  title: 'prd021-false: Write PRD for false utility (rel02.0-uc002-false)'
+  description: |-
+    deliverable_type: documentation
+    format_rule: prd-format
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (components section -- cmd/ responsibility, DD4 reference binary convention, DD6 LC_ALL=C constraint)
+      - docs/VISION.yaml (success criteria SC1 differential test parity, SC2 PRD coverage)
+      - docs/specs/product-requirements/prd020-true.yaml (sibling trivial utility PRD -- follow its structure and granularity as the closest pattern)
+      - docs/specs/product-requirements/prd006-cat.yaml (established PRD pattern reference if prd020-true is unavailable)
+      - docs/road-map.yaml (rel02.0 scope and use case mapping)
+      - docs/utilities.yaml (false utility profile -- difficulty, memory model)
+
+    files:
+      - path: docs/specs/product-requirements/prd021-false.yaml
+        action: create
+        note: PRD for the GNU false utility covering exit behavior, flag handling, and stream behavior
+
+    required_sections:
+      - "Problem: false is a coreutils utility that always exits with status 1, used in shell scripts for unconditional failure"
+      - "Goals: G1 -- match GNU false exit and flag behavior under LC_ALL=C via differential testing against gfalse"
+      - "Requirements: R1 exit behavior, R2 flag handling (--help, --version), R3 stream and signal behavior"
+      - "Non-Goals: what is out of scope for this trivial utility"
+      - "Acceptance Criteria: checkable outcomes mapped to each requirement, verifiable via differential testing"
+
+    requirements:
+      - id: R1
+        text: "Write PRD requirement for false exit behavior: exits with status 1 when invoked with no arguments, exits with status 1 when invoked with arbitrary non-flag arguments (GNU false ignores all operands). Derive from GNU coreutils false.c source."
+      - id: R2
+        text: "Write PRD requirement for flag handling: --help writes usage information to stdout and exits 0, --version writes version string to stdout and exits 0. All other flags and arguments are silently ignored (GNU coreutils convention for trivial utilities). Derive from GNU coreutils false.c source."
+      - id: R3
+        text: "Write PRD requirement for stream and signal behavior: SIGPIPE handling via pkg/sys.InstallSIGPIPEHandler (ARCHITECTURE.yaml pkg/sys component), stderr used only for internal errors, stdout silent in normal operation."
+      - id: R4
+        text: "Include acceptance criteria for each requirement that are verifiable via differential testing against the gfalse Homebrew reference binary (ARCHITECTURE.yaml DD4). Each acceptance criterion must specify the observable behavior being compared."
+
+    design_decisions:
+      - id: D1
+        text: "Follow the PRD structure and granularity established by prd020-true.yaml as the closest sibling utility. If prd020-true.yaml is not available, follow prd006-cat.yaml structure."
+      - id: D2
+        text: "Reference binary is gfalse from Homebrew coreutils (ARCHITECTURE.yaml DD4). All differential tests run under LC_ALL=C (ARCHITECTURE.yaml DD6)."
+      - id: D3
+        text: "The implementation target is cmd/false/main.go with differential tests in cmd/false/false_test.go, following the cmd/ package-per-utility pattern from ARCHITECTURE.yaml."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "File docs/specs/product-requirements/prd021-false.yaml exists and is valid YAML"
+      - id: AC2
+        text: "PRD contains all required sections: Problem, Goals, Requirements, Non-Goals, and Acceptance Criteria"
+      - id: AC3
+        text: "Every requirement has a unique sequential ID (R1, R2, ...) and maps to observable GNU false behavior derived from C source analysis"
+      - id: AC4
+        text: "Acceptance criteria are verifiable via differential testing against gfalse and reference specific requirement IDs"
+  dependency: -1
+- index: 0
+  title: Implement cmd/true (prd020-true)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd020-true.yaml (PRD for true utility -- the authoritative source for all behavioral requirements)
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, design decisions DD6 locale constraint and DD7 generation scope)
+      - cmd/version/main.go (simplest existing cmd/ utility -- reference for package structure, SIGPIPE handling, and argument parsing pattern)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/true/main.go
+        action: create
+        note: "Go implementation of GNU true utility, matching reference binary gtrue behavior under LC_ALL=C"
+
+    requirements:
+      - id: R1
+        text: "Implement the core true behavior: exit with status code 0 when invoked with no arguments, per prd020-true"
+      - id: R2
+        text: "Install SIGPIPE handler via sys.InstallSIGPIPEHandler() at program start, matching the convention established by all existing cmd/ packages (cmd/cat, cmd/wc, cmd/du, cmd/sponge, cmd/version)"
+      - id: R3
+        text: "Handle all flags and arguments specified in prd020-true.yaml, using the project's manual argument parsing pattern (not the flag standard library package)"
+      - id: R4
+        text: "Match GNU true exit code behavior for all argument combinations per prd020-true"
+
+    design_decisions:
+      - id: D1
+        text: "Use manual argument parsing (range over os.Args[1:]) following the pattern in cmd/cat parseArgs and cmd/version parseArgs -- do not use Go's flag package"
+      - id: D2
+        text: "Declare a progName constant set to \"true\", following the convention in cmd/cat, cmd/wc, cmd/du, and cmd/sponge"
+      - id: D3
+        text: "Use pkg/sys.InstallSIGPIPEHandler() as the first statement in main(), matching all existing cmd/ packages"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/true/main.go exists and compiles successfully with 'go build ./cmd/true/'"
+      - id: AC2
+        text: "The compiled binary exits with code 0 when invoked with no arguments"
+      - id: AC3
+        text: "The compiled binary exits with code 0 when invoked with arbitrary arguments"
+      - id: AC4
+        text: "All behavioral requirements in prd020-true.yaml are implemented"
+  dependency: -1
+- index: 0
+  title: Implement cmd/false (prd021-false R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd021-false.yaml (PRD for false utility)
+      - cmd/true/main.go (reference implementation pattern for trivial exit-code utilities)
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, design decisions DD6 and DD7)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler used by all cmd/ utilities)
+
+    files:
+      - path: cmd/false/main.go
+        action: create
+        note: "false utility -- exits with status 1, handles --help and --version"
+
+    requirements:
+      - id: R1
+        text: "Exit with status 1 unconditionally when no recognized option is the first argument (prd021-false R1). All arguments are silently ignored except --help and --version as the first argument."
+      - id: R2
+        text: "Handle --help as the first argument: print usage message to stdout describing the utility and exit 0. Handle --version as the first argument: print version string to stdout and exit 0. On stdout write failure, print diagnostic to stderr and exit 1 (prd021-false R2)."
+      - id: R3
+        text: "Silently ignore all arguments that are not --help or --version as the first argument, including short flags (-x), long flags (--unknown), and positional arguments (prd021-false R3)."
+      - id: R4
+        text: "Install SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler() at program start for clean pipeline termination (prd021-false R5)."
+
+    design_decisions:
+      - id: D1
+        text: "Follow the exact structure of cmd/true/main.go. cmd/false is structurally identical to cmd/true except: progName is 'false', the default exit code is 1, and the help text says 'failure' instead of 'success'. Read cmd/true/main.go and replicate its pattern."
+      - id: D2
+        text: "Use bufio.NewWriter(os.Stdout) for --help and --version output, with Flush() error checking that prints a diagnostic to stderr and exits 1 on write failure, matching the cmd/true pattern."
+      - id: D3
+        text: "Declare a package-level version variable with default 'dev', settable via -ldflags '-X main.version=<tag>', matching the cmd/true and cmd/version pattern."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/false/main.go compiles without errors: 'go build ./cmd/false/' succeeds with no warnings."
+      - id: AC2
+        text: "Binary exits 1 when invoked with no arguments."
+      - id: AC3
+        text: "Binary exits 0 and prints usage to stdout when invoked with --help as the first argument."
+      - id: AC4
+        text: "Binary exits 0 and prints version to stdout when invoked with --version as the first argument."
+      - id: AC5
+        text: "Binary exits 1 when invoked with any other arguments (e.g., -x, --unknown, foo, --help preceded by another arg)."
+  dependency: -1
+- index: 0
+  title: Implement cmd/false -- prd021-false R1-R5
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd021-false.yaml (all requirements for false utility)
+      - cmd/true/main.go (reference implementation pattern -- false mirrors true with inverted exit code)
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, design decisions DD1-DD7)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler used by all cmd/ packages)
+
+    files:
+      - path: cmd/false/main.go
+        action: create
+        note: "false utility -- exits 1 unconditionally, supports --help and --version"
+
+    requirements:
+      - id: R1
+        text: "Implement cmd/false per prd021-false R1: exit with status 1 unconditionally, silently ignoring all arguments except --help and --version as the first argument"
+      - id: R2
+        text: "Implement --help and --version per prd021-false R2: --help prints usage to stdout and exits 0, --version prints version info to stdout and exits 0, only the first argument is checked for these flags"
+      - id: R3
+        text: "Handle arguments per prd021-false R3: all arguments other than --help/--version as the first argument are silently ignored, no stdin processing occurs"
+      - id: R4
+        text: "Handle signals and write errors per prd021-false R4/R5: install SIGPIPE handler via sys.InstallSIGPIPEHandler(), exit 1 with stderr diagnostic on stdout write errors during --help/--version output"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the cmd/true/main.go pattern exactly -- false is structurally identical to true but exits 1 instead of 0"
+      - id: D2
+        text: "Use pkg/sys.InstallSIGPIPEHandler() for SIGPIPE handling, matching all other cmd/ packages"
+      - id: D3
+        text: "Use version variable set via -ldflags '-X main.version=<tag>' for --version output, defaulting to 'dev', matching cmd/true and cmd/version patterns"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/false/main.go exists and compiles with no errors via 'go build ./cmd/false/'"
+      - id: AC2
+        text: "Running the binary with no arguments exits with status 1 and produces no output"
+      - id: AC3
+        text: "--help as the first argument prints usage to stdout and exits 0"
+      - id: AC4
+        text: "--version as the first argument prints version info to stdout and exits 0"
+      - id: AC5
+        text: "All other arguments (including flags like -x, --unknown, and positional args) are silently ignored and exit code is 1"
+      - id: AC6
+        text: "go vet ./cmd/false/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Implement cmd/true differential tests (prd020-true R1-R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd020-true.yaml (requirements R1-R5 for true utility)
+      - cmd/true/main.go (existing implementation to verify against reference binary)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness API)
+      - cmd/cat/cat_test.go (reference pattern for differential test file structure)
+
+    files:
+      - path: cmd/true/true_test.go
+        action: create
+        note: Differential tests for cmd/true against GNU reference binary gtrue
+
+    requirements:
+      - id: R1
+        text: "Test default exit behavior: no arguments exits 0, arbitrary arguments are silently ignored and still exit 0 (prd020-true R1, R3)"
+      - id: R2
+        text: "Test --help and --version as first argument each produce exit 0 with stdout output (prd020-true R2)"
+      - id: R3
+        text: "Test that --help and --version are only recognized as the first argument -- when passed as second or later arguments, true still exits 0 with no stdout (prd020-true R2.3)"
+      - id: R4
+        text: "Test exit code parity between Go binary and reference binary for all argument combinations (prd020-true R5)"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/testutils.RunDiffTests for core behavior tests, following the pattern in cmd/cat/cat_test.go: TestMain builds the Go binary to a temp directory and locates the reference binary via exec.LookPath"
+      - id: D2
+        text: "Reference binary is gtrue from Homebrew coreutils, located via exec.LookPath(\"gtrue\") in TestMain; skip all tests gracefully if gtrue is not found on PATH"
+      - id: D3
+        text: "For --help and --version tests, stdout text will diverge between Go and GNU binaries (different version strings and help text). Use a NormalizeFunc that replaces all stdout content with empty bytes so that only exit code and stderr are compared for these specific test cases"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/true/true_test.go compiles with no errors via go build ./cmd/true/"
+      - id: AC2
+        text: "go test ./cmd/true/ passes when gtrue is available on PATH"
+      - id: AC3
+        text: "Tests cover: no-args exit 0, single arbitrary arg exit 0, multiple arbitrary args exit 0, --help as first arg exit 0, --version as first arg exit 0, --help as non-first arg silently ignored"
+      - id: AC4
+        text: "Test file follows the project differential testing pattern: TestMain builds binary and locates reference, tests use testutils.RunDiffTests, LC_ALL=C is applied by the harness default"
+  dependency: -1
+- index: 0
+  title: cmd/true differential tests (prd020-true R1, R2, R3, R5)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd020-true.yaml (PRD for true utility -- requirements R1 through R5)
+      - cmd/true/main.go (existing implementation under test)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - cmd/cat/cat_test.go (reference pattern for differential test file structure and TestMain)
+
+    files:
+      - path: cmd/true/true_test.go
+        action: create
+        note: Differential tests for cmd/true against GNU reference binary gtrue
+
+    requirements:
+      - id: R1
+        text: "Test default behavior per prd020-true R1: no arguments exits 0 with no stdout and no stderr; arbitrary non-flag arguments exit 0 with no stdout and no stderr"
+      - id: R2
+        text: "Test --help and --version behavior per prd020-true R2: when --help is the first argument, exit code is 0; when --version is the first argument, exit code is 0. Use a normalizer that clears stdout before comparison since output text differs between Go and GNU binaries"
+      - id: R3
+        text: "Test argument ignoring per prd020-true R3: --help and --version as non-first arguments are silently ignored (exit 0, no output); short flags like -n and -v are silently ignored (exit 0, no output)"
+      - id: R4
+        text: "Follow the TestMain pattern from cmd/cat/cat_test.go: locate gtrue via exec.LookPath (skip if not found), build Go binary via go build to a temp directory, clean up temp directory after tests complete"
+
+    design_decisions:
+      - id: D1
+        text: "Reference binary is gtrue (Homebrew coreutils g-prefix convention per ARCHITECTURE.yaml DD4). If gtrue is not found on PATH, print a skip message and exit 0 from TestMain, matching the pattern in cmd/cat/cat_test.go"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all test cases. Group tests into separate Test functions by requirement area: TestTrue_DefaultBehavior (R1), TestTrue_HelpVersion (R2), TestTrue_IgnoredArgs (R3)"
+      - id: D3
+        text: "For --help and --version tests, pass a NormalizeFunc that replaces all stdout bytes with an empty slice before comparison, since help/version text content differs between Go and GNU implementations but exit code and stderr must match"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/true/true_test.go exists and compiles with go build ./cmd/true/"
+      - id: AC2
+        text: "go test ./cmd/true/ passes when gtrue is available on PATH"
+      - id: AC3
+        text: "Tests cover: no-args exit 0, multiple arbitrary args exit 0, --help as first arg exits 0, --version as first arg exits 0, --help as non-first arg is ignored, short flags are ignored"
+      - id: AC4
+        text: "TestMain follows the established pattern: exec.LookPath for gtrue, go build to temp dir, m.Run, os.RemoveAll cleanup"
+  dependency: -1
+- index: 0
+  title: 'cmd/false: implement exit-1 utility (prd021-false R1-R3, R5)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd021-false.yaml (PRD for false utility)
+      - cmd/true/main.go (structural reference -- false mirrors true with exit code 1)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler used for SIGPIPE handling)
+
+    files:
+      - path: cmd/false/main.go
+        action: create
+        note: "false utility -- exits 1 unconditionally except for --help and --version"
+
+    requirements:
+      - id: R1
+        text: "Exit with status 1 when invoked with no arguments or with any arguments that are not --help or --version as the first argument, per prd021-false R1"
+      - id: R2
+        text: "When --help is the first argument, print a usage message to stdout and exit 0; when --version is the first argument, print version information to stdout and exit 0, per prd021-false R2"
+      - id: R3
+        text: "Silently ignore all arguments that are not --help or --version in the first position -- do not emit errors for unknown flags or operands, per prd021-false R3"
+      - id: R4
+        text: "Install SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler at startup; on stdout write errors in --help or --version, print a diagnostic to stderr and exit 1, per prd021-false R5"
+
+    design_decisions:
+      - id: D1
+        text: "Follow cmd/true/main.go structure exactly -- manual argument parsing without the flag package, only the first argument is checked for --help and --version, all other arguments are silently ignored"
+      - id: D2
+        text: "Use bufio.NewWriter(os.Stdout) for --help and --version output, flush and check for write errors before exiting"
+      - id: D3
+        text: "The version variable is set at build time via -ldflags '-X main.version=<tag>'; default value is 'dev'"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/false/main.go compiles without errors via 'go build ./cmd/false/'"
+      - id: AC2
+        text: "Running the binary with no arguments exits with status 1 and produces no stdout or stderr output"
+      - id: AC3
+        text: "Running with --help as the first argument prints usage to stdout and exits 0"
+      - id: AC4
+        text: "Running with --version as the first argument prints version to stdout and exits 0"
+      - id: AC5
+        text: "Running with arbitrary arguments (e.g., 'foo', '-v', '--unknown') exits with status 1 and produces no output"
+  dependency: -1

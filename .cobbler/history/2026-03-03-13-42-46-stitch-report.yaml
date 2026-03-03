@@ -1,0 +1,31 @@
+task_id: "202"
+task_title: 'prd020-true: Write PRD for true utility (rel02.0-uc001-true)'
+status: success
+branch: task/generation-gh-168-generation-run-12-202
+diff:
+    files: 4
+    insertions: 1337
+    deletions: 2
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 53
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1218
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: docs/specs/product-requirements/prd020-true.yaml
+      status: A
+      insertions: 65
+      deletions: 0
+loc_before:
+    production: 2223
+    test: 2852
+loc_after:
+    production: 2223
+    test: 2852

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "205"
+task_title: cmd/true differential tests (prd020-true R1, R2, R3, R5)
+status: success
+started_at: "2026-03-03T19:03:01Z"
+duration: 41s
+duration_s: 40
+tokens:
+    input: 239282
+    output: 2129
+    cache_creation: 32854
+    cache_read: 206422
+cost_usd: 0.3628005000000001
+loc_before:
+    production: 2300
+    test: 2852
+loc_after:
+    production: 2300
+    test: 3003
+diff:
+    files: 4
+    insertions: 1705
+    deletions: 2

@@ -1,0 +1,31 @@
+task_id: "199"
+task_title: Implement cmd/version per prd011-magefiles
+status: success
+branch: task/generation-gh-168-generation-run-12-199
+diff:
+    files: 4
+    insertions: 1182
+    deletions: 2
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 53
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1058
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/version/main.go
+      status: A
+      insertions: 70
+      deletions: 0
+loc_before:
+    production: 2153
+    test: 2697
+loc_after:
+    production: 2223
+    test: 2697

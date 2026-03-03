@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "203"
+task_title: 'prd021-false: Write PRD for false utility (rel02.0-uc002-false)'
+status: success
+started_at: "2026-03-03T18:45:41Z"
+duration: 2m3s
+duration_s: 122
+tokens:
+    input: 1129426
+    output: 3388
+    cache_creation: 100121
+    cache_read: 1029294
+cost_usd: 1.2768198
+loc_before:
+    production: 2223
+    test: 2852
+loc_after:
+    production: 2223
+    test: 2852
+diff:
+    files: 4
+    insertions: 1392
+    deletions: 2

@@ -1,0 +1,31 @@
+task_id: "197"
+task_title: Implement du differential tests (prd009-du R1, R2, R3, R4)
+status: success
+branch: task/generation-gh-168-generation-run-12-197
+diff:
+    files: 4
+    insertions: 1444
+    deletions: 2
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 53
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 969
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/du/du_test.go
+      status: A
+      insertions: 421
+      deletions: 0
+loc_before:
+    production: 2153
+    test: 2059
+loc_after:
+    production: 2153
+    test: 2480

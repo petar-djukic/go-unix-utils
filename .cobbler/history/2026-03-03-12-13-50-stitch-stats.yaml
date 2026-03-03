@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "192"
+task_title: Test prd003-format R1 (columns/padding) and R3 (human-readable sizes)
+status: success
+started_at: "2026-03-03T17:13:50Z"
+duration: 4m3s
+duration_s: 243
+tokens:
+    input: 756227
+    output: 13819
+    cache_creation: 48307
+    cache_read: 704159
+cost_usd: 1.02091525
+loc_before:
+    production: 1261
+    test: 1344
+loc_after:
+    production: 1261
+    test: 1766
+diff:
+    files: 5
+    insertions: 1089
+    deletions: 2
