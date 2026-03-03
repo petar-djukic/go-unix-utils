@@ -1,0 +1,45 @@
+- index: 0
+  title: "cmd/false: implement exit-1 utility (prd021-false R1-R3, R5)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd021-false.yaml (PRD for false utility)
+      - cmd/true/main.go (structural reference -- false mirrors true with exit code 1)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler used for SIGPIPE handling)
+
+    files:
+      - path: cmd/false/main.go
+        action: create
+        note: "false utility -- exits 1 unconditionally except for --help and --version"
+
+    requirements:
+      - id: R1
+        text: "Exit with status 1 when invoked with no arguments or with any arguments that are not --help or --version as the first argument, per prd021-false R1"
+      - id: R2
+        text: "When --help is the first argument, print a usage message to stdout and exit 0; when --version is the first argument, print version information to stdout and exit 0, per prd021-false R2"
+      - id: R3
+        text: "Silently ignore all arguments that are not --help or --version in the first position -- do not emit errors for unknown flags or operands, per prd021-false R3"
+      - id: R4
+        text: "Install SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler at startup; on stdout write errors in --help or --version, print a diagnostic to stderr and exit 1, per prd021-false R5"
+
+    design_decisions:
+      - id: D1
+        text: "Follow cmd/true/main.go structure exactly -- manual argument parsing without the flag package, only the first argument is checked for --help and --version, all other arguments are silently ignored"
+      - id: D2
+        text: "Use bufio.NewWriter(os.Stdout) for --help and --version output, flush and check for write errors before exiting"
+      - id: D3
+        text: "The version variable is set at build time via -ldflags '-X main.version=<tag>'; default value is 'dev'"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/false/main.go compiles without errors via 'go build ./cmd/false/'"
+      - id: AC2
+        text: "Running the binary with no arguments exits with status 1 and produces no stdout or stderr output"
+      - id: AC3
+        text: "Running with --help as the first argument prints usage to stdout and exits 0"
+      - id: AC4
+        text: "Running with --version as the first argument prints version to stdout and exits 0"
+      - id: AC5
+        text: "Running with arbitrary arguments (e.g., 'foo', '-v', '--unknown') exits with status 1 and produces no output"
