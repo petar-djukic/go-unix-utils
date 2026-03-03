@@ -48,6 +48,7 @@ cobbler:
     history_dir: history
     doc_tag_prefix: v0.
     base_branch: main
+    idle_timeout_seconds: 180
 podman:
     image: claude-cli
     args:
