@@ -33,6 +33,21 @@ roadmap_summary:
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
+  - version: rel02.0
+    name: "Batch 2 — trivial utilities (true, false, yes, basename, dirname)"
+    use_cases_done: 5
+    use_cases_total: 5
+    status: pending
+  - version: rel02.1
+    name: "Batch 2.1 — tee specification and differential test"
+    use_cases_done: 1
+    use_cases_total: 1
+    status: pending
+  - version: rel02.2
+    name: "Batch 2.2 — head specification and differential test"
+    use_cases_done: 1
+    use_cases_total: 1
+    status: pending
   - version: rel99.0
     name: "Deferred — ls core specification and differential test"
     use_cases_done: 1
@@ -91,6 +106,35 @@ prd_index:
     summary: Multi-column layout control, sort order, metadata display, classification, and recursive listing.
     path: docs/specs/product-requirements/prd010-ls-extended.yaml
 
+  - id: prd012-yes
+    title: "cmd/yes: Repeatedly Output a String"
+    summary: Output a string repeatedly until killed, with buffered writes for throughput.
+    path: docs/specs/product-requirements/prd012-yes.yaml
+  - id: prd013-true
+    title: "cmd/true: Exit Successfully"
+    summary: Exit with status 0, ignoring all arguments.
+    path: docs/specs/product-requirements/prd013-true.yaml
+  - id: prd014-false
+    title: "cmd/false: Exit Unsuccessfully"
+    summary: Exit with status 1, ignoring all arguments.
+    path: docs/specs/product-requirements/prd014-false.yaml
+  - id: prd015-basename
+    title: "cmd/basename: Strip Directory and Suffix from Filenames"
+    summary: Strip directory prefix and optional suffix from file paths with multi-argument and NUL-delimited modes.
+    path: docs/specs/product-requirements/prd015-basename.yaml
+  - id: prd016-dirname
+    title: "cmd/dirname: Strip Last Component from File Paths"
+    summary: Extract directory component from file paths with NUL-delimited output mode.
+    path: docs/specs/product-requirements/prd016-dirname.yaml
+  - id: prd017-tee
+    title: "cmd/tee: Read Stdin and Write to Stdout and Files"
+    summary: Copy stdin to stdout and one or more files with append mode and SIGINT suppression.
+    path: docs/specs/product-requirements/prd017-tee.yaml
+  - id: prd018-head
+    title: "cmd/head: Print the First Lines or Bytes of Files"
+    summary: Print first N lines or bytes with negative counts, multi-file headers, and quiet/verbose modes.
+    path: docs/specs/product-requirements/prd018-head.yaml
+
 use_case_index:
   - id: rel01.0-uc001-wc
     title: "Count lines, words, and bytes via wc"
@@ -134,6 +178,49 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel99.2
     path: docs/specs/use-cases/rel99.2-uc001-ts.yaml
+
+  - id: rel02.0-uc001-true
+    title: "Exit successfully via true"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc001-true.yaml
+  - id: rel02.0-uc002-false
+    title: "Exit unsuccessfully via false"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc002-false.yaml
+  - id: rel02.0-uc003-yes
+    title: "Repeatedly output a string via yes"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc003-yes.yaml
+  - id: rel02.0-uc004-basename
+    title: "Strip directory and suffix from filenames via basename"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc004-basename.yaml
+  - id: rel02.0-uc005-dirname
+    title: "Strip last component from file paths via dirname"
+    release: rel02.0
+    status: pending
+    test_suite: test-rel02.0
+    path: docs/specs/use-cases/rel02.0-uc005-dirname.yaml
+  - id: rel02.1-uc001-tee
+    title: "Copy stdin to stdout and files via tee"
+    release: rel02.1
+    status: pending
+    test_suite: test-rel02.1
+    path: docs/specs/use-cases/rel02.1-uc001-tee.yaml
+  - id: rel02.2-uc001-head
+    title: "Print the first lines or bytes of files via head"
+    release: rel02.2
+    status: pending
+    test_suite: test-rel02.2
+    path: docs/specs/use-cases/rel02.2-uc001-head.yaml
 
 test_suite_index:
   - id: test-rel01.0
@@ -179,6 +266,29 @@ test_suite_index:
     test_case_count: 12
     path: docs/specs/test-suites/test-rel99.2.yaml
 
+  - id: test-rel02.0
+    title: "Test Suite: rel02.0 — trivial utilities (true, false, yes, basename, dirname)"
+    traces:
+      - rel02.0-uc001-true
+      - rel02.0-uc002-false
+      - rel02.0-uc003-yes
+      - rel02.0-uc004-basename
+      - rel02.0-uc005-dirname
+    test_case_count: 25
+    path: docs/specs/test-suites/test-rel02.0.yaml
+  - id: test-rel02.1
+    title: "Test Suite: rel02.1 — tee"
+    traces:
+      - rel02.1-uc001-tee
+    test_case_count: 9
+    path: docs/specs/test-suites/test-rel02.1.yaml
+  - id: test-rel02.2
+    title: "Test Suite: rel02.2 — head"
+    traces:
+      - rel02.2-uc001-head
+    test_case_count: 16
+    path: docs/specs/test-suites/test-rel02.2.yaml
+
 prd_to_use_case_mapping:
   - use_case: rel01.0-uc001-wc
     prd: prd005-wc
@@ -209,14 +319,44 @@ prd_to_use_case_mapping:
     why_required: ts exercises timestamp prepending with multiple time modes and strftime formatting.
     coverage: Full — all prd004-ts requirement groups (R1-R8) are traced from the test suite.
 
+  - use_case: rel02.0-uc001-true
+    prd: prd013-true
+    why_required: true is the simplest possible utility, validating the build pipeline for trivial binaries.
+    coverage: Full — all prd013-true requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel02.0-uc002-false
+    prd: prd014-false
+    why_required: false validates non-zero exit code handling in the differential testing harness.
+    coverage: Full — all prd014-false requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel02.0-uc003-yes
+    prd: prd012-yes
+    why_required: yes exercises infinite output, SIGPIPE handling, and buffered I/O patterns.
+    coverage: Full — all prd012-yes requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel02.0-uc004-basename
+    prd: prd015-basename
+    why_required: basename exercises path string manipulation and multi-argument flag processing.
+    coverage: Full — all prd015-basename requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel02.0-uc005-dirname
+    prd: prd016-dirname
+    why_required: dirname exercises path component extraction and trailing-slash edge cases.
+    coverage: Full — all prd016-dirname requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel02.1-uc001-tee
+    prd: prd017-tee
+    why_required: tee exercises simultaneous multi-destination I/O and append semantics.
+    coverage: Full — all prd017-tee requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel02.2-uc001-head
+    prd: prd018-head
+    why_required: head exercises line and byte counting, negative counts, and multi-file header formatting.
+    coverage: Full — all prd018-head requirement groups (R1-R4) are traced from the test suite.
+
 coverage_gaps: |
   Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) have dedicated use cases
   and test suites in rel00.0 (foundational infrastructure). They are also exercised indirectly
   through the utility use cases that depend on them.
 
-  No coverage gaps exist in the current roadmap. Every use case has a test suite, every PRD is
-  referenced by at least one use case touchpoint, and every release has a corresponding test
-  suite. ls (prd008-ls, prd010-ls-extended) is deferred to rel99.0/rel99.1 and ts (prd004-ts)
+  prd019-seq has no use case yet; it is planned for rel03.0. prd011-magefiles is an
+  infrastructure PRD covered indirectly by rel00.0 use cases.
+
+  ls (prd008-ls, prd010-ls-extended) is deferred to rel99.0/rel99.1 and ts (prd004-ts)
   is deferred to rel99.2, but all retain full specification coverage.
 
 traceability_diagram: |
@@ -227,13 +367,21 @@ traceability_diagram: |
     P1["prd001-testutils"] & P2["prd002-sys"] & P3["prd003-format"]
     P4["prd004-ts"] & P5["prd005-wc"] & P6["prd006-cat"] & P7["prd007-sponge"]
     P8["prd008-ls"] & P9["prd009-du"] & P10["prd010-ls-extended"]
+    P12["prd012-yes"] & P13["prd013-true"] & P14["prd014-false"]
+    P15["prd015-basename"] & P16["prd016-dirname"]
+    P17["prd017-tee"] & P18["prd018-head"]
     UC1["rel01.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
     UC4["rel01.3-uc001-du"] & UC5["rel99.0-uc001-ls"] & UC6["rel99.1-uc001-ls-extended"]
     UC7["rel99.2-uc001-ts"]
+    UC8["rel02.0-uc001-true"] & UC9["rel02.0-uc002-false"] & UC10["rel02.0-uc003-yes"]
+    UC11["rel02.0-uc004-basename"] & UC12["rel02.0-uc005-dirname"]
+    UC13["rel02.1-uc001-tee"] & UC14["rel02.2-uc001-head"]
     TS1["test-rel01.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
     TS4["test-rel01.3"] & TS5["test-rel99.0"] & TS6["test-rel99.1"] & TS7["test-rel99.2"]
+    TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
+    A --> P12 & P13 & P14 & P15 & P16 & P17 & P18
     P1 --> UC1
     P2 --> UC5
     P3 --> UC5
@@ -244,6 +392,13 @@ traceability_diagram: |
     P8 --> UC5
     P9 --> UC4
     P10 --> UC6
+    P12 --> UC10
+    P13 --> UC8
+    P14 --> UC9
+    P15 --> UC11
+    P16 --> UC12
+    P17 --> UC13
+    P18 --> UC14
     UC1 --> TS1
     UC2 --> TS2
     UC3 --> TS3
@@ -251,4 +406,11 @@ traceability_diagram: |
     UC5 --> TS5
     UC6 --> TS6
     UC7 --> TS7
+    UC8 --> TS8
+    UC9 --> TS8
+    UC10 --> TS8
+    UC11 --> TS8
+    UC12 --> TS8
+    UC13 --> TS9
+    UC14 --> TS10
   ```
