@@ -1,0 +1,51 @@
+id: prd013-true
+title: "cmd/true: Exit Successfully"
+
+problem: |
+  Shell scripts use true as a no-op command that always succeeds. It appears in conditional
+  expressions, while loops (while true; do ...; done), and as a placeholder in pipelines.
+  The Go implementation must match the Homebrew GNU reference binary (gtrue, installed by
+  coreutils) in exit code behavior, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Exit with status 0 unconditionally, ignoring all arguments.
+  - G2: Produce no output unless --help or --version is given.
+
+requirements:
+  R1:
+    title: Core behavior
+    items:
+      - R1.1: Must exit with status 0 when invoked with no arguments.
+      - R1.2: Must exit with status 0 when invoked with any arguments, ignoring them entirely. Arguments are not parsed, validated, or acted upon.
+      - R1.3: Must not read from stdin. Must not write to stdout or stderr under normal operation (no arguments or unrecognized arguments).
+
+  R2:
+    title: Help and version output
+    items:
+      - R2.1: When --help is the first argument, must print a usage message to stdout and exit 0.
+      - R2.2: When --version is the first argument, must print version information to stdout and exit 0.
+      - R2.3: If a write error occurs while printing --help or --version output, must exit 1.
+
+  R3:
+    title: Exit codes
+    items:
+      - R3.1: Must exit 0 in all cases except a write error during --help or --version output.
+      - R3.2: Must not exit with any status other than 0 or 1.
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare exit codes between the Go binary and the reference binary via pkg/testutils.
+      - R4.2: "Tests must cover: no arguments, arbitrary arguments (ignored), --help output, and --version output."
+      - R4.3: Tests must verify that no output is produced on stdout or stderr when invoked without --help or --version.
+
+non_goals:
+  - cmd/true does not implement any flags beyond --help and --version.
+  - cmd/true does not perform any computation or I/O beyond the optional help/version output.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/true; echo $? prints 0."
+  - "AC2: go run ./cmd/true foo bar --baz; echo $? prints 0."
+  - "AC3: go run ./cmd/true --help prints a usage message and exits 0, matching gtrue --help."
+  - "AC4: Differential test against gtrue passes for no-args and arbitrary-args cases."
+  - "AC5: cmd/true compiles with no warnings under golangci-lint."
