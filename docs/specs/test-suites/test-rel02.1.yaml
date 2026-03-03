@@ -1,0 +1,174 @@
+id: test-rel02.1
+title: "Test Suite: rel02.1 — tee"
+release: rel02.1
+
+traces:
+  - rel02.1-uc001-tee
+  - prd017-tee R1
+  - prd017-tee R2
+  - prd017-tee R3
+  - prd017-tee R4
+
+preconditions:
+  - ./bin/tee exists (built via mage build).
+  - Reference binary gtee is installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/tee/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "tee tests create temporary files in a test-owned directory for output verification."
+  - "tee tests compare both stdout and output file contents between the Go and reference binaries."
+
+test_cases:
+  # --- passthrough (no files) ---
+  - name: tee_passthrough
+    description: "tee with no file arguments copies stdin to stdout only."
+    inputs:
+      args: []
+      stdin: "hello\nworld\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello\nworld\n"
+      stderr: ""
+    traces:
+      - prd017-tee R1.2
+
+  # --- single file ---
+  - name: tee_single_file
+    description: "tee writes stdin to stdout and to one output file."
+    inputs:
+      args: ["$TMPDIR/out.txt"]
+      stdin: "hello\nworld\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello\nworld\n"
+      file_contents:
+        "$TMPDIR/out.txt": "hello\nworld\n"
+      stderr: ""
+    traces:
+      - prd017-tee R1.1
+      - prd017-tee R1.3
+
+  # --- multiple files ---
+  - name: tee_multiple_files
+    description: "tee writes identical content to two output files and stdout."
+    inputs:
+      args: ["$TMPDIR/a.txt", "$TMPDIR/b.txt"]
+      stdin: "line1\nline2\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "line1\nline2\n"
+      file_contents:
+        "$TMPDIR/a.txt": "line1\nline2\n"
+        "$TMPDIR/b.txt": "line1\nline2\n"
+      stderr: ""
+    traces:
+      - prd017-tee R1.1
+      - prd017-tee R1.5
+
+  # --- append mode ---
+  - name: tee_append_mode
+    description: "tee -a appends to existing file instead of truncating."
+    inputs:
+      args: ["-a", "$TMPDIR/existing.txt"]
+      stdin: "new\n"
+      env: ["LC_ALL=C"]
+      setup: "printf 'old\\n' > $TMPDIR/existing.txt"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "new\n"
+      file_contents:
+        "$TMPDIR/existing.txt": "old\nnew\n"
+      stderr: ""
+    traces:
+      - prd017-tee R2.1
+
+  # --- truncate by default ---
+  - name: tee_truncate_default
+    description: "tee without -a truncates existing file before writing."
+    inputs:
+      args: ["$TMPDIR/existing.txt"]
+      stdin: "replacement\n"
+      env: ["LC_ALL=C"]
+      setup: "printf 'original content\\n' > $TMPDIR/existing.txt"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "replacement\n"
+      file_contents:
+        "$TMPDIR/existing.txt": "replacement\n"
+      stderr: ""
+    traces:
+      - prd017-tee R1.3
+
+  # --- dash as stdout ---
+  - name: tee_dash_stdout
+    description: "tee with '-' as a file argument treats it as stdout reference; output is not duplicated."
+    inputs:
+      args: ["-"]
+      stdin: "data\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "data\n"
+      stderr: ""
+    traces:
+      - prd017-tee R1.4
+
+  # --- write error ---
+  - name: tee_write_error
+    description: "tee exits 1 when an output file cannot be opened; continues writing to other destinations."
+    inputs:
+      args: ["/nonexistent-dir/file.txt", "$TMPDIR/good.txt"]
+      stdin: "data\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: "data\n"
+      file_contents:
+        "$TMPDIR/good.txt": "data\n"
+      stderr: "non-empty error message"
+    traces:
+      - prd017-tee R3.2
+      - prd017-tee R3.3
+
+  # --- empty stdin ---
+  - name: tee_empty_stdin
+    description: "tee with empty stdin creates an empty output file and produces no stdout."
+    inputs:
+      args: ["$TMPDIR/empty.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      file_contents:
+        "$TMPDIR/empty.txt": ""
+      stderr: ""
+    traces:
+      - prd017-tee R1.1
+
+  # --- binary data passthrough ---
+  - name: tee_binary_passthrough
+    description: "tee preserves binary data (NUL bytes, high bytes) in both stdout and output file."
+    inputs:
+      args: ["$TMPDIR/binary.out"]
+      stdin: "\\x00\\x01\\xff\\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "\\x00\\x01\\xff\\n"
+      file_contents:
+        "$TMPDIR/binary.out": "\\x00\\x01\\xff\\n"
+      stderr: ""
+    traces:
+      - prd017-tee R1.5

@@ -1,0 +1,77 @@
+id: rel02.1-uc001-tee
+title: "Copy stdin to stdout and files via tee"
+
+summary: |
+  The operator pipes data through the Go tee binary to capture a copy in one or more
+  files while passing the stream through to stdout. The differential testing harness
+  runs both the Go binary and the Homebrew reference binary (gtee from coreutils) with
+  the same arguments, stdin, and environment, then compares stdout and output file
+  contents byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd017-tee.yaml) and invokes do-work to
+  produce a passing differential test for cmd/tee.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "printf 'hello\nworld\n' | ./bin/tee /tmp/out.txt". tee writes
+      the data to stdout and to /tmp/out.txt simultaneously.
+  - id: F2
+    step: |
+      The operator runs "printf 'line1\n' | ./bin/tee /tmp/a.txt /tmp/b.txt" to verify
+      multi-file output. tee writes identical content to both files and stdout.
+  - id: F3
+    step: |
+      The operator runs "printf 'new\n' | ./bin/tee -a /tmp/existing.txt" to verify
+      append mode. tee appends to the file without truncating existing content.
+  - id: F4
+    step: |
+      The operator runs "printf 'passthrough\n' | ./bin/tee" with no file arguments.
+      tee copies stdin to stdout only (passthrough mode).
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/tee and gtee
+      with the same arguments, stdin, and environment.
+  - id: F6
+    step: |
+      The harness compares stdout byte-for-byte, output file contents byte-for-byte,
+      and exit codes. Both binaries must produce identical results.
+
+touchpoints:
+  - T1: "cmd/tee — stdin copy, file output, append mode, SIGINT suppression (prd017-tee R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and file comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/tee compiles and ./bin/tee exists after mage build.
+  - id: S2
+    criterion: |
+      "printf 'hello\nworld\n' | ./bin/tee /tmp/out.txt" produces "hello\nworld\n"
+      on stdout and identical content in /tmp/out.txt, matching gtee.
+  - id: S3
+    criterion: |
+      Multi-file mode works: both output files contain identical content to stdout.
+  - id: S4
+    criterion: |
+      Append mode works: "tee -a" appends to existing files without truncating.
+  - id: S5
+    criterion: |
+      Passthrough mode works: tee with no file arguments copies stdin to stdout.
+  - id: S6
+    criterion: |
+      Write-error handling works: tee exits 1 when an output file cannot be opened,
+      prints a diagnostic to stderr, and continues writing to other destinations.
+  - id: S7
+    criterion: |
+      The differential test passes for single file, multiple files, append mode,
+      passthrough, and write-error cases.
+
+out_of_scope:
+  - SIGINT suppression (-i) is tested for compilation but interactive signal delivery
+    is not automated in the differential harness.
+  - Output-error modes (--output-error) and -p flag are excluded per the PRD.
+
+test_suite: test-rel02.1
