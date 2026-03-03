@@ -155,7 +155,7 @@ session_completion:
     - Do NOT run any git commands (add, commit, status, init, rm .git)
     - Git is managed externally by the orchestrator
     - Your job is to write code and verify it works
-    - Do NOT use cupboard commands
+    - Do NOT use bd or cupboard commands
 
 technology:
   primary_language: Go
@@ -198,8 +198,7 @@ sections:
     title: Technology Stack
     content: |
       The project uses Go with mage for build automation, cobra for CLI, viper
-      for configuration, yaml.v3 for YAML parsing, and cupboard for issue
-      tracking.
+      for configuration, yaml.v3 for YAML parsing, and cupboard for issue tracking.
   - tag: git_conventions
     title: Git Conventions
     content: |

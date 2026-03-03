@@ -19,7 +19,8 @@ constraints: |
   - Do NOT read files already provided in project_context. They are already inline above.
   - Do NOT explore the filesystem. Do NOT run ls, find, tree, or similar commands.
   - Do NOT modify files outside the Files to Create/Modify list unless a requirement explicitly demands it.
-  - Do NOT use cupboard commands. Task tracking is handled externally.
+  - Do NOT use bd or cupboard commands. Task tracking is handled externally.
   - Do NOT invent interfaces, types, or patterns not described in the source code, Required Reading, or PRDs.
   - Do NOT add features, refactoring, or improvements beyond what the requirements specify.
   - Do NOT run any git commands. No git add, git commit, git init, git status, rm .git, or any other git operation. Git is managed externally by the orchestrator. Just write code and verify it compiles and passes tests.
+  - When building cmd/ binaries to verify compilation, use `go build -o bin/<name> ./cmd/<name>/` so outputs land in bin/ (which is git-ignored) rather than in the working directory.
