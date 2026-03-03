@@ -85,8 +85,6 @@ test_cases:
       - prd008-ls R2.4
       - prd008-ls R2.5
       - prd008-ls R2.6
-      - prd008-ls R2.7
-      - prd008-ls R2.9
 
   - name: ls_long_format_symlink
     description: -l on a directory containing a symlink shows "name -> target".
@@ -100,7 +98,7 @@ test_cases:
       stdout_structure: 'output contains " -> "'
       stderr: ""
     traces:
-      - prd008-ls R2.8
+      - prd008-ls R2.6
 
   - name: ls_long_human
     description: -lh displays human-readable file sizes matching gls -lh.

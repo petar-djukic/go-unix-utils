@@ -31,7 +31,7 @@ constraints: |
   - Components with a provided_by field in ARCHITECTURE.yaml are external infrastructure. Do NOT propose tasks that create or modify files in those components.
   - Do NOT exceed {limit} tasks. If more work is needed, create additional tasks in a future session.
   - Do NOT create tasks larger than {lines_max} lines of production code. Target {lines_min}-{lines_max} lines per task, touching 5-7 files. Split aggressively: a task that creates a struct and implements its methods is two tasks.
-  - Each task must contain at most {max_requirements} requirements. Split any task that would exceed this limit.
+  - Each task must contain at most {max_requirements} PRD sub-requirements (e.g., R1.1, R2.3), not requirement groups. Split any task that would exceed this limit.
   - Each task MUST be independently executable by an agent that has no context beyond the task description and the execution constitution.
   - Do NOT assume the stitch agent has access to your analysis, the existing issues list, or any context from this conversation.
   - Do NOT propose tasks that require human judgment or manual testing. Each task must have checkable acceptance criteria.

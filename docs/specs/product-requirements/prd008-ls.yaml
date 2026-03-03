@@ -36,7 +36,7 @@ requirements:
     title: Single-column mode (-1) and long format (-l)
     items:
       - R2.1: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
-      - R2a: |
+      - R2.2: |
           -l flag skeleton and permission string. When -l is given, produce long-format output. Field order (left to right): permissions (10 chars), nlink, owner, group, size, mtime, name. Fields separated by a single space. Numeric fields (nlink, size) are right-aligned in columns wide enough for the largest value in the listing.
 
           Permission string algorithm (10 characters):
@@ -44,7 +44,7 @@ requirements:
           - Positions 1-3 (owner rwx): 'r'/'- ' for bit 0o400, 'w'/'-' for 0o200, 'x'/'-' for 0o100. If setuid (fi.Mode&os.ModeSetuid != 0): replace 'x' with 's', or replace '-' with 'S'.
           - Positions 4-6 (group rwx): bits 0o040, 0o020, 0o010. If setgid (fi.Mode&os.ModeSetgid != 0): replace 'x' with 's', or replace '-' with 'S'.
           - Positions 7-9 (other rwx): bits 0o004, 0o002, 0o001. If sticky (fi.Mode&os.ModeSticky != 0): replace 'x' with 't', or replace '-' with 'T'.
-      - R2b: |
+      - R2.3: |
           File metadata via pkg/sys.Lstat. Obtain metadata for each listed entry by calling pkg/sys.Lstat(path string) (*sys.FileInfo, error) — does not follow symbolic links; returns the symlink's own metadata when path is a symlink.
 
           sys.FileInfo struct (embedded here for reference):
@@ -64,11 +64,11 @@ requirements:
             }
 
           In long format: print fi.Nlink (uint64) right-aligned; print fi.Size (int64, bytes) right-aligned. Both columns sized to the widest value across all listed entries.
-      - R2c: |
+      - R2.4: |
           Owner and group name resolution in long format. Resolve owner name by calling os/user.LookupId(strconv.Itoa(int(fi.Uid))); on success use u.Username; on error (user not found or lookup fails) fall back to strconv.FormatUint(uint64(fi.Uid), 10). Resolve group name by calling os/user.LookupGroupId(strconv.Itoa(int(fi.Gid))); on success use g.Name; on error fall back to strconv.FormatUint(uint64(fi.Gid), 10). Owner and group fields are left-padded to column width for alignment.
-      - R2d: |
+      - R2.5: |
           Modification time formatting in long format. Use fi.ModTime (time.Time from sys.FileInfo). If time.Since(fi.ModTime) < 6*30*24*time.Hour (approximately six months), format as fi.ModTime.Format("Jan _2 15:04"). Otherwise format as fi.ModTime.Format("Jan _2  2006"). Both patterns produce a 12-character field.
-      - R2e: |
+      - R2.6: |
           Total block count line and symlink display. Before the directory listing, print "total N\n" where N = sum(fi.Blocks for all listed entries) / 2. The division converts 512-byte st_blocks units to 1K-block units matching GNU ls. N is a plain integer (no trailing suffix) unless -h is active (see R5).
 
           Symlink display: when fi.Mode&os.ModeSymlink != 0, read the link target with os.Readlink(path) and append " -> " + target to the entry name field. Use Lstat (not Stat) so the symlink's own fi.Size and fi.Nlink are used, not the target's.
