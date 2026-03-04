@@ -77,7 +77,7 @@ func normalizeProgramName(data []byte) []byte {
 //	    deep/
 //	      file3.txt  (small file)
 //
-// D4: at least two levels of nesting to exercise walkDir recursion.
+// D3: at least two levels of nesting to exercise walkDir recursion.
 func buildDirTree(t *testing.T, root string) {
 	t.Helper()
 	sub := filepath.Join(root, "sub")
@@ -88,6 +88,35 @@ func buildDirTree(t *testing.T, root string) {
 	writeTestFile(t, root, "file1.txt", "hello world\n")
 	writeTestFile(t, sub, "file2.txt", "second file content\n")
 	writeTestFile(t, deep, "file3.txt", "deep nested file\n")
+}
+
+// buildFlatDir creates a single directory containing only files (no
+// subdirectories) for testing flat directory traversal.
+//
+//	root/
+//	  a.txt
+//	  b.txt
+func buildFlatDir(t *testing.T, root string) {
+	t.Helper()
+	writeTestFile(t, root, "a.txt", "alpha\n")
+	writeTestFile(t, root, "b.txt", "bravo content here\n")
+}
+
+// TestDuFlatDirectory verifies R1.1 and R1.3: du on a directory containing
+// only files (no subdirectories) prints a single line for the directory itself.
+func TestDuFlatDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	buildFlatDir(t, dir)
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "flat-directory",
+			Args:     []string{dir},
+			ExitCode: 0,
+		},
+	})
 }
 
 // TestDuRecursiveTraversal verifies R1.1: du recurses into each directory
@@ -133,7 +162,7 @@ func TestDuBlockUnits(t *testing.T) {
 
 // TestDuOutputFormat verifies R1.3: each output line is "SIZE\tPATH\n" for both
 // directory and non-directory file arguments.
-// D4: tests both directory and non-directory arguments to exercise both branches
+// D3: tests both directory and non-directory arguments to exercise both branches
 // of duArg.
 func TestDuOutputFormat(t *testing.T) {
 	t.Parallel()
