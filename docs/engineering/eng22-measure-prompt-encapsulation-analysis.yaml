@@ -1,0 +1,286 @@
+id: eng22-measure-prompt-encapsulation-analysis
+title: "GH-251: Reducing Measure Prompt Size via Go Interface Encapsulation"
+
+introduction: |
+  The measure prompt includes every Go source file in pkg/ and cmd/, causing it to grow
+  linearly with codebase size. Generation run 14 hit a practical ceiling at 312 KB (31 source
+  files, 5,557 LOC), where measure takes 8-10 minutes and fails when API connections stall.
+  The 70 KB baseline (docs, constitutions, analysis) means source code accounts for ~242 KB
+  or 78% of the prompt at that scale.
+
+  We analyze the run 14 codebase to determine how Go's exported/unexported naming convention
+  can reduce prompt size. The core insight: the measure agent plans tasks, it does not implement
+  them. It needs to know what packages export (their API contracts), not how they implement
+  those contracts. By replacing full source files with interface summaries for non-target
+  packages, we can cut the source portion of the prompt significantly.
+
+sections:
+  - title: "Current prompt composition"
+    content: |
+      At the end of run 14, the measure prompt was 312 KB. The source_code section contained
+      all 31 Go files (production + test) from pkg/ and cmd/.
+
+      Table 1: Prompt composition at 312 KB
+
+      | Section | Size (KB) | % of Total |
+      |---------|-----------|------------|
+      | Source code (31 files) | ~242 | 78% |
+      | Architecture doc | ~25 | 8% |
+      | Planning constitution | ~13 | 4% |
+      | Vision doc | ~9 | 3% |
+      | Issue format constitution | ~8 | 3% |
+      | Analysis + other | ~15 | 4% |
+      | Total | ~312 | 100% |
+
+      The source code section breaks down further:
+
+      Table 2: Source code by category
+
+      | Category | Files | Bytes | % of Source |
+      |----------|-------|-------|-------------|
+      | cmd/* production | 8 | 40,844 | 17% |
+      | cmd/* tests | 8 | 50,251 | 21% |
+      | pkg/* production | 8 | 21,737 | 9% |
+      | pkg/* tests | 7 | 43,701 | 18% |
+      | File headers/paths overhead | — | ~86,000 | 35% |
+      | Total | 31 | ~242,533 | 100% |
+
+      The cobbler orchestrator wraps each file in YAML frontmatter (path, language tag,
+      content delimiters), adding approximately 200-300 bytes per file. At 31 files, this
+      overhead accounts for roughly 7-9 KB.
+
+  - title: "Coupling analysis"
+    content: |
+      We examined which cmd/ packages import which pkg/ packages.
+
+      Table 3: cmd/ to pkg/ dependencies
+
+      | Command | pkg/format | pkg/sys | pkg/testutils | Self-contained |
+      |---------|-----------|---------|---------------|----------------|
+      | cmd/cat | — | — | — | yes |
+      | cmd/du | — | Stat, Lstat | — | no |
+      | cmd/false | — | — | — | yes |
+      | cmd/ls | FileTypeColor, Columns, PadRight | TerminalWidth | — | no |
+      | cmd/sponge | — | — | — | yes |
+      | cmd/true | — | — | — | yes |
+      | cmd/version | — | — | — | yes |
+      | cmd/wc | — | — | — | yes |
+
+      6 of 8 commands are fully self-contained with zero pkg/ imports. Only cmd/ls (format +
+      sys) and cmd/du (sys) depend on shared packages. No command imports another command.
+
+      pkg/testutils is used exclusively by test files (imported as a test dependency). No
+      production code imports it.
+
+  - title: "Exported API surface analysis"
+    content: |
+      We measured the exported (public) API surface vs total implementation for each package.
+      The exported surface is what the measure agent needs to plan tasks; the implementation
+      detail is what the stitch agent needs to write code.
+
+      Table 4: Exported API vs implementation detail
+
+      | Package | Total LOC | Exported Symbols | API LOC | Impl LOC | Hideable % |
+      |---------|-----------|------------------|---------|----------|------------|
+      | pkg/format/color.go | 124 | 5 functions | ~60 | ~64 | 52% |
+      | pkg/format/column.go | 100 | 3 functions | ~50 | ~50 | 50% |
+      | pkg/format/size.go | 68 | 1 type, 1 function | ~30 | ~38 | 56% |
+      | pkg/sys/fileinfo.go | 65 | 1 type, 4 methods | ~50 | ~15 | 23% |
+      | pkg/sys/fileinfo_darwin.go | 21 | 0 (platform impl) | 0 | 21 | 100% |
+      | pkg/sys/fileinfo_linux.go | 21 | 0 (platform impl) | 0 | 21 | 100% |
+      | pkg/sys/terminal.go | 23 | 1 function | ~10 | ~13 | 57% |
+      | pkg/testutils/difftest.go | 305 | 2 types, 3 functions, 1 const | ~85 | ~220 | 72% |
+      | **pkg/* total** | **727** | **20 symbols** | **~285** | **~442** | **61%** |
+
+      The 20 exported symbols across all packages could be summarized in approximately
+      100-120 lines of Go interface declarations and type stubs (doc.go or interfaces.go files).
+      This would replace 727 LOC of full implementation with ~120 LOC of API surface.
+
+      For cmd/ packages, the analysis is different. Commands export nothing (they are main
+      packages). However, the measure agent reads them to understand what has already been
+      implemented and avoid proposing duplicate work. A summary approach is needed.
+
+  - title: "Encapsulation strategies"
+    content: |
+      We evaluate three strategies for reducing the source code portion of the measure prompt.
+
+      Strategy A: Interface files for pkg/
+
+      Create a doc.go or interfaces.go in each pkg/ package that declares the exported API
+      surface. The measure prompt includes only these summary files, not the full implementations.
+
+      Example pkg/testutils/doc.go (~30 lines):
+        // Package testutils provides differential testing between Go and reference binaries.
+        // DiffTest defines a single test case comparing Go binary output against a reference.
+        type DiffTest struct { Name, Stdin string; Args, Env []string; ... }
+        // RunDiffTests executes all DiffTests, comparing Go and reference binary outputs.
+        func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest)
+        // NormalizeFunc transforms output bytes before comparison.
+        type NormalizeFunc func([]byte) []byte
+
+      This replaces 305 LOC (9,363 bytes) with ~30 LOC (~900 bytes) — a 90% reduction for
+      testutils alone.
+
+      Strategy B: Exclude test files from the measure prompt
+
+      Test files account for 93,952 bytes (15 files) but contain no API surface — they are
+      consumers, not providers. The measure agent needs to know what is tested (to avoid
+      proposing redundant test tasks) but does not need the full test implementations.
+
+      Option B1: Exclude all test files. Simple but loses test coverage awareness.
+      Option B2: Include test file headers (first 10-20 lines showing test function names)
+      as a summary. Preserves coverage awareness at ~5% of the byte cost.
+
+      Strategy C: Selective cmd/ inclusion
+
+      When the measure agent plans a task for cmd/cat, it does not need to read cmd/sponge,
+      cmd/du, or cmd/wc. Currently all 8 commands are included regardless of task relevance.
+
+      Option C1: Include only the target cmd/ files plus interface summaries of any pkg/
+      packages they import.
+      Option C2: Include a manifest file listing implemented commands and their flag sets
+      (~50 lines), replacing 1,511 LOC of full implementations.
+
+  - title: "Prompt reduction estimates"
+    content: |
+      We estimate the prompt size under each strategy combination, using the run 14 endpoint
+      (312 KB, 31 files, 5,557 LOC) as the baseline.
+
+      Table 5: Current source code breakdown (bytes)
+
+      | Category | Files | Bytes |
+      |----------|-------|-------|
+      | cmd/* production | 8 | 40,844 |
+      | cmd/* tests | 8 | 50,251 |
+      | pkg/* production | 8 | 21,737 |
+      | pkg/* tests | 7 | 43,701 |
+      | Overhead (~300/file) | 31 | ~9,300 |
+      | **Total source** | **31** | **~165,833** |
+
+      Table 6: Estimated source bytes under each strategy
+
+      | Strategy | Source Bytes | Reduction | Prompt Total |
+      |----------|-------------|-----------|--------------|
+      | Baseline (current) | ~166 KB | — | ~312 KB |
+      | A only (pkg/ interfaces) | ~153 KB | 8% | ~299 KB |
+      | B1 only (no test files) | ~72 KB | 57% | ~218 KB |
+      | A + B1 (interfaces + no tests) | ~59 KB | 64% | ~205 KB |
+      | A + B2 (interfaces + test headers) | ~68 KB | 59% | ~214 KB |
+      | A + B1 + C2 (full optimization) | ~20 KB | 88% | ~166 KB |
+      | A + B2 + C2 (balanced) | ~29 KB | 83% | ~175 KB |
+
+      The largest single win is Strategy B (exclude test files): 57% source reduction.
+      The combination A + B2 + C2 reduces the prompt from 312 KB to ~175 KB while preserving:
+      - Package API contracts (via interface files)
+      - Test coverage awareness (via test headers)
+      - Command inventory (via manifest)
+
+      At 175 KB, the measure agent would have 4-5 minutes of comfortable processing time
+      instead of racing the 10-minute watchdog.
+
+  - title: "Scaling projections"
+    content: |
+      The full go-unix-utils target includes 19 utilities plus extended ls. We project prompt
+      sizes at full scale under current and optimized approaches.
+
+      Table 7: Projected prompt size at full 19-utility scale
+
+      | Approach | Est. Source Files | Est. Source KB | Est. Prompt KB |
+      |----------|-------------------|----------------|----------------|
+      | Current (all files) | ~65 | ~400 | ~546 |
+      | A + B2 + C2 (balanced) | ~15 | ~50 | ~196 |
+
+      Without optimization, the prompt would reach ~546 KB at full scale — well beyond reliable
+      operation. With the balanced optimization, it stays under 200 KB regardless of how many
+      utilities are implemented.
+
+  - title: "cmd/ independence observation"
+    content: |
+      The cmd/ packages exhibit near-total independence:
+
+      - 6 of 8 commands have zero pkg/ imports
+      - No command imports another command
+      - Each command is a self-contained main package
+
+      This independence is a strong architectural property that the measure agent should exploit.
+      When planning a task for cmd/basename (which will likely be self-contained), the prompt
+      does not need cmd/cat, cmd/du, cmd/sponge, or cmd/wc source code — only an inventory
+      of what those commands implement to avoid duplication.
+
+      The two commands with pkg/ dependencies (ls → format + sys, du → sys) need only the
+      interface declarations of those packages, not the full implementations.
+
+  - title: "pkg/testutils special case"
+    content: |
+      pkg/testutils is the strongest encapsulation candidate:
+
+      - 305 LOC total, but only 85 LOC of public API
+      - Provides DiffTest struct and RunDiffTests — a simple contract
+      - Used by every test file but no production code
+      - Internal complexity (binary execution, timeout handling, normalization) is irrelevant
+        to the measure agent's planning
+
+      An interfaces.go of ~30 lines would replace the full 305-line implementation in the
+      measure prompt, saving 9,363 bytes per prompt. This single change would be the highest
+      ROI encapsulation.
+
+  - title: "Recommendations"
+    content: |
+      We recommend implementing the balanced optimization (A + B2 + C2) in three phases:
+
+      Phase 1: Exclude test files from measure prompt (Strategy B1)
+
+      The simplest change with the largest impact. Modify the cobbler-scaffold
+      loadSourceFiles function to skip *_test.go files when building the measure prompt.
+      Test files are still included for the stitch prompt (which needs them to write
+      compatible tests). This is a cobbler-scaffold change, not a go-unix-utils change.
+
+      Estimated reduction: 94 KB (57% of source).
+      Effort: 1 cobbler-scaffold configuration option (measure_exclude_tests: true).
+
+      Phase 2: Add pkg/ interface summary files (Strategy A)
+
+      Create doc.go or interfaces.go in each pkg/ package:
+      - pkg/format/doc.go (~40 lines): exported functions and types
+      - pkg/sys/doc.go (~25 lines): FileMetadata type, Stat/Lstat/TerminalWidth
+      - pkg/testutils/doc.go (~30 lines): DiffTest struct, RunDiffTests, NormalizeFunc
+
+      The cobbler-scaffold measure prompt builder includes these summary files and excludes
+      the full implementations. The stitch prompt still includes everything.
+
+      Estimated additional reduction: 13 KB.
+      Effort: 3 doc.go files + cobbler-scaffold loadSourceFiles change.
+
+      Phase 3: Command manifest for measure (Strategy C2)
+
+      Generate a commands.md or commands.yaml listing implemented commands, their flags, and
+      which pkg/ packages they import. The measure agent reads this instead of all cmd/
+      source files. This is generated automatically during generation close-out or by a
+      mage target.
+
+      Estimated additional reduction: 39 KB.
+      Effort: 1 manifest template + cobbler-scaffold change.
+
+      Implementation priority: Phase 1 alone gets 57% reduction with minimal effort. Phase 2
+      adds encapsulation best practices. Phase 3 is optional until the codebase exceeds
+      ~30 commands.
+
+  - title: "Relationship to GH-252 (OOD in specifications)"
+    content: |
+      GH-252 asks how specifications can encode OOD principles. This analysis provides concrete
+      evidence for one recommendation: PRDs should declare package_contract sections listing
+      exported types and functions. These contracts would:
+
+      1. Guide the stitch agent to implement the correct API surface
+      2. Serve as the source for generating doc.go interface files
+      3. Enable the measure prompt to include contracts instead of full implementations
+
+      The traceability chain would extend: PRD (package_contract) → doc.go (interface file) →
+      implementation (full code) → tests (validation).
+
+references:
+  - "docs/engineering/eng21-generation-run-14-results.yaml -- Run 14 results with prompt data"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/251 -- This issue"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/252 -- OOD in specifications"
+  - "generation-gh-206-generation-run-14-merged -- Source code analyzed"
+  - "v1.20260304.1 -- Generated code tag"
