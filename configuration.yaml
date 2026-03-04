@@ -49,6 +49,8 @@ cobbler:
     doc_tag_prefix: v0.
     base_branch: main
     idle_timeout_seconds: 600
+    measure_source_mode: headers
+    measure_roadmap_source: true
 podman:
     image: claude-cli
     args:
