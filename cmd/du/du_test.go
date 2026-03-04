@@ -3,7 +3,7 @@
 
 // Differential tests for du core disk usage reporting.
 //
-// Implements prd009-du R1.1, R1.2, R1.3, R1.5.
+// Implements prd009-du R1.1, R1.2, R1.3, R1.5, R2.2, R2.3, R2.4, R2.7.
 package main
 
 import (
@@ -219,6 +219,87 @@ func TestDuMultipleArguments(t *testing.T) {
 		{
 			Name:     "multiple-directory-args",
 			Args:     []string{sub, deep},
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestDuSummaryFlag verifies R2.2: du -s prints only one total line per
+// argument, suppressing all subdirectory lines. Uses a multi-level directory
+// tree to confirm subdirectory lines are absent.
+func TestDuSummaryFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	buildDirTree(t, dir)
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "summary-single-arg",
+			Args:     []string{"-s", dir},
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestDuAllFilesFlag verifies R2.3: du -a prints a size line for every file
+// encountered during traversal, not just directories. Uses a multi-level
+// directory tree containing files at multiple levels.
+func TestDuAllFilesFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	buildDirTree(t, dir)
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "all-files-directory-tree",
+			Args:     []string{"-a", dir},
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestDuMaxDepthFlag verifies R2.4: du -d N limits the depth of reported
+// entries. Tests -d 0 (argument total only, equivalent to -s) and -d 1
+// (argument and its immediate children) on a multi-level directory tree.
+func TestDuMaxDepthFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	buildDirTree(t, dir)
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "max-depth-zero",
+			Args:     []string{"-d", "0", dir},
+			ExitCode: 0,
+		},
+		{
+			Name:     "max-depth-one",
+			Args:     []string{"-d", "1", dir},
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestDuGrandTotalFlag verifies R2.7: du -c appends a grand total line after
+// all arguments are processed. Uses multiple directory arguments (sub and deep
+// from buildDirTree) to verify the total line sums all arguments.
+// D3: passes multiple directory arguments to exercise grand total aggregation.
+func TestDuGrandTotalFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	buildDirTree(t, dir)
+
+	sub := filepath.Join(dir, "sub")
+	deep := filepath.Join(dir, "sub", "deep")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "grand-total-multiple-args",
+			Args:     []string{"-c", sub, deep},
 			ExitCode: 0,
 		},
 	})
