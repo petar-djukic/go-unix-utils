@@ -4,7 +4,7 @@
 // Package main implements the du utility for reporting recursive directory
 // disk usage.
 //
-// Implements prd009-du (R1.1, R1.2, R1.3, R1.4, R1.5, R4.1, R4.2, R5.1).
+// Implements prd009-du (R1.1, R1.2, R1.3, R1.4, R1.5, R2.2, R2.3, R2.4, R2.7, R4.1, R4.2, R5.1).
 package main
 
 import (
@@ -19,8 +19,16 @@ import (
 )
 
 // options holds the parsed command-line flags for du.
-// D3: scaffolding for future flags (-a, -s, -h, -c, -k, -d, etc.).
-type options struct{}
+type options struct {
+	// R2.3: -a prints a size line for every file, not just directories.
+	allFiles bool
+	// R2.2: -s prints only one total line per argument.
+	summaryOnly bool
+	// R2.7: -c prints a grand total line after all arguments.
+	grandTotal bool
+	// R2.4: -d N limits the depth of reported entries. -1 means unlimited.
+	maxDepth int
+}
 
 // reportError writes a du-style error message to stderr.
 // R4.2: per-path error messages to stderr.
@@ -33,14 +41,15 @@ func reportError(path string, err error) {
 	}
 }
 
-// duArg processes a single command-line argument.
+// duArg processes a single command-line argument. Returns the total raw
+// 512-byte block count for the argument and any error encountered.
 // R1.1: reads named paths in argument order.
 // R1.5: each argument is traversed independently.
-func duArg(arg string, opts *options) error {
+func duArg(arg string, opts *options) (int64, error) {
 	info, err := os.Lstat(arg)
 	if err != nil {
 		reportError(arg, err)
-		return err
+		return 0, err
 	}
 
 	if !info.IsDir() {
@@ -48,26 +57,31 @@ func duArg(arg string, opts *options) error {
 		meta, err := sys.Lstat(arg)
 		if err != nil {
 			reportError(arg, err)
-			return err
+			return 0, err
 		}
-		fmt.Printf("%d\t%s\n", displayBlocks(meta.Blocks()), arg)
-		return nil
+		blocks := meta.Blocks()
+		fmt.Printf("%d\t%s\n", displayBlocks(blocks), arg)
+		return blocks, nil
 	}
 
 	// Directory: depth-first traversal printing per-directory subtotals.
-	_, hasErr := walkDir(arg, opts)
+	totalBlocks, hasErr := walkDir(arg, opts, 0)
 	if hasErr {
-		return fmt.Errorf("errors during traversal of %s", arg)
+		return totalBlocks, fmt.Errorf("errors during traversal of %s", arg)
 	}
-	return nil
+	return totalBlocks, nil
 }
 
 // walkDir recursively traverses a directory, accumulating 512-byte block
-// counts bottom-up. Returns the total raw block count for the subtree and
-// whether any error occurred during traversal.
+// counts bottom-up. The depth parameter tracks how deep we are below the
+// command-line argument (0 = the argument itself). Returns the total raw
+// block count for the subtree and whether any error occurred during traversal.
 // R1.1: recurse into each directory and print accumulated size.
 // R1.4: does not follow symbolic links (uses sys.Lstat and DirEntry.IsDir).
-func walkDir(dirPath string, opts *options) (int64, bool) {
+// R2.3: when -a is active, prints non-directory files.
+// R2.2: when -s is active, suppresses all output except the argument total.
+// R2.4: when -d N is active, suppresses output for entries deeper than N.
+func walkDir(dirPath string, opts *options, depth int) (int64, bool) {
 	var totalBlocks int64
 	hasErr := false
 
@@ -91,13 +105,12 @@ func walkDir(dirPath string, opts *options) (int64, bool) {
 		childPath := joinPath(dirPath, entry.Name())
 
 		if entry.IsDir() {
-			subtotal, childErr := walkDir(childPath, opts)
+			subtotal, childErr := walkDir(childPath, opts, depth+1)
 			totalBlocks += subtotal
 			if childErr {
 				hasErr = true
 			}
 		} else {
-			// Non-directory: count blocks but do not print in default mode.
 			childMeta, err := sys.Lstat(childPath)
 			if err != nil {
 				reportError(childPath, err)
@@ -105,13 +118,34 @@ func walkDir(dirPath string, opts *options) (int64, bool) {
 				continue
 			}
 			totalBlocks += childMeta.Blocks()
+			// R2.3: when -a is active, print non-directory file entries.
+			if opts.allFiles && shouldPrint(opts, depth+1) {
+				fmt.Printf("%d\t%s\n", displayBlocks(childMeta.Blocks()), childPath)
+			}
 		}
 	}
 
 	// R1.3: print SIZE\tPATH for this directory.
 	// R1.2: convert from 512-byte blocks to 1024-byte display units.
-	fmt.Printf("%d\t%s\n", displayBlocks(totalBlocks), dirPath)
+	// R2.2: when -s is active, only the argument-level total (depth 0) is printed by duArg.
+	// R2.4: when -d N is active, only directories at depth <= N are printed.
+	if shouldPrint(opts, depth) {
+		fmt.Printf("%d\t%s\n", displayBlocks(totalBlocks), dirPath)
+	}
 	return totalBlocks, hasErr
+}
+
+// shouldPrint returns true if an entry at the given depth should be printed.
+// R2.2: -s suppresses all output except the argument-level total (depth 0).
+// R2.4: -d N suppresses output for entries deeper than N levels.
+func shouldPrint(opts *options, depth int) bool {
+	if opts.summaryOnly {
+		return depth == 0
+	}
+	if opts.maxDepth >= 0 && depth > opts.maxDepth {
+		return false
+	}
+	return true
 }
 
 // joinPath constructs a child path by appending name to a directory path,
@@ -142,6 +176,14 @@ func main() {
 	}()
 
 	var opts options
+	// R2.3: -a prints a size line for every file encountered.
+	flag.BoolVar(&opts.allFiles, "a", false, "write counts for all files, not just directories")
+	// R2.2: -s displays only a grand total for each argument.
+	flag.BoolVar(&opts.summaryOnly, "s", false, "display only a total for each argument")
+	// R2.7: -c produces a grand total after all arguments.
+	flag.BoolVar(&opts.grandTotal, "c", false, "produce a grand total")
+	// R2.4: -d N limits the depth of reported entries. Default -1 means unlimited.
+	flag.IntVar(&opts.maxDepth, "d", -1, "print the total for a directory only if it is N or fewer levels below the command line argument")
 	flag.Parse()
 
 	// R1.5: process arguments in command-line order; default to ".".
@@ -151,10 +193,18 @@ func main() {
 	}
 
 	exitCode := 0
+	var grandTotalBlocks int64
 	for _, arg := range args {
-		if err := duArg(arg, &opts); err != nil {
+		blocks, err := duArg(arg, &opts)
+		grandTotalBlocks += blocks
+		if err != nil {
 			exitCode = 1
 		}
+	}
+
+	// R2.7: print grand total line when -c is active.
+	if opts.grandTotal {
+		fmt.Printf("%d\ttotal\n", displayBlocks(grandTotalBlocks))
 	}
 
 	os.Exit(exitCode)
