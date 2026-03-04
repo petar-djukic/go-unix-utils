@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cat core I/O and error handling.
+// Differential tests for cat core I/O, error handling, line numbering,
+// squeeze, and end markers.
 //
-// Implements prd006-cat R1.1, R1.2, R5.2, R5.3.
+// Implements prd006-cat R1.1, R1.2, R2.1, R2.3, R3.1, R4.3, R5.2, R5.3.
 package main
 
 import (
@@ -146,6 +147,105 @@ func TestCatErrorHandling(t *testing.T) {
 			WorkDir:   dir,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+	})
+}
+
+// TestCatLineNumbering verifies R2.1: cat -n numbers all output lines with
+// the format "%6d\t" prefix, including blank lines.
+func TestCatLineNumbering(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "mixed.txt", "first\n\nsecond\n\n\nthird\n")
+	writeTestFile(t, dir, "simple.txt", "alpha\nbeta\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "number-all-lines-with-blanks",
+			Args:     []string{"-n", "mixed.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "number-across-files",
+			Args:     []string{"-n", "simple.txt", "mixed.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatNumberNonblank verifies R2.2 and R2.3: cat -b numbers only non-blank
+// lines, and -b overrides -n when both are given.
+func TestCatNumberNonblank(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "blanks.txt", "line1\n\n\nline2\n\nline3\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "number-nonblank-only",
+			Args:     []string{"-b", "blanks.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "b-overrides-n",
+			Args:     []string{"-b", "-n", "blanks.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatSqueeze verifies R3.1: cat -s squeezes runs of consecutive blank
+// lines down to a single blank line.
+func TestCatSqueeze(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "multi-blank.txt", "top\n\n\n\nmiddle\n\n\nbottom\n")
+	writeTestFile(t, dir, "double-blank.txt", "a\n\n\nb\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "squeeze-multiple-blanks",
+			Args:     []string{"-s", "multi-blank.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "squeeze-two-blanks",
+			Args:     []string{"-s", "double-blank.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatShowEnds verifies R4.3: cat -E appends a "$" character before each
+// newline in the output.
+func TestCatShowEnds(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "lines.txt", "hello\nworld\n")
+	writeTestFile(t, dir, "with-blanks.txt", "first\n\nsecond\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "show-ends-basic",
+			Args:     []string{"-E", "lines.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "show-ends-with-blank-lines",
+			Args:     []string{"-E", "with-blanks.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
 		},
 	})
 }
