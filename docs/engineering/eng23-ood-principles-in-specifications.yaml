@@ -1,0 +1,452 @@
+id: eng23-ood-principles-in-specifications
+title: "GH-252: Encoding OOD Principles in Specifications for Generated Code Quality"
+
+introduction: |
+  The cobbler pipeline generates Go code from specifications: PRDs define behavioral requirements,
+  use cases define execution paths, and the architecture document defines components. The generated
+  code's structural quality -- encapsulation, abstraction, composition, reuse -- depends on what
+  these specifications express. Currently, specifications describe what each utility does (functional
+  requirements) but say little about how packages relate to each other structurally.
+
+  We analyzed the generation run 14 codebase (v1.20260304.1, 5,557 LOC across 8 commands and 3
+  shared packages) against OOD principles adapted for Go's type system. We then reviewed every
+  specification format (PRD, use case, architecture, design constitution) to identify where
+  structural guidance is present and where it is absent. The result is a concrete proposal for
+  specification format changes that would guide the stitch agent toward better-structured code.
+
+  This document is the specification-side counterpart to eng22, which analyzed prompt reduction
+  via interface encapsulation. Where eng22 asked "what can the measure agent skip reading?",
+  this document asks "what should the specifications say so the stitch agent writes better code?"
+
+sections:
+  - title: "Gap analysis: OOD violations in generated code"
+    content: |
+      We examined the run 14 codebase for violations of four OOD principles: encapsulation,
+      abstraction, composition, and polymorphism. Each violation is classified as spec-induced
+      (the specification guided the agent toward the violation) or agent-induced (the agent
+      missed an opportunity the specification did not prevent).
+
+      Table 1: Encapsulation violations
+
+      | Violation | Location | Classification |
+      |-----------|----------|----------------|
+      | Unprotected package-level mutable state (tempFiles) | cmd/sponge/main.go | Agent-induced |
+      | Color system hardcodes os.Stdout for TTY detection | pkg/format/color.go colorActive() | Spec-induced |
+      | Duplicate columnGap constant in cmd/ls and pkg/format | cmd/ls/main.go, pkg/format/column.go | Agent-induced |
+
+      The sponge tempFiles variable is accessed by the signal handler goroutine without
+      synchronization, while pkg/format/color.go correctly uses sync.RWMutex for its
+      colorOverride. The inconsistency shows the agent applied the pattern in one package
+      but not another.
+
+      The color system hardcoding is spec-induced: prd003-format R2.3 specifies "automatic
+      TTY detection on stdout" rather than "on the provided writer." The exported
+      ColorEnabled(w io.Writer) function accepts an interface parameter, but the internal
+      colorActive() function ignores it and calls ColorEnabled(os.Stdout). The agent started
+      with the right abstraction but the spec did not require threading it through.
+
+      Table 2: Abstraction violations -- cross-command code duplication
+
+      | Duplicated Pattern | Occurrences | Lines Each | Total LOC | Classification |
+      |--------------------|-------------|------------|-----------|----------------|
+      | SIGPIPE handler setup | 8 | 6 | 48 | Agent-induced |
+      | reportError function | 4 | 8 | 32 | Agent-induced |
+      | TestMain boilerplate | 7 | 20 | 140 | Agent-induced |
+      | writeTestFile helper | 5 | 5 | 25 | Agent-induced |
+      | normalizeProgramName | 4 | 3 | 12 | Agent-induced |
+      | true/false shared logic | 2 | 30 | 30 | Agent-induced |
+      | Terminal detection reimplemented | 2 | 10 | 10 | Agent-induced |
+      | Total | — | — | 297 | — |
+
+      297 lines (7% of the codebase) are duplicated across commands. The largest single
+      source is the TestMain boilerplate: 7 test files each contain 20 identical lines for
+      building the Go binary, locating the reference binary, creating a temp directory, and
+      running tests. This belongs in pkg/testutils alongside RunDiffTests.
+
+      The SIGPIPE handler is the most pervasive duplication: every command has the same 6
+      lines. A pkg/sys.HandleSIGPIPE() function would eliminate all 8 copies.
+
+      The reportError function is structurally identical in 4 commands -- all extract
+      os.PathError via errors.As and format the message with the utility name prefix. The
+      only parameter that varies is the program name string.
+
+      All of these are agent-induced: the stitch agent generates each command from its own
+      PRD and does not refactor common patterns into shared packages, even though it
+      cross-references previously generated code.
+
+      Table 3: Composition and polymorphism observations
+
+      | Observation | Location | Classification |
+      |-------------|----------|----------------|
+      | No shared command lifecycle abstraction | All cmd/ packages | Spec-induced |
+      | No Go interfaces exported from pkg/ | pkg/format, pkg/sys | Spec-induced |
+      | No doc.go files in any package | All pkg/ packages | Agent-induced |
+      | Duplicate terminal detection via raw syscall | pkg/format/color.go vs pkg/sys/terminal.go | Agent-induced |
+
+      Every command follows the same lifecycle: set up SIGPIPE, parse flags, default
+      arguments, process each argument collecting exit codes, flush buffered output, exit.
+      No specification prescribes this as a shared pattern, so each command reimplements it.
+      The per-PRD architecture implicitly encourages independent implementations.
+
+      No pkg/ package exports interfaces. pkg/sys defines FileMetadata as a concrete struct
+      (with proper unexported fields and accessors, which is good encapsulation). But there
+      is no FileStatter interface that would allow mocking in unit tests, and no formal
+      Formatter interface for pkg/format. The PRDs specify concrete types exclusively.
+
+      pkg/format/color.go reimplements terminal detection using raw syscall.Syscall with
+      TIOCGWINSZ, while pkg/sys/terminal.go provides TerminalWidth using unix.IoctlGetWinsize.
+      Both perform the same ioctl. The format package should call pkg/sys rather than
+      reimplementing the syscall. This happened because the two packages were generated in
+      separate tasks without shared interface coordination.
+
+  - title: "Specification expressiveness review"
+    content: |
+      We examined how each specification format currently encodes structural design guidance.
+
+      Table 4: Current OOD expressiveness by document type
+
+      | Document | Behavioral Req. | API Contracts | Dependencies | Composition | Polymorphism |
+      |----------|----------------|---------------|--------------|-------------|--------------|
+      | PRD | Strong | Scattered in prose | Implicit | None | None |
+      | Use case | Strong | None | Via touchpoints | None | None |
+      | Architecture | Summary only | Prose listing | None | None | None |
+      | Design constitution | Format rules | None | Traceability | None | None |
+
+      PRDs excel at behavioral requirements. Each flag, exit code, and stream behavior has a
+      numbered requirement. But API contracts are scattered: prd002-sys defines "Must provide
+      func TerminalWidth() (int, error)" in requirement R1.1 prose, and the FileInfo struct
+      definition appears as a 12-line inline block in R2.2. A stitch agent must parse natural
+      language across all requirement items to discover the package's exported surface.
+
+      Worse, struct definitions are duplicated across PRDs. The sys.FileInfo struct appears
+      verbatim in prd002-sys R2.2, prd008-ls R2.3, and prd009-du R1.2 (12 lines each). When
+      the struct changes, three PRDs must be updated independently. There is no reference or
+      anchor mechanism.
+
+      Use cases declare touchpoints naming components and PRD requirement references, but do
+      not specify which exported symbols are exercised. Touchpoint T2 in the du use case says
+      "pkg/sys -- Stat/Lstat for st_blocks, st_dev, st_ino" as prose. This is discoverable
+      by a human reader but not by a consistency checker or stitch agent.
+
+      The architecture document lists components with responsibilities but has no dependency
+      graph, no layering rules, and no shared protocol declarations. The implicit convention
+      that cmd/ does not import other cmd/ packages and pkg/ does not import cmd/ packages is
+      not stated anywhere.
+
+  - title: "Proposed specification format changes"
+    content: |
+      We propose seven additions to the specification formats, organized by document type.
+
+      For PRDs -- package_contract section (required for pkg/ PRDs):
+
+      A structured declaration of the package's exported API surface, replacing the current
+      pattern of scattering signatures across requirement prose.
+
+      Example for prd002-sys:
+
+        package_contract:
+          package: pkg/sys
+          exports:
+            functions:
+              - signature: "func TerminalWidth() (int, error)"
+                defined_in: R1.1
+              - signature: "func Stat(path string) (*FileMetadata, error)"
+                defined_in: R2.1
+              - signature: "func Lstat(path string) (*FileMetadata, error)"
+                defined_in: R2.1
+              - signature: "func HandleSIGPIPE()"
+                defined_in: R3.1
+            types:
+              - name: FileMetadata
+                kind: struct
+                defined_in: R2.2
+          imports:
+            - package: golang.org/x/sys/unix
+              reason: "TIOCGWINSZ ioctl, Stat_t field access"
+          import_constraints:
+            - "Must not import any cmd/ package"
+            - "Must not import pkg/format or pkg/testutils"
+
+      This serves three purposes: (1) the stitch agent can read a structured API reference
+      instead of parsing prose; (2) the measure prompt can include only package_contract
+      sections instead of full implementations (connecting to eng22's Strategy A); and (3)
+      mage analyze can verify that implementations match declared contracts.
+
+      For PRDs -- depends_on section (required for cmd/ PRDs):
+
+      A structured declaration of which pkg/ packages and symbols a command uses.
+
+      Example for prd009-du:
+
+        depends_on:
+          - prd_id: prd002-sys
+            symbols_used:
+              - "sys.Lstat (R1.4)"
+              - "sys.Stat (R1.2)"
+              - "sys.FileMetadata (R1.2)"
+              - "sys.HandleSIGPIPE (R5.1)"
+          - prd_id: prd003-format
+            symbols_used:
+              - "format.HumanSize (R2.1)"
+
+      This replaces inline struct duplication. When a cmd/ PRD needs sys.FileMetadata, it
+      references prd002-sys#R2.2 instead of copying the struct definition.
+
+      For PRDs -- struct_refs to replace inline duplication:
+
+      A cross-reference mechanism for type definitions that appear in multiple PRDs.
+
+        struct_refs:
+          - name: sys.FileMetadata
+            source: prd002-sys#R2.2
+            fields_used: [Blocks, Dev, Ino, Size, ModTime]
+
+      This eliminates the 3-way duplication of the FileInfo struct definition across
+      prd002-sys, prd008-ls, and prd009-du.
+
+      For ARCHITECTURE.yaml -- dependency_rules section:
+
+      Explicit layering constraints that the stitch agent must follow.
+
+        dependency_rules:
+          - rule: "cmd/ packages must not import other cmd/ packages"
+            rationale: "Each utility is a standalone binary"
+          - rule: "pkg/ packages must not import cmd/ packages"
+            rationale: "Libraries must not depend on their consumers"
+          - rule: "pkg/format may import pkg/sys for IsTerminal"
+            rationale: "Color suppression depends on TTY detection"
+
+      For ARCHITECTURE.yaml -- shared_protocols section:
+
+      Cross-cutting patterns that all commands must follow, replacing the current pattern
+      of copy-pasting identical requirements into each cmd/ PRD.
+
+        shared_protocols:
+          - name: sigpipe-handler
+            description: "Every cmd/ binary calls pkg/sys.HandleSIGPIPE() at startup"
+            implementing_requirement: "R5.1 in each cmd/ PRD"
+
+          - name: exit-code-contract
+            description: "0 = success, 1 = partial failure, 2 = bad usage"
+            implementing_requirement: "exit code requirements in each cmd/ PRD"
+
+          - name: error-reporting
+            description: "Errors written to stderr as '<utility>: <path>: <message>'"
+            implementing_requirement: "error handling requirements in each cmd/ PRD"
+
+          - name: differential-test-pattern
+            description: "Every cmd/ package includes *_test.go using pkg/testutils.RunDiffTests"
+            implementing_requirement: "prd001-testutils R2.1"
+
+      Shared protocols move these repeated requirements from each PRD into the architecture,
+      where they are defined once and referenced by all cmd/ PRDs. This directly prevents the
+      duplication we observed: 8 copies of SIGPIPE handling, 4 copies of reportError, and 7
+      copies of TestMain boilerplate.
+
+      For ARCHITECTURE.yaml -- component_dependencies graph:
+
+      A machine-readable dependency graph.
+
+        component_dependencies:
+          - from: cmd/du
+            to: [pkg/sys, pkg/format]
+          - from: cmd/ls
+            to: [pkg/sys, pkg/format]
+          - from: cmd/cat
+            to: []
+          - from: cmd/sponge
+            to: []
+          - from: pkg/format
+            to: [pkg/sys]
+          - from: pkg/sys
+            to: []
+          - from: pkg/testutils
+            to: []
+
+      For use cases -- interaction_sequence optional field:
+
+      A structured call chain replacing prose in flow steps.
+
+        interaction_sequence:
+          - caller: cmd/du.main
+            callee: pkg/sys.HandleSIGPIPE
+            at_step: F1
+          - caller: cmd/du.main
+            callee: pkg/sys.Lstat
+            at_step: F2
+            note: "Called per directory entry during traversal"
+          - caller: cmd/du.main
+            callee: pkg/format.HumanSize
+            at_step: F3
+            condition: "-h flag active"
+
+  - title: "Design constitution updates"
+    content: |
+      We propose three changes to docs/constitutions/design.yaml.
+
+      New article D6: Package contracts and dependency direction
+
+        - id: D6
+          title: Package contracts and dependency direction
+          rule: |
+            Every pkg/ PRD must declare its exported API in a package_contract section.
+            Every cmd/ PRD must declare its pkg/ dependencies in a depends_on section.
+            The architecture document must declare dependency direction rules, a component
+            dependency graph, and shared protocols. Struct definitions must not be duplicated
+            across PRDs; use struct_refs to reference the authoritative definition.
+
+      Updated PRD required_fields:
+
+        required_fields:
+          # ... existing fields ...
+          - "package_contract (required for pkg/ PRDs: exports, imports, import_constraints)"
+          - "depends_on (required for cmd/ PRDs: prd_id, symbols_used)"
+          - "struct_refs (when referencing types defined in other PRDs)"
+
+      Updated architecture required_fields:
+
+        required_fields:
+          # ... existing fields ...
+          - "dependency_rules (layering constraints between component categories)"
+          - "component_dependencies (directed graph of package-level imports)"
+          - "shared_protocols (cross-cutting patterns all cmd/ packages must follow)"
+
+      Updated completeness_checklists:
+
+        prd:
+          # ... existing items ...
+          - "pkg/ PRDs include a package_contract with all exported symbols"
+          - "cmd/ PRDs include depends_on listing all pkg/ imports with symbols"
+          - "Struct definitions are not duplicated; use struct_refs"
+
+        architecture:
+          # ... existing items ...
+          - "dependency_rules state which component categories may import which"
+          - "component_dependencies lists every pkg->pkg and cmd->pkg import edge"
+          - "shared_protocols identify cross-cutting patterns with implementing PRDs"
+
+  - title: "Go-specific idiom mapping"
+    content: |
+      Go does not have classes, inheritance, or access modifiers. OOD principles map to
+      Go through four mechanisms, each of which we can encode in specifications.
+
+      Table 5: OOD principles mapped to Go idioms and specification constructs
+
+      | OOD Principle | Go Idiom | Specification Construct |
+      |---------------|----------|------------------------|
+      | Encapsulation | Unexported types/fields, accessor methods | package_contract lists only exported symbols |
+      | Abstraction | Interfaces defined at the call site | shared_protocols define behavioral contracts |
+      | Composition | Struct embedding, package imports | depends_on with symbols_used, struct_refs |
+      | Polymorphism | Interfaces, function types (strategy pattern) | shared_protocols name strategy types |
+
+      Encapsulation in Go is package-level: everything unexported is hidden. The
+      package_contract section formalizes this boundary. When the stitch agent reads a
+      package_contract, it knows exactly which symbols to export and which to keep internal.
+      The sys.FileMetadata struct in run 14 demonstrates good encapsulation (unexported fields
+      with accessor methods); a package_contract would have made this intent explicit in the
+      spec rather than leaving it to the agent's judgment.
+
+      Abstraction in Go uses interfaces, typically defined where they are consumed rather than
+      where they are implemented. The shared_protocols section captures this: a protocol like
+      "error-reporting" defines the behavioral contract that all cmd/ packages satisfy, even
+      though no formal Go interface type exists. For testability, the architecture could
+      recommend interfaces like FileStatter where cmd/ packages need to mock pkg/sys in
+      focused unit tests.
+
+      Composition in Go uses struct embedding and package imports. The depends_on section
+      captures import relationships; struct_refs captures type reuse without duplication. When
+      prd009-du declares depends_on prd002-sys with symbols_used [sys.Lstat, sys.FileMetadata],
+      the stitch agent knows exactly which imports to add and which types to expect.
+
+      Polymorphism in Go uses interfaces and function types. The NormalizeFunc type in
+      pkg/testutils is a strategy pattern: each test provides its own normalizer function.
+      shared_protocols would name this as "normalization-strategy" and identify it as a
+      polymorphic contract, guiding the agent to define normalizers in pkg/testutils rather
+      than duplicating normalizeProgramName in each test file.
+
+  - title: "Relationship to eng22"
+    content: |
+      eng22 analyzed prompt reduction via encapsulation and proposed three strategies:
+      interface files for pkg/ (Strategy A), test file exclusion (Strategy B), and command
+      manifests (Strategy C). This analysis provides the specification-side foundation for
+      those strategies.
+
+      Table 6: How specification changes enable eng22 strategies
+
+      | eng22 Strategy | Specification Enabler |
+      |----------------|----------------------|
+      | A: pkg/ interface files | package_contract sections define the exported surface that interface files summarize |
+      | B: Test file exclusion | Already implemented in cobbler-scaffold v0.20260304.0 |
+      | C: Command manifests | depends_on and component_dependencies provide the data for generating manifests |
+
+      The traceability chain extends: PRD (package_contract) -> doc.go (interface file) ->
+      implementation (full code) -> tests (validation). The package_contract is the single
+      source of truth; doc.go files and measure prompt summaries are generated artifacts that
+      the contract defines.
+
+      Shared protocols reduce prompt size indirectly: when SIGPIPE handling, error reporting,
+      and TestMain boilerplate are defined once in the architecture and implemented in shared
+      packages, the total codebase shrinks (by ~297 LOC based on run 14 duplication), which
+      reduces the stitch prompt for subsequent commands.
+
+  - title: "Impact assessment and priorities"
+    content: |
+      We assess each proposed change by its impact on generated code quality and its
+      implementation effort.
+
+      Table 7: Proposed changes ranked by impact
+
+      | Change | Impact on Code Quality | Effort | Priority |
+      |--------|----------------------|--------|----------|
+      | shared_protocols in architecture | High: eliminates 297 LOC of cross-command duplication | Low: document update | 1 |
+      | package_contract in pkg/ PRDs | High: structured API reference for stitch agent | Medium: 3 PRDs to update | 2 |
+      | depends_on in cmd/ PRDs | Medium: eliminates struct duplication, enables consistency checks | Medium: 8+ PRDs to update | 3 |
+      | dependency_rules in architecture | Medium: prevents layering violations | Low: document update | 4 |
+      | component_dependencies graph | Low-medium: useful for analysis, less impactful on generation | Low: document update | 5 |
+      | struct_refs in PRDs | Low: reduces maintenance burden | Low: syntax addition | 6 |
+      | interaction_sequence in use cases | Low: use cases already describe flows in prose | Medium: optional field | 7 |
+
+      Priority 1 (shared_protocols) has the highest return: defining SIGPIPE handling, error
+      reporting, and test boilerplate as architecture-level protocols directly guides the stitch
+      agent to implement them in shared packages. This requires no format schema changes, only
+      an architecture document update and corresponding changes to affected PRDs.
+
+      Priority 2 (package_contract) gives the stitch agent a structured API reference instead
+      of requiring it to parse natural language in requirement prose. It also enables the
+      measure prompt optimization from eng22 Strategy A.
+
+  - title: "Validation against the run 14 codebase"
+    content: |
+      We traced each proposed specification change to the concrete violations it would have
+      prevented in run 14.
+
+      Table 8: Violations prevented by each specification change
+
+      | Specification Change | Violations Prevented | LOC Saved |
+      |---------------------|---------------------|-----------|
+      | shared_protocols: sigpipe-handler | 8 duplicate SIGPIPE handlers | 48 |
+      | shared_protocols: error-reporting | 4 duplicate reportError functions | 32 |
+      | shared_protocols: differential-test-pattern | 7 duplicate TestMain + 5 writeTestFile + 4 normalizeProgramName | 177 |
+      | package_contract for pkg/sys | Terminal detection reimplementation in pkg/format | 10 |
+      | depends_on for cmd/ls | Duplicate columnGap constant | 2 |
+      | dependency_rules | pkg/format reimplementing raw syscall instead of calling pkg/sys | 10 |
+      | Total | — | 279 |
+
+      279 of the 297 duplicated lines would have been prevented by specification changes.
+      The remaining 18 lines (true/false shared logic) require a different intervention:
+      the measure agent recognizing that two PRDs describe nearly identical programs and
+      proposing a shared implementation. This is a task-planning concern rather than a
+      specification format concern.
+
+      The 4 spec-induced violations (color system stdout hardcoding, no shared command
+      lifecycle, no Go interfaces in pkg/, manual parsing in true/false) would be addressed
+      by: shared_protocols for the command lifecycle, package_contract recommending interface
+      types for testability, and revised prd003-format R2.3 to parameterize the writer.
+
+references:
+  - "docs/engineering/eng22-measure-prompt-encapsulation-analysis.yaml -- Implementation-side analysis"
+  - "docs/engineering/eng21-generation-run-14-results.yaml -- Run 14 results"
+  - "docs/constitutions/design.yaml -- Current design constitution"
+  - "v1.20260304.1 -- Generated code tag analyzed"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/252 -- This issue"
+  - "https://github.com/petar-djukic/go-unix-utils/issues/251 -- Prompt reduction via encapsulation"
