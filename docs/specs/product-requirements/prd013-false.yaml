@@ -1,0 +1,69 @@
+id: prd013-false
+title: "cmd/false: Exit Unsuccessfully"
+
+problem: |
+  The false utility is the complement of true: it does nothing and exits with code 1.
+  Despite its simplicity, a formal specification is needed to ensure the Go
+  implementation matches GNU coreutils false exactly — including --help and --version
+  flag behavior (which exit 0, not 1), exit codes for each case, and SIGPIPE handling.
+  The reference binary for differential testing is gfalse (Homebrew GNU coreutils with
+  g- prefix). Without a specification, the --help and --version exit code behavior
+  (exit 0, overriding the default exit 1) can be missed.
+
+goals:
+  - G1: Exit with code 1 unconditionally in normal operation (no flags).
+  - G2: Support --help flag that prints usage information to stdout and exits 0.
+  - G3: Support --version flag that prints version string to stdout and exits 0.
+  - G4: Handle SIGPIPE cleanly by exiting without error.
+
+requirements:
+  R1:
+    title: Default behavior (no flags, no arguments)
+    items:
+      - R1.1: Must exit with code 1 when invoked with no arguments.
+      - R1.2: Must produce no output on stdout in normal operation (no flags).
+      - R1.3: Must produce no output on stderr in normal operation (no flags).
+      - R1.4: Must not read from stdin. Stdin must be left untouched.
+      - R1.5: Must ignore any non-flag arguments passed on the command line. Arguments that do not start with "--" must not cause an error or change the exit code from 1.
+
+  R2:
+    title: Flag behavior
+    items:
+      - R2.1: --help must print a usage summary to stdout and exit with code 0. The usage text must include the utility name and a brief description of its purpose. Note that --help overrides the default exit code of 1.
+      - R2.2: --version must print a version string to stdout and exit with code 0. The version string is set at build time via -ldflags; it defaults to "dev" when unset. Note that --version overrides the default exit code of 1.
+
+  R3:
+    title: Signal handling
+    items:
+      - R3.1: |
+          Must not exit non-zero due to SIGPIPE when stdout is closed by a downstream
+          consumer. At startup, install a SIGPIPE handler: use signal.Notify(c,
+          syscall.SIGPIPE) with a buffered channel of size 1; in a dedicated goroutine
+          call os.Exit(0) when the channel receives. Do not use signal.Ignore.
+
+  R4:
+    title: Exit codes
+    items:
+      - R4.1: Must exit 1 in normal operation (no flags) and when unknown arguments are passed.
+      - R4.2: Must exit 0 when --help is given.
+      - R4.3: Must exit 0 when --version is given.
+      - R4.4: Must exit 0 on SIGPIPE (matching the SIGPIPE handler behavior).
+
+  R5:
+    title: Differential testing
+    items:
+      - R5.1: The reference binary for differential testing is gfalse (Homebrew GNU coreutils).
+      - R5.2: Differential tests must set LC_ALL=C in the environment.
+
+non_goals:
+  - cmd/false does not implement any I/O operations beyond flag output (--help, --version).
+  - cmd/false does not implement short flags (-h, -v) for help and version; only GNU long flags (--help, --version) are supported, matching gfalse behavior.
+  - cmd/false does not validate or interpret non-flag arguments.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/false exits with code 1 and produces no stdout or stderr output."
+  - "AC2: go run ./cmd/false --help prints usage to stdout and exits 0, matching gfalse --help output structure."
+  - "AC3: go run ./cmd/false --version prints a version string to stdout and exits 0."
+  - "AC4: go run ./cmd/false with arbitrary non-flag arguments (e.g., false foo bar) exits with code 1."
+  - "AC5: Differential test against gfalse passes for no-args, --help, and --version modes."
+  - "AC6: cmd/false compiles with no warnings under golangci-lint."
