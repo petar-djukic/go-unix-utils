@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cat core I/O, error handling, line numbering,
-// squeeze, end markers, cross-boundary squeeze, and non-printing display.
+// squeeze, end markers, cross-boundary squeeze, non-printing display,
+// and flag aliases.
 //
 // Implements prd006-cat R1.1, R1.2, R2.1, R2.3, R3.1, R3.2, R4.1, R4.2,
-// R4.3, R4.4, R5.2, R5.3.
+// R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R5.2, R5.3.
 package main
 
 import (
@@ -382,6 +383,105 @@ func TestCatShowTabs(t *testing.T) {
 		{
 			Name:     "show-tabs-with-v",
 			Args:     []string{"-T", "-v", "tabs.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatFlagA verifies R4.5: -A is equivalent to -v -E -T combined.
+// All three transformations (non-printing display, end markers, tab display)
+// are active simultaneously.
+func TestCatFlagA(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Mix of control chars (0x01, 0x02, 0x1B), tabs, high bytes (0x80, 0xFE),
+	// and regular text to exercise all -v, -E, -T paths.
+	writeTestFile(t, dir, "mixed.txt", "hello\x01\x02\tworld\x1b\n\x80text\xfe\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "flag-A-equivalent-to-vET",
+			Args:     []string{"-A", "mixed.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatFlagE verifies R4.6: -e is equivalent to -v -E combined.
+// Non-printing display and end markers are active; tabs pass through
+// unchanged since -T is not activated by -e.
+func TestCatFlagE(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Control chars, tabs, and high bytes. Tabs must pass through unchanged.
+	writeTestFile(t, dir, "mixed.txt", "hello\x01\x02\tworld\x1b\n\x80text\xfe\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "flag-e-equivalent-to-vE",
+			Args:     []string{"-e", "mixed.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatFlagT verifies R4.7: -t is equivalent to -v -T combined.
+// Non-printing display and tab display are active; line-end markers ($)
+// must not appear since -E is not activated by -t.
+func TestCatFlagT(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Control chars, tabs, and high bytes. No $ at end of lines.
+	writeTestFile(t, dir, "mixed.txt", "hello\x01\x02\tworld\x1b\n\x80text\xfe\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "flag-t-equivalent-to-vT",
+			Args:     []string{"-t", "mixed.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatFlagU verifies R4.8: -u is accepted but has no effect on output.
+// Output must be identical passthrough, matching gcat -u byte-for-byte.
+func TestCatFlagU(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "plain.txt", "hello\nworld\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "flag-u-no-effect",
+			Args:     []string{"-u", "plain.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatFlagACombinedN verifies that -A combined with -n correctly applies
+// line numbering on top of the -vET behavior. Control characters, tabs,
+// and blank lines are all present to exercise the full interaction.
+func TestCatFlagACombinedN(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Control chars, tabs, blank lines, and high bytes.
+	writeTestFile(t, dir, "mixed.txt", "line1\x01\tdata\n\n\x80second\xfe\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "flag-A-with-n",
+			Args:     []string{"-A", "-n", "mixed.txt"},
 			WorkDir:  dir,
 			ExitCode: 0,
 		},
