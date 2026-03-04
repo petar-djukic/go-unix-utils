@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cat core I/O, error handling, line numbering,
-// squeeze, and end markers.
+// squeeze, end markers, cross-boundary squeeze, and non-printing display.
 //
-// Implements prd006-cat R1.1, R1.2, R2.1, R2.3, R3.1, R4.3, R5.2, R5.3.
+// Implements prd006-cat R1.1, R1.2, R2.1, R2.3, R3.1, R3.2, R4.1, R4.2,
+// R4.3, R4.4, R5.2, R5.3.
 package main
 
 import (
@@ -244,6 +245,143 @@ func TestCatShowEnds(t *testing.T) {
 		{
 			Name:     "show-ends-with-blank-lines",
 			Args:     []string{"-E", "with-blanks.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatCrossBoundarySqueeze verifies R3.2: when -s is active, squeeze state
+// (prevBlank) persists across file boundaries. Consecutive blank lines spanning
+// two files are collapsed to a single blank line.
+func TestCatCrossBoundarySqueeze(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// File A ends with consecutive blank lines; file B starts with blank lines.
+	writeTestFile(t, dir, "a.txt", "content-a\n\n\n")
+	writeTestFile(t, dir, "b.txt", "\n\ncontent-b\n")
+	// File C ends with a single blank line; file D starts with one blank line.
+	writeTestFile(t, dir, "c.txt", "content-c\n\n")
+	writeTestFile(t, dir, "d.txt", "\ncontent-d\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "squeeze-across-files-multiple-blanks",
+			Args:     []string{"-s", "a.txt", "b.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "squeeze-across-files-single-blanks",
+			Args:     []string{"-s", "c.txt", "d.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatNonPrintingControl verifies R4.1 for control characters: with -v,
+// bytes 0x01-0x1F (excluding 0x09 tab and 0x0A newline) are displayed as
+// ^A through ^_ caret notation, and byte 0x7F is displayed as ^?.
+func TestCatNonPrintingControl(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// 0x01 (^A), 0x02 (^B), 0x1B (^[), 0x1F (^_)
+	writeTestFile(t, dir, "control-low.txt", "\x01\x02\x1b\x1f\n")
+	// 0x7F (^?)
+	writeTestFile(t, dir, "del.txt", "\x7f\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "control-chars-caret-notation",
+			Args:     []string{"-v", "control-low.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "del-char-caret-question",
+			Args:     []string{"-v", "del.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatNonPrintingHighByte verifies R4.1 for high bytes: with -v, bytes in
+// the range 0x80-0xFF are displayed with M- prefix notation. Control-range
+// high bytes (0x80-0x9F) become M-^@ through M-^_, printable-range high bytes
+// (0xA0-0xFE) become M- followed by the character, and 0xFF becomes M-^?.
+func TestCatNonPrintingHighByte(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// 0x80 (M-^@), 0x9F (M-^_)
+	writeTestFile(t, dir, "high-control.txt", "\x80\x9f\n")
+	// 0xA0 (M- ), 0xC0 (M-@), 0xFE (M-~)
+	writeTestFile(t, dir, "high-printable.txt", "\xa0\xc0\xfe\n")
+	// 0xFF (M-^?)
+	writeTestFile(t, dir, "high-ff.txt", "\xff\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "high-control-m-caret",
+			Args:     []string{"-v", "high-control.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "high-printable-m-prefix",
+			Args:     []string{"-v", "high-printable.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "high-ff-m-caret-question",
+			Args:     []string{"-v", "high-ff.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatTabExemptFromV verifies R4.2: when only -v is given without -T,
+// tab characters (0x09) pass through unchanged in the output.
+func TestCatTabExemptFromV(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "tabs.txt", "before\tafter\n\t\tindented\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "v-preserves-tabs",
+			Args:     []string{"-v", "tabs.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	})
+}
+
+// TestCatShowTabs verifies R4.4: when -T is active, tab characters are
+// displayed as ^I. Tests both -T alone and -T combined with -v.
+func TestCatShowTabs(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestFile(t, dir, "tabs.txt", "col1\tcol2\n\tindented\n")
+
+	testutils.RunDiffTests(t, goBinary, refBinary, []testutils.DiffTest{
+		{
+			Name:     "show-tabs-standalone",
+			Args:     []string{"-T", "tabs.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "show-tabs-with-v",
+			Args:     []string{"-T", "-v", "tabs.txt"},
 			WorkDir:  dir,
 			ExitCode: 0,
 		},
