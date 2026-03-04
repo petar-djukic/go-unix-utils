@@ -1,8 +1,7 @@
-consistency_errors: 3
+consistency_errors: 2
 consistency_details:
-    - 'orphaned PRD: prd020-true'
-    - 'orphaned PRD: prd021-false'
-    - 'orphaned PRD: prd019-seq'
+    - 'orphaned PRD: prd012-true'
+    - 'orphaned PRD: prd013-false'
 code_status:
     releases:
         - version: "00.0"
@@ -26,16 +25,6 @@ code_status:
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc004-testutils
-              specstatus: spec_complete
-              codestatus: not started
-              testdir: ""
-              testfiles: 0
-        - version: "01.0"
-          name: Batch 1 — wc specification and differential test
-          specstatus: spec_complete
-          codereadiness: none
-          usecases:
-            - id: rel01.0-uc001-wc
               specstatus: spec_complete
               codestatus: not started
               testdir: ""
@@ -111,7 +100,7 @@ code_status:
               testdir: ""
               testfiles: 0
         - version: "02.2"
-          name: Batch 2.2 — head specification and differential test
+          name: Batch 2.2 — head and seq specification and differential test
           specstatus: pending
           codereadiness: none
           usecases:
@@ -120,22 +109,37 @@ code_status:
               codestatus: not started
               testdir: ""
               testfiles: 0
-        - version: "99.0"
-          name: Deferred — ls core specification and differential test
+            - id: rel02.2-uc002-seq
+              specstatus: pending
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "03.0"
+          name: Batch 3 — wc specification and differential test
           specstatus: spec_complete
           codereadiness: none
           usecases:
-            - id: rel99.0-uc001-ls
+            - id: rel03.0-uc001-wc
               specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
-        - version: "99.1"
-          name: Deferred — ls extended specification and differential test
+        - version: "04.0"
+          name: Batch 4 — ls core specification and differential test
           specstatus: spec_complete
           codereadiness: none
           usecases:
-            - id: rel99.1-uc001-ls-extended
+            - id: rel04.0-uc001-ls
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "04.1"
+          name: Batch 4.1 — ls extended specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel04.1-uc001-ls-extended
               specstatus: spec_complete
               codestatus: not started
               testdir: ""
