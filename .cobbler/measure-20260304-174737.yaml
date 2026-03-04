@@ -1,0 +1,53 @@
+- index: 0
+  title: "Implement pkg/format column alignment, ANSI color, and size conversion (rel00.0-uc002-format)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format component; design_decisions DD3; technology_choices)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (use case -- contains reference to the pkg/format PRD; read the referenced PRD before writing any code)
+      - go.mod (module path and Go version)
+
+    files:
+      - path: pkg/format/table.go
+        action: create
+        note: Column alignment type and tabular output formatting functions
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI escape-sequence constants and file-type color helper functions
+      - path: pkg/format/size.go
+        action: create
+        note: Human-readable byte-count-to-unit-string conversion
+
+    requirements:
+      - id: R1
+        text: "Implement column alignment for tabular output per the pkg/format PRD: accept a [][]string grid and per-column alignment hints; return padded rows suitable for writing to stdout"
+      - id: R2
+        text: "Implement ANSI color support per the pkg/format PRD: return escape-sequence-wrapped strings for each supported file-type class (regular file, directory, symlink, executable, etc.)"
+      - id: R3
+        text: "Implement human-readable size formatting per the pkg/format PRD: convert a uint64 byte count to a K/M/G string using the 1024-based thresholds and decimal precision defined in the PRD"
+      - id: R4
+        text: "pkg/format must have no external dependencies beyond the Go standard library -- no golang.org/x/sys, no cmd/ imports, no third-party packages"
+
+    design_decisions:
+      - id: D1
+        text: "Read the pkg/format PRD referenced in docs/specs/use-cases/rel00.0-uc002-format.yaml before creating any files; derive exact exported type names, function signatures, and file names from the PRD, not from inference"
+      - id: D2
+        text: "Name each source file after its primary exported type per planning convention P7 (e.g., if the column type is named Table, the file is table.go; if the PRD uses different names, use those names exactly)"
+      - id: D3
+        text: "pkg/format must not import golang.org/x/sys or any package outside the Go standard library; only pkg/sys may use golang.org/x/sys per ARCHITECTURE.yaml technology_choices -- pkg/format uses stdlib only"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... completes with no errors"
+      - id: AC2
+        text: "golangci-lint ./pkg/format/... reports no issues"
+      - id: AC3
+        text: "Column alignment returns rows where each cell is padded to the correct width with the correct alignment (left or right) as specified in the PRD"
+      - id: AC4
+        text: "ANSI color helpers return strings that begin with the correct ANSI escape sequence for the given file-type class and end with the terminal reset sequence"
+      - id: AC5
+        text: "Size conversion output matches PRD-specified thresholds: values at and above each K/M/G boundary use the corresponding unit suffix"
+      - id: AC6
+        text: "All exported identifiers in pkg/format carry Go doc comments (required for golangci-lint to pass with revive or godot linters)"
