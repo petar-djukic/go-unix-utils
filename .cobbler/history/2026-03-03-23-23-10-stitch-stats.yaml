@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "254"
+task_title: Write PRDs for true and false utilities (rel02.0-uc001, rel02.0-uc002)
+status: success
+started_at: "2026-03-04T04:23:10Z"
+duration: 57s
+duration_s: 56
+tokens:
+    input: 473112
+    output: 3383
+    cache_creation: 105452
+    cache_read: 367655
+cost_usd: 0.9275024999999999
+loc_before:
+    production: 2086
+    test: 2915
+loc_after:
+    production: 2086
+    test: 2915
+diff:
+    files: 6
+    insertions: 1594
+    deletions: 68

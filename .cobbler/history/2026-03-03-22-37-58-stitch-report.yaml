@@ -1,0 +1,35 @@
+task_id: "247"
+task_title: 'prd008-ls: Add --color flag to ls (auto/always/never)'
+status: success
+branch: task/generation-gh-206-generation-run-14-247
+diff:
+    files: 5
+    insertions: 1256
+    deletions: 97
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 23
+      deletions: 22
+    - path: .cobbler/measure-20260303-140350.yaml
+      status: D
+      insertions: 0
+      deletions: 45
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1159
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/ls/main.go
+      status: M
+      insertions: 73
+      deletions: 29
+loc_before:
+    production: 2042
+    test: 2443
+loc_after:
+    production: 2086
+    test: 2443

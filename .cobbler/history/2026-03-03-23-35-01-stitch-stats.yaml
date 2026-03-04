@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "257"
+task_title: Implement cmd/true differential tests for prd012-true R1.1, R1.2, R1.3, R1.5
+status: success
+started_at: "2026-03-04T04:35:01Z"
+duration: 43s
+duration_s: 43
+tokens:
+    input: 241328
+    output: 1821
+    cache_creation: 33211
+    cache_read: 208111
+cost_usd: 0.35865425
+loc_before:
+    production: 2188
+    test: 3005
+loc_after:
+    production: 2188
+    test: 3095
+diff:
+    files: 5
+    insertions: 1692
+    deletions: 67

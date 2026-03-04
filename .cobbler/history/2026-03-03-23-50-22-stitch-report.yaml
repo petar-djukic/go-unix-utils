@@ -1,0 +1,35 @@
+task_id: "259"
+task_title: 'cmd/du: differential tests for prd009-du R2.2, R2.3, R2.4, R2.7'
+status: success
+branch: task/generation-gh-206-generation-run-14-259
+diff:
+    files: 5
+    insertions: 1789
+    deletions: 68
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 25
+      deletions: 21
+    - path: .cobbler/measure-20260303-140350.yaml
+      status: D
+      insertions: 0
+      deletions: 45
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1681
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/du/du_test.go
+      status: M
+      insertions: 82
+      deletions: 1
+loc_before:
+    production: 2238
+    test: 3095
+loc_after:
+    production: 2238
+    test: 3176

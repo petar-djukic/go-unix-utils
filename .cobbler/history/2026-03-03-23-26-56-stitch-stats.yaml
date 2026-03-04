@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "255"
+task_title: 'cmd/true, cmd/false: implement prd012-true and prd013-false exit-code behavior'
+status: success
+started_at: "2026-03-04T04:26:56Z"
+duration: 2m23s
+duration_s: 143
+tokens:
+    input: 573076
+    output: 7594
+    cache_creation: 34883
+    cache_read: 538180
+cost_usd: 0.6825097500000001
+loc_before:
+    production: 2086
+    test: 2915
+loc_after:
+    production: 2188
+    test: 2915
+diff:
+    files: 6
+    insertions: 1614
+    deletions: 67
