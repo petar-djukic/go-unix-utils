@@ -4,7 +4,7 @@ title: "go-unix-utils Release Road Map"
 releases:
   - version: "00.0"
     name: "Batch 0 — foundational infrastructure"
-    status: spec_complete
+    status: implemented
     description: |
       Specify and verify the build lifecycle and shared library infrastructure that all
       subsequent releases depend on. This release covers magefiles/ (build, lint, clean,
@@ -13,11 +13,11 @@ releases:
       binary is the first compiled artifact and the smoke test for the build pipeline.
     use_cases:
       - id: rel00.0-uc001-magefiles
-        status: spec_complete
+        status: implemented
       - id: rel00.0-uc002-format
         status: implemented
       - id: rel00.0-uc003-sys
-        status: spec_complete
+        status: implemented
       - id: rel00.0-uc004-testutils
         status: implemented
 
