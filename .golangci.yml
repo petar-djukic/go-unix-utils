@@ -1,0 +1,59 @@
+# Golangci-lint v2 configuration for go-unix-utils.
+# Covers cmd/, pkg/, and magefiles/. Implements prd011-magefiles R3.3.
+
+version: "2"
+
+run:
+  go: "1.25"
+
+linters:
+  default: none
+  enable:
+    - errcheck          # check return values of error-returning functions
+    - govet             # vet-like checks (printf format strings, composite literals, etc.)
+    - staticcheck       # comprehensive static analysis (SA* rules; absorbs gosimple in v2)
+    - ineffassign       # detect ineffectual assignments
+    - unused            # detect unused exported and unexported identifiers
+    - revive            # idiomatic Go style (godoc on exported symbols, naming, etc.)
+    - gochecknoglobals  # flag package-level variables; suppressed per-file with //nolint
+    - misspell          # detect common spelling mistakes in comments and strings
+
+  settings:
+    errcheck:
+      # fmt print functions write to stdout/stderr; errors are non-actionable at the call site.
+      exclude-functions:
+        - fmt.Print
+        - fmt.Println
+        - fmt.Printf
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: false
+        - name: var-naming
+          severity: warning
+          disabled: false
+
+  exclusions:
+    rules:
+      # Test files commonly use package-level variables for shared fixtures (e.g.,
+      # table-driven test inputs, reusable test options). These are intentional.
+      - path: "_test\\.go"
+        linters:
+          - gochecknoglobals
+      # magefiles/ is build tooling provided by cobbler-scaffold. The package-level
+      # baseCfg variable is required by the orchestrator init contract (R6.2). Helper
+      # functions such as logf are scaffold-provided and may have no callers in the
+      # current magefiles set.
+      - path: magefiles/
+        linters:
+          - gochecknoglobals
+          - unused
+      # staticcheck SA4017 ("X is never called") for magefiles/ scaffold helpers.
+      - path: magefiles/
+        text: "is never called"
+        linters:
+          - staticcheck
