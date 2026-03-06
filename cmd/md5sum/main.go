@@ -19,7 +19,7 @@ import (
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	var bin, txt, chk, tag, warn, quiet, status bool
+	var bin, txt, chk, tag, warn, quiet, status, strict bool
 	flag.BoolVar(&bin, "b", false, "")
 	flag.BoolVar(&bin, "binary", false, "")
 	flag.BoolVar(&txt, "t", false, "")
@@ -31,6 +31,7 @@ func main() {
 	flag.BoolVar(&warn, "warn", false, "")
 	flag.BoolVar(&quiet, "quiet", false, "")
 	flag.BoolVar(&status, "status", false, "")
+	flag.BoolVar(&strict, "strict", false, "")
 	flag.Parse()
 	args := flag.Args()
 	if len(args) == 0 {
@@ -38,7 +39,7 @@ func main() {
 	}
 	rc := 0
 	if chk {
-		rc = check(args, warn, quiet, status)
+		rc = check(args, warn, quiet, status, strict)
 	} else {
 		rc = compute(args, bin, tag)
 	}
@@ -83,8 +84,8 @@ func compute(files []string, bin, tag bool) int {
 	return rc
 }
 
-func check(files []string, warn, quiet, status bool) int {
-	rc, total := 0, 0
+func check(files []string, warn, quiet, status, strict bool) int {
+	rc, total, badLines := 0, 0, 0
 	for _, cf := range files {
 		var r io.ReadCloser
 		if cf == "-" {
@@ -107,6 +108,7 @@ func check(files []string, warn, quiet, status bool) int {
 				if warn {
 					fmt.Fprintf(os.Stderr, "md5sum: %s: %d: improperly formatted MD5 checksum line\n", cf, ln)
 				}
+				badLines++
 				continue
 			}
 			got, err := hashFile(fn)
@@ -143,6 +145,9 @@ func check(files []string, warn, quiet, status bool) int {
 			s = "s"
 		}
 		fmt.Fprintf(os.Stderr, "md5sum: WARNING: %d computed checksum%s did NOT match\n", total, s)
+	}
+	if strict && badLines > 0 {
+		rc = 1
 	}
 	return rc
 }
