@@ -19,7 +19,7 @@ import (
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	var bin, txt, chk, tag, warn, quiet, status, strict bool
+	var bin, txt, chk, tag, warn, quiet, status, strict, ignoreMissing, version bool
 	flag.BoolVar(&bin, "b", false, "")
 	flag.BoolVar(&bin, "binary", false, "")
 	flag.BoolVar(&txt, "t", false, "")
@@ -32,14 +32,21 @@ func main() {
 	flag.BoolVar(&quiet, "quiet", false, "")
 	flag.BoolVar(&status, "status", false, "")
 	flag.BoolVar(&strict, "strict", false, "")
+	flag.BoolVar(&ignoreMissing, "ignore-missing", false, "")
+	flag.BoolVar(&version, "version", false, "")
 	flag.Parse()
+	if version {
+		fmt.Println("sha256sum (go-unix-utils)")
+		os.Exit(0)
+	}
+	_ = txt // text mode is the default; flag accepted for compatibility
 	args := flag.Args()
 	if len(args) == 0 {
 		args = []string{"-"}
 	}
 	rc := 0
 	if chk {
-		rc = check(args, warn, quiet, status, strict)
+		rc = check(args, warn, quiet, status, strict, ignoreMissing)
 	} else {
 		rc = compute(args, bin, tag)
 	}
@@ -84,7 +91,7 @@ func compute(files []string, bin, tag bool) int {
 	return rc
 }
 
-func check(files []string, warn, quiet, status, strict bool) int {
+func check(files []string, warn, quiet, status, strict, ignoreMissing bool) int {
 	rc, total, badLines := 0, 0, 0
 	for _, cf := range files {
 		var r io.ReadCloser
@@ -113,6 +120,9 @@ func check(files []string, warn, quiet, status, strict bool) int {
 			}
 			got, err := hashFile(fn)
 			if err != nil {
+				if ignoreMissing && os.IsNotExist(err) {
+					continue
+				}
 				printErr(err)
 				if !status {
 					fmt.Printf("%s: FAILED open or read\n", fn)
