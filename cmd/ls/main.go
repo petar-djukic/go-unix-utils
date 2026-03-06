@@ -5,7 +5,7 @@
 // Lists directory contents with support for filtering, sorting, and
 // multi-column or single-column output formatting.
 //
-// Implements: prd008-ls R1-R7 (core flags)
+// Implements: prd008-ls R1-R7 (core flags), prd010-ls-extended R2 (sort), R3 (time selection), R4 (time-style)
 // Architecture: docs/ARCHITECTURE.yaml § cmd/
 package main
 
@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -37,13 +37,15 @@ const (
 	filterAlmostAll                   // -A: show all except '.' and '..' (R3.2)
 )
 
-// sortMode determines the primary sort key.
-type sortMode int
+// timeStyle controls the timestamp format in long listing mode.
+type timeStyle int
 
 const (
-	sortByName sortMode = iota // default: byte order (R4, D3)
-	sortByTime                 // -t: newest first (R4)
-	sortBySize                 // -S: largest first (R4)
+	timeStyleDefault timeStyle = iota // default ls format (Jan _2 15:04 or Jan _2  2006)
+	timeStyleFullISO                  // --time-style=full-iso
+	timeStyleLongISO                  // --time-style=long-iso
+	timeStyleISO                      // --time-style=iso
+	timeStyleLocale                   // --time-style=locale (same as default under LC_ALL=C, DD6)
 )
 
 // outputMode determines the output format.
@@ -57,10 +59,12 @@ const (
 
 // lsConfig holds the resolved options for a single ls invocation.
 type lsConfig struct {
-	filter  filterMode
-	sortBy  sortMode
-	reverse bool // -r: reverse sort order (R4)
-	output  outputMode
+	filter    filterMode
+	sortBy    sortMode
+	reverse   bool // -r/--reverse: reverse sort order (R2)
+	output    outputMode
+	timeField timeField // -c, -u, --time=WORD: timestamp selection (R3)
+	timeStyle timeStyle // --time-style=STYLE, --full-time: timestamp format (R4)
 }
 
 // fileEntry holds the name and optional metadata for a listed entry.
@@ -148,8 +152,10 @@ func main() {
 }
 
 // parseFlags parses command-line arguments, supporting combined short flags
-// (e.g., -aSr). Returns the resolved config, operand paths, and any parse
-// error. Follows the manual parsing pattern established in cmd/wc.
+// (e.g., -aSr) and long flags (--reverse, --sort=none, --time=WORD,
+// --time-style=STYLE, --full-time). Returns the resolved config, operand
+// paths, and any parse error. Follows the manual parsing pattern established
+// in cmd/wc.
 func parseFlags() (lsConfig, []string, error) {
 	cfg := lsConfig{}
 	var operands []string
@@ -166,7 +172,33 @@ func parseFlags() (lsConfig, []string, error) {
 
 		// Long flags.
 		if strings.HasPrefix(arg, "--") {
-			return lsConfig{}, nil, fmt.Errorf("unrecognized option '%s'", arg)
+			switch {
+			case arg == "--reverse":
+				cfg.reverse = true
+			case arg == "--full-time":
+				// R4: --full-time is an alias for --time-style=full-iso.
+				cfg.timeStyle = timeStyleFullISO
+			case arg == "--sort=none":
+				// R1: --sort=none is an alias for -U.
+				cfg.sortBy = sortNone
+			case strings.HasPrefix(arg, "--sort="):
+				return lsConfig{}, nil, fmt.Errorf("invalid argument '%s' for '--sort'", arg[len("--sort="):])
+			case strings.HasPrefix(arg, "--time-style="):
+				ts, err := parseTimeStyle(arg[len("--time-style="):])
+				if err != nil {
+					return lsConfig{}, nil, err
+				}
+				cfg.timeStyle = ts
+			case strings.HasPrefix(arg, "--time="):
+				tf, err := parseTimeWord(arg[len("--time="):])
+				if err != nil {
+					return lsConfig{}, nil, err
+				}
+				cfg.timeField = tf
+			default:
+				return lsConfig{}, nil, fmt.Errorf("unrecognized option '%s'", arg)
+			}
+			continue
 		}
 
 		// Short flags (may be combined: -aSr).
@@ -182,9 +214,21 @@ func parseFlags() (lsConfig, []string, error) {
 				case 'r':
 					cfg.reverse = true
 				case 't':
+					// R2.6: last sort flag wins.
 					cfg.sortBy = sortByTime
 				case 'S':
 					cfg.sortBy = sortBySize
+				case 'X':
+					cfg.sortBy = sortByExtension
+				case 'U':
+					// R2.4: directory order, no sorting.
+					cfg.sortBy = sortNone
+				case 'c':
+					// R3: select status change time (ctime).
+					cfg.timeField = timeChanged
+				case 'u':
+					// R3: select access time (atime).
+					cfg.timeField = timeAccessed
 				case '1':
 					cfg.output = outputSingle
 				case 'C':
@@ -202,6 +246,36 @@ func parseFlags() (lsConfig, []string, error) {
 	return cfg, operands, nil
 }
 
+// parseTimeStyle maps a --time-style=STYLE argument to a timeStyle value.
+func parseTimeStyle(style string) (timeStyle, error) {
+	switch style {
+	case "full-iso":
+		return timeStyleFullISO, nil
+	case "long-iso":
+		return timeStyleLongISO, nil
+	case "iso":
+		return timeStyleISO, nil
+	case "locale":
+		return timeStyleLocale, nil
+	default:
+		return 0, fmt.Errorf("invalid argument '%s' for '--time-style'", style)
+	}
+}
+
+// parseTimeWord maps a --time=WORD argument to a timeField value.
+func parseTimeWord(word string) (timeField, error) {
+	switch word {
+	case "mtime", "modification":
+		return timeModified, nil
+	case "ctime", "status":
+		return timeChanged, nil
+	case "atime", "access", "use":
+		return timeAccessed, nil
+	default:
+		return 0, fmt.Errorf("invalid argument '%s' for '--time'", word)
+	}
+}
+
 // readDir reads directory entries and applies the active filter.
 // For filterAll, "." and ".." are prepended to the listing since
 // os.ReadDir omits them.
@@ -211,7 +285,7 @@ func readDir(dirPath string, cfg lsConfig) ([]fileEntry, error) {
 		return nil, err
 	}
 
-	needStat := cfg.sortBy != sortByName
+	needStat := cfg.sortBy == sortByTime || cfg.sortBy == sortBySize
 	var entries []fileEntry
 
 	// R3.1: -a includes "." and ".." which os.ReadDir omits.
@@ -256,48 +330,6 @@ func joinPath(dir, name string) string {
 		return dir + name
 	}
 	return dir + "/" + name
-}
-
-// sortEntries sorts entries in place according to the active sort mode.
-// R4: default is byte order; -t sorts by mtime newest first; -S sorts by
-// size largest first. Ties are broken by name. -r reverses any sort.
-func sortEntries(entries []fileEntry, cfg lsConfig) {
-	if len(entries) < 2 {
-		return
-	}
-	sort.SliceStable(entries, func(i, j int) bool {
-		less := compareEntries(entries[i], entries[j], cfg.sortBy)
-		if cfg.reverse {
-			return !less
-		}
-		return less
-	})
-}
-
-// compareEntries returns true when a should appear before b under the
-// given sort mode. Falls back to name comparison when metadata is missing
-// or values are equal (tie-breaking by name per R4).
-func compareEntries(a, b fileEntry, sm sortMode) bool {
-	switch sm {
-	case sortByTime:
-		if a.info == nil || b.info == nil {
-			return a.name < b.name
-		}
-		if !a.info.ModTime.Equal(b.info.ModTime) {
-			return a.info.ModTime.After(b.info.ModTime)
-		}
-		return a.name < b.name
-	case sortBySize:
-		if a.info == nil || b.info == nil {
-			return a.name < b.name
-		}
-		if a.info.Size != b.info.Size {
-			return a.info.Size > b.info.Size
-		}
-		return a.name < b.name
-	default:
-		return a.name < b.name
-	}
 }
 
 // entryNames extracts the names from a slice of file entries.
@@ -371,4 +403,30 @@ func sysErr(err error) error {
 		return pe.Err
 	}
 	return err
+}
+
+// formatTime formats a timestamp according to the active time style.
+// R4: --time-style controls the format in long listing mode. The default
+// and locale styles produce the same output under LC_ALL=C (DD6).
+func formatTime(t time.Time, style timeStyle, now time.Time) string {
+	sixMonths := 6 * 30 * 24 * time.Hour
+	recent := !t.After(now) && now.Sub(t) < sixMonths
+
+	switch style {
+	case timeStyleFullISO:
+		return t.Format("2006-01-02 15:04:05.000000000 -0700")
+	case timeStyleLongISO:
+		return t.Format("2006-01-02 15:04")
+	case timeStyleISO:
+		if recent {
+			return t.Format("01-02 15:04")
+		}
+		return t.Format("2006-01-02 ")
+	default:
+		// timeStyleDefault and timeStyleLocale: same format under LC_ALL=C (DD6).
+		if recent {
+			return t.Format("Jan _2 15:04")
+		}
+		return t.Format("Jan _2  2006")
+	}
 }

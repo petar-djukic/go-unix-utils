@@ -47,6 +47,10 @@ type FileInfo struct {
 	Blksize int64
 	// ModTime is the modification time (st_mtime / st_mtimespec).
 	ModTime time.Time
+	// AccessTime is the last access time (st_atime / st_atimespec).
+	AccessTime time.Time
+	// ChangeTime is the status change time (st_ctime / st_ctimespec).
+	ChangeTime time.Time
 	// Info is the underlying os.FileInfo for os package compatibility.
 	Info os.FileInfo
 }

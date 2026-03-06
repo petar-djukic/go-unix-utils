@@ -25,4 +25,6 @@ func fillFromStat(fi *FileInfo, st *syscall.Stat_t) {
 	fi.Blksize = int64(st.Blksize)
 	// R2.3: Darwin uses Mtimespec (not Mtim as on Linux).
 	fi.ModTime = time.Unix(st.Mtimespec.Sec, st.Mtimespec.Nsec)
+	fi.AccessTime = time.Unix(st.Atimespec.Sec, st.Atimespec.Nsec)
+	fi.ChangeTime = time.Unix(st.Ctimespec.Sec, st.Ctimespec.Nsec)
 }
