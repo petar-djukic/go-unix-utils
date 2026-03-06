@@ -183,16 +183,16 @@ code_status:
               testfiles: 0
         - version: "05.2"
           name: Batch 5.2 — columnar operations pair (cut, paste)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.2-uc001-cut
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.2-uc002-paste
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0

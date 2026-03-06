@@ -6363,3 +6363,195 @@
       - id: AC7
         text: "Exit code is 0 on success, 1 on error with diagnostic to stderr."
   dependency: -1
+- index: 0
+  title: Implement cmd/uniq -- core line deduplication (prd-uniq R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd016-uniq.yaml (all requirements for uniq)
+      - docs/specs/use-cases/rel05.3-uc001-uniq.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.3.yaml (test cases for validation)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+      - cmd/cut/main.go (reference for CLI structure and flag parsing in a text-stream utility)
+      - cmd/paste/main.go (reference for stdin/file input handling pattern)
+
+    files:
+      - path: cmd/uniq/main.go
+        action: create
+        note: "uniq implementation: flag parsing, adjacent-line comparison, output modes"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the uniq command that reads stdin or named input files and
+          filters adjacent matching lines. Default behavior outputs one copy of
+          each run of identical adjacent lines. Support reading from stdin when
+          no file is given or file is "-". If an output file is specified as the
+          second positional argument, write to that file instead of stdout.
+          Match GNU uniq behavior for all flag interactions.
+      - id: R2
+        text: |
+          Implement comparison modifier flags: -f/--skip-fields N (skip first N
+          whitespace-separated fields before comparing), -s/--skip-chars N (skip
+          first N characters after field skipping), -w/--check-chars N (compare
+          at most N characters after skipping), -i/--ignore-case (fold case for
+          comparison). Skipping and width interact in order: skip fields, skip
+          chars, then limit width.
+      - id: R3
+        text: |
+          Implement output mode flags: -c/--count (prefix lines with occurrence
+          count, right-justified with a space separator), -d/--repeated (print
+          only duplicate lines, one per group), -D/--all-repeated (print all
+          lines from duplicate groups; optional delimiting method: none, prepend,
+          separate), -u/--unique (print only lines that are not repeated).
+          Mutually exclusive combinations follow GNU behavior: -c with -D is an
+          error; -d and -u together produce no output.
+      - id: R4
+        text: |
+          Implement line terminator flag: -z/--zero-terminated (use NUL as the
+          line delimiter instead of newline for both input and output).
+          Implement --version and --help flags matching GNU output format.
+          Call pkg/sys.InstallSIGPIPEHandler() at program start. Exit 0 on
+          success, exit 1 on errors (write failures, invalid arguments).
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the same CLI structure as cmd/cut and cmd/paste: parse flags
+          with the Go standard library flag package, process input line by line,
+          write to stdout or the output file. Use bufio.Scanner or bufio.Reader
+          for line-by-line input with configurable delimiter (newline or NUL).
+      - id: D2
+        text: |
+          Use pkg/sys.InstallSIGPIPEHandler() at program start, matching the
+          shared protocol in ARCHITECTURE.yaml. Do not add any new pkg/
+          dependencies -- uniq needs only standard library and pkg/sys.
+      - id: D3
+        text: |
+          For -c/--count output, right-justify the count field with leading
+          spaces and follow it with a single space before the line content,
+          matching GNU uniq output format exactly.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/uniq/main.go compiles with: go build ./cmd/uniq/"
+      - id: AC2
+        text: "go vet ./cmd/uniq/ reports no issues"
+      - id: AC3
+        text: |
+          Running the binary with --version prints version info and exits 0.
+          Running with --help prints usage and exits 0.
+      - id: AC4
+        text: |
+          Basic functionality works: echo -e 'a\na\nb\nb\na' | bin/uniq produces
+          a, b, a (three lines). With -c, output shows counts. With -d, only
+          duplicate groups appear. With -u, only unique lines appear.
+      - id: AC5
+        text: |
+          Flag interactions match GNU: -f, -s, and -w compose correctly.
+          -i folds case for comparison. -z uses NUL delimiters.
+      - id: AC6
+        text: "Production code is under 250 lines"
+  dependency: -1
+- index: 0
+  title: Implement cmd/comm -- sorted file comparison (prd-comm R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd016-comm.yaml (comm PRD -- all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.3-uc002-comm.yaml (comm use case -- end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.3.yaml (test suite -- expected inputs and outputs for comm)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/uniq/main.go (sibling utility in same release -- reference for style and patterns)
+      - cmd/uniq/uniq_test.go (sibling test file -- reference for differential test structure)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/comm/main.go
+        action: create
+        note: comm utility implementation -- sorted file comparison with column suppression
+      - path: cmd/comm/comm_test.go
+        action: create
+        note: differential tests against gcomm reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the comm command that reads two sorted files and produces
+          three-column output: lines unique to FILE1 (column 1), lines unique
+          to FILE2 (column 2), and lines common to both (column 3). Columns
+          are separated by a tab character by default. Each output line is
+          prefixed with the appropriate number of tab delimiters to indicate
+          its column. Match GNU comm behavior exactly under LC_ALL=C.
+      - id: R2
+        text: |
+          Implement column suppression flags: -1 suppresses column 1 (lines
+          unique to FILE1), -2 suppresses column 2 (lines unique to FILE2),
+          -3 suppresses column 3 (lines common to both). Flags can be
+          combined (e.g., -12 suppresses both columns 1 and 2, showing only
+          common lines). When columns are suppressed, remaining columns shift
+          left -- their tab prefix count decreases accordingly.
+      - id: R3
+        text: |
+          Implement --output-delimiter=STR to replace the default tab
+          delimiter between columns. Implement --check-order (default) to
+          verify input files are sorted and emit a diagnostic to stderr if
+          not. Implement --nocheck-order to skip sort-order validation.
+          Implement --total to append a summary line with counts per column.
+          Support - as a filename meaning stdin (only one file may be stdin).
+      - id: R4
+        text: |
+          Write differential tests comparing the Go binary against the
+          Homebrew gcomm reference binary. Cover: basic three-column output,
+          each suppression flag alone and in combination, --output-delimiter,
+          --check-order with unsorted input, --nocheck-order, --total,
+          stdin via -, empty files, files with no common lines, and identical
+          files. Use testutils.BuildBinary and testutils.RunDiffTests. Skip
+          gracefully if gcomm is not in PATH.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use the standard differential testing pattern from
+          ARCHITECTURE.yaml shared_protocols: BuildBinary for the Go binary,
+          exec.LookPath("gcomm") for the reference, t.Skip if not found,
+          RunDiffTests with []testutils.DiffTest.
+      - id: D2
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per
+          the SIGPIPE handling shared protocol.
+      - id: D3
+        text: |
+          All differential tests must set LC_ALL=C in the Env field per
+          DD6 (locale handling deferred). String comparison uses simple
+          byte-order comparison, matching GNU comm behavior under LC_ALL=C.
+      - id: D4
+        text: |
+          Use flag parsing consistent with cmd/uniq and other sibling
+          utilities. Parse flags with the standard library flag package.
+          Exit 0 on success, exit 1 on error. Write diagnostics to stderr.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/comm/main.go compiles with no errors or lint warnings.
+      - id: AC2
+        text: |
+          "go test ./cmd/comm/..." passes when gcomm is available in PATH.
+          Tests cover basic output, all suppression flag combinations,
+          --output-delimiter, --check-order, --nocheck-order, --total,
+          stdin via -, empty files, no-common-lines, and identical files.
+      - id: AC3
+        text: |
+          Tests skip gracefully with t.Skip when gcomm is not in PATH,
+          producing no failures.
+      - id: AC4
+        text: |
+          Output matches gcomm byte-for-byte on stdout and stderr for all
+          test inputs under LC_ALL=C.
+      - id: AC5
+        text: Production code is under 250 lines. Total file count is 2 (main.go + comm_test.go).
+  dependency: -1

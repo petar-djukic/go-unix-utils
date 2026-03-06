@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "357"
+task_title: Implement cmd/uniq -- core line deduplication (prd-uniq R1-R4)
+status: success
+started_at: "2026-03-06T18:29:40Z"
+duration: 4m12s
+duration_s: 252
+tokens:
+    input: 1575475
+    output: 17160
+    cache_creation: 67932
+    cache_read: 1507508
+cost_usd: 1.6075039999999998
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 273
+    test: 0
+diff:
+    files: 5
+    insertions: 368
+    deletions: 4
