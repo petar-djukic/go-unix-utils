@@ -1,7 +1,7 @@
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
 github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
-github.com/mesh-intelligence/cobbler-scaffold v0.20260306.5 h1:nIsgN8OYO6hl/JQODt82L0hEc0Kowntw55OxOpJb2j4=
-github.com/mesh-intelligence/cobbler-scaffold v0.20260306.5/go.mod h1:YVc2XV4LdKH9+yIdAJlsYdOXxOI/rEs+bP0buLyjVXI=
+github.com/mesh-intelligence/cobbler-scaffold v0.20260306.8 h1:7bFtyGwn9nlfIEbPH1BeIPCfzkHWP1ACjy7+UiPF0co=
+github.com/mesh-intelligence/cobbler-scaffold v0.20260306.8/go.mod h1:YVc2XV4LdKH9+yIdAJlsYdOXxOI/rEs+bP0buLyjVXI=
 github.com/schlunsen/claude-agent-sdk-go v0.5.1 h1:8hho5wd5XU87q91ssEFeJmgS0whm6JTroqtwnaUQxcA=
 github.com/schlunsen/claude-agent-sdk-go v0.5.1/go.mod h1:bH59LsKvDqUtYzW+6MNoaFEjcpMtfdvRNjQDCyfBJ+o=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
