@@ -204,7 +204,7 @@ releases:
 
   - version: "05.4"
     name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
       protocol: GNU two-space format for text mode, asterisk format for binary mode,
@@ -214,13 +214,13 @@ releases:
       gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
     use_cases:
       - id: rel05.4-uc001-md5sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc002-sha1sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc003-sha256sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc004-sha512sum
-        status: spec_complete
+        status: implemented
 
   - version: "99.2"
     name: "Deferred — ts specification and differential test"
