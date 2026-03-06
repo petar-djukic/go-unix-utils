@@ -5657,3 +5657,176 @@
       - id: AC5
         text: "go vet ./cmd/tee/ reports no issues"
   dependency: -1
+- index: 0
+  title: 'Implement cmd/head -- prd-head R1-R4: default line output, -n/-c flags, multi-file headers, SIGPIPE'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the head PRD, e.g. prd0XX-head.yaml -- read all requirements)
+      - docs/specs/use-cases/rel02.2-uc001-head.yaml (end-to-end execution flow)
+      - docs/specs/test-suites/test-rel-02.2.yaml (test cases for head -- needed for differential test design)
+      - docs/ARCHITECTURE.yaml (shared_protocols section: differential testing pattern, SIGPIPE handling, graceful skip)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+      - pkg/testutils/ (DiffTest struct, RunDiffTests, BuildBinary)
+
+    files:
+      - path: cmd/head/main.go
+        action: create
+        note: head utility -- flag parsing, line/byte output, multi-file header logic
+      - path: cmd/head/head_test.go
+        action: create
+        note: differential tests against ghead reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement default behavior: read from stdin or named files and output
+          the first 10 lines of each input. When no files are given, read stdin.
+          When "-" is given as a filename, read stdin at that position.
+      - id: R2
+        text: |
+          Implement -n (--lines) flag to output the first N lines instead of 10.
+          Support the -N shorthand (e.g. head -5). When N is prefixed with "-",
+          output all but the last N lines. Match GNU head semantics exactly.
+      - id: R3
+        text: |
+          Implement -c (--bytes) flag to output the first N bytes instead of lines.
+          Support K suffixes (b=512, kB=1000, K=1024, MB=1000*1000, M=1024*1024,
+          and so on) per GNU coreutils convention. When N is prefixed with "-",
+          output all but the last N bytes. -c and -n are mutually exclusive; last
+          flag wins.
+      - id: R4
+        text: |
+          Implement multi-file header behavior: when more than one file is given,
+          print "==> filename <==" before each file's output, with a blank line
+          between files. -q (--quiet/--silent) suppresses headers. -v (--verbose)
+          forces headers even for a single file. Match GNU head header format exactly.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() so the
+          process exits cleanly when piped to a downstream consumer that closes
+          stdin (e.g. head | head). This matches the shared protocol in
+          ARCHITECTURE.yaml.
+      - id: D2
+        text: |
+          Differential tests use pkg/testutils.BuildBinary to compile the Go binary
+          and exec.LookPath("ghead") for the reference binary. If ghead is not found,
+          call t.Skip per the graceful-skip shared protocol. All tests set LC_ALL=C.
+      - id: D3
+        text: |
+          Use os.Exit(1) when any file cannot be opened, but continue processing
+          remaining files (matching GNU head behavior). Print the error to stderr
+          in the format "head: <filename>: <error>".
+      - id: D4
+        text: |
+          Parse flags manually or with the flag package. Support both --lines=N and
+          --lines N (space-separated) forms, plus the -N shorthand for -n N. The
+          last of -n/-c wins when both are specified.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/head/main.go compiles with no errors via "go build ./cmd/head/"
+      - id: AC2
+        text: "go vet ./cmd/head/..." reports no issues
+      - id: AC3
+        text: cmd/head/head_test.go contains differential tests covering default (10 lines), -n, -c, -q, -v, multi-file, stdin, and error cases
+      - id: AC4
+        text: "go test ./cmd/head/... passes (or skips gracefully if ghead is not in PATH)"
+      - id: AC5
+        text: cmd/head/main.go calls sys.InstallSIGPIPEHandler() at the start of main()
+      - id: AC6
+        text: Production code is under 250 lines
+  dependency: -1
+- index: 0
+  title: 'Task: Implement cmd/seq -- prd-seq R1-R4: numeric sequence output, -w/-s/-f flags, SIGPIPE'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-seq.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel02.2-uc002-seq.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-02.2.yaml (seq test cases)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+      - cmd/head/main.go (reference for cmd/ package structure and patterns)
+      - cmd/head/head_test.go (reference for differential test structure)
+
+    files:
+      - path: cmd/seq/main.go
+        action: create
+        note: seq implementation -- argument parsing, numeric sequence generation, formatting
+      - path: cmd/seq/seq_test.go
+        action: create
+        note: differential tests against gseq reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement numeric sequence generation per prd-seq. seq accepts one, two, or three
+          operands: "seq LAST" prints 1 to LAST, "seq FIRST LAST" prints FIRST to LAST,
+          "seq FIRST INCREMENT LAST" prints FIRST to LAST stepping by INCREMENT. All operands
+          are floating-point. Default separator is newline. Output ends with a trailing newline.
+      - id: R2
+        text: |
+          Implement the -s (--separator) flag per prd-seq. When -s STRING is given, use STRING
+          as the separator between numbers instead of newline. The final number is still followed
+          by a newline, not the separator.
+      - id: R3
+        text: |
+          Implement the -w (--equal-width) flag per prd-seq. When -w is given, pad all numbers
+          with leading zeros so they all have equal width. Width is determined by the widest
+          endpoint (FIRST or LAST). The -w flag is ignored when -f is also specified.
+      - id: R4
+        text: |
+          Implement the -f (--format) flag per prd-seq. When -f FORMAT is given, use FORMAT
+          as a printf-style format string for each number. FORMAT must contain exactly one
+          %e, %f, %g, %a, %A, %E, %F, or %G conversion (with optional width/precision).
+          Invalid formats produce an error to stderr and exit 1.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main per the SIGPIPE handling
+          shared protocol in ARCHITECTURE.yaml. This ensures seq exits cleanly when piped
+          to head or other consumers that close stdin early.
+      - id: D2
+        text: |
+          Use pkg/testutils.RunDiffTests with reference binary "gseq" for differential
+          testing. Call exec.LookPath("gseq") and t.Skip if not found, per the graceful
+          skip shared protocol.
+      - id: D3
+        text: |
+          Parse operands as float64 using strconv.ParseFloat. Use big.Float or careful
+          epsilon comparison only if needed for format precision. Match GNU seq behavior
+          for integer-valued floats (print without decimal point when no -f is given).
+      - id: D4
+        text: |
+          Exit codes: 0 on success, 1 on usage error (invalid format, missing operands,
+          zero increment). Write errors to stderr. Match GNU seq error message style.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/seq/ succeeds with no errors or warnings"
+      - id: AC2
+        text: "go vet ./cmd/seq/ reports no issues"
+      - id: AC3
+        text: "Differential tests pass: seq output matches gseq for all test cases in the test suite"
+      - id: AC4
+        text: "seq 5 prints 1 through 5, one per line, with trailing newline"
+      - id: AC5
+        text: "seq 2 5 prints 2 through 5; seq 1 0.5 3 prints 1.0 1.5 2.0 2.5 3.0"
+      - id: AC6
+        text: "seq -w 1 10 zero-pads: 01 02 ... 10"
+      - id: AC7
+        text: "seq -s ', ' 3 prints '1, 2, 3' followed by newline"
+      - id: AC8
+        text: "seq -f '%.2f' 3 prints 1.00 2.00 3.00"
+      - id: AC9
+        text: "Invalid format (seq -f '%s' 3) exits 1 with error to stderr"
+      - id: AC10
+        text: "Zero increment (seq 1 0 5) exits 1 with error to stderr"
+  dependency: -1

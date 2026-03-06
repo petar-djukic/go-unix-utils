@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "343"
+task_title: 'Implement cmd/head -- prd-head R1-R4: default line output, -n/-c flags, multi-file headers, SIGPIPE'
+status: success
+started_at: "2026-03-06T17:07:54Z"
+duration: 9m55s
+duration_s: 594
+tokens:
+    input: 2376255
+    output: 38097
+    cache_creation: 95856
+    cache_read: 2280362
+cost_usd: 2.691891
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 376
+    test: 178
+diff:
+    files: 7
+    insertions: 639
+    deletions: 3

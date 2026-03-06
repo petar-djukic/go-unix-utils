@@ -88,11 +88,11 @@ code_status:
               testfiles: 0
         - version: "02.1"
           name: Batch 2.1 — tee specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel02.1-uc001-tee
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
