@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "280"
+task_title: Implement pkg/format shared formatting library [rel00.0-uc002-format]
+status: success
+started_at: "2026-03-05T00:00:59Z"
+duration: 14m18s
+duration_s: 857
+tokens:
+    input: 2140710
+    output: 52701
+    cache_creation: 84837
+    cache_read: 2055847
+cost_usd: 2.88098275
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 284
+    test: 383
+diff:
+    files: 9
+    insertions: 716
+    deletions: 54

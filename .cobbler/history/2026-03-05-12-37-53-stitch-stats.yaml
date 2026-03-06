@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "290"
+task_title: Implement magefiles build lifecycle and cmd/version binary (rel00.0-uc001)
+status: success
+started_at: "2026-03-05T17:37:53Z"
+duration: 13m11s
+duration_s: 790
+tokens:
+    input: 5992101
+    output: 40301
+    cache_creation: 81338
+    cache_read: 5910689
+cost_usd: 4.5058500000000015
+loc_before:
+    production: 419
+    test: 510
+loc_after:
+    production: 458
+    test: 510
+diff:
+    files: 8
+    insertions: 520
+    deletions: 58

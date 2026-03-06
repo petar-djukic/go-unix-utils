@@ -1,0 +1,39 @@
+task_id: "289"
+task_title: Implement pkg/sys syscall abstractions (rel00.0-uc003)
+status: success
+branch: task/generation-gh-262-codegen-289
+diff:
+    files: 6
+    insertions: 376
+    deletions: 57
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 2
+      deletions: 2
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 370
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 419
+    test: 510
+loc_after:
+    production: 419
+    test: 510

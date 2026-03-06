@@ -5161,3 +5161,1138 @@
       - id: AC5
         text: "TestMain compiles the binary successfully and cleans up the temp directory after tests complete"
   dependency: -1
+- index: 0
+  title: Implement pkg/format shared formatting library [rel00.0-uc002-format]
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format component description, technology_choices, design_decisions DD3 and DD7)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (use case; follow the PRD reference inside to locate and read the format PRD before writing any code)
+
+    files:
+      - path: pkg/format/columns.go
+        action: create
+        note: Column alignment functions for tabular output (ls -l style)
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI escape code constants and file-type color lookup
+      - path: pkg/format/size.go
+        action: create
+        note: Human-readable byte-count formatting with K/M/G suffixes
+
+    requirements:
+      - id: R1
+        text: Implement column alignment that computes per-column widths from a 2D string slice and pads each cell to produce uniform column widths across all rows, matching ls -l tabular style per the format PRD
+      - id: R2
+        text: Implement ANSI terminal color constants and a file-type color lookup function covering regular files, directories, symlinks, executables, sockets, named pipes, block devices, and character devices per the format PRD
+      - id: R3
+        text: Implement human-readable size formatting that converts a uint64 byte count to a string with K, M, or G suffix using powers of 1024, matching GNU coreutils output format per the format PRD
+
+    design_decisions:
+      - id: D1
+        text: pkg/format is a shared library imported by cmd/ packages -- no cmd/ package may duplicate formatting logic that belongs in pkg/format (ARCHITECTURE.yaml DD3)
+      - id: D2
+        text: Use only the Go standard library; golang.org/x/sys is the only external dependency permitted project-wide and pkg/format does not require it (ARCHITECTURE.yaml technology_choices)
+      - id: D3
+        text: All source files reside in package format with no sub-packages; file names must derive from the primary exported type or function group as specified in the format PRD (planning constitution P7)
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./pkg/format/... completes with no errors
+      - id: AC2
+        text: Column alignment function produces uniform per-column widths across all rows given a 2D string input where cells in the same column have varying lengths
+      - id: AC3
+        text: File-type color lookup returns a non-empty ANSI escape sequence for each of the eight file types listed in R2 and returns an empty string or reset sequence for unknown types
+      - id: AC4
+        text: Size formatting converts 1024 to a K-suffixed string, 1048576 to an M-suffixed string, and 1073741824 to a G-suffixed string per the format PRD specification
+      - id: AC5
+        text: golangci-lint passes on all pkg/format/ files with no warnings
+  dependency: -1
+- index: 0
+  title: Implement pkg/testutils DiffTest differential testing harness (rel00.0-uc004)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/testutils component section, design decision DD2 on differential testing as the primary verification mechanism, DD7 on generation scope exclusions)
+      - docs/specs/product-requirements/prd001-testutils.yaml (testutils PRD; if not found at this exact path, locate the testutils PRD under docs/specs/product-requirements/ using a glob on prd*-testutils.yaml)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: "DiffTest struct and Run method -- primary exported type is DiffTest; file is named after the type, not the package (testutils.go is forbidden per naming convention)"
+      - path: pkg/testutils/difftest_test.go
+        action: create
+        note: Unit tests verifying DiffTest.Run behavior against a stub binary pair
+
+    requirements:
+      - id: R1
+        text: "Define DiffTest struct with exported fields: Args []string (arguments for both binaries), Stdin []byte (content piped to stdin), Env []string (additional environment variables merged into the inherited environment), WantExit int (expected exit code), WantStdout []byte (expected stdout), WantStderr []byte (expected stderr), NormStdout func([]byte) []byte (optional hook applied to stdout before comparison), NormStderr func([]byte) []byte (optional hook applied to stderr before comparison)."
+      - id: R2
+        text: "Implement func (tc DiffTest) Run(t *testing.T, refBin, goBin string) that executes both refBin and goBin with identical inputs: tc.Args as arguments, tc.Stdin piped to stdin, and an environment formed by merging os.Environ() with tc.Env."
+      - id: R3
+        text: "After executing both binaries, compare the Go binary exit code against WantExit, stdout against WantStdout, and stderr against WantStderr byte-for-byte (applying NormStdout and NormStderr hooks when non-nil before comparison); call t.Errorf for each mismatch, reporting the binary path, expected value, and actual value."
+      - id: R4
+        text: "difftest_test.go must exercise at least three cases: one where exit code, stdout, and stderr all match (t.Errorf not called); one where exit code mismatches (t.Errorf called with expected and actual exit codes); and one where a NormStdout hook strips trailing newlines causing an otherwise-mismatched stdout comparison to pass."
+
+    design_decisions:
+      - id: D1
+        text: "The primary exported type is DiffTest; the main source file is difftest.go, not testutils.go. This naming rule is stated explicitly in the planning constitution: 'testutils/testutils.go is forbidden; if the primary type is DiffTest, the file is difftest.go. Test files mirror source: difftest_test.go'."
+      - id: D2
+        text: "Use os/exec.Command to launch each binary. Capture stdout and stderr independently with bytes.Buffer assigned to cmd.Stdout and cmd.Stderr. Extract the exit code from *exec.ExitError when cmd.Run returns a non-nil error."
+      - id: D3
+        text: "Use t.Errorf (not t.Fatalf) so a single DiffTest.Run call reports all three possible mismatches -- exit code, stdout, stderr -- in one invocation without stopping at the first failure."
+      - id: D4
+        text: "pkg/testutils must import only the Go standard library (testing, os/exec, bytes, os, syscall as needed). It must not import pkg/sys, pkg/format, or any cmd/ package. Only cmd/ test files import pkg/testutils."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... succeeds with no compilation errors on both darwin/arm64 and linux/amd64."
+      - id: AC2
+        text: "A DiffTest where WantExit, WantStdout, and WantStderr all match the Go binary output completes Run without calling t.Errorf."
+      - id: AC3
+        text: "A DiffTest where WantExit=0 but the Go binary exits with code 1 causes t.Errorf to be called with a message containing both the expected value (0) and the actual value (1)."
+      - id: AC4
+        text: "A DiffTest with a NormStdout hook that strips trailing newlines passes when the Go binary stdout differs from WantStdout only in trailing newlines."
+      - id: AC5
+        text: "go test ./pkg/testutils/... passes with all test cases green."
+      - id: AC6
+        text: "go vet ./pkg/testutils/... passes with no diagnostics."
+  dependency: -1
+- index: 0
+  title: Implement pkg/format size, column, and color formatting (rel00.0-uc002)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format component description and design_decisions)
+      - docs/specs/product-requirements/ (locate and read the format PRD -- filename matches prd*-format.yaml)
+      - go.mod (module path -- github.com/petar-djukic/go-unix-utils)
+
+    files:
+      - path: pkg/format/size.go
+        action: create
+        note: Human-readable byte-size conversion to K/M/G strings
+      - path: pkg/format/columns.go
+        action: create
+        note: Fixed-width column alignment for tabular ls-l style output
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI color constants and colorize helper for file types and permission bits
+
+    requirements:
+      - id: R1
+        text: >
+          Implement human-readable size formatting that converts an int64 byte count
+          to a K/M/G suffixed string matching GNU coreutils -h output format,
+          per the format PRD requirements
+      - id: R2
+        text: >
+          Implement column alignment that accepts a row-major [][]string table and
+          returns rows padded to uniform per-column widths without truncating any
+          cell, per the format PRD requirements
+      - id: R3
+        text: >
+          Implement ANSI color constants for standard file-type colors and a
+          Colorize(text, colorCode string) string helper that wraps text in ANSI
+          escape sequences, per the format PRD requirements
+      - id: R4
+        text: >
+          pkg/format must compile with zero external dependencies beyond Go stdlib;
+          no cmd/ or other internal packages may be imported; module path is
+          github.com/petar-djukic/go-unix-utils per go.mod
+
+    design_decisions:
+      - id: D1
+        text: >
+          Each source file is named after its primary exported function group per P7
+          naming convention -- size.go for size formatting, columns.go for column
+          alignment, color.go for ANSI colors -- not after the package name
+          (testutils/testutils.go anti-pattern)
+      - id: D2
+        text: >
+          pkg/format uses Go standard library only with no external dependencies
+          per ARCHITECTURE.yaml technology_choices; golang.org/x/sys is reserved
+          for pkg/sys only
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./pkg/format/ succeeds on Linux with zero errors
+      - id: AC2
+        text: >
+          Size formatter returns correctly suffixed strings (K/M/G) for 1024,
+          1048576, and 1073741824 byte inputs matching GNU coreutils -h output
+          format
+      - id: AC3
+        text: >
+          Column alignment function produces equal-width columns for a
+          representative two-row three-column string table without truncating
+          any cell value
+      - id: AC4
+        text: go vet ./pkg/format/ reports no issues
+  dependency: -1
+- index: 0
+  title: Implement pkg/format column alignment, ANSI color codes, and size formatting (rel00.0-uc002)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - "docs/specs/product-requirements/prd004-format.yaml (if path does not exist, use Glob on docs/specs/product-requirements/ to locate the pkg/format PRD, then read it)"
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml
+      - "docs/ARCHITECTURE.yaml (pkg/format component section and design decisions 3, 7)"
+      - go.mod
+
+    files:
+      - path: pkg/format/column.go
+        action: create
+        note: "Column alignment for tabular output -- rename to match primary exported type from PRD if different"
+      - path: pkg/format/color.go
+        action: create
+        note: "ANSI color codes for file types and permissions -- rename to match primary exported type from PRD if different"
+      - path: pkg/format/size.go
+        action: create
+        note: "Human-readable size formatting (bytes to K/M/G) -- rename to match primary exported type from PRD if different"
+
+    requirements:
+      - id: R1
+        text: "Implement column alignment for tabular output (ls -l style) per the pkg/format PRD requirements -- exported API and type names must match the PRD exactly"
+      - id: R2
+        text: "Implement ANSI color codes for file types (regular, directory, symlink, executable, special) and permission bits per the pkg/format PRD requirements"
+      - id: R3
+        text: "Implement human-readable size formatting converting raw byte counts to K/M/G form per the pkg/format PRD requirements"
+
+    design_decisions:
+      - id: D1
+        text: "pkg/format is a shared library -- it must export clean public APIs for use by cmd/ packages and must not import cmd/ packages or pkg/testutils (ARCHITECTURE.yaml DD3)"
+      - id: D2
+        text: "File names must be derived from the primary exported types specified in the PRD, not from the package name -- e.g. if the primary type for column alignment is AlignedTable, the file is table.go (ARCHITECTURE.yaml P7)"
+      - id: D3
+        text: "pkg/format has no external dependencies beyond the Go standard library; golang.org/x/sys is only used in pkg/sys, not pkg/format (ARCHITECTURE.yaml technology_choices)"
+      - id: D4
+        text: "All output targets LC_ALL=C semantics; no locale-aware collation or character classification is required (ARCHITECTURE.yaml DD6)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... succeeds with no errors"
+      - id: AC2
+        text: "Column alignment function produces correctly padded multi-column output that matches ls -l tabular style as defined in the PRD"
+      - id: AC3
+        text: "ANSI color functions return correct ANSI escape codes for each file type and permission combination as defined in the PRD"
+      - id: AC4
+        text: "Size formatting function converts byte counts to human-readable K/M/G form with rounding and threshold behavior matching the PRD specification"
+      - id: AC5
+        text: "golangci-lint ./pkg/format/... passes with no warnings"
+  dependency: -1
+- index: 0
+  title: Implement pkg/format output formatting library (rel00.0-uc002-format)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format component description, technology_choices, design decisions DD3 and DD7)
+      - docs/specs/product-requirements/ (locate and read the PRD for pkg/format -- glob for prd*-format.yaml or prd*-pkg-format.yaml in this directory)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml
+
+    files:
+      - path: pkg/format/table.go
+        action: create
+        note: Column alignment for tabular output; rename file to match primary exported type from PRD if different
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI color codes for file type and permission display; rename to match PRD
+      - path: pkg/format/size.go
+        action: create
+        note: Human-readable byte size formatting; rename to match PRD
+
+    requirements:
+      - id: R1
+        text: Implement column alignment for tabular output (ls -l style) per the pkg/format PRD requirements
+      - id: R2
+        text: Implement ANSI color code support for file types (directory, symlink, executable) and permissions per the pkg/format PRD requirements
+      - id: R3
+        text: Implement human-readable size formatting that converts byte counts to K/M/G units per the pkg/format PRD requirements
+      - id: R4
+        text: All exported identifiers are idiomatic Go and the package compiles without warnings under golangci-lint
+
+    design_decisions:
+      - id: D1
+        text: Name each source file after its primary exported type, not the package name -- if the PRD specifies concrete type names (e.g. the primary type is Table, the file is table.go), use those and discard the suggested names above
+      - id: D2
+        text: pkg/format is a shared library consumed by cmd/ packages; it must not import from cmd/ or pkg/testutils
+      - id: D3
+        text: Do not use external Go packages for ANSI color output -- implement using string constants for ANSI escape sequences; the only permitted external dependency in the project is golang.org/x/sys per ARCHITECTURE.yaml technology choices
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./pkg/format/ succeeds with no compilation errors
+      - id: AC2
+        text: golangci-lint runs clean on all files under pkg/format/
+      - id: AC3
+        text: Column alignment function aligns each column to the maximum width of values in that column across all rows
+      - id: AC4
+        text: ANSI color escape sequences can be applied to and cleared from file-type label strings (directory, symlink, executable at minimum)
+      - id: AC5
+        text: Size formatting produces human-readable output using powers of 1024 (K=1024, M=1048576, G=1073741824) matching GNU coreutils human-readable format
+  dependency: -1
+- index: 0
+  title: Implement pkg/testutils DiffTest differential testing harness (rel00.0-uc004)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/testutils component description, technology choices, design decisions)
+      - docs/specs/use-cases/rel00.0-uc004-testutils.yaml (use case flow and acceptance criteria)
+      - docs/specs/product-requirements/ (use Glob to find prd*-testutils.yaml; read the full PRD before implementing -- it is the authoritative source for DiffTest fields and normalization behavior)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: "DiffTest struct, Run helper (accepts testing.T), NormalizeFunc hook; primary exported type is DiffTest"
+
+    requirements:
+      - id: R1
+        text: Define exported DiffTest struct with fields for Go binary path, reference binary path, arguments slice, stdin bytes, environment variable list, expected exit code, expected stdout bytes, and expected stderr bytes -- per all fields required by the testutils PRD
+      - id: R2
+        text: Implement Run(t *testing.T, d DiffTest) that executes both binaries with identical stdin, arguments, and environment; pipes stdin bytes to each process; captures stdout, stderr, and exit code; and calls t.Errorf on any divergence between the Go binary output and the reference binary output
+      - id: R3
+        text: When divergence is detected, report the triggering input (arguments and stdin excerpt), the reference binary output (expected), and the Go binary output (actual) in the t.Errorf message
+      - id: R4
+        text: Add a NormalizeFunc field on DiffTest of type func([]byte) []byte that, when non-nil, is applied to stdout and stderr bytes from both binaries before comparison to accommodate known acceptable differences such as timestamps or path prefixes
+
+    design_decisions:
+      - id: D1
+        text: "Primary exported type is DiffTest; source file must be named difftest.go, not testutils.go -- per project naming convention (ARCHITECTURE.yaml P7: name the file after the primary exported type)"
+      - id: D2
+        text: "Go module is github.com/petar-djukic/go-unix-utils; package declaration is: package testutils; no cmd/ or other pkg/ sub-packages may be imported"
+      - id: D3
+        text: "The only permitted external Go dependency is golang.org/x/sys; pkg/testutils must not introduce any other external import beyond the Go standard library and golang.org/x/sys"
+
+    acceptance_criteria:
+      - id: AC1
+        text: pkg/testutils/difftest.go compiles with no errors under go build ./pkg/testutils/...
+      - id: AC2
+        text: golangci-lint reports no warnings or errors on pkg/testutils/difftest.go
+      - id: AC3
+        text: DiffTest struct is exported and contains all fields required by the testutils PRD (binary paths, arguments, stdin, environment, expected exit code, expected stdout, expected stderr)
+      - id: AC4
+        text: Run function signature is Run(t *testing.T, d DiffTest) and calls t.Errorf or t.Fatalf on any mismatch in exit code, stdout, or stderr between the two binaries
+      - id: AC5
+        text: NormalizeFunc field is present on DiffTest and, when non-nil, is applied to both stdout and stderr bytes from each binary before comparison so normalized outputs are what get compared
+  dependency: -1
+- index: 0
+  title: pkg/format R1-R3 -- column alignment, ANSI color, and size formatting (uc002-format)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format component capabilities, DD3 shared library pattern, technology choices)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (pkg/format use case for rel00.0)
+      - docs/specs/product-requirements/ (locate and read prdNNN-format.yaml -- the PRD for pkg/format; list the directory to find the exact filename)
+
+    files:
+      - path: pkg/format/column.go
+        action: create
+        note: "Column alignment types and functions for tabular output -- derive exact exported type names from PRD"
+      - path: pkg/format/color.go
+        action: create
+        note: "ANSI color escape code constants and helper functions -- derive exact exported names from PRD"
+      - path: pkg/format/size.go
+        action: create
+        note: "Human-readable byte-count formatting functions -- derive exact exported names from PRD"
+
+    requirements:
+      - id: R1
+        text: "Implement column alignment for tabular output per pkg/format PRD R1 -- provide functions or types to align multi-column output with configurable per-column widths, supporting ls -l style listings"
+      - id: R2
+        text: "Implement ANSI color code output per pkg/format PRD R2 -- provide constants or functions returning ANSI escape sequences for file types (regular file, directory, symbolic link, executable) and permission bit display"
+      - id: R3
+        text: "Implement human-readable size formatting per pkg/format PRD R3 -- convert byte counts to K/M/G suffixed strings matching GNU coreutils --human-readable output format"
+      - id: R4
+        text: "pkg/format must depend only on the Go standard library -- must not import golang.org/x/sys, any other external package, pkg/sys, or cmd/ packages"
+
+    design_decisions:
+      - id: D1
+        text: "Shared library pattern per ARCHITECTURE.yaml DD3 -- common output formatting logic lives in pkg/format and is imported by cmd/ packages; no formatting logic is duplicated across cmd/ packages"
+      - id: D2
+        text: "No external dependencies -- pkg/format uses only the Go standard library; golang.org/x/sys is reserved for pkg/sys only per ARCHITECTURE.yaml technology choices"
+      - id: D3
+        text: "File names must be derived from primary exported types named in the PRD, not from the package name -- pkg/format/format.go is forbidden by the project naming convention; use type-named files unless the PRD specifies different names"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/ completes with no errors"
+      - id: AC2
+        text: "golangci-lint ./pkg/format/ reports no issues"
+      - id: AC3
+        text: "Column alignment exported API is usable from a cmd/ package to produce left- or right-aligned tabular output with configurable column widths"
+      - id: AC4
+        text: "ANSI color exported API provides distinct escape sequences for at least: regular file, directory, symbolic link, executable"
+      - id: AC5
+        text: "Size formatting output for byte counts that are exact powers of 1024 matches the format specified in the PRD and is consistent with GNU coreutils --human-readable output"
+  dependency: -1
+- index: 0
+  title: 'pkg/format: implement column alignment, ANSI color, and size formatting (rel00.0-uc002)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/format component section -- capabilities and references)
+      - docs/specs/use-cases/rel00.0-uc002-format.yaml (use case scope and success criteria)
+      - "docs/specs/product-requirements/ (use Glob to find prd*-format.yaml; read it fully before writing any code)"
+
+    files:
+      - path: pkg/format/table.go
+        action: create
+        note: column alignment for tabular output; rename to match primary exported type in PRD per project convention
+      - path: pkg/format/color.go
+        action: create
+        note: ANSI color constants and helpers for file types and Unix permission strings
+      - path: pkg/format/size.go
+        action: create
+        note: human-readable size conversion from raw byte counts to K/M/G/T suffixes
+
+    requirements:
+      - id: R1
+        text: Implement column-alignment API for tabular output per the pkg/format PRD, producing aligned multi-column output from variable-width string fields (ls -l style)
+      - id: R2
+        text: Implement ANSI color constants and helper functions for file types and Unix permission strings per the pkg/format PRD
+      - id: R3
+        text: Implement human-readable size formatting that converts raw byte counts to K/M/G/T suffixes using the rounding and threshold rules specified in the pkg/format PRD
+
+    design_decisions:
+      - id: D1
+        text: pkg/format must not import pkg/sys, golang.org/x/sys, or any package outside the Go standard library; it is a pure formatting library with no OS or syscall dependencies
+      - id: D2
+        text: Name each source file after its primary exported type, not after the package (project convention P7); read the PRD to confirm canonical type names before creating files -- the paths in the files list are placeholders if the PRD specifies different type names
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./pkg/format/... succeeds with no errors
+      - id: AC2
+        text: golangci-lint passes with no warnings on all files under pkg/format/
+      - id: AC3
+        text: All exported functions, types, and constants in pkg/format/ have Go doc comments
+      - id: AC4
+        text: All three capabilities -- column alignment, ANSI color, and size formatting -- are implemented as exported APIs that match the pkg/format PRD requirements
+  dependency: -1
+- index: 0
+  title: Implement pkg/testutils DiffTest struct and Run harness (rel00.0-uc004)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (pkg/testutils component section and DiffTest data structure entry under interfaces.data_structures)
+      - docs/specs/use-cases/rel00.0-uc004-testutils.yaml (concrete execution flow for the harness)
+      - docs/specs/product-requirements/prd001-testutils.yaml (full requirements; if this path does not resolve, use Glob with pattern docs/specs/product-requirements/prd*-testutils.yaml to find the correct file)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, normalization hook type, and Run method
+
+    requirements:
+      - id: R1
+        text: "Define DiffTest struct with exported fields for reference binary path, subject binary path, args ([]string), stdin content ([]byte), environment variables ([]string), expected exit code (int), expected stdout ([]byte), and expected stderr ([]byte) -- per prd001-testutils R1"
+      - id: R2
+        text: "Implement Run(t *testing.T) method that executes both the reference binary and the subject binary with identical args, stdin, and environment via os/exec, capturing stdout, stderr, and exit code for each run -- per prd001-testutils R2"
+      - id: R3
+        text: "Compare captured stdout, stderr, and exit code between the reference run and the subject run; call t.Errorf for each divergence, including the args used, the reference value, and the subject value in the error message -- per prd001-testutils R3"
+      - id: R4
+        text: "Support optional normalization hook fields on DiffTest (function types that transform []byte output before comparison) so callers can mask acceptable differences such as timestamps before the byte-for-byte comparison -- per prd001-testutils R4"
+
+    design_decisions:
+      - id: D1
+        text: "The primary exported type is DiffTest; the source file must be named difftest.go, not testutils.go -- the package is named testutils matching the directory, per architecture naming conventions (P7: file named after primary exported type)"
+      - id: D2
+        text: "pkg/testutils uses only the Go standard library (os/exec, bytes, strings, testing, os); do not import golang.org/x/sys or any external package -- the harness needs no platform-specific syscalls"
+      - id: D3
+        text: "Module path is github.com/petar-djukic/go-unix-utils; the package declaration in difftest.go is 'package testutils'"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest.go compiles without errors under go build ./pkg/testutils/..."
+      - id: AC2
+        text: "DiffTest struct has exported fields for both binary paths, args, stdin, env, expected exit code, expected stdout, and expected stderr"
+      - id: AC3
+        text: "Run method executes both binaries and calls t.Errorf with a descriptive message (including args and differing values) when stdout, stderr, or exit code diverges between reference and subject"
+      - id: AC4
+        text: "DiffTest has at least one normalization hook field of function type; the hook is applied to captured output before comparison when the field is non-nil"
+      - id: AC5
+        text: "golangci-lint passes on pkg/testutils/difftest.go with no warnings under the project's standard linting configuration"
+  dependency: -1
+- index: 0
+  title: Implement cmd/cat file concatenation and output transformation (prd-cat R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - "docs/specs/product-requirements/prd-cat.yaml (if this path does not exist, list docs/specs/product-requirements/ and read the file matching prd[0-9]+-cat.yaml before writing any code)"
+      - docs/specs/use-cases/rel01.1-uc001-cat.yaml
+      - docs/specs/test-suites/test-rel-01.1.yaml
+      - "docs/ARCHITECTURE.yaml (cmd/ component structure; design decision 7 for generation scope exclusions)"
+      - go.mod
+
+    files:
+      - path: cmd/cat/main.go
+        action: create
+        note: complete cat implementation -- flag parsing, input loop, line transformation, exit codes
+
+    requirements:
+      - id: R1
+        text: "Implement all flags per the cat PRD: -n (number all output lines), -b (number nonempty lines, overrides -n for those lines), -s (suppress repeated empty output lines), -E (append $ to each line end), -T (display TAB as ^I), -v (display nonprinting characters using caret and M- notation), combined aliases -A (equivalent to -vET), -e (equivalent to -vE), -t (equivalent to -vT), and -u (accepted and silently ignored for POSIX compatibility)"
+      - id: R2
+        text: "Process operands per the cat PRD: when no operands are given or an operand is '-', read from stdin; for each named file operand, open and process in order; on open failure write 'cat: <name>: <error>' to stderr, record failure, and continue to the next operand"
+      - id: R3
+        text: "Apply line transformation per the cat PRD in pipeline order: -v nonprinting escapes (DEL=^?, high-bit bytes use M- prefix, other control chars use caret notation), then -T tab replacement (TAB->^I), then -E end-of-line marker ($), then -n/-b line numbering (right-justified in 6-character field followed by tab, counting from 1; -b omits blank lines from numbering), then -s consecutive-blank-line suppression"
+      - id: R4
+        text: "Implement exit code contract per the cat PRD: exit 0 when all operands are read and all output is written without error; exit nonzero when any operand cannot be opened or when a write error occurs on stdout"
+
+    design_decisions:
+      - id: D1
+        text: "Package cmd/cat with primary source file main.go (package main); module github.com/petar-djukic/go-unix-utils per go.mod; this task produces the implementation only -- differential tests are a separate follow-on task"
+      - id: D2
+        text: "cat does not depend on pkg/sys, pkg/format, or pkg/testutils; implement all logic inline in main.go without importing those packages"
+      - id: D3
+        text: "Derive all implementation decisions -- flag names, default values, error message format, nonprinting character encoding, and edge case handling -- from the cat PRD, not from this task description"
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/cat/ succeeds with no compilation errors
+      - id: AC2
+        text: go vet ./cmd/cat/ produces no diagnostic output
+      - id: AC3
+        text: "Invoked with no arguments, the binary reads stdin and writes to stdout unchanged (byte-for-byte passthrough)"
+      - id: AC4
+        text: "Invoked with -n, every output line is prefixed with a right-justified line number in a 6-character field followed by a tab character, counting from 1"
+      - id: AC5
+        text: "Invoked with -b, only nonempty output lines receive a number prefix; blank lines are emitted without a number"
+      - id: AC6
+        text: "Invoked with a nonexistent filename, the binary writes an error message to stderr and exits nonzero without panicking"
+      - id: AC7
+        text: "All flags defined in the cat PRD are accepted by the binary without 'flag provided but not defined' errors"
+  dependency: -1
+- index: 0
+  title: Implement cmd/cat concatenation and flag processing (rel01.1-uc001-cat)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-cat.yaml (cat PRD -- locate actual filename under docs/specs/product-requirements/ if number differs)
+      - docs/specs/use-cases/rel01.1-uc001-cat.yaml (end-to-end execution path for cat)
+      - docs/specs/test-suites/test-rel-01.1.yaml (test cases the implementation must satisfy)
+      - docs/ARCHITECTURE.yaml (cmd/ component responsibilities and pkg/ dependency rules)
+
+    files:
+      - path: cmd/cat/main.go
+        action: create
+        note: cat binary -- file concatenation, stdin fallback, and all flag processing
+
+    requirements:
+      - id: R1
+        text: "Read files named as CLI arguments in order and write their content to stdout; when no arguments are given or '-' appears as a filename, read from stdin"
+      - id: R2
+        text: "Implement -n (number all output lines starting at 1) and -b (number non-blank output lines starting at 1, skipping blank lines); line counters accumulate across all input sources without resetting between files"
+      - id: R3
+        text: "Implement -s (squeeze two or more consecutive blank lines to one), -E (append literal $ before each newline), -T (render tab characters as ^I), -v (render non-printing characters using ^ and M- notation), and -A (equivalent to -vET)"
+      - id: R4
+        text: "Exit 0 when all inputs are processed successfully; when a file cannot be opened or a read error occurs, write a diagnostic to stderr and continue processing remaining arguments, exiting non-zero after all arguments are processed"
+
+    design_decisions:
+      - id: D1
+        text: "cmd/cat is a standalone binary package; it must not import other cmd/ packages"
+      - id: D2
+        text: "Wrap os.Stdout in a bufio.Writer for all output to avoid per-byte syscall overhead; flush before exit"
+      - id: D3
+        text: "Line number counters (-n, -b) are global across all input files -- do not reset between files -- matching GNU cat behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "'go build ./cmd/cat/' succeeds and produces a binary"
+      - id: AC2
+        text: "'go vet ./cmd/cat/' reports no issues"
+      - id: AC3
+        text: "Invoked with no arguments, the binary reads from stdin and echoes each byte to stdout"
+      - id: AC4
+        text: "Invoked with a non-existent filename, the binary writes a message to stderr and exits non-zero without writing that file's content to stdout"
+      - id: AC5
+        text: "Invoked with -n across two input files, line numbers continue from the first file into the second without resetting"
+  dependency: -1
+- index: 0
+  title: Write differential tests for cmd/cat (rel01.1-uc001-cat)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (glob this directory to find the cat PRD, filename matches prd[NNN]-cat.yaml; read it fully before writing any test)
+      - docs/specs/use-cases/rel01.1-uc001-cat.yaml (actor, trigger, and execution flow for the cat use case)
+      - docs/specs/test-suites/ (glob this directory to find the rel01.1 test suite; read it for expected input/output pairs)
+      - pkg/testutils/ (read all files in this package to understand the DiffTest struct and harness API)
+      - cmd/cat/main.go (cat implementation being tested; must be present before this test file can compile)
+
+    files:
+      - path: cmd/cat/cat_test.go
+        action: create
+        note: differential tests comparing the Go cat binary against the GNU cat reference binary using pkg/testutils
+
+    requirements:
+      - id: R1
+        text: Implement differential tests for basic file concatenation -- reading one or more named files and writing their concatenated contents to stdout -- per the cat PRD file I/O requirements
+      - id: R2
+        text: Implement differential tests for all cat flags defined in the PRD (-n, -b, -s, -v, -A, -T, -e, -u), including flag combinations where the PRD specifies combined behavior
+      - id: R3
+        text: Implement differential tests for stdin input -- the case where no file arguments are given and the case where "-" is passed as an explicit stdin argument -- per the cat PRD stdin requirements
+      - id: R4
+        text: Implement differential tests for error conditions (nonexistent file, unreadable file) verifying that both exit code and stderr content match the GNU reference binary exactly
+
+    design_decisions:
+      - id: D1
+        text: Use the pkg/testutils DiffTest harness for all test cases; do not write manual golden-file comparisons or inline byte assertions
+      - id: D2
+        text: Set LC_ALL=C in every test case environment map to satisfy the project-wide locale constraint documented in ARCHITECTURE.yaml design decision 6
+      - id: D3
+        text: The GNU reference binary is the Homebrew gcat (or cat from coreutils); locate it following the convention used by other cmd/ test files in this repository -- read at least one existing cmd/*/test file before writing cat_test.go
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/cat/... passes with all differential test cases green against the GNU reference binary"
+      - id: AC2
+        text: Each acceptance criterion in the cat PRD has at least one corresponding named test case in cat_test.go
+      - id: AC3
+        text: Every flag listed in the cat PRD is exercised by at least one test case
+      - id: AC4
+        text: Error condition tests assert both exit code and stderr content match the GNU reference binary output
+      - id: AC5
+        text: cat_test.go compiles cleanly with no warnings under golangci-lint
+  dependency: -1
+- index: 0
+  title: cmd/cat prd-cat R1-R4 -- implement core concatenation
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel01.1-uc001-cat.yaml (read first; contains the cat PRD filename -- locate and read that PRD from docs/specs/product-requirements/ before implementing)
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, pkg/sys and pkg/format descriptions, generation scope exclusions in design decision 7)
+      - go.mod (module path and Go version)
+
+    files:
+      - path: cmd/cat/main.go
+        action: create
+        note: cat utility -- concatenate files and write to stdout
+
+    requirements:
+      - id: R1
+        text: Read each file argument in order and write its contents verbatim to stdout, per the cat PRD R1
+      - id: R2
+        text: When no file arguments are given or an argument equals "-", read from stdin and write to stdout, per the cat PRD R2
+      - id: R3
+        text: Implement all flags listed in the cat PRD, including at minimum -n (number all output lines), -b (number non-blank output lines only), and -s (collapse consecutive blank lines to one blank line)
+      - id: R4
+        text: Exit 0 on success; exit non-zero and write a diagnostic message to stderr when any file cannot be opened or read, per the cat PRD exit code contract
+
+    design_decisions:
+      - id: D1
+        text: cmd/cat/main.go is the only production source file for this task; do not create sub-packages within cmd/cat/
+      - id: D2
+        text: Do not import pkg/testutils in main.go -- that package is for test files only
+      - id: D3
+        text: Derive all flag behavior and edge cases from the cat PRD; if a flag is not in the PRD, do not implement it
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/cat/ completes with no compiler errors or warnings
+      - id: AC2
+        text: Running the binary with one or more file arguments writes the concatenated contents of those files to stdout in argument order
+      - id: AC3
+        text: Running the binary with no arguments or with "-" as an argument reads from stdin and writes to stdout
+      - id: AC4
+        text: "-n numbers every output line; -b numbers only non-blank lines; -s collapses consecutive blank lines into a single blank line"
+      - id: AC5
+        text: The binary exits 0 when all inputs are processed successfully; exits non-zero and prints an error to stderr when any file cannot be opened or read
+  dependency: -1
+- index: 0
+  title: Implement cmd/sponge main.go and differential tests (rel01.2-uc001)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (locate and read prd*-sponge.yaml for all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel01.2-uc001-sponge.yaml (concrete execution path and success criteria)
+      - docs/specs/test-suites/test-rel-01.2.yaml (differential test inputs and expected behaviors)
+      - docs/ARCHITECTURE.yaml (cmd/ component conventions; pkg/testutils/ component API)
+      - pkg/testutils/ (read the primary source file to understand DiffTest struct and the test runner API)
+
+    files:
+      - path: cmd/sponge/main.go
+        action: create
+        note: sponge implementation -- buffer all of stdin then write to FILE or stdout
+      - path: cmd/sponge/sponge_test.go
+        action: create
+        note: differential tests against the Homebrew sponge reference binary using pkg/testutils
+
+    requirements:
+      - id: R1
+        text: >
+          Implement the sponge command per the PRD: read all of stdin into a buffer
+          before writing any output, so that "sort file | sponge file" does not
+          truncate the input before it is read.
+      - id: R2
+        text: >
+          With a FILE argument, write the buffered contents to FILE after stdin reaches
+          EOF; match GNU sponge exit code and error-reporting behavior on write failure.
+      - id: R3
+        text: >
+          With no FILE argument, write the buffered contents to stdout after stdin
+          reaches EOF; exit 0 on success.
+      - id: R4
+        text: >
+          Write differential tests in sponge_test.go using the pkg/testutils DiffTest
+          harness covering: no-argument (stdin to stdout), FILE overwrite, empty stdin,
+          and binary/non-UTF-8 input; all tests must pass against the Homebrew sponge
+          reference binary.
+
+    design_decisions:
+      - id: D1
+        text: >
+          Buffering all stdin before any write is the defining contract of sponge --
+          derive the specific buffer strategy (in-memory vs temp file) from the PRD;
+          do not invent an approach the PRD does not specify.
+      - id: D2
+        text: >
+          Differential tests use the pkg/testutils DiffTest struct and runner exactly as
+          described in the pkg/testutils PRD and source; the reference binary is the
+          Homebrew moreutils sponge binary.
+      - id: D3
+        text: >
+          Follow ARCHITECTURE.yaml cmd/ naming conventions: primary source file is
+          main.go, test file is sponge_test.go; the package is named main.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/sponge/ compiles with no errors or warnings"
+      - id: AC2
+        text: >
+          go test ./cmd/sponge/ passes all differential tests against the Homebrew
+          sponge binary with 100% parity on stdout, stderr, and exit code
+      - id: AC3
+        text: >
+          sponge with no FILE argument writes stdin to stdout byte-for-byte
+          (differential test case passes)
+      - id: AC4
+        text: >
+          sponge FILE reads all stdin and writes to FILE; output and exit code match
+          the reference binary for the overwrite-in-place case
+      - id: AC5
+        text: "golangci-lint passes on cmd/sponge/ with no warnings"
+  dependency: -1
+- index: 0
+  title: Implement cmd/sponge -- sponge PRD core requirements (stdin buffering, file write, append mode)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find and read the sponge PRD -- file matching prd*-sponge.yaml)
+      - docs/specs/use-cases/rel01.2-uc001-sponge.yaml (sponge use case -- end-to-end execution path)
+      - docs/specs/test-suites/test-rel-01.2.yaml (sponge test suite -- acceptance reference for expected behavior)
+      - docs/ARCHITECTURE.yaml (cmd/ component conventions, design decisions DD2 and DD3)
+      - docs/engineering/ (read all engineering guidelines for code conventions and patterns)
+
+    files:
+      - path: cmd/sponge/main.go
+        action: create
+        note: sponge utility implementation -- stdin buffering, file write, -a append flag, exit codes
+
+    requirements:
+      - id: R1
+        text: Read all of stdin into a temporary file before writing output, per the sponge PRD requirement for stdin buffering (sponge must consume all input before any write to prevent data loss when reading and writing the same file)
+      - id: R2
+        text: Write buffered content to the file path specified as the positional command-line argument, per the sponge PRD; if no file argument is provided, write to stdout
+      - id: R3
+        text: Support the -a flag for appending to the output file instead of truncating, per the sponge PRD append-mode requirement
+      - id: R4
+        text: Implement exit codes and error handling per the sponge PRD -- exit 0 on success, exit 1 on errors (file open failure, write failure, stdin read failure), write error messages to stderr
+
+    design_decisions:
+      - id: D1
+        text: Follow cmd/ package conventions from ARCHITECTURE.yaml -- one package per utility under cmd/sponge/, main.go as the implementation file, package main with func main()
+      - id: D2
+        text: Use a temporary file in the same directory as the target file for atomic write safety -- write stdin to temp file first, then rename or copy to target; this prevents partial writes on interruption
+      - id: D3
+        text: Use Go standard library only (os, io, flag, fmt) -- sponge does not require pkg/sys or pkg/format; keep the import footprint minimal per ARCHITECTURE.yaml technology choices
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/sponge/main.go compiles without errors via go build ./cmd/sponge/
+      - id: AC2
+        text: "Binary soaks up all stdin before writing: printf 'hello\\nworld' | ./bin/sponge /tmp/sponge_test writes 'hello\\nworld' to /tmp/sponge_test"
+      - id: AC3
+        text: "Binary supports -a flag: running sponge -a on a file with existing content appends rather than truncates"
+      - id: AC4
+        text: "Binary writes to stdout when no file argument is given: echo test | ./bin/sponge prints test to stdout"
+      - id: AC5
+        text: Binary exits 1 and prints an error to stderr when the output file path is not writable
+      - id: AC6
+        text: go vet ./cmd/sponge/ reports no issues
+  dependency: -1
+- index: 0
+  title: cmd/du implementation -- rel01.3-uc001-du core disk usage traversal and reporting
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, pkg/sys scope, design decisions)
+      - docs/specs/use-cases/rel01.3-uc001-du.yaml (du use case and execution flow)
+      - docs/specs/test-suites/test-rel-01.3.yaml (du test suite, input/output expectations, PRD cross-references)
+      - "docs/specs/product-requirements/ (locate the du PRD: glob for prd*-du.yaml)"
+
+    files:
+      - path: cmd/du/main.go
+        action: create
+        note: "du utility: flag parsing, recursive directory traversal, disk usage reporting"
+
+    requirements:
+      - id: R1
+        text: "Implement recursive directory traversal that computes disk usage per directory subtree using stat block counts (Stat_t.Blocks * 512 bytes), not FileInfo.Size() byte counts"
+      - id: R2
+        text: "Implement output control flags: -a/--all (report all files, not just directories), -s/--summarize (report only total per argument), -c/--total (append grand total line), -d/--max-depth=N (limit reporting depth)"
+      - id: R3
+        text: "Implement size formatting flags: -h/--human-readable (K/M/G/T powers of 1024), -k (1024-byte blocks, default), -m (1048576-byte blocks), -b/--bytes (apparent size in bytes using FileInfo.Size())"
+      - id: R4
+        text: "Implement error handling: on EACCES or EPERM during traversal, print diagnostic to stderr and continue; exit 0 if no errors, exit 1 if any errors occurred during traversal"
+
+    design_decisions:
+      - id: D1
+        text: "Use filepath.WalkDir for directory traversal (Go 1.16+ efficient walker that avoids unnecessary stat calls on directory entries)"
+      - id: D2
+        text: "Access Stat_t fields via fi.Sys().(*syscall.Stat_t) for Blocks, Nlink, Dev, and Ino; use the syscall standard library package"
+      - id: D3
+        text: "Track hard links by (Dev, Ino) pair in a map to count multiply-linked files only once"
+      - id: D4
+        text: "Import only Go standard library packages (os, path/filepath, fmt, syscall, flag, strings, io). Do not import pkg/sys or pkg/format -- those packages may not exist on the working branch per ARCHITECTURE.yaml implementation_status"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/du/main.go compiles successfully with go build ./cmd/du/"
+      - id: AC2
+        text: "du <directory> prints one line per subdirectory with disk usage in 1024-byte blocks and the path, plus a total line for the argument"
+      - id: AC3
+        text: "-s flag suppresses per-subdirectory output and prints only the total for each argument"
+      - id: AC4
+        text: "-c flag appends a final line with the grand total across all arguments labeled 'total'"
+      - id: AC5
+        text: "-h flag formats sizes with human-readable suffixes (K, M, G, T) using powers of 1024"
+      - id: AC6
+        text: "Hard-linked files (Nlink > 1) contribute their block count only once per unique (Dev, Ino) pair"
+      - id: AC7
+        text: "Permission-denied errors print a diagnostic to stderr and do not halt traversal; exit code is 1 when any error occurred"
+  dependency: -1
+- index: 0
+  title: 'cmd/du: Implement core disk usage traversal and output -- rel01.3-uc001-du'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - "docs/specs/product-requirements/ (locate the du PRD -- filename matches prd*-du.yaml)"
+      - docs/specs/use-cases/rel01.3-uc001-du.yaml
+      - docs/specs/test-suites/test-rel-01.3.yaml
+      - "docs/ARCHITECTURE.yaml (cmd/ package pattern, pkg/sys and pkg/format responsibilities, design decisions DD3 and DD6)"
+
+    files:
+      - path: cmd/du/main.go
+        action: create
+        note: "du utility: flag parsing, recursive directory traversal, disk usage accumulation, formatted output"
+
+    requirements:
+      - id: R1
+        text: "Parse all command-line flags specified in the du PRD using the Go flag package. Support both short (-X) and GNU-style long (--flag) forms as the PRD specifies."
+      - id: R2
+        text: "Implement recursive directory traversal that stats each filesystem entry and accumulates disk usage. Default unit is 512-byte blocks per POSIX convention. Use os.Lstat (not os.Stat) to avoid following symlinks by default, unless the PRD specifies a flag that enables symlink following."
+      - id: R3
+        text: "Implement all output formatting modes specified in the du PRD: default block output, human-readable sizes, summary, grand total, and max-depth limiting. Output format is tab-separated size and pathname, one line per entry."
+      - id: R4
+        text: "Implement exit code contract per the du PRD: exit 0 on success, exit 1 when any error occurs (permission denied, nonexistent path). Print error diagnostics to stderr. Continue processing remaining paths when one path fails."
+
+    design_decisions:
+      - id: D1
+        text: "cmd/du/ contains main.go as the single source file, compiling to a standalone binary. Per ARCHITECTURE.yaml cmd/ component pattern."
+      - id: D2
+        text: "All string comparisons and output use LC_ALL=C semantics. Per ARCHITECTURE.yaml design decision DD6, locale-aware collation is deferred."
+      - id: D3
+        text: "If pkg/sys/ exists on the branch, import it for file metadata (stat block-size abstraction). If pkg/format/ exists, import it for human-readable size formatting. If either package does not exist, use Go standard library equivalents (os.Lstat for metadata, fmt.Sprintf for formatting). Per ARCHITECTURE.yaml DD3, shared pkg/ is preferred but compilation must succeed."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/du/ exits 0 -- the binary compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/du/ reports no issues"
+      - id: AC3
+        text: "Binary invoked with no flags on a directory prints tab-separated block-count and directory path to stdout, one line per subdirectory"
+      - id: AC4
+        text: "Binary invoked with the human-readable flag prints sizes with unit suffixes (K, M, G) instead of raw block counts"
+      - id: AC5
+        text: "Binary invoked with the summary flag prints only a single summary line per argument path"
+      - id: AC6
+        text: "Binary invoked with the grand-total flag appends a total line at the end of output"
+      - id: AC7
+        text: "Binary invoked on a nonexistent path writes a diagnostic to stderr and exits with code 1"
+  dependency: -1
+- index: 0
+  title: Implement cmd/wc core counting (-l, -w, -c) -- rel03.0-uc001-wc
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (glob for prd*-wc.yaml to find the wc PRD)
+      - docs/specs/use-cases/rel03.0-uc001-wc.yaml (wc use case -- end-to-end execution path)
+      - docs/specs/test-suites/test-rel-03.0.yaml (wc test suite -- expected inputs and outputs)
+      - docs/ARCHITECTURE.yaml (cmd/ component conventions and project structure)
+
+    files:
+      - path: cmd/wc/main.go
+        action: create
+        note: "wc utility -- flag parsing, counting logic for lines/words/bytes, file and stdin input, formatted output, exit codes"
+
+    requirements:
+      - id: R1
+        text: "Implement line counting (-l), word counting (-w), and byte counting (-c) per the wc PRD counting requirements"
+      - id: R2
+        text: "When no counting flags are specified, default output shows three columns: lines, words, bytes"
+      - id: R3
+        text: "Read input from named file arguments; when no file arguments are given, read from stdin"
+      - id: R4
+        text: "When multiple files are given, print per-file counts and a final totals line labeled 'total'"
+      - id: R5
+        text: "Exit 0 on success; exit 1 when any named file cannot be opened; print the error to stderr and continue processing remaining files"
+
+    design_decisions:
+      - id: D1
+        text: "Single main.go in cmd/wc/ per project convention of one package per utility"
+      - id: D2
+        text: "Use Go standard library only -- os, bufio, fmt, flag, io; no pkg/ dependencies needed for wc"
+      - id: D3
+        text: "Right-justify numeric columns to match GNU wc field-width behavior -- minimum column width derived from the largest count across all files"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "'go build ./cmd/wc/' compiles without errors"
+      - id: AC2
+        text: "Binary counts lines, words, and bytes correctly for a single file"
+      - id: AC3
+        text: "Binary reads from stdin when invoked with no file arguments"
+      - id: AC4
+        text: "Multiple file arguments produce per-file counts followed by a 'total' line"
+      - id: AC5
+        text: "Default output (no flags) shows lines, words, bytes in three right-justified columns"
+      - id: AC6
+        text: "Nonexistent file produces an error on stderr, exit code 1, and does not prevent processing of remaining files"
+  dependency: -1
+- index: 0
+  title: Implement cmd/wc counting and output formatting -- prd-wc core
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the wc PRD file, named prdNNN-wc.yaml -- read all its requirements)
+      - docs/specs/use-cases/rel03.0-uc001-wc.yaml (use case for wc)
+      - docs/specs/test-suites/test-rel-03.0.yaml (test suite -- understand expected inputs and outputs)
+      - docs/ARCHITECTURE.yaml (cmd/ component pattern and design decisions DD1 through DD6)
+
+    files:
+      - path: cmd/wc/main.go
+        action: create
+        note: "wc utility -- flag parsing, counting engine, output formatting, error handling"
+
+    requirements:
+      - id: R1
+        text: "Implement line (-l), word (-w), byte (-c), and character (-m) counting as specified in the wc PRD. When no flags are given, default to lines, words, and bytes."
+      - id: R2
+        text: "Implement maximum display width (-L) as specified in the wc PRD. Count bytes per line and report the maximum across all lines."
+      - id: R3
+        text: "Read from stdin when no file arguments are provided. When one or more file paths are given, count each file and print per-file results. When more than one file is given, append a total summary line."
+      - id: R4
+        text: "Set exit code to 0 on success. On file-open errors, print a diagnostic to stderr in the format used by GNU wc and set exit code to 1, but continue processing remaining files."
+
+    design_decisions:
+      - id: D1
+        text: "Follow the cmd/ one-package-per-utility pattern from ARCHITECTURE.yaml. The package is cmd/wc/ with a single main.go file."
+      - id: D2
+        text: "Match GNU wc output format exactly -- right-aligned numeric columns with dynamic width, fields separated by single spaces, filename printed after counts. This is required for differential testing parity (ARCHITECTURE DD2)."
+      - id: D3
+        text: "Use only Go standard library (os, fmt, bufio, flag, io, unicode/utf8). cmd/ packages do not import external dependencies (ARCHITECTURE technology choices). Do not import pkg/sys or pkg/format."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/wc/main.go exists and compiles with 'go build ./cmd/wc/'"
+      - id: AC2
+        text: "'go vet ./cmd/wc/' passes with no diagnostics"
+      - id: AC3
+        text: "Binary counts lines, words, and bytes from stdin when invoked with no arguments and no flags"
+      - id: AC4
+        text: "All flags defined in the wc PRD (-l, -w, -c, -m, -L) are accepted and produce correct output"
+      - id: AC5
+        text: "Multiple file arguments produce per-file counts followed by a total line"
+      - id: AC6
+        text: "A missing file argument produces a stderr diagnostic and exit code 1 while remaining files are still counted and printed"
+  dependency: -1
+- index: 0
+  title: Implement ls core -- directory reading, filtering, sorting, and output (ls PRD)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (cmd/ component, pkg/sys/ component, pkg/format/ component, design decisions DD4 and DD6)
+      - docs/specs/product-requirements/ (locate the ls PRD -- the file matching *ls*.yaml in this directory)
+      - docs/specs/use-cases/rel04.0-uc001-ls.yaml (ls core use case)
+      - docs/specs/test-suites/test-rel-04.0.yaml (ls core test suite)
+      - pkg/sys/ (review existing API for file metadata and terminal width if this package exists on the branch)
+      - pkg/format/ (review existing API for column alignment if this package exists on the branch)
+
+    files:
+      - path: cmd/ls/main.go
+        action: create
+        note: "Core ls implementation -- argument parsing, directory reading, entry filtering, sorting, output formatting"
+
+    requirements:
+      - id: R1
+        text: "Parse command-line arguments using the Go standard library flag package. Accept zero or more path operands. When no operands are given, default to listing the current directory."
+      - id: R2
+        text: "Read directory contents using os.ReadDir for directory operands. For file operands, stat the file and include it directly. When multiple operands are given, list files first (sorted), then directories (sorted), each directory preceded by a 'dirname:' header line when more than one operand is present."
+      - id: R3
+        text: "Filter entries by default to hide names starting with '.'. With -a, show all entries including '.' and '..'. With -A, show all entries except '.' and '..'."
+      - id: R4
+        text: "Sort entries by name in byte order (LC_ALL=C). Support -r to reverse any sort. Support -t to sort by modification time (newest first, break ties by name). Support -S to sort by file size (largest first, break ties by name)."
+      - id: R5
+        text: "When stdout is a terminal, output entries in multi-column format. When stdout is not a terminal, output one entry per line. -1 forces single-column output. -C forces multi-column output. Use pkg/format for column layout if available on the branch; otherwise implement minimal column logic with a default width of 80."
+      - id: R6
+        text: "Exit 0 on success. Exit 2 if any operand cannot be accessed. Print errors to stderr in the GNU format: \"ls: cannot access '<path>': <error>\". Continue processing remaining operands after errors."
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/sys for terminal width detection and file metadata if the package exists on the current branch. If pkg/sys is not available, use os.Stat directly and default terminal width to 80 columns."
+      - id: D2
+        text: "Use pkg/format for multi-column layout if the package exists on the current branch. If pkg/format is not available, implement minimal column alignment using fixed-width string padding."
+      - id: D3
+        text: "All sorting uses byte-order comparison (LC_ALL=C semantics). Do not use locale-aware collation. This follows architecture design decision DD6."
+      - id: D4
+        text: "Detect whether stdout is a terminal using os.Stdout.Stat() and checking for os.ModeCharDevice. Do not add external dependencies beyond what is already in go.mod."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ls/main.go exists and compiles with 'go build ./cmd/ls/'."
+      - id: AC2
+        text: "Running the binary with no arguments lists the current directory contents, hiding dotfiles, sorted alphabetically by byte order."
+      - id: AC3
+        text: "-a includes '.' and '..' entries. -A includes hidden entries except '.' and '..'."
+      - id: AC4
+        text: "-r reverses sort order. -t sorts by modification time (newest first). -S sorts by size (largest first). Ties are broken by name."
+      - id: AC5
+        text: "Output is multi-column when stdout is a terminal; one-per-line when piped. -1 forces single-column. -C forces columns."
+      - id: AC6
+        text: "Non-existent or inaccessible paths produce GNU-format errors on stderr and exit code 2 without stopping remaining operands."
+  dependency: -1
+- index: 0
+  title: cmd/ls core implementation -- entry point, flag parsing, directory listing, and output (rel04.0-uc001-ls)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (cmd/ component structure, pkg/sys/ and pkg/format/ interfaces, design decisions DD3 and DD6)
+      - docs/specs/product-requirements/ (find and read the ls PRD -- file matching prd*-ls*.yaml)
+      - docs/specs/use-cases/rel04.0-uc001-ls.yaml (ls core use case flow)
+      - docs/specs/test-suites/test-rel-04.0.yaml (expected ls core behaviors and test inputs)
+      - pkg/sys/ (file metadata interfaces -- stat, lstat, terminal size detection)
+      - pkg/format/ (column alignment and ANSI color interfaces)
+
+    files:
+      - path: cmd/ls/main.go
+        action: create
+        note: "Core ls implementation: entry point, flag parsing, directory reading, sorting, and output formatting"
+
+    requirements:
+      - id: R1
+        text: "Implement the main entry point with flag parsing for ls core flags as specified in the ls PRD. Parse command-line arguments to distinguish flags from file/directory operands. Default to current directory when no operands are given."
+      - id: R2
+        text: "Implement directory entry reading and metadata collection. Open each operand, read directory entries, collect file metadata via pkg/sys stat/lstat. Sort entries alphabetically in LC_ALL=C byte order by default."
+      - id: R3
+        text: "Implement output formatting for default mode (one-per-line when stdout is not a terminal, multi-column when stdout is a terminal) and long format (-l) using pkg/format for column alignment. Long format includes file type, permissions, link count, owner, group, size, and modification time."
+      - id: R4
+        text: "Implement exit code handling per the ls PRD -- exit 0 on success, exit 1 on minor problems (cannot access a named file), exit 2 on serious errors. Report errors to stderr without aborting processing of remaining operands."
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/sys for all stat/lstat calls and terminal detection per ARCHITECTURE.yaml DD3. Do not import golang.org/x/sys directly in cmd/ls/."
+      - id: D2
+        text: "Use pkg/format for column alignment in long-format and multi-column output per ARCHITECTURE.yaml DD3."
+      - id: D3
+        text: "All string comparison and sorting uses LC_ALL=C byte-order semantics per ARCHITECTURE.yaml DD6. Do not implement locale-aware collation."
+      - id: D4
+        text: "Follow the cmd/ package structure from ARCHITECTURE.yaml -- single package cmd/ls with main.go as the primary implementation file."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ls/main.go compiles successfully with go build ./cmd/ls/"
+      - id: AC2
+        text: "Running the binary with no arguments lists entries in the current directory"
+      - id: AC3
+        text: "The -l flag produces long-format output with permissions, link count, owner, group, size, and modification time"
+      - id: AC4
+        text: "The -a flag shows all entries including those starting with dot; -A shows all except . and .."
+      - id: AC5
+        text: "Exit code is 0 on success and non-zero when a named operand cannot be accessed"
+      - id: AC6
+        text: "No direct imports of golang.org/x/sys in cmd/ls/ -- all syscall access goes through pkg/sys"
+  dependency: -1
+- index: 0
+  title: Implement ls extended sorting and time display -- rel04.1-uc001-ls-extended
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd009-ls.yaml (ls PRD covering all flags, exit codes, and stream behaviors -- if not at this path, search docs/specs/product-requirements/ for the ls PRD)
+      - docs/specs/use-cases/rel04.1-uc001-ls-extended.yaml (concrete execution path for ls extended features)
+      - docs/specs/test-suites/test-rel-04.1.yaml (test suite for ls extended)
+      - cmd/ls/main.go (existing core ls implementation from rel04.0 -- contains flag parsing, entry reading, and basic output)
+      - pkg/sys/ (file metadata abstractions for stat/lstat, ctime/atime access)
+      - pkg/format/ (output formatting utilities for timestamp display)
+      - docs/ARCHITECTURE.yaml (pkg/sys and pkg/format component descriptions, DD6 locale constraint)
+
+    files:
+      - path: cmd/ls/sort.go
+        action: create
+        note: Sorting comparators for size, time, extension, directory-order, and reverse
+      - path: cmd/ls/main.go
+        action: modify
+        note: Add sorting and time selection/display flags to CLI parsing and integrate with entry output
+
+    requirements:
+      - id: R1
+        text: "Implement entry sorting by size (-S), modification time (-t), extension (-X), and directory order (-U/--sort=none) per the ls PRD sorting requirements"
+      - id: R2
+        text: "Implement reverse sort order (-r/--reverse) that inverts any active sort comparator"
+      - id: R3
+        text: "Implement timestamp selection: -c for status change time (ctime), -u for access time (atime), --time=WORD for named time fields, defaulting to modification time"
+      - id: R4
+        text: "Implement --time-style=STYLE (full-iso, long-iso, iso, locale) and --full-time (alias for --time-style=full-iso) for controlling timestamp output format in long listing mode"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/sys file metadata abstractions for accessing ctime and atime fields portably across Darwin and Linux, per ARCHITECTURE.yaml pkg/sys component (st_mtimespec/st_mtim abstraction)"
+      - id: D2
+        text: "Use pkg/format for timestamp output formatting in long listing mode, per ARCHITECTURE.yaml pkg/format component"
+      - id: D3
+        text: "All sorting and time display behavior targets LC_ALL=C semantics only, per ARCHITECTURE.yaml design decision DD6"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ls sorts entries by size when -S is passed, by modification time when -t is passed, by extension when -X is passed, and preserves directory order when -U is passed"
+      - id: AC2
+        text: "-r flag reverses the sort order for any active sort mode including the default alphabetical sort"
+      - id: AC3
+        text: "-c flag switches displayed and sorted timestamp to ctime; -u switches to atime; default remains mtime"
+      - id: AC4
+        text: "--time-style=full-iso, --time-style=long-iso, --time-style=iso, and --time-style=locale each produce correctly formatted timestamp strings matching GNU ls output"
+      - id: AC5
+        text: "--full-time is equivalent to --time-style=full-iso and produces the same output"
+      - id: AC6
+        text: "go build ./cmd/ls/ compiles without errors and go vet ./cmd/ls/ reports no issues"
+  dependency: -1

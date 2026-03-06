@@ -1,0 +1,22 @@
+caller: measure
+status: failed
+error: 'claude failure (iteration 1/1): exit status 1'
+started_at: "2026-03-05T23:08:33Z"
+duration: 1s
+duration_s: 1
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+loc_before:
+    production: 957
+    test: 1037
+loc_after:
+    production: 957
+    test: 1037
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

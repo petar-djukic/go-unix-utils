@@ -1,0 +1,39 @@
+task_id: "291"
+task_title: 'pkg/format: implement column alignment, ANSI color, and size formatting (rel00.0-uc002)'
+status: success
+branch: task/generation-gh-262-codegen-291
+diff:
+    files: 6
+    insertions: 469
+    deletions: 60
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 5
+      deletions: 5
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 460
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 458
+    test: 510
+loc_after:
+    production: 458
+    test: 510

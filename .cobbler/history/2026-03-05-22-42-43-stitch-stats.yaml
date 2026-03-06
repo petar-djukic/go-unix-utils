@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "304"
+task_title: cmd/du implementation -- rel01.3-uc001-du core disk usage traversal and reporting
+status: success
+started_at: "2026-03-06T03:42:43Z"
+duration: 14m37s
+duration_s: 877
+tokens:
+    input: 2435259
+    output: 51218
+    cache_creation: 192955
+    cache_read: 2242284
+cost_usd: 3.683890750000001
+loc_before:
+    production: 1153
+    test: 1420
+loc_after:
+    production: 1465
+    test: 1420
+diff:
+    files: 7
+    insertions: 1150
+    deletions: 64

@@ -1,0 +1,22 @@
+caller: measure
+status: failed
+error: 'claude failure (iteration 1/1): claude max time exceeded (15m0s)'
+started_at: "2026-03-06T04:58:24Z"
+duration: 15m0s
+duration_s: 900
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+loc_before:
+    production: 2484
+    test: 1420
+loc_after:
+    production: 2484
+    test: 1420
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0
