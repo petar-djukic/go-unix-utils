@@ -1,145 +1,237 @@
-consistency_errors: 2
-consistency_details:
-    - 'orphaned PRD: prd012-true'
-    - 'orphaned PRD: prd013-false'
+consistency_errors: 0
 code_status:
     releases:
         - version: "00.0"
           name: Batch 0 — foundational infrastructure
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel00.0-uc001-magefiles
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc002-format
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc003-sys
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc004-testutils
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "01.1"
           name: Batch 1.1 — cat specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel01.1-uc001-cat
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "01.2"
           name: Batch 1.2 — sponge specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel01.2-uc001-sponge
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "01.3"
           name: Batch 1.3 — du specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel01.3-uc001-du
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "02.0"
           name: Batch 2 — trivial utilities (true, false, yes, basename, dirname)
-          specstatus: pending
+          specstatus: spec_complete
           codereadiness: none
           usecases:
             - id: rel02.0-uc001-true
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc002-false
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc003-yes
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc004-basename
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc005-dirname
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "02.1"
           name: Batch 2.1 — tee specification and differential test
-          specstatus: pending
+          specstatus: spec_complete
           codereadiness: none
           usecases:
             - id: rel02.1-uc001-tee
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "02.2"
           name: Batch 2.2 — head and seq specification and differential test
-          specstatus: pending
+          specstatus: spec_complete
           codereadiness: none
           usecases:
             - id: rel02.2-uc001-head
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.2-uc002-seq
-              specstatus: pending
+              specstatus: spec_complete
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "03.0"
           name: Batch 3 — wc specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel03.0-uc001-wc
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "04.0"
           name: Batch 4 — ls core specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel04.0-uc001-ls
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "04.1"
           name: Batch 4.1 — ls extended specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel04.1-uc001-ls-extended
+              specstatus: implemented
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "05.0"
+          name: Batch 5 — text stream transforms (echo, tac, nl, fold)
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel05.0-uc001-echo
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.0-uc002-tac
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.0-uc003-nl
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.0-uc004-fold
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "05.1"
+          name: Batch 5.1 — tab conversion pair (expand, unexpand)
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel05.1-uc001-expand
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.1-uc002-unexpand
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "05.2"
+          name: Batch 5.2 — columnar operations pair (cut, paste)
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel05.2-uc001-cut
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.2-uc002-paste
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "05.3"
+          name: Batch 5.3 — sorted-stream comparison pair (uniq, comm)
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel05.3-uc001-uniq
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.3-uc002-comm
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "05.4"
+          name: Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel05.4-uc001-md5sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.4-uc002-sha1sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.4-uc003-sha256sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.4-uc004-sha512sum
               specstatus: spec_complete
               codestatus: not started
               testdir: ""

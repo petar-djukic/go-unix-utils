@@ -19,11 +19,11 @@ project:
       docs/SPECIFICATIONS.yaml
       docs/road-map.yaml
     release: ""
-    releases: ["04.1"]
+    releases: ["02.1"]
     seed_files: {}
 generation:
     prefix: generation-
-    cycles: 0
+    cycles: 6
     branch: ""
     cleanup_dirs: []
 cobbler:

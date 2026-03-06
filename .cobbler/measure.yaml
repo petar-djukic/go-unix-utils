@@ -5161,3 +5161,337 @@
       - id: AC5
         text: "TestMain compiles the binary successfully and cleans up the temp directory after tests complete"
   dependency: -1
+- index: 0
+  title: cmd/ls extended implementation (prd008-ls rel04.1)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd008-ls.yaml (full ls requirements -- identify which requirements are tagged rel04.1 or "extended")
+      - docs/specs/use-cases/rel04.1-uc001-ls-extended.yaml (use case flow and success criteria)
+      - docs/specs/test-suites/test-rel-04.1.yaml (test cases that validate extended ls behavior)
+      - docs/ARCHITECTURE.yaml (component dependencies -- cmd/ls depends on pkg/sys and pkg/format)
+      - cmd/ls/main.go (existing core ls implementation from rel04.0 -- modify to add extended features)
+      - pkg/sys/fileinfo.go (FileInfo struct for stat metadata)
+      - pkg/format/size.go (HumanSize for -h flag)
+      - pkg/format/color.go (FileTypeColor for --color flag)
+      - pkg/format/columns.go (Columns for column layout)
+
+    files:
+      - path: cmd/ls/main.go
+        action: modify
+        note: Add extended flags and formatting logic to existing core ls implementation
+      - path: cmd/ls/format.go
+        action: create
+        note: Long-format output rendering (-l, -g, -o, -n) and column alignment
+      - path: cmd/ls/sort.go
+        action: create
+        note: Sort strategies (-S, -t, -U, -v, -r, --sort) and comparison functions
+
+    requirements:
+      - id: R1
+        text: |
+          Implement long-format output (-l) per prd008-ls extended requirements: permissions,
+          hard-link count, owner, group, size, modification time, and name. Use pkg/sys.Lstat
+          for file metadata and pkg/format.PadLeft/PadRight for column alignment. Include
+          total block count header line.
+      - id: R2
+        text: |
+          Implement sort options per prd008-ls extended requirements: -S (sort by file size,
+          largest first), -t (sort by modification time, newest first), -r (reverse sort order),
+          -U (unsorted / directory order), --sort=WORD (none, size, time, version, extension).
+          Default sort is lexicographic by name under LC_ALL=C.
+      - id: R3
+        text: |
+          Implement human-readable size display (-h, --human-readable) per prd008-ls extended
+          requirements. Use pkg/format.HumanSize with binary units (1024-based). Also implement
+          --si for 1000-based units. These flags modify both long-format size column and -s
+          block sizes.
+      - id: R4
+        text: |
+          Implement recursive listing (-R, --recursive) per prd008-ls extended requirements.
+          Print each subdirectory with a blank line separator and a header showing the
+          subdirectory path followed by a colon. Apply all other flags (sort, format, color)
+          consistently within each subdirectory listing.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use pkg/sys.Lstat (not Stat) for all file metadata in long format to correctly
+          report symlink properties. Dereference only when -L/--dereference is specified,
+          per prd008-ls.
+      - id: D2
+        text: |
+          All sorting and string comparison operates under LC_ALL=C semantics per
+          ARCHITECTURE.yaml DD6. Do not use locale-aware collation.
+      - id: D3
+        text: |
+          Long-format output is rendered in a separate format.go file to keep main.go
+          focused on flag parsing and top-level control flow. Sort comparators live in
+          sort.go. This keeps each file within the 150-250 line budget.
+      - id: D4
+        text: |
+          Use pkg/format.FileTypeColor and pkg/format.Reset for --color output. Call
+          pkg/format.ColorEnabled to detect terminal. Do not implement color logic
+          in cmd/ls directly.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ls/main.go accepts all extended flags: -l, -g, -o, -n, -S, -t, -r, -U, -R, -h, --si, --sort"
+      - id: AC2
+        text: "Long-format output (-l) renders permissions, nlink, owner, group, size, time, and name with correct column alignment"
+      - id: AC3
+        text: "Sort flags (-S, -t, -r, -U, --sort) produce correct ordering under LC_ALL=C"
+      - id: AC4
+        text: "Recursive listing (-R) prints subdirectory headers and blank line separators"
+      - id: AC5
+        text: "Human-readable sizes (-h, --si) delegate to pkg/format.HumanSize"
+      - id: AC6
+        text: "go build ./cmd/ls/ compiles without errors"
+      - id: AC7
+        text: "go vet ./cmd/ls/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Implement cmd/true and cmd/false -- prd true R1-R2, prd false R1-R2
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling, graceful skip)
+      - docs/specs/product-requirements/ (find the PRDs for true and false utilities)
+      - docs/specs/use-cases/rel02.0-uc001-true.yaml (true use case)
+      - docs/specs/use-cases/rel02.0-uc002-false.yaml (false use case)
+      - docs/specs/test-suites/test-rel-02.0.yaml (test suite for rel02.0)
+      - cmd/cat/main.go (reference for cmd/ package structure and SIGPIPE pattern)
+      - cmd/cat/cat_test.go (reference for differential test structure)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests API)
+      - pkg/sys/ (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/true/main.go
+        action: create
+        note: "GNU true implementation: exit 0, support --help and --version"
+      - path: cmd/true/true_test.go
+        action: create
+        note: Differential tests against gtrue reference binary
+      - path: cmd/false/main.go
+        action: create
+        note: "GNU false implementation: exit 1, support --help and --version"
+      - path: cmd/false/false_test.go
+        action: create
+        note: Differential tests against gfalse reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/true/main.go. The binary accepts any arguments and
+          ignores them, exiting with status 0. Support --help (print usage to
+          stdout, exit 0) and --version (print version to stdout, exit 0).
+          Call sys.InstallSIGPIPEHandler() at the start of main per the
+          project SIGPIPE protocol.
+      - id: R2
+        text: |
+          Implement cmd/false/main.go. The binary accepts any arguments and
+          ignores them, exiting with status 1. Support --help (print usage to
+          stdout, exit 0) and --version (print version to stdout, exit 0).
+          Call sys.InstallSIGPIPEHandler() at the start of main per the
+          project SIGPIPE protocol.
+      - id: R3
+        text: |
+          Implement differential tests in cmd/true/true_test.go using
+          pkg/testutils.RunDiffTests. Build the Go binary with
+          testutils.BuildBinary. Look up the reference binary "gtrue" via
+          exec.LookPath; t.Skip if not found. Test cases: no args (exit 0),
+          arbitrary args ignored (exit 0), --help (exit 0, stdout non-empty),
+          --version (exit 0, stdout non-empty).
+      - id: R4
+        text: |
+          Implement differential tests in cmd/false/false_test.go using
+          pkg/testutils.RunDiffTests. Build the Go binary with
+          testutils.BuildBinary. Look up the reference binary "gfalse" via
+          exec.LookPath; t.Skip if not found. Test cases: no args (exit 1),
+          arbitrary args ignored (exit 1), --help (exit 0, stdout non-empty),
+          --version (exit 0, stdout non-empty).
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the existing cmd/ package structure visible in cmd/cat/:
+          main.go for implementation, <utility>_test.go for differential
+          tests. Each package compiles to a standalone binary.
+      - id: D2
+        text: |
+          Use the graceful skip pattern from ARCHITECTURE shared_protocols:
+          call exec.LookPath for the reference binary at the start of
+          TestDiff, t.Skip if not found. Never install the reference binary
+          in test code.
+      - id: D3
+        text: |
+          Set LC_ALL=C in differential test environment per project convention.
+          Not strictly necessary for true/false (no output comparison beyond
+          exit code), but maintains consistency with other cmd/ test files.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/true/main.go compiles and exits 0 when run with no arguments
+      - id: AC2
+        text: cmd/false/main.go compiles and exits 1 when run with no arguments
+      - id: AC3
+        text: "go test ./cmd/true/ passes (or skips gracefully if gtrue not in PATH)"
+      - id: AC4
+        text: "go test ./cmd/false/ passes (or skips gracefully if gfalse not in PATH)"
+      - id: AC5
+        text: Both binaries handle --help and --version flags matching GNU behavior
+      - id: AC6
+        text: "go vet ./cmd/true/ ./cmd/false/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Implement cmd/yes -- prd yes R1-R2
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd014-yes.yaml (PRD for yes utility)
+      - docs/specs/use-cases/rel02.0-uc003-yes.yaml (use case for yes)
+      - docs/specs/test-suites/test-rel-02.0.yaml (test suite covering yes)
+      - cmd/true/main.go (reference for trivial utility structure)
+      - cmd/true/true_test.go (reference for trivial utility test pattern)
+      - pkg/sys/sigpipe.go (SIGPIPE handler used by all cmd/ utilities)
+      - pkg/testutils/difftest.go (differential test harness API)
+
+    files:
+      - path: cmd/yes/main.go
+        action: create
+        note: yes utility implementation
+      - path: cmd/yes/yes_test.go
+        action: create
+        note: differential tests for yes
+
+    requirements:
+      - id: R1
+        text: "Implement the yes command per prd yes R1: repeatedly output a string to stdout, one line per iteration, until killed or write error"
+      - id: R2
+        text: "Implement default and argument behavior per prd yes R2: output \"y\" when no arguments given, otherwise concatenate all arguments with spaces"
+      - id: R3
+        text: "Handle SIGPIPE gracefully per shared protocol: call sys.InstallSIGPIPEHandler() at start of main so piping to head or grep -q exits cleanly"
+      - id: R4
+        text: "Implement differential tests using pkg/testutils.RunDiffTests comparing Go binary against gyes (Homebrew GNU coreutils reference binary)"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the same main.go structure as cmd/true: sys.InstallSIGPIPEHandler() at top, flag parsing, then core logic"
+      - id: D2
+        text: "Use bufio.Writer for stdout to reduce syscall overhead on tight output loops"
+      - id: D3
+        text: "Reference binary is gyes (Homebrew gnu coreutils). If not found via exec.LookPath, t.Skip per shared protocol for graceful skip on missing reference binary"
+      - id: D4
+        text: "Differential tests must pipe yes output through head -n N to capture finite output, since yes runs indefinitely. Compare exit code, stdout, and stderr."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/yes/main.go compiles with no errors and no golangci-lint warnings"
+      - id: AC2
+        text: "yes with no arguments outputs repeated \"y\" lines (verified by piping through head)"
+      - id: AC3
+        text: "yes with arguments outputs the concatenated argument string repeatedly"
+      - id: AC4
+        text: "Differential tests pass against gyes reference binary for default output, single argument, and multi-argument cases"
+      - id: AC5
+        text: "SIGPIPE is handled gracefully -- piping to head exits without error"
+  dependency: -1
+- index: 0
+  title: Implement cmd/basename and cmd/dirname -- prd basename R1-R2, prd dirname R1-R2
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find PRDs for basename and dirname)
+      - docs/specs/use-cases/rel02.0-uc004-basename.yaml (use case for basename)
+      - docs/specs/use-cases/rel02.0-uc005-dirname.yaml (use case for dirname)
+      - docs/specs/test-suites/test-rel-02.0.yaml (test suite for rel02.0)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+      - cmd/true/main.go (reference for trivial utility structure in this project)
+      - cmd/yes/main.go (reference for flag parsing and SIGPIPE handling pattern)
+
+    files:
+      - path: cmd/basename/main.go
+        action: create
+        note: basename implementation with flag parsing and path manipulation
+      - path: cmd/basename/basename_test.go
+        action: create
+        note: differential tests against gbasename reference binary
+      - path: cmd/dirname/main.go
+        action: create
+        note: dirname implementation with flag parsing and path manipulation
+      - path: cmd/dirname/dirname_test.go
+        action: create
+        note: differential tests against gdirname reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/basename per its PRD requirements. basename strips directory
+          components from a file path and optionally removes a trailing suffix.
+          Support flags: -a/--multiple (treat every operand as a name), -s/--suffix
+          SUFFIX (remove trailing SUFFIX), -z/--zero (NUL-terminate output instead
+          of newline). With a single NAME and optional SUFFIX operand (legacy syntax),
+          strip the directory prefix and remove SUFFIX if present. With -a, process
+          multiple NAME operands. Print --help and --version per GNU conventions.
+      - id: R2
+        text: |
+          Implement cmd/dirname per its PRD requirements. dirname strips the last
+          component from each file path, printing the parent directory. Support flag:
+          -z/--zero (NUL-terminate output instead of newline). Process multiple
+          operands, printing one result per input. Print --help and --version per
+          GNU conventions.
+      - id: R3
+        text: |
+          Write differential tests for both utilities. Each test file defines a
+          TestDiff function that builds the Go binary via testutils.BuildBinary,
+          looks up the reference binary (gbasename / gdirname) via exec.LookPath
+          with t.Skip if not found, defines []testutils.DiffTest cases covering
+          flag combinations and edge cases, and calls testutils.RunDiffTests.
+      - id: R4
+        text: |
+          Both utilities must call sys.InstallSIGPIPEHandler() at the start of
+          main, matching the project-wide shared protocol for stdout-writing
+          utilities. Exit code 0 on success, non-zero on error, matching GNU
+          behavior.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use Go's filepath.Base and filepath.Dir as the starting point for path
+          stripping, but verify edge-case parity with GNU (e.g., trailing slashes,
+          empty string, "//"). Adjust behavior to match GNU reference binary output
+          exactly -- filepath.Base("") returns "." in Go which matches GNU, but
+          double-check slash handling.
+      - id: D2
+        text: |
+          Use the same flag parsing approach as cmd/yes and cmd/true -- standard
+          library flag package or manual argument parsing, whichever matches the
+          existing cmd/ pattern. Read cmd/yes/main.go to confirm the convention.
+      - id: D3
+        text: |
+          Reference binary names are gbasename and gdirname (Homebrew GNU coreutils
+          g-prefix convention). Use exec.LookPath with t.Skip for graceful skip
+          per the shared protocol.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/basename/main.go compiles with no errors or lint warnings
+      - id: AC2
+        text: cmd/dirname/main.go compiles with no errors or lint warnings
+      - id: AC3
+        text: "go test ./cmd/basename/ passes (differential tests against gbasename)"
+      - id: AC4
+        text: "go test ./cmd/dirname/ passes (differential tests against gdirname)"
+      - id: AC5
+        text: Both binaries handle -z/--zero flag correctly (NUL terminator instead of newline)
+      - id: AC6
+        text: basename handles -a/--multiple and -s/--suffix flags correctly
+      - id: AC7
+        text: Both utilities call sys.InstallSIGPIPEHandler() at start of main
+  dependency: -1
