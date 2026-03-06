@@ -4,7 +4,10 @@ go 1.25.7
 
 require (
 	github.com/magefile/mage v1.15.0
-	github.com/mesh-intelligence/cobbler-scaffold v0.20260305.3
+	github.com/mesh-intelligence/cobbler-scaffold v0.20260306.3
 )
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require (
+	github.com/schlunsen/claude-agent-sdk-go v0.5.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
