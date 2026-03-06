@@ -5495,3 +5495,165 @@
       - id: AC7
         text: Both utilities call sys.InstallSIGPIPEHandler() at start of main
   dependency: -1
+- index: 0
+  title: 'cmd/tee implementation: rel02.1-uc001-tee core functionality'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel02.1-uc001-tee.yaml (use case with PRD traceability)
+      - docs/specs/test-suites/test-rel-02.1.yaml (expected test inputs and outputs)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE patterns)
+      - pkg/sys/ (InstallSIGPIPEHandler API -- call at start of main)
+      - cmd/true/main.go (reference for minimal cmd/ structure and flag parsing conventions)
+      - cmd/basename/main.go (reference for flag parsing and --version/--help pattern)
+
+    files:
+      - path: cmd/tee/main.go
+        action: create
+        note: tee utility implementation -- stdin to stdout and files
+
+    requirements:
+      - id: R1
+        text: |
+          Read all of stdin and write it to stdout and to each file argument
+          simultaneously. Use io.MultiWriter to fan out writes. Exit 0 on
+          success, exit 1 on any write error. When no file arguments are given,
+          tee copies stdin to stdout only.
+      - id: R2
+        text: |
+          Implement the -a/--append flag. When set, open output files with
+          O_APPEND instead of O_TRUNC. Default behavior (no -a) truncates
+          and overwrites each file.
+      - id: R3
+        text: |
+          Implement the -i/--ignore-interrupts flag. When set, install a
+          signal handler that ignores SIGINT (signal.Ignore(syscall.SIGINT)).
+          Without -i, tee uses default SIGINT behavior.
+      - id: R4
+        text: |
+          Implement --output-error with optional mode argument. Modes:
+          "warn" (warn on error to any output, continue), "warn-nopipe"
+          (warn on error to any output not a pipe, continue),
+          "exit" (exit on error to any output), "exit-nopipe" (exit on
+          error to any output not a pipe). When --output-error is given
+          without a mode value, default to "warn". Without --output-error
+          at all, tee diagnoses errors writing to any output except pipes
+          and exits after all inputs are processed if any error occurred.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main per the
+          shared SIGPIPE protocol in ARCHITECTURE.yaml. This ensures tee
+          exits cleanly when downstream consumers close their stdin.
+      - id: D2
+        text: |
+          Use flag parsing conventions consistent with the existing cmd/
+          packages (see cmd/basename or cmd/true for reference). Support
+          both short (-a, -i) and long (--append, --ignore-interrupts,
+          --output-error) flag forms. Implement --version and --help
+          following the same pattern as other cmd/ utilities.
+      - id: D3
+        text: |
+          Use os.OpenFile with appropriate flags (O_WRONLY|O_CREATE and
+          either O_TRUNC or O_APPEND) for each output file. Close all
+          files after stdin is fully consumed. Collect errors and report
+          them to stderr as "tee: <filename>: <error>".
+      - id: D4
+        text: |
+          Read stdin in a loop using a fixed buffer (e.g., 32 KB) and
+          write each chunk to all outputs. Do not read all of stdin into
+          memory at once. This matches GNU tee behavior for large inputs.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/tee/main.go compiles with "go build ./cmd/tee/"
+      - id: AC2
+        text: "echo hello | go run ./cmd/tee/ prints hello to stdout"
+      - id: AC3
+        text: "echo hello | go run ./cmd/tee/ /tmp/tee_test.txt writes hello to both stdout and /tmp/tee_test.txt"
+      - id: AC4
+        text: "The -a flag appends to existing files instead of truncating"
+      - id: AC5
+        text: "The -i flag causes SIGINT to be ignored"
+      - id: AC6
+        text: "--output-error with mode values warn, warn-nopipe, exit, exit-nopipe behaves as specified"
+      - id: AC7
+        text: "golangci-lint runs clean on cmd/tee/"
+  dependency: -1
+- index: 0
+  title: 'rel02.1-uc001-tee: differential tests for cmd/tee'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - cmd/tee/main.go (existing tee implementation to test)
+      - docs/specs/test-suites/test-rel-02.1.yaml (test cases for tee)
+      - docs/specs/use-cases/rel02.1-uc001-tee.yaml (use case success criteria)
+      - docs/specs/product-requirements/ (find the tee PRD, filename matches prd*-tee.yaml)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness)
+      - cmd/true/true_test.go (example differential test file for pattern reference)
+      - cmd/basename/basename_test.go (example differential test file for pattern reference)
+
+    files:
+      - path: cmd/tee/tee_test.go
+        action: create
+        note: Differential tests for tee against gtee reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Write differential tests exercising tee core behavior: read stdin,
+          write to stdout, and write to one or more output files simultaneously.
+          Verify exit code, stdout, and file contents match the reference binary.
+      - id: R2
+        text: |
+          Write differential tests for the -a (append) flag: verify that tee
+          appends to existing files rather than truncating them, matching
+          reference binary behavior.
+      - id: R3
+        text: |
+          Write differential tests for error conditions: writing to a
+          nonexistent directory, writing to a read-only file, and passing
+          --version/--help flags. Verify exit codes and stderr match the
+          reference binary.
+      - id: R4
+        text: |
+          Write differential tests for multiple output files: verify tee writes
+          identical content to all specified files and stdout simultaneously,
+          matching reference binary behavior.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use the standard differential testing pattern from the project:
+          testutils.BuildBinary(t, ".") for the Go binary, exec.LookPath("gtee")
+          for the Homebrew GNU coreutils reference binary, and
+          testutils.RunDiffTests(t, goBin, refBin, tests) to compare outputs.
+      - id: D2
+        text: |
+          Call t.Skip if the reference binary gtee is not found in PATH, per the
+          project's graceful-skip protocol. Do not attempt to install the binary.
+      - id: D3
+        text: |
+          For tests that verify file output, use t.TempDir() to create temporary
+          directories and set DiffTest.WorkDir accordingly. After RunDiffTests
+          completes, compare file contents written by both binaries.
+      - id: D4
+        text: |
+          Set LC_ALL=C in the test environment per project convention to ensure
+          consistent error message formatting between Go and reference binaries.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/tee/tee_test.go exists and contains a TestDiff function
+      - id: AC2
+        text: "go test ./cmd/tee/ passes when gtee is available in PATH"
+      - id: AC3
+        text: "go test ./cmd/tee/ skips gracefully when gtee is not in PATH"
+      - id: AC4
+        text: Tests cover basic piping, append mode, multiple files, and error cases
+      - id: AC5
+        text: "go vet ./cmd/tee/ reports no issues"
+  dependency: -1
