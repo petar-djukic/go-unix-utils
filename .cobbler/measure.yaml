@@ -5830,3 +5830,253 @@
       - id: AC10
         text: "Zero increment (seq 1 0 5) exits 1 with error to stderr"
   dependency: -1
+- index: 0
+  title: 'cmd/echo: implement echo utility (prd-echo R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd010-echo.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.0-uc001-echo.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (echo test cases for differential testing)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - cmd/true/main.go (reference for trivial utility structure)
+      - cmd/basename/main.go (reference for argument-processing utility structure)
+
+    files:
+      - path: cmd/echo/main.go
+        action: create
+        note: echo command implementation with flag parsing and escape sequence handling
+      - path: cmd/echo/echo_test.go
+        action: create
+        note: differential tests against gecho reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement echo that prints all arguments separated by single spaces, followed by a newline, to stdout. With no arguments, print only a newline."
+      - id: R2
+        text: "Implement -n flag: suppress the trailing newline."
+      - id: R3
+        text: "Implement -e flag: enable interpretation of backslash escape sequences (\\\\, \\a, \\b, \\c, \\e, \\f, \\n, \\r, \\t, \\v, \\0NNN octal, \\xHH hex). \\c stops output immediately (no trailing newline, no further characters)."
+      - id: R4
+        text: "Implement -E flag (default): disable interpretation of backslash escapes. When neither -e nor -E is given, behave as -E. Echo always exits 0 unless a write error occurs."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Use manual flag parsing, not flag package. GNU echo treats --help and --version as literal arguments (not flags) when mixed with other args. Only recognize -n, -e, -E as flags, and only when they appear as leading arguments before non-flag arguments."
+      - id: D3
+        text: "Match GNU echo flag clustering behavior: -neE and -en are valid combined flags. Stop flag parsing at the first non-flag argument."
+      - id: D4
+        text: "Differential tests use gecho as the reference binary. Skip with t.Skip if gecho is not in PATH per the graceful-skip protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/echo/main.go compiles with no errors and no golangci-lint warnings."
+      - id: AC2
+        text: "go test ./cmd/echo/ passes. Differential tests compare Go echo against gecho for: no args, simple args, -n flag, -e with each escape sequence, -E with backslash literals, -e with \\c, combined -ne, and arguments that look like flags after a non-flag arg."
+      - id: AC3
+        text: "Echo exits 0 on success. SIGPIPE handler installed."
+      - id: AC4
+        text: "No imports of external packages beyond standard library and pkg/sys. No imports of any cmd/ or other pkg/ package."
+  dependency: -1
+- index: 0
+  title: 'cmd/tac: implement tac utility (prd-tac R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-tac.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.0-uc002-tac.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (tac test cases)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/echo/main.go (reference for cmd/ utility structure and patterns in this release)
+      - cmd/echo/echo_test.go (reference for differential test structure)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/tac/main.go
+        action: create
+        note: tac utility implementation -- reverse concatenation of files
+      - path: cmd/tac/tac_test.go
+        action: create
+        note: differential tests against gtac reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the tac command that concatenates and prints files in reverse,
+          line by line (last line first), per prd-tac. When no file arguments are
+          given or when "-" is specified, read from stdin. Write reversed output
+          to stdout.
+      - id: R2
+        text: |
+          Implement the -s/--separator flag per prd-tac. Use the given string as
+          the record separator instead of newline. By default the separator is
+          attached after each record (trailing); with -b/--before, attach it
+          before each record (leading).
+      - id: R3
+        text: |
+          Implement the -b/--before flag per prd-tac. When set, the separator is
+          attached before each record instead of after.
+      - id: R4
+        text: |
+          Implement the -r/--regex flag per prd-tac. When set, treat the separator
+          string as a Go regular expression (regexp package). If the regex is
+          invalid, print a diagnostic to stderr and exit with status 1.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main per the
+          ARCHITECTURE shared_protocols for SIGPIPE handling.
+      - id: D2
+        text: |
+          Follow the differential testing pattern from ARCHITECTURE shared_protocols.
+          Use testutils.BuildBinary to compile the Go binary and exec.LookPath for
+          "gtac" as the reference binary. Call t.Skip if gtac is not found.
+      - id: D3
+        text: |
+          Use --version flag detection to print version and exit 0, matching the
+          pattern used in cmd/echo and other utilities in this project.
+      - id: D4
+        text: |
+          Read entire file content into memory before reversing. tac requires
+          backward traversal of the input, so streaming is not feasible. Use
+          os.ReadAll for stdin and os.ReadFile for file arguments.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/tac/main.go compiles with no errors or lint warnings under golangci-lint.
+      - id: AC2
+        text: "tac with no arguments reads stdin and prints lines in reverse order."
+      - id: AC3
+        text: "tac with file arguments concatenates files and prints all lines in reverse."
+      - id: AC4
+        text: "tac -s SEP splits on the given separator string and reverses records."
+      - id: AC5
+        text: "tac -b attaches the separator before each record instead of after."
+      - id: AC6
+        text: "tac -r treats the separator as a regular expression."
+      - id: AC7
+        text: "go test ./cmd/tac/ passes with gtac as the reference binary."
+      - id: AC8
+        text: "Tests skip gracefully with t.Skip when gtac is not in PATH."
+  dependency: -1
+- index: 0
+  title: 'cmd/nl: implement nl utility (prd-nl R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-nl.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.0-uc003-nl.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (test cases for nl)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern and SIGPIPE handling)
+      - cmd/tac/main.go (reference for cmd/ structure and conventions in this project)
+      - cmd/tac/tac_test.go (reference for differential test file structure)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/nl/main.go
+        action: create
+        note: nl utility implementation
+      - path: cmd/nl/nl_test.go
+        action: create
+        note: differential tests against gnl reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement the nl command per prd-nl R1: read from stdin or named files and write numbered lines to stdout"
+      - id: R2
+        text: "Implement all flags per prd-nl R2: numbering style (-b), format (-n), separator (-s), width (-w), starting number (-v), increment (-i), and header/body/footer section delimiters"
+      - id: R3
+        text: "Implement logical page sections per prd-nl R3: recognize header (\\:\\:\\:), body (\\:\\:), and footer (\\:) section delimiters, applying per-section numbering styles (-h, -b, -f flags)"
+      - id: R4
+        text: "Implement differential tests per prd-nl R4: build the Go binary with testutils.BuildBinary, locate gnl via exec.LookPath (t.Skip if absent), define DiffTest cases covering all flags and section delimiter behavior, run via testutils.RunDiffTests"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all differential tests. Reference binary is gnl (Homebrew coreutils). Skip gracefully via exec.LookPath per the shared graceful-skip protocol"
+      - id: D3
+        text: "Set LC_ALL=C in all differential test environments per ARCHITECTURE.yaml locale handling decision (DD6)"
+      - id: D4
+        text: "Follow the same cmd/ package structure as cmd/tac: main.go for implementation, nl_test.go for differential tests"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/nl/main.go compiles with no errors (go build ./cmd/nl/)"
+      - id: AC2
+        text: "go vet ./cmd/nl/ reports no issues"
+      - id: AC3
+        text: "cmd/nl/nl_test.go runs successfully (go test ./cmd/nl/ -v); tests skip gracefully when gnl is not in PATH"
+      - id: AC4
+        text: "All differential test cases pass against gnl when the reference binary is available"
+      - id: AC5
+        text: "nl reads from stdin when no file arguments are given and from named files when provided"
+      - id: AC6
+        text: "All flags documented in prd-nl are implemented and exercised by at least one test case"
+  dependency: -1
+- index: 0
+  title: 'cmd/fold: implement fold utility (prd-fold R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-fold.yaml (all requirements for fold)
+      - docs/specs/use-cases/rel05.0-uc004-fold.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (test cases for fold)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests usage)
+      - cmd/nl/main.go (reference for how a text-stream utility is structured)
+      - cmd/nl/nl_test.go (reference for differential test file structure)
+
+    files:
+      - path: cmd/fold/main.go
+        action: create
+        note: fold utility implementation
+      - path: cmd/fold/fold_test.go
+        action: create
+        note: differential tests against gfold
+
+    requirements:
+      - id: R1
+        text: "Implement fold utility per prd-fold R1: wrap input lines to fit a specified width (default 80 columns), reading from files or stdin"
+      - id: R2
+        text: "Implement flags per prd-fold R2: -w/--width to set wrap width, -s/--spaces to break at word boundaries, -b/--bytes to count bytes instead of columns"
+      - id: R3
+        text: "Implement exit codes and error handling per prd-fold R3: exit 0 on success, exit 1 on error (invalid flags, file not found), write errors to stderr"
+      - id: R4
+        text: "Implement differential tests per prd-fold R4: write fold_test.go using pkg/testutils.RunDiffTests against gfold reference binary with graceful t.Skip if gfold not in PATH"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE handling protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use exec.LookPath(\"gfold\") with t.Skip for graceful skip when the reference binary is not available, per the shared graceful-skip protocol"
+      - id: D3
+        text: "Follow the same single-file cmd/ structure as cmd/nl and cmd/tac -- main.go contains all implementation logic, fold_test.go contains differential tests"
+      - id: D4
+        text: "Set LC_ALL=C in all differential test cases per ARCHITECTURE.yaml design decision DD6"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/fold/main.go compiles with no errors via go build ./cmd/fold/"
+      - id: AC2
+        text: "cmd/fold/fold_test.go runs and passes with go test ./cmd/fold/ (or skips gracefully if gfold is not installed)"
+      - id: AC3
+        text: "fold reads from stdin when no file arguments are given and wraps at 80 columns by default"
+      - id: AC4
+        text: "fold supports -w, -s, and -b flags per the PRD"
+      - id: AC5
+        text: "golangci-lint reports no warnings for cmd/fold/"
+      - id: AC6
+        text: "Differential tests cover default wrapping, custom width (-w), byte mode (-b), word-boundary mode (-s), multiple files, and stdin"
+  dependency: -1

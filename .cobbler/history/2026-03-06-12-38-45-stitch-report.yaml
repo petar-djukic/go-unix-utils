@@ -1,0 +1,35 @@
+task_id: "348"
+task_title: 'cmd/nl: implement nl utility (prd-nl R1-R4)'
+status: success
+branch: task/generation-gh-336-generate-code-r05.0-348
+diff:
+    files: 5
+    insertions: 723
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-122235.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 193
+      deletions: 0
+    - path: cmd/nl/main.go
+      status: A
+      insertions: 343
+      deletions: 0
+    - path: cmd/nl/nl_test.go
+      status: A
+      insertions: 184
+      deletions: 0
+loc_before:
+    production: 383
+    test: 339
+loc_after:
+    production: 726
+    test: 523

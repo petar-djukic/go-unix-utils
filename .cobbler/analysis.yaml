@@ -98,16 +98,16 @@ code_status:
               testfiles: 0
         - version: "02.2"
           name: Batch 2.2 — head and seq specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel02.2-uc001-head
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.2-uc002-seq
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0

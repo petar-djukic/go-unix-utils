@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "347"
+task_title: 'cmd/tac: implement tac utility (prd-tac R1-R4)'
+status: success
+started_at: "2026-03-06T17:29:46Z"
+duration: 7m49s
+duration_s: 469
+tokens:
+    input: 966263
+    output: 26763
+    cache_creation: 77602
+    cache_read: 888644
+cost_usd: 1.5984945
+loc_before:
+    production: 183
+    test: 212
+loc_after:
+    production: 383
+    test: 339
+diff:
+    files: 5
+    insertions: 466
+    deletions: 4
