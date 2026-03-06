@@ -58,56 +58,56 @@ code_status:
               testfiles: 0
         - version: "02.0"
           name: Batch 2 — trivial utilities (true, false, yes, basename, dirname)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel02.0-uc001-true
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc002-false
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc003-yes
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc004-basename
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc005-dirname
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "02.1"
           name: Batch 2.1 — tee specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel02.1-uc001-tee
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "02.2"
           name: Batch 2.2 — head and seq specification and differential test
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel02.2-uc001-head
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel02.2-uc002-seq
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
@@ -143,71 +143,71 @@ code_status:
               testfiles: 0
         - version: "05.0"
           name: Batch 5 — text stream transforms (echo, tac, nl, fold)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.0-uc001-echo
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.0-uc002-tac
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.0-uc003-nl
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.0-uc004-fold
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "05.1"
           name: Batch 5.1 — tab conversion pair (expand, unexpand)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.1-uc001-expand
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.1-uc002-unexpand
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "05.2"
           name: Batch 5.2 — columnar operations pair (cut, paste)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.2-uc001-cut
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.2-uc002-paste
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
         - version: "05.3"
           name: Batch 5.3 — sorted-stream comparison pair (uniq, comm)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.3-uc001-uniq
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.3-uc002-comm
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0

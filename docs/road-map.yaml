@@ -75,18 +75,18 @@ releases:
 
   - version: "02.1"
     name: "Batch 2.1 — tee specification and differential test"
-    status: spec_complete
+    status: implemented
     description: |
       Implement tee for copying stdin to stdout and one or more output files simultaneously.
       tee depends on pkg/testutils from rel00.0 for differential testing. Supports append
       mode (-a) and SIGINT suppression (-i).
     use_cases:
       - id: rel02.1-uc001-tee
-        status: spec_complete
+        status: implemented
 
   - version: "02.2"
     name: "Batch 2.2 — head and seq specification and differential test"
-    status: spec_complete
+    status: implemented
     description: |
       Implement head for printing the first N lines or bytes of files, and seq for
       generating number sequences. Both depend on pkg/testutils from rel00.0 for
@@ -95,9 +95,9 @@ releases:
       forms, format strings (-f), equal-width padding (-w), and custom separators (-s).
     use_cases:
       - id: rel02.2-uc001-head
-        status: spec_complete
+        status: implemented
       - id: rel02.2-uc002-seq
-        status: spec_complete
+        status: implemented
 
   - version: "03.0"
     name: "Batch 3 — wc specification and differential test"
@@ -137,7 +137,7 @@ releases:
 
   - version: "05.0"
     name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement four easy stream-transform utilities that depend only on pkg/testutils and
       pkg/sys. echo outputs arguments with optional escape interpretation. tac reverses
@@ -146,17 +146,17 @@ releases:
       All are verified by differential testing against GNU coreutils reference binaries.
     use_cases:
       - id: rel05.0-uc001-echo
-        status: spec_complete
+        status: implemented
       - id: rel05.0-uc002-tac
-        status: spec_complete
+        status: implemented
       - id: rel05.0-uc003-nl
-        status: spec_complete
+        status: implemented
       - id: rel05.0-uc004-fold
-        status: spec_complete
+        status: implemented
 
   - version: "05.1"
     name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement expand (tabs to spaces) and unexpand (spaces to tabs). Both utilities share
       the same internal expand_common code in the C source and are natural inverses of each
@@ -166,13 +166,13 @@ releases:
       by differential testing against GNU coreutils reference binaries.
     use_cases:
       - id: rel05.1-uc001-expand
-        status: spec_complete
+        status: implemented
       - id: rel05.1-uc002-unexpand
-        status: spec_complete
+        status: implemented
 
   - version: "05.2"
     name: "Batch 5.2 — columnar operations pair (cut, paste)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement cut (extract fields/bytes from lines) and paste (merge file lines side
       by side). cut and paste are complementary: cut removes columns and paste adds them.
@@ -182,13 +182,13 @@ releases:
       differential testing against GNU coreutils reference binaries.
     use_cases:
       - id: rel05.2-uc001-cut
-        status: spec_complete
+        status: implemented
       - id: rel05.2-uc002-paste
-        status: spec_complete
+        status: implemented
 
   - version: "05.3"
     name: "Batch 5.3 — sorted-stream comparison pair (uniq, comm)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement uniq (filter adjacent duplicate lines) and comm (compare two sorted files).
       Both utilities operate on sorted or adjacently-ordered input. uniq uses windowed
@@ -198,13 +198,13 @@ releases:
       reference binaries.
     use_cases:
       - id: rel05.3-uc001-uniq
-        status: spec_complete
+        status: implemented
       - id: rel05.3-uc002-comm
-        status: spec_complete
+        status: implemented
 
   - version: "05.4"
     name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
       protocol: GNU two-space format for text mode, asterisk format for binary mode,
@@ -214,13 +214,13 @@ releases:
       gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
     use_cases:
       - id: rel05.4-uc001-md5sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc002-sha1sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc003-sha256sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc004-sha512sum
-        status: spec_complete
+        status: implemented
 
   - version: "99.2"
     name: "Deferred — ts specification and differential test"

@@ -5495,3 +5495,2697 @@
       - id: AC7
         text: Both utilities call sys.InstallSIGPIPEHandler() at start of main
   dependency: -1
+- index: 0
+  title: 'cmd/tee implementation: rel02.1-uc001-tee core functionality'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel02.1-uc001-tee.yaml (use case with PRD traceability)
+      - docs/specs/test-suites/test-rel-02.1.yaml (expected test inputs and outputs)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE patterns)
+      - pkg/sys/ (InstallSIGPIPEHandler API -- call at start of main)
+      - cmd/true/main.go (reference for minimal cmd/ structure and flag parsing conventions)
+      - cmd/basename/main.go (reference for flag parsing and --version/--help pattern)
+
+    files:
+      - path: cmd/tee/main.go
+        action: create
+        note: tee utility implementation -- stdin to stdout and files
+
+    requirements:
+      - id: R1
+        text: |
+          Read all of stdin and write it to stdout and to each file argument
+          simultaneously. Use io.MultiWriter to fan out writes. Exit 0 on
+          success, exit 1 on any write error. When no file arguments are given,
+          tee copies stdin to stdout only.
+      - id: R2
+        text: |
+          Implement the -a/--append flag. When set, open output files with
+          O_APPEND instead of O_TRUNC. Default behavior (no -a) truncates
+          and overwrites each file.
+      - id: R3
+        text: |
+          Implement the -i/--ignore-interrupts flag. When set, install a
+          signal handler that ignores SIGINT (signal.Ignore(syscall.SIGINT)).
+          Without -i, tee uses default SIGINT behavior.
+      - id: R4
+        text: |
+          Implement --output-error with optional mode argument. Modes:
+          "warn" (warn on error to any output, continue), "warn-nopipe"
+          (warn on error to any output not a pipe, continue),
+          "exit" (exit on error to any output), "exit-nopipe" (exit on
+          error to any output not a pipe). When --output-error is given
+          without a mode value, default to "warn". Without --output-error
+          at all, tee diagnoses errors writing to any output except pipes
+          and exits after all inputs are processed if any error occurred.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main per the
+          shared SIGPIPE protocol in ARCHITECTURE.yaml. This ensures tee
+          exits cleanly when downstream consumers close their stdin.
+      - id: D2
+        text: |
+          Use flag parsing conventions consistent with the existing cmd/
+          packages (see cmd/basename or cmd/true for reference). Support
+          both short (-a, -i) and long (--append, --ignore-interrupts,
+          --output-error) flag forms. Implement --version and --help
+          following the same pattern as other cmd/ utilities.
+      - id: D3
+        text: |
+          Use os.OpenFile with appropriate flags (O_WRONLY|O_CREATE and
+          either O_TRUNC or O_APPEND) for each output file. Close all
+          files after stdin is fully consumed. Collect errors and report
+          them to stderr as "tee: <filename>: <error>".
+      - id: D4
+        text: |
+          Read stdin in a loop using a fixed buffer (e.g., 32 KB) and
+          write each chunk to all outputs. Do not read all of stdin into
+          memory at once. This matches GNU tee behavior for large inputs.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/tee/main.go compiles with "go build ./cmd/tee/"
+      - id: AC2
+        text: "echo hello | go run ./cmd/tee/ prints hello to stdout"
+      - id: AC3
+        text: "echo hello | go run ./cmd/tee/ /tmp/tee_test.txt writes hello to both stdout and /tmp/tee_test.txt"
+      - id: AC4
+        text: "The -a flag appends to existing files instead of truncating"
+      - id: AC5
+        text: "The -i flag causes SIGINT to be ignored"
+      - id: AC6
+        text: "--output-error with mode values warn, warn-nopipe, exit, exit-nopipe behaves as specified"
+      - id: AC7
+        text: "golangci-lint runs clean on cmd/tee/"
+  dependency: -1
+- index: 0
+  title: 'rel02.1-uc001-tee: differential tests for cmd/tee'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - cmd/tee/main.go (existing tee implementation to test)
+      - docs/specs/test-suites/test-rel-02.1.yaml (test cases for tee)
+      - docs/specs/use-cases/rel02.1-uc001-tee.yaml (use case success criteria)
+      - docs/specs/product-requirements/ (find the tee PRD, filename matches prd*-tee.yaml)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness)
+      - cmd/true/true_test.go (example differential test file for pattern reference)
+      - cmd/basename/basename_test.go (example differential test file for pattern reference)
+
+    files:
+      - path: cmd/tee/tee_test.go
+        action: create
+        note: Differential tests for tee against gtee reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Write differential tests exercising tee core behavior: read stdin,
+          write to stdout, and write to one or more output files simultaneously.
+          Verify exit code, stdout, and file contents match the reference binary.
+      - id: R2
+        text: |
+          Write differential tests for the -a (append) flag: verify that tee
+          appends to existing files rather than truncating them, matching
+          reference binary behavior.
+      - id: R3
+        text: |
+          Write differential tests for error conditions: writing to a
+          nonexistent directory, writing to a read-only file, and passing
+          --version/--help flags. Verify exit codes and stderr match the
+          reference binary.
+      - id: R4
+        text: |
+          Write differential tests for multiple output files: verify tee writes
+          identical content to all specified files and stdout simultaneously,
+          matching reference binary behavior.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use the standard differential testing pattern from the project:
+          testutils.BuildBinary(t, ".") for the Go binary, exec.LookPath("gtee")
+          for the Homebrew GNU coreutils reference binary, and
+          testutils.RunDiffTests(t, goBin, refBin, tests) to compare outputs.
+      - id: D2
+        text: |
+          Call t.Skip if the reference binary gtee is not found in PATH, per the
+          project's graceful-skip protocol. Do not attempt to install the binary.
+      - id: D3
+        text: |
+          For tests that verify file output, use t.TempDir() to create temporary
+          directories and set DiffTest.WorkDir accordingly. After RunDiffTests
+          completes, compare file contents written by both binaries.
+      - id: D4
+        text: |
+          Set LC_ALL=C in the test environment per project convention to ensure
+          consistent error message formatting between Go and reference binaries.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/tee/tee_test.go exists and contains a TestDiff function
+      - id: AC2
+        text: "go test ./cmd/tee/ passes when gtee is available in PATH"
+      - id: AC3
+        text: "go test ./cmd/tee/ skips gracefully when gtee is not in PATH"
+      - id: AC4
+        text: Tests cover basic piping, append mode, multiple files, and error cases
+      - id: AC5
+        text: "go vet ./cmd/tee/ reports no issues"
+  dependency: -1
+- index: 0
+  title: 'Implement cmd/head -- prd-head R1-R4: default line output, -n/-c flags, multi-file headers, SIGPIPE'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the head PRD, e.g. prd0XX-head.yaml -- read all requirements)
+      - docs/specs/use-cases/rel02.2-uc001-head.yaml (end-to-end execution flow)
+      - docs/specs/test-suites/test-rel-02.2.yaml (test cases for head -- needed for differential test design)
+      - docs/ARCHITECTURE.yaml (shared_protocols section: differential testing pattern, SIGPIPE handling, graceful skip)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+      - pkg/testutils/ (DiffTest struct, RunDiffTests, BuildBinary)
+
+    files:
+      - path: cmd/head/main.go
+        action: create
+        note: head utility -- flag parsing, line/byte output, multi-file header logic
+      - path: cmd/head/head_test.go
+        action: create
+        note: differential tests against ghead reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement default behavior: read from stdin or named files and output
+          the first 10 lines of each input. When no files are given, read stdin.
+          When "-" is given as a filename, read stdin at that position.
+      - id: R2
+        text: |
+          Implement -n (--lines) flag to output the first N lines instead of 10.
+          Support the -N shorthand (e.g. head -5). When N is prefixed with "-",
+          output all but the last N lines. Match GNU head semantics exactly.
+      - id: R3
+        text: |
+          Implement -c (--bytes) flag to output the first N bytes instead of lines.
+          Support K suffixes (b=512, kB=1000, K=1024, MB=1000*1000, M=1024*1024,
+          and so on) per GNU coreutils convention. When N is prefixed with "-",
+          output all but the last N bytes. -c and -n are mutually exclusive; last
+          flag wins.
+      - id: R4
+        text: |
+          Implement multi-file header behavior: when more than one file is given,
+          print "==> filename <==" before each file's output, with a blank line
+          between files. -q (--quiet/--silent) suppresses headers. -v (--verbose)
+          forces headers even for a single file. Match GNU head header format exactly.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() so the
+          process exits cleanly when piped to a downstream consumer that closes
+          stdin (e.g. head | head). This matches the shared protocol in
+          ARCHITECTURE.yaml.
+      - id: D2
+        text: |
+          Differential tests use pkg/testutils.BuildBinary to compile the Go binary
+          and exec.LookPath("ghead") for the reference binary. If ghead is not found,
+          call t.Skip per the graceful-skip shared protocol. All tests set LC_ALL=C.
+      - id: D3
+        text: |
+          Use os.Exit(1) when any file cannot be opened, but continue processing
+          remaining files (matching GNU head behavior). Print the error to stderr
+          in the format "head: <filename>: <error>".
+      - id: D4
+        text: |
+          Parse flags manually or with the flag package. Support both --lines=N and
+          --lines N (space-separated) forms, plus the -N shorthand for -n N. The
+          last of -n/-c wins when both are specified.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/head/main.go compiles with no errors via "go build ./cmd/head/"
+      - id: AC2
+        text: "go vet ./cmd/head/..." reports no issues
+      - id: AC3
+        text: cmd/head/head_test.go contains differential tests covering default (10 lines), -n, -c, -q, -v, multi-file, stdin, and error cases
+      - id: AC4
+        text: "go test ./cmd/head/... passes (or skips gracefully if ghead is not in PATH)"
+      - id: AC5
+        text: cmd/head/main.go calls sys.InstallSIGPIPEHandler() at the start of main()
+      - id: AC6
+        text: Production code is under 250 lines
+  dependency: -1
+- index: 0
+  title: 'Task: Implement cmd/seq -- prd-seq R1-R4: numeric sequence output, -w/-s/-f flags, SIGPIPE'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-seq.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel02.2-uc002-seq.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-02.2.yaml (seq test cases)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+      - cmd/head/main.go (reference for cmd/ package structure and patterns)
+      - cmd/head/head_test.go (reference for differential test structure)
+
+    files:
+      - path: cmd/seq/main.go
+        action: create
+        note: seq implementation -- argument parsing, numeric sequence generation, formatting
+      - path: cmd/seq/seq_test.go
+        action: create
+        note: differential tests against gseq reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement numeric sequence generation per prd-seq. seq accepts one, two, or three
+          operands: "seq LAST" prints 1 to LAST, "seq FIRST LAST" prints FIRST to LAST,
+          "seq FIRST INCREMENT LAST" prints FIRST to LAST stepping by INCREMENT. All operands
+          are floating-point. Default separator is newline. Output ends with a trailing newline.
+      - id: R2
+        text: |
+          Implement the -s (--separator) flag per prd-seq. When -s STRING is given, use STRING
+          as the separator between numbers instead of newline. The final number is still followed
+          by a newline, not the separator.
+      - id: R3
+        text: |
+          Implement the -w (--equal-width) flag per prd-seq. When -w is given, pad all numbers
+          with leading zeros so they all have equal width. Width is determined by the widest
+          endpoint (FIRST or LAST). The -w flag is ignored when -f is also specified.
+      - id: R4
+        text: |
+          Implement the -f (--format) flag per prd-seq. When -f FORMAT is given, use FORMAT
+          as a printf-style format string for each number. FORMAT must contain exactly one
+          %e, %f, %g, %a, %A, %E, %F, or %G conversion (with optional width/precision).
+          Invalid formats produce an error to stderr and exit 1.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main per the SIGPIPE handling
+          shared protocol in ARCHITECTURE.yaml. This ensures seq exits cleanly when piped
+          to head or other consumers that close stdin early.
+      - id: D2
+        text: |
+          Use pkg/testutils.RunDiffTests with reference binary "gseq" for differential
+          testing. Call exec.LookPath("gseq") and t.Skip if not found, per the graceful
+          skip shared protocol.
+      - id: D3
+        text: |
+          Parse operands as float64 using strconv.ParseFloat. Use big.Float or careful
+          epsilon comparison only if needed for format precision. Match GNU seq behavior
+          for integer-valued floats (print without decimal point when no -f is given).
+      - id: D4
+        text: |
+          Exit codes: 0 on success, 1 on usage error (invalid format, missing operands,
+          zero increment). Write errors to stderr. Match GNU seq error message style.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/seq/ succeeds with no errors or warnings"
+      - id: AC2
+        text: "go vet ./cmd/seq/ reports no issues"
+      - id: AC3
+        text: "Differential tests pass: seq output matches gseq for all test cases in the test suite"
+      - id: AC4
+        text: "seq 5 prints 1 through 5, one per line, with trailing newline"
+      - id: AC5
+        text: "seq 2 5 prints 2 through 5; seq 1 0.5 3 prints 1.0 1.5 2.0 2.5 3.0"
+      - id: AC6
+        text: "seq -w 1 10 zero-pads: 01 02 ... 10"
+      - id: AC7
+        text: "seq -s ', ' 3 prints '1, 2, 3' followed by newline"
+      - id: AC8
+        text: "seq -f '%.2f' 3 prints 1.00 2.00 3.00"
+      - id: AC9
+        text: "Invalid format (seq -f '%s' 3) exits 1 with error to stderr"
+      - id: AC10
+        text: "Zero increment (seq 1 0 5) exits 1 with error to stderr"
+  dependency: -1
+- index: 0
+  title: 'cmd/echo: implement echo utility (prd-echo R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd010-echo.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.0-uc001-echo.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (echo test cases for differential testing)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - cmd/true/main.go (reference for trivial utility structure)
+      - cmd/basename/main.go (reference for argument-processing utility structure)
+
+    files:
+      - path: cmd/echo/main.go
+        action: create
+        note: echo command implementation with flag parsing and escape sequence handling
+      - path: cmd/echo/echo_test.go
+        action: create
+        note: differential tests against gecho reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement echo that prints all arguments separated by single spaces, followed by a newline, to stdout. With no arguments, print only a newline."
+      - id: R2
+        text: "Implement -n flag: suppress the trailing newline."
+      - id: R3
+        text: "Implement -e flag: enable interpretation of backslash escape sequences (\\\\, \\a, \\b, \\c, \\e, \\f, \\n, \\r, \\t, \\v, \\0NNN octal, \\xHH hex). \\c stops output immediately (no trailing newline, no further characters)."
+      - id: R4
+        text: "Implement -E flag (default): disable interpretation of backslash escapes. When neither -e nor -E is given, behave as -E. Echo always exits 0 unless a write error occurs."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Use manual flag parsing, not flag package. GNU echo treats --help and --version as literal arguments (not flags) when mixed with other args. Only recognize -n, -e, -E as flags, and only when they appear as leading arguments before non-flag arguments."
+      - id: D3
+        text: "Match GNU echo flag clustering behavior: -neE and -en are valid combined flags. Stop flag parsing at the first non-flag argument."
+      - id: D4
+        text: "Differential tests use gecho as the reference binary. Skip with t.Skip if gecho is not in PATH per the graceful-skip protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/echo/main.go compiles with no errors and no golangci-lint warnings."
+      - id: AC2
+        text: "go test ./cmd/echo/ passes. Differential tests compare Go echo against gecho for: no args, simple args, -n flag, -e with each escape sequence, -E with backslash literals, -e with \\c, combined -ne, and arguments that look like flags after a non-flag arg."
+      - id: AC3
+        text: "Echo exits 0 on success. SIGPIPE handler installed."
+      - id: AC4
+        text: "No imports of external packages beyond standard library and pkg/sys. No imports of any cmd/ or other pkg/ package."
+  dependency: -1
+- index: 0
+  title: 'cmd/tac: implement tac utility (prd-tac R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-tac.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.0-uc002-tac.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (tac test cases)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/echo/main.go (reference for cmd/ utility structure and patterns in this release)
+      - cmd/echo/echo_test.go (reference for differential test structure)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/tac/main.go
+        action: create
+        note: tac utility implementation -- reverse concatenation of files
+      - path: cmd/tac/tac_test.go
+        action: create
+        note: differential tests against gtac reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the tac command that concatenates and prints files in reverse,
+          line by line (last line first), per prd-tac. When no file arguments are
+          given or when "-" is specified, read from stdin. Write reversed output
+          to stdout.
+      - id: R2
+        text: |
+          Implement the -s/--separator flag per prd-tac. Use the given string as
+          the record separator instead of newline. By default the separator is
+          attached after each record (trailing); with -b/--before, attach it
+          before each record (leading).
+      - id: R3
+        text: |
+          Implement the -b/--before flag per prd-tac. When set, the separator is
+          attached before each record instead of after.
+      - id: R4
+        text: |
+          Implement the -r/--regex flag per prd-tac. When set, treat the separator
+          string as a Go regular expression (regexp package). If the regex is
+          invalid, print a diagnostic to stderr and exit with status 1.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main per the
+          ARCHITECTURE shared_protocols for SIGPIPE handling.
+      - id: D2
+        text: |
+          Follow the differential testing pattern from ARCHITECTURE shared_protocols.
+          Use testutils.BuildBinary to compile the Go binary and exec.LookPath for
+          "gtac" as the reference binary. Call t.Skip if gtac is not found.
+      - id: D3
+        text: |
+          Use --version flag detection to print version and exit 0, matching the
+          pattern used in cmd/echo and other utilities in this project.
+      - id: D4
+        text: |
+          Read entire file content into memory before reversing. tac requires
+          backward traversal of the input, so streaming is not feasible. Use
+          os.ReadAll for stdin and os.ReadFile for file arguments.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/tac/main.go compiles with no errors or lint warnings under golangci-lint.
+      - id: AC2
+        text: "tac with no arguments reads stdin and prints lines in reverse order."
+      - id: AC3
+        text: "tac with file arguments concatenates files and prints all lines in reverse."
+      - id: AC4
+        text: "tac -s SEP splits on the given separator string and reverses records."
+      - id: AC5
+        text: "tac -b attaches the separator before each record instead of after."
+      - id: AC6
+        text: "tac -r treats the separator as a regular expression."
+      - id: AC7
+        text: "go test ./cmd/tac/ passes with gtac as the reference binary."
+      - id: AC8
+        text: "Tests skip gracefully with t.Skip when gtac is not in PATH."
+  dependency: -1
+- index: 0
+  title: 'cmd/nl: implement nl utility (prd-nl R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-nl.yaml (all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.0-uc003-nl.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (test cases for nl)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern and SIGPIPE handling)
+      - cmd/tac/main.go (reference for cmd/ structure and conventions in this project)
+      - cmd/tac/tac_test.go (reference for differential test file structure)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/nl/main.go
+        action: create
+        note: nl utility implementation
+      - path: cmd/nl/nl_test.go
+        action: create
+        note: differential tests against gnl reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement the nl command per prd-nl R1: read from stdin or named files and write numbered lines to stdout"
+      - id: R2
+        text: "Implement all flags per prd-nl R2: numbering style (-b), format (-n), separator (-s), width (-w), starting number (-v), increment (-i), and header/body/footer section delimiters"
+      - id: R3
+        text: "Implement logical page sections per prd-nl R3: recognize header (\\:\\:\\:), body (\\:\\:), and footer (\\:) section delimiters, applying per-section numbering styles (-h, -b, -f flags)"
+      - id: R4
+        text: "Implement differential tests per prd-nl R4: build the Go binary with testutils.BuildBinary, locate gnl via exec.LookPath (t.Skip if absent), define DiffTest cases covering all flags and section delimiter behavior, run via testutils.RunDiffTests"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all differential tests. Reference binary is gnl (Homebrew coreutils). Skip gracefully via exec.LookPath per the shared graceful-skip protocol"
+      - id: D3
+        text: "Set LC_ALL=C in all differential test environments per ARCHITECTURE.yaml locale handling decision (DD6)"
+      - id: D4
+        text: "Follow the same cmd/ package structure as cmd/tac: main.go for implementation, nl_test.go for differential tests"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/nl/main.go compiles with no errors (go build ./cmd/nl/)"
+      - id: AC2
+        text: "go vet ./cmd/nl/ reports no issues"
+      - id: AC3
+        text: "cmd/nl/nl_test.go runs successfully (go test ./cmd/nl/ -v); tests skip gracefully when gnl is not in PATH"
+      - id: AC4
+        text: "All differential test cases pass against gnl when the reference binary is available"
+      - id: AC5
+        text: "nl reads from stdin when no file arguments are given and from named files when provided"
+      - id: AC6
+        text: "All flags documented in prd-nl are implemented and exercised by at least one test case"
+  dependency: -1
+- index: 0
+  title: 'cmd/fold: implement fold utility (prd-fold R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-fold.yaml (all requirements for fold)
+      - docs/specs/use-cases/rel05.0-uc004-fold.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.0.yaml (test cases for fold)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests usage)
+      - cmd/nl/main.go (reference for how a text-stream utility is structured)
+      - cmd/nl/nl_test.go (reference for differential test file structure)
+
+    files:
+      - path: cmd/fold/main.go
+        action: create
+        note: fold utility implementation
+      - path: cmd/fold/fold_test.go
+        action: create
+        note: differential tests against gfold
+
+    requirements:
+      - id: R1
+        text: "Implement fold utility per prd-fold R1: wrap input lines to fit a specified width (default 80 columns), reading from files or stdin"
+      - id: R2
+        text: "Implement flags per prd-fold R2: -w/--width to set wrap width, -s/--spaces to break at word boundaries, -b/--bytes to count bytes instead of columns"
+      - id: R3
+        text: "Implement exit codes and error handling per prd-fold R3: exit 0 on success, exit 1 on error (invalid flags, file not found), write errors to stderr"
+      - id: R4
+        text: "Implement differential tests per prd-fold R4: write fold_test.go using pkg/testutils.RunDiffTests against gfold reference binary with graceful t.Skip if gfold not in PATH"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE handling protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use exec.LookPath(\"gfold\") with t.Skip for graceful skip when the reference binary is not available, per the shared graceful-skip protocol"
+      - id: D3
+        text: "Follow the same single-file cmd/ structure as cmd/nl and cmd/tac -- main.go contains all implementation logic, fold_test.go contains differential tests"
+      - id: D4
+        text: "Set LC_ALL=C in all differential test cases per ARCHITECTURE.yaml design decision DD6"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/fold/main.go compiles with no errors via go build ./cmd/fold/"
+      - id: AC2
+        text: "cmd/fold/fold_test.go runs and passes with go test ./cmd/fold/ (or skips gracefully if gfold is not installed)"
+      - id: AC3
+        text: "fold reads from stdin when no file arguments are given and wraps at 80 columns by default"
+      - id: AC4
+        text: "fold supports -w, -s, and -b flags per the PRD"
+      - id: AC5
+        text: "golangci-lint reports no warnings for cmd/fold/"
+      - id: AC6
+        text: "Differential tests cover default wrapping, custom width (-w), byte mode (-b), word-boundary mode (-s), multiple files, and stdin"
+  dependency: -1
+- index: 0
+  title: Implement cmd/expand (rel05.1-uc001-expand)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the PRD for expand -- likely prd0XX-expand.yaml)
+      - docs/specs/use-cases/rel05.1-uc001-expand.yaml (use case for expand)
+      - docs/specs/test-suites/test-rel-05.1.yaml (test suite for rel05.1)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/fold/main.go (reference implementation of a similar text-stream utility for code style)
+      - cmd/nl/main.go (reference implementation of a similar text-stream utility for code style)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+
+    files:
+      - path: cmd/expand/main.go
+        action: create
+        note: expand utility implementation -- tabs to spaces conversion
+      - path: cmd/expand/expand_test.go
+        action: create
+        note: differential tests against gexpand reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement the expand command that converts tabs to spaces, reading from stdin or named files. Default tab stop is 8. Write output to stdout."
+      - id: R2
+        text: "Support the -t / --tabs flag accepting either a single number (uniform tab width) or a comma-separated list of tab stop positions. When a list is given, tabs beyond the last stop use the interval between the last two stops."
+      - id: R3
+        text: "Support the -i / --initial flag that converts only leading tabs (tabs before the first non-blank character on each line)."
+      - id: R4
+        text: "Support --help and --version flags per GNU coreutils conventions. Exit 0 on success, 1 on error."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Follow the same code structure as cmd/fold or cmd/nl -- flag parsing with the flag package, process each input source sequentially, write to os.Stdout."
+      - id: D3
+        text: "Use the differential testing pattern from ARCHITECTURE.yaml shared_protocols: build the Go binary with testutils.BuildBinary, look up gexpand via exec.LookPath, skip if not found, run testutils.RunDiffTests."
+      - id: D4
+        text: "Read all PRD requirements for expand before implementing. The PRD is the source of truth for flag behavior, edge cases, and exit codes. Do not implement behavior not specified in the PRD."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/expand/main.go compiles without errors (go build ./cmd/expand/)"
+      - id: AC2
+        text: "expand converts tabs to spaces with default tab stop of 8"
+      - id: AC3
+        text: "expand -t N sets uniform tab width; expand -t N1,N2,... sets explicit tab stop positions"
+      - id: AC4
+        text: "expand -i converts only leading tabs on each line"
+      - id: AC5
+        text: "Differential tests in cmd/expand/expand_test.go pass against gexpand (go test ./cmd/expand/)"
+      - id: AC6
+        text: "Tests skip gracefully with t.Skip when gexpand is not in PATH"
+      - id: AC7
+        text: "go vet ./cmd/expand/ reports no issues"
+  dependency: -1
+- index: 0
+  title: 'Task: Implement cmd/unexpand (rel05.1-uc002-unexpand)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd016-unexpand.yaml (all requirements for unexpand)
+      - docs/specs/use-cases/rel05.1-uc002-unexpand.yaml (use case flow and success criteria)
+      - docs/specs/test-suites/test-rel-05.1.yaml (test cases for unexpand)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - cmd/expand/main.go (sibling utility for pattern reference -- expand converts tabs to spaces, unexpand is the inverse)
+      - cmd/expand/expand_test.go (differential test pattern reference)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/unexpand/main.go
+        action: create
+        note: unexpand implementation -- converts spaces to tabs
+      - path: cmd/unexpand/unexpand_test.go
+        action: create
+        note: differential tests against gunexpand reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the unexpand utility that converts leading blanks (spaces) to tabs,
+          reading from files or stdin. Default behavior converts only leading sequences of
+          blanks. With -a/--all, convert all sequences of two or more blanks at tab stops.
+          Match GNU unexpand behavior for all flags per the PRD.
+      - id: R2
+        text: |
+          Support --first-only (default behavior -- only convert leading blanks), -a/--all
+          (convert all suitable blank sequences), and -t/--tabs=N or --tabs=LIST for custom
+          tab stop positions. When -t is given, -a is implied. Match GNU unexpand flag
+          semantics exactly.
+      - id: R3
+        text: |
+          Handle multiple input files and stdin (when no files given or "-" is specified).
+          Process each line independently. Preserve trailing content after last tab stop.
+          Write to stdout. Exit 0 on success, exit non-zero on error with diagnostic to stderr.
+      - id: R4
+        text: |
+          Write differential tests using pkg/testutils.RunDiffTests comparing the Go binary
+          against the Homebrew reference binary "gunexpand". Skip gracefully if gunexpand is
+          not in PATH (exec.LookPath + t.Skip). Set LC_ALL=C in test environment. Cover:
+          default (leading-only), -a flag, -t with single value, -t with comma-separated list,
+          stdin input, multiple files, lines with no blanks, lines with mixed tabs and spaces.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the shared protocol
+          in ARCHITECTURE.yaml. All cmd/ utilities that write to stdout must do this.
+      - id: D2
+        text: |
+          Use the same differential test pattern as cmd/expand: build binary with
+          testutils.BuildBinary, look up "gunexpand" via exec.LookPath, skip if not found,
+          define []testutils.DiffTest slice, call testutils.RunDiffTests.
+      - id: D3
+        text: |
+          Do NOT install any packages in the test or build. The reference binary "gunexpand"
+          must already be in PATH or the test skips gracefully.
+      - id: D4
+        text: |
+          Use flag or manual argument parsing consistent with cmd/expand. Support both
+          short (-a, -t) and long (--all, --first-only, --tabs) flag forms. Use --help
+          and --version following GNU conventions.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/unexpand/main.go compiles with no errors (go build ./cmd/unexpand/)
+      - id: AC2
+        text: go vet ./cmd/unexpand/ reports no issues
+      - id: AC3
+        text: "Differential tests pass: go test ./cmd/unexpand/ -v (or skip cleanly if gunexpand not in PATH)"
+      - id: AC4
+        text: Default mode converts only leading spaces to tabs at tab stop 8
+      - id: AC5
+        text: "-a flag converts all sequences of blanks at tab stops, not just leading"
+      - id: AC6
+        text: "-t N sets tab stop width and implies -a; -t N1,N2,... sets explicit tab stop list"
+      - id: AC7
+        text: Reads from stdin when no files given or when "-" is specified
+      - id: AC8
+        text: Production code is under 250 lines
+  dependency: -1
+- index: 0
+  title: 'Implement cmd/cut -- prd-cut R1-R4: selection modes, delimiters, file handling, exit codes'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find and read the PRD for cut, named prd*-cut.yaml)
+      - docs/specs/use-cases/rel05.2-uc001-cut.yaml
+      - docs/specs/test-suites/test-rel-05.2.yaml (cut test cases for behavioral reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern and SIGPIPE handling)
+      - cmd/head/main.go (reference for a simple stream-processing utility -- match code style and structure)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/cut/main.go
+        action: create
+        note: "cut utility implementation: flag parsing, range parsing, field/byte/character selection, multi-file processing"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the three selection modes from the cut PRD: byte selection (-b),
+          character selection (-c), and field selection (-f). Parse range specifications
+          (N, N-M, N-, -M) and comma-separated lists. Exactly one of -b, -c, -f is
+          required; error if none or more than one is given.
+      - id: R2
+        text: |
+          Implement delimiter and output control from the cut PRD: input delimiter (-d,
+          default TAB for -f mode), suppress lines without delimiters (-s, only with -f),
+          and output delimiter (--output-delimiter, defaults to input delimiter). For -b
+          and -c modes, -d and -s are errors.
+      - id: R3
+        text: |
+          Implement file handling: read from files listed on the command line, or stdin
+          if no files given or file is "-". Concatenate output across files in order.
+          Support "--" to end option parsing.
+      - id: R4
+        text: |
+          Implement exit codes, --version, --help, SIGPIPE handling, and error reporting.
+          Exit 0 on success, 1 on error. Call pkg/sys.InstallSIGPIPEHandler() at the
+          start of main(). Write errors to stderr with "cut: " prefix. Support
+          --complement flag to invert the selected range.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the shared_protocols SIGPIPE pattern from ARCHITECTURE.yaml:
+          call sys.InstallSIGPIPEHandler() at the start of main().
+      - id: D2
+        text: |
+          Match the code style and structure of cmd/head/main.go or another existing
+          simple stream utility. Use flag or pflag consistent with existing cmd/ packages.
+      - id: D3
+        text: |
+          Range parsing produces a sorted, merged list of 1-based column/byte/field
+          indices. Process each input line by selecting the specified positions and
+          joining with the output delimiter.
+      - id: D4
+        text: |
+          Do NOT create tests in this task. Tests will be a separate task. Do NOT
+          install any packages -- use only the Go standard library plus pkg/sys.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/cut/main.go exists and compiles: `go build ./cmd/cut/` succeeds with no errors."
+      - id: AC2
+        text: "All three selection modes work: `echo 'a:b:c' | go run ./cmd/cut/ -d: -f2` prints 'b'."
+      - id: AC3
+        text: "Range parsing handles N, N-M, N-, -M, and comma-separated lists correctly."
+      - id: AC4
+        text: "--complement inverts the selection. -s suppresses lines without delimiter in -f mode."
+      - id: AC5
+        text: "Multiple files are processed in order; stdin is used when no files are given."
+      - id: AC6
+        text: "Exit code is 0 on success, 1 on errors. Errors are written to stderr with 'cut: ' prefix."
+      - id: AC7
+        text: "sys.InstallSIGPIPEHandler() is called at the start of main()."
+  dependency: -1
+- index: 0
+  title: 'Implement cmd/paste -- prd-paste R1-R4: parallel merge, serial mode, delimiters, file handling'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-paste.yaml (all requirements for paste)
+      - docs/specs/use-cases/rel05.2-uc002-paste.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.2.yaml (test cases for paste)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - cmd/cut/main.go (peer implementation in same release for patterns and style)
+      - cmd/cut/cut_test.go (peer test file for differential test patterns)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/paste/main.go
+        action: create
+        note: paste implementation -- parallel merge, serial mode, delimiter cycling, stdin/file handling
+      - path: cmd/paste/paste_test.go
+        action: create
+        note: differential tests against gpaste reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement parallel merge mode (default): read one line from each input file per output line, join with delimiter, output to stdout. When a file is exhausted, substitute empty string for its field."
+      - id: R2
+        text: "Implement serial mode (-s/--serial): for each input file, join all its lines into a single output line using the delimiter list, cycling delimiters as needed."
+      - id: R3
+        text: "Implement delimiter list (-d/--delimiters): accept a string of delimiter characters, cycle through them for successive fields on the same output line, reset to the first delimiter for each new output line. Support backslash escapes: \\n (newline), \\t (tab), \\\\ (backslash), \\0 (empty string)."
+      - id: R4
+        text: "Implement file handling: accept multiple file operands, treat - as stdin (only one stdin stream shared across all - operands), read from stdin when no operands given. Exit 0 on success, exit 1 on error with diagnostic to stderr. Handle --help and --version flags."
+
+    design_decisions:
+      - id: D1
+        text: "Call pkg/sys.InstallSIGPIPEHandler() at the start of main, matching the shared protocol in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Default delimiter is TAB when -d is not specified, matching GNU paste behavior."
+      - id: D3
+        text: "Use bufio.Scanner for line-by-line reading. Track EOF state per input independently so parallel mode continues until all inputs are exhausted."
+      - id: D4
+        text: "Differential tests call exec.LookPath for gpaste and t.Skip if not found, matching the graceful-skip shared protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/paste/main.go compiles with no errors via go build ./cmd/paste/."
+      - id: AC2
+        text: "Parallel merge mode joins lines from multiple files with TAB delimiter by default."
+      - id: AC3
+        text: "Serial mode (-s) joins all lines of each file into one output line."
+      - id: AC4
+        text: "Delimiter cycling works correctly with multi-character delimiter lists and backslash escapes."
+      - id: AC5
+        text: "Stdin is handled as - operand and as default when no files given."
+      - id: AC6
+        text: "go test ./cmd/paste/ passes with gpaste as reference binary (or skips gracefully if gpaste not in PATH)."
+      - id: AC7
+        text: "Exit code is 0 on success, 1 on error with diagnostic to stderr."
+  dependency: -1
+- index: 0
+  title: Implement cmd/uniq -- core line deduplication (prd-uniq R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd016-uniq.yaml (all requirements for uniq)
+      - docs/specs/use-cases/rel05.3-uc001-uniq.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.3.yaml (test cases for validation)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+      - cmd/cut/main.go (reference for CLI structure and flag parsing in a text-stream utility)
+      - cmd/paste/main.go (reference for stdin/file input handling pattern)
+
+    files:
+      - path: cmd/uniq/main.go
+        action: create
+        note: "uniq implementation: flag parsing, adjacent-line comparison, output modes"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the uniq command that reads stdin or named input files and
+          filters adjacent matching lines. Default behavior outputs one copy of
+          each run of identical adjacent lines. Support reading from stdin when
+          no file is given or file is "-". If an output file is specified as the
+          second positional argument, write to that file instead of stdout.
+          Match GNU uniq behavior for all flag interactions.
+      - id: R2
+        text: |
+          Implement comparison modifier flags: -f/--skip-fields N (skip first N
+          whitespace-separated fields before comparing), -s/--skip-chars N (skip
+          first N characters after field skipping), -w/--check-chars N (compare
+          at most N characters after skipping), -i/--ignore-case (fold case for
+          comparison). Skipping and width interact in order: skip fields, skip
+          chars, then limit width.
+      - id: R3
+        text: |
+          Implement output mode flags: -c/--count (prefix lines with occurrence
+          count, right-justified with a space separator), -d/--repeated (print
+          only duplicate lines, one per group), -D/--all-repeated (print all
+          lines from duplicate groups; optional delimiting method: none, prepend,
+          separate), -u/--unique (print only lines that are not repeated).
+          Mutually exclusive combinations follow GNU behavior: -c with -D is an
+          error; -d and -u together produce no output.
+      - id: R4
+        text: |
+          Implement line terminator flag: -z/--zero-terminated (use NUL as the
+          line delimiter instead of newline for both input and output).
+          Implement --version and --help flags matching GNU output format.
+          Call pkg/sys.InstallSIGPIPEHandler() at program start. Exit 0 on
+          success, exit 1 on errors (write failures, invalid arguments).
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the same CLI structure as cmd/cut and cmd/paste: parse flags
+          with the Go standard library flag package, process input line by line,
+          write to stdout or the output file. Use bufio.Scanner or bufio.Reader
+          for line-by-line input with configurable delimiter (newline or NUL).
+      - id: D2
+        text: |
+          Use pkg/sys.InstallSIGPIPEHandler() at program start, matching the
+          shared protocol in ARCHITECTURE.yaml. Do not add any new pkg/
+          dependencies -- uniq needs only standard library and pkg/sys.
+      - id: D3
+        text: |
+          For -c/--count output, right-justify the count field with leading
+          spaces and follow it with a single space before the line content,
+          matching GNU uniq output format exactly.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/uniq/main.go compiles with: go build ./cmd/uniq/"
+      - id: AC2
+        text: "go vet ./cmd/uniq/ reports no issues"
+      - id: AC3
+        text: |
+          Running the binary with --version prints version info and exits 0.
+          Running with --help prints usage and exits 0.
+      - id: AC4
+        text: |
+          Basic functionality works: echo -e 'a\na\nb\nb\na' | bin/uniq produces
+          a, b, a (three lines). With -c, output shows counts. With -d, only
+          duplicate groups appear. With -u, only unique lines appear.
+      - id: AC5
+        text: |
+          Flag interactions match GNU: -f, -s, and -w compose correctly.
+          -i folds case for comparison. -z uses NUL delimiters.
+      - id: AC6
+        text: "Production code is under 250 lines"
+  dependency: -1
+- index: 0
+  title: Implement cmd/comm -- sorted file comparison (prd-comm R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd016-comm.yaml (comm PRD -- all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel05.3-uc002-comm.yaml (comm use case -- end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.3.yaml (test suite -- expected inputs and outputs for comm)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/uniq/main.go (sibling utility in same release -- reference for style and patterns)
+      - cmd/uniq/uniq_test.go (sibling test file -- reference for differential test structure)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/comm/main.go
+        action: create
+        note: comm utility implementation -- sorted file comparison with column suppression
+      - path: cmd/comm/comm_test.go
+        action: create
+        note: differential tests against gcomm reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the comm command that reads two sorted files and produces
+          three-column output: lines unique to FILE1 (column 1), lines unique
+          to FILE2 (column 2), and lines common to both (column 3). Columns
+          are separated by a tab character by default. Each output line is
+          prefixed with the appropriate number of tab delimiters to indicate
+          its column. Match GNU comm behavior exactly under LC_ALL=C.
+      - id: R2
+        text: |
+          Implement column suppression flags: -1 suppresses column 1 (lines
+          unique to FILE1), -2 suppresses column 2 (lines unique to FILE2),
+          -3 suppresses column 3 (lines common to both). Flags can be
+          combined (e.g., -12 suppresses both columns 1 and 2, showing only
+          common lines). When columns are suppressed, remaining columns shift
+          left -- their tab prefix count decreases accordingly.
+      - id: R3
+        text: |
+          Implement --output-delimiter=STR to replace the default tab
+          delimiter between columns. Implement --check-order (default) to
+          verify input files are sorted and emit a diagnostic to stderr if
+          not. Implement --nocheck-order to skip sort-order validation.
+          Implement --total to append a summary line with counts per column.
+          Support - as a filename meaning stdin (only one file may be stdin).
+      - id: R4
+        text: |
+          Write differential tests comparing the Go binary against the
+          Homebrew gcomm reference binary. Cover: basic three-column output,
+          each suppression flag alone and in combination, --output-delimiter,
+          --check-order with unsorted input, --nocheck-order, --total,
+          stdin via -, empty files, files with no common lines, and identical
+          files. Use testutils.BuildBinary and testutils.RunDiffTests. Skip
+          gracefully if gcomm is not in PATH.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use the standard differential testing pattern from
+          ARCHITECTURE.yaml shared_protocols: BuildBinary for the Go binary,
+          exec.LookPath("gcomm") for the reference, t.Skip if not found,
+          RunDiffTests with []testutils.DiffTest.
+      - id: D2
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per
+          the SIGPIPE handling shared protocol.
+      - id: D3
+        text: |
+          All differential tests must set LC_ALL=C in the Env field per
+          DD6 (locale handling deferred). String comparison uses simple
+          byte-order comparison, matching GNU comm behavior under LC_ALL=C.
+      - id: D4
+        text: |
+          Use flag parsing consistent with cmd/uniq and other sibling
+          utilities. Parse flags with the standard library flag package.
+          Exit 0 on success, exit 1 on error. Write diagnostics to stderr.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/comm/main.go compiles with no errors or lint warnings.
+      - id: AC2
+        text: |
+          "go test ./cmd/comm/..." passes when gcomm is available in PATH.
+          Tests cover basic output, all suppression flag combinations,
+          --output-delimiter, --check-order, --nocheck-order, --total,
+          stdin via -, empty files, no-common-lines, and identical files.
+      - id: AC3
+        text: |
+          Tests skip gracefully with t.Skip when gcomm is not in PATH,
+          producing no failures.
+      - id: AC4
+        text: |
+          Output matches gcomm byte-for-byte on stdout and stderr for all
+          test inputs under LC_ALL=C.
+      - id: AC5
+        text: Production code is under 250 lines. Total file count is 2 (main.go + comm_test.go).
+  dependency: -1
+- index: 0
+  title: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the PRD covering md5sum, sha1sum, sha256sum, sha512sum -- read all requirements)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (use case for md5sum)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (use case for sha1sum)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (use case for sha256sum)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (use case for sha512sum)
+      - docs/specs/test-suites/test-rel-05.4.yaml (test suite for all four utilities)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - docs/engineering/ (read all engineering guidelines for coding conventions)
+      - pkg/sys/sigpipe.go (SIGPIPE handler -- call sys.InstallSIGPIPEHandler() in each main)
+      - pkg/testutils/ (read all files to understand DiffTest struct and RunDiffTests API)
+      - cmd/cat/main.go (reference for flag parsing, stdin/file handling, and main structure)
+      - cmd/cat/cat_test.go (reference for differential test structure)
+      - cmd/wc/main.go (reference for multi-file processing pattern)
+      - cmd/wc/wc_test.go (reference for differential test with multiple inputs)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum implementation using crypto/md5
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests against gmd5sum
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum implementation using crypto/sha1
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests against gsha1sum
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum implementation using crypto/sha256
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests against gsha256sum
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum implementation using crypto/sha512
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum as four
+          separate cmd/ packages. Each reads from files listed on the command line
+          or from stdin when no files are given (or when "-" is specified). Each
+          computes the corresponding hash and prints output in GNU coreutils format:
+          "<hex-hash>  <filename>\n" (two spaces before filename, "-" for stdin).
+          Use crypto/md5, crypto/sha1, crypto/sha256, crypto/sha512 from the Go
+          standard library. Read all PRD requirements for these utilities and
+          implement every flag and behavior specified.
+      - id: R2
+        text: |
+          Implement --check (-c) mode for all four utilities. In check mode, read
+          lines from the checksum file in the format "<hash>  <filename>" or
+          "<hash> <filename>" (binary or text mode marker). For each line, compute
+          the hash of the named file and compare. Print "<filename>: OK" or
+          "<filename>: FAILED". After all lines, if any failed, print a summary
+          line to stderr: "WARNING: N computed checksum(s) did NOT match" and exit 1.
+          Support --warn (-w), --quiet, and --strict flags as specified in the PRD.
+      - id: R3
+        text: |
+          Implement --binary (-b) and --text (-t) flag handling. On Unix these do
+          not change behavior (files are always read in binary mode) but affect the
+          mode indicator in output: "*" prefix for binary mode, " " (space) for text
+          mode. Default is text mode on Unix. In --check mode, accept both markers.
+          Support --tag flag to output BSD-style checksums if specified in the PRD.
+      - id: R4
+        text: |
+          Implement differential tests for all four utilities. Each test file follows
+          the project's shared differential testing protocol: build the Go binary with
+          testutils.BuildBinary, find the GNU reference binary via exec.LookPath
+          (gmd5sum, gsha1sum, gsha256sum, gsha512sum), skip gracefully if the
+          reference binary is not found, define []testutils.DiffTest cases covering
+          stdin, single file, multiple files, --check mode, --binary, --text, missing
+          files (exit code 1), and empty input. Run testutils.RunDiffTests to compare.
+          Cover at least the test cases specified in test-rel-05.4.yaml.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same command structure. Study the PRD and
+          existing cmd/ implementations (especially cmd/cat and cmd/wc) to match
+          the project's established patterns for flag parsing (use the flag package),
+          stdin/file iteration, error handling, and exit codes. Call
+          sys.InstallSIGPIPEHandler() at the start of each main().
+      - id: D2
+        text: |
+          Do NOT create a shared internal package for checksum logic. Each cmd/
+          package is self-contained with its own main.go. The utilities are simple
+          enough that any shared abstraction would be premature. Duplication of
+          the read-hash-print loop across four packages is acceptable and preferred
+          over abstraction.
+      - id: D3
+        text: |
+          Use only Go standard library packages (crypto/md5, crypto/sha1,
+          crypto/sha256, crypto/sha512, encoding/hex, flag, fmt, io, os) plus
+          pkg/sys for SIGPIPE. Do NOT add any external dependencies.
+      - id: D4
+        text: |
+          For differential tests, use the reference binary names with "g" prefix:
+          gmd5sum, gsha1sum, gsha256sum, gsha512sum (Homebrew GNU coreutils).
+          If exec.LookPath fails, call t.Skip. Do NOT attempt to install packages.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four binaries compile: go build ./cmd/md5sum ./cmd/sha1sum ./cmd/sha256sum ./cmd/sha512sum"
+      - id: AC2
+        text: "Each binary produces correct GNU-format output: '<hex-hash>  <filename>' with two-space separator"
+      - id: AC3
+        text: "Each binary reads from stdin when no file arguments are given"
+      - id: AC4
+        text: "The --check flag reads a checksum file and validates each entry, printing OK/FAILED and exiting 1 on mismatch"
+      - id: AC5
+        text: "go test ./cmd/md5sum/... ./cmd/sha1sum/... ./cmd/sha256sum/... ./cmd/sha512sum/... passes (or skips gracefully if reference binaries are not installed)"
+      - id: AC6
+        text: "go vet ./cmd/md5sum/... ./cmd/sha1sum/... ./cmd/sha256sum/... ./cmd/sha512sum/... reports no issues"
+      - id: AC7
+        text: "Total production code across all four packages is between 150 and 250 lines"
+  dependency: -1
+- index: 0
+  title: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd020-checksums.yaml (requirements for all four checksum utilities)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (md5sum use case)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (sha1sum use case)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (sha256sum use case)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (sha512sum use case)
+      - docs/specs/test-suites/test-rel-05.4.yaml (test suite for checksum quartet)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential tests)
+      - cmd/wc/main.go (reference for multi-file stdin-or-files input pattern)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum implementation using crypto/md5
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests against gmd5sum
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum implementation using crypto/sha1
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests against gsha1sum
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum implementation using crypto/sha256
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests against gsha256sum
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum implementation using crypto/sha512
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement core hashing mode for all four utilities. Each reads from named
+          files or stdin (when no files given or file is "-"), computes the hash using
+          the corresponding crypto/* package, and prints "hexdigest  filename" to stdout
+          (two spaces before filename, "-" for stdin). Exit 0 on success, exit 1 on
+          any read error (print error to stderr and continue processing remaining files).
+      - id: R2
+        text: |
+          Implement --check (-c) mode for all four utilities. Read lines in the format
+          "hexdigest  filename" (or "hexdigest *filename" for binary mode marker), recompute
+          the hash of each named file, and print "filename: OK" or "filename: FAILED" to
+          stdout. After all lines, if any file failed, print a summary
+          "WARNING: N computed checksum(s) did NOT match" to stderr and exit 1.
+          Support --quiet (suppress OK lines), --status (no output, exit code only),
+          --warn (-w, warn about improperly formatted lines), and --strict (exit nonzero
+          on improperly formatted lines).
+      - id: R3
+        text: |
+          Implement --tag mode (BSD-style output) for all four utilities. In tag mode, output
+          format is "ALGORITHM (filename) = hexdigest" where ALGORITHM is MD5, SHA1, SHA256,
+          or SHA512 respectively. --tag is mutually exclusive with --check.
+      - id: R4
+        text: |
+          Implement differential tests for all four utilities. Each test file defines a
+          TestDiff function using pkg/testutils.BuildBinary and testutils.RunDiffTests.
+          Look up the reference binary via exec.LookPath (gmd5sum, gsha1sum, gsha256sum,
+          gsha512sum); t.Skip if not found. Test cases must cover: stdin hashing, single
+          file, multiple files, --check mode with valid and corrupt digests, --tag mode,
+          missing file error, and --quiet/--status flags in check mode. Set LC_ALL=C in
+          test environment.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same structure. Each main.go is self-contained
+          (no shared internal package) since the code per utility is small (~40-50 lines).
+          The only difference between utilities is the hash constructor (md5.New, sha1.New,
+          sha256.New, sha512.New) and the algorithm name string for --tag output.
+      - id: D2
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of each main(), per the
+          shared protocol in ARCHITECTURE.yaml.
+      - id: D3
+        text: |
+          Use io.Copy into the hash to handle arbitrarily large files without buffering
+          the entire file in memory.
+      - id: D4
+        text: |
+          Reference binaries are gmd5sum, gsha1sum, gsha256sum, gsha512sum (Homebrew
+          GNU coreutils). Use exec.LookPath and t.Skip if not found, per the graceful
+          skip protocol in ARCHITECTURE.yaml.
+
+    acceptance_criteria:
+      - id: AC1
+        text: All eight files (4 main.go + 4 test files) are created and compile with no errors.
+      - id: AC2
+        text: "Each utility hashes stdin and named files, printing 'hexdigest  filename' format."
+      - id: AC3
+        text: "Each utility supports --check mode with --quiet, --status, --warn, --strict flags."
+      - id: AC4
+        text: "Each utility supports --tag mode producing 'ALGORITHM (filename) = hexdigest' output."
+      - id: AC5
+        text: "go test ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/ passes (or skips gracefully if reference binaries are absent)."
+      - id: AC6
+        text: Each utility exits 0 on success, 1 on check failure or read error.
+  dependency: -1
+- index: 0
+  title: 'Task 362: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd017-checksums.yaml (all requirements for md5sum, sha1sum, sha256sum, sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (use case for md5sum)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (use case for sha1sum)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (use case for sha256sum)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (use case for sha512sum)
+      - docs/specs/test-suites/test-rel-05.4.yaml (test suite for the checksum quartet)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+      - cmd/cat/main.go (reference for existing cmd/ package structure and differential test pattern)
+      - cmd/cat/cat_test.go (reference for differential test file structure)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum implementation using crypto/md5
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests against gmd5sum
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum implementation using crypto/sha1
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests against gsha1sum
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum implementation using crypto/sha256
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests against gsha256sum
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum implementation using crypto/sha512
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum as standalone
+          Go binaries. Each reads files listed on the command line (or stdin if no files
+          are given) and prints the hex-encoded hash followed by two spaces and the
+          filename (or dash for stdin). Use crypto/md5, crypto/sha1, crypto/sha256, and
+          crypto/sha512 respectively from Go's standard library.
+      - id: R2
+        text: |
+          Support --check (-c) mode: read lines in the format "hash  filename", recompute
+          the hash for each file, and report OK or FAILED. Support --quiet (suppress OK
+          lines), --status (no output, exit code only), --strict (warn on improperly
+          formatted lines), and --warn (-w, warn on improperly formatted lines to stderr).
+          Exit 0 if all checks pass, 1 if any fail.
+      - id: R3
+        text: |
+          Support --binary (-b) and --text (-t) mode flags. On Unix these do not change
+          behavior (files are read identically) but affect the output format: binary mode
+          prints " *filename" (space-asterisk), text mode prints "  filename" (two spaces).
+          Default to text mode on Unix, matching GNU behavior.
+      - id: R4
+        text: |
+          Write differential tests for each utility. Each test file defines a
+          []testutils.DiffTest slice and calls testutils.RunDiffTests comparing the Go
+          binary against the Homebrew GNU reference binary (gmd5sum, gsha1sum, gsha256sum,
+          gsha512sum). Use exec.LookPath to find the reference binary and t.Skip if not
+          found. Test cases must cover: single file, multiple files, stdin, --check mode
+          with valid and invalid checksums, --binary flag, and missing file error.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same flag parsing and I/O logic. Each main.go
+          follows an identical structure, differing only in the hash.New constructor
+          import (crypto/md5, crypto/sha1, crypto/sha256, crypto/sha512). Do NOT create
+          a shared internal package -- keep each cmd/ package self-contained with its own
+          main.go, duplicating the ~50 lines of shared logic. This matches the project
+          pattern where each cmd/ package is independent.
+      - id: D2
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of each main(), matching the
+          shared protocol from ARCHITECTURE.yaml. Import pkg/sys for this call only.
+      - id: D3
+        text: |
+          In --check mode, match GNU output exactly: "filename: OK" or "filename: FAILED"
+          on stdout. On completion, if any files failed, print a summary line
+          "prog: WARNING: N computed checksums did NOT match" to stderr. If --strict or
+          --warn is set, print "prog: filename: improperly formatted checksum line" to
+          stderr for malformed lines.
+      - id: D4
+        text: |
+          For differential tests, use testutils.BuildBinary(t, ".") to compile the Go
+          binary. Reference binaries are gmd5sum, gsha1sum, gsha256sum, gsha512sum
+          (Homebrew GNU coreutils). Follow the graceful-skip pattern:
+          exec.LookPath("g<utility>") with t.Skip if not found.
+
+    acceptance_criteria:
+      - id: AC1
+        text: Each of cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum compiles with "go build ./cmd/..."
+      - id: AC2
+        text: "go vet ./cmd/md5sum/... ./cmd/sha1sum/... ./cmd/sha256sum/... ./cmd/sha512sum/..." reports no issues
+      - id: AC3
+        text: Each utility produces correct hex hash output for a single file, multiple files, and stdin
+      - id: AC4
+        text: Each utility --check mode correctly validates checksums and reports OK/FAILED matching GNU format
+      - id: AC5
+        text: Differential tests pass against Homebrew reference binaries (or skip gracefully if not installed)
+      - id: AC6
+        text: "go test ./cmd/md5sum/... ./cmd/sha1sum/... ./cmd/sha256sum/... ./cmd/sha512sum/..." passes
+  dependency: -1
+- index: 0
+  title: 'Task 362: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd020-md5sum.yaml (requirements for md5sum)
+      - docs/specs/product-requirements/prd021-sha1sum.yaml (requirements for sha1sum)
+      - docs/specs/product-requirements/prd022-sha256sum.yaml (requirements for sha256sum)
+      - docs/specs/product-requirements/prd023-sha512sum.yaml (requirements for sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (use case for md5sum)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (use case for sha1sum)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (use case for sha256sum)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (use case for sha512sum)
+      - docs/specs/test-suites/test-rel-05.4.yaml (test suite for the checksum quartet)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - pkg/sys/sigpipe.go (SIGPIPE handler used by all cmd/ utilities)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential testing)
+      - cmd/cat/main.go (reference for cmd/ implementation pattern and differential test structure)
+      - cmd/cat/cat_test.go (reference for test file structure and testutils usage)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum implementation using crypto/md5
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests against gmd5sum
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum implementation using crypto/sha1
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests against gsha1sum
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum implementation using crypto/sha256
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests against gsha256sum
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum implementation using crypto/sha512
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, and cmd/sha512sum as
+          four separate cmd/ packages. Each utility reads files named on the command
+          line (or stdin if no files given or if "-" is specified) and outputs the
+          hash in GNU coreutils format: "<hex-hash>  <filename>\n" (two spaces,
+          binary mode indicator). Use crypto/md5, crypto/sha1, crypto/sha256, and
+          crypto/sha512 from the Go standard library respectively.
+      - id: R2
+        text: |
+          Implement --check (-c) mode for all four utilities. In check mode, the
+          utility reads a file of "hash  filename" lines (as produced by the utility
+          itself), recomputes the hash for each listed file, and prints
+          "<filename>: OK" or "<filename>: FAILED" to stdout. Print a summary line
+          to stderr if any checks fail. Exit 0 if all checks pass, exit 1 if any
+          fail. Support --quiet, --status, and --warn flags that modify check output
+          per the PRD.
+      - id: R3
+        text: |
+          Implement --binary (-b) and --text (-t) mode flags. On GNU/Linux these
+          affect the mode indicator in output (space for text, asterisk for binary)
+          but do not change the actual hash computation. Match GNU coreutils behavior
+          exactly. Default mode is text on all platforms.
+      - id: R4
+        text: |
+          Write differential tests for all four utilities using pkg/testutils.RunDiffTests.
+          Reference binaries are gmd5sum, gsha1sum, gsha256sum, gsha512sum (Homebrew
+          GNU coreutils). Each test file must call exec.LookPath for the reference
+          binary and t.Skip if not found. Test cases must cover: stdin input, single
+          file, multiple files, --check mode with valid and invalid checksum files,
+          --binary and --text flags, missing file error handling, and "-" as stdin
+          placeholder. Set LC_ALL=C in test environment.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same code structure. Each main.go parses flags,
+          iterates over file arguments (defaulting to stdin), computes the hash, and
+          prints the result. Do NOT create a shared internal package for the common
+          logic -- the duplication across four small files is acceptable and keeps each
+          utility self-contained per the project architecture (each cmd/ package is
+          independent). Copy the pattern, varying only the hash import and function.
+      - id: D2
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() in all four
+          utilities, per the shared protocol in ARCHITECTURE.yaml.
+      - id: D3
+        text: |
+          Reference binary names for differential tests follow the Homebrew GNU
+          coreutils g-prefix convention: gmd5sum, gsha1sum, gsha256sum, gsha512sum.
+          Use exec.LookPath and t.Skip if not found, per the graceful skip protocol.
+      - id: D4
+        text: |
+          Do NOT install any packages in the test environment. If the reference binary
+          is not available, the test must t.Skip gracefully via exec.LookPath, not
+          attempt to install it.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/md5sum/main.go compiles and produces correct MD5 hashes matching gmd5sum output format
+      - id: AC2
+        text: cmd/sha1sum/main.go compiles and produces correct SHA-1 hashes matching gsha1sum output format
+      - id: AC3
+        text: cmd/sha256sum/main.go compiles and produces correct SHA-256 hashes matching gsha256sum output format
+      - id: AC4
+        text: cmd/sha512sum/main.go compiles and produces correct SHA-512 hashes matching gsha512sum output format
+      - id: AC5
+        text: All four utilities support --check (-c), --binary (-b), --text (-t), --quiet, --status, and --warn flags
+      - id: AC6
+        text: Differential tests pass for all four utilities when reference binaries are available
+      - id: AC7
+        text: Tests skip gracefully with t.Skip when reference binaries are not in PATH
+      - id: AC8
+        text: "go build ./cmd/md5sum ./cmd/sha1sum ./cmd/sha256sum ./cmd/sha512sum succeeds with no errors"
+  dependency: -1
+- index: 0
+  title: 'Task: Differential tests for checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/test-suites/test-rel-05.4.yaml (test cases for checksum utilities)
+      - docs/specs/product-requirements/prd016-checksum.yaml (requirements for md5sum, sha1sum, sha256sum, sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (md5sum use case)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (sha1sum use case)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (sha256sum use case)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (sha512sum use case)
+      - cmd/md5sum/main.go (existing implementation to test)
+      - cmd/sha1sum/main.go (existing implementation to test)
+      - cmd/sha256sum/main.go (existing implementation to test)
+      - cmd/sha512sum/main.go (existing implementation to test)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness)
+      - cmd/uniq/uniq_test.go (reference pattern for differential test files)
+
+    files:
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: Differential tests for md5sum against gmd5sum
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: Differential tests for sha1sum against gsha1sum
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: Differential tests for sha256sum against gsha256sum
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: Differential tests for sha512sum against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Write differential tests for cmd/md5sum covering compute mode (file args and stdin)
+          and check mode (-c flag) per test-rel-05.4.yaml test cases. Reference binary is gmd5sum.
+      - id: R2
+        text: |
+          Write differential tests for cmd/sha1sum covering compute mode (file args and stdin)
+          and check mode (-c flag) per test-rel-05.4.yaml test cases. Reference binary is gsha1sum.
+      - id: R3
+        text: |
+          Write differential tests for cmd/sha256sum covering compute mode (file args and stdin)
+          and check mode (-c flag) per test-rel-05.4.yaml test cases. Reference binary is gsha256sum.
+      - id: R4
+        text: |
+          Write differential tests for cmd/sha512sum covering compute mode (file args and stdin)
+          and check mode (-c flag) per test-rel-05.4.yaml test cases. Reference binary is gsha512sum.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the shared differential testing protocol: use testutils.BuildBinary to compile
+          the Go binary, exec.LookPath for the g-prefixed Homebrew reference binary, t.Skip if
+          the reference binary is not found, and testutils.RunDiffTests to execute the test matrix.
+      - id: D2
+        text: |
+          Each test file creates temporary files with known content for hash computation tests.
+          Check-mode tests create a checksum file (output of compute mode) then verify it with -c.
+      - id: D3
+        text: |
+          Set LC_ALL=C in the test environment via the Env field on DiffTest entries, consistent
+          with all other cmd/ test files in this project.
+      - id: D4
+        text: |
+          Test cases must cover: single file, multiple files, stdin (no file args), -c check mode
+          with valid checksums, -c check mode with tampered file, --quiet and --status flags if
+          specified in the PRD, and missing file error. Derive exact cases from test-rel-05.4.yaml.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/md5sum/md5sum_test.go exists and go test ./cmd/md5sum/ passes (or skips gracefully if gmd5sum not in PATH)
+      - id: AC2
+        text: cmd/sha1sum/sha1sum_test.go exists and go test ./cmd/sha1sum/ passes (or skips gracefully if gsha1sum not in PATH)
+      - id: AC3
+        text: cmd/sha256sum/sha256sum_test.go exists and go test ./cmd/sha256sum/ passes (or skips gracefully if gsha256sum not in PATH)
+      - id: AC4
+        text: cmd/sha512sum/sha512sum_test.go exists and go test ./cmd/sha512sum/ passes (or skips gracefully if gsha512sum not in PATH)
+      - id: AC5
+        text: Each test file follows the graceful-skip pattern -- t.Skip when the reference binary is not found, never attempt to install it
+      - id: AC6
+        text: go vet ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/ reports no errors
+  dependency: -1
+- index: 0
+  title: Implement checksum quartet cmd/ binaries (prd md5sum, sha1sum, sha256sum, sha512sum)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (all PRDs matching *md5sum*, *sha1sum*, *sha256sum*, *sha512sum*, or *checksum*)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml
+      - docs/specs/test-suites/test-rel-05.4.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE patterns)
+      - cmd/basename/main.go (reference for simple utility structure and SIGPIPE pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum utility using crypto/md5
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum utility using crypto/sha1
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum utility using crypto/sha256
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum utility using crypto/sha512
+
+    requirements:
+      - id: R1
+        text: |
+          Implement hash computation mode for each utility. When invoked with file arguments,
+          read each file and print "<hex-hash>  <filename>" (two spaces, GNU format) to stdout.
+          When invoked with no file arguments or with "-", read from stdin and print
+          "<hex-hash>  -". Use the corresponding crypto package (crypto/md5, crypto/sha1,
+          crypto/sha256, crypto/sha512). Match the PRD requirements for hash computation.
+      - id: R2
+        text: |
+          Implement --check (-c) mode per PRD. Read a checksum file (one "<hash>  <filename>"
+          per line), recompute the hash for each listed file, and print "<filename>: OK" or
+          "<filename>: FAILED" to stdout. Print a summary line to stderr if any checks fail.
+          Exit 1 if any file fails verification. Support both GNU two-space format and BSD
+          tag format on input when parsing check files, per PRD.
+      - id: R3
+        text: |
+          Implement --binary (-b) and --text (-t) flags per PRD. On Unix these are
+          no-ops (binary and text mode are identical) but the flag must be accepted
+          without error and the output prefix character must change accordingly
+          (" " for text, "*" for binary before the filename) to match GNU behavior.
+      - id: R4
+        text: |
+          Implement auxiliary flags per PRD: --quiet (suppress OK lines in check mode),
+          --status (no output in check mode, exit code only), --warn (-w, warn about
+          improperly formatted checksum lines), --strict (exit non-zero for improperly
+          formatted lines), --ignore-missing (ignore missing files in check mode).
+          Support --version and --help. Call pkg/sys.InstallSIGPIPEHandler() at the
+          start of main().
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same algorithmic structure. Each main.go is
+          self-contained -- do NOT create a shared internal package. The code duplication
+          is minimal (only the hash.New call differs) and keeps each utility independently
+          readable. This matches the project pattern where each cmd/ package is standalone.
+      - id: D2
+        text: |
+          Use Go standard library only: crypto/md5, crypto/sha1, crypto/sha256,
+          crypto/sha512, and io.Copy for streaming hash computation. Do not add
+          any external dependencies. Use pkg/sys for SIGPIPE handling only.
+      - id: D3
+        text: |
+          Flag parsing: use the flag package (standard library). Define flags matching
+          GNU coreutils long-flag names. Accept both single-dash and double-dash forms
+          where the PRD specifies short flags.
+      - id: D4
+        text: |
+          Exit codes: 0 on success, 1 on check failure or file-not-found errors.
+          Match GNU coreutils exit code behavior per PRD.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/md5sum/main.go, cmd/sha1sum/main.go, cmd/sha256sum/main.go, cmd/sha512sum/main.go all compile with "go build ./cmd/..."
+      - id: AC2
+        text: Each utility computes the correct hash when given a file argument and prints GNU-format output "<hex-hash>  <filename>"
+      - id: AC3
+        text: Each utility reads stdin when no file arguments are provided and prints "<hex-hash>  -"
+      - id: AC4
+        text: The --check flag reads a checksum file and verifies each entry, printing OK/FAILED per file
+      - id: AC5
+        text: All auxiliary flags (--quiet, --status, --warn, --strict, --ignore-missing, --binary, --text) are accepted without error
+      - id: AC6
+        text: Each utility calls pkg/sys.InstallSIGPIPEHandler() at the start of main()
+      - id: AC7
+        text: "go vet ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/" reports no issues
+  dependency: -1
+- index: 0
+  title: 'Task 366: Differential tests for checksum quartet cmd/ binaries (rel05.4 md5sum, sha1sum, sha256sum, sha512sum)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/test-suites/test-rel-05.4.yaml (test suite specification with explicit inputs and expected outputs)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (md5sum use case)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (sha1sum use case)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (sha256sum use case)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (sha512sum use case)
+      - pkg/testutils/difftest.go (DiffTest struct, RunDiffTests, BuildBinary API)
+      - cmd/md5sum/main.go (existing md5sum implementation)
+      - cmd/sha1sum/main.go (existing sha1sum implementation)
+      - cmd/sha256sum/main.go (existing sha256sum implementation)
+      - cmd/sha512sum/main.go (existing sha512sum implementation)
+      - cmd/uniq/uniq_test.go (reference example of differential test file structure in this project)
+
+    files:
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: Differential tests for md5sum against gmd5sum
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: Differential tests for sha1sum against gsha1sum
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: Differential tests for sha256sum against gsha256sum
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: Differential tests for sha512sum against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement TestDiff in each test file using the project's shared differential
+          testing protocol: testutils.BuildBinary to compile the Go binary, exec.LookPath
+          for the Homebrew reference binary (gmd5sum, gsha1sum, gsha256sum, gsha512sum),
+          t.Skip if reference not found, define []testutils.DiffTest test cases, and call
+          testutils.RunDiffTests.
+      - id: R2
+        text: |
+          Cover stdin hashing (piped input with no file arguments), single file hashing,
+          multiple file hashing, and missing file error behavior. Each scenario is a
+          DiffTest entry with appropriate Args, Stdin, and WorkDir fields. Use temporary
+          files created via t.TempDir for file-based test cases.
+      - id: R3
+        text: |
+          Cover check mode (-c flag): create a valid checksum file in the test WorkDir,
+          pass it with -c, and verify the Go binary matches the reference binary output.
+          Include a case with a deliberately wrong checksum to verify failure output parity.
+      - id: R4
+        text: |
+          Cover binary mode flag (-b) and text mode flag (-t) for file hashing. Verify
+          output format matches the reference binary (two-space separator for text mode,
+          space-asterisk separator for binary mode on GNU). Include --tag format if the
+          PRD specifies it.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four test files follow identical structure, differing only in package name,
+          reference binary name (gmd5sum, gsha1sum, gsha256sum, gsha512sum), and the hash
+          values in check-mode test fixtures. Do not abstract a shared test helper across
+          packages -- each file is self-contained per the project convention.
+      - id: D2
+        text: |
+          Set LC_ALL=C in the Env field of every DiffTest entry, per the project's locale
+          handling decision (ARCHITECTURE.yaml DD6). This ensures byte-identical output
+          comparison between Go and GNU binaries.
+      - id: D3
+        text: |
+          For check-mode tests, generate the valid checksum file dynamically by running
+          the reference binary on a known input file and capturing its output, then feeding
+          that output as the -c input. This avoids hardcoding hash values that differ per
+          algorithm.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/md5sum/ passes (or skips gracefully if gmd5sum not in PATH)"
+      - id: AC2
+        text: "go test ./cmd/sha1sum/ passes (or skips gracefully if gsha1sum not in PATH)"
+      - id: AC3
+        text: "go test ./cmd/sha256sum/ passes (or skips gracefully if gsha256sum not in PATH)"
+      - id: AC4
+        text: "go test ./cmd/sha512sum/ passes (or skips gracefully if gsha512sum not in PATH)"
+      - id: AC5
+        text: Each test file covers at least 4 DiffTest cases -- stdin, single file, multiple files, and check mode
+      - id: AC6
+        text: No test file imports any package outside testing, os, os/exec, path/filepath, and pkg/testutils
+  dependency: -1
+- index: 0
+  title: 'Task 367: Differential tests for checksum quartet cmd/ binaries (rel05.4-uc001 md5sum, rel05.4-uc002 sha1sum, rel05.4-uc003 sha256sum, rel05.4-uc004 sha512sum)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/test-suites/test-rel-05.4.yaml (test cases for all four checksum utilities)
+      - docs/specs/product-requirements/ (PRDs for md5sum, sha1sum, sha256sum, sha512sum -- locate by name)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (use case for md5sum)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (use case for sha1sum)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (use case for sha256sum)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (use case for sha512sum)
+      - cmd/md5sum/main.go (existing implementation from prior task)
+      - cmd/sha1sum/main.go (existing implementation from prior task)
+      - cmd/sha256sum/main.go (existing implementation from prior task)
+      - cmd/sha512sum/main.go (existing implementation from prior task)
+      - pkg/testutils/ (differential testing harness API)
+      - cmd/uniq/uniq_test.go (reference for differential test pattern in a recent utility)
+      - cmd/comm/comm_test.go (reference for differential test pattern in a recent utility)
+
+    files:
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: Differential tests for md5sum against gmd5sum reference binary
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: Differential tests for sha1sum against gsha1sum reference binary
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: Differential tests for sha256sum against gsha256sum reference binary
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: Differential tests for sha512sum against gsha512sum reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement differential tests for cmd/md5sum covering: basic file hashing,
+          stdin hashing, multiple file arguments, -c/--check mode (valid and corrupt
+          checksums), --tag (BSD-style output), -b/--binary flag, and missing file
+          error handling. Use testutils.BuildBinary and testutils.RunDiffTests.
+          Reference binary is "gmd5sum" via exec.LookPath.
+      - id: R2
+        text: |
+          Implement differential tests for cmd/sha1sum with the same test case
+          categories as R1. Reference binary is "gsha1sum" via exec.LookPath.
+      - id: R3
+        text: |
+          Implement differential tests for cmd/sha256sum with the same test case
+          categories as R1. Reference binary is "gsha256sum" via exec.LookPath.
+      - id: R4
+        text: |
+          Implement differential tests for cmd/sha512sum with the same test case
+          categories as R1. Reference binary is "gsha512sum" via exec.LookPath.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the established differential test pattern from other cmd/ packages.
+          Each test file has a single TestDiff function that builds the Go binary
+          with testutils.BuildBinary(t, "."), looks up the reference binary with
+          exec.LookPath("g<utility>"), calls t.Skip if the reference is not found,
+          defines a []testutils.DiffTest slice, and calls testutils.RunDiffTests.
+      - id: D2
+        text: |
+          For --check mode tests, create temporary checksum files in t.TempDir().
+          Generate the checksum file by running the Go binary on a known input file,
+          then use -c against the generated checksum file. Also test a corrupted
+          checksum file (modified hash) to verify error output and exit code.
+      - id: D3
+        text: |
+          All four test files share the same structure and test categories because
+          the utilities have identical CLI interfaces (only the hash algorithm
+          differs). Read existing cmd/ test files (e.g., cmd/uniq/uniq_test.go,
+          cmd/comm/comm_test.go) to match the project's established style and
+          patterns exactly.
+      - id: D4
+        text: |
+          Set LC_ALL=C in the Env field of every DiffTest to match the project
+          convention for deterministic output comparison.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/md5sum/md5sum_test.go exists and go test ./cmd/md5sum/ passes"
+      - id: AC2
+        text: "cmd/sha1sum/sha1sum_test.go exists and go test ./cmd/sha1sum/ passes"
+      - id: AC3
+        text: "cmd/sha256sum/sha256sum_test.go exists and go test ./cmd/sha256sum/ passes"
+      - id: AC4
+        text: "cmd/sha512sum/sha512sum_test.go exists and go test ./cmd/sha512sum/ passes"
+      - id: AC5
+        text: "Each test file includes at least: basic file hash, stdin hash, multiple files, --check with valid file, --check with corrupt file, --tag output, and missing file error case"
+      - id: AC6
+        text: "go vet ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Implement checksum quartet cmd/ binaries (prd md5sum, sha1sum, sha256sum, sha512sum)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (all prd*md5sum*, prd*sha1sum*, prd*sha256sum*, prd*sha512sum* files)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml
+      - docs/specs/test-suites/test-rel-05.4.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE patterns)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+      - cmd/cat/main.go (reference for cmd/ structure and differential test pattern)
+      - cmd/cat/cat_test.go (reference for test file structure)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum binary using crypto/md5
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests against gmd5sum
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum binary using crypto/sha1
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests against gsha1sum
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum binary using crypto/sha256
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests against gsha256sum
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum binary using crypto/sha512
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, and cmd/sha512sum as standalone binaries.
+          Each binary reads files listed on the command line (or stdin if no files given) and prints
+          the checksum and filename in GNU coreutils format: "<hash>  <filename>\n" (two spaces for
+          text mode, space-asterisk for binary mode). Use crypto/md5, crypto/sha1, crypto/sha256,
+          and crypto/sha512 respectively from Go's standard library.
+      - id: R2
+        text: |
+          Support --check (-c) mode: read lines in the format "<hash>  <filename>" or
+          "<hash> *<filename>", recompute the hash for each file, and report OK or FAILED.
+          Exit 0 if all checks pass, exit 1 if any check fails. Support --status (suppress output,
+          exit code only), --warn (-w, warn about improperly formatted lines), --strict (exit
+          non-zero for improperly formatted lines), and --quiet (suppress OK lines in check output).
+      - id: R3
+        text: |
+          Support --binary (-b) and --text (-t) flags. On GNU/POSIX systems these are equivalent
+          (no CR/LF translation), but --binary changes the output format to use " *" instead of
+          "  " between hash and filename. Default is text mode. When reading from stdin with no
+          filename args, use "-" as the filename in output.
+      - id: R4
+        text: |
+          Write differential tests for each utility. Use testutils.BuildBinary to compile the Go
+          binary and exec.LookPath to find the GNU reference binary (gmd5sum, gsha1sum, gsha256sum,
+          gsha512sum). Call t.Skip if the reference binary is not found. Use testutils.RunDiffTests
+          to compare stdout, stderr, and exit code. Test cases must cover: single file, multiple
+          files, stdin, --check mode with valid and invalid checksums, --binary flag output format,
+          missing file error, and --quiet/--status/--warn/--strict flag interactions with --check.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() in each binary, per the
+          shared SIGPIPE protocol in ARCHITECTURE.yaml.
+      - id: D2
+        text: |
+          Each cmd/<utility>/main.go is a self-contained binary. Do NOT create a shared checksum
+          package in pkg/. The four binaries are small enough that minor duplication of flag parsing
+          is acceptable and keeps each utility independent. If the main logic (hash-and-print,
+          check-mode) exceeds 30 lines, extract it into unexported functions within the same package.
+      - id: D3
+        text: |
+          Use testutils.BuildBinary(t, ".") to build the Go binary under test. Reference binary
+          names follow the Homebrew g-prefix convention: gmd5sum, gsha1sum, gsha256sum, gsha512sum.
+          If exec.LookPath fails for the reference binary, call t.Skipf -- do NOT attempt to
+          install any packages.
+      - id: D4
+        text: |
+          For --check mode parsing, accept both "<hash>  <filename>" (text mode, two spaces) and
+          "<hash> *<filename>" (binary mode, space-asterisk). Lines that do not match either format
+          are improperly formatted -- warn or error depending on --warn/--strict flags.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/md5sum/main.go, cmd/sha1sum/main.go, cmd/sha256sum/main.go, cmd/sha512sum/main.go each compile to a standalone binary with go build."
+      - id: AC2
+        text: "Each binary produces GNU-compatible output format: '<hex-hash>  <filename>' for text mode, '<hex-hash> *<filename>' for binary mode."
+      - id: AC3
+        text: "Each binary's --check mode correctly verifies checksums and exits 0 on all-pass, 1 on any failure."
+      - id: AC4
+        text: "Differential tests exist in each cmd/<utility>/<utility>_test.go and pass when the GNU reference binary is available."
+      - id: AC5
+        text: "All four binaries handle stdin input (no filename args) and print '-' as the filename."
+      - id: AC6
+        text: "go vet ./cmd/md5sum/... ./cmd/sha1sum/... ./cmd/sha256sum/... ./cmd/sha512sum/... reports no errors."
+  dependency: -1
+- index: 0
+  title: cmd/md5sum implementation -- prd checksum R1-R4
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd016-checksums.yaml (requirements for all checksum utilities)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (md5sum use case and success criteria)
+      - docs/specs/test-suites/test-rel-05.4.yaml (test cases for checksum quartet)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler implementation to call from main)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for writing tests)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum utility implementation -- hash computation, file reading, check mode
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests against gmd5sum reference binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement md5sum file hashing mode. Read each file argument (or stdin when no
+          files given, or when "-" is specified) and write the MD5 hash followed by two
+          spaces and the filename to stdout. Use crypto/md5 from the Go standard library.
+          Output format is the GNU coreutils format: 32 lowercase hex digits, two spaces,
+          filename, newline. For stdin, print "-" as the filename.
+      - id: R2
+        text: |
+          Implement --check (-c) mode. Read a checksum file (or stdin) in GNU md5sum
+          output format, recompute each hash, and report "filename: OK" or
+          "filename: FAILED" on stdout. Print a summary line to stderr if any files
+          failed: "md5sum: WARNING: N computed checksum(s) did NOT match". Exit 1 if
+          any checksum fails or any line is improperly formatted.
+      - id: R3
+        text: |
+          Implement check-mode modifier flags: --quiet (-q) suppresses "OK" lines,
+          --status suppresses all output and only sets the exit code, --warn (-w)
+          prints a warning to stderr for each improperly formatted line. --strict
+          causes improperly formatted lines to produce a non-zero exit code.
+      - id: R4
+        text: |
+          Implement --binary (-b) and --text (-t) flags. On GNU/Linux these are no-ops
+          for md5sum but affect the output format marker: binary mode uses " *" between
+          hash and filename, text mode uses "  " (two spaces). Default is text mode.
+          In --check mode, accept both markers when parsing input lines.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the
+          project's shared SIGPIPE protocol (ARCHITECTURE.yaml shared_protocols).
+      - id: D2
+        text: |
+          Use the standard library flag package for argument parsing. Define flags
+          matching GNU coreutils long and short forms: -c/--check, -b/--binary,
+          -t/--text, -q/--quiet, --status, -w/--warn, --strict. Use os.Args
+          processing for flags that the flag package cannot express natively.
+      - id: D3
+        text: |
+          Use the differential testing pattern from ARCHITECTURE.yaml shared_protocols.
+          Build the Go binary via testutils.BuildBinary, look up gmd5sum via
+          exec.LookPath, skip if not found, define []testutils.DiffTest cases, and
+          call testutils.RunDiffTests.
+      - id: D4
+        text: |
+          Handle errors per GNU coreutils convention. Print "md5sum: <filename>: No
+          such file or directory" to stderr for missing files and continue processing
+          remaining arguments. Exit 1 if any file could not be read. For --check mode,
+          print "md5sum: <filename>: No such file or directory" for files referenced
+          in the checksum file that cannot be opened.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/md5sum/main.go compiles with "go build ./cmd/md5sum/" and produces a working binary.
+      - id: AC2
+        text: "Hashing mode: running the binary on a file produces output matching gmd5sum byte-for-byte (hash, spacing, filename, newline)."
+      - id: AC3
+        text: "Check mode: --check reads a checksum file and reports OK/FAILED matching gmd5sum behavior."
+      - id: AC4
+        text: "Modifier flags: --quiet, --status, --warn, and --strict behave identically to gmd5sum."
+      - id: AC5
+        text: "Binary/text flags: -b and -t produce the correct marker character (* vs space) in output."
+      - id: AC6
+        text: Differential tests in cmd/md5sum/md5sum_test.go pass against gmd5sum reference binary. Tests skip gracefully if gmd5sum is not in PATH.
+      - id: AC7
+        text: "go vet ./cmd/md5sum/ reports no issues."
+  dependency: -1
+- index: 0
+  title: Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum -- checksum quartet production code
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (PRDs for md5sum, sha1sum, sha256sum, sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml
+      - docs/specs/test-suites/test-rel-05.4.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE handling)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum utility using crypto/md5
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum utility using crypto/sha1
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum utility using crypto/sha256
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum utility using crypto/sha512
+
+    requirements:
+      - id: R1
+        text: |
+          Each utility reads input from files listed on the command line or from
+          stdin when no files are given (or when "-" is specified). Compute the
+          hash using the corresponding crypto/* package and write output in GNU
+          coreutils format: lowercase hex hash, two spaces, filename (or "-" for
+          stdin). One line per input file. Follow PRD requirements for input handling.
+      - id: R2
+        text: |
+          Implement --check (-c) mode: read lines in "hash  filename" format from
+          a file (or stdin), recompute the hash for each listed file, and print
+          "filename: OK" or "filename: FAILED". Exit 1 if any check fails. Print
+          a summary warning to stderr if any lines failed. Follow PRD requirements
+          for --check behavior including --quiet, --status, and --warn flags if
+          specified by the PRD.
+      - id: R3
+        text: |
+          Implement --binary (-b) and --text (-t) flags. On this platform both
+          modes produce the same output since there is no text/binary distinction
+          on Unix. The --binary flag sets the mode indicator to "*" before the
+          filename; --text sets it to " ". Default is text mode. Follow the PRD
+          for exact flag semantics.
+      - id: R4
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() in each
+          utility per the shared SIGPIPE protocol. Handle --help and --version
+          flags: --help prints usage to stdout and exits 0; --version prints
+          version info to stdout and exits 0. Exit code is 0 on success, 1 on
+          any failure (missing file, failed check, malformed check line).
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same structure. Each main.go implements
+          the full utility independently -- do not create a shared internal
+          package. The code duplication is acceptable given each file is ~40-50
+          lines and a shared abstraction adds complexity without benefit for
+          four trivially similar programs.
+      - id: D2
+        text: |
+          Use Go standard library only: crypto/md5, crypto/sha1, crypto/sha256,
+          crypto/sha512, encoding/hex, flag, fmt, io, os, bufio. Import
+          github.com/petar-djukic/go-unix-utils/pkg/sys for SIGPIPE handling.
+          Do not import pkg/format or any external dependency.
+      - id: D3
+        text: |
+          Follow the GNU coreutils output format exactly. Hash output is lowercase
+          hexadecimal. The separator between hash and filename is two spaces for
+          text mode, one space and asterisk for binary mode. When reading from
+          stdin, use "-" as the filename in output.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/md5sum/main.go compiles with "go build ./cmd/md5sum/"
+      - id: AC2
+        text: cmd/sha1sum/main.go compiles with "go build ./cmd/sha1sum/"
+      - id: AC3
+        text: cmd/sha256sum/main.go compiles with "go build ./cmd/sha256sum/"
+      - id: AC4
+        text: cmd/sha512sum/main.go compiles with "go build ./cmd/sha512sum/"
+      - id: AC5
+        text: |
+          Each utility produces correct hash output for a known test input.
+          For example, "echo -n hello | go run ./cmd/md5sum/" outputs
+          "5d41402abc4b2a76b9719d911017c592  -"
+      - id: AC6
+        text: |
+          Each utility supports --check mode: given a valid checksum file,
+          it verifies each entry and exits 0 when all pass, 1 when any fail.
+      - id: AC7
+        text: "go vet ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4 checksum quartet)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (PRD(s) covering md5sum, sha1sum, sha256sum, sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml
+      - docs/specs/test-suites/test-rel-05.4.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern and SIGPIPE handling)
+      - pkg/sys/ (InstallSIGPIPEHandler contract)
+      - pkg/testutils/ (DiffTest and RunDiffTests contract for test file structure reference)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum utility using crypto/md5
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum utility using crypto/sha1
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum utility using crypto/sha256
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum utility using crypto/sha512
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/md5sum/main.go that reads files (or stdin when no files given or file is "-"),
+          computes MD5 checksums via crypto/md5, and prints output in GNU coreutils format:
+          "<hex-hash>  <filename>" (two spaces before filename, "-" for stdin). Support --check mode
+          that reads a checksum file and verifies each entry, printing "<filename>: OK" or
+          "<filename>: FAILED" with a summary line and exit code 1 on any failure. Support --tag mode
+          for BSD-style output. Support --binary/-b and --text/-t flags (on POSIX systems these are
+          equivalent but affect the output marker: " " for text, "*" for binary before the filename).
+          Support --quiet, --status, and --warn flags for --check mode. Match GNU md5sum flag names
+          and short options exactly per the PRD.
+      - id: R2
+        text: |
+          Implement cmd/sha1sum/main.go with identical structure and flags to md5sum, substituting
+          crypto/sha1 for the hash algorithm and producing 40-character hex digests. The --tag output
+          uses "SHA1" as the algorithm label.
+      - id: R3
+        text: |
+          Implement cmd/sha256sum/main.go with identical structure and flags to md5sum, substituting
+          crypto/sha256 for the hash algorithm and producing 64-character hex digests. The --tag output
+          uses "SHA256" as the algorithm label.
+      - id: R4
+        text: |
+          Implement cmd/sha512sum/main.go with identical structure and flags to md5sum, substituting
+          crypto/sha512 for the hash algorithm and producing 128-character hex digests. The --tag output
+          uses "SHA512" as the algorithm label.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same CLI logic and differ only in the hash.Hash constructor
+          and algorithm label string. Factor the shared checksum logic into a helper function within
+          each main.go file (do NOT create a shared pkg/ package for this -- keep each cmd/ package
+          self-contained). Duplicating ~40 lines of shared logic across four files is acceptable and
+          preferred over a premature abstraction.
+      - id: D2
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the project shared protocol.
+      - id: D3
+        text: |
+          Use only Go standard library packages (crypto/md5, crypto/sha1, crypto/sha256, crypto/sha512,
+          encoding/hex, flag, fmt, io, os, bufio) plus pkg/sys. No external dependencies.
+      - id: D4
+        text: |
+          Parse flags using the Go standard flag package. Register long flags (--check, --tag, --binary,
+          --text, --quiet, --status, --warn, --strict) and their short aliases (-c, -b, -t, -w).
+          Print version info on --version and usage on --help, matching GNU behavior: exit 0 for
+          --help/--version, exit 1 for errors.
+      - id: D5
+        text: |
+          Error messages go to stderr and follow GNU format: "<utility>: <filename>: <error>".
+          Exit code is 0 on success, 1 on any checksum mismatch or I/O error.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/md5sum/main.go compiles with "go build ./cmd/md5sum/" and produces a working binary.
+      - id: AC2
+        text: cmd/sha1sum/main.go compiles with "go build ./cmd/sha1sum/" and produces a working binary.
+      - id: AC3
+        text: cmd/sha256sum/main.go compiles with "go build ./cmd/sha256sum/" and produces a working binary.
+      - id: AC4
+        text: cmd/sha512sum/main.go compiles with "go build ./cmd/sha512sum/" and produces a working binary.
+      - id: AC5
+        text: |
+          Each binary, when given a file argument, prints the correct checksum in GNU format
+          "<hex-hash>  <filename>" to stdout and exits 0.
+      - id: AC6
+        text: |
+          Each binary, when given no arguments, reads stdin and prints "<hex-hash>  -" to stdout.
+      - id: AC7
+        text: |
+          Each binary supports --check mode: reads a checksum file, verifies each entry, prints
+          OK/FAILED per line, and exits 1 if any entry fails.
+      - id: AC8
+        text: "golangci-lint run ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/ passes with no errors."
+  dependency: -1
+- index: 0
+  title: Differential tests for cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/test-suites/test-rel-05.4.yaml (test cases for all four checksum utilities)
+      - docs/specs/product-requirements/prd016-checksums.yaml (requirements for md5sum, sha1sum, sha256sum, sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (use case for md5sum)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (use case for sha1sum)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (use case for sha256sum)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (use case for sha512sum)
+      - cmd/md5sum/main.go (implementation to verify)
+      - cmd/sha1sum/main.go (implementation to verify)
+      - cmd/sha256sum/main.go (implementation to verify)
+      - cmd/sha512sum/main.go (implementation to verify)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern and graceful skip)
+
+    files:
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: Differential tests for md5sum against gmd5sum
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: Differential tests for sha1sum against gsha1sum
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: Differential tests for sha256sum against gsha256sum
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: Differential tests for sha512sum against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Write differential tests for cmd/md5sum covering stdin hashing, file argument hashing,
+          multiple file arguments, --check mode (valid and corrupt), --tag mode (BSD-style output),
+          --binary and --text flags, and missing file error handling. Reference binary is gmd5sum.
+      - id: R2
+        text: |
+          Write differential tests for cmd/sha1sum with the same test matrix as R1.
+          Reference binary is gsha1sum.
+      - id: R3
+        text: |
+          Write differential tests for cmd/sha256sum with the same test matrix as R1.
+          Reference binary is gsha256sum.
+      - id: R4
+        text: |
+          Write differential tests for cmd/sha512sum with the same test matrix as R1.
+          Reference binary is gsha512sum.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the project's shared differential testing protocol: use testutils.BuildBinary
+          to compile the Go binary, exec.LookPath for the reference binary, t.Skip if reference
+          not found, and testutils.RunDiffTests to compare stdout, stderr, and exit code.
+      - id: D2
+        text: |
+          All four test files follow an identical structure -- define a TestDiff function with
+          a []testutils.DiffTest slice. Vary only the reference binary name (gmd5sum, gsha1sum,
+          gsha256sum, gsha512sum) and the test case expected outputs. Do NOT abstract a shared
+          helper across the four files; each file is self-contained.
+      - id: D3
+        text: |
+          For --check mode tests, create temporary checksum files in t.TempDir() using the
+          reference binary's output format. Test both valid checksums and deliberately corrupted
+          checksums to verify exit code 1 and warning output.
+      - id: D4
+        text: |
+          Set LC_ALL=C in the Env field of every DiffTest to ensure consistent error messages
+          and output between Go and GNU binaries.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/md5sum/ passes with gmd5sum as reference binary"
+      - id: AC2
+        text: "go test ./cmd/sha1sum/ passes with gsha1sum as reference binary"
+      - id: AC3
+        text: "go test ./cmd/sha256sum/ passes with gsha256sum as reference binary"
+      - id: AC4
+        text: "go test ./cmd/sha512sum/ passes with gsha512sum as reference binary"
+      - id: AC5
+        text: "Each test file gracefully skips (t.Skip) when the reference binary is not in PATH"
+      - id: AC6
+        text: "Each test file covers at minimum: stdin input, single file, multiple files, --check valid, --check corrupt, --tag, missing file error"
+  dependency: -1
+- index: 0
+  title: Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4 checksum quartet)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the PRD(s) covering md5sum, sha1sum, sha256sum, sha512sum)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml
+      - docs/specs/test-suites/test-rel-05.4.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern and SIGPIPE handling)
+      - cmd/ (read any existing cmd/ implementations for style and pattern consistency)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+      - pkg/testutils/ (DiffTest and RunDiffTests for test file structure reference)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum implementation using crypto/md5
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum implementation using crypto/sha1
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum implementation using crypto/sha256
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum implementation using crypto/sha512
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests for md5sum
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests for sha1sum
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests for sha256sum
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests for sha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, and cmd/sha512sum as standalone Go binaries.
+          Each utility reads files listed on the command line (or stdin if no files given) and prints
+          the checksum followed by two spaces and the filename, one line per file. Use crypto/md5,
+          crypto/sha1, crypto/sha256, and crypto/sha512 respectively. Stdin is displayed as "-".
+      - id: R2
+        text: |
+          Support the --check (-c) flag. In check mode, read lines in the format "HASH  FILENAME",
+          recompute the hash for each file, and print "FILENAME: OK" or "FILENAME: FAILED". Exit 1
+          if any file fails verification. Print a summary line to stderr: "N computed checksums did
+          NOT match" when failures occur. Follow GNU behavior for malformed lines (warn and skip).
+      - id: R3
+        text: |
+          Support the --binary (-b) and --text (-t) flags. On Unix these do not change behavior
+          (files are always read in binary mode) but --binary prefixes the filename with " *" instead
+          of "  " in output, and --text uses "  " (the default). In --check mode, recognize both
+          " *" (binary) and "  " (text) markers in input lines.
+      - id: R4
+        text: |
+          Support --tag flag for BSD-style output: ALGORITHM (FILENAME) = HASH. Support --quiet
+          (suppress OK lines in check mode), --status (no output in check mode, exit code only),
+          and --warn (-w, warn about malformed check lines). Support --strict (exit non-zero for
+          malformed check lines). Support --ignore-missing (in check mode, skip files that do not
+          exist instead of reporting failure). Handle --version and --help per GNU conventions.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of each main() to match GNU behavior
+          when piped output is consumed by a downstream consumer that closes stdin.
+      - id: D2
+        text: |
+          Each cmd/<utility>/main.go is a standalone implementation. Do NOT create a shared internal
+          package for checksum logic. The four files will have similar structure but each is
+          self-contained. This matches the project pattern where each cmd/ package is independent.
+      - id: D3
+        text: |
+          Use os.Exit(1) for check-mode failures, os.Exit(2) for usage errors. Write error messages
+          to stderr using fmt.Fprintf(os.Stderr, ...). Parse flags using the flag package with
+          custom usage matching GNU output style.
+      - id: D4
+        text: |
+          For differential tests, follow the shared_protocols pattern from ARCHITECTURE.yaml exactly.
+          Use testutils.BuildBinary to compile the Go binary. Use exec.LookPath to find the GNU
+          reference binary (gmd5sum, gsha1sum, gsha256sum, gsha512sum). Call t.Skip if not found.
+          Define tests as []testutils.DiffTest and call testutils.RunDiffTests. Set LC_ALL=C in test
+          environment.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/md5sum/main.go, cmd/sha1sum/main.go, cmd/sha256sum/main.go, cmd/sha512sum/main.go exist and compile with go build ./cmd/..."
+      - id: AC2
+        text: "Each utility reads files from args or stdin and prints correct checksums in GNU format: HASH followed by two spaces and filename"
+      - id: AC3
+        text: "The --check flag reads checksum files and verifies each entry, printing OK/FAILED and exiting 1 on any failure"
+      - id: AC4
+        text: "The --binary, --text, --tag, --quiet, --status, --warn, --strict, and --ignore-missing flags are implemented per GNU behavior"
+      - id: AC5
+        text: "Each utility handles --version and --help without error"
+      - id: AC6
+        text: "Differential test files exist for all four utilities and pass when GNU reference binaries are available"
+      - id: AC7
+        text: "go vet ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/ reports no issues"
+  dependency: -1
+- index: 0
+  title: Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4 checksum quartet)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd020-md5sum.yaml (md5sum requirements)
+      - docs/specs/product-requirements/prd021-sha1sum.yaml (sha1sum requirements)
+      - docs/specs/product-requirements/prd022-sha256sum.yaml (sha256sum requirements)
+      - docs/specs/product-requirements/prd023-sha512sum.yaml (sha512sum requirements)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml (md5sum use case)
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml (sha1sum use case)
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml (sha256sum use case)
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml (sha512sum use case)
+      - docs/specs/test-suites/test-rel-05.4.yaml (test suite for differential test cases)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for test file)
+      - cmd/cat/main.go (reference for cmd/ implementation pattern -- flag parsing, stdin fallback, exit codes)
+      - cmd/cat/cat_test.go (reference for differential test file pattern)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum implementation using crypto/md5
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum implementation using crypto/sha1
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum implementation using crypto/sha256
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum implementation using crypto/sha512
+      - path: cmd/md5sum/md5sum_test.go
+        action: create
+        note: differential tests for md5sum against gmd5sum
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: differential tests for sha1sum against gsha1sum
+      - path: cmd/sha256sum/sha256sum_test.go
+        action: create
+        note: differential tests for sha256sum against gsha256sum
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests for sha512sum against gsha512sum
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the core hash-and-print loop for all four utilities. Each reads
+          file arguments (or stdin when no arguments or "-" is given), computes
+          the hash using the corresponding crypto/* package, and prints one line
+          per input in GNU format: "<hex-hash>  <filename>\n" (two spaces before
+          filename, "-" for stdin). Reference the PRD requirements for each utility.
+      - id: R2
+        text: |
+          Implement --check (-c) mode for all four utilities. In check mode, the
+          utility reads a checksum file (lines in GNU format), recomputes hashes
+          for each listed file, and prints "<filename>: OK" or "<filename>: FAILED".
+          Print a summary line to stderr: "N computed checksums did NOT match".
+          Exit 0 if all match, exit 1 if any mismatch or read failure.
+      - id: R3
+        text: |
+          Implement check-mode modifier flags: --quiet/-q (suppress OK lines),
+          --status (suppress all output, exit code only), --warn/-w (warn about
+          improperly formatted checksum lines), --strict (exit non-zero for
+          improperly formatted lines). --binary/-b and --text/-t flags must be
+          accepted but are no-ops on GNU/Linux and macOS (both modes produce
+          identical output).
+      - id: R4
+        text: |
+          Write differential tests for all four utilities. Each test file follows
+          the project pattern: build the Go binary with testutils.BuildBinary,
+          look up the reference binary (gmd5sum, gsha1sum, gsha256sum, gsha512sum)
+          with exec.LookPath and t.Skip if not found, define []testutils.DiffTest
+          cases covering hash mode and check mode, and run testutils.RunDiffTests.
+          Do NOT install any packages -- use graceful t.Skip via exec.LookPath.
+
+    design_decisions:
+      - id: D1
+        text: |
+          All four utilities share the same structure. Each main.go is self-contained
+          with no shared internal package -- the hash algorithm is the only variation.
+          Use crypto/md5, crypto/sha1, crypto/sha256, crypto/sha512 respectively.
+          Do not create a shared checksum library; the duplication is minimal and
+          keeps each utility independent per the project architecture.
+      - id: D2
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main() per the project
+          shared protocol. Import github.com/petar-djukic/go-unix-utils/pkg/sys.
+      - id: D3
+        text: |
+          For --check mode parsing, accept both "<hash>  <filename>" (binary, two spaces)
+          and "<hash> <filename>" (text, one space + asterisk or space). Match GNU
+          coreutils behavior for line format validation.
+      - id: D4
+        text: |
+          Reference binary names use the Homebrew g-prefix convention: gmd5sum,
+          gsha1sum, gsha256sum, gsha512sum. Use exec.LookPath and t.Skip if not
+          found, per the graceful-skip shared protocol.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/md5sum/main.go compiles and produces correct md5 hashes matching gmd5sum output"
+      - id: AC2
+        text: "cmd/sha1sum/main.go compiles and produces correct sha1 hashes matching gsha1sum output"
+      - id: AC3
+        text: "cmd/sha256sum/main.go compiles and produces correct sha256 hashes matching gsha256sum output"
+      - id: AC4
+        text: "cmd/sha512sum/main.go compiles and produces correct sha512 hashes matching gsha512sum output"
+      - id: AC5
+        text: "All four utilities support --check mode with --quiet, --status, --warn, --strict flags"
+      - id: AC6
+        text: "All four test files pass with go test ./cmd/md5sum/ ./cmd/sha1sum/ ./cmd/sha256sum/ ./cmd/sha512sum/"
+      - id: AC7
+        text: "Tests gracefully skip (t.Skip) when reference binaries are not in PATH"
+      - id: AC8
+        text: "All four utilities call sys.InstallSIGPIPEHandler() at startup"
+  dependency: -1
+- index: 0
+  title: Implement cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4 R1-R4 checksum computation and verification)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (PRDs for md5sum, sha1sum, sha256sum, sha512sum -- find the prdNNN-md5sum.yaml, prdNNN-sha1sum.yaml, prdNNN-sha256sum.yaml, prdNNN-sha512sum.yaml files)
+      - docs/specs/use-cases/rel05.4-uc001-md5sum.yaml
+      - docs/specs/use-cases/rel05.4-uc002-sha1sum.yaml
+      - docs/specs/use-cases/rel05.4-uc003-sha256sum.yaml
+      - docs/specs/use-cases/rel05.4-uc004-sha512sum.yaml
+      - docs/specs/test-suites/test-rel-05.4.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern and SIGPIPE handling)
+      - cmd/basename/main.go (reference for simple utility structure -- flag parsing, main layout)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: create
+        note: md5sum utility using crypto/md5
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: sha1sum utility using crypto/sha1
+      - path: cmd/sha256sum/main.go
+        action: create
+        note: sha256sum utility using crypto/sha256
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum utility using crypto/sha512
+
+    requirements:
+      - id: R1
+        text: "Implement hash computation mode: read files (or stdin when no files given or file is '-'), compute the hash, and print output in GNU coreutils format 'hexhash  filename' (two spaces for text mode). Each utility uses its corresponding crypto/* package (crypto/md5, crypto/sha1, crypto/sha256, crypto/sha512). Follow the PRD requirements for each utility exactly."
+      - id: R2
+        text: "Implement --check mode (-c): read a checksum file (one 'hash  filename' line per entry), recompute the hash of each listed file, and print 'filename: OK' or 'filename: FAILED'. Exit 1 if any file fails verification. Support --quiet (suppress OK lines), --status (no output, exit code only), --warn (warn about improperly formatted lines), and --strict (exit non-zero on improperly formatted lines) as specified in the PRDs."
+      - id: R3
+        text: "Implement --binary (-b) and --text (-t) flags. On Unix these do not change hashing behavior but affect the output format marker: text mode uses two spaces ('  ') between hash and filename, binary mode uses ' *' (space-asterisk). Default to text mode on Unix. In --check mode, accept both formats."
+      - id: R4
+        text: "Handle --version and --help flags per GNU coreutils conventions: --version prints '<utility> (Go coreutils) 1.0' and exits 0; --help prints usage to stdout and exits 0. Call pkg/sys.InstallSIGPIPEHandler() at the start of main(). Exit 1 and print diagnostic to stderr for unreadable files, continuing to process remaining files."
+
+    design_decisions:
+      - id: D1
+        text: "Each utility is a standalone main.go with no shared internal package. The four utilities are structurally identical except for the hash.Hash constructor import. Each is ~50-60 lines. Do not create an internal shared checksum library -- the duplication is minimal and keeps each utility self-contained per the cmd/ one-package-per-utility architecture."
+      - id: D2
+        text: "Use flag package for argument parsing, matching the pattern in existing cmd/ utilities (e.g., cmd/basename). Define flags as package-level variables with flag.BoolVar/flag.StringVar."
+      - id: D3
+        text: "For stdin reading (no files or filename is '-'), use os.Stdin. Print the filename as '-' in the output, matching GNU behavior."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four files compile: 'go build ./cmd/md5sum ./cmd/sha1sum ./cmd/sha256sum ./cmd/sha512sum' succeeds with no errors."
+      - id: AC2
+        text: "Each utility computes correct hashes: 'echo -n hello | go run ./cmd/md5sum' outputs '5d41402abc4b2a76b9719d911017c592  -' (and equivalent correct hashes for sha1sum, sha256sum, sha512sum)."
+      - id: AC3
+        text: "Each utility supports file arguments: 'go run ./cmd/md5sum file1.txt file2.txt' outputs one hash line per file."
+      - id: AC4
+        text: "--check mode works: given a valid checksum file, the utility verifies each entry and prints OK/FAILED with correct exit code."
+      - id: AC5
+        text: "--help and --version flags produce output to stdout and exit 0."
+      - id: AC6
+        text: "Each main() calls sys.InstallSIGPIPEHandler() as its first action."
+  dependency: -1
