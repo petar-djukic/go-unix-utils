@@ -1,0 +1,68 @@
+id: rel05.0-uc003-nl
+title: "Number lines of files via nl"
+
+summary: |
+  The operator runs the Go nl binary on one or more files or stdin. The binary numbers
+  lines according to the active numbering style (body only by default), applying
+  configurable format, width, separator, and start/increment values. The differential
+  testing harness then runs both the Go binary and the Homebrew reference binary (gnl
+  from coreutils) with identical inputs and confirms that their outputs are identical
+  byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd022-nl.yaml) and invokes do-work to produce
+  a passing differential test for cmd/nl.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go nl binary on a file or stdin.
+      Example: printf 'line one\n\nline three\n' | ./bin/nl
+  - id: F2
+    step: |
+      cmd/nl reads the input, recognizing section delimiter lines (\\:\\:\\:, \\:\\:, \\:)
+      to identify header, body, and footer sections. All other lines are passed to the
+      numbering logic.
+  - id: F3
+    step: |
+      For each line in the current section, cmd/nl applies the section's numbering style
+      (a/t/n/p RE). Lines selected for numbering receive a formatted line number prefix
+      followed by the separator string and the line content.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/nl and gnl
+      with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/nl — section parsing, line numbering, format/width/separator options (prd022-nl R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/nl compiles and ./bin/nl exists after mage build.
+  - id: S2
+    criterion: The differential test for default mode passes; non-empty body lines are numbered in rn format at width 6 with tab separator.
+  - id: S3
+    criterion: The differential test for -b a passes; all lines including empty lines are numbered.
+  - id: S4
+    criterion: "The differential test for -n ln -w 3 -s ': ' passes; format, width, and separator match gnl."
+  - id: S5
+    criterion: The differential test for -v 10 -i 5 passes; numbering starts at 10 and increments by 5.
+  - id: S6
+    criterion: The differential test for section delimiters with -h a passes; header lines are numbered and section delimiters are consumed without output.
+
+out_of_scope:
+  - Regex numbering style (-b p RE) beyond basic pattern matching is not the primary test focus.
+  - Locale-aware regex collation is not tested; LC_ALL=C is used throughout.
+
+test_suite: test-rel05.0

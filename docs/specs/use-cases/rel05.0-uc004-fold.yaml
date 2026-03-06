@@ -1,0 +1,68 @@
+id: rel05.0-uc004-fold
+title: "Wrap long lines to a fixed width via fold"
+
+summary: |
+  The operator runs the Go fold binary on one or more files or stdin. The binary wraps
+  lines that exceed the maximum width by inserting newlines at the specified column or
+  byte boundary, optionally breaking at word boundaries. The differential testing harness
+  then runs both the Go binary and the Homebrew reference binary (gfold from coreutils)
+  with identical inputs and confirms that their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd023-fold.yaml) and invokes do-work to produce
+  a passing differential test for cmd/fold.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go fold binary on a file or stdin.
+      Example: printf 'abcdefghijklmnop' | ./bin/fold -w 4
+  - id: F2
+    step: |
+      cmd/fold reads the input line by line. For each line, it measures the width (column
+      positions by default, byte count with -b) and inserts a newline after every W units.
+  - id: F3
+    step: |
+      When -s is active, cmd/fold scans each segment for the last space at or before the
+      wrap column and breaks there instead of at the hard column position.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/fold and gfold
+      with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/fold — line width measurement, newline insertion, tab column expansion, space-break mode (prd023-fold R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/fold compiles and ./bin/fold exists after mage build.
+  - id: S2
+    criterion: The differential test for default width (80) passes; lines exceeding 80 columns are wrapped.
+  - id: S3
+    criterion: The differential test for -w 4 passes; lines are split every 4 columns, matching gfold.
+  - id: S4
+    criterion: The differential test for -w N -s passes; lines break at the last space within N columns.
+  - id: S5
+    criterion: The differential test for -b passes; width is measured in bytes, not columns.
+  - id: S6
+    criterion: The differential test for tab-containing input passes; tabs expand to the correct column positions for wrap-point calculation.
+  - id: S7
+    criterion: A line shorter than the width passes through unchanged.
+
+out_of_scope:
+  - Unicode multi-byte grapheme width calculation is not implemented; LC_ALL=C single-byte behavior is the requirement.
+  - Lines without a trailing newline are handled by matching GNU behavior exactly.
+
+test_suite: test-rel05.0
