@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "361"
+task_title: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)
+status: success
+started_at: "2026-03-06T19:03:21Z"
+duration: 3m38s
+duration_s: 217
+tokens:
+    input: 1583896
+    output: 15133
+    cache_creation: 150365
+    cache_read: 1433504
+cost_usd: 2.03499325
+loc_before:
+    production: 817
+    test: 192
+loc_after:
+    production: 837
+    test: 204
+diff:
+    files: 11
+    insertions: 289
+    deletions: 20

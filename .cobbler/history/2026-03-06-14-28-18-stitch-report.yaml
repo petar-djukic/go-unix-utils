@@ -1,0 +1,27 @@
+task_id: "367"
+task_title: 'Task 367: Differential tests for checksum quartet cmd/ binaries (rel05.4-uc001 md5sum, rel05.4-uc002 sha1sum, rel05.4-uc003 sha256sum, rel05.4-uc004 sha512sum)'
+status: success
+branch: task/generation-gh-336-generate-code-r05.4-367
+diff:
+    files: 3
+    insertions: 848
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-134420.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 845
+      deletions: 0
+loc_before:
+    production: 876
+    test: 204
+loc_after:
+    production: 876
+    test: 204

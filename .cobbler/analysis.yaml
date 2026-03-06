@@ -198,16 +198,16 @@ code_status:
               testfiles: 0
         - version: "05.3"
           name: Batch 5.3 — sorted-stream comparison pair (uniq, comm)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.3-uc001-uniq
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.3-uc002-comm
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
