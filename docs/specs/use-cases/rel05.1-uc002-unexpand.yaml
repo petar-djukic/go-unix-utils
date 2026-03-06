@@ -1,0 +1,65 @@
+id: rel05.1-uc002-unexpand
+title: "Convert spaces to tabs via unexpand"
+
+summary: |
+  The operator runs the Go unexpand binary on one or more files or stdin. By default the
+  binary converts only leading whitespace runs to tabs where alignment permits; with -a it
+  converts all whitespace runs in the line. The differential testing harness then runs
+  both the Go binary and the Homebrew reference binary (gunexpand from coreutils) with
+  identical inputs and confirms that their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd025-unexpand.yaml) and invokes do-work to produce
+  a passing differential test for cmd/unexpand.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go unexpand binary on a file or stdin.
+      Example: printf '        text\n' | ./bin/unexpand
+  - id: F2
+    step: |
+      cmd/unexpand reads each input character, tracking the current column position. In
+      default mode it processes only leading whitespace. With -a it processes all whitespace
+      runs throughout the line.
+  - id: F3
+    step: |
+      When a run of spaces exactly reaches a tab stop, cmd/unexpand replaces the run with
+      one or more tab characters. Spaces that do not reach a tab stop are kept as spaces.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/unexpand and
+      gunexpand with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/unexpand — space-to-tab conversion, leading vs. all-whitespace mode, custom tab stops (prd025-unexpand R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/unexpand compiles and ./bin/unexpand exists after mage build.
+  - id: S2
+    criterion: The differential test for default mode passes; leading 8 spaces become a tab, non-leading spaces are unchanged.
+  - id: S3
+    criterion: The differential test for -a passes; all runs of spaces at tab-stop boundaries are converted throughout the line.
+  - id: S4
+    criterion: The differential test for partial space runs (not reaching a tab stop) passes; spaces are preserved.
+  - id: S5
+    criterion: The differential test for -t N passes; spaces are converted at multiples of N columns.
+
+out_of_scope:
+  - unexpand is not a lossless inverse of expand for all inputs; the asymmetry is intentional.
+  - Unicode multi-column character width is not tested; LC_ALL=C is used.
+
+test_suite: test-rel05.1

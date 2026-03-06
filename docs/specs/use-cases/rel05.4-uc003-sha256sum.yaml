@@ -1,0 +1,62 @@
+id: rel05.4-uc003-sha256sum
+title: "Compute and verify SHA-256 digests via sha256sum"
+
+summary: |
+  The operator runs the Go sha256sum binary on one or more files or stdin. The binary
+  computes SHA-256 digests and prints them in GNU format, or verifies a checksum file.
+  The differential testing harness then runs both the Go binary and the Homebrew
+  reference binary (gsha256sum from coreutils) with identical inputs and confirms that
+  their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd032-sha256sum.yaml) and invokes do-work to
+  produce a passing differential test for cmd/sha256sum.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go sha256sum binary on a file or stdin.
+      Example: sha256sum somefile.txt
+  - id: F2
+    step: |
+      cmd/sha256sum reads each file, computes its SHA-256 digest using crypto/sha256, and
+      prints the result in GNU format to stdout.
+  - id: F3
+    step: |
+      In check mode (--check), cmd/sha256sum reads a checksum file, recomputes each
+      digest, and prints OK or FAILED for each entry.
+  - id: F4
+    step: |
+      The differential testing harness executes both ./bin/sha256sum and gsha256sum with
+      the same inputs and compares stdout byte-for-byte.
+  - id: F5
+    step: |
+      The harness verifies exit codes. If outputs and exit codes match, the test passes.
+  - id: F6
+    step: |
+      If they diverge, the harness reports the triggering args, both outputs, and both
+      exit codes.
+
+touchpoints:
+  - T1: "cmd/sha256sum — SHA-256 digest computation, GNU format output, check mode, binary/tag flags (prd032-sha256sum R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/sha256sum compiles and ./bin/sha256sum exists after mage build.
+  - id: S2
+    criterion: The differential test for digest computation passes; output matches gsha256sum byte-for-byte.
+  - id: S3
+    criterion: The differential test for --check on a valid file passes; exits 0 and prints OK lines.
+  - id: S4
+    criterion: The differential test for --check on a file with a mismatch passes; exits 1 and prints FAILED.
+  - id: S5
+    criterion: The differential test for --tag passes; BSD format output matches gsha256sum --tag.
+
+out_of_scope:
+  - SHA-224 and SHA-256/224 truncations are not implemented.
+
+test_suite: test-rel05.4

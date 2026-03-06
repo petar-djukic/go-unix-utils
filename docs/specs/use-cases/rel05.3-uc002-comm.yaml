@@ -1,0 +1,68 @@
+id: rel05.3-uc002-comm
+title: "Compare two sorted files line by line via comm"
+
+summary: |
+  The operator runs the Go comm binary on two pre-sorted files. The binary produces
+  three-column output showing lines unique to each file and lines common to both. Column
+  suppression flags allow the operator to extract set intersections and differences. The
+  differential testing harness then runs both the Go binary and the Homebrew reference
+  binary (gcomm from coreutils) with identical inputs and confirms that their outputs are
+  identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd029-comm.yaml) and invokes do-work to produce
+  a passing differential test for cmd/comm.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go comm binary on two sorted files.
+      Example: comm file1.txt file2.txt
+  - id: F2
+    step: |
+      cmd/comm reads one line from each file and compares them. The lesser line goes to
+      its column and cmd/comm advances that file. Equal lines go to column 3 and both
+      files advance.
+  - id: F3
+    step: |
+      cmd/comm writes each line to the appropriate column with the configured indentation.
+      Suppressed columns are skipped; indentation adjusts for remaining columns.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/comm and gcomm
+      with the same file arguments and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/comm — three-column comparison, column suppression, indentation, order checking (prd029-comm R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/comm compiles and ./bin/comm exists after mage build.
+  - id: S2
+    criterion: The differential test for full three-column output passes; columns match gcomm byte-for-byte.
+  - id: S3
+    criterion: The differential test for -12 (only common lines) passes.
+  - id: S4
+    criterion: The differential test for -3 (only unique lines) passes.
+  - id: S5
+    criterion: The differential test for -1 (suppress file1-only column) passes.
+  - id: S6
+    criterion: The differential test for --output-delimiter passes; custom separator replaces tabs.
+
+out_of_scope:
+  - comm does not sort its inputs; tests use pre-sorted files.
+  - Locale-aware collation is not tested; LC_ALL=C is used throughout.
+
+test_suite: test-rel05.3

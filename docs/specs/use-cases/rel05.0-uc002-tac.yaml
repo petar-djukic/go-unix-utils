@@ -1,0 +1,66 @@
+id: rel05.0-uc002-tac
+title: "Reverse lines of files via tac"
+
+summary: |
+  The operator runs the Go tac binary on one or more files or stdin. The binary buffers
+  all input, splits it into records on the separator, and writes the records in reverse
+  order to stdout. The differential testing harness then runs both the Go binary and the
+  Homebrew reference binary (gtac from coreutils) with identical inputs and confirms that
+  their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd021-tac.yaml) and invokes do-work to produce
+  a passing differential test for cmd/tac.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go tac binary on a file or stdin.
+      Example: printf 'first\nsecond\nthird\n' | ./bin/tac
+  - id: F2
+    step: |
+      cmd/tac reads the entire input into memory, splits it into records on the record
+      separator (default newline), and reverses the order of those records.
+  - id: F3
+    step: |
+      cmd/tac writes the reversed records to stdout in order. When a custom separator
+      (-s) is given, the separator is placed after (default) or before (-b) each record.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/tac and gtac
+      with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/tac — full-input buffering, record reversal, separator handling (prd021-tac R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/tac compiles and ./bin/tac exists after mage build.
+  - id: S2
+    criterion: The differential test for default mode passes; lines are reversed, matching gtac byte-for-byte.
+  - id: S3
+    criterion: The differential test for input without a trailing newline passes; the last line (now first) has no newline.
+  - id: S4
+    criterion: The differential test for -s with a custom separator passes; records split on the given separator are reversed.
+  - id: S5
+    criterion: The differential test for -b with a custom separator passes; separators precede records in the output.
+  - id: S6
+    criterion: The differential test for multi-file input passes; each file is reversed independently.
+
+out_of_scope:
+  - Files larger than available memory are not supported; tac buffers the full input.
+  - Regex separator testing (-r) is covered but not the primary use case.
+
+test_suite: test-rel05.0

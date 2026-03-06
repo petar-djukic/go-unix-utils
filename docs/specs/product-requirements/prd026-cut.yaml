@@ -1,0 +1,60 @@
+id: prd026-cut
+title: "cmd/cut: Remove Sections from Lines"
+
+problem: |
+  macOS BSD cut lacks the --complement and --output-delimiter flags present in GNU cut.
+  Scripts that invert field selections or use a different output delimiter depend on GNU
+  behavior. The Go implementation must match the Homebrew GNU reference binary (gcut,
+  installed by coreutils) byte-for-byte on all flag combinations, verified by differential
+  testing via pkg/testutils.
+
+goals:
+  - G1: Extract selected byte ranges, character ranges, or delimited fields from each line of input, matching GNU cut behavior.
+  - G2: Support -b (bytes), -c (characters), and -f (fields) selection modes with range lists.
+  - G3: Support -d to configure the field delimiter and --output-delimiter to control the separator in the output.
+  - G4: Support --complement to invert the selection (output what was not selected).
+
+requirements:
+  R1:
+    title: Byte and character selection (-b, -c)
+    items:
+      - R1.1: -b LIST must extract the specified byte positions from each line. LIST is a comma-separated list of ranges; each range is N, N-M, N- (from N to end), or -M (from start to M). Bytes are 1-indexed.
+      - R1.2: -c LIST must extract the specified character positions. Under LC_ALL=C, -c and -b are equivalent (one byte per character). The flag is provided for compatibility.
+      - R1.3: With -b or -c, newline characters are not counted as part of the line; they are passed through to terminate each output line.
+      - R1.4: Lines shorter than the selected range produce no bytes for the out-of-range positions; only the bytes that exist are output.
+
+  R2:
+    title: Field selection (-f, -d, -s)
+    items:
+      - R2.1: -f LIST must extract the specified fields from each line, where fields are delimited by the character given with -d (default tab). LIST uses the same range syntax as -b.
+      - R2.2: -d DELIM must set the input field delimiter to the single character DELIM. The delimiter must be exactly one byte. When the output delimiter is not explicitly set with --output-delimiter, the input delimiter is also used as the output delimiter.
+      - R2.3: -s must suppress lines that do not contain the delimiter. Without -s, lines with no delimiter are printed unchanged.
+      - R2.4: --output-delimiter STRING must use STRING as the separator between selected output fields, replacing the default (which is the input delimiter).
+
+  R3:
+    title: Complement mode (--complement)
+    items:
+      - R3.1: --complement must invert the selection; the output contains the bytes, characters, or fields NOT specified by the range list.
+      - R3.2: --complement is compatible with -b, -c, and -f. It is not compatible with -s.
+      - R3.3: With --complement and -f, fields not in the list are output in their original order, separated by the output delimiter.
+
+  R4:
+    title: Exit codes and SIGPIPE
+    items:
+      - R4.1: Must exit 0 when all inputs are processed successfully.
+      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
+      - R4.3: Must exit 1 when a write error occurs on stdout.
+      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+
+non_goals:
+  - cmd/cut does not support multi-byte delimiters; -d accepts exactly one byte.
+  - cmd/cut does not implement locale-aware multi-byte character cutting for -c; LC_ALL=C is assumed.
+
+acceptance_criteria:
+  - "AC1: printf 'a:b:c\\n' | cut -d: -f2 produces 'b\\n', matching gcut -d: -f2."
+  - "AC2: printf 'abcdef\\n' | cut -b2-4 produces 'bcd\\n', matching gcut -b2-4."
+  - "AC3: printf 'a:b:c\\n' | cut -d: -f1,3 produces 'a:c\\n', matching gcut -d: -f1,3."
+  - "AC4: printf 'a:b:c\\n' | cut -d: -f2 --complement produces 'a:c\\n', matching gcut --complement."
+  - "AC5: printf 'no-delimiter\\n' | cut -d: -f2 -s produces empty output, matching gcut -s."
+  - "AC6: Differential test against gcut passes for all required test cases."
+  - "AC7: cmd/cut compiles with no warnings under golangci-lint."

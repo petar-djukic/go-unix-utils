@@ -1,0 +1,58 @@
+id: prd030-md5sum
+title: "cmd/md5sum: Compute and Check MD5 Message Digests"
+
+problem: |
+  macOS ships md5 rather than md5sum; the output format differs from GNU md5sum. Scripts
+  that generate or verify checksums using the GNU md5sum format cannot use the macOS
+  native binary. The Go implementation must match the Homebrew GNU reference binary
+  (gmd5sum, installed by coreutils) byte-for-byte on all flag combinations, using
+  crypto/md5 from the Go standard library, verified by differential testing via
+  pkg/testutils.
+
+goals:
+  - G1: Compute MD5 digests for one or more files or stdin and print them in GNU format, matching gmd5sum behavior.
+  - G2: Support --check (-c) to verify a checksum file and report mismatches.
+  - G3: Support --binary (-b) and --text (-t) modes and the BSD-compatible --tag output format.
+
+requirements:
+  R1:
+    title: Digest computation
+    items:
+      - R1.1: Must compute the MD5 digest of each named file and write one line per file in the format "HASH  FILENAME" (two spaces for text mode, one space and asterisk "HASH *FILENAME" for binary mode). The default is text mode on non-Windows systems.
+      - R1.2: Must read from stdin and print "HASH  -" when no file arguments are given or when "-" is provided as a filename.
+      - R1.3: --tag must use BSD-style output format "MD5 (FILENAME) = HASH" instead of the default GNU format.
+      - R1.4: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
+
+  R2:
+    title: Checksum verification (--check, -c)
+    items:
+      - R2.1: "--check FILE must read FILE line by line, parsing lines in GNU format (HASH  FILENAME or HASH *FILENAME) or BSD tag format, compute the digest for each named file, and compare it to the stored hash."
+      - R2.2: 'For each verified file, must print "FILENAME: OK" or "FILENAME: FAILED" to stdout. After processing all entries, if any failed, must exit 1.'
+      - R2.3: --warn (-w) must print a warning to stderr for each improperly formatted line in the checksum file; without --warn, malformed lines are silently skipped.
+      - R2.4: --quiet suppresses the "OK" lines; only failures are printed. --status suppresses all output; exit code conveys success/failure.
+
+  R3:
+    title: Binary and text mode flags
+    items:
+      - R3.1: -b (--binary) marks the input as binary; the output line uses one space followed by an asterisk before the filename ("HASH *FILENAME"). On Linux/macOS there is no functional difference between binary and text mode for digest computation.
+      - R3.2: -t (--text) is the default; the output line uses two spaces before the filename ("HASH  FILENAME").
+      - R3.3: When --tag is given with -b, the output is BSD tag format; the mode flag has no effect on the tag format.
+
+  R4:
+    title: Exit codes and SIGPIPE
+    items:
+      - R4.1: Must exit 0 when all files are processed and all verified digests match.
+      - R4.2: Must exit 1 when any file cannot be opened, any digest fails verification, or the checksum file is unreadable.
+      - R4.3: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+
+non_goals:
+  - cmd/md5sum does not implement HMAC-MD5 or keyed variants; it computes raw MD5 digests only.
+  - cmd/md5sum does not implement the --strict flag (exit non-zero for improperly formatted lines); --warn is sufficient.
+
+acceptance_criteria:
+  - "AC1: echo -n 'abc' | md5sum produces 'md5sum output matching gmd5sum', verified byte-for-byte."
+  - "AC2: md5sum on a known file produces the correct MD5 hash in GNU format, matching gmd5sum."
+  - "AC3: md5sum --check on a valid checksum file exits 0 and prints 'FILENAME: OK' for each entry."
+  - "AC4: md5sum --check on a checksum file with one mismatch exits 1 and prints 'FILENAME: FAILED'."
+  - "AC5: Differential test against gmd5sum passes for all required test cases."
+  - "AC6: cmd/md5sum compiles with no warnings under golangci-lint."
