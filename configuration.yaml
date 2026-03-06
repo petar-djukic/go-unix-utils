@@ -19,7 +19,7 @@ project:
       docs/SPECIFICATIONS.yaml
       docs/road-map.yaml
     release: ""
-    releases: ["00.0", "01.1", "01.2", "01.3", "02.0", "02.1", "02.2", "03.0", "04.0", "04.1"]
+    releases: ["04.1"]
     seed_files: {}
 generation:
     prefix: generation-
