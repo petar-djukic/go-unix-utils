@@ -342,6 +342,54 @@ project_structure:
   - path: go.mod
     role: Go module definition (module github.com/petar-djukic/go-unix-utils)
 
+shared_protocols:
+  - name: Differential testing
+    description: |
+      Every cmd/ package verifies its implementation by running the Go binary and the
+      Homebrew GNU reference binary side by side and comparing stdout, stderr, and exit
+      code via pkg/testutils.RunDiffTests. Test cases are defined as []testutils.DiffTest
+      slices in <utility>_test.go files. The harness sets LC_ALL=C by default.
+    pattern: |
+      func TestDiff(t *testing.T) {
+          goBin := testutils.BuildBinary(t, ".")
+          refBin, err := exec.LookPath("g<utility>")
+          if err != nil { t.Skip("reference binary not found") }
+          tests := []testutils.DiffTest{ ... }
+          testutils.RunDiffTests(t, goBin, refBin, tests)
+      }
+  - name: Graceful skip on missing reference binary
+    description: |
+      All cmd/ test files call exec.LookPath for the Homebrew reference binary at the
+      start of TestDiff and call t.Skip if it is not found. This allows the test suite
+      to run on machines without Homebrew GNU binaries installed without reporting false
+      failures. The binary is never installed by the test itself.
+    pattern: |
+      refBin, err := exec.LookPath("g<utility>")
+      if err != nil { t.Skipf("reference binary g<utility> not in PATH: %v", err) }
+  - name: SIGPIPE handling
+    description: |
+      All cmd/ utilities that write to stdout call pkg/sys.InstallSIGPIPEHandler() at
+      the start of main. This ensures the process exits 0 when piped output is consumed
+      by a downstream consumer that closes its stdin (e.g., head, grep -q), matching GNU
+      coreutils behavior.
+    pattern: |
+      func main() {
+          sys.InstallSIGPIPEHandler()
+          ...
+      }
+
+component_dependencies:
+  - from: prd003-format
+    to: prd002-sys
+  - from: prd008-ls
+    to: prd002-sys
+  - from: prd008-ls
+    to: prd003-format
+  - from: prd009-du
+    to: prd002-sys
+  - from: prd009-du
+    to: prd003-format
+
 implementation_status:
   current_focus: |
     The working branch contains specifications only. Generated Go code (4,586 LOC across

@@ -85,6 +85,32 @@ non_goals:
   - pkg/sys does not handle SIGUSR1/SIGUSR2 (find's debug output); those are deferred to the find PRD.
   - pkg/sys does not provide process-group or terminal control (TIOCGPGRP, tcsetpgrp); those are deferred to the xargs PRD.
 
+package_contract:
+  exports:
+    - name: FileInfo
+      signature: "type FileInfo struct { Mode os.FileMode; Size int64; Nlink uint64; Uid uint32; Gid uint32; Rdev uint64; Dev uint64; Ino uint64; Blocks int64; Blksize int64; ModTime time.Time; AccessTime time.Time; ChangeTime time.Time; Info os.FileInfo }"
+    - name: Stat
+      signature: "func Stat(path string) (*FileInfo, error)"
+    - name: Lstat
+      signature: "func Lstat(path string) (*FileInfo, error)"
+    - name: TerminalWidth
+      signature: "func TerminalWidth() (int, error)"
+    - name: IsTerminal
+      signature: "func IsTerminal(fd uintptr) bool"
+    - name: InstallSIGPIPEHandler
+      signature: "func InstallSIGPIPEHandler()"
+    - name: OnTerminalResize
+      signature: "func OnTerminalResize(callback func(width int))"
+  imports:
+    - os
+    - os/signal
+    - syscall
+    - time
+    - golang.org/x/sys/unix
+  import_constraints:
+    - "Must not import any cmd/ package."
+    - "Must not import any other pkg/ package."
+
 acceptance_criteria:
   - "AC1: TerminalWidth() returns a positive integer when called in a test with a pseudo-terminal (golang.org/x/term's test helpers or os.Pipe() as a TTY substitute is acceptable)."
   - "AC2: Stat() and Lstat() on a known file return FileInfo with correct Nlink, Uid, Gid, Dev, Ino, and Blocks values as confirmed by running stat(1) on the same file."
