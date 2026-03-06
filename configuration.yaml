@@ -19,7 +19,7 @@ project:
       docs/SPECIFICATIONS.yaml
       docs/road-map.yaml
     release: ""
-    releases: ["00.0"]
+    releases: ["04.1"]
     seed_files: {}
 generation:
     prefix: generation-
@@ -48,7 +48,7 @@ cobbler:
     history_dir: history
     doc_tag_prefix: v0.
     base_branch: main
-    idle_timeout_seconds: 600
+    idle_timeout_seconds: 900
     measure_source_mode: headers
     measure_roadmap_source: true
 podman:
