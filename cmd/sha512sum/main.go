@@ -17,9 +17,25 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const usageText = `Usage: sha512sum [OPTION]... [FILE]...
+Print or check SHA512 checksums.
+
+  -b, --binary         read in binary mode
+  -c, --check          read checksums from FILEs and check them
+      --tag            create a BSD-style checksum
+  -t, --text           read in text mode (default)
+      --quiet          don't print OK for each successfully verified file
+      --status         don't output anything, status code shows success
+  -w, --warn           warn about improperly formatted checksum lines
+      --strict         exit non-zero for improperly formatted checksum lines
+      --ignore-missing don't fail for missing files
+      --help           display this help and exit
+      --version        output version information and exit
+`
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	var bin, txt, chk, tag, warn, quiet, status, strict, ignoreMissing, version bool
+	var bin, txt, chk, tag, warn, quiet, status, strict, ignoreMissing, version, help bool
 	flag.BoolVar(&bin, "b", false, "")
 	flag.BoolVar(&bin, "binary", false, "")
 	flag.BoolVar(&txt, "t", false, "")
@@ -34,9 +50,14 @@ func main() {
 	flag.BoolVar(&strict, "strict", false, "")
 	flag.BoolVar(&ignoreMissing, "ignore-missing", false, "")
 	flag.BoolVar(&version, "version", false, "")
+	flag.BoolVar(&help, "help", false, "")
 	flag.Parse()
+	if help {
+		fmt.Print(usageText)
+		os.Exit(0)
+	}
 	if version {
-		fmt.Println("sha512sum (go-unix-utils)")
+		fmt.Println("sha512sum (Go coreutils) 1.0")
 		os.Exit(0)
 	}
 	_ = txt // text mode is the default; flag accepted for compatibility
