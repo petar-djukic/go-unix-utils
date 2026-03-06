@@ -125,7 +125,7 @@ releases:
 
   - version: "04.1"
     name: "Batch 4.1 — ls extended specification and differential test"
-    status: spec_complete
+    status: implemented
     description: |
       Extend ls with flags requiring heavier normalization or more complex layout logic:
       -C (forced multi-column), -x (horizontal), sort flags (-t, -S, -r, -U, -v),
@@ -133,7 +133,7 @@ releases:
       Depends on rel04.0.
     use_cases:
       - id: rel04.1-uc001-ls-extended
-        status: spec_complete
+        status: implemented
 
   - version: "99.2"
     name: "Deferred — ts specification and differential test"
