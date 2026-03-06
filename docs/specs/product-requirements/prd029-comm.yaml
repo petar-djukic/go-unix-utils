@@ -1,0 +1,60 @@
+id: prd029-comm
+title: "cmd/comm: Compare Two Sorted Files Line by Line"
+
+problem: |
+  macOS BSD comm lacks the --nocheck-order and --output-delimiter flags present in GNU
+  comm. Scripts that compare sorted file pairs for set-intersection or set-difference
+  operations depend on GNU comm behavior. The Go implementation must match the Homebrew
+  GNU reference binary (gcomm, installed by coreutils) byte-for-byte on all flag
+  combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Read two sorted files and produce three-column output showing lines unique to file 1, unique to file 2, and common to both, matching GNU comm behavior.
+  - G2: Support -1, -2, and -3 flags to suppress individual output columns.
+  - G3: Support --check-order and --nocheck-order to control whether input ordering is validated.
+  - G4: Support --output-delimiter to configure the column separator.
+
+requirements:
+  R1:
+    title: Three-column comparison output
+    items:
+      - R1.1: Must read file1 and file2 simultaneously, line by line. Lines present only in file1 are written in column 1 (no indentation). Lines present only in file2 are written in column 2 (one tab indent). Lines present in both are written in column 3 (two tabs indent).
+      - R1.2: Must process files in sorted order; when a line from file1 is lexicographically less than the current file2 line, it is a column-1 line. When file2's line is less, it is a column-2 line. Equal lines go to column 3.
+      - R1.3: When one file is exhausted, all remaining lines from the other file go to the appropriate column (column 1 if file1 has lines left, column 2 if file2 has lines left).
+      - R1.4: Comparison is byte-for-byte with LC_ALL=C (no locale collation). An optional newline at the end of the last line does not affect comparison.
+
+  R2:
+    title: Column suppression flags (-1, -2, -3)
+    items:
+      - R2.1: -1 must suppress column 1 (lines unique to file1). The remaining columns shift left in indentation.
+      - R2.2: -2 must suppress column 2 (lines unique to file2). The remaining columns shift left accordingly.
+      - R2.3: -3 must suppress column 3 (lines common to both files). Combining -1 -2 -3 produces no output.
+      - R2.4: When a column is suppressed, the tab indentation for remaining columns adjusts so that the leftmost output column has no leading tab.
+
+  R3:
+    title: Order checking and output delimiter
+    items:
+      - R3.1: By default, comm checks that input files are sorted. When a line is encountered that is less than the previous line in the same file, comm prints a warning to stderr and continues.
+      - R3.2: --check-order makes the ordering check fatal; comm exits non-zero if input is not sorted.
+      - R3.3: --nocheck-order disables the sorting check entirely; no warning is printed even if input is out of order.
+      - R3.4: --output-delimiter=STRING replaces the default tab character as the column separator. All column indentation levels use STRING instead of a tab.
+
+  R4:
+    title: Exit codes and SIGPIPE
+    items:
+      - R4.1: Must exit 0 when all inputs are processed successfully and no order violations occur.
+      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr.
+      - R4.3: Must exit 1 when a write error occurs on stdout.
+      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+
+non_goals:
+  - cmd/comm does not sort its inputs; both files must already be sorted before invocation.
+  - cmd/comm does not implement locale-aware collation; comparison is byte-for-byte under LC_ALL=C.
+
+acceptance_criteria:
+  - "AC1: comm on file1='a\\nb\\nc\\n' and file2='b\\nc\\nd\\n' produces the three-column output with 'a' in col1, 'd' in col2, and 'b','c' in col3, matching gcomm."
+  - "AC2: comm -12 on the same files produces only 'b\\nc\\n' (common lines), matching gcomm -12."
+  - "AC3: comm -3 on the same files produces 'a\\n\\td\\n' (unique lines), matching gcomm -3."
+  - "AC4: comm --output-delimiter=| uses | instead of tab for column separation, matching gcomm."
+  - "AC5: Differential test against gcomm passes for all required test cases."
+  - "AC6: cmd/comm compiles with no warnings under golangci-lint."

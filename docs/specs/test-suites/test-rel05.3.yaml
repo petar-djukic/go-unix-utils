@@ -1,0 +1,226 @@
+id: test-rel05.3
+title: "Test Suite: rel05.3 — uniq, comm"
+release: rel05.3
+
+traces:
+  - rel05.3-uc001-uniq
+  - rel05.3-uc002-comm
+  - prd028-uniq R1
+  - prd028-uniq R2
+  - prd028-uniq R3
+  - prd029-comm R1
+  - prd029-comm R2
+  - prd029-comm R3
+
+preconditions:
+  - ./bin/uniq and ./bin/comm exist (built via mage build).
+  - Reference binaries guniq and gcomm are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/uniq/... ./cmd/comm/... which invoke RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - No normalization is applied; all outputs are compared byte-for-byte.
+  - "comm tests that use two files: setup creates two temporary files with known sorted content."
+
+test_cases:
+
+  # ---- uniq ----
+
+  - name: uniq_default_dedup
+    description: Adjacent duplicates suppressed; non-adjacent duplicates kept.
+    inputs:
+      args: []
+      stdin: "a\na\nb\na\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\nb\na\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R1.1
+      - prd028-uniq R1.2
+
+  - name: uniq_count
+    description: -c prefixes each line with its run count.
+    inputs:
+      args: ["-c"]
+      stdin: "a\na\nb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "      2 a\n      1 b\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R2.4
+
+  - name: uniq_duplicates_only
+    description: -d outputs only lines with run length > 1 (one copy per run).
+    inputs:
+      args: ["-d"]
+      stdin: "a\na\nb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R2.1
+
+  - name: uniq_all_duplicates
+    description: -D outputs every line of duplicate runs.
+    inputs:
+      args: ["-D"]
+      stdin: "a\na\nb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\na\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R2.2
+
+  - name: uniq_unique_only
+    description: -u outputs only lines that appear exactly once.
+    inputs:
+      args: ["-u"]
+      stdin: "a\na\nb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "b\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R2.3
+
+  - name: uniq_case_insensitive
+    description: -i treats upper and lower case as equal.
+    inputs:
+      args: ["-i"]
+      stdin: "A\na\nb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "A\nb\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R3.1
+
+  - name: uniq_skip_fields
+    description: -f 1 skips the first field when comparing lines.
+    inputs:
+      args: ["-f", "1"]
+      stdin: "key1 val\nkey2 val\nkey3 other\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "key1 val\nkey3 other\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R3.2
+
+  - name: uniq_single_line
+    description: Single input line produces that line unchanged.
+    inputs:
+      args: []
+      stdin: "only\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "only\n"
+      stderr: ""
+    traces:
+      - prd028-uniq R1.1
+
+  # ---- comm ----
+
+  - name: comm_three_column_output
+    description: "Full three-column output. Setup: file1 has 'a\\nb\\nc\\n', file2 has 'b\\nc\\nd\\n'."
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\n\tb\n\t\tc\n\t\tc\n\td\n"
+      stderr: ""
+    traces:
+      - prd029-comm R1.1
+      - prd029-comm R1.2
+
+  - name: comm_suppress_col1
+    description: -1 suppresses lines unique to file1.
+    inputs:
+      args: ["-1", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "b\n\tc\n\tc\nd\n"
+      stderr: ""
+    traces:
+      - prd029-comm R2.1
+
+  - name: comm_common_only
+    description: -12 outputs only lines common to both files.
+    inputs:
+      args: ["-12", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "b\nc\n"
+      stderr: ""
+    traces:
+      - prd029-comm R2.1
+      - prd029-comm R2.2
+
+  - name: comm_unique_only
+    description: "-3 outputs only lines unique to each file."
+    inputs:
+      args: ["-3", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\n\td\n"
+      stderr: ""
+    traces:
+      - prd029-comm R2.3
+
+  - name: comm_output_delimiter
+    description: "--output-delimiter=| uses pipe as column separator."
+    inputs:
+      args: ["--output-delimiter=|", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\n|b\n||c\n||c\n|d\n"
+      stderr: ""
+    traces:
+      - prd029-comm R3.4
+
+  - name: comm_file1_exhausted_first
+    description: "When file1 is shorter, remaining file2 lines go to column 2. Setup: file1='a\\n', file2='a\\nb\\n'."
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "\t\ta\n\tb\n"
+      stderr: ""
+    traces:
+      - prd029-comm R1.3

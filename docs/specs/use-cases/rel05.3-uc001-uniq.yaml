@@ -1,0 +1,69 @@
+id: rel05.3-uc001-uniq
+title: "Filter adjacent duplicate lines via uniq"
+
+summary: |
+  The operator runs the Go uniq binary on a file or stdin. The binary processes adjacent
+  duplicate lines, printing each unique run once by default, or filtering by duplicate-
+  only or unique-only modes. The differential testing harness then runs both the Go
+  binary and the Homebrew reference binary (guniq from coreutils) with identical inputs
+  and confirms that their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd028-uniq.yaml) and invokes do-work to produce
+  a passing differential test for cmd/uniq.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go uniq binary on a file or stdin.
+      Example: printf 'a\na\nb\n' | ./bin/uniq
+  - id: F2
+    step: |
+      cmd/uniq reads lines one at a time, comparing each to the previous line (after
+      any field/char skipping and case folding). When a new distinct line is encountered,
+      it flushes the current run (if it meets the output filter) and starts a new run.
+  - id: F3
+    step: |
+      At end of input, cmd/uniq flushes the final run. Each flushed line is prefixed
+      with a count if -c is active.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/uniq and
+      guniq with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/uniq — run detection, output filtering, count prefix, field/char skip, case folding (prd028-uniq R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/uniq compiles and ./bin/uniq exists after mage build.
+  - id: S2
+    criterion: The differential test for default mode passes; adjacent duplicates suppressed, matching guniq.
+  - id: S3
+    criterion: The differential test for -c passes; each line is prefixed with its run count.
+  - id: S4
+    criterion: The differential test for -d passes; only lines from duplicate runs are output.
+  - id: S5
+    criterion: The differential test for -u passes; only truly unique lines are output.
+  - id: S6
+    criterion: The differential test for -i (case-insensitive) passes.
+  - id: S7
+    criterion: The differential test for -f and -s (field/char skip) passes.
+
+out_of_scope:
+  - uniq does not sort its input; tests use pre-sorted or deliberately ordered input.
+  - The --group flag is not implemented.
+
+test_suite: test-rel05.3
