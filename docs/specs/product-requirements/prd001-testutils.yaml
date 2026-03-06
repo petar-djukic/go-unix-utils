@@ -144,6 +144,26 @@ non_goals:
   - pkg/testutils does not implement retry logic; a failing test fails immediately.
   - pkg/testutils does not mock or stub the filesystem or OS for unit testing cmd/ packages.
 
+package_contract:
+  exports:
+    - name: DiffTest
+      signature: "type DiffTest struct { Name string; Args []string; Stdin []byte; Env []string; WorkDir string; ExitCode int; Normalize []NormalizeFunc; ExpectedFiles map[string][]byte }"
+    - name: NormalizeFunc
+      signature: "type NormalizeFunc = func([]byte) []byte"
+    - name: RunDiffTests
+      signature: "func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest)"
+    - name: ComposeNormalizers
+      signature: "func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc"
+    - name: TimestampNormalizer
+      signature: "var TimestampNormalizer NormalizeFunc"
+  imports:
+    - testing
+    - os
+    - os/exec
+  import_constraints:
+    - "Must not import any cmd/ package."
+    - "Must not import any other pkg/ package."
+
 acceptance_criteria:
   - "AC1: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) from a TestXxx function with no other setup. RunDiffTests runs each DiffTest as a named subtest (t.Run(test.Name, ...)) and calls t.Fatal on the first divergence in any subtest."
   - "AC2: A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries' stdout, stderr, and exit code."

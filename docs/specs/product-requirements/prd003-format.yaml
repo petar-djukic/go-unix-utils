@@ -71,6 +71,40 @@ non_goals:
   - pkg/format does not provide a full table library; it provides only the column-alignment primitives needed by ls and du.
   - pkg/format does not handle color themes beyond the GNU ls defaults.
 
+package_contract:
+  exports:
+    - name: HumanSizeOpts
+      signature: "type HumanSizeOpts struct { Binary bool }"
+    - name: HumanSize
+      signature: "func HumanSize(bytes int64, opts HumanSizeOpts) string"
+    - name: FileTypeColor
+      signature: "func FileTypeColor(mode os.FileMode) string"
+    - name: Reset
+      signature: "func Reset() string"
+    - name: ColorEnabled
+      signature: "func ColorEnabled(w io.Writer) bool"
+    - name: SetColorEnabled
+      signature: "func SetColorEnabled(enabled bool)"
+    - name: ResetColorEnabled
+      signature: "func ResetColorEnabled()"
+    - name: PadRight
+      signature: "func PadRight(s string, width int) string"
+    - name: PadLeft
+      signature: "func PadLeft(s string, width int) string"
+    - name: Columns
+      signature: "func Columns(entries []string, termWidth int) [][]string"
+  imports:
+    - io
+    - os
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+  import_constraints:
+    - "Must not import any cmd/ package."
+
+depends_on:
+  - prd_id: prd002-sys
+    symbols_used:
+      - IsTerminal
+
 acceptance_criteria:
   - "AC1: Columns(entries, termWidth) with a list of 20 filenames and termWidth=80 produces the same column layout as gls --format=across for the same input."
   - "AC2: FileTypeColor returns the correct ANSI code for each of the eight file types listed in R2.4."
