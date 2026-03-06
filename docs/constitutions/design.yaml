@@ -192,57 +192,6 @@ document_types:
       architecture. Not PRDs (no numbered requirements). Not architecture (no
       component descriptions).
 
-  generation_run_report:
-    location: "docs/engineering/eng[NN]-generation-run-[N]-results.yaml"
-    format_rule: engineering-guideline-format
-    required_fields:
-      - id
-      - "title (include total LOC, total cost, and run number)"
-      - "introduction (multi-line: branch, sessions, tasks, LOC, cost, $/KLOC, key findings)"
-      - sections (list with title and content)
-    optional_fields:
-      - references
-    purpose: |
-      Records the full results of a cobbler generation run. Every generation
-      run must produce one of these. The report must include six required
-      sections populated from per-cycle data in the generation tag.
-
-      Before writing the report, read all stats files from the generation tag
-      (named <generation-branch>-merged) using:
-        git show <tag>:.cobbler/history/<timestamp>-stitch-stats.yaml
-        git show <tag>:.cobbler/history/<timestamp>-measure-stats.yaml
-        git show <tag>:.cobbler/history/<timestamp>-stitch-report.yaml
-
-      Required sections:
-
-      1. Configuration — table of generation parameters: generation branch,
-         scaffold version, model, temperature, max_time_sec, measure_source_mode,
-         releases list, seeded LOC, budgeted and actual cycles, successful tasks,
-         rate-limit interruptions.
-
-      2. Cycle-by-cycle results — table of every successful stitch task: issue
-         number, description, stitch time (duration from stitch-stats.yaml),
-         input tokens, output tokens, cost_usd, LOC added prod and test. Include
-         a note on failed attempts.
-
-      3. Measure cycles — table of every measure cycle (success and fail):
-         timestamp, duration, status, input tokens, output tokens, cache read
-         tokens, cost_usd, prod LOC at cycle start.
-
-      4. Cost analysis — totals table (measure cost, stitch cost, total),
-         token totals table (input, output, cache_creation, cache_read, cost
-         for measure and stitch separately), cost per KLOC, and a comparison
-         table against prior runs from previous engineering reports.
-
-      5. Generated packages — table of packages produced: package path,
-         prod LOC, test LOC, release. Derive LOC from loc_before/loc_after
-         deltas in stitch-stats.yaml files.
-
-      6. Failures and restarts — table of every failure: timestamp, type
-         (measure or stitch), cause, cost wasted, resolution. Include both
-         rate-limit stalls and logic failures (e.g., Claude attempting
-         disallowed actions).
-
   specification:
     location: docs/SPECIFICATIONS.yaml
     format_rule: specification-format
@@ -270,6 +219,36 @@ document_types:
       Defines releases with version, name, focus, and list of use cases with
       status. Use cases are assigned to releases. Release numbering: rel[NN].[N]
       (major.minor). Minor releases validate completed major releases.
+
+  generation_run_report:
+    location: "docs/reports/generation-run-[N].md (e.g., generation-run-15.md)"
+    format_rule: generation-run-report-format
+    required_fields:
+      - "title: 'Generation Run [N]: [total LOC] LOC, $[total cost] — [one-line summary]'"
+      - "Configuration section: generation branch name, base branch, cobbler version,
+          model, max_turns, preserve_sources flag, issues_repo"
+      - "Cycle-by-cycle results section: table with columns cycle, issue title, status
+          (pass/fail/restart), stitch turns used, input tokens, output tokens,
+          cost USD, LOC delta"
+      - "Measure cycles section: table with columns cycle, issues proposed, input
+          tokens, output tokens, cost USD"
+      - "Cost analysis section: total input tokens, total output tokens, total cost USD,
+          total LOC produced, cost per KLOC; comparison table against prior runs
+          (run number, date, total LOC, total cost, cost/KLOC)"
+      - "Generated packages section: list of packages or modules produced with their LOC"
+      - "Failures and restarts section: for each failed stitch, the issue title, error
+          summary, and whether it was retried or abandoned"
+    purpose: |
+      Captures the full accounting of a completed generation run so that cost
+      trends, failure patterns, and per-package productivity can be tracked
+      across runs. Written once per generation after generator:stop completes.
+
+      Data source: before writing the report, read all history files from the
+      generation branch's merged tag (.cobbler/history/ under the
+      <generation-branch>-merged git tag): *-stitch-stats.yaml,
+      *-measure-stats.yaml, and *-stitch-report.yaml. These files contain
+      per-cycle token counts, costs, LOC deltas, and failure records.
+      Do not estimate; read the files.
 
 naming_conventions:
   prd: "prd[NNN]-[feature-name].yaml (e.g., prd001-cupboard-core.yaml)"

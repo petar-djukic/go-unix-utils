@@ -51,6 +51,7 @@ cobbler:
     idle_timeout_seconds: 600
     measure_source_mode: headers
     measure_roadmap_source: true
+    mode: cli
 podman:
     image: claude-cli
     args:
