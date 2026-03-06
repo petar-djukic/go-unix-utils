@@ -67,7 +67,7 @@ func hashFile(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // best-effort close
 	return hash(f), nil
 }
 
@@ -142,7 +142,7 @@ func check(files []string, warn, quiet, status, strict, ignoreMissing bool) int 
 			}
 		}
 		if cf != "-" {
-			r.Close() // best-effort close
+			r.Close() //nolint:errcheck // best-effort close
 		}
 		if failed > 0 {
 			rc = 1
