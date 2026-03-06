@@ -156,7 +156,7 @@ releases:
 
   - version: "05.1"
     name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement expand (tabs to spaces) and unexpand (spaces to tabs). Both utilities share
       the same internal expand_common code in the C source and are natural inverses of each
@@ -166,9 +166,9 @@ releases:
       by differential testing against GNU coreutils reference binaries.
     use_cases:
       - id: rel05.1-uc001-expand
-        status: spec_complete
+        status: implemented
       - id: rel05.1-uc002-unexpand
-        status: spec_complete
+        status: implemented
 
   - version: "05.2"
     name: "Batch 5.2 — columnar operations pair (cut, paste)"
