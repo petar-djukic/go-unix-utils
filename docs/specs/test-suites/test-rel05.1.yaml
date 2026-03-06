@@ -1,0 +1,209 @@
+id: test-rel05.1
+title: "Test Suite: rel05.1 — expand, unexpand"
+release: rel05.1
+
+traces:
+  - rel05.1-uc001-expand
+  - rel05.1-uc002-unexpand
+  - prd024-expand R1
+  - prd024-expand R2
+  - prd024-expand R3
+  - prd025-unexpand R1
+  - prd025-unexpand R2
+  - prd025-unexpand R3
+
+preconditions:
+  - ./bin/expand and ./bin/unexpand exist (built via mage build).
+  - Reference binaries gexpand and gunexpand are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/expand/... ./cmd/unexpand/... which invoke RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - No normalization is applied; all outputs are compared byte-for-byte.
+
+test_cases:
+
+  # ---- expand ----
+
+  - name: expand_default_single_tab
+    description: One tab at column 1 expands to 7 spaces (advancing to column 9).
+    inputs:
+      args: []
+      stdin: "a\tb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a       b\n"
+      stderr: ""
+    traces:
+      - prd024-expand R1.1
+
+  - name: expand_multiple_tabs
+    description: Two consecutive tabs each advance to the next tab stop.
+    inputs:
+      args: []
+      stdin: "\t\tx\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "                x\n"
+      stderr: ""
+    traces:
+      - prd024-expand R1.1
+      - prd024-expand R1.2
+
+  - name: expand_no_tabs
+    description: Input with no tabs passes through unchanged.
+    inputs:
+      args: []
+      stdin: "hello world\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello world\n"
+      stderr: ""
+    traces:
+      - prd024-expand R1.3
+
+  - name: expand_tab_interval_4
+    description: -t 4 sets tab stops every 4 columns.
+    inputs:
+      args: ["-t", "4"]
+      stdin: "a\tb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a   b\n"
+      stderr: ""
+    traces:
+      - prd024-expand R2.1
+
+  - name: expand_tab_list
+    description: "-t 1,5,9 sets absolute tab stops at columns 1, 5, and 9."
+    inputs:
+      args: ["-t", "1,5,9"]
+      stdin: "\ta\tb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "    a   b\n"
+      stderr: ""
+    traces:
+      - prd024-expand R2.2
+
+  - name: expand_tab_past_last_stop
+    description: A tab at or past the last explicit stop is replaced by one space.
+    inputs:
+      args: ["-t", "4"]
+      stdin: "12345678\t9\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "12345678 9\n"
+      stderr: ""
+    traces:
+      - prd024-expand R2.2
+
+  - name: expand_multiline
+    description: Column counter resets to 1 at each newline.
+    inputs:
+      args: []
+      stdin: "\ta\n\tb\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "        a\n        b\n"
+      stderr: ""
+    traces:
+      - prd024-expand R1.4
+
+  # ---- unexpand ----
+
+  - name: unexpand_leading_spaces_to_tab
+    description: Eight leading spaces convert to one tab.
+    inputs:
+      args: []
+      stdin: "        text\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "\ttext\n"
+      stderr: ""
+    traces:
+      - prd025-unexpand R1.1
+
+  - name: unexpand_nonleading_spaces_unchanged
+    description: Non-leading spaces are not converted in default mode.
+    inputs:
+      args: []
+      stdin: "a        b\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a        b\n"
+      stderr: ""
+    traces:
+      - prd025-unexpand R1.2
+
+  - name: unexpand_all_mode
+    description: -a converts non-leading space runs at tab stop boundaries.
+    inputs:
+      args: ["-a"]
+      stdin: "a        b\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\tb\n"
+      stderr: ""
+    traces:
+      - prd025-unexpand R2.1
+
+  - name: unexpand_partial_spaces_preserved
+    description: A run of spaces not reaching a tab stop is preserved.
+    inputs:
+      args: []
+      stdin: "   text\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "   text\n"
+      stderr: ""
+    traces:
+      - prd025-unexpand R1.3
+
+  - name: unexpand_custom_interval
+    description: -t 4 converts leading 4-space runs to tabs.
+    inputs:
+      args: ["-t", "4"]
+      stdin: "    text\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "\ttext\n"
+      stderr: ""
+    traces:
+      - prd025-unexpand R3.1
+
+  - name: unexpand_no_tabs_possible
+    description: Input with no runs of spaces at tab stops passes through unchanged.
+    inputs:
+      args: []
+      stdin: "a b c\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a b c\n"
+      stderr: ""
+    traces:
+      - prd025-unexpand R1.3

@@ -154,6 +154,22 @@ releases:
       - id: rel05.0-uc004-fold
         status: spec_complete
 
+  - version: "05.1"
+    name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
+    status: spec_complete
+    description: |
+      Implement expand (tabs to spaces) and unexpand (spaces to tabs). Both utilities share
+      the same internal expand_common code in the C source and are natural inverses of each
+      other, though unexpand is not a lossless inverse. Both support custom tab stop intervals
+      and lists via -t. expand passes all characters through and converts only tabs. unexpand
+      converts only leading whitespace by default and all whitespace with -a. Both are verified
+      by differential testing against GNU coreutils reference binaries.
+    use_cases:
+      - id: rel05.1-uc001-expand
+        status: spec_complete
+      - id: rel05.1-uc002-unexpand
+        status: spec_complete
+
   - version: "99.2"
     name: "Deferred — ts specification and differential test"
     status: spec_complete
