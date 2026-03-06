@@ -1,0 +1,65 @@
+id: rel05.4-uc001-md5sum
+title: "Compute and verify MD5 digests via md5sum"
+
+summary: |
+  The operator runs the Go md5sum binary on one or more files or stdin. The binary
+  computes MD5 digests and prints them in GNU format, or verifies a checksum file.
+  The differential testing harness then runs both the Go binary and the Homebrew
+  reference binary (gmd5sum from coreutils) with identical inputs and confirms that
+  their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd030-md5sum.yaml) and invokes do-work to produce
+  a passing differential test for cmd/md5sum.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go md5sum binary on a file or stdin.
+      Example: md5sum somefile.txt
+  - id: F2
+    step: |
+      cmd/md5sum reads each file, computes its MD5 digest using crypto/md5, and prints
+      the result in GNU format to stdout.
+  - id: F3
+    step: |
+      In check mode (--check), cmd/md5sum reads a checksum file, recomputes each digest,
+      and prints OK or FAILED for each entry.
+  - id: F4
+    step: |
+      The differential testing harness executes both ./bin/md5sum and gmd5sum with the
+      same inputs and compares stdout byte-for-byte.
+  - id: F5
+    step: |
+      The harness verifies exit codes. If outputs and exit codes match, the test passes.
+  - id: F6
+    step: |
+      If they diverge, the harness reports the triggering args, both outputs, and both
+      exit codes.
+
+touchpoints:
+  - T1: "cmd/md5sum — digest computation, GNU format output, check mode, binary/tag flags (prd030-md5sum R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/md5sum compiles and ./bin/md5sum exists after mage build.
+  - id: S2
+    criterion: The differential test for digest computation passes; output matches gmd5sum byte-for-byte.
+  - id: S3
+    criterion: The differential test for stdin (-) passes; output format matches gmd5sum.
+  - id: S4
+    criterion: The differential test for --check on a valid file passes; exits 0 and prints OK lines.
+  - id: S5
+    criterion: The differential test for --check on a file with a mismatch passes; exits 1 and prints FAILED.
+  - id: S6
+    criterion: The differential test for --tag passes; BSD format output matches gmd5sum --tag.
+
+out_of_scope:
+  - HMAC-MD5 variants are not tested.
+  - md5sum is not used for security; only format compatibility is verified.
+
+test_suite: test-rel05.4

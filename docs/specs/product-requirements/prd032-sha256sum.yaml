@@ -1,0 +1,55 @@
+id: prd032-sha256sum
+title: "cmd/sha256sum: Compute and Check SHA-256 Message Digests"
+
+problem: |
+  macOS ships shasum -a 256 rather than sha256sum; the invocation differs from GNU
+  sha256sum. Scripts that generate or verify SHA-256 checksums using the GNU format
+  must use the Homebrew reference binary. The Go implementation must match the Homebrew
+  GNU reference binary (gsha256sum, installed by coreutils) byte-for-byte on all flag
+  combinations, using crypto/sha256 from the Go standard library, verified by
+  differential testing via pkg/testutils.
+
+goals:
+  - G1: Compute SHA-256 digests for one or more files or stdin and print them in GNU format, matching gsha256sum behavior.
+  - G2: Support --check (-c) to verify a checksum file and report mismatches.
+  - G3: Support --binary (-b), --text (-t), and --tag output format flags.
+
+requirements:
+  R1:
+    title: Digest computation
+    items:
+      - R1.1: Must compute the SHA-256 digest of each named file and write one line per file in the format "HASH  FILENAME" (text mode) or "HASH *FILENAME" (binary mode). The default is text mode.
+      - R1.2: Must read from stdin and print "HASH  -" when no file arguments are given or when "-" is provided as a filename.
+      - R1.3: --tag must use BSD-style output format "SHA256 (FILENAME) = HASH".
+      - R1.4: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
+
+  R2:
+    title: Checksum verification (--check, -c)
+    items:
+      - R2.1: "--check FILE must read FILE, parse each line (GNU or BSD tag format), recompute the SHA-256 digest, and compare to the stored hash."
+      - R2.2: 'Must print "FILENAME: OK" or "FILENAME: FAILED" for each entry. Must exit 1 if any check fails.'
+      - R2.3: --warn prints a warning for each malformed line. --quiet suppresses OK lines. --status suppresses all output.
+
+  R3:
+    title: Binary and text mode flags
+    items:
+      - R3.1: -b marks input as binary; output uses "HASH *FILENAME". -t (default) uses "HASH  FILENAME".
+      - R3.2: --tag produces BSD tag format regardless of -b/-t.
+
+  R4:
+    title: Exit codes and SIGPIPE
+    items:
+      - R4.1: Must exit 0 when all files are processed and all verified digests match.
+      - R4.2: Must exit 1 when any file cannot be opened, any digest fails, or the checksum file is unreadable.
+      - R4.3: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+
+non_goals:
+  - cmd/sha256sum does not implement HMAC-SHA256 or keyed variants.
+  - cmd/sha256sum does not implement SHA-224; it computes SHA-256 only.
+
+acceptance_criteria:
+  - "AC1: sha256sum on a known file produces the correct SHA-256 hash in GNU format, matching gsha256sum."
+  - "AC2: sha256sum --check on a valid checksum file exits 0 and prints 'FILENAME: OK' for each entry."
+  - "AC3: sha256sum --check on a file with a mismatch exits 1 and prints 'FILENAME: FAILED'."
+  - "AC4: Differential test against gsha256sum passes for all required test cases."
+  - "AC5: cmd/sha256sum compiles with no warnings under golangci-lint."

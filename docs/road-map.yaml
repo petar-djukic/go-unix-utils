@@ -202,6 +202,26 @@ releases:
       - id: rel05.3-uc002-comm
         status: spec_complete
 
+  - version: "05.4"
+    name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
+    status: spec_complete
+    description: |
+      Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
+      protocol: GNU two-space format for text mode, asterisk format for binary mode,
+      BSD tag format, and --check verification mode with OK/FAILED reporting. Each
+      delegates to the corresponding Go standard library package (crypto/md5, crypto/sha1,
+      crypto/sha256, crypto/sha512). Verified by differential testing against gmd5sum,
+      gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
+    use_cases:
+      - id: rel05.4-uc001-md5sum
+        status: spec_complete
+      - id: rel05.4-uc002-sha1sum
+        status: spec_complete
+      - id: rel05.4-uc003-sha256sum
+        status: spec_complete
+      - id: rel05.4-uc004-sha512sum
+        status: spec_complete
+
   - version: "99.2"
     name: "Deferred — ts specification and differential test"
     status: spec_complete
