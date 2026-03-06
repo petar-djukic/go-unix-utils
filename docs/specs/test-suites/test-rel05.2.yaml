@@ -1,0 +1,225 @@
+id: test-rel05.2
+title: "Test Suite: rel05.2 — cut, paste"
+release: rel05.2
+
+traces:
+  - rel05.2-uc001-cut
+  - rel05.2-uc002-paste
+  - prd026-cut R1
+  - prd026-cut R2
+  - prd026-cut R3
+  - prd027-paste R1
+  - prd027-paste R2
+  - prd027-paste R3
+
+preconditions:
+  - ./bin/cut and ./bin/paste exist (built via mage build).
+  - Reference binaries gcut and gpaste are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/cut/... ./cmd/paste/... which invoke RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - No normalization is applied; all outputs are compared byte-for-byte.
+  - "paste tests that use two files: setup creates two temporary files with known content."
+
+test_cases:
+
+  # ---- cut ----
+
+  - name: cut_byte_range
+    description: -b 2-4 extracts bytes 2 through 4 from each line.
+    inputs:
+      args: ["-b", "2-4"]
+      stdin: "abcdef\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "bcd\n"
+      stderr: ""
+    traces:
+      - prd026-cut R1.1
+
+  - name: cut_byte_open_range
+    description: "-b 3- extracts from byte 3 to end of line."
+    inputs:
+      args: ["-b", "3-"]
+      stdin: "abcdef\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "cdef\n"
+      stderr: ""
+    traces:
+      - prd026-cut R1.1
+
+  - name: cut_field_with_delimiter
+    description: "-d: -f2 extracts the second colon-delimited field."
+    inputs:
+      args: ["-d:", "-f2"]
+      stdin: "a:b:c\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "b\n"
+      stderr: ""
+    traces:
+      - prd026-cut R2.1
+      - prd026-cut R2.2
+
+  - name: cut_field_multiple
+    description: "-d: -f1,3 extracts fields 1 and 3."
+    inputs:
+      args: ["-d:", "-f1,3"]
+      stdin: "a:b:c\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a:c\n"
+      stderr: ""
+    traces:
+      - prd026-cut R2.1
+
+  - name: cut_suppress_no_delimiter
+    description: -s suppresses lines that contain no delimiter.
+    inputs:
+      args: ["-d:", "-f2", "-s"]
+      stdin: "no-delimiter\na:b\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "b\n"
+      stderr: ""
+    traces:
+      - prd026-cut R2.3
+
+  - name: cut_no_delimiter_passthrough
+    description: Without -s, lines with no delimiter are printed unchanged.
+    inputs:
+      args: ["-d:", "-f2"]
+      stdin: "no-delimiter\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "no-delimiter\n"
+      stderr: ""
+    traces:
+      - prd026-cut R2.3
+
+  - name: cut_output_delimiter
+    description: "--output-delimiter uses a different separator in the output."
+    inputs:
+      args: ["-d:", "-f1,3", "--output-delimiter=|"]
+      stdin: "a:b:c\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a|c\n"
+      stderr: ""
+    traces:
+      - prd026-cut R2.4
+
+  - name: cut_complement
+    description: "--complement with -f inverts the field selection."
+    inputs:
+      args: ["-d:", "--complement", "-f2"]
+      stdin: "a:b:c\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a:c\n"
+      stderr: ""
+    traces:
+      - prd026-cut R3.1
+
+  # ---- paste ----
+
+  - name: paste_two_files_default
+    description: "Two files merged with tab delimiter. Setup: file1 has 'a\\nb\\n', file2 has '1\\n2\\n'."
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\t1\nb\t2\n"
+      stderr: ""
+    traces:
+      - prd027-paste R1.1
+
+  - name: paste_custom_delimiter
+    description: "-d: merges with colon as delimiter."
+    inputs:
+      args: ["-d:", "file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a:1\nb:2\n"
+      stderr: ""
+    traces:
+      - prd027-paste R2.1
+
+  - name: paste_serial_mode
+    description: "-s produces one output line per file with all lines joined."
+    inputs:
+      args: ["-s", "file1.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\tb\n"
+      stderr: ""
+    traces:
+      - prd027-paste R3.1
+
+  - name: paste_unequal_length
+    description: "Shorter file contributes empty fields until both are exhausted. Setup: file1 has 'a\\nb\\nc\\n', file2 has '1\\n'."
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\t1\nb\t\nc\t\n"
+      stderr: ""
+    traces:
+      - prd027-paste R1.2
+
+  - name: paste_stdin_dash
+    description: "-  reads from stdin for that column."
+    inputs:
+      args: ["-d:", "-", "file2.txt"]
+      stdin: "x\ny\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "x:1\ny:2\n"
+      stderr: ""
+    traces:
+      - prd027-paste R1.3
+
+  - name: paste_delimiter_cycling
+    description: "-d,: cycles through comma then colon for successive field separators."
+    inputs:
+      args: ["-d,:", "file1.txt", "file2.txt", "file1.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a,1:a\nb,2:b\n"
+      stderr: ""
+    traces:
+      - prd027-paste R2.1
+      - prd027-paste R2.3

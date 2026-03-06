@@ -1,0 +1,67 @@
+id: rel05.2-uc002-paste
+title: "Merge lines of files side by side via paste"
+
+summary: |
+  The operator runs the Go paste binary on two or more files. The binary reads one line
+  from each file per output cycle and joins them with a delimiter, producing merged
+  columnar output. The differential testing harness then runs both the Go binary and the
+  Homebrew reference binary (gpaste from coreutils) with identical inputs and confirms
+  that their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd027-paste.yaml) and invokes do-work to produce
+  a passing differential test for cmd/paste.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go paste binary on two files.
+      Example: paste file1.txt file2.txt
+  - id: F2
+    step: |
+      cmd/paste opens all input files simultaneously. On each cycle it reads one line from
+      each open file, joins the lines with the delimiter, and writes the result plus a
+      newline to stdout.
+  - id: F3
+    step: |
+      When one file is exhausted, cmd/paste contributes an empty field for that file's
+      column until all files are exhausted.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/paste and
+      gpaste with the same file arguments and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/paste — parallel file merge, delimiter cycling, serial mode, unequal-length file handling (prd027-paste R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/paste compiles and ./bin/paste exists after mage build.
+  - id: S2
+    criterion: The differential test for two-file parallel merge passes; lines are joined with tab, matching gpaste.
+  - id: S3
+    criterion: The differential test for -d with a custom delimiter passes; output uses the specified delimiter.
+  - id: S4
+    criterion: The differential test for unequal file lengths passes; exhausted files contribute empty fields.
+  - id: S5
+    criterion: The differential test for -s serial mode passes; all lines of each file are joined on one output line.
+  - id: S6
+    criterion: The differential test for "-" (stdin) as a filename passes.
+
+out_of_scope:
+  - Files larger than available file descriptors are not a concern; paste opens all files simultaneously.
+  - Multi-byte delimiter escape sequences beyond the defined set are not tested.
+
+test_suite: test-rel05.2

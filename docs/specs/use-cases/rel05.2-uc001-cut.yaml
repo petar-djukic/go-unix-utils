@@ -1,0 +1,66 @@
+id: rel05.2-uc001-cut
+title: "Extract fields and byte ranges from lines via cut"
+
+summary: |
+  The operator runs the Go cut binary on one or more files or stdin. The binary extracts
+  the selected bytes, characters, or delimited fields from each line and writes them to
+  stdout. The differential testing harness then runs both the Go binary and the Homebrew
+  reference binary (gcut from coreutils) with identical inputs and confirms that their
+  outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd026-cut.yaml) and invokes do-work to produce
+  a passing differential test for cmd/cut.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs the Go cut binary on a file or stdin.
+      Example: printf 'a:b:c\n' | ./bin/cut -d: -f2
+  - id: F2
+    step: |
+      cmd/cut reads each line, applies the selection (bytes, characters, or fields), and
+      writes only the selected portions to stdout.
+  - id: F3
+    step: |
+      For field mode, cmd/cut splits each line on the delimiter, selects the specified
+      fields, and joins them with the output delimiter.
+  - id: F4
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/cut and gcut
+      with the same stdin, args, and environment.
+  - id: F5
+    step: |
+      The harness compares stdout byte-for-byte with no normalization. Both binaries must
+      produce identical output bytes and exit codes.
+  - id: F6
+    step: |
+      If the outputs match, the test passes. If they diverge, the harness reports the
+      triggering args, both outputs, and both exit codes.
+
+touchpoints:
+  - T1: "cmd/cut — byte/char/field extraction, range list parsing, delimiter handling, complement mode (prd026-cut R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/cut compiles and ./bin/cut exists after mage build.
+  - id: S2
+    criterion: The differential test for -b byte range passes; selected bytes match gcut output.
+  - id: S3
+    criterion: The differential test for -f field selection with -d delimiter passes; selected fields match gcut output.
+  - id: S4
+    criterion: The differential test for -f with -s (suppress delimiter-free lines) passes.
+  - id: S5
+    criterion: The differential test for --complement with -f passes; non-selected fields are output.
+  - id: S6
+    criterion: The differential test for --output-delimiter passes; output uses the specified separator.
+
+out_of_scope:
+  - Multi-byte delimiter support is not tested; -d accepts one byte.
+  - Locale-aware character cutting for -c is not tested beyond LC_ALL=C behavior.
+
+test_suite: test-rel05.2
