@@ -168,16 +168,16 @@ code_status:
               testfiles: 0
         - version: "05.1"
           name: Batch 5.1 — tab conversion pair (expand, unexpand)
-          specstatus: spec_complete
+          specstatus: implemented
           codereadiness: none
           usecases:
             - id: rel05.1-uc001-expand
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0
             - id: rel05.1-uc002-unexpand
-              specstatus: spec_complete
+              specstatus: implemented
               codestatus: not started
               testdir: ""
               testfiles: 0

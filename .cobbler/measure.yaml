@@ -6226,3 +6226,140 @@
       - id: AC8
         text: Production code is under 250 lines
   dependency: -1
+- index: 0
+  title: 'Implement cmd/cut -- prd-cut R1-R4: selection modes, delimiters, file handling, exit codes'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find and read the PRD for cut, named prd*-cut.yaml)
+      - docs/specs/use-cases/rel05.2-uc001-cut.yaml
+      - docs/specs/test-suites/test-rel-05.2.yaml (cut test cases for behavioral reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern and SIGPIPE handling)
+      - cmd/head/main.go (reference for a simple stream-processing utility -- match code style and structure)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/cut/main.go
+        action: create
+        note: "cut utility implementation: flag parsing, range parsing, field/byte/character selection, multi-file processing"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the three selection modes from the cut PRD: byte selection (-b),
+          character selection (-c), and field selection (-f). Parse range specifications
+          (N, N-M, N-, -M) and comma-separated lists. Exactly one of -b, -c, -f is
+          required; error if none or more than one is given.
+      - id: R2
+        text: |
+          Implement delimiter and output control from the cut PRD: input delimiter (-d,
+          default TAB for -f mode), suppress lines without delimiters (-s, only with -f),
+          and output delimiter (--output-delimiter, defaults to input delimiter). For -b
+          and -c modes, -d and -s are errors.
+      - id: R3
+        text: |
+          Implement file handling: read from files listed on the command line, or stdin
+          if no files given or file is "-". Concatenate output across files in order.
+          Support "--" to end option parsing.
+      - id: R4
+        text: |
+          Implement exit codes, --version, --help, SIGPIPE handling, and error reporting.
+          Exit 0 on success, 1 on error. Call pkg/sys.InstallSIGPIPEHandler() at the
+          start of main(). Write errors to stderr with "cut: " prefix. Support
+          --complement flag to invert the selected range.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Follow the shared_protocols SIGPIPE pattern from ARCHITECTURE.yaml:
+          call sys.InstallSIGPIPEHandler() at the start of main().
+      - id: D2
+        text: |
+          Match the code style and structure of cmd/head/main.go or another existing
+          simple stream utility. Use flag or pflag consistent with existing cmd/ packages.
+      - id: D3
+        text: |
+          Range parsing produces a sorted, merged list of 1-based column/byte/field
+          indices. Process each input line by selecting the specified positions and
+          joining with the output delimiter.
+      - id: D4
+        text: |
+          Do NOT create tests in this task. Tests will be a separate task. Do NOT
+          install any packages -- use only the Go standard library plus pkg/sys.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/cut/main.go exists and compiles: `go build ./cmd/cut/` succeeds with no errors."
+      - id: AC2
+        text: "All three selection modes work: `echo 'a:b:c' | go run ./cmd/cut/ -d: -f2` prints 'b'."
+      - id: AC3
+        text: "Range parsing handles N, N-M, N-, -M, and comma-separated lists correctly."
+      - id: AC4
+        text: "--complement inverts the selection. -s suppresses lines without delimiter in -f mode."
+      - id: AC5
+        text: "Multiple files are processed in order; stdin is used when no files are given."
+      - id: AC6
+        text: "Exit code is 0 on success, 1 on errors. Errors are written to stderr with 'cut: ' prefix."
+      - id: AC7
+        text: "sys.InstallSIGPIPEHandler() is called at the start of main()."
+  dependency: -1
+- index: 0
+  title: 'Implement cmd/paste -- prd-paste R1-R4: parallel merge, serial mode, delimiters, file handling'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd-paste.yaml (all requirements for paste)
+      - docs/specs/use-cases/rel05.2-uc002-paste.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-05.2.yaml (test cases for paste)
+      - docs/ARCHITECTURE.yaml (shared protocols: differential testing, SIGPIPE handling, graceful skip)
+      - cmd/cut/main.go (peer implementation in same release for patterns and style)
+      - cmd/cut/cut_test.go (peer test file for differential test patterns)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler API)
+
+    files:
+      - path: cmd/paste/main.go
+        action: create
+        note: paste implementation -- parallel merge, serial mode, delimiter cycling, stdin/file handling
+      - path: cmd/paste/paste_test.go
+        action: create
+        note: differential tests against gpaste reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement parallel merge mode (default): read one line from each input file per output line, join with delimiter, output to stdout. When a file is exhausted, substitute empty string for its field."
+      - id: R2
+        text: "Implement serial mode (-s/--serial): for each input file, join all its lines into a single output line using the delimiter list, cycling delimiters as needed."
+      - id: R3
+        text: "Implement delimiter list (-d/--delimiters): accept a string of delimiter characters, cycle through them for successive fields on the same output line, reset to the first delimiter for each new output line. Support backslash escapes: \\n (newline), \\t (tab), \\\\ (backslash), \\0 (empty string)."
+      - id: R4
+        text: "Implement file handling: accept multiple file operands, treat - as stdin (only one stdin stream shared across all - operands), read from stdin when no operands given. Exit 0 on success, exit 1 on error with diagnostic to stderr. Handle --help and --version flags."
+
+    design_decisions:
+      - id: D1
+        text: "Call pkg/sys.InstallSIGPIPEHandler() at the start of main, matching the shared protocol in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Default delimiter is TAB when -d is not specified, matching GNU paste behavior."
+      - id: D3
+        text: "Use bufio.Scanner for line-by-line reading. Track EOF state per input independently so parallel mode continues until all inputs are exhausted."
+      - id: D4
+        text: "Differential tests call exec.LookPath for gpaste and t.Skip if not found, matching the graceful-skip shared protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/paste/main.go compiles with no errors via go build ./cmd/paste/."
+      - id: AC2
+        text: "Parallel merge mode joins lines from multiple files with TAB delimiter by default."
+      - id: AC3
+        text: "Serial mode (-s) joins all lines of each file into one output line."
+      - id: AC4
+        text: "Delimiter cycling works correctly with multi-character delimiter lists and backslash escapes."
+      - id: AC5
+        text: "Stdin is handled as - operand and as default when no files given."
+      - id: AC6
+        text: "go test ./cmd/paste/ passes with gpaste as reference binary (or skips gracefully if gpaste not in PATH)."
+      - id: AC7
+        text: "Exit code is 0 on success, 1 on error with diagnostic to stderr."
+  dependency: -1
