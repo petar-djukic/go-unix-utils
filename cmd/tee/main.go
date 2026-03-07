@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -56,7 +57,13 @@ func main() {
 
 		f, err := os.OpenFile(name, flags, 0o644)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "tee: %s: %v\n", name, err)
+			// Unwrap PathError to print just the syscall error, matching GNU tee format.
+			var pathErr *os.PathError
+			if errors.As(err, &pathErr) {
+				fmt.Fprintf(os.Stderr, "tee: %s: %s\n", name, pathErr.Err)
+			} else {
+				fmt.Fprintf(os.Stderr, "tee: %s: %v\n", name, err)
+			}
 			exitCode = 1
 			continue
 		}
@@ -69,7 +76,12 @@ func main() {
 	r := bufio.NewReader(os.Stdin)
 
 	if _, err := io.Copy(mw, r); err != nil {
-		fmt.Fprintf(os.Stderr, "tee: %v\n", err)
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			fmt.Fprintf(os.Stderr, "tee: %s: %s\n", pathErr.Path, pathErr.Err)
+		} else {
+			fmt.Fprintf(os.Stderr, "tee: %v\n", err)
+		}
 		exitCode = 1
 	}
 
