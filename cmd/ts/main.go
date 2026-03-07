@@ -74,6 +74,9 @@ func main() {
 	lastTime := startTime
 
 	reader := bufio.NewReader(os.Stdin)
+	// R1.3: flush stdout after each line so downstream consumers receive
+	// timestamps in real time.
+	writer := bufio.NewWriter(os.Stdout)
 	for {
 		// R1.1: read stdin line by line (newline-delimited).
 		line, err := reader.ReadString('\n')
@@ -96,7 +99,12 @@ func main() {
 			}
 			// R1.4: preserve the original newline; do not add an extra one.
 			// R1.5: partial lines (no trailing newline) are output without one.
-			fmt.Fprintf(os.Stdout, "%s %s", ts, line)
+			if _, wErr := fmt.Fprintf(writer, "%s %s", ts, line); wErr != nil {
+				break
+			}
+			if fErr := writer.Flush(); fErr != nil {
+				break
+			}
 		}
 		if err != nil {
 			break
@@ -117,7 +125,7 @@ func elapsedToTime(d time.Duration) time.Time {
 }
 
 // strftimeToGo converts a strftime format string to a Go time layout.
-// Handles the common specifiers used by moreutils ts per D2:
+// Handles the common specifiers used by moreutils ts per D4:
 // %Y, %m, %d, %H, %M, %S, %b, %T, %s (epoch), %N (nanoseconds),
 // and subsecond extensions %.S, %.s, %.T.
 // Unrecognized specifiers pass through literally.
@@ -198,7 +206,7 @@ func strftimeToGo(format string) string {
 		case 'N':
 			b.WriteString(placeholderNano)
 		default:
-			// Unrecognized: pass through literally per D2.
+			// Unrecognized: pass through literally per D4.
 			b.WriteByte('%')
 			b.WriteByte(format[i+1])
 		}
