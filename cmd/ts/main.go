@@ -47,6 +47,13 @@ func main() {
 	}
 	flag.Parse()
 
+	// R3.4: -i and -s are mutually exclusive.
+	if *flagI && *flagS {
+		fmt.Fprintf(os.Stderr, "ts: usage error: -i and -s are mutually exclusive\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	// R5.1: -m is accepted for compatibility. Go's time.Now() includes a
 	// monotonic reading used automatically by Sub() for elapsed calculations.
 	_ = *flagM
@@ -62,7 +69,6 @@ func main() {
 	}
 
 	goLayout := strftimeToGo(format)
-	elapsedMode := *flagI || *flagS
 
 	startTime := time.Now()
 	lastTime := startTime
@@ -78,15 +84,15 @@ func main() {
 			if *flagI {
 				// R3.1: elapsed since previous line.
 				elapsed := now.Sub(lastTime)
-				ts = formatTime(elapsedToTime(elapsed), goLayout, elapsedMode)
+				ts = formatTime(elapsedToTime(elapsed), goLayout)
 				lastTime = now
 			} else if *flagS {
 				// R4.1: elapsed since start, monotonically increasing.
 				elapsed := now.Sub(startTime)
-				ts = formatTime(elapsedToTime(elapsed), goLayout, elapsedMode)
+				ts = formatTime(elapsedToTime(elapsed), goLayout)
 			} else {
 				// R1.2: absolute wall-clock timestamp.
-				ts = formatTime(now, goLayout, elapsedMode)
+				ts = formatTime(now, goLayout)
 			}
 			// R1.4: preserve the original newline; do not add an extra one.
 			// R1.5: partial lines (no trailing newline) are output without one.
@@ -204,7 +210,7 @@ func strftimeToGo(format string) string {
 // formatTime formats a time using the pre-converted Go layout and substitutes
 // runtime-dependent placeholders for epoch seconds, nanoseconds, and subsecond
 // extensions (R2.3, R2.4).
-func formatTime(t time.Time, goLayout string, elapsedMode bool) string {
+func formatTime(t time.Time, goLayout string) string {
 	result := t.Format(goLayout)
 
 	if strings.Contains(result, placeholderEpoch) {
