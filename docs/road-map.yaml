@@ -111,6 +111,29 @@ releases:
       - id: rel03.0-uc001-wc
         status: spec_complete
 
+  - version: "03.1"
+    name: "Batch 3.1 — system information (uname, arch, nproc, hostname, hostid)"
+    status: spec_complete
+    description: |
+      Implement five trivial system information utilities that wrap OS queries and print
+      results. uname prints kernel name, version, machine architecture, and other system
+      fields via individual flags or -a for all. arch prints the machine hardware name
+      (equivalent to uname -m). nproc prints the number of available processing units with
+      optional --all and --ignore=N flags. hostname prints the system hostname. hostid prints
+      the 32-bit host identifier as an 8-digit hexadecimal number. All are verified by
+      differential testing against GNU coreutils reference binaries.
+    use_cases:
+      - id: rel03.1-uc001-uname
+        status: spec_complete
+      - id: rel03.1-uc002-arch
+        status: spec_complete
+      - id: rel03.1-uc003-nproc
+        status: spec_complete
+      - id: rel03.1-uc004-hostname
+        status: spec_complete
+      - id: rel03.1-uc005-hostid
+        status: spec_complete
+
   - version: "04.0"
     name: "Batch 4 — ls specification and differential test"
     status: spec_complete

@@ -1,0 +1,53 @@
+id: rel03.1-uc005-hostid
+title: "Print numeric host identifier via hostid"
+
+summary: |
+  The operator invokes the Go hostid binary to print the 32-bit numeric host identifier
+  as an 8-digit lowercase hexadecimal number. The differential testing harness runs both
+  the Go binary and the Homebrew reference binary (ghostid from coreutils) with the same
+  arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd048-hostid.yaml) and invokes do-work to
+  produce a passing differential test for cmd/hostid.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/hostid" with no arguments. hostid prints the
+      host identifier as an 8-digit hexadecimal number followed by a newline.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/hostid
+      and ghostid with the same arguments and environment.
+  - id: F3
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/hostid — host identifier output (prd048-hostid R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/hostid compiles and ./bin/hostid exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/hostid" prints the host identifier in 8-digit hex, matching ghostid.
+  - id: S3
+    criterion: |
+      hostid exits with code 0 on success.
+  - id: S4
+    criterion: |
+      The differential test passes for the default invocation.
+
+out_of_scope:
+  - Setting the host identifier is not supported and not tested.
+  - The meaning of the host identifier value is platform-dependent and not validated
+    beyond matching the reference binary output.
+
+test_suite: test-rel03.1
