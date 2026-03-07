@@ -222,14 +222,16 @@ releases:
       - id: rel05.4-uc004-sha512sum
         status: implemented
 
-  - version: "99.2"
-    name: "Deferred — ts specification and differential test"
+  - version: "05.5"
+    name: "Batch 5.5 — ts timestamp stdin lines"
     status: implemented
     description: |
-      Implement ts for prepending timestamps to stdin lines. Deferred from rel01.0 because
-      ts has failed in multiple generation runs due to task complexity from subrequirements
-      (R1-R8) and rate-limit constraints. Moved to deferred status pending cobbler-scaffold
-      improvements to subrequirement handling.
+      Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
+      prepends a strftime-formatted timestamp to each line. Supports wall-clock (default),
+      elapsed (-s), and incremental (-i) modes, monotonic clock (-m), and subsecond
+      extensions (%.S, %.s, %.T). Originally deferred to rel99.2 due to task complexity;
+      promoted after successful generation in run 19. Use case and spec files retain
+      the rel99.2 prefix for traceability to earlier generation runs.
     use_cases:
       - id: rel99.2-uc001-ts
         status: implemented
