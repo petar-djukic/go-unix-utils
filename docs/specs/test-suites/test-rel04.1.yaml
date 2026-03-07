@@ -1,0 +1,376 @@
+id: test-rel04.1
+title: "Test Suite: rel04.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)"
+release: rel04.1
+
+traces:
+  - rel04.1-uc001-realpath
+  - rel04.1-uc002-readlink
+  - rel04.1-uc003-pwd
+  - rel04.1-uc004-tty
+  - rel04.1-uc005-logname
+  - prd049-realpath R1
+  - prd049-realpath R2
+  - prd049-realpath R3
+  - prd049-realpath R4
+  - prd050-readlink R1
+  - prd050-readlink R2
+  - prd050-readlink R3
+  - prd050-readlink R4
+  - prd051-pwd R1
+  - prd051-pwd R2
+  - prd051-pwd R3
+  - prd052-tty R1
+  - prd052-tty R2
+  - prd052-tty R3
+  - prd053-logname R1
+  - prd053-logname R2
+  - prd053-logname R3
+
+preconditions:
+  - All binaries exist in ./bin/ (built via mage build).
+  - Reference binaries grealpath, greadlink, gpwd, gtty, glogname are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - Symlink and path tests create temporary directories and links in the test harness.
+
+test_cases:
+  # --- realpath ---
+  - name: realpath_absolute
+    description: "realpath on an existing absolute path prints the canonical form."
+    inputs:
+      args: ["/tmp"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "canonical absolute path of /tmp followed by newline"
+      stderr: ""
+    traces:
+      - prd049-realpath R1.1
+
+  - name: realpath_relative
+    description: "realpath on a relative path prints the absolute canonical form."
+    inputs:
+      args: ["."]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "absolute path of current directory followed by newline"
+      stderr: ""
+    traces:
+      - prd049-realpath R1.1
+
+  - name: realpath_missing_default
+    description: "realpath on a nonexistent path prints an error by default."
+    inputs:
+      args: ["/nonexistent_path_xyz"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "error message about nonexistent path"
+    traces:
+      - prd049-realpath R1.2
+
+  - name: realpath_canonicalize_existing
+    description: "realpath -e on a nonexistent path exits 1."
+    inputs:
+      args: ["-e", "/nonexistent_path_xyz"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "error message about nonexistent path"
+    traces:
+      - prd049-realpath R1.3
+
+  - name: realpath_canonicalize_missing
+    description: "realpath -m on a nonexistent path prints the constructed canonical path."
+    inputs:
+      args: ["-m", "/nonexistent_path_xyz/subdir"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/nonexistent_path_xyz/subdir\n"
+      stderr: ""
+    traces:
+      - prd049-realpath R1.4
+
+  - name: realpath_no_symlinks
+    description: "realpath -s cleans path components without resolving symlinks."
+    inputs:
+      args: ["-s", "/tmp/../tmp"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/tmp\n"
+      stderr: ""
+    traces:
+      - prd049-realpath R1.5
+
+  - name: realpath_relative_to
+    description: "realpath --relative-to=DIR prints path relative to DIR."
+    inputs:
+      args: ["--relative-to=/usr", "/usr/bin"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "bin\n"
+      stderr: ""
+    traces:
+      - prd049-realpath R2.1
+
+  - name: realpath_no_operand
+    description: "realpath with no operand prints a usage error."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "error message about missing operand"
+    traces:
+      - prd049-realpath R3.1
+
+  # --- readlink ---
+  - name: readlink_symlink
+    description: "readlink on a symlink prints the immediate target."
+    inputs:
+      args: ["test_symlink"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "symlink target followed by newline"
+      stderr: ""
+    traces:
+      - prd050-readlink R1.1
+
+  - name: readlink_non_symlink
+    description: "readlink on a regular file (not a symlink) exits 1 with no output."
+    inputs:
+      args: ["regular_file"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd050-readlink R1.2
+
+  - name: readlink_canonicalize
+    description: "readlink -f resolves the full canonical path through symlinks."
+    inputs:
+      args: ["-f", "test_symlink"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "canonical absolute path followed by newline"
+      stderr: ""
+    traces:
+      - prd050-readlink R1.3
+
+  - name: readlink_canonicalize_existing
+    description: "readlink -e on a path where all components must exist."
+    inputs:
+      args: ["-e", "/tmp"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "canonical path of /tmp followed by newline"
+      stderr: ""
+    traces:
+      - prd050-readlink R1.4
+
+  - name: readlink_canonicalize_missing
+    description: "readlink -m on a nonexistent path prints the constructed path."
+    inputs:
+      args: ["-m", "/nonexistent_path_xyz/foo"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "/nonexistent_path_xyz/foo\n"
+      stderr: ""
+    traces:
+      - prd050-readlink R1.5
+
+  - name: readlink_no_newline
+    description: "readlink -n suppresses the trailing newline."
+    inputs:
+      args: ["-n", "test_symlink"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "symlink target without trailing newline"
+      stderr: ""
+    traces:
+      - prd050-readlink R1.6
+
+  - name: readlink_no_operand
+    description: "readlink with no operand prints a usage error."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "error message about missing operand"
+    traces:
+      - prd050-readlink R3.1
+
+  # --- pwd ---
+  - name: pwd_default
+    description: "pwd with no arguments prints the current working directory."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "absolute path of current directory followed by newline"
+      stderr: ""
+    traces:
+      - prd051-pwd R1.1
+
+  - name: pwd_physical
+    description: "pwd -P prints the physical path with symlinks resolved."
+    inputs:
+      args: ["-P"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "physical absolute path followed by newline"
+      stderr: ""
+    traces:
+      - prd051-pwd R1.3
+
+  - name: pwd_logical
+    description: "pwd -L prints the logical path from PWD."
+    inputs:
+      args: ["-L"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "logical path from PWD followed by newline"
+      stderr: ""
+    traces:
+      - prd051-pwd R1.2
+
+  - name: pwd_extra_operand
+    description: "pwd with a positional operand prints an error."
+    inputs:
+      args: ["extraarg"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "error message about extra operand"
+    traces:
+      - prd051-pwd R2.1
+
+  # --- tty ---
+  - name: tty_not_a_tty
+    description: "tty with stdin from a pipe prints 'not a tty' and exits 1."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: "not a tty\n"
+      stderr: ""
+    traces:
+      - prd052-tty R1.2
+
+  - name: tty_silent_not_a_tty
+    description: "tty -s with stdin from a pipe prints nothing and exits 1."
+    inputs:
+      args: ["-s"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd052-tty R1.3
+
+  - name: tty_extra_operand
+    description: "tty with a positional operand prints an error and exits 2."
+    inputs:
+      args: ["extraarg"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 2
+      stdout: ""
+      stderr: "error message about extra operand"
+    traces:
+      - prd052-tty R2.1
+
+  # --- logname ---
+  - name: logname_default
+    description: "logname prints the login name."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "login name followed by newline"
+      stderr: ""
+    traces:
+      - prd053-logname R1.1
+
+  - name: logname_extra_operand
+    description: "logname with a positional operand prints an error."
+    inputs:
+      args: ["extraarg"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "error message about extra operand"
+    traces:
+      - prd053-logname R2.1

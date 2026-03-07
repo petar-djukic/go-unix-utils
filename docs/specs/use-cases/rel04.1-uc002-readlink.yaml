@@ -1,0 +1,57 @@
+id: rel04.1-uc002-readlink
+title: "Print symlink target or canonical path via readlink"
+
+summary: |
+  The operator invokes the Go readlink binary to print the target of a symbolic link
+  or to canonicalize a path. readlink supports -f (canonicalize), -e (all must exist),
+  -m (none need exist), and -n (no trailing newline). The differential testing harness
+  runs both the Go binary and the Homebrew reference binary (greadlink from coreutils)
+  with the same arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd050-readlink.yaml) and invokes do-work to
+  produce a passing differential test for cmd/readlink.
+
+flow:
+  - id: F1
+    step: |
+      The operator creates a symlink and runs "./bin/readlink symlink". readlink
+      prints the immediate symlink target followed by a newline.
+  - id: F2
+    step: |
+      The operator runs "./bin/readlink -f symlink" to resolve the full canonical
+      path through all symlinks.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/readlink
+      and greadlink with the same arguments and environment.
+  - id: F4
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/readlink — symlink target and canonicalization (prd050-readlink R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/readlink compiles and ./bin/readlink exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/readlink symlink" prints the symlink target, matching greadlink.
+  - id: S3
+    criterion: |
+      "./bin/readlink -f symlink" prints the canonical path, matching greadlink.
+  - id: S4
+    criterion: |
+      The differential test passes for all canonicalization modes and error cases.
+
+out_of_scope:
+  - Creating or modifying symbolic links is not supported; use ln for that.
+  - Relative output (--relative-to) is not supported; use realpath for that.
+
+test_suite: test-rel04.1

@@ -148,6 +148,30 @@ releases:
       - id: rel04.0-uc002-ls-extended
         status: spec_complete
 
+  - version: "04.1"
+    name: "Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)"
+    status: spec_complete
+    description: |
+      Implement five path resolution and terminal utilities. realpath prints the resolved
+      absolute path for each argument with existence modes (-e, -m), symlink control (-s),
+      and relative output (--relative-to, --relative-base). readlink prints the target of
+      a symbolic link or canonicalizes paths via -f, -e, -m modes. pwd prints the current
+      working directory in logical (-L) or physical (-P) mode. tty prints the terminal
+      device name connected to stdin or reports "not a tty" with exit code 1. logname prints
+      the login name from the system login record. All are verified by differential testing
+      against GNU coreutils reference binaries.
+    use_cases:
+      - id: rel04.1-uc001-realpath
+        status: spec_complete
+      - id: rel04.1-uc002-readlink
+        status: spec_complete
+      - id: rel04.1-uc003-pwd
+        status: spec_complete
+      - id: rel04.1-uc004-tty
+        status: spec_complete
+      - id: rel04.1-uc005-logname
+        status: spec_complete
+
   - version: "05.0"
     name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
     status: spec_complete

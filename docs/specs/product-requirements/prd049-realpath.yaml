@@ -1,0 +1,56 @@
+id: prd049-realpath
+title: "cmd/realpath: Print Resolved Absolute Paths"
+
+problem: |
+  Build systems and deployment scripts resolve symbolic links and relative path components
+  to obtain canonical absolute paths. realpath handles symlink chains, . and .. components,
+  and missing path segments depending on mode flags. The Go implementation must match the
+  Homebrew GNU reference binary (grealpath, installed by coreutils) byte-for-byte on stdout
+  and exit code, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the resolved absolute pathname for each argument, one per line.
+  - G2: Support existence modes (-e, -m) and symlink resolution control (-s).
+  - G3: Support relative path output via --relative-to and --relative-base.
+
+requirements:
+  R1:
+    title: Default behavior and existence modes
+    items:
+      - R1.1: When invoked with one or more path arguments and no flags, must resolve each path to its canonical absolute form (all symlinks resolved, no . or .. components) and print one per line, exiting 0.
+      - R1.2: If the resolved path does not exist by default, must print an error to stderr and exit 1 for that operand.
+      - R1.3: "-e (--canonicalize-existing) requires that every component of the path exists. If any component is missing, must print an error to stderr and exit 1."
+      - R1.4: "-m (--canonicalize-missing) requires no component to exist. Must resolve as far as possible and construct the remainder without checking existence."
+      - R1.5: "-s (--strip, --no-symlinks) must not resolve symlinks; only clean . and .. components and prepend the working directory for relative paths."
+
+  R2:
+    title: Relative path output
+    items:
+      - R2.1: "--relative-to=DIR must print each resolved path relative to DIR instead of as an absolute path."
+      - R2.2: "--relative-base=DIR must print paths relative to DIR when the resolved path starts with DIR; otherwise print the absolute path."
+      - R2.3: When both --relative-to and --relative-base are specified, --relative-to is applied only if the path starts with --relative-base.
+
+  R3:
+    title: Error handling
+    items:
+      - R3.1: If no operand is provided, must print a usage error to stderr and exit 1.
+      - R3.2: Unknown flags must produce an error message to stderr and exit 1.
+      - R3.3: When multiple paths are given and some fail, must print errors for the failing paths and exit 1 (but still print successful resolutions).
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (grealpath) via pkg/testutils.
+      - R4.2: "Tests must cover: default resolution, -e with existing and missing paths, -m with missing paths, -s without symlink resolution, --relative-to, --relative-base, multiple operands with mixed success, and error cases."
+      - R4.3: All differential tests must set LC_ALL=C in the environment.
+
+non_goals:
+  - cmd/realpath does not create files or directories.
+  - cmd/realpath does not modify symbolic links.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/realpath /tmp prints the canonical path, matching grealpath."
+  - "AC2: go run ./cmd/realpath -e /nonexistent exits 1 with an error, matching grealpath."
+  - "AC3: go run ./cmd/realpath -m /nonexistent/foo prints the constructed path, matching grealpath."
+  - "AC4: Differential test against grealpath passes for all flag combinations and error cases."
+  - "AC5: cmd/realpath compiles with no warnings under golangci-lint."
