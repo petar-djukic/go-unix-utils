@@ -1,0 +1,61 @@
+id: prd037-ln
+title: "cmd/ln: Create Links Between Files"
+
+problem: |
+  Build systems, package managers, and configuration tools create hard links and symbolic links
+  to share files without duplication. The macOS BSD ln differs from GNU ln in backup semantics,
+  --no-dereference behavior on symlink targets, and verbose output format. The Go implementation
+  must match the Homebrew GNU reference binary (gln, installed by coreutils) byte-for-byte on
+  all flag combinations and edge cases, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Create hard links and symbolic links between files and directories.
+  - G2: Support force-overwrite, interactive, and backup modes for safe link replacement.
+  - G3: Support linking multiple targets into a directory in a single invocation.
+
+requirements:
+  R1:
+    title: Hard link creation (default)
+    items:
+      - R1.1: Must create a hard link from TARGET to LINK_NAME when invoked as 'ln TARGET LINK_NAME'.
+      - R1.2: Must create hard links for multiple TARGETs in DIRECTORY when invoked as 'ln TARGET... DIRECTORY', placing each link in DIRECTORY with the same basename as the target.
+      - R1.3: Must exit with a non-zero status and print an error to stderr when attempting to create a hard link to a directory.
+      - R1.4: Must exit with a non-zero status and print an error to stderr when LINK_NAME already exists and neither -f nor -i is given.
+
+  R2:
+    title: Symbolic link creation (-s, --symbolic)
+    items:
+      - R2.1: -s or --symbolic must create a symbolic link instead of a hard link.
+      - R2.2: Must allow symbolic links to directories, unlike hard links.
+      - R2.3: Must store the TARGET string as-is in the symlink, whether it is relative or absolute.
+      - R2.4: -r or --relative must create a symbolic link with a relative path from the link location to the target, computing the relative path automatically.
+
+  R3:
+    title: Force, safety, and verbosity flags
+    items:
+      - R3.1: -f or --force must remove existing destination files before creating the link.
+      - R3.2: -n or --no-dereference must treat a destination that is a symlink to a directory as a regular file, rather than following it.
+      - R3.3: -i or --interactive must prompt the user on stderr before removing an existing destination, and must not remove if the user declines.
+      - R3.4: -v or --verbose must print the name of each link created to stdout.
+      - R3.5: -b must create a backup of each existing destination file before removal, using the default backup suffix '~'. --backup=METHOD must accept numbered, existing, simple, and none as backup methods.
+      - R3.6: -S SUFFIX or --suffix=SUFFIX must use SUFFIX instead of '~' for backup file names.
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare stdout, stderr, exit codes, and resulting filesystem state between the Go binary and gln via pkg/testutils.
+      - R4.2: "Tests must cover: hard link creation, symbolic link creation (-s), force overwrite (-f), no-dereference (-n), verbose output (-v), backup creation (-b), multiple targets into a directory, relative symlinks (-r), and error cases for hard linking directories and existing destinations."
+      - R4.3: Tests must verify that created links point to the correct target and have the correct link type (hard or symbolic), matching gln behavior.
+
+non_goals:
+  - cmd/ln does not implement -L or -P (logical/physical) dereference modes for following symlink chains on the target.
+  - cmd/ln does not implement -t DIRECTORY or -T (--no-target-directory) flags.
+  - cmd/ln does not read target names from stdin; all input comes from command-line arguments.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/ln file1 file2 creates a hard link, and both files share the same inode, matching gln."
+  - "AC2: go run ./cmd/ln -s target linkname creates a symbolic link pointing to target, matching gln -s."
+  - "AC3: go run ./cmd/ln -sf newtarget existing_link replaces the existing link, matching gln -sf."
+  - "AC4: go run ./cmd/ln -s -r /usr/bin/sort ./sort_link creates a relative symlink, matching gln -s -r."
+  - "AC5: Differential test against gln passes for hard links, symlinks, -f, -n, -v, -b, multiple targets, -r, and error cases."
+  - "AC6: cmd/ln compiles with no warnings under golangci-lint."

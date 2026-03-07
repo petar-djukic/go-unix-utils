@@ -1,0 +1,52 @@
+id: prd040-printenv
+title: "cmd/printenv: Print Environment Variables"
+
+problem: |
+  Scripts and debugging sessions need a simple way to inspect specific environment variables
+  or dump the entire environment. While env overlaps in functionality, printenv provides a
+  cleaner interface for querying named variables and reporting which ones are missing via its
+  exit code. The macOS BSD printenv lacks the -0 NUL-delimited flag available in GNU printenv.
+  The Go implementation must match the Homebrew GNU reference binary (gprintenv, installed by
+  coreutils) byte-for-byte on all flag combinations and edge cases, verified by differential
+  testing via pkg/testutils.
+
+goals:
+  - G1: Print all environment variables when invoked with no arguments.
+  - G2: Print only the values of specified variables when one or more VARIABLE arguments are given.
+  - G3: Report success or failure via exit code depending on whether all requested variables exist.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1: When invoked with no arguments, must print every environment variable on its own line in NAME=VALUE format and exit 0.
+      - R1.2: When invoked with one or more VARIABLE arguments, must print only the value (not the name or '=') of each named variable, one per line, in the order given.
+      - R1.3: If a named VARIABLE is not set in the environment, must produce no output for that variable and must not print an error message.
+
+  R2:
+    title: Output formatting and exit codes
+    items:
+      - R2.1: -0 or --null must terminate each output line with a NUL byte (0x00) instead of a newline.
+      - R2.2: Must exit 0 if all requested VARIABLE arguments are found in the environment.
+      - R2.3: Must exit 1 if any requested VARIABLE argument is not found in the environment.
+      - R2.4: When no VARIABLE arguments are given, must always exit 0 (the dump of all variables cannot fail).
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gprintenv) via pkg/testutils.
+      - R3.2: "Tests must cover: no-argument full dump, single existing variable, multiple existing variables, missing variable (exit 1), mix of existing and missing variables, and -0 NUL-delimited output."
+      - R3.3: Tests must verify that no error message is printed to stderr for missing variables.
+
+non_goals:
+  - cmd/printenv does not support setting or modifying variables; it is read-only.
+  - cmd/printenv does not accept variable names from stdin; all input comes from command-line arguments.
+  - cmd/printenv does not print the NAME= prefix when querying specific variables; only the value is printed.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/printenv with no arguments produces the same output as gprintenv."
+  - "AC2: go run ./cmd/printenv HOME produces the value of HOME followed by a newline, matching gprintenv HOME."
+  - "AC3: go run ./cmd/printenv NONEXISTENT exits 1 with no output, matching gprintenv."
+  - "AC4: go run ./cmd/printenv -0 HOME terminates output with a NUL byte instead of a newline, matching gprintenv -0 HOME."
+  - "AC5: Differential test against gprintenv passes for full dump, single variable, multiple variables, missing variables, and -0 mode."
+  - "AC6: cmd/printenv compiles with no warnings under golangci-lint."

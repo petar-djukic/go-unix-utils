@@ -1,0 +1,73 @@
+id: rel06.1-uc001-env
+title: "Run a command in a modified environment via env"
+
+summary: |
+  The operator invokes the Go env binary to print the current environment, run a
+  command with additional or modified variables, clear the environment with -i, or
+  unset specific variables with -u. The differential testing harness runs both the
+  Go binary and the Homebrew reference binary (genv from coreutils) with the same
+  arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd039-env.yaml) and invokes do-work to
+  produce a passing differential test for cmd/env.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/env" with no arguments. env prints all current
+      environment variables, one per line in NAME=VALUE format.
+  - id: F2
+    step: |
+      The operator runs "./bin/env FOO=bar /usr/bin/env" to execute a command
+      with an additional variable. env sets FOO=bar in the child environment and
+      runs the specified command.
+  - id: F3
+    step: |
+      The operator runs "./bin/env -i /usr/bin/env" to start with a clean
+      environment. env clears all inherited variables before executing the command.
+  - id: F4
+    step: |
+      The operator runs "./bin/env -u HOME /usr/bin/env" to unset a specific
+      variable. env removes HOME from the environment before executing the command.
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/env
+      and genv with the same arguments and environment.
+  - id: F6
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/env — print environment, set variables, clean environment, unset variables (prd039-env R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/env compiles and ./bin/env exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/env" with no arguments prints all environment variables, matching genv.
+  - id: S3
+    criterion: |
+      Running a command with NAME=VALUE pairs passes the modified environment to the
+      child process.
+  - id: S4
+    criterion: |
+      The -i flag produces a clean environment with no inherited variables.
+  - id: S5
+    criterion: |
+      The -u flag removes the specified variable from the environment.
+  - id: S6
+    criterion: |
+      The differential test passes for bare invocation, NAME=VALUE pairs, -i, -u,
+      and combinations thereof.
+
+out_of_scope:
+  - Signal handling and the -S (split string) option are not tested.
+  - Interaction with login shells or shell-specific environment inheritance is not tested.
+
+test_suite: test-rel06.1

@@ -1,0 +1,71 @@
+id: rel06.0-uc005-unlink
+title: "Remove a single file via unlink"
+
+summary: |
+  The operator invokes the Go unlink binary to remove exactly one file by
+  calling the unlink system call. Unlike rm, unlink accepts only a single
+  path and refuses to operate on directories. The differential testing harness
+  runs both the Go binary and the Homebrew reference binary (gunlink from
+  coreutils) with the same arguments and compares stderr and exit codes.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd038-unlink.yaml) and invokes do-work to
+  produce a passing differential test for cmd/unlink.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/unlink target" where "target" is an existing
+      regular file. unlink removes the file and exits with status 0.
+  - id: F2
+    step: |
+      The operator runs "./bin/unlink nonexistent" where the file does not
+      exist. unlink prints an error to stderr and exits with a non-zero status.
+  - id: F3
+    step: |
+      The operator runs "./bin/unlink somedir" where "somedir" is a directory.
+      unlink prints an error to stderr and exits with a non-zero status,
+      refusing to remove directories.
+  - id: F4
+    step: |
+      The operator runs "./bin/unlink" with no arguments. unlink prints a
+      usage error to stderr and exits with a non-zero status.
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both
+      ./bin/unlink and gunlink with the same arguments and environment.
+  - id: F6
+    step: |
+      The harness compares stderr output and exit codes. Both binaries must
+      produce identical behavior.
+
+touchpoints:
+  - T1: "cmd/unlink — single file removal, error on missing file, error on directory (prd038-unlink R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/unlink compiles and ./bin/unlink exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/unlink target" removes the file and exits 0, matching gunlink.
+  - id: S3
+    criterion: |
+      Missing file error matches: unlinking a nonexistent path produces stderr
+      and exit code identical to gunlink.
+  - id: S4
+    criterion: |
+      Directory error matches: unlinking a directory produces stderr and exit
+      code identical to gunlink.
+  - id: S5
+    criterion: |
+      The differential test passes for existing file removal, missing file
+      errors, directory errors, and no-argument usage errors.
+
+out_of_scope:
+  - Unlinking symbolic links to directories; the test covers regular files and plain directories only.
+  - Behavior when the file is open by another process (OS-dependent semantics).
+
+test_suite: test-rel06.0

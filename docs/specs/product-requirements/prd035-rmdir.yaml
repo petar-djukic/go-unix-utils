@@ -1,0 +1,58 @@
+id: prd035-rmdir
+title: "cmd/rmdir: Remove Empty Directories"
+
+problem: |
+  Cleanup scripts and build systems remove empty directories after deleting their contents.
+  The macOS BSD rmdir lacks the --ignore-fail-on-non-empty and --verbose flags present in
+  GNU rmdir. The Go implementation must match the Homebrew GNU reference binary (grmdir,
+  installed by coreutils) byte-for-byte on all flag combinations and edge cases, verified
+  by differential testing via pkg/testutils.
+
+goals:
+  - G1: Remove one or more empty directories specified as command-line arguments.
+  - G2: Support recursive removal of empty ancestor directories with -p.
+  - G3: Support suppression of specific error conditions with --ignore-fail-on-non-empty.
+
+requirements:
+  R1:
+    title: Basic empty directory removal
+    items:
+      - R1.1: Must remove a single empty directory when invoked as 'rmdir DIR'.
+      - R1.2: Must remove multiple empty directories when invoked with multiple DIR arguments, processing each independently.
+      - R1.3: Must exit with a non-zero status and print an error to stderr when a target directory is not empty.
+      - R1.4: Must exit with a non-zero status and print an error to stderr when a target does not exist or is not a directory.
+
+  R2:
+    title: Parent removal (-p, --parents)
+    items:
+      - R2.1: -p or --parents must remove the target directory and then remove each successive empty parent component of the path, similar to 'rmdir -p a/b/c' removing c, then b, then a.
+      - R2.2: Must stop ascending when a parent directory is not empty and report an error for that component.
+      - R2.3: Must process each DIR argument independently when -p is combined with multiple arguments.
+
+  R3:
+    title: Error handling and verbosity
+    items:
+      - R3.1: --ignore-fail-on-non-empty must suppress error messages and the non-zero exit status caused by a directory not being empty.
+      - R3.2: --ignore-fail-on-non-empty must not suppress errors for other failure reasons such as permission denied or non-existent target.
+      - R3.3: -v or --verbose must print a message to stdout for each directory successfully removed.
+      - R3.4: Must exit 0 when all requested directories are successfully removed, and exit non-zero when any removal fails (unless suppressed by --ignore-fail-on-non-empty).
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare stdout, stderr, and exit codes between the Go binary and grmdir via pkg/testutils.
+      - R4.2: "Tests must cover: single empty directory removal, multiple directories, -p with nested empty directories, non-empty directory error, non-existent directory error, --ignore-fail-on-non-empty suppression, and -v verbose output."
+      - R4.3: Tests must verify that -p stops ascending correctly when a parent is not empty, matching grmdir behavior.
+
+non_goals:
+  - cmd/rmdir does not remove non-empty directories; that is the role of rm -r.
+  - cmd/rmdir does not accept file arguments; only directories are valid targets.
+  - cmd/rmdir does not read directory names from stdin; all input comes from command-line arguments.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/rmdir emptydir removes an empty directory, matching grmdir."
+  - "AC2: go run ./cmd/rmdir -p a/b/c removes c, b, and a when all are empty, matching grmdir -p."
+  - "AC3: go run ./cmd/rmdir nonempty exits non-zero with an error message when nonempty contains files, matching grmdir."
+  - "AC4: go run ./cmd/rmdir --ignore-fail-on-non-empty nonempty exits 0 silently, matching grmdir."
+  - "AC5: Differential test against grmdir passes for empty removal, -p, non-empty errors, --ignore-fail-on-non-empty, and -v."
+  - "AC6: cmd/rmdir compiles with no warnings under golangci-lint."

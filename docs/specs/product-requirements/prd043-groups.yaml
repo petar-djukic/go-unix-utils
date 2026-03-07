@@ -1,0 +1,50 @@
+id: prd043-groups
+title: "cmd/groups: Print Group Memberships"
+
+problem: |
+  Shell scripts that check group-based permissions need a quick way to list a user's group
+  memberships. The groups utility wraps the system group database into a one-line summary.
+  The macOS BSD groups and GNU groups share the same basic behavior but differ in output
+  formatting for named-user queries. The Go implementation must match the Homebrew GNU
+  reference binary (ggroups, installed by coreutils) byte-for-byte on all argument
+  combinations and edge cases, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the group memberships of the current user when invoked with no arguments.
+  - G2: Print the group memberships of one or more named users when USER arguments are given.
+  - G3: Format output consistently with the GNU reference, including the "user :" prefix for named-user queries.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1: When invoked with no arguments, must print the group names of the current user, space-separated, on a single line followed by a newline, and exit 0.
+      - R1.2: When invoked with one or more USER arguments, must print the groups for each user on a separate line and exit 0.
+      - R1.3: If a named USER does not exist, must print an error message to stderr for that user and continue processing remaining users. Must exit 1 if any user was not found.
+
+  R2:
+    title: Output format
+    items:
+      - R2.1: When no USER argument is given, must print only the space-separated group names with no prefix.
+      - R2.2: "When USER arguments are given, each line must be formatted as: 'user : group1 group2 ...' with the user name, a space, a colon, a space, and then the space-separated group names."
+      - R2.3: Group names must appear in the order returned by the system group database.
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (ggroups) via pkg/testutils.
+      - R3.2: "Tests must cover: no-argument current-user output, single named user, multiple named users, nonexistent user error, and mixed valid/invalid users."
+      - R3.3: Tests must verify the "user :" prefix format for named-user queries.
+
+non_goals:
+  - cmd/groups does not support any flags beyond --help and --version; it has no optional behavior modes.
+  - cmd/groups does not print GIDs; only group names are output.
+  - cmd/groups does not read user names from stdin; all input comes from command-line arguments.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/groups with no arguments prints the current user's groups, matching ggroups."
+  - "AC2: go run ./cmd/groups root prints 'root : ...' with root's groups, matching ggroups root."
+  - "AC3: go run ./cmd/groups root nobody prints one line per user with the 'user :' prefix, matching ggroups."
+  - "AC4: go run ./cmd/groups nonexistentuser exits 1 with an error message to stderr, matching ggroups."
+  - "AC5: Differential test against ggroups passes for current-user, named users, and error cases."
+  - "AC6: cmd/groups compiles with no warnings under golangci-lint."

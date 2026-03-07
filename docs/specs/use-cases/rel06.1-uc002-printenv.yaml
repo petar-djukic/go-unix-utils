@@ -1,0 +1,74 @@
+id: rel06.1-uc002-printenv
+title: "Print environment variables via printenv"
+
+summary: |
+  The operator invokes the Go printenv binary to display environment variables. With
+  no arguments it prints all variables; with a named variable it prints only that
+  value. A missing variable causes exit code 1. The -0 flag separates output with NUL
+  bytes instead of newlines. The differential testing harness runs both the Go binary
+  and the Homebrew reference binary (gprintenv from coreutils) with the same arguments
+  and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd040-printenv.yaml) and invokes do-work to
+  produce a passing differential test for cmd/printenv.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/printenv" with no arguments. printenv prints all
+      current environment variables, one per line in NAME=VALUE format.
+  - id: F2
+    step: |
+      The operator runs "./bin/printenv HOME" to print a specific variable.
+      printenv prints the value of HOME followed by a newline.
+  - id: F3
+    step: |
+      The operator runs "./bin/printenv NONEXISTENT" to request a variable that
+      is not set. printenv prints nothing and exits with code 1.
+  - id: F4
+    step: |
+      The operator runs "./bin/printenv -0" to print all variables separated by
+      NUL bytes instead of newlines.
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/printenv
+      and gprintenv with the same arguments and environment.
+  - id: F6
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/printenv — print all variables, print specific variable, NUL-delimited output (prd040-printenv R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/printenv compiles and ./bin/printenv exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/printenv" with no arguments prints all environment variables, matching
+      gprintenv.
+  - id: S3
+    criterion: |
+      "./bin/printenv HOME" prints the value of HOME, matching gprintenv.
+  - id: S4
+    criterion: |
+      "./bin/printenv NONEXISTENT" produces no output and exits with code 1.
+  - id: S5
+    criterion: |
+      The -0 flag produces NUL-separated output identical to gprintenv -0.
+  - id: S6
+    criterion: |
+      The differential test passes for bare invocation, named variables, missing
+      variables, and -0 output.
+
+out_of_scope:
+  - NUL-delimited output (-0) is tested for byte correctness but not for consumption by
+    downstream tools (xargs -0).
+  - Multiple variable arguments on a single invocation are tested only if gprintenv supports them.
+
+test_suite: test-rel06.1
