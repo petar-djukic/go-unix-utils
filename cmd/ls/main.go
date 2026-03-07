@@ -156,8 +156,9 @@ func main() {
 	}
 
 	// R2: List directory arguments.
-	showHeader := len(dirArgs) > 1 || len(fileArgs) > 0
-	for i, dir := range dirArgs {
+	// R5: When -R is active, always show headers and recurse after each directory.
+	showHeader := len(dirArgs) > 1 || len(fileArgs) > 0 || opts.recursive
+	for _, dir := range dirArgs {
 		if needBlank {
 			fmt.Println()
 		}
@@ -167,18 +168,12 @@ func main() {
 		if err := listDir(dir, opts, longFormat, singleColumn, useAcross, termWidth); err != nil {
 			exitCode = 1
 		}
-		if i < len(dirArgs)-1 {
-			needBlank = true
-		}
-	}
-
-	// R5: -R recursive listing.
-	if opts.recursive && len(dirArgs) > 0 {
-		for _, dir := range dirArgs {
+		if opts.recursive {
 			if err := listRecursive(dir, opts, longFormat, singleColumn, useAcross, termWidth); err != nil {
 				exitCode = 1
 			}
 		}
+		needBlank = true
 	}
 
 	os.Exit(exitCode)

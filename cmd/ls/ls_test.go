@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (Homebrew GNU coreutils).
-// Implements prd008-ls R1-R8 acceptance criteria.
+// Implements prd008-ls R1-R7 and prd010-ls-extended R1-R6 acceptance criteria.
 package main
 
 import (
@@ -105,6 +105,45 @@ func setupSortFixture(t *testing.T) string {
 	return dir
 }
 
+// setupVersionFixture creates files named for version sort testing.
+func setupVersionFixture(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "version-fixture")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"file1", "file2", "file10", "file20"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// setupRecursiveFixture creates a directory tree for -R testing.
+func setupRecursiveFixture(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "recursive-fixture")
+	if err := os.MkdirAll(filepath.Join(dir, "sub1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "sub2"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"afile", "bfile"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sub1", "x"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sub2", "y"), []byte("y\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gls")
@@ -114,6 +153,8 @@ func TestDiff(t *testing.T) {
 
 	fixture := setupFixture(t)
 	sortFixture := setupSortFixture(t)
+	versionFixture := setupVersionFixture(t)
+	recursiveFixture := setupRecursiveFixture(t)
 
 	tests := []testutils.DiffTest{
 		{
@@ -271,6 +312,87 @@ func TestDiff(t *testing.T) {
 			// R5: -A with sort fixture shows all except . and ..
 			Name: "ls_almost_all_sort_fixture",
 			Args: []string{"-A", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R2.5: -v version sort.
+		{
+			Name: "ls_version_sort",
+			Args: []string{"-1v", "--color=never", versionFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R2.4: -U unsorted (directory order).
+		{
+			Name: "ls_unsorted",
+			Args: []string{"-1U", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R3.1: -i inode display.
+		{
+			Name: "ls_inode_display",
+			Args: []string{"-1i", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R3.2: -s block count display.
+		{
+			Name: "ls_block_display",
+			Args: []string{"-1s", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R3.4, R6.1: -n numeric IDs (implies -l).
+		{
+			Name:      "ls_numeric_ids",
+			Args:      []string{"-n", "--color=never", sortFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		// prd010-ls-extended R4.1: -F classify indicator.
+		{
+			Name: "ls_classify",
+			Args: []string{"-1F", "--color=never", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R5.1: -R recursive listing.
+		{
+			Name: "ls_recursive",
+			Args: []string{"-1R", "--color=never", recursiveFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R5.2, R6.3: -Rl recursive long format.
+		{
+			Name:      "ls_recursive_long",
+			Args:      []string{"-Rl", "--color=never", recursiveFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		// prd010-ls-extended R3.5: -is combined inode and block display.
+		{
+			Name: "ls_inode_and_blocks",
+			Args: []string{"-1is", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R6.5: -sh human-readable block counts.
+		{
+			Name: "ls_blocks_human",
+			Args: []string{"-1sh", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R6.2: format flag last-wins (-l overrides -1).
+		{
+			Name:      "ls_format_last_wins_long",
+			Args:      []string{"-1l", "--color=never", sortFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		// prd010-ls-extended R6.2: format flag last-wins (-1 overrides -l).
+		{
+			Name: "ls_format_last_wins_single",
+			Args: []string{"-l1", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// prd010-ls-extended R6.4: -RF recursive with classify.
+		{
+			Name: "ls_recursive_classify",
+			Args: []string{"-1RF", "--color=never", recursiveFixture},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
