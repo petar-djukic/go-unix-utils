@@ -1,0 +1,76 @@
+id: rel06.0-uc002-rmdir
+title: "Remove empty directories via rmdir"
+
+summary: |
+  The operator invokes the Go rmdir binary to remove one or more empty
+  directories, optionally removing ancestor directories with -p. The
+  differential testing harness runs both the Go binary and the Homebrew
+  reference binary (grmdir from coreutils) with the same arguments and
+  compares stderr and exit codes.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd035-rmdir.yaml) and invokes do-work to
+  produce a passing differential test for cmd/rmdir.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/rmdir emptydir" where "emptydir" is an empty
+      directory. rmdir removes the directory and exits with status 0.
+  - id: F2
+    step: |
+      The operator runs "./bin/rmdir -p a/b/c" where a, a/b, and a/b/c are
+      all empty. rmdir removes c, then b, then a in succession.
+  - id: F3
+    step: |
+      The operator runs "./bin/rmdir nonemptydir" where "nonemptydir" contains
+      files. rmdir prints an error to stderr and exits with a non-zero status.
+  - id: F4
+    step: |
+      The operator runs "./bin/rmdir nonexistent" where the directory does not
+      exist. rmdir prints an error to stderr and exits with a non-zero status.
+  - id: F5
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/rmdir
+      and grmdir with the same arguments and environment.
+  - id: F6
+    step: |
+      The harness compares stderr output and exit codes. Both binaries must
+      produce identical behavior.
+
+touchpoints:
+  - T1: "cmd/rmdir — single directory removal, parent removal (-p), non-empty directory error (prd035-rmdir R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/rmdir compiles and ./bin/rmdir exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/rmdir emptydir" removes the empty directory and exits 0, matching
+      grmdir.
+  - id: S3
+    criterion: |
+      Parent removal works: "./bin/rmdir -p a/b/c" removes all ancestor
+      directories when each is empty after its child is removed.
+  - id: S4
+    criterion: |
+      Non-empty directory error matches: attempting to remove a non-empty
+      directory produces stderr and exit code identical to grmdir.
+  - id: S5
+    criterion: |
+      Missing directory error matches: attempting to remove a nonexistent
+      directory produces stderr and exit code identical to grmdir.
+  - id: S6
+    criterion: |
+      The differential test passes for single empty directory, -p ancestor
+      chains, non-empty directory errors, nonexistent directory errors, and
+      multiple arguments.
+
+out_of_scope:
+  - Recursive removal of non-empty directories; that is the domain of rm -r.
+  - Behavior when the directory is a mount point.
+
+test_suite: test-rel06.0

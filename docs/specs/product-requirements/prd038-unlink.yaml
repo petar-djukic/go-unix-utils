@@ -1,0 +1,49 @@
+id: prd038-unlink
+title: "cmd/unlink: Remove a Single File"
+
+problem: |
+  The unlink utility provides a minimal interface to the unlink(2) system call, removing exactly
+  one file without the recursive or force semantics of rm. The macOS BSD unlink and GNU unlink
+  behave identically for valid inputs but differ in error message formatting. The Go implementation
+  must match the Homebrew GNU reference binary (gunlink, installed by coreutils) byte-for-byte on
+  output and exit codes, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Remove exactly one file by calling the unlink(2) system call.
+  - G2: Reject invalid usage with appropriate error messages and exit codes.
+
+requirements:
+  R1:
+    title: Basic operation
+    items:
+      - R1.1: Must call unlink(2) on exactly one FILE argument provided on the command line.
+      - R1.2: Must produce no output on stdout when the operation succeeds.
+      - R1.3: Must exit 0 on success.
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1: Must exit with a non-zero status and print an error to stderr when called with zero arguments.
+      - R2.2: Must exit with a non-zero status and print an error to stderr when called with more than one argument.
+      - R2.3: Must exit with a non-zero status and print an error to stderr when the specified FILE does not exist.
+      - R2.4: Must exit with a non-zero status and print an error to stderr when the specified FILE is a directory, since unlink(2) does not remove directories on standard systems.
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1: Differential tests must compare stdout, stderr, and exit codes between the Go binary and gunlink via pkg/testutils.
+      - R3.2: "Tests must cover: successful removal of a regular file, successful removal of a symbolic link, zero-argument error, multi-argument error, non-existent file error, and directory argument error."
+      - R3.3: Tests must verify that the target file no longer exists after a successful invocation, matching gunlink behavior.
+
+non_goals:
+  - cmd/unlink does not support any flags; it accepts exactly one positional argument.
+  - cmd/unlink does not remove directories; use rmdir for empty directories or rm -r for non-empty ones.
+  - cmd/unlink does not read filenames from stdin; input comes from the command-line argument only.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/unlink testfile removes testfile and exits 0, matching gunlink."
+  - "AC2: go run ./cmd/unlink (no arguments) exits non-zero with an error message, matching gunlink."
+  - "AC3: go run ./cmd/unlink a b exits non-zero with an error message, matching gunlink."
+  - "AC4: go run ./cmd/unlink nonexistent exits non-zero with an error message, matching gunlink."
+  - "AC5: Differential test against gunlink passes for regular file, symbolic link, zero args, multi args, non-existent, and directory cases."
+  - "AC6: cmd/unlink compiles with no warnings under golangci-lint."

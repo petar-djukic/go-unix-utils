@@ -63,6 +63,11 @@ roadmap_summary:
     use_cases_done: 1
     use_cases_total: 1
     status: spec_complete
+  - version: rel06.0
+    name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
+    use_cases_done: 0
+    use_cases_total: 5
+    status: spec_complete
 
 prd_index:
   - id: prd001-testutils
@@ -134,6 +139,26 @@ prd_index:
     title: "cmd/head: Print the First Lines or Bytes of Files"
     summary: Print first N lines or bytes with negative counts, multi-file headers, and quiet/verbose modes.
     path: docs/specs/product-requirements/prd018-head.yaml
+  - id: prd034-mkdir
+    title: "cmd/mkdir: Create Directories"
+    summary: Create directories with optional parent creation and permission mode setting.
+    path: docs/specs/product-requirements/prd034-mkdir.yaml
+  - id: prd035-rmdir
+    title: "cmd/rmdir: Remove Empty Directories"
+    summary: Remove empty directories with optional ancestor removal and error suppression.
+    path: docs/specs/product-requirements/prd035-rmdir.yaml
+  - id: prd036-mktemp
+    title: "cmd/mktemp: Create Temporary Files or Directories"
+    summary: Create temporary files or directories with unique names, configurable templates and locations.
+    path: docs/specs/product-requirements/prd036-mktemp.yaml
+  - id: prd037-ln
+    title: "cmd/ln: Create Links Between Files"
+    summary: Create hard or symbolic links with force, no-dereference, and verbose modes.
+    path: docs/specs/product-requirements/prd037-ln.yaml
+  - id: prd038-unlink
+    title: "cmd/unlink: Remove a Single File"
+    summary: Call unlink(2) to remove exactly one file, rejecting directories and wrong argument counts.
+    path: docs/specs/product-requirements/prd038-unlink.yaml
 
 use_case_index:
   - id: rel03.0-uc001-wc
@@ -221,6 +246,36 @@ use_case_index:
     status: pending
     test_suite: test-rel02.2
     path: docs/specs/use-cases/rel02.2-uc001-head.yaml
+  - id: rel06.0-uc001-mkdir
+    title: "Create directories via mkdir"
+    release: rel06.0
+    status: spec_complete
+    test_suite: test-rel06.0
+    path: docs/specs/use-cases/rel06.0-uc001-mkdir.yaml
+  - id: rel06.0-uc002-rmdir
+    title: "Remove empty directories via rmdir"
+    release: rel06.0
+    status: spec_complete
+    test_suite: test-rel06.0
+    path: docs/specs/use-cases/rel06.0-uc002-rmdir.yaml
+  - id: rel06.0-uc003-mktemp
+    title: "Create temporary files and directories via mktemp"
+    release: rel06.0
+    status: spec_complete
+    test_suite: test-rel06.0
+    path: docs/specs/use-cases/rel06.0-uc003-mktemp.yaml
+  - id: rel06.0-uc004-ln
+    title: "Create links between files via ln"
+    release: rel06.0
+    status: spec_complete
+    test_suite: test-rel06.0
+    path: docs/specs/use-cases/rel06.0-uc004-ln.yaml
+  - id: rel06.0-uc005-unlink
+    title: "Remove a single file via unlink"
+    release: rel06.0
+    status: spec_complete
+    test_suite: test-rel06.0
+    path: docs/specs/use-cases/rel06.0-uc005-unlink.yaml
 
 test_suite_index:
   - id: test-rel03.0
@@ -288,6 +343,16 @@ test_suite_index:
       - rel02.2-uc001-head
     test_case_count: 16
     path: docs/specs/test-suites/test-rel02.2.yaml
+  - id: test-rel06.0
+    title: "Test Suite: rel06.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
+    traces:
+      - rel06.0-uc001-mkdir
+      - rel06.0-uc002-rmdir
+      - rel06.0-uc003-mktemp
+      - rel06.0-uc004-ln
+      - rel06.0-uc005-unlink
+    test_case_count: 20
+    path: docs/specs/test-suites/test-rel06.0.yaml
 
 prd_to_use_case_mapping:
   - use_case: rel03.0-uc001-wc
@@ -347,6 +412,26 @@ prd_to_use_case_mapping:
     prd: prd018-head
     why_required: head exercises line and byte counting, negative counts, and multi-file header formatting.
     coverage: Full — all prd018-head requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.0-uc001-mkdir
+    prd: prd034-mkdir
+    why_required: mkdir exercises directory creation, parent chain creation, and permission mode setting.
+    coverage: Full — all prd034-mkdir requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.0-uc002-rmdir
+    prd: prd035-rmdir
+    why_required: rmdir exercises empty directory removal, ancestor chain removal, and error suppression.
+    coverage: Full — all prd035-rmdir requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.0-uc003-mktemp
+    prd: prd036-mktemp
+    why_required: mktemp exercises temp file creation with unique names and configurable templates.
+    coverage: Full — all prd036-mktemp requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.0-uc004-ln
+    prd: prd037-ln
+    why_required: ln exercises hard and symbolic link creation with force and safety flags.
+    coverage: Full — all prd037-ln requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.0-uc005-unlink
+    prd: prd038-unlink
+    why_required: unlink exercises the simplest file removal via the unlink(2) syscall.
+    coverage: Full — all prd038-unlink requirement groups (R1-R3) are traced from the test suite.
 
 coverage_gaps: |
   Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) have dedicated use cases
@@ -368,18 +453,24 @@ traceability_diagram: |
     P12["prd012-yes"] & P13["prd013-true"] & P14["prd014-false"]
     P15["prd015-basename"] & P16["prd016-dirname"]
     P17["prd017-tee"] & P18["prd018-head"]
+    P34["prd034-mkdir"] & P35["prd035-rmdir"] & P36["prd036-mktemp"]
+    P37["prd037-ln"] & P38["prd038-unlink"]
     UC1["rel03.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
     UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.1-uc001-ls-extended"]
     UC7["rel99.2-uc001-ts"]
     UC8["rel02.0-uc001-true"] & UC9["rel02.0-uc002-false"] & UC10["rel02.0-uc003-yes"]
     UC11["rel02.0-uc004-basename"] & UC12["rel02.0-uc005-dirname"]
     UC13["rel02.1-uc001-tee"] & UC14["rel02.2-uc001-head"]
+    UC15["rel06.0-uc001-mkdir"] & UC16["rel06.0-uc002-rmdir"] & UC17["rel06.0-uc003-mktemp"]
+    UC18["rel06.0-uc004-ln"] & UC19["rel06.0-uc005-unlink"]
     TS1["test-rel03.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
     TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.1"] & TS7["test-rel99.2"]
     TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
+    TS11["test-rel06.0"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
     A --> P12 & P13 & P14 & P15 & P16 & P17 & P18
+    A --> P34 & P35 & P36 & P37 & P38
     P1 --> UC1
     P2 --> UC5
     P3 --> UC5
@@ -411,4 +502,14 @@ traceability_diagram: |
     UC12 --> TS8
     UC13 --> TS9
     UC14 --> TS10
+    P34 --> UC15
+    P35 --> UC16
+    P36 --> UC17
+    P37 --> UC18
+    P38 --> UC19
+    UC15 --> TS11
+    UC16 --> TS11
+    UC17 --> TS11
+    UC18 --> TS11
+    UC19 --> TS11
   ```

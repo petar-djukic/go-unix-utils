@@ -1,0 +1,335 @@
+id: test-rel06.0
+title: "Test Suite: rel06.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
+release: rel06.0
+
+traces:
+  - rel06.0-uc001-mkdir
+  - rel06.0-uc002-rmdir
+  - rel06.0-uc003-mktemp
+  - rel06.0-uc004-ln
+  - rel06.0-uc005-unlink
+  - prd034-mkdir R1
+  - prd034-mkdir R2
+  - prd034-mkdir R3
+  - prd034-mkdir R4
+  - prd035-rmdir R1
+  - prd035-rmdir R2
+  - prd035-rmdir R3
+  - prd035-rmdir R4
+  - prd036-mktemp R1
+  - prd036-mktemp R2
+  - prd036-mktemp R3
+  - prd036-mktemp R4
+  - prd037-ln R1
+  - prd037-ln R2
+  - prd037-ln R3
+  - prd037-ln R4
+  - prd038-unlink R1
+  - prd038-unlink R2
+  - prd038-unlink R3
+
+preconditions:
+  - All binaries exist in ./bin/ (built via mage build).
+  - Reference binaries gmkdir, grmdir, gmktemp, gln, gunlink are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - Each test case operates inside a dedicated temporary WorkDir created and cleaned up by the test harness.
+
+test_cases:
+  # --- mkdir ---
+  - name: mkdir_single_dir
+    description: "Create a single directory in the WorkDir; expect exit 0 and the directory to exist."
+    inputs:
+      args: ["newdir"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd034-mkdir R1.1
+
+  - name: mkdir_parents
+    description: "-p creates a chain of parent directories; expect exit 0 and all intermediate directories to exist."
+    inputs:
+      args: ["-p", "a/b/c"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd034-mkdir R2.1
+
+  - name: mkdir_exists_error
+    description: "Attempt to create a directory that already exists without -p; expect non-zero exit and an error on stderr. The test harness pre-creates the target directory in WorkDir."
+    inputs:
+      args: ["existingdir"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir existingdir"
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd034-mkdir R1.3
+
+  - name: mkdir_parents_exists_ok
+    description: "-p does not report an error when the target directory already exists. The test harness pre-creates the target directory in WorkDir."
+    inputs:
+      args: ["-p", "existingdir"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir existingdir"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd034-mkdir R2.2
+
+  # --- rmdir ---
+  - name: rmdir_single_empty
+    description: "Remove a single empty directory. The test harness pre-creates an empty directory in WorkDir."
+    inputs:
+      args: ["emptydir"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir emptydir"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd035-rmdir R1.1
+
+  - name: rmdir_non_empty_error
+    description: "Attempt to remove a non-empty directory; expect non-zero exit and an error on stderr. The test harness pre-creates a directory with a file inside."
+    inputs:
+      args: ["nonempty"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir nonempty && touch nonempty/file"
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd035-rmdir R1.3
+
+  - name: rmdir_parents
+    description: "-p removes the target directory and then each empty ancestor. The test harness pre-creates the nested empty directory chain a/b/c in WorkDir."
+    inputs:
+      args: ["-p", "a/b/c"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir -p a/b/c"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd035-rmdir R2.1
+
+  - name: rmdir_ignore_non_empty
+    description: "--ignore-fail-on-non-empty suppresses the error and exit code when a directory is not empty. The test harness pre-creates a directory with a file inside."
+    inputs:
+      args: ["--ignore-fail-on-non-empty", "nonempty"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir nonempty && touch nonempty/file"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd035-rmdir R3.1
+
+  # --- mktemp ---
+  - name: mktemp_default
+    description: "mktemp with no arguments creates a temporary file and prints its path to stdout. Exact name is non-deterministic; we verify exit 0 and that the printed path exists."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: ignore_stdout
+    expected:
+      exit_code: 0
+      stdout: "non-deterministic path"
+      stderr: ""
+    traces:
+      - prd036-mktemp R1.1
+
+  - name: mktemp_directory
+    description: "-d creates a temporary directory instead of a file. Exact name is non-deterministic; we verify exit 0 and that the printed path is a directory."
+    inputs:
+      args: ["-d"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: ignore_stdout
+    expected:
+      exit_code: 0
+      stdout: "non-deterministic path"
+      stderr: ""
+    traces:
+      - prd036-mktemp R2.1
+
+  - name: mktemp_custom_template
+    description: "mktemp with a template argument containing XXX generates a file whose name matches the template pattern. Exact name is non-deterministic; we verify exit 0."
+    inputs:
+      args: ["myfile.XXXXXX"]
+      stdin: ""
+      env: ["LC_ALL=C", "TMPDIR={workdir}"]
+      workdir: true
+    normalization: ignore_stdout
+    expected:
+      exit_code: 0
+      stdout: "non-deterministic path"
+      stderr: ""
+    traces:
+      - prd036-mktemp R1.2
+
+  # --- ln ---
+  - name: ln_hard_link
+    description: "Create a hard link to an existing file. The test harness pre-creates a target file in WorkDir."
+    inputs:
+      args: ["target.txt", "hardlink.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "echo content > target.txt"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd037-ln R1.1
+
+  - name: ln_symbolic_link
+    description: "-s creates a symbolic link to an existing file. The test harness pre-creates a target file in WorkDir."
+    inputs:
+      args: ["-s", "target.txt", "symlink.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "echo content > target.txt"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd037-ln R2.1
+
+  - name: ln_force_overwrite
+    description: "-f overwrites an existing link. The test harness pre-creates a target file and an existing link in WorkDir."
+    inputs:
+      args: ["-sf", "target.txt", "existing.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "echo content > target.txt && echo old > existing.txt"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd037-ln R3.1
+
+  - name: ln_missing_target_error
+    description: "Attempt to create a hard link to a non-existent file; expect non-zero exit and an error on stderr."
+    inputs:
+      args: ["nonexistent.txt", "link.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd037-ln R1.2
+
+  # --- unlink ---
+  - name: unlink_file
+    description: "Remove a regular file via unlink. The test harness pre-creates a file in WorkDir."
+    inputs:
+      args: ["target.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "echo content > target.txt"
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd038-unlink R1.1
+
+  - name: unlink_missing_error
+    description: "Attempt to unlink a non-existent file; expect non-zero exit and an error on stderr."
+    inputs:
+      args: ["nonexistent.txt"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd038-unlink R1.2
+
+  - name: unlink_no_args_error
+    description: "Invoke unlink with no arguments; expect non-zero exit and an error on stderr."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd038-unlink R2.1
+
+  - name: unlink_directory_error
+    description: "Attempt to unlink a directory; expect non-zero exit and an error on stderr. The test harness pre-creates a directory in WorkDir."
+    inputs:
+      args: ["somedir"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+      workdir: true
+      setup: "mkdir somedir"
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd038-unlink R1.3
