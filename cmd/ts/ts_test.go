@@ -13,11 +13,13 @@ import (
 )
 
 // TestDiff runs differential tests against the Homebrew moreutils ts binary.
-// Uses testutils.TimestampNormalizer to mask wall-clock differences (D4, R9.1).
+// Uses testutils.TimestampNormalizer to mask wall-clock differences (R9.1).
+// Covers: default format, custom format, -s, -i, -m, -r, empty stdin, partial
+// last line, TZ environment (R9.2).
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 
-	// D3: reference binary is "ts" (moreutils does not use g-prefix).
+	// D1: reference binary is "ts" (moreutils does not use g-prefix).
 	refBin, err := exec.LookPath("ts")
 	if err != nil {
 		t.Skipf("reference binary ts not in PATH: %v", err)
@@ -81,11 +83,17 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
 		{
-			// R5: -m with -s mode.
+			// R5: -m with -s mode combined.
 			Name:      "monotonic_with_elapsed",
 			Args:      []string{"-m", "-s"},
 			Stdin:     []byte("x\ny\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R6.4: -r mode passes through lines with no timestamp unchanged.
+			Name:  "relative_mode_no_timestamp_passthrough",
+			Args:  []string{"-r"},
+			Stdin: []byte("no timestamp here\n"),
 		},
 	}
 
@@ -110,5 +118,40 @@ func TestInvalidFlag(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(stderr.String()), "usage") {
 		t.Errorf("stderr should contain 'usage', got: %q", stderr.String())
+	}
+}
+
+// TestMutuallyExclusiveFlags verifies that mutually exclusive flag
+// combinations produce a usage error and non-zero exit (R3.4, R6.5).
+// Non-differential because error messages differ between Go and Perl.
+func TestMutuallyExclusiveFlags(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"i_and_s", []string{"-i", "-s"}},
+		{"r_and_i", []string{"-r", "-i"}},
+		{"r_and_s", []string{"-r", "-s"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = bytes.NewReader(nil)
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			if err == nil {
+				t.Fatalf("expected non-zero exit for flags %v", tc.args)
+			}
+			if !strings.Contains(strings.ToLower(stderr.String()), "usage") {
+				t.Errorf("stderr should contain 'usage', got: %q", stderr.String())
+			}
+		})
 	}
 }

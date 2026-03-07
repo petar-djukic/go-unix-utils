@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements the ts command that reads stdin line by line and
-// prepends a timestamp to each line on stdout.
-// Implements prd004-ts R1-R5, R7-R8.
+// prepends a timestamp to each line on stdout, or converts existing timestamps
+// to relative age strings.
+// Implements prd004-ts R1-R8.
 package main
 
 import (
@@ -11,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,6 +36,44 @@ const (
 	placeholderDotT  = "\x00DT\x00"
 )
 
+// relativePattern holds a compiled regex and Go time layouts for parsing
+// timestamps in -r mode (R6.2).
+type relativePattern struct {
+	re      *regexp.Regexp
+	layouts []string
+	hasYear bool
+}
+
+// relativePatterns defines the timestamp formats recognized in -r mode,
+// ordered by specificity (R6.2).
+var relativePatterns = []relativePattern{
+	// ISO-8601: "2024-01-05T14:30:00" with optional subseconds and Z/offset.
+	{
+		re:      regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?`),
+		layouts: []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999999999", "2006-01-02T15:04:05"},
+		hasYear: true,
+	},
+	// RFC 2822 with optional day name: "Thu, 16 Jun 94 07:29:35 GMT" or
+	// "16 Jun 94 07:29:35 GMT".
+	{
+		re:      regexp.MustCompile(`([A-Z][a-z]{2},\s+)?\d{1,2}\s[A-Z][a-z]{2}\s\d{2,4}\s\d{2}:\d{2}:\d{2}\s[A-Z]+`),
+		layouts: []string{"Mon, 02 Jan 2006 15:04:05 MST", "02 Jan 2006 15:04:05 MST", "Mon, 02 Jan 06 15:04:05 MST", "02 Jan 06 15:04:05 MST"},
+		hasYear: true,
+	},
+	// Lastlog: "Mon Jan  5 14:30" (checked before syslog to avoid partial match).
+	{
+		re:      regexp.MustCompile(`[A-Z][a-z]{2}\s[A-Z][a-z]{2}\s{1,2}\d{1,2}\s\d{2}:\d{2}`),
+		layouts: []string{"Mon Jan  2 15:04", "Mon Jan 2 15:04"},
+		hasYear: false,
+	},
+	// Syslog: "Jan  5 14:30:00" or "Jan 05 14:30:00".
+	{
+		re:      regexp.MustCompile(`[A-Z][a-z]{2}\s{1,2}\d{1,2}\s\d{2}:\d{2}:\d{2}`),
+		layouts: []string{"Jan  2 15:04:05", "Jan 2 15:04:05"},
+		hasYear: false,
+	},
+}
+
 func main() {
 	// R1.6: exit 0 on SIGPIPE per ARCHITECTURE.yaml shared protocol.
 	sys.InstallSIGPIPEHandler()
@@ -41,15 +81,23 @@ func main() {
 	flagI := flag.Bool("i", false, "incremental per-line elapsed timestamps")
 	flagS := flag.Bool("s", false, "elapsed since start timestamps")
 	flagM := flag.Bool("m", false, "use monotonic clock")
+	flagR := flag.Bool("r", false, "convert existing timestamps to relative age")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: ts [-i | -s] [-m] [format]\n")
+		fmt.Fprintf(os.Stderr, "Usage: ts [-i | -s] [-m] [-r] [format]\n")
 	}
 	flag.Parse()
 
 	// R3.4: -i and -s are mutually exclusive.
 	if *flagI && *flagS {
 		fmt.Fprintf(os.Stderr, "ts: usage error: -i and -s are mutually exclusive\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// R6.5: -r is mutually exclusive with -i and -s.
+	if *flagR && (*flagI || *flagS) {
+		fmt.Fprintf(os.Stderr, "ts: usage error: -r is mutually exclusive with -i and -s\n")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -64,8 +112,15 @@ func main() {
 		format = defaultElapsedFormat
 	}
 	// R2.1: optional positional argument overrides the default format.
-	if flag.NArg() > 0 {
+	hasCustomFormat := flag.NArg() > 0
+	if hasCustomFormat {
 		format = flag.Arg(0)
+	}
+
+	// R6: relative-time conversion mode.
+	if *flagR {
+		runRelativeMode(format, hasCustomFormat)
+		return
 	}
 
 	goLayout := strftimeToGo(format)
@@ -113,6 +168,109 @@ func main() {
 	// R7.1: exit 0 on clean EOF.
 }
 
+// runRelativeMode implements -r mode (R6). It reads stdin line by line,
+// scans each line for known timestamp patterns, and replaces them with
+// human-readable relative age strings or reformatted timestamps.
+func runRelativeMode(format string, hasCustomFormat bool) {
+	goLayout := ""
+	if hasCustomFormat {
+		goLayout = strftimeToGo(format)
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	writer := bufio.NewWriter(os.Stdout)
+	now := time.Now()
+
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			output := processRelativeLine(line, now, goLayout, hasCustomFormat)
+			if _, wErr := writer.WriteString(output); wErr != nil {
+				break
+			}
+			if fErr := writer.Flush(); fErr != nil {
+				break
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+}
+
+// processRelativeLine scans a single line for timestamp patterns and replaces
+// the first match with a relative age string (R6.1) or a reformatted timestamp
+// (R6.3). Lines with no match are returned unchanged (R6.4).
+func processRelativeLine(line string, now time.Time, goLayout string, hasCustomFormat bool) string {
+	for _, pat := range relativePatterns {
+		loc := pat.re.FindStringIndex(line)
+		if loc == nil {
+			continue
+		}
+		matched := line[loc[0]:loc[1]]
+		var parsed time.Time
+		var parseErr error
+		for _, layout := range pat.layouts {
+			if pat.hasYear {
+				parsed, parseErr = time.Parse(layout, matched)
+			} else {
+				parsed, parseErr = time.ParseInLocation(layout, matched, time.Local)
+			}
+			if parseErr == nil {
+				break
+			}
+		}
+		if parseErr != nil {
+			continue
+		}
+		// If the format has no year, assume current year.
+		if !pat.hasYear {
+			parsed = parsed.AddDate(now.Year(), 0, 0)
+		}
+
+		var replacement string
+		if hasCustomFormat {
+			// R6.3: reformat matched timestamp to the specified format.
+			replacement = formatTime(parsed, goLayout)
+		} else {
+			// R6.1: replace with relative age string.
+			replacement = formatRelativeAge(now.Sub(parsed))
+		}
+		return line[:loc[0]] + replacement + line[loc[1]:]
+	}
+	// R6.4: no recognizable timestamp, pass through unchanged.
+	return line
+}
+
+// formatRelativeAge converts a duration to a human-readable relative age
+// string such as "5s ago", "3m5s ago", or "1d2h3m5s ago".
+func formatRelativeAge(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	totalSeconds := int64(d.Seconds())
+	days := totalSeconds / 86400
+	totalSeconds %= 86400
+	hours := totalSeconds / 3600
+	totalSeconds %= 3600
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+
+	var b strings.Builder
+	if days > 0 {
+		fmt.Fprintf(&b, "%dd", days)
+	}
+	if hours > 0 {
+		fmt.Fprintf(&b, "%dh", hours)
+	}
+	if minutes > 0 {
+		fmt.Fprintf(&b, "%dm", minutes)
+	}
+	fmt.Fprintf(&b, "%ds", seconds)
+	b.WriteString(" ago")
+	return b.String()
+}
+
 // elapsedToTime converts a duration to a time.Time anchored at the Unix epoch
 // in UTC, so that strftime-style formatting of hours, minutes, and seconds
 // produces correct elapsed values (matching Perl's gmtime($elapsed) behavior
@@ -125,9 +283,9 @@ func elapsedToTime(d time.Duration) time.Time {
 }
 
 // strftimeToGo converts a strftime format string to a Go time layout.
-// Handles the common specifiers used by moreutils ts per D4:
+// Handles the common specifiers used by moreutils ts per R2.2:
 // %Y, %m, %d, %H, %M, %S, %b, %T, %s (epoch), %N (nanoseconds),
-// and subsecond extensions %.S, %.s, %.T.
+// and subsecond extensions %.S, %.s, %.T (R2.3).
 // Unrecognized specifiers pass through literally.
 func strftimeToGo(format string) string {
 	var b strings.Builder
@@ -206,7 +364,7 @@ func strftimeToGo(format string) string {
 		case 'N':
 			b.WriteString(placeholderNano)
 		default:
-			// Unrecognized: pass through literally per D4.
+			// Unrecognized: pass through literally.
 			b.WriteByte('%')
 			b.WriteByte(format[i+1])
 		}
