@@ -137,7 +137,7 @@ releases:
 
   - version: "05.0"
     name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement four easy stream-transform utilities that depend only on pkg/testutils and
       pkg/sys. echo outputs arguments with optional escape interpretation. tac reverses
@@ -146,13 +146,13 @@ releases:
       All are verified by differential testing against GNU coreutils reference binaries.
     use_cases:
       - id: rel05.0-uc001-echo
-        status: spec_complete
+        status: implemented
       - id: rel05.0-uc002-tac
-        status: spec_complete
+        status: implemented
       - id: rel05.0-uc003-nl
-        status: spec_complete
+        status: implemented
       - id: rel05.0-uc004-fold
-        status: spec_complete
+        status: implemented
 
   - version: "05.1"
     name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
