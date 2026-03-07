@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -87,6 +89,65 @@ func writeFile(t *testing.T, path string, n int) {
 	}
 }
 
+// setupExtFixture creates an extended test fixture directory for R5-R8 testing:
+//
+//	ls-ext-fixture/
+//	  .hidden       (dotfile, 0 bytes)
+//	  exec_file     (executable, 100 bytes, mode 0755)
+//	  file1         (100 bytes, oldest mtime)
+//	  file2         (200 bytes)
+//	  file10        (300 bytes)
+//	  file20        (400 bytes, newest mtime)
+//	  link_to_1 -> file1 (symlink)
+//	  subdir/       (directory)
+//	    nested.txt  (50 bytes)
+//	  fifo_pipe     (named pipe, if supported)
+func setupExtFixture(t *testing.T) string {
+	t.Helper()
+	base := filepath.Join(t.TempDir(), "ls-ext-fixture")
+
+	sub := filepath.Join(base, "subdir")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Version-sort files with distinct sizes.
+	writeFile(t, filepath.Join(base, "file1"), 100)
+	writeFile(t, filepath.Join(base, "file2"), 200)
+	writeFile(t, filepath.Join(base, "file10"), 300)
+	writeFile(t, filepath.Join(base, "file20"), 400)
+
+	// Nested file for -R testing.
+	writeFile(t, filepath.Join(sub, "nested.txt"), 50)
+
+	// Executable file.
+	writeFile(t, filepath.Join(base, "exec_file"), 100)
+	if err := os.Chmod(filepath.Join(base, "exec_file"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Symlink.
+	if err := os.Symlink("file1", filepath.Join(base, "link_to_1")); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	// Hidden file.
+	writeFile(t, filepath.Join(base, ".hidden"), 0)
+
+	// Named pipe (FIFO) for -F testing.
+	// Best-effort: some environments may not support mkfifo.
+	_ = syscall.Mkfifo(filepath.Join(base, "fifo_pipe"), 0o644)
+
+	// Set distinct mtimes for deterministic time-sort order.
+	now := time.Now().Truncate(time.Second)
+	os.Chtimes(filepath.Join(base, "file20"), now, now)
+	os.Chtimes(filepath.Join(base, "file10"), now.Add(-1*time.Hour), now.Add(-1*time.Hour))
+	os.Chtimes(filepath.Join(base, "file2"), now.Add(-2*time.Hour), now.Add(-2*time.Hour))
+	os.Chtimes(filepath.Join(base, "file1"), now.Add(-3*time.Hour), now.Add(-3*time.Hour))
+
+	return base
+}
+
 // longNorm combines mtime normalization and stderr normalization.
 var longNorm = []testutils.NormalizeFunc{lsMtimeNormalizer, stderrNormalizer}
 
@@ -98,6 +159,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	fixture := setupFixture(t)
+	extFixture := setupExtFixture(t)
 
 	tests := []testutils.DiffTest{
 		// R1.2: Default single-column when stdout is redirected (not a TTY).
@@ -255,6 +317,107 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-lR", "--color=never", fixture},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: longNorm,
+		},
+
+		// === Extended flag tests (prd008-ls R1.11-R1.13, R2.8-R2.15, R3.7-R3.15) ===
+
+		// R1.11: -C forces multi-column output even when stdout is piped.
+		{
+			Name: "ls_multi_col_forced",
+			Args: []string{"-C", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.13: -x horizontal layout (across, then down).
+		{
+			Name: "ls_horizontal_layout",
+			Args: []string{"-x", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.8: -U disables sorting; entries in directory order.
+		{
+			Name: "ls_sort_unsorted",
+			Args: []string{"-1U", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.9: -v version sort (file2 before file10).
+		{
+			Name: "ls_version_sort",
+			Args: []string{"-1v", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11: -i prepends inode number to each entry.
+		{
+			Name: "ls_inode_display",
+			Args: []string{"-1i", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.12: -s prepends block count to each entry.
+		{
+			Name: "ls_block_display",
+			Args: []string{"-1s", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -is combined inode + block count.
+		{
+			Name: "ls_inode_blocks_combined",
+			Args: []string{"-1is", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.13: -ls long format with block counts.
+		{
+			Name:      "ls_blocks_long",
+			Args:      []string{"-ls", "--color=never", extFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: longNorm,
+		},
+		// R3.7: -sh human-readable block counts.
+		{
+			Name: "ls_blocks_human",
+			Args: []string{"-1sh", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.5 ext: -t sort by time on ext fixture with controlled mtimes.
+		{
+			Name: "ls_ext_sort_time",
+			Args: []string{"-1t", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.6 ext: -S sort by size on ext fixture with distinct sizes.
+		{
+			Name: "ls_ext_sort_size",
+			Args: []string{"-1S", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.8 ext: -F classify on ext fixture (includes FIFO if available).
+		{
+			Name: "ls_ext_classify",
+			Args: []string{"-1F", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.11 ext: -R recursive on ext fixture.
+		{
+			Name: "ls_ext_recursive",
+			Args: []string{"-R", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.12, R4.8: -Rl recursive long format on ext fixture.
+		{
+			Name:      "ls_ext_recursive_long",
+			Args:      []string{"-Rl", "--color=never", extFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: longNorm,
+		},
+		// R2.5+R2.7: -tr reverse time sort on ext fixture.
+		{
+			Name: "ls_ext_reverse_time",
+			Args: []string{"-1tr", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.6+R2.7: -Sr reverse size sort on ext fixture.
+		{
+			Name: "ls_ext_reverse_size",
+			Args: []string{"-1Sr", "--color=never", extFixture},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 

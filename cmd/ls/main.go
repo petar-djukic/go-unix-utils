@@ -301,15 +301,15 @@ func listDir(dir string, f flags) {
 
 	sortEntries(entries, f)
 
-	// R1.10: Print total block count for long format.
-	if f.format == formatLong {
+	// R1.10, R2.13: Print total block count for long format or when -s is active.
+	if f.format == formatLong || f.showBlocks {
 		var totalBlocks int64
 		for _, e := range entries {
 			totalBlocks += e.info.Blocks
 		}
 		totalK := totalBlocks / 2
 		if f.humanSize {
-			// R3.6: Convert 1K-blocks to bytes for human-readable display.
+			// R3.6, R3.7: Human-readable total.
 			fmt.Printf("total %s\n", format.HumanSize(totalK*1024, format.HumanSizeOpts{Binary: true}))
 		} else {
 			fmt.Printf("total %d\n", totalK)
@@ -497,29 +497,34 @@ func printMultiColumn(entries []entry, f flags, across bool) {
 }
 
 // printAcross prints entries left-to-right, then wrapping to next row. R1.13.
+// Uses per-column widths (matching GNU ls -x) to maximize columns.
 func printAcross(entries []string, termWidth int) {
 	if len(entries) == 0 {
 		return
 	}
 
-	maxW := 0
-	for _, e := range entries {
-		w := utf8.RuneCountInString(e)
-		if w > maxW {
-			maxW = w
+	// Find the maximum number of columns that fits within termWidth.
+	numCols := len(entries)
+	for numCols > 1 {
+		colWidths := acrossColWidths(entries, numCols)
+		total := 0
+		for c, cw := range colWidths {
+			total += cw
+			if c < numCols-1 {
+				total += 2
+			}
 		}
+		if total <= termWidth {
+			break
+		}
+		numCols--
 	}
 
-	colWidth := maxW + 2
-	numCols := termWidth / colWidth
-	if numCols < 1 {
-		numCols = 1
-	}
-
+	colWidths := acrossColWidths(entries, numCols)
 	for i, e := range entries {
 		col := i % numCols
 		if col < numCols-1 && i < len(entries)-1 {
-			fmt.Print(format.PadRight(e, colWidth))
+			fmt.Print(format.PadRight(e, colWidths[col]+2))
 		} else {
 			fmt.Print(e)
 		}
@@ -527,6 +532,19 @@ func printAcross(entries []string, termWidth int) {
 			fmt.Println()
 		}
 	}
+}
+
+// acrossColWidths computes per-column max widths for across (left-to-right) layout.
+func acrossColWidths(entries []string, numCols int) []int {
+	widths := make([]int, numCols)
+	for i, e := range entries {
+		col := i % numCols
+		w := utf8.RuneCountInString(e)
+		if w > widths[col] {
+			widths[col] = w
+		}
+	}
+	return widths
 }
 
 // printLong prints entries in long format (-l).
@@ -809,22 +827,21 @@ func lsHumanSize(bytes int64) string {
 }
 
 // humanSizeBlocks converts a 1K-block count to human-readable form. R3.7.
+// Input is already in 1K-block units, so the base suffix is "K".
+// GNU ls -sh shows "4.0K" for 4 1K-blocks, "0" for 0 blocks.
 func humanSizeBlocks(n int64) string {
 	if n == 0 {
 		return "0"
 	}
-	suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+	suffixes := []string{"K", "M", "G", "T", "P", "E"}
 	f := float64(n)
 	i := 0
 	for f >= 1024 && i < len(suffixes)-1 {
 		f /= 1024
 		i++
 	}
-	if i == 0 {
-		return fmt.Sprintf("%d", n)
-	}
-	if f == float64(int64(f)) {
-		return fmt.Sprintf("%d%s", int64(f), suffixes[i])
+	if f >= 10 {
+		return fmt.Sprintf("%.0f%s", f, suffixes[i])
 	}
 	return fmt.Sprintf("%.1f%s", f, suffixes[i])
 }
