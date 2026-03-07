@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -210,5 +212,54 @@ func TestLstat_NonExistent(t *testing.T) {
 	_, err := sys.Lstat("/nonexistent-path-that-does-not-exist")
 	if err == nil {
 		t.Error("Lstat on nonexistent path returned nil error")
+	}
+}
+
+// TestStat_PlatformFields verifies that FileInfo fields match values obtained
+// directly from unix.Stat_t, confirming correct field mapping. (prd002-sys R2.2, R2.3)
+func TestStat_PlatformFields(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "testfile")
+	if err := os.WriteFile(path, []byte("hello world"), 0o644); err != nil {
+		t.Fatalf("creating test file: %v", err)
+	}
+
+	fi, err := sys.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+
+	var st unix.Stat_t
+	if err := unix.Stat(path, &st); err != nil {
+		t.Fatalf("unix.Stat: %v", err)
+	}
+
+	if fi.Blocks != st.Blocks {
+		t.Errorf("Blocks = %d, want %d", fi.Blocks, st.Blocks)
+	}
+	if fi.Blksize != int64(st.Blksize) {
+		t.Errorf("Blksize = %d, want %d", fi.Blksize, int64(st.Blksize))
+	}
+	if fi.Ino != st.Ino {
+		t.Errorf("Ino = %d, want %d", fi.Ino, st.Ino)
+	}
+	if fi.Dev != uint64(uint32(st.Dev)) {
+		t.Errorf("Dev = %d, want %d", fi.Dev, uint64(uint32(st.Dev)))
+	}
+	if fi.Rdev != uint64(uint32(st.Rdev)) {
+		t.Errorf("Rdev = %d, want %d", fi.Rdev, uint64(uint32(st.Rdev)))
+	}
+	if fi.Uid != st.Uid {
+		t.Errorf("Uid = %d, want %d", fi.Uid, st.Uid)
+	}
+	if fi.Gid != st.Gid {
+		t.Errorf("Gid = %d, want %d", fi.Gid, st.Gid)
+	}
+	if fi.Nlink != uint64(st.Nlink) {
+		t.Errorf("Nlink = %d, want %d", fi.Nlink, uint64(st.Nlink))
+	}
+	if fi.Size != st.Size {
+		t.Errorf("Size = %d, want %d", fi.Size, st.Size)
 	}
 }

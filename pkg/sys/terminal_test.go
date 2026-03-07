@@ -27,6 +27,22 @@ func TestIsTerminal_Pipe(t *testing.T) {
 	}
 }
 
+// TestIsTerminal_RegularFile verifies IsTerminal returns false for a regular
+// file descriptor. (prd002-sys R1.3)
+func TestIsTerminal_RegularFile(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	f, err := os.CreateTemp(tmp, "terminal-test")
+	if err != nil {
+		t.Fatalf("creating temp file: %v", err)
+	}
+	defer f.Close()
+
+	if sys.IsTerminal(f.Fd()) {
+		t.Error("IsTerminal(regular file fd) = true, want false")
+	}
+}
+
 func TestTerminalWidth_ReturnsOrErrors(t *testing.T) {
 	t.Parallel()
 	width, err := sys.TerminalWidth()
