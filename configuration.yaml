@@ -13,7 +13,7 @@ project:
     context_exclude: |
       docs/SPECIFICATIONS.yaml
       docs/road-map.yaml
-    releases: ["01.1"]
+    releases: ["01.2"]
 generation:
     prefix: generation-
     cycles: 6
