@@ -257,3 +257,25 @@ releases:
         status: spec_complete
       - id: rel06.0-uc005-unlink
         status: spec_complete
+
+  - version: "06.1"
+    name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
+    status: spec_complete
+    description: |
+      Implement five environment and identity utilities. env runs a command in a modified
+      environment with variable setting, unsetting, and clean-environment support. printenv
+      prints environment variables with optional NUL-delimited output. id prints user and
+      group IDs with selection and modifier flags. whoami prints the effective username.
+      groups prints group memberships. All are verified by differential testing against
+      GNU coreutils reference binaries.
+    use_cases:
+      - id: rel06.1-uc001-env
+        status: spec_complete
+      - id: rel06.1-uc002-printenv
+        status: spec_complete
+      - id: rel06.1-uc003-id
+        status: spec_complete
+      - id: rel06.1-uc004-whoami
+        status: spec_complete
+      - id: rel06.1-uc005-groups
+        status: spec_complete

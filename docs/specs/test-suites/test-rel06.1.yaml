@@ -1,0 +1,258 @@
+id: test-rel06.1
+title: "Test Suite: rel06.1 — environment and identity (env, printenv, id, whoami, groups)"
+release: rel06.1
+
+traces:
+  - rel06.1-uc001-env
+  - rel06.1-uc002-printenv
+  - rel06.1-uc003-id
+  - rel06.1-uc004-whoami
+  - rel06.1-uc005-groups
+  - prd039-env R1
+  - prd039-env R2
+  - prd039-env R3
+  - prd040-printenv R1
+  - prd040-printenv R2
+  - prd041-id R1
+  - prd041-id R2
+  - prd041-id R3
+  - prd042-whoami R1
+  - prd042-whoami R2
+  - prd043-groups R1
+  - prd043-groups R2
+
+preconditions:
+  - All binaries exist in ./bin/ (built via mage build).
+  - Reference binaries genv, gprintenv, gid, gwhoami, ggroups are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+
+test_cases:
+  # --- env ---
+  - name: env_print_all
+    description: "env with no arguments prints all environment variables."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: sort lines
+    expected:
+      exit_code: 0
+      stdout: "all inherited environment variables, one per line"
+      stderr: ""
+    traces:
+      - prd039-env R1.1
+
+  - name: env_set_and_run
+    description: "env NAME=VALUE command sets the variable for the child process."
+    inputs:
+      args: ["MY_TEST_VAR=hello", "printenv", "MY_TEST_VAR"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hello\n"
+      stderr: ""
+    traces:
+      - prd039-env R2.1
+
+  - name: env_unset
+    description: "env -u NAME removes the named variable from the environment."
+    inputs:
+      args: ["-u", "HOME", "printenv", "HOME"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd039-env R2.2
+
+  - name: env_ignore_inherited
+    description: "env -i starts with an empty environment; only explicitly set variables appear."
+    inputs:
+      args: ["-i", "MY_VAR=only", "env"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "MY_VAR=only\n"
+      stderr: ""
+    traces:
+      - prd039-env R3.1
+
+  # --- printenv ---
+  - name: printenv_all
+    description: "printenv with no arguments prints all environment variables."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: sort lines
+    expected:
+      exit_code: 0
+      stdout: "all inherited environment variables, one per line"
+      stderr: ""
+    traces:
+      - prd040-printenv R1.1
+
+  - name: printenv_specific
+    description: "printenv HOME prints the value of the HOME variable."
+    inputs:
+      args: ["HOME"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "value of HOME followed by newline"
+      stderr: ""
+    traces:
+      - prd040-printenv R1.2
+
+  - name: printenv_missing
+    description: "printenv for a variable that does not exist exits with code 1."
+    inputs:
+      args: ["DOES_NOT_EXIST_XYZZY"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd040-printenv R1.3
+
+  - name: printenv_null_delimited
+    description: "printenv -0 uses NUL instead of newline as the delimiter."
+    inputs:
+      args: ["-0", "HOME"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "value of HOME followed by NUL byte"
+      stderr: ""
+    traces:
+      - prd040-printenv R2.1
+
+  # --- id ---
+  - name: id_default
+    description: "id with no arguments prints uid=N(name) gid=N(name) groups=... format."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "uid=N(name) gid=N(name) groups=N(name),... followed by newline"
+      stderr: ""
+    traces:
+      - prd041-id R1.1
+
+  - name: id_user_only
+    description: "id -u prints just the numeric user ID."
+    inputs:
+      args: ["-u"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "numeric UID followed by newline"
+      stderr: ""
+    traces:
+      - prd041-id R2.1
+
+  - name: id_user_name
+    description: "id -un prints the username corresponding to the effective UID."
+    inputs:
+      args: ["-un"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "username followed by newline"
+      stderr: ""
+    traces:
+      - prd041-id R2.2
+
+  - name: id_groups
+    description: "id -G prints space-separated supplementary group IDs."
+    inputs:
+      args: ["-G"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "space-separated numeric group IDs followed by newline"
+      stderr: ""
+    traces:
+      - prd041-id R3.1
+
+  # --- whoami ---
+  - name: whoami_default
+    description: "whoami prints the effective username."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "effective username followed by newline"
+      stderr: ""
+    traces:
+      - prd042-whoami R1.1
+
+  - name: whoami_matches_id
+    description: "whoami output matches id -un output."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "same output as id -un"
+      stderr: ""
+    traces:
+      - prd042-whoami R2.1
+
+  # --- groups ---
+  - name: groups_default
+    description: "groups with no arguments prints groups for the current user."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "space-separated group names followed by newline"
+      stderr: ""
+    traces:
+      - prd043-groups R1.1
+
+  - name: groups_named_user
+    description: "groups with a username argument prints groups for that user."
+    inputs:
+      args: ["root"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "space-separated group names for root followed by newline"
+      stderr: ""
+    traces:
+      - prd043-groups R2.1

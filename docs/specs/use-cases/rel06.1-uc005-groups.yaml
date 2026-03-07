@@ -1,0 +1,65 @@
+id: rel06.1-uc005-groups
+title: "Print group memberships via groups"
+
+summary: |
+  The operator invokes the Go groups binary to print group memberships. With no
+  arguments it prints the groups of the current user. With a username argument it
+  prints the groups of the named user. The differential testing harness runs both
+  the Go binary and the Homebrew reference binary (ggroups from coreutils) with the
+  same arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd043-groups.yaml) and invokes do-work to
+  produce a passing differential test for cmd/groups.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/groups" with no arguments. groups prints the
+      current user's group memberships, space-separated, followed by a newline.
+  - id: F2
+    step: |
+      The operator runs "./bin/groups root" to print the group memberships of a
+      named user. groups prints the groups for that user.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/groups
+      and ggroups with the same arguments and environment.
+  - id: F4
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/groups — current user groups, named user groups (prd043-groups R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/groups compiles and ./bin/groups exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/groups" with no arguments prints the current user's groups, matching
+      ggroups.
+  - id: S3
+    criterion: |
+      "./bin/groups root" prints root's group memberships, matching ggroups.
+  - id: S4
+    criterion: |
+      An invalid username produces an error message and a non-zero exit code,
+      matching ggroups behavior.
+  - id: S5
+    criterion: |
+      The differential test passes for the current user, a named user, and an
+      invalid user.
+
+out_of_scope:
+  - Multiple username arguments on a single invocation are tested only if ggroups
+    supports them.
+  - >-
+    The exact format of the "user : group1 group2" prefix varies across platforms;
+    the test compares against ggroups output, not a hardcoded format.
+
+test_suite: test-rel06.1

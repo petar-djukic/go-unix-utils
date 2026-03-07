@@ -1,0 +1,45 @@
+id: prd042-whoami
+title: "cmd/whoami: Print Effective User Name"
+
+problem: |
+  Scripts and interactive sessions use whoami as a quick check for the effective user identity,
+  particularly when verifying privilege escalation or drop. The utility is deliberately minimal:
+  it prints one name and exits. The macOS BSD whoami and GNU whoami behave identically for the
+  core case, but differ in --help and --version handling. The Go implementation must match the
+  Homebrew GNU reference binary (gwhoami, installed by coreutils) byte-for-byte, verified by
+  differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the effective username of the current process followed by a newline.
+  - G2: Reject any extra operands with an error message and nonzero exit.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1: When invoked with no arguments, must print the effective username (equivalent to id -un) followed by a newline and exit 0.
+      - R1.2: The username must reflect the effective UID, not the real UID, matching the behavior of gwhoami after su or sudo.
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 1.
+      - R2.2: Must not accept any flags other than --help and --version. Unknown flags must produce an error message to stderr and exit 1.
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gwhoami) via pkg/testutils.
+      - R3.2: "Tests must cover: normal invocation (no arguments), extra operand error, and unknown flag error."
+      - R3.3: Tests must verify that the output matches the effective username returned by the system.
+
+non_goals:
+  - cmd/whoami does not accept a USER argument; it always reports the current process identity.
+  - cmd/whoami does not print the UID, GID, or group memberships; use cmd/id for that.
+  - cmd/whoami does not support -u or any other selection flags.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/whoami prints the current effective username, matching gwhoami."
+  - "AC2: go run ./cmd/whoami extraarg exits 1 with an error message to stderr, matching gwhoami."
+  - "AC3: Differential test against gwhoami passes for normal invocation and error cases."
+  - "AC4: cmd/whoami compiles with no warnings under golangci-lint."

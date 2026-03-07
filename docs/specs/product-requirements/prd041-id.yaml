@@ -1,0 +1,59 @@
+id: prd041-id
+title: "cmd/id: Print User and Group Information"
+
+problem: |
+  System administration scripts and access-control logic depend on querying the current
+  user's UID, GID, and group memberships. The macOS BSD id and GNU id share the same core
+  flags but differ in supplementary group ordering and output formatting details. The Go
+  implementation must match the Homebrew GNU reference binary (gid, installed by coreutils)
+  byte-for-byte on all flag combinations and edge cases, verified by differential testing
+  via pkg/testutils.
+
+goals:
+  - G1: Print the current user's UID, GID, and all group memberships in the standard format when invoked with no flags.
+  - G2: Support selection flags (-u, -g, -G) to print individual identity components.
+  - G3: Support modifier flags (-n, -r) to control name-vs-number and real-vs-effective output.
+  - G4: Support querying a named user instead of the current process user.
+
+requirements:
+  R1:
+    title: Default output
+    items:
+      - R1.1: "When invoked with no flags, must print a single line in the format: uid=N(name) gid=N(name) groups=N(name),N(name),... followed by a newline."
+      - R1.2: The groups list must include all supplementary groups for the user, in the order returned by the system.
+      - R1.3: Must exit 0 on success.
+
+  R2:
+    title: Selection flags
+    items:
+      - R2.1: -u or --user must print only the effective UID (numeric by default).
+      - R2.2: -g or --group must print only the effective GID (numeric by default).
+      - R2.3: -G or --groups must print all group IDs, space-separated, on a single line.
+      - R2.4: Only one of -u, -g, -G may be specified at a time. If more than one is given, must print an error to stderr and exit 1.
+
+  R3:
+    title: Modifier flags and named user support
+    items:
+      - R3.1: -n or --name, combined with -u, -g, or -G, must print the name instead of the numeric ID. -n without a selection flag is an error.
+      - R3.2: -r or --real, combined with -u or -g, must print the real UID or GID instead of the effective one. -r without -u or -g is an error.
+      - R3.3: When a USER operand is given, must query that user's identity information from the system instead of the current process. If the user does not exist, must print an error to stderr and exit 1.
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gid) via pkg/testutils.
+      - R4.2: "Tests must cover: default output (no flags), -u, -g, -G, -n combined with each selection flag, -r combined with -u and -g, named user lookup, and nonexistent user error."
+      - R4.3: Tests must verify error output and exit code for conflicting flags and invalid users.
+
+non_goals:
+  - cmd/id does not implement SELinux context output (-Z/--context).
+  - cmd/id does not support the -p (human-readable) BSD extension not present in GNU id.
+  - cmd/id does not resolve NIS or LDAP users beyond what the system's name-service switch provides.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/id with no arguments produces uid=N(name) gid=N(name) groups=... matching gid."
+  - "AC2: go run ./cmd/id -u prints the effective UID, matching gid -u."
+  - "AC3: go run ./cmd/id -gn prints the effective group name, matching gid -gn."
+  - "AC4: go run ./cmd/id root prints identity information for root, matching gid root."
+  - "AC5: Differential test against gid passes for default output, -u, -g, -G, -n, -r, named user, and error cases."
+  - "AC6: cmd/id compiles with no warnings under golangci-lint."

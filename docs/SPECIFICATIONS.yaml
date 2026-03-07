@@ -68,6 +68,11 @@ roadmap_summary:
     use_cases_done: 0
     use_cases_total: 5
     status: spec_complete
+  - version: rel06.1
+    name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
+    use_cases_done: 0
+    use_cases_total: 5
+    status: spec_complete
 
 prd_index:
   - id: prd001-testutils
@@ -159,6 +164,26 @@ prd_index:
     title: "cmd/unlink: Remove a Single File"
     summary: Call unlink(2) to remove exactly one file, rejecting directories and wrong argument counts.
     path: docs/specs/product-requirements/prd038-unlink.yaml
+  - id: prd039-env
+    title: "cmd/env: Run a Command in a Modified Environment"
+    summary: Print or modify environment variables and run commands with variable overrides.
+    path: docs/specs/product-requirements/prd039-env.yaml
+  - id: prd040-printenv
+    title: "cmd/printenv: Print Environment Variables"
+    summary: Print all or selected environment variables with optional NUL-delimited output.
+    path: docs/specs/product-requirements/prd040-printenv.yaml
+  - id: prd041-id
+    title: "cmd/id: Print User and Group Information"
+    summary: Print real and effective user and group IDs with selection and name-display flags.
+    path: docs/specs/product-requirements/prd041-id.yaml
+  - id: prd042-whoami
+    title: "cmd/whoami: Print Effective User Name"
+    summary: Print the effective username and exit.
+    path: docs/specs/product-requirements/prd042-whoami.yaml
+  - id: prd043-groups
+    title: "cmd/groups: Print Group Memberships"
+    summary: Print group memberships for the current or named users.
+    path: docs/specs/product-requirements/prd043-groups.yaml
 
 use_case_index:
   - id: rel03.0-uc001-wc
@@ -276,6 +301,36 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel06.0
     path: docs/specs/use-cases/rel06.0-uc005-unlink.yaml
+  - id: rel06.1-uc001-env
+    title: "Run a command in a modified environment via env"
+    release: rel06.1
+    status: spec_complete
+    test_suite: test-rel06.1
+    path: docs/specs/use-cases/rel06.1-uc001-env.yaml
+  - id: rel06.1-uc002-printenv
+    title: "Print environment variables via printenv"
+    release: rel06.1
+    status: spec_complete
+    test_suite: test-rel06.1
+    path: docs/specs/use-cases/rel06.1-uc002-printenv.yaml
+  - id: rel06.1-uc003-id
+    title: "Print user and group information via id"
+    release: rel06.1
+    status: spec_complete
+    test_suite: test-rel06.1
+    path: docs/specs/use-cases/rel06.1-uc003-id.yaml
+  - id: rel06.1-uc004-whoami
+    title: "Print effective user name via whoami"
+    release: rel06.1
+    status: spec_complete
+    test_suite: test-rel06.1
+    path: docs/specs/use-cases/rel06.1-uc004-whoami.yaml
+  - id: rel06.1-uc005-groups
+    title: "Print group memberships via groups"
+    release: rel06.1
+    status: spec_complete
+    test_suite: test-rel06.1
+    path: docs/specs/use-cases/rel06.1-uc005-groups.yaml
 
 test_suite_index:
   - id: test-rel03.0
@@ -353,6 +408,16 @@ test_suite_index:
       - rel06.0-uc005-unlink
     test_case_count: 20
     path: docs/specs/test-suites/test-rel06.0.yaml
+  - id: test-rel06.1
+    title: "Test Suite: rel06.1 — environment and identity (env, printenv, id, whoami, groups)"
+    traces:
+      - rel06.1-uc001-env
+      - rel06.1-uc002-printenv
+      - rel06.1-uc003-id
+      - rel06.1-uc004-whoami
+      - rel06.1-uc005-groups
+    test_case_count: 18
+    path: docs/specs/test-suites/test-rel06.1.yaml
 
 prd_to_use_case_mapping:
   - use_case: rel03.0-uc001-wc
@@ -432,6 +497,26 @@ prd_to_use_case_mapping:
     prd: prd038-unlink
     why_required: unlink exercises the simplest file removal via the unlink(2) syscall.
     coverage: Full — all prd038-unlink requirement groups (R1-R3) are traced from the test suite.
+  - use_case: rel06.1-uc001-env
+    prd: prd039-env
+    why_required: env exercises process spawning with modified environment variables.
+    coverage: Full — all prd039-env requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.1-uc002-printenv
+    prd: prd040-printenv
+    why_required: printenv exercises environment variable lookup and NUL-delimited output.
+    coverage: Full — all prd040-printenv requirement groups (R1-R3) are traced from the test suite.
+  - use_case: rel06.1-uc003-id
+    prd: prd041-id
+    why_required: id exercises user/group ID lookup with multiple output format flags.
+    coverage: Full — all prd041-id requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel06.1-uc004-whoami
+    prd: prd042-whoami
+    why_required: whoami exercises effective user lookup as the simplest identity utility.
+    coverage: Full — all prd042-whoami requirement groups (R1-R3) are traced from the test suite.
+  - use_case: rel06.1-uc005-groups
+    prd: prd043-groups
+    why_required: groups exercises group membership lookup for current and named users.
+    coverage: Full — all prd043-groups requirement groups (R1-R3) are traced from the test suite.
 
 coverage_gaps: |
   Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) have dedicated use cases
@@ -455,6 +540,8 @@ traceability_diagram: |
     P17["prd017-tee"] & P18["prd018-head"]
     P34["prd034-mkdir"] & P35["prd035-rmdir"] & P36["prd036-mktemp"]
     P37["prd037-ln"] & P38["prd038-unlink"]
+    P39["prd039-env"] & P40["prd040-printenv"] & P41["prd041-id"]
+    P42["prd042-whoami"] & P43["prd043-groups"]
     UC1["rel03.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
     UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.1-uc001-ls-extended"]
     UC7["rel99.2-uc001-ts"]
@@ -463,14 +550,17 @@ traceability_diagram: |
     UC13["rel02.1-uc001-tee"] & UC14["rel02.2-uc001-head"]
     UC15["rel06.0-uc001-mkdir"] & UC16["rel06.0-uc002-rmdir"] & UC17["rel06.0-uc003-mktemp"]
     UC18["rel06.0-uc004-ln"] & UC19["rel06.0-uc005-unlink"]
+    UC20["rel06.1-uc001-env"] & UC21["rel06.1-uc002-printenv"] & UC22["rel06.1-uc003-id"]
+    UC23["rel06.1-uc004-whoami"] & UC24["rel06.1-uc005-groups"]
     TS1["test-rel03.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
     TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.1"] & TS7["test-rel99.2"]
     TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
-    TS11["test-rel06.0"]
+    TS11["test-rel06.0"] & TS12["test-rel06.1"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
     A --> P12 & P13 & P14 & P15 & P16 & P17 & P18
     A --> P34 & P35 & P36 & P37 & P38
+    A --> P39 & P40 & P41 & P42 & P43
     P1 --> UC1
     P2 --> UC5
     P3 --> UC5

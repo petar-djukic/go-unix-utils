@@ -1,0 +1,58 @@
+id: prd039-env
+title: "cmd/env: Run a Command in a Modified Environment"
+
+problem: |
+  Shell scripts and build systems frequently need to run commands with a controlled set of
+  environment variables, adding, removing, or replacing entries before exec. The macOS BSD
+  env lacks GNU extensions such as -C (chdir) and -S (split string), but the core flags
+  (-i, -u, NAME=VALUE) are shared. The Go implementation must match the Homebrew GNU
+  reference binary (genv, installed by coreutils) byte-for-byte on all supported flag
+  combinations and edge cases, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the current environment when invoked with no arguments and no COMMAND.
+  - G2: Run COMMAND in a modified environment, inheriting, unsetting, or overriding variables as directed by flags and NAME=VALUE pairs.
+  - G3: Support starting from an empty environment (-i) to give full control over what COMMAND inherits.
+  - G4: Support NUL-delimited output (-0) for safe parsing of values that contain newlines.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1: When invoked with no arguments, must print every environment variable on its own line in NAME=VALUE format and exit 0.
+      - R1.2: When invoked with COMMAND [ARG ...], must execute COMMAND with the resulting environment after all modifications have been applied.
+      - R1.3: If COMMAND is not found, must exit 127. If COMMAND is found but cannot be executed, must exit 126.
+
+  R2:
+    title: Environment modification
+    items:
+      - R2.1: -i or --ignore-environment must start COMMAND with an empty environment. Only explicitly supplied NAME=VALUE pairs appear in the child process environment.
+      - R2.2: -u NAME or --unset=NAME must remove the variable NAME from the environment before COMMAND runs. Multiple -u flags must be supported.
+      - R2.3: Each NAME=VALUE argument (positional, before COMMAND) must set or override the variable NAME in the environment. The first argument that does not contain '=' and is not a flag is the start of COMMAND.
+
+  R3:
+    title: Output formatting and exit codes
+    items:
+      - R3.1: -0 or --null must terminate each output line with a NUL byte (0x00) instead of a newline when printing the environment (no COMMAND case).
+      - R3.2: When COMMAND is executed, env must exit with the same exit code as COMMAND.
+      - R3.3: Must print an error message to stderr when an invalid option is given and exit 125.
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (genv) via pkg/testutils.
+      - R4.2: "Tests must cover: no-argument environment dump, NAME=VALUE setting, -u unsetting, -i empty environment, -0 NUL-delimited output, COMMAND execution with modified env, and exit code passthrough."
+      - R4.3: Tests must verify error output and exit code for invalid options and missing commands.
+
+non_goals:
+  - cmd/env does not implement -C (change directory) or -S (split string) GNU extensions.
+  - cmd/env does not read variable assignments from stdin; all input comes from command-line arguments.
+  - cmd/env does not perform shell expansion on COMMAND or its arguments; exec is direct.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/env with no arguments produces the same output as genv with no arguments."
+  - "AC2: go run ./cmd/env FOO=bar env prints an environment that includes FOO=bar, matching genv."
+  - "AC3: go run ./cmd/env -i FOO=bar env produces only FOO=bar (plus any exec-injected variables), matching genv -i."
+  - "AC4: go run ./cmd/env -u HOME env omits HOME from the output, matching genv -u HOME."
+  - "AC5: Differential test against genv passes for environment dump, -i, -u, NAME=VALUE, -0, COMMAND execution, and exit code passthrough."
+  - "AC6: cmd/env compiles with no warnings under golangci-lint."
