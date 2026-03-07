@@ -1,4 +1,4 @@
-id: rel04.1-uc001-ls-extended
+id: rel04.0-uc002-ls-extended
 title: "List directory contents via ls (extended flags)"
 
 summary: |
@@ -13,9 +13,9 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed prd010-ls-extended.yaml (extended flags PRD) and the core
-  ls PRD (prd008-ls.yaml) and invokes do-work to produce a passing differential test for
-  cmd/ls extended flags.
+  The operator has completed prd008-ls.yaml (the combined ls PRD covering both core and
+  extended flags) and invokes do-work to produce a passing differential test for cmd/ls
+  extended flags.
 
 flow:
   - id: F1
@@ -53,7 +53,7 @@ flow:
       triggering args, both raw outputs, both normalized outputs, and both exit codes.
 
 touchpoints:
-  - T1: "cmd/ls — multi-column layout, sort order, metadata display, classify, recursive (prd010-ls-extended R1, R2, R3, R4, R5, R6)"
+  - T1: "cmd/ls — multi-column layout, sort order, metadata display, classify, recursive (prd008-ls R1, R2, R3, R4)"
   - T2: "pkg/sys — TerminalWidth, Stat/Lstat for mtime, size, inode, blocks"
   - T3: "pkg/format — Columns for -C/-x, FileTypeColor, HumanSize for -s -h"
   - T4: "pkg/testutils — RunDiffTests, LsExtendedNormalizer"
@@ -108,4 +108,4 @@ out_of_scope:
   - SIGWINCH and terminal resize behavior during -R recursive listing is not testable in the
     differential harness.
 
-test_suite: test-rel04.1
+test_suite: test-rel04.0-ext

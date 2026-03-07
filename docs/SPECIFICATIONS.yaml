@@ -49,14 +49,9 @@ roadmap_summary:
     use_cases_total: 1
     status: spec_complete
   - version: rel04.0
-    name: "Batch 4 — ls core specification and differential test"
-    use_cases_done: 1
-    use_cases_total: 1
-    status: spec_complete
-  - version: rel04.1
-    name: "Batch 4.1 — ls extended specification and differential test"
-    use_cases_done: 1
-    use_cases_total: 1
+    name: "Batch 4 — ls specification and differential test"
+    use_cases_done: 2
+    use_cases_total: 2
     status: spec_complete
   - version: rel99.2
     name: "Deferred — ts specification and differential test"
@@ -105,17 +100,12 @@ prd_index:
     path: docs/specs/product-requirements/prd007-sponge.yaml
   - id: prd008-ls
     title: "cmd/ls: Core File Listing"
-    summary: List directory contents with multi-column, single-column, and long format plus filter and color flags.
+    summary: List directory contents with all output formats, sorting, filtering, metadata display, color, classification, and recursive listing.
     path: docs/specs/product-requirements/prd008-ls.yaml
   - id: prd009-du
     title: "cmd/du: Recursive Directory Disk Usage"
     summary: Report disk usage with recursive traversal, hard-link deduplication, and human-readable output.
     path: docs/specs/product-requirements/prd009-du.yaml
-  - id: prd010-ls-extended
-    title: "cmd/ls: Extended Flags"
-    summary: Multi-column layout control, sort order, metadata display, classification, and recursive listing.
-    path: docs/specs/product-requirements/prd010-ls-extended.yaml
-
   - id: prd012-yes
     title: "cmd/yes: Repeatedly Output a String"
     summary: Output a string repeatedly until killed, with buffered writes for throughput.
@@ -216,12 +206,12 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel04.0
     path: docs/specs/use-cases/rel04.0-uc001-ls.yaml
-  - id: rel04.1-uc001-ls-extended
+  - id: rel04.0-uc002-ls-extended
     title: "List directory contents via ls (extended flags)"
-    release: rel04.1
+    release: rel04.0
     status: spec_complete
-    test_suite: test-rel04.1
-    path: docs/specs/use-cases/rel04.1-uc001-ls-extended.yaml
+    test_suite: test-rel04.0-ext
+    path: docs/specs/use-cases/rel04.0-uc002-ls-extended.yaml
   - id: rel99.2-uc001-ts
     title: "Timestamp stdin lines via ts"
     release: rel99.2
@@ -363,12 +353,12 @@ test_suite_index:
       - rel04.0-uc001-ls
     test_case_count: 13
     path: docs/specs/test-suites/test-rel04.0.yaml
-  - id: test-rel04.1
-    title: "Test Suite: rel04.1 — ls extended flag listing"
+  - id: test-rel04.0-ext
+    title: "Test Suite: rel04.0 extended — ls extended flag listing"
     traces:
-      - rel04.1-uc001-ls-extended
+      - rel04.0-uc002-ls-extended
     test_case_count: 14
-    path: docs/specs/test-suites/test-rel04.1.yaml
+    path: docs/specs/test-suites/test-rel04.0-ext.yaml
   - id: test-rel99.2
     title: "Test Suite: rel99.2 — ts timestamp stdin lines"
     traces:
@@ -439,11 +429,11 @@ prd_to_use_case_mapping:
   - use_case: rel04.0-uc001-ls
     prd: prd008-ls
     why_required: ls core exercises pkg/sys and pkg/format for the first time in the pipeline.
-    coverage: Full — all prd008-ls requirement groups (R1-R7) are traced from the test suite.
-  - use_case: rel04.1-uc001-ls-extended
-    prd: prd010-ls-extended
-    why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing.
-    coverage: Full — all prd010-ls-extended requirement groups (R1-R6) are traced from the test suite.
+    coverage: Full — all prd008-ls core requirement groups (R1-R4) are traced from the test suite.
+  - use_case: rel04.0-uc002-ls-extended
+    prd: prd008-ls
+    why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing from the combined prd008-ls.
+    coverage: Full — all prd008-ls extended requirement items are traced from the test suite.
   - use_case: rel99.2-uc001-ts
     prd: prd004-ts
     why_required: ts exercises timestamp prepending with multiple time modes and strftime formatting.
@@ -534,7 +524,7 @@ traceability_diagram: |
     A["ARCHITECTURE.yaml<br/>Components, design decisions"]
     P1["prd001-testutils"] & P2["prd002-sys"] & P3["prd003-format"]
     P4["prd004-ts"] & P5["prd005-wc"] & P6["prd006-cat"] & P7["prd007-sponge"]
-    P8["prd008-ls"] & P9["prd009-du"] & P10["prd010-ls-extended"]
+    P8["prd008-ls"] & P9["prd009-du"]
     P12["prd012-yes"] & P13["prd013-true"] & P14["prd014-false"]
     P15["prd015-basename"] & P16["prd016-dirname"]
     P17["prd017-tee"] & P18["prd018-head"]
@@ -543,7 +533,7 @@ traceability_diagram: |
     P39["prd039-env"] & P40["prd040-printenv"] & P41["prd041-id"]
     P42["prd042-whoami"] & P43["prd043-groups"]
     UC1["rel03.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
-    UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.1-uc001-ls-extended"]
+    UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.0-uc002-ls-extended"]
     UC7["rel99.2-uc001-ts"]
     UC8["rel02.0-uc001-true"] & UC9["rel02.0-uc002-false"] & UC10["rel02.0-uc003-yes"]
     UC11["rel02.0-uc004-basename"] & UC12["rel02.0-uc005-dirname"]
@@ -553,11 +543,11 @@ traceability_diagram: |
     UC20["rel06.1-uc001-env"] & UC21["rel06.1-uc002-printenv"] & UC22["rel06.1-uc003-id"]
     UC23["rel06.1-uc004-whoami"] & UC24["rel06.1-uc005-groups"]
     TS1["test-rel03.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
-    TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.1"] & TS7["test-rel99.2"]
+    TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.0-ext"] & TS7["test-rel99.2"]
     TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
     TS11["test-rel06.0"] & TS12["test-rel06.1"]
     V --> A
-    A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10
+    A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9
     A --> P12 & P13 & P14 & P15 & P16 & P17 & P18
     A --> P34 & P35 & P36 & P37 & P38
     A --> P39 & P40 & P41 & P42 & P43
@@ -570,7 +560,7 @@ traceability_diagram: |
     P7 --> UC3
     P8 --> UC5
     P9 --> UC4
-    P10 --> UC6
+    P8 --> UC6
     P12 --> UC10
     P13 --> UC8
     P14 --> UC9

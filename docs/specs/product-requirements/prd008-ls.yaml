@@ -1,42 +1,37 @@
 id: prd008-ls
-title: "cmd/ls: Core File Listing"
+title: "cmd/ls: File Listing"
 
 problem: |
   ls is the most frequently used Unix utility, and its behavior varies between macOS BSD ls
   and GNU ls in column layout, color handling, long-format field widths, and human-readable
   size formatting. Scripts and interactive shells depend on exact output format for parsing
   and display. A Go implementation must match the Homebrew GNU reference binary (gls,
-  installed by coreutils) byte-for-byte on all in-scope flag combinations, verified by
-  differential testing via pkg/testutils.
+  installed by coreutils) byte-for-byte on all flag combinations, verified by differential
+  testing via pkg/testutils.
 
   ls is the primary consumer of both pkg/sys and pkg/format. It requires terminal-width
   queries for multi-column layout, extended file metadata for long format, signal handling
   for SIGPIPE and SIGWINCH, column alignment for tabular output, ANSI color for file-type
-  colorization, and human-readable size conversion. This PRD covers the core flag subset
-  for rel02.0; extended flags are deferred to prd010-ls-extended.
+  colorization, and human-readable size conversion.
 
 goals:
   - G1: List directory contents in multi-column, single-column, or long format, matching GNU ls output layout.
   - G2: Support filter flags (-a, -A, -d) to control which entries appear in the listing.
-  - G3: Support colorized output via --color with automatic suppression when stdout is not a TTY.
-  - G4: Support human-readable file sizes (-h) in long format, matching GNU ls -lh output.
+  - G3: Support sort order flags (-t, -S, -r, -U, -v) to control entry ordering.
+  - G4: Support colorized output, human-readable sizes, file type classification, metadata display, and recursive listing.
   - G5: Produce correct exit codes (0, 1, 2) matching GNU ls exit-code contract.
 
 requirements:
   R1:
-    title: Default listing (multi-column and single-column)
+    title: Output formats and layout (default, -1, -l, -C, -x)
     items:
       - R1.1: |
           When stdout is a TTY and no format flag is given, must produce multi-column output sorted vertically (down columns, then across). Terminal width is obtained by calling pkg/sys.TerminalWidth() (int, error) — returns the current terminal column count via TIOCGWINSZ ioctl on stdout; returns an error when stdout is not a terminal. Entries are laid out by calling pkg/format.Columns(entries []string, termWidth int) [][]string — distributes entries into the maximum number of columns fitting within termWidth, with column widths computed as per-column maxima of entry lengths.
       - R1.2: When stdout is not a TTY (pipe, file redirect) and no format flag is given, must produce single-column output with one entry per line. This matches GNU ls behavior (ls.c detects stdout is not a TTY and sets format to single-column).
       - R1.3: Must sort entries in the C locale order (LC_COLLATE=C). Differential tests must set LC_ALL=C to eliminate locale-dependent sort divergence.
       - R1.4: Must not list entries whose names start with "." unless -a or -A is given. This is the default filter behavior matching GNU ls.
-
-  R2:
-    title: Single-column mode (-1) and long format (-l)
-    items:
-      - R2.1: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
-      - R2.2: |
+      - R1.5: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
+      - R1.6: |
           -l flag skeleton and permission string. When -l is given, produce long-format output. Field order (left to right): permissions (10 chars), nlink, owner, group, size, mtime, name. Fields separated by a single space. Numeric fields (nlink, size) are right-aligned in columns wide enough for the largest value in the listing.
 
           Permission string algorithm (10 characters):
@@ -44,7 +39,7 @@ requirements:
           - Positions 1-3 (owner rwx): 'r'/'- ' for bit 0o400, 'w'/'-' for 0o200, 'x'/'-' for 0o100. If setuid (fi.Mode&os.ModeSetuid != 0): replace 'x' with 's', or replace '-' with 'S'.
           - Positions 4-6 (group rwx): bits 0o040, 0o020, 0o010. If setgid (fi.Mode&os.ModeSetgid != 0): replace 'x' with 's', or replace '-' with 'S'.
           - Positions 7-9 (other rwx): bits 0o004, 0o002, 0o001. If sticky (fi.Mode&os.ModeSticky != 0): replace 'x' with 't', or replace '-' with 'T'.
-      - R2.3: |
+      - R1.7: |
           File metadata via pkg/sys.Lstat. Obtain metadata for each listed entry by calling pkg/sys.Lstat(path string) (*sys.FileInfo, error) — does not follow symbolic links; returns the symlink's own metadata when path is a symlink.
 
           sys.FileInfo struct (embedded here for reference):
@@ -64,73 +59,123 @@ requirements:
             }
 
           In long format: print fi.Nlink (uint64) right-aligned; print fi.Size (int64, bytes) right-aligned. Both columns sized to the widest value across all listed entries.
-      - R2.4: |
+      - R1.8: |
           Owner and group name resolution in long format. Resolve owner name by calling os/user.LookupId(strconv.Itoa(int(fi.Uid))); on success use u.Username; on error (user not found or lookup fails) fall back to strconv.FormatUint(uint64(fi.Uid), 10). Resolve group name by calling os/user.LookupGroupId(strconv.Itoa(int(fi.Gid))); on success use g.Name; on error fall back to strconv.FormatUint(uint64(fi.Gid), 10). Owner and group fields are left-padded to column width for alignment.
-      - R2.5: |
+      - R1.9: |
           Modification time formatting in long format. Use fi.ModTime (time.Time from sys.FileInfo). If time.Since(fi.ModTime) < 6*30*24*time.Hour (approximately six months), format as fi.ModTime.Format("Jan _2 15:04"). Otherwise format as fi.ModTime.Format("Jan _2  2006"). Both patterns produce a 12-character field.
-      - R2.6: |
-          Total block count line and symlink display. Before the directory listing, print "total N\n" where N = sum(fi.Blocks for all listed entries) / 2. The division converts 512-byte st_blocks units to 1K-block units matching GNU ls. N is a plain integer (no trailing suffix) unless -h is active (see R5).
+      - R1.10: |
+          Total block count line and symlink display. Before the directory listing, print "total N\n" where N = sum(fi.Blocks for all listed entries) / 2. The division converts 512-byte st_blocks units to 1K-block units matching GNU ls. N is a plain integer (no trailing suffix) unless -h is active (see R3).
 
           Symlink display: when fi.Mode&os.ModeSymlink != 0, read the link target with os.Readlink(path) and append " -> " + target to the entry name field. Use Lstat (not Stat) so the symlink's own fi.Size and fi.Nlink are used, not the target's.
+      - R1.11: |
+          -C must force multi-column output regardless of whether stdout is a TTY. Layout uses pkg/format.Columns(entries []string, termWidth int) [][]string. When stdout is not a TTY, -C must use a default width of 80 columns (matching GNU ls behavior when stdout is not a TTY and -C is given without -w).
+      - R1.12: -C must sort entries vertically (down columns, then across to the next column). This is the same sort direction as the default multi-column mode in R1.1.
+      - R1.13: -x must produce multi-column output with entries sorted horizontally (across columns, then down to the next row). This differs from -C which sorts vertically.
+      - R1.14: -C and -x are mutually exclusive with -l and -1. If -l or -1 appears after -C or -x on the command line, it overrides the multi-column mode. If -C or -x appears after -l or -1, it overrides the long or single-column format. The last format flag wins, matching GNU ls behavior.
+
+  R2:
+    title: Filtering, sorting, and metadata display (-a, -A, -d, -t, -S, -r, -U, -v, -i, -s, -n)
+    items:
+      - R2.1: -a must include entries whose names start with "." including the special entries "." and ".." in the listing.
+      - R2.2: -A must include entries whose names start with "." except for "." and "..". -A is the "almost all" filter.
+      - R2.3: -d must list directory entries themselves rather than their contents. When a directory is given as an argument with -d, must print the directory name (or its long-format entry with -l) without descending into it.
+      - R2.4: When both -a and -A are given, the last one on the command line takes precedence, matching GNU ls behavior.
+      - R2.5: |
+          -t must sort entries by modification time, newest first. Obtain metadata via pkg/sys.Lstat(path string) (*sys.FileInfo, error); use sys.FileInfo.ModTime time.Time for comparison (fi.ModTime.After(fj.ModTime) for newest-first ordering). Entries with the same modification time must be sorted by name in C locale order as a tiebreaker.
+      - R2.6: |
+          -S must sort entries by file size (st_size), largest first. Obtain file size from sys.FileInfo.Size int64 — apparent file size in bytes (st_size). Entries with the same size must be sorted by name in C locale order as a tiebreaker.
+      - R2.7: -r must reverse the current sort order. -r applies to whichever sort is active (name sort by default, -t for time, -S for size, -v for version). -r with the default sort produces reverse alphabetical order.
+      - R2.8: -U must disable sorting entirely and list entries in directory order (the order returned by readdir). -U overrides -t, -S, and -v. -r with -U has no defined effect (directory order is not reversible in a meaningful way), but must be accepted without error.
+      - R2.9: -v must sort entries using natural version sort semantics (strverscmp behavior). Runs of digits within filenames are compared numerically rather than lexicographically, so "file2" sorts before "file10". Must be implemented without external libraries.
+      - R2.10: When multiple sort flags are given, the last one on the command line takes precedence, matching GNU ls behavior.
+      - R2.11: |
+          -i must prepend the inode number of each entry before the entry name (or before the permissions in -l mode). Obtain the inode number via pkg/sys.Lstat(path string) (*sys.FileInfo, error) and read sys.FileInfo.Ino uint64 — inode number (st_ino). The inode number is right-aligned in a column wide enough for the largest inode in the listing.
+      - R2.12: |
+          -s must prepend the allocated block count for each entry before the entry name (or before the permissions in -l mode). Obtain the block count via pkg/sys.Lstat(path string) (*sys.FileInfo, error) and read sys.FileInfo.Blocks int64 — number of 512-byte blocks allocated (st_blocks). Report in 1024-byte block units: fi.Blocks / 2. The block count is right-aligned in a column wide enough for the largest count in the listing.
+      - R2.13: -s with -l must also modify the "total N" line to include block counts in the selected unit. The total is the sum of all listed entries' block allocations.
+      - R2.14: |
+          -n must activate long format (implies -l) and display numeric UID and GID instead of resolving owner and group names. Format UID as strconv.FormatUint(uint64(fi.Uid), 10) and GID as strconv.FormatUint(uint64(fi.Gid), 10), where fi.Uid uint32 and fi.Gid uint32 come from pkg/sys.Lstat. Do not call os/user.LookupId or os/user.LookupGroupId.
+      - R2.15: -i and -s may be combined. When both are given, inode is printed first, then block count, then the entry (or the long-format fields).
 
   R3:
-    title: Filter flags (-a, -A, -d)
+    title: Display features (--color, -h, -F, -R)
     items:
-      - R3.1: -a must include entries whose names start with "." including the special entries "." and ".." in the listing.
-      - R3.2: -A must include entries whose names start with "." except for "." and "..". -A is the "almost all" filter.
-      - R3.3: -d must list directory entries themselves rather than their contents. When a directory is given as an argument with -d, must print the directory name (or its long-format entry with -l) without descending into it.
-      - R3.4: When both -a and -A are given, the last one on the command line takes precedence, matching GNU ls behavior.
-
-  R4:
-    title: Color output (--color)
-    items:
-      - R4.1: Must support --color=always, --color=auto, and --color=never. When --color is given without a value, it must default to "always".
-      - R4.2: |
+      - R3.1: Must support --color=always, --color=auto, and --color=never. When --color is given without a value, it must default to "always".
+      - R3.2: |
           --color=auto must colorize output only when stdout is a TTY. TTY detection: call pkg/sys.IsTerminal(os.Stdout) — returns true when os.Stdout's file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), false otherwise. When stdout is not a TTY, --color=auto must behave like --color=never.
-      - R4.3: |
+      - R3.3: |
           Colorized output uses GNU LS_COLORS default color assignments via pkg/format. Call pkg/format.FileTypeColor(mode os.FileMode) string to obtain the ANSI escape sequence for a given file type, and pkg/format.Reset() string for the reset sequence. Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
 
           Set the process-global color mode based on the --color flag value: call pkg/format.SetColorEnabled(true) for --color=always, pkg/format.SetColorEnabled(false) for --color=never. For --color=auto, call pkg/sys.IsTerminal(os.Stdout.Fd()) and pass the result to pkg/format.SetColorEnabled. When color is disabled, pkg/format.FileTypeColor returns empty strings.
-      - R4.4: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
-
-  R5:
-    title: Human-readable sizes (-h)
-    items:
-      - R5.1: |
+      - R3.4: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
+      - R3.5: |
           -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). Without -l, -h must have no visible effect on output.
-      - R5.2: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
-      - R5.3: Without -l, -h must have no visible effect on output.
+      - R3.6: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
+      - R3.7: |
+          -h must apply to -s block counts when both -s and -h are given, converting block counts to human-readable form. Use the following binary HumanSize algorithm directly in cmd/ls (do not call pkg/format.HumanSize):
 
-  R6:
-    title: Exit codes
-    items:
-      - R6.1: Must exit 0 when all listed paths are accessed and output is written successfully.
-      - R6.2: Must exit 1 when a minor problem occurs, such as failing to access a file or directory given as an argument (e.g., permission denied, file not found). Must still list the remaining accessible entries before exiting. Must print a diagnostic to stderr for each inaccessible entry.
-      - R6.3: Must exit 2 when a serious problem occurs, such as an invalid command-line option. This matches GNU ls (ls.c:5638 exit(status) where status is set to EXIT_FAILURE=2 for bad options at ls.c:2026).
+            func humanSize(n int64) string {
+                if n == 0 { return "0" }
+                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+                f := float64(n)
+                i := 0
+                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
+                if i == 0 { return fmt.Sprintf("%d", n) }
+                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
+                return fmt.Sprintf("%.1f%s", f, suffixes[i])
+            }
+      - R3.8: -F must append a type indicator character after each entry name. The indicators are "/" for directories, "*" for executable regular files, "@" for symbolic links, "|" for named pipes (FIFOs), "=" for sockets. Regular non-executable files receive no indicator.
+      - R3.9: Executable is defined as having any execute bit set (owner, group, or other) in the file's permission mode.
+      - R3.10: -F must work with all output formats (-l, -1, -C, -x) and with color output. When color is enabled, the indicator character is printed after the ANSI reset sequence so it is not colorized.
+      - R3.11: -R must recursively list the contents of each subdirectory encountered during the listing. Each subdirectory's contents are printed under a header line in the format "PATH:" followed by a blank line, then the directory contents, then a blank line before the next entry.
+      - R3.12: -R must respect the current format mode. With -l, each subdirectory's contents are listed in long format including the "total N" block line. With -C or default mode, each subdirectory's contents use multi-column layout.
+      - R3.13: -R must not follow symbolic links to directories. Only real subdirectories are recursed into.
+      - R3.14: -R must apply the current filter flags (-a, -A) to each subdirectory. Dotfiles in subdirectories are shown only if -a or -A is given.
+      - R3.15: -R must list directories in the same sort order as entries within a directory. If -t is active, subdirectories are recursed into in modification-time order.
 
-  R7:
-    title: Signal handling
+  R4:
+    title: Exit codes, signal handling, and flag interactions
     items:
-      - R7.1: |
+      - R4.1: Must exit 0 when all listed paths are accessed and output is written successfully.
+      - R4.2: Must exit 1 when a minor problem occurs, such as failing to access a file or directory given as an argument (e.g., permission denied, file not found). Must still list the remaining accessible entries before exiting. Must print a diagnostic to stderr for each inaccessible entry.
+      - R4.3: Must exit 2 when a serious problem occurs, such as an invalid command-line option. This matches GNU ls (ls.c:5638 exit(status) where status is set to EXIT_FAILURE=2 for bad options at ls.c:2026).
+      - R4.4: |
           Must install a SIGPIPE handler at startup so that piping ls output to head or other truncating consumers does not produce a broken-pipe error message. Implementation: call pkg/sys.InstallSIGPIPEHandler() — this uses signal.Notify(c, syscall.SIGPIPE) with a buffered channel of size 1; a dedicated goroutine calls os.Exit(0) when the channel receives. Must not use signal.Ignore (deferred cleanup functions must not run on SIGPIPE, matching GNU ls behavior).
-      - R7.2: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize(callback func(width int)) that re-queries the terminal width and updates the column layout. pkg/sys.OnTerminalResize registers a SIGWINCH listener that calls pkg/sys.TerminalWidth() and invokes the callback with the new width; multiple callbacks may be registered. This allows ls to adapt column layout if the terminal is resized during a long listing.
+      - R4.5: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize(callback func(width int)) that re-queries the terminal width and updates the column layout. pkg/sys.OnTerminalResize registers a SIGWINCH listener that calls pkg/sys.TerminalWidth() and invokes the callback with the new width; multiple callbacks may be registered. This allows ls to adapt column layout if the terminal is resized during a long listing.
+      - R4.6: -n implies -l. When -n is given without -l, the output must be in long format with numeric UID/GID.
+      - R4.7: -C and -x are mutually exclusive with -l and -1. The last format flag on the command line wins (see R1.14).
+      - R4.8: -R with -l must produce a "total N" block line for each subdirectory listing, matching GNU ls -lR output.
+      - R4.9: -i, -s, and -F may all be combined with -R. Each subdirectory listing applies the same metadata display and classification options.
 
 non_goals:
-  - -C (force multi-column), -x (sort across), -t (sort by mtime), -S (sort by size), -r (reverse sort), -U (unsorted), -v (version sort), -i (inode number), -s (block size), -n (numeric UID/GID), -R (recursive), -F (classify with indicator) are deferred to prd010-ls-extended.
   - --hyperlink (terminal hyperlinks) is out of scope for this project.
   - --dired (Emacs dired mode) is out of scope.
   - -Z (SELinux security context) is out of scope; this project does not target SELinux.
   - --quoting-style (filename quoting) is out of scope for this release.
-  - --block-size unit suffixes beyond -h are out of scope for this release.
+  - --block-size=SIZE with arbitrary unit suffixes is out of scope.
   - LS_COLORS environment variable parsing is out of scope; we use GNU default colors only (prd003-format non-goals).
   - ACL (access control list) display in long format (the "+" indicator) is out of scope.
+  - --group-directories-first is out of scope for this release.
+  - -w / --width (explicit width override) is out of scope; terminal width is queried via pkg/sys.
+  - --sort=WORD (long-form sort option) is out of scope; only short flags (-t, -S, -r, -U, -v) are supported.
 
 acceptance_criteria:
   - "AC1: Default mode comparison -- gls and go run ./cmd/ls on a test directory produce identical multi-column output when run in a pseudo-TTY with the same terminal width. Differential test must set LC_ALL=C and --color=never."
   - "AC2: Single-column comparison -- gls -1 and go run ./cmd/ls -1 produce identical output on the same test directory."
-  - "AC3: Long format comparison -- gls -l and go run ./cmd/ls -l produce identical output on the same test directory. Because mtime display depends on wall clock, differential tests must normalize the mtime column by replacing it with a fixed placeholder (e.g., \"MTIME\") before comparison. Because owner/group names may vary, tests must use a fixture where files are owned by the test user, or normalize owner/group fields."
+  - "AC3: Long format comparison -- gls -l and go run ./cmd/ls -l produce identical output on the same test directory. Because mtime display depends on wall clock, differential tests must normalize the mtime column. Because owner/group names may vary, tests must use a fixture where files are owned by the test user, or normalize owner/group fields."
   - "AC4: Color suppression -- gls --color=auto and go run ./cmd/ls --color=auto produce no ANSI escape sequences when stdout is piped (not a TTY)."
-  - "AC5: Human-readable sizes -- gls -lh and go run ./cmd/ls -lh produce identical size strings on a set of test files with known sizes (0 bytes, 1023 bytes, 1024 bytes, 1536 bytes, 1048576 bytes, 1073741824 bytes)."
+  - "AC5: Human-readable sizes -- gls -lh and go run ./cmd/ls -lh produce identical size strings on a set of test files with known sizes."
   - "AC6: Filter flags -- gls -a, gls -A, and gls -d produce identical output to the Go binary with the same flags on a test directory containing dotfiles and subdirectories."
   - "AC7: Exit codes -- the Go binary exits 1 when given a non-existent path argument and exits 2 when given an invalid option, matching gls behavior."
-  - "AC8: cmd/ls compiles with no warnings under golangci-lint."
+  - "AC8: Multi-column forced -- gls -C and go run ./cmd/ls -C produce identical column layout on a test fixture when both are given the same terminal width."
+  - "AC9: Horizontal sort -- gls -x and go run ./cmd/ls -x produce identical output on a fixture."
+  - "AC10: Time sort -- gls -t and go run ./cmd/ls -t produce identical output on a fixture with files of known different modification times."
+  - "AC11: Size sort -- gls -S and go run ./cmd/ls -S produce identical output on a fixture with files of known different sizes."
+  - "AC12: Reverse sort -- gls -r and go run ./cmd/ls -r produce identical reverse-alphabetical output. gls -tr and the Go binary with -tr produce identical reverse-time output."
+  - "AC13: Inode display -- gls -i and go run ./cmd/ls -i produce identical output when run on the same live fixture on the same filesystem."
+  - "AC14: Block count display -- gls -s and go run ./cmd/ls -s produce identical output."
+  - "AC15: Numeric IDs -- gls -n and go run ./cmd/ls -n produce identical long-format output with numeric UID and GID."
+  - "AC16: Classify -- gls -F and go run ./cmd/ls -F produce identical output on a fixture containing a directory, a regular file, an executable, a symlink, and a named pipe."
+  - "AC17: Recursive listing -- gls -R and go run ./cmd/ls -R produce identical output on a fixture with nested subdirectories."
+  - "AC18: Version sort -- gls -v and go run ./cmd/ls -v produce identical output on a fixture containing files named file1, file2, file10, file20."
+  - "AC19: cmd/ls compiles with no warnings under golangci-lint."
