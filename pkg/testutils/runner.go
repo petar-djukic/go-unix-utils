@@ -30,6 +30,21 @@ type runResult struct {
 	ExitCode int
 }
 
+// BuildBinary compiles the Go package at pkgPath to a temporary binary and
+// returns the path to the compiled binary. The binary is cleaned up automatically
+// via t.TempDir when the test completes. This is the standard way cmd/ tests
+// obtain their Go binary for differential testing. (prd001-testutils R4)
+func BuildBinary(t *testing.T, pkgPath string) string {
+	t.Helper()
+	binPath := filepath.Join(t.TempDir(), "testbin")
+	cmd := exec.Command("go", "build", "-o", binPath, pkgPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("building %s: %v\n%s", pkgPath, err, out)
+	}
+	return binPath
+}
+
 // RunDiffTests runs each DiffTest as a named subtest, executing both goBinary
 // and refBinary with identical inputs and comparing their outputs.
 // (prd001-testutils R2.1, R3.6)
