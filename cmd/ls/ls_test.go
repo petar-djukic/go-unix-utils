@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (Homebrew GNU coreutils).
-// Implements prd008-ls R1-R4 acceptance criteria.
+// Implements prd008-ls R1-R8 acceptance criteria.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -69,6 +70,41 @@ func setupFixture(t *testing.T) string {
 	return dir
 }
 
+// setupSortFixture creates a fixture with files of different sizes and mtimes
+// for testing -t, -S, and -r sort flags.
+func setupSortFixture(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "sort-fixture")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	baseTime := time.Now().Add(-1 * time.Hour)
+
+	// Create files with distinct sizes and mtimes.
+	// "big" = 300 bytes, oldest; "medium" = 200 bytes, middle; "small" = 100 bytes, newest.
+	files := []struct {
+		name  string
+		size  int
+		mtime time.Time
+	}{
+		{"big", 300, baseTime},
+		{"medium", 200, baseTime.Add(30 * time.Minute)},
+		{"small", 100, baseTime.Add(60 * time.Minute)},
+	}
+	for _, f := range files {
+		path := filepath.Join(dir, f.name)
+		data := make([]byte, f.size)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, f.mtime, f.mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gls")
@@ -77,6 +113,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	fixture := setupFixture(t)
+	sortFixture := setupSortFixture(t)
 
 	tests := []testutils.DiffTest{
 		{
@@ -165,6 +202,76 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-ld", "--color=never", fixture},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		// R5-R8: Sort flags and directory mode tests.
+		{
+			// R7: -t sorts by modification time (newest first).
+			Name: "ls_sort_by_time",
+			Args: []string{"-1", "-t", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R7: -S sorts by file size (largest first).
+			Name: "ls_sort_by_size",
+			Args: []string{"-1", "-S", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R7: -r reverses default (lexicographic) sort.
+			Name: "ls_sort_reverse",
+			Args: []string{"-1", "-r", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R7: -tr sorts by time ascending (oldest first).
+			Name: "ls_sort_time_reverse",
+			Args: []string{"-1", "-tr", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R7: -Sr sorts by size ascending (smallest first).
+			Name: "ls_sort_size_reverse",
+			Args: []string{"-1", "-Sr", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R7: -lt sorts by time in long format.
+			Name:      "ls_long_sort_time",
+			Args:      []string{"-lt", "--color=never", sortFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		{
+			// R7: -lS sorts by size in long format.
+			Name:      "ls_long_sort_size",
+			Args:      []string{"-lS", "--color=never", sortFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		{
+			// R8: -d with directory argument prints path, not contents.
+			Name: "ls_directory_mode",
+			Args: []string{"-d", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R8: -ld on directory prints long format of directory entry itself.
+			Name:      "ls_long_directory_mode",
+			Args:      []string{"-ld", "--color=never", sortFixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
+		{
+			// R5: -a with sort fixture shows . and .. and all entries.
+			Name: "ls_all_sort_fixture",
+			Args: []string{"-a", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			// R5: -A with sort fixture shows all except . and ..
+			Name: "ls_almost_all_sort_fixture",
+			Args: []string{"-A", "--color=never", sortFixture},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 

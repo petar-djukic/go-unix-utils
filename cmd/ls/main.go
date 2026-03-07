@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements GNU ls: list directory contents.
-// Implements prd008-ls R1-R4 (basic listing, long format, filter flags, color, exit codes).
+// Implements prd008-ls R1-R8 (basic listing, long format, filter flags, color,
+// human-readable sizes, exit codes, signal handling, sorting).
 package main
 
 import (
@@ -22,13 +23,16 @@ import (
 
 // options holds parsed command-line flags.
 type options struct {
-	showAll     bool // -a: include dotfiles including . and ..
-	almostAll   bool // -A: include dotfiles excluding . and ..
-	onePerLine  bool // -1: force single-column
-	longFormat  bool // -l: long format
-	recursive   bool // -R: recursive listing
-	dirOnly     bool // -d: list directory entries themselves
-	humanSize   bool // -h: human-readable sizes with -l
+	showAll     bool   // -a: include dotfiles including . and ..
+	almostAll   bool   // -A: include dotfiles excluding . and ..
+	onePerLine  bool   // -1: force single-column
+	longFormat  bool   // -l: long format
+	recursive   bool   // -R: recursive listing
+	dirOnly     bool   // -d: list directory entries themselves
+	humanSize   bool   // -h: human-readable sizes with -l
+	sortByTime  bool   // -t: sort by modification time (newest first)
+	sortBySize  bool   // -S: sort by file size (largest first)
+	reverseSort bool   // -r: reverse sort order
 	colorMode   string // "always", "auto", "never"
 }
 
@@ -83,26 +87,22 @@ func main() {
 		}
 	}
 
-	sort.Strings(fileArgs)
-	sort.Strings(dirArgs)
+	sortPaths(fileArgs, opts)
+	sortPaths(dirArgs, opts)
 
 	needBlank := false
 
-	// R2: List file arguments first.
+	// R2: List file arguments first. Print the argument as given (not basename).
 	if len(fileArgs) > 0 {
 		if opts.longFormat {
 			printLongFiles(fileArgs, opts)
 		} else if singleColumn {
 			for _, f := range fileArgs {
-				printColorized(filepath.Base(f), f)
+				printColorized(f, f)
 				fmt.Println()
 			}
 		} else {
-			names := make([]string, len(fileArgs))
-			for i, f := range fileArgs {
-				names[i] = filepath.Base(f)
-			}
-			printColumns(names, fileArgs, termWidth)
+			printColumns(fileArgs, fileArgs, termWidth)
 		}
 		needBlank = true
 	}
@@ -157,8 +157,8 @@ func listDir(dir string, opts options, singleColumn bool, termWidth int) error {
 		names = append(names, name)
 	}
 
-	// R1.3: Sort in C locale order.
-	sort.Strings(names)
+	// R1.3: Sort in C locale order; R7: -t/-S/-r override.
+	sortEntries(names, dir, opts)
 
 	if opts.longFormat {
 		printLongDir(dir, names, opts)
@@ -195,7 +195,7 @@ func listRecursive(dir string, opts options, singleColumn bool, termWidth int) e
 			subdirs = append(subdirs, name)
 		}
 	}
-	sort.Strings(subdirs)
+	sortEntries(subdirs, dir, opts)
 
 	var retErr error
 	for _, sub := range subdirs {
@@ -209,6 +209,99 @@ func listRecursive(dir string, opts options, singleColumn bool, termWidth int) e
 		}
 	}
 	return retErr
+}
+
+// sortPaths sorts a slice of file paths in place according to the sort flags.
+// D4: primary key from -t/-S/default, reversed when -r is set.
+func sortPaths(paths []string, opts options) {
+	if !opts.sortByTime && !opts.sortBySize {
+		sort.Strings(paths)
+		if opts.reverseSort {
+			reverseSlice(paths)
+		}
+		return
+	}
+	// Gather FileInfo for sort keys.
+	infos := make(map[string]*sys.FileInfo, len(paths))
+	for _, p := range paths {
+		fi, err := sys.Lstat(p)
+		if err == nil {
+			infos[p] = fi
+		}
+	}
+	sort.SliceStable(paths, func(i, j int) bool {
+		less := comparePaths(paths[i], paths[j], infos, opts)
+		if opts.reverseSort {
+			return !less
+		}
+		return less
+	})
+}
+
+// sortEntries sorts entry names within a directory according to sort flags.
+func sortEntries(names []string, dir string, opts options) {
+	if !opts.sortByTime && !opts.sortBySize {
+		sort.Strings(names)
+		if opts.reverseSort {
+			reverseSlice(names)
+		}
+		return
+	}
+	infos := make(map[string]*sys.FileInfo, len(names))
+	for _, name := range names {
+		fi, err := sys.Lstat(filepath.Join(dir, name))
+		if err == nil {
+			infos[name] = fi
+		}
+	}
+	sort.SliceStable(names, func(i, j int) bool {
+		less := compareEntries(names[i], names[j], infos, opts)
+		if opts.reverseSort {
+			return !less
+		}
+		return less
+	})
+}
+
+// comparePaths compares two paths for sorting by -t or -S, falling back to name.
+func comparePaths(a, b string, infos map[string]*sys.FileInfo, opts options) bool {
+	fia, aOK := infos[a]
+	fib, bOK := infos[b]
+	if opts.sortByTime && aOK && bOK {
+		if !fia.ModTime.Equal(fib.ModTime) {
+			return fia.ModTime.After(fib.ModTime) // newest first
+		}
+	}
+	if opts.sortBySize && aOK && bOK {
+		if fia.Size != fib.Size {
+			return fia.Size > fib.Size // largest first
+		}
+	}
+	return a < b
+}
+
+// compareEntries compares two entry names for sorting by -t or -S, falling back to name.
+func compareEntries(a, b string, infos map[string]*sys.FileInfo, opts options) bool {
+	fia, aOK := infos[a]
+	fib, bOK := infos[b]
+	if opts.sortByTime && aOK && bOK {
+		if !fia.ModTime.Equal(fib.ModTime) {
+			return fia.ModTime.After(fib.ModTime)
+		}
+	}
+	if opts.sortBySize && aOK && bOK {
+		if fia.Size != fib.Size {
+			return fia.Size > fib.Size
+		}
+	}
+	return a < b
+}
+
+// reverseSlice reverses a string slice in place.
+func reverseSlice(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
 
 // printColorized prints a name with ANSI color codes if color is enabled.
@@ -311,7 +404,7 @@ func printLongFiles(files []string, opts options) {
 			fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", f, err.Error())
 			continue
 		}
-		infos = append(infos, entryInfo{name: filepath.Base(f), fi: fi, path: f})
+		infos = append(infos, entryInfo{name: f, fi: fi, path: f})
 	}
 	if len(infos) == 0 {
 		return
@@ -613,6 +706,14 @@ func parseArgs(args []string) (options, []string) {
 					opts.dirOnly = true
 				case 'h':
 					opts.humanSize = true
+				case 't':
+					opts.sortByTime = true
+					opts.sortBySize = false
+				case 'S':
+					opts.sortBySize = true
+					opts.sortByTime = false
+				case 'r':
+					opts.reverseSort = true
 				case 'q':
 					// force ? for non-printable chars (not implemented, accept silently)
 				default:
@@ -646,7 +747,10 @@ func printHelp() {
 	fmt.Println("  -d, --directory            list directories themselves, not their contents")
 	fmt.Println("  -h, --human-readable       with -l, print sizes like 1K 234M 2G etc.")
 	fmt.Println("  -l                         use a long listing format")
+	fmt.Println("  -r, --reverse              reverse order while sorting")
 	fmt.Println("  -R, --recursive            list subdirectories recursively")
+	fmt.Println("  -S                         sort by file size, largest first")
+	fmt.Println("  -t                         sort by time, newest first")
 	fmt.Println("  -1                         list one file per line")
 	fmt.Println("      --color[=WHEN]         colorize the output; WHEN can be 'always',")
 	fmt.Println("                               'auto', or 'never'; more info below")
