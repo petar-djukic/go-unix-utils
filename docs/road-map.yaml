@@ -112,27 +112,17 @@ releases:
         status: implemented
 
   - version: "04.0"
-    name: "Batch 4 — ls core specification and differential test"
+    name: "Batch 4 — ls specification and differential test"
     status: implemented
     description: |
-      ls core covers the most common flags (default, -1, -l, -a, -A, -d, --color, -h).
-      Previously deferred to rel99.0 because ls blocked generation runs due to task
-      complexity. Now scheduled as rel04.0 after cobbler-scaffold improvements to
-      sub-requirement counting.
+      Full ls implementation covering all flags: default, -1, -l, -a, -A, -d, --color, -h
+      (core), plus -C, -x, sort flags (-t, -S, -r, -U, -v), metadata display (-i, -s, -n),
+      -F classify, and -R recursive (extended). Previously split across rel04.0 and rel04.1;
+      merged after combining prd008-ls and prd010-ls-extended into a single PRD.
     use_cases:
       - id: rel04.0-uc001-ls
         status: implemented
-
-  - version: "04.1"
-    name: "Batch 4.1 — ls extended specification and differential test"
-    status: implemented
-    description: |
-      Extend ls with flags requiring heavier normalization or more complex layout logic:
-      -C (forced multi-column), -x (horizontal), sort flags (-t, -S, -r, -U, -v),
-      metadata display (-i inode, -s blocks, -n numeric IDs), -F classify, -R recursive.
-      Depends on rel04.0.
-    use_cases:
-      - id: rel04.1-uc001-ls-extended
+      - id: rel04.0-uc002-ls-extended
         status: implemented
 
   - version: "05.0"
