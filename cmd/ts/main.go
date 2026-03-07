@@ -80,8 +80,19 @@ func main() {
 	}
 }
 
+// writeLine writes a timestamp-prefixed line to stdout, exiting on write error.
+// R1.1, R1.3, R1.4: write timestamp + space + original line, flush per line.
+func writeLine(ts, line string) {
+	if _, err := fmt.Fprint(os.Stdout, ts, " ", line); err != nil {
+		// Write error (e.g., broken pipe handled by SIGPIPE); exit cleanly.
+		os.Exit(0)
+	}
+}
+
 // processDefault reads stdin line by line and prepends a wall-clock
 // timestamp using the given strftime format. (R1, R2)
+// R5.2: monotonic flag is accepted but has no additional effect in default
+// mode since Go's time.Now() already includes a monotonic reading. (R5.1)
 func processDefault(format string, _ bool) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -89,8 +100,7 @@ func processDefault(format string, _ bool) {
 		if len(line) > 0 {
 			now := time.Now()
 			ts := formatStrftime(format, now)
-			// R1.1, R1.4: write timestamp + space + original line (preserving newline).
-			fmt.Fprint(os.Stdout, ts, " ", line)
+			writeLine(ts, line)
 		}
 		if err != nil {
 			break
@@ -99,6 +109,8 @@ func processDefault(format string, _ bool) {
 }
 
 // processElapsed reads stdin and prepends elapsed time since start. (R4)
+// R5.1: Go's time.Now() includes a monotonic reading; Sub() uses it
+// automatically, so -m has no additional effect beyond Go's default behavior.
 func processElapsed(format string, _ bool) {
 	startTime := time.Now()
 	reader := bufio.NewReader(os.Stdin)
@@ -110,7 +122,7 @@ func processElapsed(format string, _ bool) {
 			// R4.2, R8.2: format elapsed duration as a time in GMT.
 			t := time.Unix(0, 0).UTC().Add(elapsed)
 			ts := formatStrftime(format, t)
-			fmt.Fprint(os.Stdout, ts, " ", line)
+			writeLine(ts, line)
 		}
 		if err != nil {
 			break
@@ -119,6 +131,8 @@ func processElapsed(format string, _ bool) {
 }
 
 // processIncremental reads stdin and prepends time since the previous line. (R3)
+// R5.1: Go's time.Now() includes a monotonic reading; Sub() uses it
+// automatically, so -m has no additional effect beyond Go's default behavior.
 func processIncremental(format string, _ bool) {
 	lastTime := time.Now()
 	reader := bufio.NewReader(os.Stdin)
@@ -131,7 +145,7 @@ func processIncremental(format string, _ bool) {
 			// R3.2, R8.2: format elapsed duration as a time in GMT.
 			t := time.Unix(0, 0).UTC().Add(elapsed)
 			ts := formatStrftime(format, t)
-			fmt.Fprint(os.Stdout, ts, " ", line)
+			writeLine(ts, line)
 		}
 		if err != nil {
 			break
@@ -141,8 +155,8 @@ func processIncremental(format string, _ bool) {
 
 // Timestamp patterns for -r mode (R6.2).
 var relativePatterns = []struct {
-	re     *regexp.Regexp
-	layout string
+	re      *regexp.Regexp
+	layout  string
 	hasYear bool
 }{
 	{
@@ -180,7 +194,10 @@ func processRelative(format string) {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
 			result := replaceTimestamp(line, now, format)
-			fmt.Fprint(os.Stdout, result)
+			if _, werr := fmt.Fprint(os.Stdout, result); werr != nil {
+				// Write error; exit cleanly.
+				os.Exit(0)
+			}
 		}
 		if err != nil {
 			break
@@ -413,4 +430,3 @@ func formatStrftime(format string, t time.Time) string {
 	}
 	return buf.String()
 }
-
