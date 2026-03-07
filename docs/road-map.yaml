@@ -162,7 +162,7 @@ releases:
 
   - version: "05.2"
     name: "Batch 5.2 — columnar operations pair (cut, paste)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement cut (extract fields/bytes from lines) and paste (merge file lines side
       by side). cut and paste are complementary: cut removes columns and paste adds them.
@@ -172,13 +172,13 @@ releases:
       differential testing against GNU coreutils reference binaries.
     use_cases:
       - id: rel05.2-uc001-cut
-        status: spec_complete
+        status: implemented
       - id: rel05.2-uc002-paste
-        status: spec_complete
+        status: implemented
 
   - version: "05.3"
     name: "Batch 5.3 — sorted-stream comparison pair (uniq, comm)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement uniq (filter adjacent duplicate lines) and comm (compare two sorted files).
       Both utilities operate on sorted or adjacently-ordered input. uniq uses windowed
@@ -188,9 +188,9 @@ releases:
       reference binaries.
     use_cases:
       - id: rel05.3-uc001-uniq
-        status: spec_complete
+        status: implemented
       - id: rel05.3-uc002-comm
-        status: spec_complete
+        status: implemented
 
   - version: "05.4"
     name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
