@@ -101,7 +101,7 @@ releases:
 
   - version: "03.0"
     name: "Batch 3 — wc specification and differential test"
-    status: spec_complete
+    status: implemented
     description: |
       Implement the wc word, line, and byte counter. wc depends on pkg/testutils from
       rel00.0 for differential testing and does not require pkg/sys or pkg/format.
@@ -109,7 +109,7 @@ releases:
       due to task complexity from expanded sub-requirements.
     use_cases:
       - id: rel03.0-uc001-wc
-        status: spec_complete
+        status: implemented
 
   - version: "04.0"
     name: "Batch 4 — ls core specification and differential test"
