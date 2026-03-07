@@ -224,7 +224,7 @@ releases:
 
   - version: "99.2"
     name: "Deferred — ts specification and differential test"
-    status: spec_complete
+    status: implemented
     description: |
       Implement ts for prepending timestamps to stdin lines. Deferred from rel01.0 because
       ts has failed in multiple generation runs due to task complexity from subrequirements
@@ -232,4 +232,4 @@ releases:
       improvements to subrequirement handling.
     use_cases:
       - id: rel99.2-uc001-ts
-        status: spec_complete
+        status: implemented
