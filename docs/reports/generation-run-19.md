@@ -50,9 +50,9 @@ Table 3: Run totals
 | Metric | Value |
 |--------|-------|
 | Total production LOC | 9,686 |
-| Total test LOC | 6,077 |
-| Total LOC | 15,763 |
-| Files produced | 77 |
+| Total test LOC | 6,287 |
+| Total LOC | 15,973 |
+| Files produced | 79 |
 | Utilities implemented | 27 |
 | Successful stitch tasks | ~35 |
 | Failed stitch tasks | 5 (1 timeout, 4 prompt-too-long) |
@@ -99,6 +99,29 @@ This added ~2 minutes of manual overhead per release (16 releases = ~32 minutes 
 A cobbler-scaffold improvement to auto-advance releases after all tasks close would
 eliminate this overhead.
 
+## Post-generation: missing test files (GH-473)
+
+After the generation run, cmd/echo and cmd/ts were missing differential test files. The
+generation produced main.go for both utilities but no _test.go files. GH-473 added them
+manually:
+
+Table 5: Post-generation test additions
+
+| Utility | File | Test LOC | Tests | Reference binary |
+|---------|------|----------|-------|------------------|
+| echo | cmd/echo/echo_test.go | 68 | 8 differential | gecho |
+| ts | cmd/ts/ts_test.go | 142 | 9 differential + 2 error | ts (moreutils) |
+
+The ts error cases (invalid flag, mutually exclusive -i/-s) are tested standalone rather
+than differentially because the reference ts (Perl) exits 255 while Go exits 1, and the
+stderr message formats differ. A custom `subsecondNormalizer` was added for `%.S` format
+since `TimestampNormalizer` only covers `HH:MM:SS` patterns. R6 (`-r` relative mode) tests
+were omitted because the Go implementation does not support `-r`.
+
+The road map was also updated to promote ts from deferred rel99.2 to rel05.5.
+
+Updated totals: 15,973 LOC (9,686 production + 6,287 test), 79 files.
+
 ## Comparison with previous runs
 
 Table 4: Generation runs at scale
@@ -107,7 +130,7 @@ Table 4: Generation runs at scale
 |-----|----------|-----------|-----|-----------|------|
 | Run 17 (GH-336) | 11 (rel02.1-05.4) | 17 | 7,194 | $5.41 | CLI |
 | Run 18 (GH-380) | 1 (rel99.2) | 1 | 565 | $19.75 | SDK |
-| Run 19 (GH-399) | 16 (all) | 27 | 15,763 | — | CLI |
+| Run 19 (GH-399) | 16 (all) | 27 | 15,973 | — | CLI |
 
 Run 19 is the first complete from-scratch generation, covering all releases including
 infrastructure (rel00.0) and previously-problematic utilities (du, wc, ls, ts).
@@ -117,5 +140,7 @@ infrastructure (rel00.0) and previously-problematic utilities (du, wc, ls, ts).
 - `generation-gh-399-generate-code-start` — snapshot before code generation
 - `generation-gh-399-generate-code-finished` — snapshot after last stitch
 - `generation-gh-399-generate-code-merged` — merged into feature branch
+- `generation-gh-399-generate-code-with-tests` — final code state including echo/ts tests
 - https://github.com/petar-djukic/go-unix-utils/issues/399 — GH-399: recurring generation run
-- https://github.com/petar-djukic/go-unix-utils/pull/471 — PR #471
+- https://github.com/petar-djukic/go-unix-utils/pull/471 — PR #471 (generation code)
+- https://github.com/petar-djukic/go-unix-utils/pull/474 — PR #474 (echo/ts tests)
