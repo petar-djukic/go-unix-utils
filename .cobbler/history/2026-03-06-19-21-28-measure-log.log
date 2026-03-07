@@ -1,0 +1,106 @@
+## Project State Summary
+
+**Problem:** go-unix-utils is an experiment in specification-driven development. It derives formal specifications from GNU C source code, generates Go implementations via an AI coding agent (mage-claude-orchestrator), and verifies parity against reference binaries through differential testing. The goal is to find where the methodology breaks down.
+
+**Architecture:** A four-stage pipeline (extract → specify → synthesize → verify) produces Go binaries in cmd/ that are verified against Homebrew GNU reference binaries via pkg/testutils. Shared infrastructure lives in pkg/sys (syscalls), pkg/format (output formatting), and pkg/testutils (differential testing harness). Build orchestration is in magefiles/.
+
+**Current state:** 17 generation runs completed. 17 commands implemented (tee, head, seq, echo, tac, nl, fold, expand, unexpand, cut, paste, uniq, comm, md5sum, sha1sum, sha256sum, sha512sum) plus infrastructure packages. All releases from 00.0 through 05.4 are marked "implemented". Code exists at generation-merged tags.
+
+**Current release scope:** rel99.2 — the deferred ts utility. One use case remains: rel99.2-uc001-ts (spec_complete, code not started).
+
+## Priority Analysis
+
+Release 99.2 contains a single use case: ts (timestamp stdin lines). The spec is complete (PRD, use case, test suite all exist). The ts utility was part of the original rel01.0 but has been deferred to rel99.2. It needs implementation in cmd/ts/. Since I'm limited to 1 task and must split implementation from tests, I'll propose the implementation task. ts is a moreutils utility — the reference binary is `ts` from Homebrew moreutils (no `g` prefix).
+
+```yaml
+- index: 0
+  title: "cmd/ts: implement ts utility (prd-ts R1-R4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-ts.yaml (full PRD for ts -- all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case flow and success criteria)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite for validation reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/tee/main.go (reference implementation of a simple streaming cmd/ utility for style and structure)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- timestamp each stdin line
+      - path: cmd/ts/ts_test.go
+        action: create
+        note: differential tests against Homebrew moreutils ts binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the ts command that reads stdin line by line and prepends a
+          timestamp to each line on stdout, per prd-ts requirements for default
+          absolute timestamp mode. Default format is "%b %d %H:%M:%S" (matches
+          GNU moreutils ts). Accept an optional format string argument that is
+          passed to time.Format (converted from strftime to Go layout).
+      - id: R2
+        text: |
+          Implement the -s flag for relative (elapsed) timestamps per prd-ts.
+          When -s is set, timestamps show elapsed time since the program started
+          in HH:MM:SS format instead of absolute wall-clock time.
+      - id: R3
+        text: |
+          Implement the -i flag for incremental timestamps per prd-ts. When -i
+          is set, timestamps show elapsed time since the previous line was
+          printed, not since program start. -i and -s may be combined (both
+          relative, but -i resets per line).
+      - id: R4
+        text: |
+          Implement the -m flag for monotonic clock per prd-ts. When -m is set
+          with -s or -i, use a monotonic clock source (time.Now() in Go is
+          already monotonic-aware for elapsed calculations). -m without -s or -i
+          has no effect. Write differential tests using pkg/testutils that
+          compare output against the Homebrew moreutils ts binary. Use
+          exec.LookPath("ts") with t.Skip if not found. Use timestamp
+          normalization in DiffTest to handle timing differences.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the
+          shared SIGPIPE handling protocol in ARCHITECTURE.yaml.
+      - id: D2
+        text: |
+          Convert strftime format specifiers to Go time layout equivalents
+          in-process. The conversion function handles the common specifiers used
+          by moreutils ts: %Y, %m, %d, %H, %M, %S, %b, %T, %s (epoch), %N
+          (nanoseconds). Unrecognized specifiers pass through literally.
+      - id: D3
+        text: |
+          The reference binary for differential testing is "ts" (not "gts") --
+          moreutils does not use the g-prefix convention. Use exec.LookPath("ts")
+          and t.Skip if not found, per the graceful skip protocol.
+      - id: D4
+        text: |
+          Use testutils.TimestampNormalizer or a custom NormalizeFunc in DiffTest
+          entries to mask timestamp values when comparing Go and reference binary
+          output. Timestamps will differ by milliseconds between the two runs;
+          normalize them to a fixed placeholder before byte comparison.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles with no errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: "ts with no arguments reads stdin and prepends absolute timestamps in default format"
+      - id: AC3
+        text: "ts -s prepends relative elapsed timestamps in HH:MM:SS format"
+      - id: AC4
+        text: "ts -i prepends incremental per-line elapsed timestamps"
+      - id: AC5
+        text: "ts accepts a custom strftime format string argument"
+      - id: AC6
+        text: "Differential tests in cmd/ts/ts_test.go pass against the Homebrew moreutils ts binary (or skip gracefully if ts is not in PATH)"
+      - id: AC7
+        text: "go vet ./cmd/ts/ reports no issues"
+```

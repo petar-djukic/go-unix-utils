@@ -1,0 +1,24 @@
+Let me read the required files not already provided in the context.Let me find the files in the worktree directory.Now I have all the information I need. Let me plan the implementation:
+
+1. **pkg/sys/sigpipe.go** - minimal `InstallSIGPIPEHandler()` (required for compilation)
+2. **pkg/testutils/difftest.go** - `DiffTest`, `RunDiffTests`, `BuildBinary`, `TimestampNormalizer` (required for tests)
+3. **cmd/ts/main.go** - full ts implementation with all flags from prd004-ts
+4. **cmd/ts/ts_test.go** - differential tests
+
+Let me create all files:Let me fix the diagnostics - unused `monotonic` parameter and `WriteString(fmt.Sprintf(...))` style issues:
+
+Let me rewrite `main.go` to fix all diagnostics - remove unused `monotonic` params (use `_` marker), replace `WriteString(fmt.Sprintf(...))` with `fmt.Fprintf(...)`, and remove the unused `io` import:Now let me fix all the issues:Now fix all the `WriteString(fmt.Sprintf(...))` → `fmt.Fprintf(...)` issues:Now fix the remaining `WriteString(fmt.Sprintf(...))` occurrences in the switch statement:Now remove the unused `io` reference at the bottom:Now let's verify everything compiles and tests pass:All acceptance criteria verified:
+
+- **AC1** ✅ `go build ./cmd/ts/` compiles without errors
+- **AC2** ✅ `echo 'hello' | go run ./cmd/ts/` produces `Mar 06 19:13:24 hello` (timestamp prefix + content)
+- **AC3** ✅ All flags from prd004-ts are implemented: `-i`, `-s`, `-m`, `-r` plus optional format positional argument
+- **AC4** ✅ `cmd/ts/ts_test.go` exists with differential tests using `pkg/testutils.RunDiffTests`
+- **AC5** ✅ Tests skip gracefully with `t.Skip` when reference `ts` binary is not in PATH
+- **AC6** ✅ `go test ./cmd/ts/` passes (differential tests skipped, error case tests pass)
+- **AC7** ✅ `pkg/sys.InstallSIGPIPEHandler()` is called at the start of `main()`
+
+Let me also quickly verify the other flags work:All modes work correctly:
+- `-s` mode shows elapsed time (00:00:00 for near-instant stdin)
+- Custom format `%Y-%m-%dT%H:%M:%S` produces ISO-8601 timestamps
+- `-i` mode shows incremental time between lines
+- Invalid flag `-z` prints usage to stderr and exits non-zero

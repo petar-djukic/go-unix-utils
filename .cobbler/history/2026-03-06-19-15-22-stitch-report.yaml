@@ -1,0 +1,31 @@
+task_id: "388"
+task_title: cmd/ts implementation -- rel99.2-uc001-ts core timestamp prepending
+status: success
+branch: task/generation-gh-380-generate-code-from-specs-388
+diff:
+    files: 4
+    insertions: 202
+    deletions: 7
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 5
+      deletions: 5
+    - path: .cobbler/measure-20260306-145245.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 196
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+loc_before:
+    production: 595
+    test: 168
+loc_after:
+    production: 595
+    test: 168

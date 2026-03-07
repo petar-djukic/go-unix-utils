@@ -8189,3 +8189,986 @@
       - id: AC6
         text: "Each main() calls sys.InstallSIGPIPEHandler() as its first action."
   dependency: -1
+- index: 0
+  title: 'cmd/ts: implement ts utility (prd-ts core requirements)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd004-ts.yaml (all requirements for ts)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases and expected behavior)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+      - cmd/tac/main.go (reference for stdin-reading utility structure and differential test setup)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- reads stdin, prepends timestamps to each line
+      - path: cmd/ts/ts_test.go
+        action: create
+        note: differential tests against reference ts binary from moreutils
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the ts command that reads lines from stdin and prepends a
+          timestamp to each line. The default format is the strftime-style format
+          from the PRD (read prd004-ts.yaml for the exact default). Accept an
+          optional format string as a positional argument. Implement all flags
+          specified in prd004-ts.yaml (typically -s for relative time since start,
+          -i for incremental time between lines, -m for monotonic clock). Follow
+          the PRD requirements exactly for flag behavior and format string handling.
+      - id: R2
+        text: |
+          Handle stream behavior correctly: read from stdin line by line, flush
+          output after each line (line-buffered output). Exit 0 on normal
+          completion or when stdin reaches EOF. Call pkg/sys.InstallSIGPIPEHandler()
+          at the start of main to match GNU behavior when piped to a consumer that
+          closes its stdin early.
+      - id: R3
+        text: |
+          Support the %.S or sub-second precision format specifier if documented in
+          the PRD. Replace %.S (or the PRD-specified sub-second token) with the
+          fractional seconds before passing the format to Go's time formatting. Map
+          strftime format specifiers to Go time layout equivalents as specified in
+          the PRD.
+      - id: R4
+        text: |
+          Write differential tests in ts_test.go using pkg/testutils.RunDiffTests.
+          Build the Go binary with testutils.BuildBinary. Look up the reference
+          binary with exec.LookPath("ts") -- if not found, call t.Skip (the
+          reference binary is from moreutils which may not be installed). Define
+          test cases as []testutils.DiffTest covering: default format, custom format
+          string, -s flag, -i flag, and flag combinations from the test suite spec.
+          Use testutils.TimestampNormalizer or a custom NormalizeFunc to handle
+          timestamp value differences between the two binaries (timestamps will
+          differ by milliseconds).
+
+    design_decisions:
+      - id: D1
+        text: |
+          Do NOT install any packages in the build or test environment. The
+          reference binary (ts from moreutils) may not be available. Use
+          exec.LookPath("ts") and t.Skip gracefully if not found.
+      - id: D2
+        text: |
+          Use Go's time package for formatting. Build a strftime-to-Go format
+          mapping function to convert strftime directives (%Y, %m, %d, %H, %M,
+          %S, etc.) to Go layout equivalents. Handle %.S sub-second precision
+          separately since Go's time.Format does not have a strftime equivalent.
+      - id: D3
+        text: |
+          Follow the same cmd/ package structure as other utilities in this
+          project. main.go contains all implementation code. ts_test.go contains
+          only differential tests. Use flag package for argument parsing.
+      - id: D4
+        text: |
+          For differential tests, timestamps between the Go and reference binary
+          will differ. Use a NormalizeFunc that replaces timestamp portions of
+          output with a fixed string before comparison, or use a regex-based
+          normalizer that validates format structure without exact value matching.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles without errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: "Running echo 'hello' | go run ./cmd/ts/ produces output with a timestamp prefix followed by 'hello'"
+      - id: AC3
+        text: All flags documented in prd004-ts.yaml are implemented and accepted by the argument parser
+      - id: AC4
+        text: cmd/ts/ts_test.go exists with differential tests using pkg/testutils.RunDiffTests
+      - id: AC5
+        text: "Tests skip gracefully with t.Skip when the reference ts binary is not in PATH"
+      - id: AC6
+        text: "go test ./cmd/ts/ passes (either running differential tests or skipping if reference binary absent)"
+      - id: AC7
+        text: pkg/sys.InstallSIGPIPEHandler() is called at the start of main()
+  dependency: -1
+- index: 0
+  title: cmd/ts implementation -- rel99.2-uc001-ts core timestamp prepending
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case flow and success criteria)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases for acceptance)
+      - docs/specs/product-requirements/ (find the ts PRD -- glob for prd*ts*.yaml)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests for understanding test expectations)
+      - cmd/tee/main.go (reference implementation of a stdin-processing utility for style consistency)
+      - cmd/nl/main.go (reference implementation of a line-by-line stdin transformer for style consistency)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility: reads stdin line by line, prepends formatted timestamps to each line"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the ts command entry point in cmd/ts/main.go. The program reads
+          lines from stdin and writes each line to stdout with a timestamp prepended.
+          The default timestamp format is the strftime-style format from the PRD
+          (typically "%b %d %H:%M:%S"). Call pkg/sys.InstallSIGPIPEHandler() at the
+          start of main per the shared SIGPIPE protocol.
+      - id: R2
+        text: |
+          Support an optional positional argument for a custom strftime-compatible
+          format string. Map strftime directives to Go time.Format layout strings.
+          Cover at minimum: %Y, %m, %d, %H, %M, %S, %b, %T, %F, %s (epoch seconds),
+          %N or %.s (sub-second precision if specified in the PRD). Refer to the PRD
+          for the exact set of required directives.
+      - id: R3
+        text: |
+          Implement the -s flag for relative (elapsed) timestamps. When -s is set,
+          timestamps show the elapsed time since the program started rather than the
+          wall clock time. The format for relative timestamps follows the PRD
+          specification (typically HH:MM:SS or similar).
+      - id: R4
+        text: |
+          Implement the -i flag for incremental timestamps. When -i is set,
+          timestamps show the time elapsed since the previous line was output,
+          not since program start. The -m flag (if specified in the PRD) selects
+          a monotonic clock source for -s and -i modes. Handle flag interactions:
+          -s and -i are mutually exclusive with the default absolute mode; -m
+          modifies -s or -i behavior. Exit with code 0 on success, code matching
+          the reference binary behavior on errors (e.g., invalid arguments).
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use bufio.Scanner for line-by-line stdin reading, consistent with other
+          cmd/ utilities in this project (nl, tac, fold). Write output with
+          fmt.Fprintf to stdout.
+      - id: D2
+        text: |
+          Map strftime format directives to Go time.Format layout by string
+          replacement. Build the mapping table as a package-level var. Do not use
+          an external strftime library -- the Go standard library time package is
+          sufficient when combined with a directive-to-layout map.
+      - id: D3
+        text: |
+          Use flag package for -s, -i, -m flags. Parse the optional format string
+          from flag.Args() after flag.Parse(). Follow the flag parsing pattern used
+          in cmd/tee and cmd/nl.
+      - id: D4
+        text: |
+          For -s and -i modes, use time.Now() for wall clock and time.Since() for
+          elapsed calculation. When -m is active, use a monotonic time source
+          (Go's time.Now() already uses the monotonic clock for elapsed calculations
+          via time.Since, so no special handling is needed beyond documenting it).
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go exists and compiles with "go build ./cmd/ts/"
+      - id: AC2
+        text: |
+          Running "echo hello | go run ./cmd/ts/" produces a line with a timestamp
+          prefix followed by "hello"
+      - id: AC3
+        text: |
+          The -s flag produces relative timestamps starting near 00:00:00
+      - id: AC4
+        text: |
+          The -i flag produces incremental timestamps showing inter-line delay
+      - id: AC5
+        text: |
+          A custom format string argument (e.g., "%Y-%m-%d") changes the output format
+      - id: AC6
+        text: |
+          pkg/sys.InstallSIGPIPEHandler() is called at the start of main()
+      - id: AC7
+        text: |
+          "go vet ./cmd/ts/" reports no issues
+  dependency: -1
+- index: 0
+  title: 'cmd/ts implementation (prd004-ts R1-R4): stdin timestamp prefixing with format, elapsed, and incremental modes'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd004-ts.yaml (all requirements for ts utility)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - cmd/tac/main.go (reference for line-oriented stdin filter pattern and flag parsing)
+      - cmd/nl/main.go (reference for line-oriented stdin filter with formatting)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- timestamp-prefixed line filter
+
+    requirements:
+      - id: R1
+        text: |
+          Read lines from stdin and write each line to stdout prefixed with a
+          timestamp followed by a space. When no format argument is given, use
+          the default strftime format "%b %d %H:%M:%S". When a format string is
+          provided as a positional argument, use it as the strftime format for
+          time.Format (translate strftime sequences to Go time layout equivalents).
+          Implements prd004-ts core timestamp prefixing requirements.
+      - id: R2
+        text: |
+          Implement the -s flag for elapsed-time mode. When -s is set, display
+          the elapsed wall-clock time since the program started instead of the
+          current wall-clock time. Format as HH:MM:SS by default, or use the
+          user-supplied format string if provided. Implements prd004-ts elapsed
+          time requirement.
+      - id: R3
+        text: |
+          Implement the -i flag for incremental-time mode. When -i is set,
+          display the time elapsed since the previous line was printed (or since
+          program start for the first line). Format as HH:MM:SS by default, or
+          use the user-supplied format string if provided. Implements prd004-ts
+          incremental time requirement.
+      - id: R4
+        text: |
+          Implement the -m flag for monotonic clock. When -m is combined with
+          -s or -i, use a monotonic clock source (time.Now() monotonic reading)
+          instead of wall-clock time for elapsed/incremental calculations.
+          When -m is used without -s or -i, it has no effect. Implements
+          prd004-ts monotonic clock requirement.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the
+          project's shared SIGPIPE handling protocol. This ensures ts exits
+          cleanly when piped to a downstream consumer that closes stdin early.
+      - id: D2
+        text: |
+          Use Go's bufio.Scanner to read stdin line by line. For each line,
+          compute the timestamp string, write "timestamp line\n" to stdout.
+          Flush after each line to match GNU ts behavior (line-buffered output).
+      - id: D3
+        text: |
+          Translate common strftime format sequences to Go time.Format layout
+          strings. At minimum support: %Y (2006), %m (01), %d (02), %H (15),
+          %M (04), %S (05), %b (Jan), %T (15:04:05), %F (2006-01-02),
+          %s (Unix epoch seconds), %N or %.s (nanoseconds). Read the PRD for
+          the complete list of required sequences. For elapsed/incremental modes
+          with default format, output HH:MM:SS as duration formatting.
+      - id: D4
+        text: |
+          Parse flags using the standard library flag package. Accept -s, -i,
+          and -m as boolean flags. The remaining non-flag argument, if any, is
+          the format string. If both -s and -i are given, the last one specified
+          wins (match GNU ts behavior, or follow the PRD if it specifies
+          otherwise).
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles without errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: |
+          Running "echo hello | go run ./cmd/ts/" produces a line matching the
+          pattern "<timestamp> hello" where timestamp matches the default
+          "%b %d %H:%M:%S" format (e.g., "Mar 06 14:30:05 hello")
+      - id: AC3
+        text: |
+          Running with -s flag produces elapsed time from program start in
+          HH:MM:SS format prefixed to each line
+      - id: AC4
+        text: |
+          Running with -i flag produces incremental time since previous line
+          in HH:MM:SS format prefixed to each line
+      - id: AC5
+        text: |
+          Running with a custom format argument (e.g., "%Y-%m-%d %H:%M:%S")
+          produces timestamps in the specified format
+      - id: AC6
+        text: |
+          The binary exits 0 on normal completion and handles SIGPIPE gracefully
+          (exits 0 when piped to head or similar)
+      - id: AC7
+        text: No lint warnings from "golangci-lint run ./cmd/ts/"
+  dependency: -1
+- index: 0
+  title: 'cmd/ts: implement ts utility (prd-ts R1-R4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-ts.yaml (full PRD for ts -- all requirements and acceptance criteria)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case flow and success criteria)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite for validation reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - cmd/tee/main.go (reference implementation of a simple streaming cmd/ utility for style and structure)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests signature)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- timestamp each stdin line
+      - path: cmd/ts/ts_test.go
+        action: create
+        note: differential tests against Homebrew moreutils ts binary
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the ts command that reads stdin line by line and prepends a
+          timestamp to each line on stdout, per prd-ts requirements for default
+          absolute timestamp mode. Default format is "%b %d %H:%M:%S" (matches
+          GNU moreutils ts). Accept an optional format string argument that is
+          passed to time.Format (converted from strftime to Go layout).
+      - id: R2
+        text: |
+          Implement the -s flag for relative (elapsed) timestamps per prd-ts.
+          When -s is set, timestamps show elapsed time since the program started
+          in HH:MM:SS format instead of absolute wall-clock time.
+      - id: R3
+        text: |
+          Implement the -i flag for incremental timestamps per prd-ts. When -i
+          is set, timestamps show elapsed time since the previous line was
+          printed, not since program start. -i and -s may be combined (both
+          relative, but -i resets per line).
+      - id: R4
+        text: |
+          Implement the -m flag for monotonic clock per prd-ts. When -m is set
+          with -s or -i, use a monotonic clock source (time.Now() in Go is
+          already monotonic-aware for elapsed calculations). -m without -s or -i
+          has no effect. Write differential tests using pkg/testutils that
+          compare output against the Homebrew moreutils ts binary. Use
+          exec.LookPath("ts") with t.Skip if not found. Use timestamp
+          normalization in DiffTest to handle timing differences.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the
+          shared SIGPIPE handling protocol in ARCHITECTURE.yaml.
+      - id: D2
+        text: |
+          Convert strftime format specifiers to Go time layout equivalents
+          in-process. The conversion function handles the common specifiers used
+          by moreutils ts: %Y, %m, %d, %H, %M, %S, %b, %T, %s (epoch), %N
+          (nanoseconds). Unrecognized specifiers pass through literally.
+      - id: D3
+        text: |
+          The reference binary for differential testing is "ts" (not "gts") --
+          moreutils does not use the g-prefix convention. Use exec.LookPath("ts")
+          and t.Skip if not found, per the graceful skip protocol.
+      - id: D4
+        text: |
+          Use testutils.TimestampNormalizer or a custom NormalizeFunc in DiffTest
+          entries to mask timestamp values when comparing Go and reference binary
+          output. Timestamps will differ by milliseconds between the two runs;
+          normalize them to a fixed placeholder before byte comparison.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles with no errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: "ts with no arguments reads stdin and prepends absolute timestamps in default format"
+      - id: AC3
+        text: "ts -s prepends relative elapsed timestamps in HH:MM:SS format"
+      - id: AC4
+        text: "ts -i prepends incremental per-line elapsed timestamps"
+      - id: AC5
+        text: "ts accepts a custom strftime format string argument"
+      - id: AC6
+        text: "Differential tests in cmd/ts/ts_test.go pass against the Homebrew moreutils ts binary (or skip gracefully if ts is not in PATH)"
+      - id: AC7
+        text: "go vet ./cmd/ts/ reports no issues"
+  dependency: -1
+- index: 0
+  title: cmd/ts implementation -- prd R1-R4 timestamp prepend, flags, format
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-ts.yaml (full PRD for ts utility)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case for ts)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite for ts)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- SIGPIPE handling, differential testing pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - cmd/head/main.go (reference for how other cmd/ utilities are structured)
+      - cmd/seq/main.go (reference for flag parsing and main structure)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility entry point -- reads stdin, prepends timestamps, writes to stdout
+
+    requirements:
+      - id: R1
+        text: |
+          Read lines from stdin (or file arguments if specified in the PRD) and prepend
+          a timestamp to each line before writing to stdout. Default format is the
+          strftime-style format specified in the PRD (typically "%b %d %H:%M:%S").
+          Accept an optional format string as a positional argument.
+      - id: R2
+        text: |
+          Implement the -s flag for relative timestamps (elapsed time since the program
+          started). When -s is active, the timestamp shows duration from start rather
+          than wall-clock time. Use the format specified in the PRD for relative mode.
+      - id: R3
+        text: |
+          Implement the -i flag for incremental timestamps (time elapsed since the
+          previous line was output). First line shows time since program start.
+          Use the format specified in the PRD for incremental mode.
+      - id: R4
+        text: |
+          Implement the -m flag to use a monotonic clock source instead of wall-clock
+          time. This flag modifies the behavior of -s and -i to use monotonic time.
+          Support %.S or equivalent sub-second precision in format strings as specified
+          in the PRD.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the shared
+          protocol in ARCHITECTURE.yaml. This ensures ts exits cleanly when piped to
+          a consumer that closes stdin early (e.g., head).
+      - id: D2
+        text: |
+          Follow the same cmd/ package structure as existing utilities (head, seq, echo).
+          Single main.go file with flag parsing via the flag package, reading stdin with
+          bufio.Scanner, and writing to os.Stdout.
+      - id: D3
+        text: |
+          The reference binary for differential testing is the moreutils ts installed
+          via Homebrew. The binary name is "ts" (moreutils does not use g-prefix).
+          Do NOT install any packages in the build or test process. The stitch agent
+          must not attempt to install moreutils.
+      - id: D4
+        text: |
+          Read the PRD carefully for the exact strftime format conversion rules. Go
+          uses time.Format with reference-time layout strings, not strftime. Map
+          strftime directives (%Y, %m, %d, %H, %M, %S, etc.) to Go equivalents.
+          Handle %.S sub-second precision as specified in the PRD.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles with "go build ./cmd/ts/" and produces a working binary.
+      - id: AC2
+        text: |
+          Running "echo hello | bin/ts" prepends a timestamp in the default format to
+          the output line.
+      - id: AC3
+        text: |
+          The -s flag produces relative timestamps from program start, and the -i flag
+          produces incremental timestamps between lines.
+      - id: AC4
+        text: |
+          The -m flag switches to monotonic clock for -s and -i modes.
+      - id: AC5
+        text: |
+          A custom format string argument (e.g., "%H:%M:%S") is applied to the timestamp
+          output.
+      - id: AC6
+        text: |
+          pkg/sys.InstallSIGPIPEHandler() is called at the start of main().
+      - id: AC7
+        text: |
+          "go vet ./cmd/ts/" reports no issues.
+  dependency: -1
+- index: 0
+  title: cmd/ts implementation -- prd005-ts R1-R4
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-ts.yaml (all requirements and acceptance criteria for ts)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases for validation reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for understanding test harness contract)
+      - cmd/head/main.go (reference for how existing cmd/ packages structure main, flag parsing, and stdin reading)
+      - cmd/nl/main.go (reference for line-by-line stdin processing pattern with output formatting)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- stdin line reading, timestamp prepending, flag handling
+
+    requirements:
+      - id: R1
+        text: "Implement line-by-line stdin reading that prepends a formatted timestamp to each line and writes to stdout. Default format is the strftime-equivalent Go time format matching GNU ts default (\"%%b %%d %%H:%%M:%%S\"). Read from stdin when no file arguments are given; support reading from named files when provided."
+      - id: R2
+        text: "Implement the -s flag for relative (elapsed) timestamps. When -s is set, timestamps show elapsed time since the program started (HH:MM:SS format) instead of wall-clock time."
+      - id: R3
+        text: "Implement the -i flag for incremental timestamps. When -i is set, timestamps show elapsed time since the previous line was output rather than since program start."
+      - id: R4
+        text: "Accept an optional format string as a positional argument. The format string uses strftime-style percent directives. Map strftime directives to Go time.Format layout strings. When no format is given, use the default format. Support %.S (seconds with fractional part) and %.s (epoch with fractional part) directives from GNU ts."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per the shared_protocols SIGPIPE handling pattern in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Use bufio.Scanner for line-by-line stdin reading, consistent with other cmd/ implementations (head, nl, tac)."
+      - id: D3
+        text: "Map strftime directives to Go time.Format layout tokens in a conversion function. Handle the common strftime codes (%%Y, %%m, %%d, %%H, %%M, %%S, %%b, %%a, %%p, %%Z, %%s, etc.) and the GNU ts extensions (%.S, %.s) that include sub-second precision."
+      - id: D4
+        text: "Exit code 0 on success, 1 on error. Match GNU ts exit code behavior."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go compiles without errors via `go build ./cmd/ts/`."
+      - id: AC2
+        text: "Running `echo hello | go run ./cmd/ts/` prepends a timestamp in the default format to the line."
+      - id: AC3
+        text: "The -s flag produces elapsed-time timestamps starting from 00:00:00."
+      - id: AC4
+        text: "The -i flag produces incremental timestamps showing time since the previous line."
+      - id: AC5
+        text: "A custom format string argument (e.g., '%%H:%%M:%%S') is respected in output."
+      - id: AC6
+        text: "The binary handles SIGPIPE gracefully via sys.InstallSIGPIPEHandler()."
+      - id: AC7
+        text: "No golangci-lint warnings on cmd/ts/main.go."
+  dependency: -1
+- index: 0
+  title: Implement cmd/ts main.go -- ts timestamp stdin utility
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (locate and read the ts PRD -- file named prd*-ts.yaml)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (ts use case with end-to-end flow)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite with expected inputs/outputs)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- SIGPIPE handling and differential test pattern)
+      - cmd/echo/main.go (reference pattern for a simple stdin-to-stdout cmd/ utility)
+      - cmd/head/main.go (reference pattern for flag parsing in a cmd/ utility)
+      - pkg/sys/ (InstallSIGPIPEHandler signature and usage)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility -- read stdin lines, prepend timestamps, write to stdout"
+
+    requirements:
+      - id: R1
+        text: "Read lines from stdin and prepend a formatted timestamp to each output line. Use the default timestamp format specified in the ts PRD when no format argument is given."
+      - id: R2
+        text: "Support the -s flag for elapsed time (time since program start) and the -i flag for incremental time (time since previous line), per the ts PRD."
+      - id: R3
+        text: "Accept an optional positional strftime format string argument to customize the timestamp output. Convert strftime specifiers to Go time layout equivalents. Support all specifiers listed in the ts PRD."
+      - id: R4
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main, per ARCHITECTURE.yaml shared_protocols. Handle exit codes per the ts PRD."
+
+    design_decisions:
+      - id: D1
+        text: "Read all flag definitions, exit codes, and edge cases from the ts PRD before implementing. The PRD is the source of truth -- do not guess behavior."
+      - id: D2
+        text: "Follow the same main.go structure as other cmd/ packages: sys.InstallSIGPIPEHandler(), flag parsing, then core read-format-write loop."
+      - id: D3
+        text: "Map strftime format specifiers to Go time.Format layout strings. Build the mapping table to cover all specifiers required by the PRD. Use time.Now() for wall-clock timestamps and time.Since(start) for elapsed/incremental modes."
+      - id: D4
+        text: "Do NOT install packages in the build environment. Use only the Go standard library and existing pkg/ packages (pkg/sys)."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go exists, compiles cleanly with go build ./cmd/ts/, and produces a ts binary."
+      - id: AC2
+        text: "Running printf 'line1\\nline2\\n' | go run ./cmd/ts/ prepends a default-format timestamp to each line."
+      - id: AC3
+        text: "The -s flag produces elapsed timestamps (seconds since start), and -i produces incremental timestamps (seconds since last line)."
+      - id: AC4
+        text: "A custom strftime format string argument (e.g., '%Y-%m-%d %H:%M:%S') overrides the default format."
+      - id: AC5
+        text: "sys.InstallSIGPIPEHandler() is called at the start of main()."
+      - id: AC6
+        text: "go vet ./cmd/ts/ reports no issues."
+  dependency: -1
+- index: 0
+  title: Implement cmd/ts -- moreutils timestamp utility (rel99.2-uc001-ts)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case defining ts end-to-end flow)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite for ts -- read for behavioral expectations)
+      - docs/specs/product-requirements/ (locate the ts PRD, likely named prd*-ts.yaml -- read it fully for all requirements)
+      - cmd/echo/main.go (pattern reference -- simple utility reading stdin, writing stdout)
+      - cmd/seq/main.go (pattern reference -- flag parsing and output formatting)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility: reads stdin line by line, prepends timestamps, writes to stdout"
+
+    requirements:
+      - id: R1
+        text: "Implement default timestamp mode: read lines from stdin, prepend the current timestamp in the default format (strftime-style), and write each line to stdout. The default format is '%b %d %H:%M:%S' (matching GNU moreutils ts). Cross-reference the ts PRD for the exact default format string."
+      - id: R2
+        text: "Implement custom format string: accept an optional positional argument specifying a strftime-compatible format string. Use Go's time.Format with a strftime-to-Go format conversion. Cross-reference the ts PRD for supported format specifiers."
+      - id: R3
+        text: "Implement -s flag (elapsed time): when -s is given, print elapsed time since the program started instead of wall-clock time. The format string applies to the elapsed duration. Cross-reference the ts PRD for the elapsed time format and defaults."
+      - id: R4
+        text: "Implement -i flag (incremental time): when -i is given, print elapsed time since the last line was printed (delta between consecutive lines). The first line shows time since program start. Cross-reference the ts PRD for incremental mode behavior."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main(), following the shared protocol for all cmd/ utilities that write to stdout."
+      - id: D2
+        text: "Use flag package for -s and -i flags. The format string is flag.Arg(0) after flag.Parse(). When no format argument is provided, use the default format from the PRD."
+      - id: D3
+        text: "Implement strftime-to-Go time format conversion within cmd/ts/main.go (do not add to pkg/format). ts is the only utility that needs strftime conversion. Map common strftime specifiers (%Y, %m, %d, %H, %M, %S, %b, %B, %a, %A, %p, %Z, %z, %T, %F, %n, %t, and %%) to their Go time.Format equivalents."
+      - id: D4
+        text: "Read stdin with bufio.Scanner. For each line, compute the timestamp string, write 'timestamp line\\n' to stdout. Exit 0 on EOF. Exit 1 on write error."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go exists, compiles with 'go build ./cmd/ts/', and produces a binary."
+      - id: AC2
+        text: "Running 'echo hello | ts' prepends a timestamp in the default format to the line."
+      - id: AC3
+        text: "Running 'echo hello | ts \"%Y-%m-%d %H:%M:%S\"' uses the custom format string."
+      - id: AC4
+        text: "The -s flag prints elapsed time since program start instead of wall-clock time."
+      - id: AC5
+        text: "The -i flag prints incremental time since the last line."
+      - id: AC6
+        text: "sys.InstallSIGPIPEHandler() is called at the start of main()."
+      - id: AC7
+        text: "'go vet ./cmd/ts/' reports no issues."
+  dependency: -1
+- index: 0
+  title: cmd/ts implementation -- rel99.2-uc001-ts
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-ts.yaml (all requirements for the ts utility)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases that validate acceptance)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+      - cmd/tac/main.go (reference for stdin-reading utility structure and SIGPIPE setup)
+      - cmd/nl/main.go (reference for line-by-line stdin transform with formatting)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility entry point -- stdin line-by-line timestamp prepender
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the ts command that reads lines from stdin and prepends a
+          timestamp to each line before writing to stdout. When no format
+          argument is given, use the default strftime format from the PRD.
+          Implement all flags specified in prd005-ts (typically -s for elapsed
+          time since start, -i for incremental time since previous line, and
+          -m for monotonic clock source). Follow the PRD for exact flag names,
+          defaults, and semantics.
+      - id: R2
+        text: |
+          Parse the optional strftime format string from the first positional
+          argument. Apply Go time.Format equivalents for all strftime
+          directives specified in the PRD. When -s or -i is active, the format
+          string applies to the elapsed duration representation as defined in
+          the PRD.
+      - id: R3
+        text: |
+          Handle stream lifecycle correctly: read stdin until EOF, flush each
+          output line immediately (no buffering beyond the line boundary), and
+          exit 0 on success. Call pkg/sys.InstallSIGPIPEHandler() at the start
+          of main so piped output to a consumer that closes early (e.g.,
+          head) exits cleanly.
+      - id: R4
+        text: |
+          Implement GNU-compatible error handling and exit codes as specified
+          in the PRD. Write usage/help to stderr on invalid arguments and exit
+          with the exit code the PRD defines for argument errors.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Use a single main.go file in cmd/ts/. The ts utility is small enough
+          that all logic fits in one file. Follow the same structure as other
+          cmd/ packages: main() calls sys.InstallSIGPIPEHandler(), parses
+          flags, then enters the read-transform-write loop.
+      - id: D2
+        text: |
+          Use Go's time package for wall-clock timestamps and
+          time.Now().Sub(start) for elapsed/incremental modes. For monotonic
+          clock (-m flag), rely on Go's built-in monotonic clock reading
+          embedded in time.Time values (no CGO or syscall needed).
+      - id: D3
+        text: |
+          Use bufio.Scanner for line-by-line stdin reading and
+          bufio.NewWriter(os.Stdout) for output, flushing after each line.
+          This matches the pattern used by other line-oriented utilities in
+          cmd/ (nl, tac).
+      - id: D4
+        text: |
+          Map strftime directives to Go time.Format layout strings. Go does
+          not have a strftime function; build a conversion table for the
+          directives the PRD requires. Only implement directives listed in
+          the PRD -- do not attempt full strftime coverage.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles with no errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: "echo 'hello' | go run ./cmd/ts/ prints a timestamp-prefixed line to stdout"
+      - id: AC3
+        text: The -s flag produces elapsed timestamps relative to program start
+      - id: AC4
+        text: The -i flag produces incremental timestamps relative to the previous line
+      - id: AC5
+        text: A custom strftime format string as the first positional argument changes the output format
+      - id: AC6
+        text: The binary exits 0 on normal EOF and handles SIGPIPE without error output
+      - id: AC7
+        text: golangci-lint reports no warnings on cmd/ts/
+  dependency: -1
+- index: 0
+  title: 'rel99.2-uc001-ts: cmd/ts implementation'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find the ts PRD -- likely prd004-ts.yaml or prd005-ts.yaml)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (ts use case with success criteria)
+      - docs/specs/test-suites/test-rel-99.2.yaml (ts test suite with expected inputs/outputs)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- SIGPIPE handling and differential testing pattern)
+      - pkg/testutils/difftest.go (DiffTest struct, RunDiffTests, BuildBinary API)
+      - pkg/sys/signal.go (InstallSIGPIPEHandler function)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility -- reads stdin lines, prepends timestamps, writes to stdout
+      - path: cmd/ts/ts_test.go
+        action: create
+        note: differential tests against moreutils ts reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement cmd/ts/main.go per the ts PRD: read lines from stdin, prepend a timestamp to each line, write to stdout. Default format is the PRD-specified strftime format string."
+      - id: R2
+        text: "Support all flags defined in the ts PRD -- at minimum: optional format string argument, -i (incremental/elapsed since last line), -s (elapsed since program start), and -m (monotonic clock). Derive exact flag set from the PRD."
+      - id: R3
+        text: "Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the project shared protocol for all cmd/ utilities."
+      - id: R4
+        text: "Implement differential tests in ts_test.go using pkg/testutils.BuildBinary and pkg/testutils.RunDiffTests. Reference binary is \"ts\" from moreutils (Homebrew). Skip gracefully if not in PATH via exec.LookPath."
+
+    design_decisions:
+      - id: D1
+        text: "Reference binary for differential testing is \"ts\" from moreutils (not g-prefixed -- moreutils does not use the g prefix). Use exec.LookPath(\"ts\") and t.Skip if not found."
+      - id: D2
+        text: "Follow the differential testing shared protocol from ARCHITECTURE.yaml: BuildBinary(t, \".\"), LookPath for reference, define []testutils.DiffTest, call RunDiffTests."
+      - id: D3
+        text: "Set LC_ALL=C in test environment per project convention. For timestamp-dependent tests, use testutils.TimestampNormalizer or a custom NormalizeFunc to handle timing differences between Go and reference binary."
+      - id: D4
+        text: "Do NOT install any packages in the test. If the reference binary is missing, t.Skip. This is a hard project rule."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go compiles without errors via go build ./cmd/ts/"
+      - id: AC2
+        text: "go vet ./cmd/ts/ reports no issues"
+      - id: AC3
+        text: "cmd/ts/ts_test.go contains differential tests covering the flags and behaviors specified in the ts PRD"
+      - id: AC4
+        text: "All differential tests pass when the moreutils ts binary is in PATH"
+      - id: AC5
+        text: "Tests skip gracefully with t.Skip when ts is not in PATH"
+      - id: AC6
+        text: "main() calls sys.InstallSIGPIPEHandler() before any I/O"
+  dependency: -1
+- index: 0
+  title: cmd/ts implementation -- rel99.2-uc001-ts
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd004-ts.yaml (all requirements for ts utility)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases and expected behaviors)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+      - cmd/nl/main.go (reference for stdin line-processing utility pattern)
+      - cmd/tac/main.go (reference for stdin-to-stdout utility with flag parsing)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- timestamps stdin lines
+
+    requirements:
+      - id: R1
+        text: |
+          Read lines from stdin and write each line to stdout with a timestamp
+          prepended. Default format is the strftime-compatible format from the PRD
+          (typically "%b %d %H:%M:%S"). When no format argument is given, use the
+          default. When a format argument is given, use it as the strftime format
+          string. Implements prd004-ts core timestamping requirements.
+      - id: R2
+        text: |
+          Implement the -s flag for relative (elapsed) timestamps. When -s is set,
+          timestamps show elapsed time since the program started rather than wall
+          clock time. The elapsed format uses the format argument if provided, or
+          a default elapsed format from the PRD. Implements prd004-ts relative
+          timestamp requirements.
+      - id: R3
+        text: |
+          Implement the -i flag for incremental timestamps. When -i is set,
+          timestamps show the time elapsed since the previous line rather than
+          wall clock or program-start time. -i and -s may be combined (incremental
+          relative). Implements prd004-ts incremental timestamp requirements.
+      - id: R4
+        text: |
+          Handle --version and --help flags per GNU conventions. Exit 0 on
+          --version and --help. Exit 0 on normal completion. Exit nonzero on
+          errors (e.g., write failures). Call pkg/sys.InstallSIGPIPEHandler() at
+          program start per the ARCHITECTURE shared_protocols. Implements prd004-ts
+          exit code and signal requirements.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main() per the
+          ARCHITECTURE shared_protocols for all cmd/ utilities that write to stdout.
+      - id: D2
+        text: |
+          Use Go time package for timestamp formatting. Go uses reference-time
+          formatting (Mon Jan 2 15:04:05 MST 2006), not strftime. Convert the
+          strftime format string from the user to Go reference-time layout, or
+          implement a strftime-to-Go converter. Check the PRD for the exact
+          conversion requirements and which strftime directives must be supported.
+      - id: D3
+        text: |
+          Use bufio.Scanner for line-by-line stdin reading, consistent with other
+          cmd/ utilities (nl, tac, fold). Flush each line to stdout immediately
+          after timestamping to avoid buffering delays in pipeline usage.
+      - id: D4
+        text: |
+          The reference binary for differential testing is "gts" or "ts" from
+          Homebrew moreutils. The stitch agent implements only cmd/ts/main.go;
+          tests are a separate task.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles with no errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: |
+          Running "echo hello | go run ./cmd/ts/" prepends a timestamp to "hello"
+          and writes the result to stdout.
+      - id: AC3
+        text: |
+          The -s flag produces elapsed timestamps relative to program start instead
+          of wall clock timestamps.
+      - id: AC4
+        text: |
+          The -i flag produces incremental timestamps showing time since the
+          previous line.
+      - id: AC5
+        text: |
+          The program calls sys.InstallSIGPIPEHandler() and exits cleanly when
+          downstream closes the pipe.
+      - id: AC6
+        text: "go vet ./cmd/ts/ reports no issues."
+  dependency: -1
+- index: 0
+  title: Implement cmd/ts -- prd-ts core timestamping (R1-R4)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/ (find and read the ts PRD, likely prd004-ts.yaml or prd005-ts.yaml)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case for ts)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite for acceptance reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling pattern, graceful skip pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary contracts)
+      - cmd/tee/main.go (reference implementation pattern for a stdin-to-stdout streaming utility)
+      - cmd/head/main.go (reference implementation pattern for line-by-line processing)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility implementation: reads stdin, prepends timestamps, writes to stdout"
+      - path: cmd/ts/ts_test.go
+        action: create
+        note: "Differential tests against moreutils ts reference binary"
+
+    requirements:
+      - id: R1
+        text: |
+          Implement the ts command that reads lines from stdin and prepends a
+          formatted timestamp to each line before writing to stdout. The default
+          format is the strftime format specified in the ts PRD. Support a custom
+          strftime format string as a positional argument. Implement all PRD
+          requirements for basic timestamping (read the PRD to identify the exact
+          requirement IDs and their details).
+      - id: R2
+        text: |
+          Implement the -s flag for relative (elapsed) timestamps showing time
+          since ts started, and the -i flag for incremental timestamps showing
+          time since the previous line was output. Implement the -m flag for
+          monotonic clock source. Implement all flag interactions as specified
+          in the PRD.
+      - id: R3
+        text: |
+          Implement sub-second precision via %.s (epoch with fractional seconds)
+          and %.S (seconds with fractional part) or equivalent format extensions
+          as specified in the PRD. Handle all format string edge cases documented
+          in the PRD.
+      - id: R4
+        text: |
+          Write differential tests in ts_test.go following the project shared
+          protocol: use testutils.BuildBinary to compile cmd/ts, use
+          exec.LookPath("ts") to find the moreutils reference binary, call
+          t.Skip if not found, and run testutils.RunDiffTests with a
+          []testutils.DiffTest slice covering all flags and format variations.
+          The ts reference binary is "ts" (not "gts" -- moreutils does not use
+          g-prefix). Use TimestampNormalizer or a custom NormalizeFunc to handle
+          timestamp value differences between runs.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call pkg/sys.InstallSIGPIPEHandler() at the start of main() per the
+          project shared protocol for all cmd/ utilities that write to stdout.
+      - id: D2
+        text: |
+          Use Go's time.Now() for wall clock and time.Now() difference for
+          relative/incremental modes. When -m is specified, use a monotonic
+          clock source. Go's time package preserves monotonic readings by
+          default on time.Now(); use Sub() for elapsed calculations.
+      - id: D3
+        text: |
+          Implement strftime formatting by translating strftime directives to
+          Go time.Format layout strings, since Go does not have a native
+          strftime function. Handle the %.s and %.S extensions separately
+          as string replacements before or after the main format pass.
+      - id: D4
+        text: |
+          For differential tests, timestamps will differ between the Go and
+          reference binary runs. Use testutils.TimestampNormalizer or write a
+          custom NormalizeFunc that replaces timestamp prefixes with a fixed
+          placeholder so stdout comparison succeeds. Alternatively, use format
+          strings that produce deterministic output (e.g., fixed epoch) where
+          possible, and normalizers where not.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go compiles without errors: go build ./cmd/ts/ succeeds"
+      - id: AC2
+        text: "ts reads stdin line by line and prepends a timestamp in the default format when no arguments are given"
+      - id: AC3
+        text: "ts accepts a custom strftime format string as a positional argument and formats timestamps accordingly"
+      - id: AC4
+        text: "The -s flag produces relative timestamps (elapsed since start) and -i produces incremental timestamps (elapsed since previous line)"
+      - id: AC5
+        text: "The -m flag switches to monotonic clock source"
+      - id: AC6
+        text: "Sub-second precision works via %.s and %.S format extensions"
+      - id: AC7
+        text: "Differential tests in ts_test.go pass when the moreutils ts binary is available, and skip gracefully when it is not"
+      - id: AC8
+        text: "go vet ./cmd/ts/ reports no issues"
+  dependency: -1

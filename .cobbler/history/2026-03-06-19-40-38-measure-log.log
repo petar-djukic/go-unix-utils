@@ -1,0 +1,74 @@
+## Project State Summary
+
+**Problem:** go-unix-utils is a specification-driven experiment that regenerates Unix utilities in Go, verified via differential testing against GNU reference binaries. The goal is to stress-test the mage-claude-orchestrator code generation pipeline.
+
+**Architecture:** A four-stage pipeline (extract → specify → synthesize → verify) with: cmd/ (per-utility Go implementations), pkg/testutils (differential testing harness), pkg/sys (syscall abstractions), pkg/format (output formatting), and magefiles/ (build orchestration). Specs in docs/ are the source of truth; code is generated from PRDs.
+
+**Current state:** 17 commands implemented across generation runs 1–17 (ts, head, seq, echo, tac, nl, fold, expand, unexpand, cut, paste, uniq, comm, md5sum, sha1sum, sha256sum, sha512sum plus earlier cat, wc, sponge). All releases rel00.0 through rel05.4 are status "implemented." Code lives at generation-merged tags; the working branch is specs-only.
+
+**Release 99.2 (target):** One use case — rel99.2-uc001-ts — status "spec_complete", codestatus "not started." This is the deferred ts (moreutils timestamp) utility. The PRD, use case, and test suite exist; code generation has not run.
+
+## Priority Analysis
+
+Release 99.2 is the only in-scope release. It has a single use case (ts). Per P2, implementation and tests must be separate tasks. Per P8, implementation comes first. With the 1-task limit, I propose the implementation task only.
+
+ts was previously generated (generation-merged tags from early runs) but is not on the working branch. The stitch agent should implement from the PRD fresh, following current project patterns (cmd/echo, cmd/seq as simple-utility references).
+
+Key consideration from project memory: moreutils is not available in the stitch container (Linux/Alpine). The test file must use `exec.LookPath` for graceful skip, and the task must not attempt to install packages. However, since this is an implementation-only task (tests separate), this applies to the follow-up task.
+
+```yaml
+- index: 0
+  title: "Implement cmd/ts -- moreutils timestamp utility (rel99.2-uc001-ts)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (use case defining ts end-to-end flow)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test suite for ts -- read for behavioral expectations)
+      - docs/specs/product-requirements/ (locate the ts PRD, likely named prd*-ts.yaml -- read it fully for all requirements)
+      - cmd/echo/main.go (pattern reference -- simple utility reading stdin, writing stdout)
+      - cmd/seq/main.go (pattern reference -- flag parsing and output formatting)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility: reads stdin line by line, prepends timestamps, writes to stdout"
+
+    requirements:
+      - id: R1
+        text: "Implement default timestamp mode: read lines from stdin, prepend the current timestamp in the default format (strftime-style), and write each line to stdout. The default format is '%b %d %H:%M:%S' (matching GNU moreutils ts). Cross-reference the ts PRD for the exact default format string."
+      - id: R2
+        text: "Implement custom format string: accept an optional positional argument specifying a strftime-compatible format string. Use Go's time.Format with a strftime-to-Go format conversion. Cross-reference the ts PRD for supported format specifiers."
+      - id: R3
+        text: "Implement -s flag (elapsed time): when -s is given, print elapsed time since the program started instead of wall-clock time. The format string applies to the elapsed duration. Cross-reference the ts PRD for the elapsed time format and defaults."
+      - id: R4
+        text: "Implement -i flag (incremental time): when -i is given, print elapsed time since the last line was printed (delta between consecutive lines). The first line shows time since program start. Cross-reference the ts PRD for incremental mode behavior."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main(), following the shared protocol for all cmd/ utilities that write to stdout."
+      - id: D2
+        text: "Use flag package for -s and -i flags. The format string is flag.Arg(0) after flag.Parse(). When no format argument is provided, use the default format from the PRD."
+      - id: D3
+        text: "Implement strftime-to-Go time format conversion within cmd/ts/main.go (do not add to pkg/format). ts is the only utility that needs strftime conversion. Map common strftime specifiers (%Y, %m, %d, %H, %M, %S, %b, %B, %a, %A, %p, %Z, %z, %T, %F, %n, %t, and %%) to their Go time.Format equivalents."
+      - id: D4
+        text: "Read stdin with bufio.Scanner. For each line, compute the timestamp string, write 'timestamp line\\n' to stdout. Exit 0 on EOF. Exit 1 on write error."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go exists, compiles with 'go build ./cmd/ts/', and produces a binary."
+      - id: AC2
+        text: "Running 'echo hello | ts' prepends a timestamp in the default format to the line."
+      - id: AC3
+        text: "Running 'echo hello | ts \"%Y-%m-%d %H:%M:%S\"' uses the custom format string."
+      - id: AC4
+        text: "The -s flag prints elapsed time since program start instead of wall-clock time."
+      - id: AC5
+        text: "The -i flag prints incremental time since the last line."
+      - id: AC6
+        text: "sys.InstallSIGPIPEHandler() is called at the start of main()."
+      - id: AC7
+        text: "'go vet ./cmd/ts/' reports no issues."
+```

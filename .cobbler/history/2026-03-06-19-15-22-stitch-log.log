@@ -1,0 +1,21 @@
+The `cmd/ts/main.go` already exists with a comprehensive implementation. Let me verify it meets all acceptance criteria by building and testing it.All acceptance criteria are verified:
+
+- **AC1**: `cmd/ts/main.go` exists and compiles with `go build ./cmd/ts/` ✅
+- **AC2**: `echo hello | go run ./cmd/ts/` produces `Mar 06 19:15:52 hello` — timestamp prefix followed by "hello" ✅
+- **AC3**: `-s` flag produces relative timestamps starting at `00:00:00` ✅
+- **AC4**: `-i` flag produces incremental timestamps showing inter-line delay ✅
+- **AC5**: Custom format `%Y-%m-%d` changes output to `2026-03-06 test` ✅
+- **AC6**: `pkg/sys.InstallSIGPIPEHandler()` is called at the start of `main()` (line 30) ✅
+- **AC7**: `go vet ./cmd/ts/` reports no issues ✅
+
+The existing `cmd/ts/main.go` already fully implements all requirements (R1-R4) with:
+
+- **R1**: Default format `%b %d %H:%M:%S`, line-by-line stdin reading via `bufio.NewReader`, SIGPIPE handling, partial line support
+- **R2**: Strftime-to-Go format mapping covering all standard directives plus ts-specific subsecond extensions (`%.S`, `%.s`, `%.T`)
+- **R3**: `-i` incremental mode with elapsed-since-previous-line timestamps
+- **R4**: `-s` elapsed-since-start mode with monotonically increasing timestamps
+- Flag mutual exclusivity checks (`-i`/`-s`, `-r`/`-i`, `-r`/`-s`)
+- `-m` monotonic clock flag support
+- `-r` relative timestamp conversion mode
+
+All tests pass (differential tests skipped gracefully when reference binary is not in PATH, error case tests all pass).

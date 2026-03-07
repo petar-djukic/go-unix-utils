@@ -1,0 +1,26 @@
+caller: stitch
+task_id: "390"
+task_title: 'cmd/ts: implement ts utility (prd-ts R1-R4)'
+status: success
+started_at: "2026-03-07T00:22:56Z"
+duration: 7m24s
+duration_s: 443
+tokens:
+    input: 18
+    output: 24902
+    cache_creation: 66205
+    cache_read: 637335
+cost_usd: 1.3550887499999997
+num_turns: 21
+duration_api_ms: 439028
+session_id: d11c4339-04e1-445a-8622-e4ce6f106498
+loc_before:
+    production: 611
+    test: 168
+loc_after:
+    production: 415
+    test: 114
+diff:
+    files: 6
+    insertions: 582
+    deletions: 444
