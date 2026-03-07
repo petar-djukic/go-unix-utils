@@ -33,12 +33,41 @@ go.work.sum
 
 # Compiled Go binaries (go build produces extensionless binaries on Unix)
 /bin/
+/basename
 /cat
+/comm
+/cut
+/dirname
 /du
-/sponge
-/wc
-/version
+/echo
+/expand
+/false
+/fold
+/head
 /ls
+/md5sum
+/nl
+/paste
+/seq
+/sha1sum
+/sha256sum
+/sha512sum
+/sponge
+/tac
+/tee
+/true
+/ts
+/unexpand
+/uniq
+/version
+/wc
+/yes
+
+# Secrets and credentials
+.secrets/
+
+# Cobbler runtime files (generated during generation runs)
+.cobbler/
 
 bootstrap-prompt.md
 .claude/
