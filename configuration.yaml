@@ -36,7 +36,7 @@ cobbler:
     idle_timeout_seconds: 900
     measure_source_mode: headers
     measure_roadmap_source: true
-    mode: sdk
+    mode: cli
 claude:
     silence_agent: true
     secrets_dir: .secrets
