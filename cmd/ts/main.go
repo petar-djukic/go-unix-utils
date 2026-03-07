@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package main implements the ts command, which reads lines from stdin and
-// prepends a timestamp to each line. Implements prd004-ts R1-R8.
+// Package main implements the ts command that reads stdin line by line and
+// prepends a timestamp to each line on stdout.
+// Implements prd004-ts R1-R5, R7-R8.
 package main
 
 import (
@@ -10,423 +11,226 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// defaultFormat is the strftime format used when no format argument is given
-// in the default (wall-clock) mode. (R1.2)
-const defaultFormat = "%b %d %H:%M:%S"
+// Default strftime format strings matching moreutils ts behavior.
+const (
+	defaultAbsoluteFormat = "%b %d %H:%M:%S"
+	defaultElapsedFormat  = "%H:%M:%S"
+)
 
-// elapsedDefaultFormat is the strftime format used in -i and -s modes when
-// no custom format is given. (R3.2, R4.2)
-const elapsedDefaultFormat = "%H:%M:%S"
+// Placeholders for strftime specifiers that require runtime value substitution.
+// Null-byte delimiters ensure they cannot collide with Go time.Format reference
+// patterns or user-provided text.
+const (
+	placeholderEpoch = "\x00EPOCH\x00"
+	placeholderNano  = "\x00NANO\x00"
+	placeholderDotS  = "\x00DS\x00"
+	placeholderDotSm = "\x00Ds\x00"
+	placeholderDotT  = "\x00DT\x00"
+)
 
 func main() {
-	// R1.6: handle SIGPIPE gracefully.
+	// R1.6: exit 0 on SIGPIPE per ARCHITECTURE.yaml shared protocol.
 	sys.InstallSIGPIPEHandler()
 
-	flagI := flag.Bool("i", false, "incremental time since previous line")
-	flagS := flag.Bool("s", false, "elapsed time since start")
+	flagI := flag.Bool("i", false, "incremental per-line elapsed timestamps")
+	flagS := flag.Bool("s", false, "elapsed since start timestamps")
 	flagM := flag.Bool("m", false, "use monotonic clock")
-	flagR := flag.Bool("r", false, "convert existing timestamps to relative age")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: ts [-i | -s] [-m] [-r] [format]\n")
+		fmt.Fprintf(os.Stderr, "Usage: ts [-i | -s] [-m] [format]\n")
 	}
 	flag.Parse()
 
-	// R3.4: -i and -s are mutually exclusive.
-	if *flagI && *flagS {
-		fmt.Fprintf(os.Stderr, "usage: ts: -i and -s are mutually exclusive\n")
-		os.Exit(1)
-	}
+	// R5.1: -m is accepted for compatibility. Go's time.Now() includes a
+	// monotonic reading used automatically by Sub() for elapsed calculations.
+	_ = *flagM
 
-	// R6.5: -r is mutually exclusive with -i and -s.
-	if *flagR && (*flagI || *flagS) {
-		fmt.Fprintf(os.Stderr, "usage: ts: -r cannot be used with -i or -s\n")
-		os.Exit(1)
+	// R3.2, R4.2: default format for elapsed modes is HH:MM:SS.
+	format := defaultAbsoluteFormat
+	if *flagI || *flagS {
+		format = defaultElapsedFormat
 	}
-
-	// R2.1: optional positional argument for custom format.
-	format := ""
+	// R2.1: optional positional argument overrides the default format.
 	if flag.NArg() > 0 {
 		format = flag.Arg(0)
 	}
 
-	if *flagR {
-		processRelative(format)
-		return
-	}
+	goLayout := strftimeToGo(format)
+	elapsedMode := *flagI || *flagS
 
-	if format == "" {
-		if *flagI || *flagS {
-			format = elapsedDefaultFormat
-		} else {
-			format = defaultFormat
-		}
-	}
-
-	switch {
-	case *flagI:
-		processIncremental(format, *flagM)
-	case *flagS:
-		processElapsed(format, *flagM)
-	default:
-		processDefault(format, *flagM)
-	}
-}
-
-// writeLine writes a timestamp-prefixed line to stdout, exiting on write error.
-// R1.1, R1.3, R1.4: write timestamp + space + original line, flush per line.
-func writeLine(ts, line string) {
-	if _, err := fmt.Fprint(os.Stdout, ts, " ", line); err != nil {
-		// Write error (e.g., broken pipe handled by SIGPIPE); exit cleanly.
-		os.Exit(0)
-	}
-}
-
-// processDefault reads stdin line by line and prepends a wall-clock
-// timestamp using the given strftime format. (R1, R2)
-// R5.2: monotonic flag is accepted but has no additional effect in default
-// mode since Go's time.Now() already includes a monotonic reading. (R5.1)
-func processDefault(format string, _ bool) {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		line, err := reader.ReadString('\n')
-		if len(line) > 0 {
-			now := time.Now()
-			ts := formatStrftime(format, now)
-			writeLine(ts, line)
-		}
-		if err != nil {
-			break
-		}
-	}
-}
-
-// processElapsed reads stdin and prepends elapsed time since start. (R4)
-// R5.1: Go's time.Now() includes a monotonic reading; Sub() uses it
-// automatically, so -m has no additional effect beyond Go's default behavior.
-func processElapsed(format string, _ bool) {
 	startTime := time.Now()
+	lastTime := startTime
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
+		// R1.1: read stdin line by line (newline-delimited).
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
+			// R1.2, R2.4: obtain time at the moment each line is received.
 			now := time.Now()
-			elapsed := now.Sub(startTime)
-			// R4.2, R8.2: format elapsed duration as a time in GMT.
-			t := time.Unix(0, 0).UTC().Add(elapsed)
-			ts := formatStrftime(format, t)
-			writeLine(ts, line)
+			var ts string
+			if *flagI {
+				// R3.1: elapsed since previous line.
+				elapsed := now.Sub(lastTime)
+				ts = formatTime(elapsedToTime(elapsed), goLayout, elapsedMode)
+				lastTime = now
+			} else if *flagS {
+				// R4.1: elapsed since start, monotonically increasing.
+				elapsed := now.Sub(startTime)
+				ts = formatTime(elapsedToTime(elapsed), goLayout, elapsedMode)
+			} else {
+				// R1.2: absolute wall-clock timestamp.
+				ts = formatTime(now, goLayout, elapsedMode)
+			}
+			// R1.4: preserve the original newline; do not add an extra one.
+			// R1.5: partial lines (no trailing newline) are output without one.
+			fmt.Fprintf(os.Stdout, "%s %s", ts, line)
 		}
 		if err != nil {
 			break
 		}
 	}
+	// R7.1: exit 0 on clean EOF.
 }
 
-// processIncremental reads stdin and prepends time since the previous line. (R3)
-// R5.1: Go's time.Now() includes a monotonic reading; Sub() uses it
-// automatically, so -m has no additional effect beyond Go's default behavior.
-func processIncremental(format string, _ bool) {
-	lastTime := time.Now()
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		line, err := reader.ReadString('\n')
-		if len(line) > 0 {
-			now := time.Now()
-			elapsed := now.Sub(lastTime)
-			lastTime = now
-			// R3.2, R8.2: format elapsed duration as a time in GMT.
-			t := time.Unix(0, 0).UTC().Add(elapsed)
-			ts := formatStrftime(format, t)
-			writeLine(ts, line)
-		}
-		if err != nil {
-			break
-		}
-	}
+// elapsedToTime converts a duration to a time.Time anchored at the Unix epoch
+// in UTC, so that strftime-style formatting of hours, minutes, and seconds
+// produces correct elapsed values (matching Perl's gmtime($elapsed) behavior
+// per R3.2 and R4.2).
+func elapsedToTime(d time.Duration) time.Time {
+	nsec := d.Nanoseconds()
+	sec := nsec / 1e9
+	rem := nsec % 1e9
+	return time.Unix(sec, rem).In(time.UTC)
 }
 
-// Timestamp patterns for -r mode (R6.2).
-var relativePatterns = []struct {
-	re      *regexp.Regexp
-	layout  string
-	hasYear bool
-}{
-	{
-		// ISO-8601: "2024-01-05T14:30:00.000Z" or "2024-01-05T14:30:00"
-		re:      regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?`),
-		layout:  "2006-01-02T15:04:05",
-		hasYear: true,
-	},
-	{
-		// RFC 2822 with optional day: "16 Jun 94 07:29:35 GMT"
-		re:      regexp.MustCompile(`\d{1,2}\s+[A-Z][a-z]{2}\s+\d{2,4}\s+\d{2}:\d{2}:\d{2}\s*[A-Z]*`),
-		layout:  "2 Jan 06 15:04:05 MST",
-		hasYear: true,
-	},
-	{
-		// Syslog: "Jan  5 14:30:00"
-		re:      regexp.MustCompile(`[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}`),
-		layout:  "Jan  2 15:04:05",
-		hasYear: false,
-	},
-	{
-		// Lastlog: "Mon Jan  5 14:30"
-		re:      regexp.MustCompile(`[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}`),
-		layout:  "Mon Jan  2 15:04",
-		hasYear: false,
-	},
-}
-
-// processRelative reads stdin and replaces recognized timestamps with
-// relative age strings (or reformats them if a format is given). (R6)
-func processRelative(format string) {
-	now := time.Now()
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		line, err := reader.ReadString('\n')
-		if len(line) > 0 {
-			result := replaceTimestamp(line, now, format)
-			if _, werr := fmt.Fprint(os.Stdout, result); werr != nil {
-				// Write error; exit cleanly.
-				os.Exit(0)
-			}
-		}
-		if err != nil {
-			break
-		}
-	}
-}
-
-// replaceTimestamp finds the first recognized timestamp in a line and
-// replaces it with a relative age string or reformatted timestamp. (R6.1-R6.4)
-func replaceTimestamp(line string, now time.Time, format string) string {
-	for _, pat := range relativePatterns {
-		loc := pat.re.FindStringIndex(line)
-		if loc == nil {
-			continue
-		}
-		matched := line[loc[0]:loc[1]]
-
-		parsed, parseErr := time.Parse(pat.layout, matched)
-		if parseErr != nil {
-			// Try alternate layouts for RFC 2822 with 4-digit year.
-			if pat.hasYear {
-				parsed, parseErr = time.Parse("2 Jan 2006 15:04:05 MST", matched)
-			}
-			if parseErr != nil {
-				continue
-			}
-		}
-
-		// For formats without a year, assume the current year.
-		if !pat.hasYear {
-			parsed = time.Date(now.Year(), parsed.Month(), parsed.Day(),
-				parsed.Hour(), parsed.Minute(), parsed.Second(),
-				parsed.Nanosecond(), time.Local)
-		}
-
-		var replacement string
-		if format != "" {
-			// R6.3: reformat the parsed timestamp using the given format.
-			replacement = formatStrftime(format, parsed)
-		} else {
-			// R6.1: show relative age.
-			replacement = formatRelativeAge(now.Sub(parsed))
-		}
-
-		return line[:loc[0]] + replacement + line[loc[1]:]
-	}
-	// R6.4: no recognized timestamp; pass through unchanged.
-	return line
-}
-
-// formatRelativeAge converts a duration to a human-readable relative age
-// string such as "5d3h45m12s ago". (R6.1)
-func formatRelativeAge(d time.Duration) string {
-	if d < 0 {
-		d = -d
-	}
-	totalSeconds := int(d.Seconds())
-	days := totalSeconds / 86400
-	hours := (totalSeconds % 86400) / 3600
-	minutes := (totalSeconds % 3600) / 60
-	seconds := totalSeconds % 60
-
-	var parts []string
-	if days > 0 {
-		parts = append(parts, fmt.Sprintf("%dd", days))
-	}
-	if hours > 0 {
-		parts = append(parts, fmt.Sprintf("%dh", hours))
-	}
-	if minutes > 0 {
-		parts = append(parts, fmt.Sprintf("%dm", minutes))
-	}
-	if seconds > 0 || len(parts) == 0 {
-		parts = append(parts, fmt.Sprintf("%ds", seconds))
-	}
-	return strings.Join(parts, "") + " ago"
-}
-
-// formatStrftime converts a strftime format string to a formatted time
-// string using Go's time package. Supports standard strftime(3) directives
-// and the ts-specific subsecond extensions %.S, %.s, and %.T. (R2.2, R2.3, R2.4)
-func formatStrftime(format string, t time.Time) string {
-	var buf strings.Builder
+// strftimeToGo converts a strftime format string to a Go time layout.
+// Handles the common specifiers used by moreutils ts per D2:
+// %Y, %m, %d, %H, %M, %S, %b, %T, %s (epoch), %N (nanoseconds),
+// and subsecond extensions %.S, %.s, %.T.
+// Unrecognized specifiers pass through literally.
+func strftimeToGo(format string) string {
+	var b strings.Builder
 	i := 0
 	for i < len(format) {
 		if format[i] != '%' {
-			buf.WriteByte(format[i])
+			b.WriteByte(format[i])
 			i++
 			continue
 		}
-
-		// Consume the '%'.
-		i++
-		if i >= len(format) {
-			buf.WriteByte('%')
-			break
+		if i+1 >= len(format) {
+			b.WriteByte('%')
+			i++
+			continue
 		}
-
-		// Check for ts-specific subsecond extensions (%.S, %.s, %.T).
-		if format[i] == '.' && i+1 < len(format) {
-			usec := t.Nanosecond() / 1000
-			switch format[i+1] {
+		// R2.3: check for %.<spec> subsecond extensions.
+		if format[i+1] == '.' && i+2 < len(format) {
+			switch format[i+2] {
 			case 'S':
-				// R2.3: seconds with microsecond suffix (e.g., "32.001234").
-				fmt.Fprintf(&buf, "%02d.%06d", t.Second(), usec)
-				i += 2
+				b.WriteString(placeholderDotS)
+				i += 3
 				continue
 			case 's':
-				// R2.3: Unix epoch with microsecond suffix (e.g., "1708358732.001234").
-				fmt.Fprintf(&buf, "%d.%06d", t.Unix(), usec)
-				i += 2
+				b.WriteString(placeholderDotSm)
+				i += 3
 				continue
 			case 'T':
-				// R2.3: HH:MM:SS with microsecond suffix (e.g., "14:05:32.001234").
-				fmt.Fprintf(&buf, "%02d:%02d:%02d.%06d",
-					t.Hour(), t.Minute(), t.Second(), usec)
-				i += 2
+				b.WriteString(placeholderDotT)
+				i += 3
 				continue
 			}
 		}
-
-		// Standard strftime directives.
-		switch format[i] {
-		case 'a':
-			buf.WriteString(t.Format("Mon"))
-		case 'A':
-			buf.WriteString(t.Format("Monday"))
-		case 'b', 'h':
-			buf.WriteString(t.Format("Jan"))
-		case 'B':
-			buf.WriteString(t.Format("January"))
-		case 'c':
-			buf.WriteString(t.Format("Mon Jan  2 15:04:05 2006"))
-		case 'C':
-			fmt.Fprintf(&buf, "%02d", t.Year()/100)
-		case 'd':
-			buf.WriteString(t.Format("02"))
-		case 'D':
-			buf.WriteString(t.Format("01/02/06"))
-		case 'e':
-			fmt.Fprintf(&buf, "%2d", t.Day())
-		case 'F':
-			buf.WriteString(t.Format("2006-01-02"))
-		case 'g':
-			year, _ := t.ISOWeek()
-			fmt.Fprintf(&buf, "%02d", year%100)
-		case 'G':
-			year, _ := t.ISOWeek()
-			fmt.Fprintf(&buf, "%04d", year)
-		case 'H':
-			buf.WriteString(t.Format("15"))
-		case 'I':
-			buf.WriteString(t.Format("03"))
-		case 'j':
-			fmt.Fprintf(&buf, "%03d", t.YearDay())
-		case 'k':
-			fmt.Fprintf(&buf, "%2d", t.Hour())
-		case 'l':
-			h := t.Hour() % 12
-			if h == 0 {
-				h = 12
-			}
-			fmt.Fprintf(&buf, "%2d", h)
-		case 'm':
-			buf.WriteString(t.Format("01"))
-		case 'M':
-			buf.WriteString(t.Format("04"))
-		case 'n':
-			buf.WriteByte('\n')
-		case 'p':
-			buf.WriteString(t.Format("PM"))
-		case 'P':
-			buf.WriteString(strings.ToLower(t.Format("PM")))
-		case 'r':
-			buf.WriteString(t.Format("03:04:05 PM"))
-		case 'R':
-			buf.WriteString(t.Format("15:04"))
-		case 's':
-			fmt.Fprintf(&buf, "%d", t.Unix())
-		case 'S':
-			buf.WriteString(t.Format("05"))
-		case 't':
-			buf.WriteByte('\t')
-		case 'T':
-			buf.WriteString(t.Format("15:04:05"))
-		case 'u':
-			wd := int(t.Weekday())
-			if wd == 0 {
-				wd = 7
-			}
-			fmt.Fprintf(&buf, "%d", wd)
-		case 'U':
-			yday := t.YearDay()
-			wday := int(t.Weekday())
-			week := (yday + 6 - wday) / 7
-			fmt.Fprintf(&buf, "%02d", week)
-		case 'V':
-			_, week := t.ISOWeek()
-			fmt.Fprintf(&buf, "%02d", week)
-		case 'w':
-			fmt.Fprintf(&buf, "%d", int(t.Weekday()))
-		case 'W':
-			yday := t.YearDay()
-			wday := int(t.Weekday())
-			if wday == 0 {
-				wday = 7
-			}
-			week := (yday + 6 - (wday - 1)) / 7
-			fmt.Fprintf(&buf, "%02d", week)
-		case 'x':
-			buf.WriteString(t.Format("01/02/06"))
-		case 'X':
-			buf.WriteString(t.Format("15:04:05"))
-		case 'y':
-			buf.WriteString(t.Format("06"))
+		switch format[i+1] {
 		case 'Y':
-			buf.WriteString(t.Format("2006"))
-		case 'z':
-			buf.WriteString(t.Format("-0700"))
+			b.WriteString("2006")
+		case 'm':
+			b.WriteString("01")
+		case 'd':
+			b.WriteString("02")
+		case 'e':
+			b.WriteString("_2")
+		case 'H':
+			b.WriteString("15")
+		case 'M':
+			b.WriteString("04")
+		case 'S':
+			b.WriteString("05")
+		case 'b', 'h':
+			b.WriteString("Jan")
+		case 'B':
+			b.WriteString("January")
+		case 'a':
+			b.WriteString("Mon")
+		case 'A':
+			b.WriteString("Monday")
+		case 'p':
+			b.WriteString("PM")
+		case 'T':
+			b.WriteString("15:04:05")
+		case 'F':
+			b.WriteString("2006-01-02")
+		case 'D':
+			b.WriteString("01/02/06")
 		case 'Z':
-			buf.WriteString(t.Format("MST"))
+			b.WriteString("MST")
+		case 'z':
+			b.WriteString("-0700")
+		case 'n':
+			b.WriteByte('\n')
+		case 't':
+			b.WriteByte('\t')
 		case '%':
-			buf.WriteByte('%')
+			b.WriteByte('%')
+		case 's':
+			b.WriteString(placeholderEpoch)
+		case 'N':
+			b.WriteString(placeholderNano)
 		default:
-			// Pass through unknown directives.
-			buf.WriteByte('%')
-			buf.WriteByte(format[i])
+			// Unrecognized: pass through literally per D2.
+			b.WriteByte('%')
+			b.WriteByte(format[i+1])
 		}
-		i++
+		i += 2
 	}
-	return buf.String()
+	return b.String()
+}
+
+// formatTime formats a time using the pre-converted Go layout and substitutes
+// runtime-dependent placeholders for epoch seconds, nanoseconds, and subsecond
+// extensions (R2.3, R2.4).
+func formatTime(t time.Time, goLayout string, elapsedMode bool) string {
+	result := t.Format(goLayout)
+
+	if strings.Contains(result, placeholderEpoch) {
+		epoch := fmt.Sprintf("%d", t.Unix())
+		result = strings.ReplaceAll(result, placeholderEpoch, epoch)
+	}
+	if strings.Contains(result, placeholderNano) {
+		result = strings.ReplaceAll(result, placeholderNano,
+			fmt.Sprintf("%09d", t.Nanosecond()))
+	}
+	if strings.Contains(result, placeholderDotS) {
+		// %.S: seconds with microsecond suffix, e.g. "32.001234".
+		result = strings.ReplaceAll(result, placeholderDotS,
+			fmt.Sprintf("%02d.%06d", t.Second(), t.Nanosecond()/1000))
+	}
+	if strings.Contains(result, placeholderDotSm) {
+		// %.s: Unix epoch with microsecond suffix, e.g. "1708358732.001234".
+		result = strings.ReplaceAll(result, placeholderDotSm,
+			fmt.Sprintf("%d.%06d", t.Unix(), t.Nanosecond()/1000))
+	}
+	if strings.Contains(result, placeholderDotT) {
+		// %.T: HH:MM:SS with microsecond suffix, e.g. "14:05:32.001234".
+		result = strings.ReplaceAll(result, placeholderDotT,
+			fmt.Sprintf("%02d:%02d:%02d.%06d",
+				t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000))
+	}
+
+	return result
 }
