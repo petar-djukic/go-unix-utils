@@ -94,6 +94,11 @@ func main() {
 		}
 	}
 
+	// R7.2: SIGWINCH handler updates terminal width on resize.
+	sys.OnTerminalResize(func(width int) {
+		termWidth = width
+	})
+
 	// Resolve the effective format mode.
 	useAcross := false
 	singleColumn := false

@@ -395,6 +395,34 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-1RF", "--color=never", recursiveFixture},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// prd010-ls-extended R1.1, R1.2: -C forces multi-column even when piped.
+		{
+			Name: "ls_forced_columns",
+			Args: []string{"-C", "--color=never", fixture},
+			Env:  []string{"LC_ALL=C", "COLUMNS=80"},
+		},
+		// prd010-ls-extended R1.3: -x horizontal layout (across then down).
+		{
+			Name: "ls_across_columns",
+			Args: []string{"-x", "--color=never", fixture},
+			Env:  []string{"LC_ALL=C", "COLUMNS=80"},
+		},
+		// R19: File arguments listed before directory arguments.
+		{
+			Name: "ls_file_args",
+			Args: []string{"--color=never",
+				filepath.Join(fixture, "charlie"),
+				filepath.Join(fixture, "alpha"),
+			},
+			Env: []string{"LC_ALL=C"},
+		},
+		// R20: Mixed file and directory arguments.
+		{
+			Name:      "ls_mixed_file_dir_args",
+			Args:      []string{"-l", "--color=never", filepath.Join(fixture, "alpha"), fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{lsMtimeNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
