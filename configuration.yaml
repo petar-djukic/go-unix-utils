@@ -5,7 +5,6 @@ project:
     module_path: github.com/petar-djukic/go-unix-utils
     go_source_dirs:
         - pkg
-        - cmd
     magefiles_dir: magefiles
     context_include: |
       docs/VISION.yaml
