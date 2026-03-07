@@ -1,0 +1,54 @@
+id: rel04.1-uc005-logname
+title: "Print login name via logname"
+
+summary: |
+  The operator invokes the Go logname binary to print the login name of the current
+  user as recorded by the system login process. Unlike whoami, logname reports the
+  original login identity rather than the effective username. The differential testing
+  harness runs both the Go binary and the Homebrew reference binary (glogname from
+  coreutils) with the same arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd053-logname.yaml) and invokes do-work to
+  produce a passing differential test for cmd/logname.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/logname" with no arguments. logname prints the
+      login name followed by a newline.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/logname
+      and glogname with the same arguments and environment.
+  - id: F3
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/logname — login name output (prd053-logname R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/logname compiles and ./bin/logname exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/logname" prints the login name, matching glogname.
+  - id: S3
+    criterion: |
+      logname exits with code 0 on success.
+  - id: S4
+    criterion: |
+      The differential test passes for the default invocation.
+
+out_of_scope:
+  - Behavior after su or sudo is not tested beyond what the test environment
+    naturally provides.
+  - The distinction between logname and whoami output depends on the login
+    session and is not artificially tested.
+
+test_suite: test-rel04.1

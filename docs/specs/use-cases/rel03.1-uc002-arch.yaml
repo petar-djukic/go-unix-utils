@@ -1,0 +1,52 @@
+id: rel03.1-uc002-arch
+title: "Print machine hardware name via arch"
+
+summary: |
+  The operator invokes the Go arch binary to print the machine hardware name (e.g.,
+  x86_64, arm64), equivalent to uname -m. The differential testing harness runs both
+  the Go binary and the Homebrew reference binary (garch from coreutils) with the same
+  arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd045-arch.yaml) and invokes do-work to
+  produce a passing differential test for cmd/arch.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/arch" with no arguments. arch prints the machine
+      hardware name followed by a newline.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/arch
+      and garch with the same arguments and environment.
+  - id: F3
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/arch — machine hardware name output (prd045-arch R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/arch compiles and ./bin/arch exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/arch" prints the machine hardware name, matching garch.
+  - id: S3
+    criterion: |
+      arch exits with code 0 on success.
+  - id: S4
+    criterion: |
+      The differential test passes for the default invocation.
+
+out_of_scope:
+  - Processor type (-p) and hardware platform (-i) are not reported by arch;
+    use uname for those fields.
+
+test_suite: test-rel03.1

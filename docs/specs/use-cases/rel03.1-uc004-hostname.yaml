@@ -1,0 +1,53 @@
+id: rel03.1-uc004-hostname
+title: "Print system hostname via hostname"
+
+summary: |
+  The operator invokes the Go hostname binary to print the system hostname. The GNU
+  coreutils hostname is a minimal utility that prints the hostname and exits. The
+  differential testing harness runs both the Go binary and the Homebrew reference binary
+  (ghostname from coreutils) with the same arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd047-hostname.yaml) and invokes do-work to
+  produce a passing differential test for cmd/hostname.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/hostname" with no arguments. hostname prints the
+      system hostname followed by a newline.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/hostname
+      and ghostname with the same arguments and environment.
+  - id: F3
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/hostname — hostname output (prd047-hostname R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/hostname compiles and ./bin/hostname exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/hostname" prints the system hostname, matching ghostname.
+  - id: S3
+    criterion: |
+      hostname exits with code 0 on success.
+  - id: S4
+    criterion: |
+      The differential test passes for the default invocation.
+
+out_of_scope:
+  - Setting the hostname is not supported and not tested.
+  - Flags found in net-tools hostname (-s, -f, -d, -i) are not part of the
+    GNU coreutils hostname and are not tested.
+
+test_suite: test-rel03.1

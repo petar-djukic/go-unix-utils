@@ -1,0 +1,46 @@
+id: prd046-nproc
+title: "cmd/nproc: Print Number of Available Processing Units"
+
+problem: |
+  Build scripts and parallel job schedulers use nproc to determine the number of available
+  CPUs for concurrency decisions (e.g., make -j$(nproc)). The utility supports an --all flag
+  for installed processors and an --ignore=N flag to reserve cores. The Go implementation must
+  match the Homebrew GNU reference binary (gnproc, installed by coreutils) on stdout and exit
+  code, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the number of available processing units.
+  - G2: Support --all and --ignore=N flags for installed count and core reservation.
+
+requirements:
+  R1:
+    title: Default behavior and flags
+    items:
+      - R1.1: When invoked with no arguments, must print the number of available processing units followed by a newline and exit 0.
+      - R1.2: "--all must print the number of installed processors, which may differ from the available count if CPU affinity or cgroups restrict the set."
+      - R1.3: "--ignore=N must subtract N from the processor count and print the result. The result must never be less than 1."
+      - R1.4: --all and --ignore=N may be combined. When combined, --ignore subtracts from the installed count.
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1: If any positional operand is provided, must print an error message to stderr and exit 1.
+      - R2.2: If --ignore is given a non-numeric value, must print an error message to stderr and exit 1.
+      - R2.3: Unknown flags must produce an error message to stderr and exit 1.
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gnproc) via pkg/testutils.
+      - R3.2: "Tests must cover: default invocation, --all, --ignore=1, --all --ignore=1, and error cases."
+      - R3.3: All differential tests must set LC_ALL=C in the environment.
+
+non_goals:
+  - cmd/nproc does not set CPU affinity or modify scheduling.
+  - cmd/nproc does not read cgroup limits on macOS; the available and installed counts may be identical.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/nproc prints the CPU count, matching gnproc."
+  - "AC2: go run ./cmd/nproc --ignore=1 prints one fewer than the default, matching gnproc."
+  - "AC3: Differential test against gnproc passes for all supported flags and error cases."
+  - "AC4: cmd/nproc compiles with no warnings under golangci-lint."

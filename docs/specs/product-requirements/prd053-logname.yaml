@@ -1,0 +1,45 @@
+id: prd053-logname
+title: "cmd/logname: Print Login Name"
+
+problem: |
+  The logname utility prints the login name of the current user as recorded by the system
+  login process. Unlike whoami (which reports the effective username), logname reports the
+  original login identity, which may differ after su or sudo. The Go implementation must
+  match the Homebrew GNU reference binary (glogname, installed by coreutils) byte-for-byte
+  on stdout and exit code, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the login name of the current user followed by a newline.
+  - G2: Reject any extra operands with an error message and nonzero exit.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1: When invoked with no arguments, must print the login name followed by a newline and exit 0.
+      - R1.2: The login name must be obtained from the system login record (getlogin(3) or equivalent), not from the effective UID.
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 1.
+      - R2.2: Unknown flags must produce an error message to stderr and exit 1.
+      - R2.3: If the login name cannot be determined (e.g., no controlling terminal), must print an error to stderr and exit 1.
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (glogname) via pkg/testutils.
+      - R3.2: "Tests must cover: normal invocation (no arguments), extra operand error, and unknown flag error."
+      - R3.3: All differential tests must set LC_ALL=C in the environment.
+
+non_goals:
+  - cmd/logname does not accept a username argument.
+  - cmd/logname does not print the effective username; use cmd/whoami for that.
+  - cmd/logname does not print UID, GID, or group memberships; use cmd/id for that.
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/logname prints the login name, matching glogname."
+  - "AC2: go run ./cmd/logname extraarg exits 1 with an error message to stderr, matching glogname."
+  - "AC3: Differential test against glogname passes for normal invocation and error cases."
+  - "AC4: cmd/logname compiles with no warnings under golangci-lint."

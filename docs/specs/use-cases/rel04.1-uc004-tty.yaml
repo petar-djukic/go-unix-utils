@@ -1,0 +1,58 @@
+id: rel04.1-uc004-tty
+title: "Print terminal device name via tty"
+
+summary: |
+  The operator invokes the Go tty binary to print the file name of the terminal
+  connected to stdin, or to check terminal status silently via -s. When stdin is not
+  a terminal, tty prints "not a tty" and exits 1. The differential testing harness
+  runs both the Go binary and the Homebrew reference binary (gtty from coreutils)
+  with the same arguments and compares stdout byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd052-tty.yaml) and invokes do-work to
+  produce a passing differential test for cmd/tty.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "echo | ./bin/tty" with stdin redirected from a pipe.
+      tty prints "not a tty" followed by a newline and exits 1.
+  - id: F2
+    step: |
+      The operator runs "echo | ./bin/tty -s" with stdin from a pipe. tty prints
+      nothing and exits 1.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/tty
+      and gtty with the same arguments and environment.
+  - id: F4
+    step: |
+      The harness compares stdout byte-for-byte and exit codes. Both binaries must
+      produce identical output.
+
+touchpoints:
+  - T1: "cmd/tty — terminal device name output (prd052-tty R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, stdout comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/tty compiles and ./bin/tty exists after mage build.
+  - id: S2
+    criterion: |
+      "./bin/tty" with stdin from a pipe prints "not a tty" and exits 1, matching gtty.
+  - id: S3
+    criterion: |
+      "./bin/tty -s" with stdin from a pipe produces no output and exits 1, matching gtty.
+  - id: S4
+    criterion: |
+      The differential test passes for piped and terminal stdin cases.
+
+out_of_scope:
+  - Terminal configuration is not supported; use stty for that.
+  - Testing with an actual terminal device depends on the test environment and
+    may be skipped in CI.
+
+test_suite: test-rel04.1
