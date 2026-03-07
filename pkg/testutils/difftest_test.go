@@ -287,6 +287,149 @@ func TestFormatDivergence_TruncatesStdin(t *testing.T) {
 	}
 }
 
+func TestRunDiffTests_DivergentOutput(t *testing.T) {
+	t.Parallel()
+	// AC3: verify that divergent binaries produce different output that the
+	// harness comparison logic would catch. We invoke runBinary directly to
+	// avoid propagating a sub-test failure into the parent.
+	binA := buildHelperBinary(t, helperSourceOutputA)
+	binB := buildHelperBinary(t, helperSourceOutputB)
+
+	env := buildEnv(nil)
+	dir := t.TempDir()
+
+	outA, err := runBinary(binA, nil, nil, env, dir)
+	if err != nil {
+		t.Fatalf("running binA: %v", err)
+	}
+	outB, err := runBinary(binB, nil, nil, env, dir)
+	if err != nil {
+		t.Fatalf("running binB: %v", err)
+	}
+
+	if bytes.Equal(outA.Stdout, outB.Stdout) {
+		t.Fatal("expected divergent stdout from two different binaries")
+	}
+
+	// Verify formatDivergence produces a meaningful message for the divergence.
+	tc := DiffTest{Name: "divergent"}
+	msg := formatDivergence(tc, outB.Stdout, outA.Stdout, outB.Stderr, outA.Stderr, outB.ExitCode, outA.ExitCode)
+	if !strings.Contains(msg, "A") || !strings.Contains(msg, "B") {
+		t.Errorf("formatDivergence did not include both outputs:\n%s", msg)
+	}
+}
+
+func TestRunDiffTests_WithEnv(t *testing.T) {
+	t.Parallel()
+	// R2: Env field is forwarded to both binaries via RunDiffTests.
+	bin := buildHelperBinary(t, helperSourcePrintEnv)
+	tests := []DiffTest{
+		{
+			Name:     "env-forward",
+			Env:      []string{"TEST_DIFFTEST_VAR=hello"},
+			ExitCode: 0,
+		},
+	}
+	// Same binary for both; both receive the same env, so outputs match.
+	RunDiffTests(t, bin, bin, tests)
+}
+
+func TestRunDiffTests_WithWorkDir(t *testing.T) {
+	t.Parallel()
+	// R2: WorkDir field is forwarded to both binaries.
+	bin := buildHelperBinary(t, helperSourcePrintCwd)
+	dir := t.TempDir()
+	tests := []DiffTest{
+		{
+			Name:     "workdir-forward",
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+	}
+	RunDiffTests(t, bin, bin, tests)
+}
+
+func TestTimestampNormalizer_ISO8601(t *testing.T) {
+	t.Parallel()
+	// AC5: ISO 8601 variant with date and time.
+	input := []byte("event 2026-03-07 14:30:00 done")
+	got := TimestampNormalizer(input)
+	want := []byte("event <TIMESTAMP> done")
+	if !bytes.Equal(got, want) {
+		t.Errorf("TimestampNormalizer(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestTimestampNormalizer_UnixEpochUnchanged(t *testing.T) {
+	t.Parallel()
+	// AC5: Unix epoch (plain integer) is not a strftime pattern; left unchanged.
+	input := []byte("ts 1709337600 end")
+	got := TimestampNormalizer(input)
+	if !bytes.Equal(got, input) {
+		t.Errorf("TimestampNormalizer(%q) = %q, want unchanged", input, got)
+	}
+}
+
+// helperSourceOutputA is a Go program that prints "A\n" to stdout.
+const helperSourceOutputA = `package main
+
+import "fmt"
+
+func main() { fmt.Println("A") }
+`
+
+// helperSourceOutputB is a Go program that prints "B\n" to stdout.
+const helperSourceOutputB = `package main
+
+import "fmt"
+
+func main() { fmt.Println("B") }
+`
+
+// helperSourcePrintEnv prints the value of TEST_DIFFTEST_VAR to stdout.
+const helperSourcePrintEnv = `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() { fmt.Print(os.Getenv("TEST_DIFFTEST_VAR")) }
+`
+
+// helperSourcePrintCwd prints the current working directory to stdout.
+const helperSourcePrintCwd = `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	wd, _ := os.Getwd()
+	fmt.Print(wd)
+}
+`
+
+// buildHelperBinary compiles a Go source string into a temporary binary and
+// returns its path. Used by tests that need custom binaries for differential
+// testing without depending on any cmd/ package. (D1)
+func buildHelperBinary(t *testing.T, source string) string {
+	t.Helper()
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(srcPath, []byte(source), 0o644); err != nil {
+		t.Fatalf("writing helper source: %v", err)
+	}
+	binPath := filepath.Join(dir, "helper")
+	cmd := exec.Command("go", "build", "-o", binPath, srcPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("building helper binary: %v\n%s", err, out)
+	}
+	return binPath
+}
+
 // findEcho returns the path to /bin/echo, skipping if not found.
 func findEcho(t *testing.T) string {
 	t.Helper()
