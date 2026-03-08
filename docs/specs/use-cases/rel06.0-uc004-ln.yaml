@@ -16,32 +16,17 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/ln original hardlink" where "original" is an
-      existing file. ln creates a hard link named "hardlink" pointing to the
-      same inode as "original".
+      The operator exercises ln with hard links, symbolic links (-s), force
+      overwrite (-f), no-dereference (-n), verbose output (-v), backup creation
+      (-b), relative symlinks (-r), multiple targets into a directory, and error
+      cases. The -s flag changes the link type from hard to symbolic, which also
+      permits linking to directories and non-existent targets.
   - id: F2
     step: |
-      The operator runs "./bin/ln -s target symlink". ln creates a symbolic
-      link named "symlink" whose content is the string "target".
-  - id: F3
-    step: |
-      The operator runs "./bin/ln -f original existing" where "existing"
-      already exists. ln removes "existing" and creates the new link without
-      error.
-  - id: F4
-    step: |
-      The operator runs "./bin/ln nonexistent hardlink" where "nonexistent"
-      does not exist. ln prints an error to stderr and exits with a non-zero
-      status.
-  - id: F5
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/ln
-      and gln with the same arguments and environment.
-  - id: F6
-    step: |
-      The harness compares stderr output, exit codes, and verifies that
-      resulting links have identical properties. Both binaries must produce
-      identical behavior.
+      and gln with the same arguments and environment. Requires F1 (binary must
+      be built). The harness compares stdout, stderr, exit codes, and verifies
+      that resulting links have identical type and target.
 
 touchpoints:
   - T1: "cmd/ln — hard link creation, symbolic link (-s), force overwrite (-f) (prd037-ln R1, R2, R3)"
@@ -49,27 +34,18 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/ln compiles and ./bin/ln exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/ln original hardlink" creates a hard link sharing the same inode,
-      matching gln behavior.
-  - id: S3
-    criterion: |
-      Symbolic link creation works: "./bin/ln -s target symlink" creates a
-      symlink whose readlink value is "target".
-  - id: S4
-    criterion: |
-      Force overwrite works: "./bin/ln -f original existing" replaces the
-      existing file with the new link without error.
-  - id: S5
-    criterion: |
-      Error behavior matches: linking a nonexistent source produces stderr and
-      exit code identical to gln.
-  - id: S6
-    criterion: |
-      The differential test passes for hard links, symbolic links, force
-      overwrite, missing source errors, and multiple-argument forms.
+      The differential test passes for hard links, symbolic links (-s), force
+      overwrite (-f), no-dereference (-n), verbose output (-v), backup creation
+      (-b), relative symlinks (-r), multiple targets into a directory, and error
+      cases, confirming full parity with gln.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Cross-filesystem hard link restrictions; tests run within a single filesystem.

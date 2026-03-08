@@ -16,32 +16,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "printf 'banana\napple\ncherry\n' | ./bin/sort". sort prints
-      the lines in lexicographic order: apple, banana, cherry.
+      The operator exercises sort with default lexicographic ordering, -n numeric,
+      -h human-numeric, -M month, -V version sort modes, -k key fields with -t
+      delimiters, -r reverse, -u unique, -s stable, -c check mode, -o output
+      file, -b ignore-leading-blanks, multi-file input, and stdin. Each sort mode
+      (-n, -h, -M, -V) changes the comparison function applied to lines or key
+      fields.
   - id: F2
     step: |
-      The operator runs "printf '10\n2\n1\n' | ./bin/sort -n" to sort numerically,
-      producing 1, 2, 10.
-  - id: F3
-    step: |
-      The operator runs "./bin/sort -k2,2 -t: input.txt" to sort by the second
-      colon-delimited field.
-  - id: F4
-    step: |
-      The operator runs "./bin/sort -u input.txt" to output only unique lines based
-      on the sort key.
-  - id: F5
-    step: |
-      The operator runs "./bin/sort -c input.txt" to check whether input is already
-      sorted, receiving exit 0 if sorted and exit 1 if not.
-  - id: F6
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/sort and
-      gsort with the same arguments and environment.
-  - id: F7
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/sort
+      and gsort with the same arguments, stdin, and environment. Requires F1
+      (binary must be built). The harness compares stdout byte-for-byte and exit
+      codes.
 
 touchpoints:
   - T1: "cmd/sort — lexicographic, numeric, human-numeric, month, version sort, key fields, delimiters, reverse, unique, stable, check mode (prd053-sort R1, R2, R3, R4)"
@@ -49,28 +35,20 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/sort compiles and ./bin/sort exists after mage build.
-  - id: S2
     criterion: |
-      Default lexicographic sort produces correctly ordered output, matching gsort.
-  - id: S3
-    criterion: |
-      Numeric sort (-n) orders by numeric value, not lexicographic order.
-  - id: S4
-    criterion: |
-      Key field sort (-k with -t) correctly extracts and sorts by the specified field.
-  - id: S5
-    criterion: |
-      Unique mode (-u) outputs only the first of each equal run.
-  - id: S6
-    criterion: |
-      Check mode (-c) exits 0 for sorted input and 1 for unsorted input.
-  - id: S7
-    criterion: |
-      Reverse (-r) and stable (-s) modes produce correct output.
-  - id: S8
-    criterion: |
-      The differential test passes for all flag combinations listed in the PRD.
+      The differential test passes for default lexicographic sort, -n numeric,
+      -h human-numeric, -M month, -V version sort, -k key fields with -t
+      delimiters, -r reverse, -u unique, -s stable, -c check mode, -b
+      ignore-leading-blanks, multi-file input, and stdin, confirming full parity
+      with gsort.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
 
 out_of_scope:
   - Parallel sort (--parallel) is excluded per the PRD.

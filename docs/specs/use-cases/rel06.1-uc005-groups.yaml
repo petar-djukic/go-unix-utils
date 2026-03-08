@@ -17,20 +17,14 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/groups" with no arguments. groups prints the
-      current user's group memberships, space-separated, followed by a newline.
+      The operator exercises groups with no arguments (current user), single
+      named user, multiple named users, and nonexistent user error. Named-user
+      mode changes the output format to include a "user :" prefix on each line.
   - id: F2
     step: |
-      The operator runs "./bin/groups root" to print the group memberships of a
-      named user. groups prints the groups for that user.
-  - id: F3
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/groups
-      and ggroups with the same arguments and environment.
-  - id: F4
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and ggroups with the same arguments and environment. Requires F1 (binary
+      must be built). The harness compares stdout byte-for-byte and exit codes.
 
 touchpoints:
   - T1: "cmd/groups — current user groups, named user groups (prd043-groups R1, R2)"
@@ -38,22 +32,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/groups compiles and ./bin/groups exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/groups" with no arguments prints the current user's groups, matching
-      ggroups.
-  - id: S3
-    criterion: |
-      "./bin/groups root" prints root's group memberships, matching ggroups.
-  - id: S4
-    criterion: |
-      An invalid username produces an error message and a non-zero exit code,
-      matching ggroups behavior.
-  - id: S5
-    criterion: |
-      The differential test passes for the current user, a named user, and an
-      invalid user.
+      The differential test passes for current-user groups, single named user,
+      multiple named users, nonexistent user error, and mixed valid/invalid
+      users, confirming full parity with ggroups.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Multiple username arguments on a single invocation are tested only if ggroups

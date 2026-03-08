@@ -17,29 +17,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/env" with no arguments. env prints all current
-      environment variables, one per line in NAME=VALUE format.
+      The operator exercises env with no arguments (environment dump), NAME=VALUE
+      pairs, -i clean environment, -u variable unsetting, -0 NUL-delimited
+      output, and command execution with exit code passthrough. The -i flag
+      changes the processing model from inherit-and-modify to start-from-empty,
+      giving full control over what the child process sees.
   - id: F2
     step: |
-      The operator runs "./bin/env FOO=bar /usr/bin/env" to execute a command
-      with an additional variable. env sets FOO=bar in the child environment and
-      runs the specified command.
-  - id: F3
-    step: |
-      The operator runs "./bin/env -i /usr/bin/env" to start with a clean
-      environment. env clears all inherited variables before executing the command.
-  - id: F4
-    step: |
-      The operator runs "./bin/env -u HOME /usr/bin/env" to unset a specific
-      variable. env removes HOME from the environment before executing the command.
-  - id: F5
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/env
-      and genv with the same arguments and environment.
-  - id: F6
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and genv with the same arguments and environment. Requires F1 (binary must
+      be built). The harness compares stdout byte-for-byte and exit codes.
 
 touchpoints:
   - T1: "cmd/env — print environment, set variables, clean environment, unset variables (prd039-env R1, R2, R3)"
@@ -47,24 +34,18 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/env compiles and ./bin/env exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/env" with no arguments prints all environment variables, matching genv.
-  - id: S3
-    criterion: |
-      Running a command with NAME=VALUE pairs passes the modified environment to the
-      child process.
-  - id: S4
-    criterion: |
-      The -i flag produces a clean environment with no inherited variables.
-  - id: S5
-    criterion: |
-      The -u flag removes the specified variable from the environment.
-  - id: S6
-    criterion: |
-      The differential test passes for bare invocation, NAME=VALUE pairs, -i, -u,
-      and combinations thereof.
+      The differential test passes for bare environment dump, NAME=VALUE pairs,
+      -i clean environment, -u variable unsetting, -0 NUL-delimited output,
+      command execution, and exit code passthrough, confirming full parity with
+      genv.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Signal handling and the -S (split string) option are not tested.

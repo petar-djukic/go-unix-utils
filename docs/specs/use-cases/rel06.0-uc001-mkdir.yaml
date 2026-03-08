@@ -17,29 +17,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/mkdir testdir". mkdir creates a single directory
-      named "testdir" in the current working directory and exits with status 0.
+      The operator exercises mkdir with single directories, multiple directories,
+      -p parent chains, -m permission modes, and -v verbose output. The -p flag
+      changes the processing model from fail-on-existing to create-if-missing,
+      which also affects how -m applies to intermediate vs final directories.
   - id: F2
     step: |
-      The operator runs "./bin/mkdir -p a/b/c". mkdir creates the entire
-      directory chain a, a/b, and a/b/c, succeeding even if intermediate
-      directories do not exist.
-  - id: F3
-    step: |
-      The operator runs "./bin/mkdir -m 0750 restricted". mkdir creates the
-      directory "restricted" with permission bits set to 0750.
-  - id: F4
-    step: |
-      The operator runs "./bin/mkdir testdir" when "testdir" already exists.
-      mkdir prints an error to stderr and exits with a non-zero status.
-  - id: F5
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/mkdir
-      and gmkdir with the same arguments and environment.
-  - id: F6
-    step: |
-      The harness compares stderr output, exit codes, and resulting filesystem
-      state. Both binaries must produce identical behavior.
+      and gmkdir with the same arguments and environment. Requires F1 (binary
+      must be built). The harness compares stdout, stderr, exit codes, and
+      resulting filesystem state including permission bits.
 
 touchpoints:
   - T1: "cmd/mkdir — single directory creation, parent creation (-p), permission mode (-m) (prd034-mkdir R1, R2, R3)"
@@ -47,26 +34,18 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/mkdir compiles and ./bin/mkdir exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/mkdir testdir" creates the directory and exits 0, matching gmkdir.
-  - id: S3
-    criterion: |
-      Parent creation works: "./bin/mkdir -p a/b/c" creates all intermediate
-      directories without error.
-  - id: S4
-    criterion: |
-      Permission mode works: "./bin/mkdir -m 0750 restricted" creates a directory
-      with the specified permission bits.
-  - id: S5
-    criterion: |
-      Error behavior matches: creating an already-existing directory without -p
-      produces an error identical to gmkdir.
-  - id: S6
-    criterion: |
-      The differential test passes for single directory, -p parent chains,
-      -m permission modes, already-existing directories, and multiple arguments.
+      The differential test passes for single directory creation, multiple
+      directories, -p parent chains, -m permission modes, -v verbose output,
+      already-existing directory errors, and missing-parent errors, confirming
+      full parity with gmkdir.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - SELinux or ACL-based permission handling beyond POSIX mode bits.

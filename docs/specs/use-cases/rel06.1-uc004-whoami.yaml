@@ -16,16 +16,14 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/whoami" with no arguments. whoami prints the
-      effective username followed by a newline.
+      The operator exercises whoami with no arguments (prints effective username)
+      and with extra operands and unknown flags (error cases). whoami is
+      deliberately minimal: it prints one name and exits.
   - id: F2
     step: |
       The differential testing harness (pkg/testutils) executes both ./bin/whoami
-      and gwhoami with the same arguments and environment.
-  - id: F3
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and gwhoami with the same arguments and environment. Requires F1 (binary
+      must be built). The harness compares stdout byte-for-byte and exit codes.
 
 touchpoints:
   - T1: "cmd/whoami — effective username output (prd042-whoami R1, R2)"
@@ -33,16 +31,15 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/whoami compiles and ./bin/whoami exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/whoami" prints the effective username, matching gwhoami.
-  - id: S3
-    criterion: |
-      whoami exits with code 0 on success.
-  - id: S4
-    criterion: |
-      The differential test passes for the default invocation.
+      The differential test passes for normal invocation (effective username),
+      extra operand error, and unknown flag error, confirming full parity with
+      gwhoami.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
 
 out_of_scope:
   - Behavior under setuid or sudo contexts is not tested beyond what the test

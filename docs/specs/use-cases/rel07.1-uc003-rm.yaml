@@ -16,32 +16,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator creates a test file and runs "./bin/rm testfile". The file is
-      removed from the filesystem.
+      The operator exercises rm with single file removal, multi-file removal, -r
+      recursive directory removal, -f force (suppress errors on non-existent), -d
+      empty directory removal, -v verbose, and error cases (directory without -r,
+      refusing '.' and '..'). The -r flag changes the processing model from
+      single-entry unlink to recursive tree traversal, and -f suppresses the
+      non-existent error that would normally cause a non-zero exit.
   - id: F2
     step: |
-      The operator creates a directory tree and runs "./bin/rm -r dir/" to
-      recursively remove it.
-  - id: F3
-    step: |
-      The operator runs "./bin/rm -f nonexistent" to verify force mode exits 0
-      silently when the file does not exist.
-  - id: F4
-    step: |
-      The operator runs "./bin/rm -v testfile" to see verbose output showing
-      the removal.
-  - id: F5
-    step: |
-      The operator runs "./bin/rm dir/" without -r to verify it fails with an
-      error on stderr.
-  - id: F6
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/rm and
-      grm with the same arguments and environment.
-  - id: F7
-    step: |
-      The harness compares exit codes and verifies the resulting file system state
-      (file existence) matches between both binaries.
+      The differential testing harness (pkg/testutils) executes both ./bin/rm
+      and grm with the same arguments and environment. Requires F1 (binary must
+      be built). The harness compares exit codes and resulting file system state
+      (file existence).
 
 touchpoints:
   - T1: "cmd/rm — single removal, multi-file, recursive, force, interactive, verbose, empty directory (prd058-rm R1, R2, R3, R4)"
@@ -49,28 +35,19 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/rm compiles and ./bin/rm exists after mage build.
-  - id: S2
     criterion: |
-      Single file removal deletes the file from the filesystem, matching grm.
-  - id: S3
-    criterion: |
-      Recursive removal (-r) deletes the entire directory tree.
-  - id: S4
-    criterion: |
-      Force mode (-f) exits 0 silently for non-existent files.
-  - id: S5
-    criterion: |
-      Verbose mode (-v) prints each file as it is removed.
-  - id: S6
-    criterion: |
-      Attempting to remove a directory without -r fails with exit 1.
-  - id: S7
-    criterion: |
-      Refusing to remove '.' or '..' prints an error.
-  - id: S8
-    criterion: |
-      The differential test passes for all flag combinations listed in the PRD.
+      The differential test passes for single file removal, multi-file removal,
+      -r recursive, -f force on non-existent, -d empty directory, -v verbose,
+      error on directory without -r, and refusing '.' or '..', confirming full
+      parity with grm.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
 
 out_of_scope:
   - One-file-system mode is excluded per the PRD.

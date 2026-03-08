@@ -18,28 +18,15 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/printenv" with no arguments. printenv prints all
-      current environment variables, one per line in NAME=VALUE format.
+      The operator exercises printenv with no arguments (full dump), single and
+      multiple named variables, missing variables (exit 1), and -0 NUL-delimited
+      output. Named-variable mode prints only values (no NAME= prefix) and uses
+      the exit code to signal whether all requested variables exist.
   - id: F2
     step: |
-      The operator runs "./bin/printenv HOME" to print a specific variable.
-      printenv prints the value of HOME followed by a newline.
-  - id: F3
-    step: |
-      The operator runs "./bin/printenv NONEXISTENT" to request a variable that
-      is not set. printenv prints nothing and exits with code 1.
-  - id: F4
-    step: |
-      The operator runs "./bin/printenv -0" to print all variables separated by
-      NUL bytes instead of newlines.
-  - id: F5
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/printenv
-      and gprintenv with the same arguments and environment.
-  - id: F6
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and gprintenv with the same arguments and environment. Requires F1 (binary
+      must be built). The harness compares stdout byte-for-byte and exit codes.
 
 touchpoints:
   - T1: "cmd/printenv — print all variables, print specific variable, NUL-delimited output (prd040-printenv R1, R2)"
@@ -47,24 +34,18 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/printenv compiles and ./bin/printenv exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/printenv" with no arguments prints all environment variables, matching
-      gprintenv.
-  - id: S3
-    criterion: |
-      "./bin/printenv HOME" prints the value of HOME, matching gprintenv.
-  - id: S4
-    criterion: |
-      "./bin/printenv NONEXISTENT" produces no output and exits with code 1.
-  - id: S5
-    criterion: |
-      The -0 flag produces NUL-separated output identical to gprintenv -0.
-  - id: S6
-    criterion: |
-      The differential test passes for bare invocation, named variables, missing
-      variables, and -0 output.
+      The differential test passes for full environment dump, single named
+      variable, multiple named variables, missing variable (exit 1), mixed
+      existing and missing variables, and -0 NUL-delimited output, confirming
+      full parity with gprintenv.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - NUL-delimited output (-0) is tested for byte correctness but not for consumption by
