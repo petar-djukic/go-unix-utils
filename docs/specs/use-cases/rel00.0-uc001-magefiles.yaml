@@ -22,25 +22,20 @@ flow:
   - id: F2
     step: |
       The operator runs bin/version. The binary prints the version tag (e.g., "v0.20260228.0")
-      to stdout followed by a newline and exits 0.
+      to stdout followed by a newline and exits 0. Requires F1 (binary must exist).
   - id: F3
     step: |
-      The operator runs bin/version --version. The output is identical to F2.
+      The operator runs bin/version --version and bin/version --bogus to exercise flag
+      parsing. Requires F1 (binary must exist).
   - id: F4
     step: |
-      The operator runs bin/version --bogus. The binary prints a usage message to stderr
-      and exits 2.
+      The operator runs mage lint. golangci-lint runs on cmd/, pkg/, and magefiles/ with
+      no warnings or errors. Independent of F2-F3 (lint checks source, not runtime).
   - id: F5
     step: |
-      The operator runs mage lint. golangci-lint runs on cmd/, pkg/, and magefiles/ with
-      no warnings or errors.
-  - id: F6
-    step: |
       The operator runs mage clean. The bin/ directory and its contents are removed. If
-      bin/ does not exist, the target succeeds silently.
-  - id: F7
-    step: |
-      The operator verifies that bin/ no longer exists after mage clean.
+      bin/ does not exist, the target succeeds silently. Requires F1 (verifies clean
+      removes what build produced).
 
 touchpoints:
   - T1: "cmd/version — version string printing, ldflags injection (prd011-magefiles R1)"
@@ -49,19 +44,19 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: mage build succeeds and bin/version exists.
+    criterion: |
+      The full build-run-clean lifecycle completes without error: mage build produces
+      bin/version, the binary prints a version tag and exits 0, and mage clean removes bin/.
+    traces:
+      - AC1
+      - AC6
+      - AC7
   - id: S2
-    criterion: bin/version prints a version tag matching v[0-9]* and exits 0.
-  - id: S3
-    criterion: bin/version --version produces the same output as bin/version.
-  - id: S4
-    criterion: bin/version --bogus prints to stderr and exits 2.
-  - id: S5
-    criterion: mage lint passes with no warnings on cmd/, pkg/, and magefiles/.
-  - id: S6
-    criterion: mage clean removes bin/ and succeeds when bin/ does not exist.
-  - id: S7
-    criterion: A development build (no ldflags) produces a binary that prints "dev".
+    criterion: |
+      A development build (no ldflags) produces a binary that prints "dev", confirming
+      the ldflags injection path controls version output end-to-end.
+    traces:
+      - AC4
 
 out_of_scope:
   - Differential testing of cmd/version against a reference binary (there is no GNU version equivalent).

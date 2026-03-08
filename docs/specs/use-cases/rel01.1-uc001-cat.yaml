@@ -22,25 +22,18 @@ flow:
       Example: printf 'hello\nworld\n' | ./bin/cat -n
   - id: F2
     step: |
-      cmd/cat reads from each named file in order (or stdin when no files are given or when
-      "-" is given). It applies the active transformations in order: squeeze blanks (-s),
+      cmd/cat reads from each named file in order (or stdin when no files are given or
+      when "-" is given). It applies transformations in order: squeeze blanks (-s),
       non-printing display (-v/-T), end-of-line marker (-E), line number prefix (-n/-b).
+      Transformation ordering matters: -s reduces blank runs before -n assigns line numbers.
   - id: F3
     step: |
-      cmd/cat writes the transformed content to stdout. With no flags, output is the
-      verbatim concatenation of all inputs.
+      The differential testing harness (pkg/testutils) executes both ./bin/cat and gcat
+      with the same stdin, args, and environment. Requires F1 (binary must be built).
   - id: F4
     step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/cat and gcat
-      with the same stdin, args, and environment.
-  - id: F5
-    step: |
-      The harness compares stdout byte-for-byte with no normalization. Both binaries must
-      produce identical output bytes.
-  - id: F6
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both outputs, and both exit codes.
+      The harness compares stdout byte-for-byte with no normalization (cat output is
+      deterministic). Divergence triggers failure reporting per pkg/testutils contract.
 
 touchpoints:
   - T1: "cmd/cat — concatenation, line numbering, blank squeezing, non-printing display (prd006-cat R1, R2, R3, R4, R5)"
@@ -48,42 +41,30 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/cat compiles and ./bin/cat exists after mage build.
+    criterion: |
+      The differential test passes for all flag combinations: default, -n, -b, -s, -v,
+      -A (-vET combined), multi-file concatenation, and stdin. This validates the full
+      cmd/cat implementation against gcat in a single test run.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC7
   - id: S2
     criterion: |
-      ./bin/cat file1 file2 produces identical bytes to gcat file1 file2 for text files.
+      -A mode (combined -vET) produces output matching gcat -A byte-for-byte on binary
+      input, confirming that the three transformations compose correctly.
+    traces:
+      - AC4
   - id: S3
     criterion: |
-      The differential test for default mode passes: ./bin/cat and gcat produce identical
-      output on multi-file text input.
-  - id: S4
-    criterion: |
-      The differential test for -n passes: line numbers match gcat output byte-for-byte
-      (format, width, tab separator).
-  - id: S5
-    criterion: |
-      The differential test for -b passes: only non-blank lines are numbered, matching
-      gcat -b output.
-  - id: S6
-    criterion: |
-      The differential test for -s passes: consecutive blank lines are collapsed to one,
-      matching gcat -s output.
-  - id: S7
-    criterion: |
-      The differential test for -v passes: non-printing characters are displayed with
-      correct caret and M- notation, matching gcat -v byte-for-byte on binary input.
-  - id: S8
-    criterion: |
-      The differential test for -A passes: combined -vET transformations match gcat -A
-      byte-for-byte.
-  - id: S9
-    criterion: |
-      The differential test for multiple files passes: files are concatenated with no
-      separator, matching gcat output.
-  - id: S10
-    criterion: |
       A non-existent file argument produces an error to stderr, exits 1, and still
-      processes other files on the command line, matching gcat behavior.
+      processes remaining files, matching gcat behavior. This validates error-recovery
+      across multiple inputs.
+    traces:
+      - AC6
 
 out_of_scope:
   - FIONREAD ioctl optimization is not tested; correctness is the only requirement.
