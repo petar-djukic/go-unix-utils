@@ -1,0 +1,63 @@
+id: prd055-tail
+title: "cmd/tail: Print the Last Lines or Bytes of Files"
+
+problem: |
+  tail is the complement to head: it extracts the end of files or follows growing files
+  in real time. The macOS BSD tail differs from GNU tail in byte-mode support, plus-prefix
+  semantics, and multi-file header formatting. The Go implementation must match the
+  Homebrew GNU reference binary (gtail, installed by coreutils) byte-for-byte on all
+  static flag combinations, verified by differential testing via pkg/testutils. Follow
+  mode (-f) is excluded from differential testing because its output is non-deterministic.
+
+goals:
+  - G1: Print the last N lines of each input file, defaulting to 10 lines.
+  - G2: Support byte-count mode (-c) as an alternative to line-count mode (-n).
+  - G3: Support starting from a given line or byte offset with the + prefix.
+  - G4: Verify functional parity against gtail via differential testing on static modes.
+
+requirements:
+  R1:
+    title: Line-count mode (default and -n)
+    items:
+      - R1.1: When no flags are given, must print the last 10 lines of each input file.
+      - R1.2: "-n NUM or --lines=NUM must print the last NUM lines. NUM must be a positive integer or prefixed with '+' to start from line NUM."
+      - R1.3: "When NUM is prefixed with '+' (e.g., -n +5), must print starting from line NUM to the end of the file. Line numbering starts at 1."
+      - R1.4: Must read from stdin when no file arguments are given or when a file argument is "-".
+
+  R2:
+    title: Byte-count mode (-c)
+    items:
+      - R2.1: "-c NUM or --bytes=NUM must print the last NUM bytes of each input. -c and -n are mutually exclusive; the last one given takes precedence."
+      - R2.2: "When NUM is prefixed with '+' (e.g., -c +100), must print starting from byte NUM to the end. Byte numbering starts at 1."
+      - R2.3: NUM may use multiplier suffixes as defined by GNU coreutils (b, K/KiB, M/MiB, G/GiB).
+
+  R3:
+    title: Multi-file output and headers
+    items:
+      - R3.1: "When multiple files are given, must precede each file's output with a header in the format '==> FILENAME <==' followed by a newline. A blank line separates each file's header from the previous file's output."
+      - R3.2: When a single file is given, must not print a header by default.
+      - R3.3: -q or --quiet or --silent must suppress all headers, even for multiple files.
+      - R3.4: -v or --verbose must print headers even for a single file.
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 when all input files are processed successfully.
+      - R4.2: Must exit 1 when any input file cannot be opened or read. Must still process and output content for the files that were successfully read.
+      - R4.3: "Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must cover: default 10 lines, explicit -n count, -c byte count, +N offset (lines and bytes), multi-file headers, -q, -v, stdin input, and error on non-existent file."
+      - R4.4: "When a named file cannot be opened, must print an error message to stderr and continue processing remaining files."
+
+non_goals:
+  - "cmd/tail does not implement -f or --follow (follow mode). Follow mode output is non-deterministic and cannot be verified by differential testing."
+  - "cmd/tail does not implement --pid (terminate after process dies). This flag is only meaningful with -f."
+  - "cmd/tail does not implement --retry (keep trying to open a file). This flag is only meaningful with -f."
+  - cmd/tail does not implement -F (equivalent to --follow=name --retry).
+
+acceptance_criteria:
+  - "AC1: seq 1 20 | go run ./cmd/tail produces lines 11 through 20, matching gtail."
+  - "AC2: seq 1 20 | go run ./cmd/tail -n 5 produces lines 16 through 20, matching gtail."
+  - "AC3: seq 1 20 | go run ./cmd/tail -n +5 produces lines 5 through 20, matching gtail."
+  - "AC4: printf 'abcdefghij' | go run ./cmd/tail -c 5 produces 'fghij', matching gtail."
+  - "AC5: go run ./cmd/tail file1.txt file2.txt prints headers and correct tail content, matching gtail."
+  - "AC6: Differential test against gtail passes for all static flag combinations listed in R4.3."
+  - "AC7: cmd/tail compiles with no warnings under golangci-lint."

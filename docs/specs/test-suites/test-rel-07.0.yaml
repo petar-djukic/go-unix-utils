@@ -1,0 +1,301 @@
+id: test-rel07.0
+title: "Test Suite: rel07.0 — sort, tr, tail"
+release: rel07.0
+
+traces:
+  - rel07.0-uc001-sort
+  - rel07.0-uc002-tr
+  - rel07.0-uc003-tail
+  - prd053-sort R1
+  - prd053-sort R2
+  - prd053-sort R3
+  - prd053-sort R4
+  - prd054-tr R1
+  - prd054-tr R2
+  - prd054-tr R3
+  - prd054-tr R4
+  - prd055-tail R1
+  - prd055-tail R2
+  - prd055-tail R3
+  - prd055-tail R4
+
+preconditions:
+  - ./bin/sort, ./bin/tr, and ./bin/tail exist (built via mage build).
+  - Reference binaries gsort, gtr, and gtail are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "sort: no output normalization is needed; sort output is deterministic under LC_ALL=C."
+  - "tr: no output normalization is needed; tr output is deterministic."
+  - "tail: no output normalization is needed; tail static mode output is deterministic."
+
+test_cases:
+  # --- sort: default lexicographic ---
+  - name: sort_default_lexicographic
+    description: "sort with no flags orders lines lexicographically by byte value."
+    inputs:
+      args: []
+      stdin: "banana\napple\ncherry\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "apple\nbanana\ncherry\n"
+      stderr: ""
+    traces:
+      - prd053-sort R1.1
+
+  # --- sort: numeric ---
+  - name: sort_numeric
+    description: "sort -n orders lines by numeric value."
+    inputs:
+      args: ["-n"]
+      stdin: "10\n2\n1\n20\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n2\n10\n20\n"
+      stderr: ""
+    traces:
+      - prd053-sort R2.1
+
+  # --- sort: reverse ---
+  - name: sort_reverse
+    description: "sort -r reverses the sort order."
+    inputs:
+      args: ["-r"]
+      stdin: "apple\nbanana\ncherry\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "cherry\nbanana\napple\n"
+      stderr: ""
+    traces:
+      - prd053-sort R1.4
+
+  # --- sort: unique ---
+  - name: sort_unique
+    description: "sort -u outputs only the first of equal runs."
+    inputs:
+      args: ["-u"]
+      stdin: "apple\nbanana\napple\ncherry\nbanana\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "apple\nbanana\ncherry\n"
+      stderr: ""
+    traces:
+      - prd053-sort R1.5
+
+  # --- sort: key field with delimiter ---
+  - name: sort_key_field_delimiter
+    description: "sort -k2,2 -t: sorts by the second colon-delimited field."
+    inputs:
+      args: ["-k2,2", "-t:"]
+      stdin: "c:banana\na:cherry\nb:apple\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "b:apple\nc:banana\na:cherry\n"
+      stderr: ""
+    traces:
+      - prd053-sort R3.1
+      - prd053-sort R3.2
+
+  # --- sort: check sorted ---
+  - name: sort_check_sorted
+    description: "sort -c on sorted input exits 0."
+    inputs:
+      args: ["-c"]
+      stdin: "apple\nbanana\ncherry\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd053-sort R4.2
+
+  # --- sort: check unsorted ---
+  - name: sort_check_unsorted
+    description: "sort -c on unsorted input exits 1."
+    inputs:
+      args: ["-c"]
+      stdin: "banana\napple\ncherry\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr_contains: "disorder"
+    traces:
+      - prd053-sort R4.2
+
+  # --- tr: basic translation ---
+  - name: tr_basic_translate
+    description: "tr translates lowercase to uppercase."
+    inputs:
+      args: ["a-z", "A-Z"]
+      stdin: "hello world\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "HELLO WORLD\n"
+      stderr: ""
+    traces:
+      - prd054-tr R1.1
+
+  # --- tr: delete ---
+  - name: tr_delete
+    description: "tr -d deletes characters in SET1."
+    inputs:
+      args: ["-d", "l"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "heo\n"
+      stderr: ""
+    traces:
+      - prd054-tr R2.1
+
+  # --- tr: squeeze ---
+  - name: tr_squeeze
+    description: "tr -s squeezes repeated characters."
+    inputs:
+      args: ["-s", "a-c"]
+      stdin: "aabbcc\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "abc\n"
+      stderr: ""
+    traces:
+      - prd054-tr R2.2
+
+  # --- tr: complement delete ---
+  - name: tr_complement_delete
+    description: "tr -cd deletes all characters not in SET1."
+    inputs:
+      args: ["-cd", "a-z\n"]
+      stdin: "hello 123 world\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "helloworld\n"
+      stderr: ""
+    traces:
+      - prd054-tr R2.4
+
+  # --- tr: character class ---
+  - name: tr_character_class_digit_delete
+    description: "tr -d [:digit:] deletes all digits."
+    inputs:
+      args: ["-d", "[:digit:]"]
+      stdin: "abc123def456\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "abcdef\n"
+      stderr: ""
+    traces:
+      - prd054-tr R1.4
+
+  # --- tail: default 10 lines ---
+  - name: tail_default_10_lines
+    description: "tail with no flags prints the last 10 lines of stdin."
+    inputs:
+      args: []
+      stdin: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n"
+      stderr: ""
+    traces:
+      - prd055-tail R1.1
+
+  # --- tail: explicit line count ---
+  - name: tail_n_5
+    description: "tail -n 5 prints the last 5 lines."
+    inputs:
+      args: ["-n", "5"]
+      stdin: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "6\n7\n8\n9\n10\n"
+      stderr: ""
+    traces:
+      - prd055-tail R1.2
+
+  # --- tail: plus offset ---
+  - name: tail_n_plus_5
+    description: "tail -n +5 prints starting from line 5 to the end."
+    inputs:
+      args: ["-n", "+5"]
+      stdin: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "5\n6\n7\n8\n9\n10\n"
+      stderr: ""
+    traces:
+      - prd055-tail R1.3
+
+  # --- tail: byte count ---
+  - name: tail_c_5
+    description: "tail -c 5 prints the last 5 bytes."
+    inputs:
+      args: ["-c", "5"]
+      stdin: "abcdefghij"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "fghij"
+      stderr: ""
+    traces:
+      - prd055-tail R2.1
+
+  # --- tail: multi-file headers ---
+  - name: tail_multi_file_headers
+    description: "tail with two files prints headers '==> FILENAME <==' before each file's output. Setup: file1.txt contains lines 1-12, file2.txt contains lines 1-12."
+    inputs:
+      args: ["file1.txt", "file2.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout_contains: "==> file1.txt <=="
+      stderr: ""
+    traces:
+      - prd055-tail R3.1
+
+  # --- tail: missing file error ---
+  - name: tail_missing_file
+    description: "tail with a non-existent file prints error to stderr and exits 1."
+    inputs:
+      args: ["missing.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "missing.txt"
+    traces:
+      - prd055-tail R4.2
+      - prd055-tail R4.4

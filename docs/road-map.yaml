@@ -296,3 +296,38 @@ releases:
           status: spec_complete
         - id: rel06.1-uc005-groups
           status: spec_complete
+
+    - version: "07.0"
+      name: "Batch 7.0 — text processing pipeline (sort, tr, tail)"
+      status: spec_complete
+      description: |
+        Implement three text processing utilities that complete the stream processing
+        toolkit. sort orders lines with configurable keys, numeric modes, and field
+        delimiters. tr translates, deletes, or squeezes characters using SET specifications
+        and POSIX character classes. tail prints the last N lines or bytes of files, the
+        complement to head (rel02.2). All are verified by differential testing against GNU
+        coreutils reference binaries.
+      use_cases:
+        - id: rel07.0-uc001-sort
+          status: spec_complete
+        - id: rel07.0-uc002-tr
+          status: spec_complete
+        - id: rel07.0-uc003-tail
+          status: spec_complete
+
+    - version: "07.1"
+      name: "Batch 7.1 — file operations (cp, mv, rm)"
+      status: spec_complete
+      description: |
+        Implement three fundamental file operation utilities. cp copies files and directories
+        with attribute preservation, recursive mode, and symlink handling. mv moves or renames
+        files within and across filesystems. rm removes files and directories with recursive,
+        force, and interactive modes. All are verified by differential testing against GNU
+        coreutils reference binaries, comparing exit codes and resulting file system state.
+      use_cases:
+        - id: rel07.1-uc001-cp
+          status: spec_complete
+        - id: rel07.1-uc002-mv
+          status: spec_complete
+        - id: rel07.1-uc003-rm
+          status: spec_complete
