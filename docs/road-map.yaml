@@ -1,317 +1,298 @@
 id: go-unix-utils-roadmap
 title: "go-unix-utils Release Road Map"
-
 releases:
-  - version: "00.0"
-    name: "Batch 0 — foundational infrastructure"
-    status: implemented
-    description: |
-      Specify and verify the build lifecycle and shared library infrastructure that all
-      subsequent releases depend on. This release covers magefiles/ (build, lint, clean,
-      install targets and cmd/version), pkg/testutils (differential testing harness),
-      pkg/sys (syscall abstractions), and pkg/format (output formatting). The cmd/version
-      binary is the first compiled artifact and the smoke test for the build pipeline.
-    use_cases:
-      - id: rel00.0-uc001-magefiles
-        status: implemented
-      - id: rel00.0-uc002-format
-        status: implemented
-      - id: rel00.0-uc003-sys
-        status: implemented
-      - id: rel00.0-uc004-testutils
-        status: implemented
-
-  - version: "01.1"
-    name: "Batch 1.1 — cat specification and differential test"
-    status: implemented
-    description: |
-      Implement cat for file concatenation and display. cat depends on pkg/testutils from
-      rel00.0 for differential testing and does not require pkg/sys or pkg/format.
-    use_cases:
-      - id: rel01.1-uc001-cat
-        status: implemented
-
-  - version: "01.2"
-    name: "Batch 1.2 — sponge specification and differential test"
-    status: implemented
-    description: |
-      Implement sponge for soak-before-write stdin buffering. sponge depends on
-      pkg/testutils from rel00.0 for differential testing and does not require pkg/sys
-      or pkg/format.
-    use_cases:
-      - id: rel01.2-uc001-sponge
-        status: implemented
-
-  - version: "01.3"
-    name: "Batch 1.3 — du specification and differential test"
-    status: implemented
-    description: |
-      Implement du for recursive directory disk usage reporting. du depends on
-      pkg/testutils from rel00.0 for differential testing and requires pkg/sys and
-      pkg/format for extended file metadata and human-readable size formatting.
-    use_cases:
-      - id: rel01.3-uc001-du
-        status: implemented
-
-  - version: "02.0"
-    name: "Batch 2 — trivial utilities (true, false, yes, basename, dirname)"
-    status: implemented
-    description: |
-      Implement five trivial utilities that require minimal logic and no shared library
-      dependencies beyond pkg/testutils. true and false are exit-code-only programs. yes
-      outputs repeated lines. basename and dirname perform string-based path manipulation.
-      All are verified by differential testing against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel02.0-uc001-true
-        status: implemented
-      - id: rel02.0-uc002-false
-        status: implemented
-      - id: rel02.0-uc003-yes
-        status: implemented
-      - id: rel02.0-uc004-basename
-        status: implemented
-      - id: rel02.0-uc005-dirname
-        status: implemented
-
-  - version: "02.1"
-    name: "Batch 2.1 — tee specification and differential test"
-    status: implemented
-    description: |
-      Implement tee for copying stdin to stdout and one or more output files simultaneously.
-      tee depends on pkg/testutils from rel00.0 for differential testing. Supports append
-      mode (-a) and SIGINT suppression (-i).
-    use_cases:
-      - id: rel02.1-uc001-tee
-        status: implemented
-
-  - version: "02.2"
-    name: "Batch 2.2 — head and seq specification and differential test"
-    status: implemented
-    description: |
-      Implement head for printing the first N lines or bytes of files, and seq for
-      generating number sequences. Both depend on pkg/testutils from rel00.0 for
-      differential testing. head supports line-count (-n), byte-count (-c), negative
-      counts, and multi-file headers with -q/-v control. seq supports three argument
-      forms, format strings (-f), equal-width padding (-w), and custom separators (-s).
-    use_cases:
-      - id: rel02.2-uc001-head
-        status: implemented
-      - id: rel02.2-uc002-seq
-        status: implemented
-
-  - version: "03.0"
-    name: "Batch 3 — wc specification and differential test"
-    status: implemented
-    description: |
-      Implement the wc word, line, and byte counter. wc depends on pkg/testutils from
-      rel00.0 for differential testing and does not require pkg/sys or pkg/format.
-      Moved from rel01.0 because wc has repeatedly timed out during generation runs
-      due to task complexity from expanded sub-requirements.
-    use_cases:
-      - id: rel03.0-uc001-wc
-        status: implemented
-
-  - version: "03.1"
-    name: "Batch 3.1 — system information (uname, arch, nproc, hostname, hostid)"
-    status: spec_complete
-    description: |
-      Implement five trivial system information utilities that wrap OS queries and print
-      results. uname prints kernel name, version, machine architecture, and other system
-      fields via individual flags or -a for all. arch prints the machine hardware name
-      (equivalent to uname -m). nproc prints the number of available processing units with
-      optional --all and --ignore=N flags. hostname prints the system hostname. hostid prints
-      the 32-bit host identifier as an 8-digit hexadecimal number. All are verified by
-      differential testing against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel03.1-uc001-uname
-        status: spec_complete
-      - id: rel03.1-uc002-arch
-        status: spec_complete
-      - id: rel03.1-uc003-nproc
-        status: spec_complete
-      - id: rel03.1-uc004-hostname
-        status: spec_complete
-      - id: rel03.1-uc005-hostid
-        status: spec_complete
-
-  - version: "04.0"
-    name: "Batch 4 — ls specification and differential test"
-    status: implemented
-    description: |
-      Full ls implementation covering all flags: default, -1, -l, -a, -A, -d, --color, -h
-      (core), plus -C, -x, sort flags (-t, -S, -r, -U, -v), metadata display (-i, -s, -n),
-      -F classify, and -R recursive (extended). Previously split across rel04.0 and rel04.1;
-      merged after combining prd008-ls and prd010-ls-extended into a single PRD.
-    use_cases:
-      - id: rel04.0-uc001-ls
-        status: implemented
-      - id: rel04.0-uc002-ls-extended
-        status: implemented
-
-  - version: "04.1"
-    name: "Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)"
-    status: spec_complete
-    description: |
-      Implement five path resolution and terminal utilities. realpath prints the resolved
-      absolute path for each argument with existence modes (-e, -m), symlink control (-s),
-      and relative output (--relative-to, --relative-base). readlink prints the target of
-      a symbolic link or canonicalizes paths via -f, -e, -m modes. pwd prints the current
-      working directory in logical (-L) or physical (-P) mode. tty prints the terminal
-      device name connected to stdin or reports "not a tty" with exit code 1. logname prints
-      the login name from the system login record. All are verified by differential testing
-      against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel04.1-uc001-realpath
-        status: spec_complete
-      - id: rel04.1-uc002-readlink
-        status: spec_complete
-      - id: rel04.1-uc003-pwd
-        status: spec_complete
-      - id: rel04.1-uc004-tty
-        status: spec_complete
-      - id: rel04.1-uc005-logname
-        status: spec_complete
-
-  - version: "05.0"
-    name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
-    status: implemented
-    description: |
-      Implement four easy stream-transform utilities that depend only on pkg/testutils and
-      pkg/sys. echo outputs arguments with optional escape interpretation. tac reverses
-      line order by buffering all input. nl numbers lines with configurable styles, format,
-      and section delimiters. fold wraps long lines to a fixed column or byte width.
-      All are verified by differential testing against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel05.0-uc001-echo
-        status: implemented
-      - id: rel05.0-uc002-tac
-        status: implemented
-      - id: rel05.0-uc003-nl
-        status: implemented
-      - id: rel05.0-uc004-fold
-        status: implemented
-
-  - version: "05.1"
-    name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
-    status: implemented
-    description: |
-      Implement expand (tabs to spaces) and unexpand (spaces to tabs). Both utilities share
-      the same internal expand_common code in the C source and are natural inverses of each
-      other, though unexpand is not a lossless inverse. Both support custom tab stop intervals
-      and lists via -t. expand passes all characters through and converts only tabs. unexpand
-      converts only leading whitespace by default and all whitespace with -a. Both are verified
-      by differential testing against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel05.1-uc001-expand
-        status: implemented
-      - id: rel05.1-uc002-unexpand
-        status: implemented
-
-  - version: "05.2"
-    name: "Batch 5.2 — columnar operations pair (cut, paste)"
-    status: implemented
-    description: |
-      Implement cut (extract fields/bytes from lines) and paste (merge file lines side
-      by side). cut and paste are complementary: cut removes columns and paste adds them.
-      cut supports byte, character, and field selection with range lists, delimiter
-      configuration, output delimiter, and complement mode. paste supports parallel merge
-      and serial mode with configurable and cycling delimiters. Both are verified by
-      differential testing against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel05.2-uc001-cut
-        status: implemented
-      - id: rel05.2-uc002-paste
-        status: implemented
-
-  - version: "05.3"
-    name: "Batch 5.3 — sorted-stream comparison pair (uniq, comm)"
-    status: implemented
-    description: |
-      Implement uniq (filter adjacent duplicate lines) and comm (compare two sorted files).
-      Both utilities operate on sorted or adjacently-ordered input. uniq uses windowed
-      memory (one previous line) to detect and filter duplicate runs. comm reads one line
-      from each of two sorted files and classifies each line into three columns based on
-      set membership. Both are verified by differential testing against GNU coreutils
-      reference binaries.
-    use_cases:
-      - id: rel05.3-uc001-uniq
-        status: implemented
-      - id: rel05.3-uc002-comm
-        status: implemented
-
-  - version: "05.4"
-    name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
-    status: implemented
-    description: |
-      Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
-      protocol: GNU two-space format for text mode, asterisk format for binary mode,
-      BSD tag format, and --check verification mode with OK/FAILED reporting. Each
-      delegates to the corresponding Go standard library package (crypto/md5, crypto/sha1,
-      crypto/sha256, crypto/sha512). Verified by differential testing against gmd5sum,
-      gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
-    use_cases:
-      - id: rel05.4-uc001-md5sum
-        status: implemented
-      - id: rel05.4-uc002-sha1sum
-        status: implemented
-      - id: rel05.4-uc003-sha256sum
-        status: implemented
-      - id: rel05.4-uc004-sha512sum
-        status: implemented
-
-  - version: "05.5"
-    name: "Batch 5.5 — ts timestamp stdin lines"
-    status: implemented
-    description: |
-      Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
-      prepends a strftime-formatted timestamp to each line. Supports wall-clock (default),
-      elapsed (-s), and incremental (-i) modes, monotonic clock (-m), and subsecond
-      extensions (%.S, %.s, %.T). Originally deferred due to task complexity;
-      promoted to rel05.5 after successful generation in run 19.
-    use_cases:
-      - id: rel05.5-uc001-ts
-        status: implemented
-
-  - version: "06.0"
-    name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
-    status: implemented
-    description: |
-      Implement five file and directory manipulation utilities. mkdir creates directories
-      with optional parent creation (-p) and mode setting (-m). rmdir removes empty
-      directories with optional ancestor removal (-p). mktemp creates temporary files or
-      directories with unique names. ln creates hard or symbolic links. unlink removes a
-      single file via the unlink(2) syscall. All are verified by differential testing
-      against GNU coreutils reference binaries.
-    use_cases:
-      - id: rel06.0-uc001-mkdir
-        status: implemented
-      - id: rel06.0-uc002-rmdir
-        status: implemented
-      - id: rel06.0-uc003-mktemp
-        status: implemented
-      - id: rel06.0-uc004-ln
-        status: implemented
-      - id: rel06.0-uc005-unlink
-        status: implemented
-
-  - version: "06.1"
-    name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
-    status: implemented
-    description: |
-      Implement five environment and identity utilities. env runs a command in a modified
-      environment with variable setting, unsetting, and clean-environment support. printenv
-      prints environment variables with optional NUL-delimited output. id prints user and
-      group IDs with selection and modifier flags. whoami prints the effective username.
-      groups prints group memberships. All are verified by differential testing against
-      GNU coreutils reference binaries.
-    use_cases:
-      - id: rel06.1-uc001-env
-        status: implemented
-      - id: rel06.1-uc002-printenv
-        status: implemented
-      - id: rel06.1-uc003-id
-        status: implemented
-      - id: rel06.1-uc004-whoami
-        status: implemented
-      - id: rel06.1-uc005-groups
-        status: implemented
+    - version: "00.0"
+      name: "Batch 0 — foundational infrastructure"
+      status: implemented
+      description: |
+        Specify and verify the build lifecycle and shared library infrastructure that all
+        subsequent releases depend on. This release covers magefiles/ (build, lint, clean,
+        install targets and cmd/version), pkg/testutils (differential testing harness),
+        pkg/sys (syscall abstractions), and pkg/format (output formatting). The cmd/version
+        binary is the first compiled artifact and the smoke test for the build pipeline.
+      use_cases:
+        - id: rel00.0-uc001-magefiles
+          status: spec_complete
+        - id: rel00.0-uc002-format
+          status: spec_complete
+        - id: rel00.0-uc003-sys
+          status: spec_complete
+        - id: rel00.0-uc004-testutils
+          status: spec_complete
+    - version: "01.1"
+      name: "Batch 1.1 — cat specification and differential test"
+      status: spec_complete
+      description: |
+        Implement cat for file concatenation and display. cat depends on pkg/testutils from
+        rel00.0 for differential testing and does not require pkg/sys or pkg/format.
+      use_cases:
+        - id: rel01.1-uc001-cat
+          status: spec_complete
+    - version: "01.2"
+      name: "Batch 1.2 — sponge specification and differential test"
+      status: spec_complete
+      description: |
+        Implement sponge for soak-before-write stdin buffering. sponge depends on
+        pkg/testutils from rel00.0 for differential testing and does not require pkg/sys
+        or pkg/format.
+      use_cases:
+        - id: rel01.2-uc001-sponge
+          status: spec_complete
+    - version: "01.3"
+      name: "Batch 1.3 — du specification and differential test"
+      status: spec_complete
+      description: |
+        Implement du for recursive directory disk usage reporting. du depends on
+        pkg/testutils from rel00.0 for differential testing and requires pkg/sys and
+        pkg/format for extended file metadata and human-readable size formatting.
+      use_cases:
+        - id: rel01.3-uc001-du
+          status: spec_complete
+    - version: "02.0"
+      name: "Batch 2 — trivial utilities (true, false, yes, basename, dirname)"
+      status: spec_complete
+      description: |
+        Implement five trivial utilities that require minimal logic and no shared library
+        dependencies beyond pkg/testutils. true and false are exit-code-only programs. yes
+        outputs repeated lines. basename and dirname perform string-based path manipulation.
+        All are verified by differential testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel02.0-uc001-true
+          status: spec_complete
+        - id: rel02.0-uc002-false
+          status: spec_complete
+        - id: rel02.0-uc003-yes
+          status: spec_complete
+        - id: rel02.0-uc004-basename
+          status: spec_complete
+        - id: rel02.0-uc005-dirname
+          status: spec_complete
+    - version: "02.1"
+      name: "Batch 2.1 — tee specification and differential test"
+      status: spec_complete
+      description: |
+        Implement tee for copying stdin to stdout and one or more output files simultaneously.
+        tee depends on pkg/testutils from rel00.0 for differential testing. Supports append
+        mode (-a) and SIGINT suppression (-i).
+      use_cases:
+        - id: rel02.1-uc001-tee
+          status: spec_complete
+    - version: "02.2"
+      name: "Batch 2.2 — head and seq specification and differential test"
+      status: spec_complete
+      description: |
+        Implement head for printing the first N lines or bytes of files, and seq for
+        generating number sequences. Both depend on pkg/testutils from rel00.0 for
+        differential testing. head supports line-count (-n), byte-count (-c), negative
+        counts, and multi-file headers with -q/-v control. seq supports three argument
+        forms, format strings (-f), equal-width padding (-w), and custom separators (-s).
+      use_cases:
+        - id: rel02.2-uc001-head
+          status: spec_complete
+        - id: rel02.2-uc002-seq
+          status: spec_complete
+    - version: "03.0"
+      name: "Batch 3 — wc specification and differential test"
+      status: spec_complete
+      description: |
+        Implement the wc word, line, and byte counter. wc depends on pkg/testutils from
+        rel00.0 for differential testing and does not require pkg/sys or pkg/format.
+        Moved from rel01.0 because wc has repeatedly timed out during generation runs
+        due to task complexity from expanded sub-requirements.
+      use_cases:
+        - id: rel03.0-uc001-wc
+          status: spec_complete
+    - version: "03.1"
+      name: "Batch 3.1 — system information (uname, arch, nproc, hostname, hostid)"
+      status: spec_complete
+      description: |
+        Implement five trivial system information utilities that wrap OS queries and print
+        results. uname prints kernel name, version, machine architecture, and other system
+        fields via individual flags or -a for all. arch prints the machine hardware name
+        (equivalent to uname -m). nproc prints the number of available processing units with
+        optional --all and --ignore=N flags. hostname prints the system hostname. hostid prints
+        the 32-bit host identifier as an 8-digit hexadecimal number. All are verified by
+        differential testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel03.1-uc001-uname
+          status: spec_complete
+        - id: rel03.1-uc002-arch
+          status: spec_complete
+        - id: rel03.1-uc003-nproc
+          status: spec_complete
+        - id: rel03.1-uc004-hostname
+          status: spec_complete
+        - id: rel03.1-uc005-hostid
+          status: spec_complete
+    - version: "04.0"
+      name: "Batch 4 — ls specification and differential test"
+      status: spec_complete
+      description: |
+        Full ls implementation covering all flags: default, -1, -l, -a, -A, -d, --color, -h
+        (core), plus -C, -x, sort flags (-t, -S, -r, -U, -v), metadata display (-i, -s, -n),
+        -F classify, and -R recursive (extended). Previously split across rel04.0 and rel04.1;
+        merged after combining prd008-ls and prd010-ls-extended into a single PRD.
+      use_cases:
+        - id: rel04.0-uc001-ls
+          status: spec_complete
+        - id: rel04.0-uc002-ls-extended
+          status: spec_complete
+    - version: "04.1"
+      name: "Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)"
+      status: spec_complete
+      description: |
+        Implement five path resolution and terminal utilities. realpath prints the resolved
+        absolute path for each argument with existence modes (-e, -m), symlink control (-s),
+        and relative output (--relative-to, --relative-base). readlink prints the target of
+        a symbolic link or canonicalizes paths via -f, -e, -m modes. pwd prints the current
+        working directory in logical (-L) or physical (-P) mode. tty prints the terminal
+        device name connected to stdin or reports "not a tty" with exit code 1. logname prints
+        the login name from the system login record. All are verified by differential testing
+        against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel04.1-uc001-realpath
+          status: spec_complete
+        - id: rel04.1-uc002-readlink
+          status: spec_complete
+        - id: rel04.1-uc003-pwd
+          status: spec_complete
+        - id: rel04.1-uc004-tty
+          status: spec_complete
+        - id: rel04.1-uc005-logname
+          status: spec_complete
+    - version: "05.0"
+      name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
+      status: spec_complete
+      description: |
+        Implement four easy stream-transform utilities that depend only on pkg/testutils and
+        pkg/sys. echo outputs arguments with optional escape interpretation. tac reverses
+        line order by buffering all input. nl numbers lines with configurable styles, format,
+        and section delimiters. fold wraps long lines to a fixed column or byte width.
+        All are verified by differential testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel05.0-uc001-echo
+          status: spec_complete
+        - id: rel05.0-uc002-tac
+          status: spec_complete
+        - id: rel05.0-uc003-nl
+          status: spec_complete
+        - id: rel05.0-uc004-fold
+          status: spec_complete
+    - version: "05.1"
+      name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
+      status: spec_complete
+      description: |
+        Implement expand (tabs to spaces) and unexpand (spaces to tabs). Both utilities share
+        the same internal expand_common code in the C source and are natural inverses of each
+        other, though unexpand is not a lossless inverse. Both support custom tab stop intervals
+        and lists via -t. expand passes all characters through and converts only tabs. unexpand
+        converts only leading whitespace by default and all whitespace with -a. Both are verified
+        by differential testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel05.1-uc001-expand
+          status: spec_complete
+        - id: rel05.1-uc002-unexpand
+          status: spec_complete
+    - version: "05.2"
+      name: "Batch 5.2 — columnar operations pair (cut, paste)"
+      status: spec_complete
+      description: |
+        Implement cut (extract fields/bytes from lines) and paste (merge file lines side
+        by side). cut and paste are complementary: cut removes columns and paste adds them.
+        cut supports byte, character, and field selection with range lists, delimiter
+        configuration, output delimiter, and complement mode. paste supports parallel merge
+        and serial mode with configurable and cycling delimiters. Both are verified by
+        differential testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel05.2-uc001-cut
+          status: spec_complete
+        - id: rel05.2-uc002-paste
+          status: spec_complete
+    - version: "05.3"
+      name: "Batch 5.3 — sorted-stream comparison pair (uniq, comm)"
+      status: spec_complete
+      description: |
+        Implement uniq (filter adjacent duplicate lines) and comm (compare two sorted files).
+        Both utilities operate on sorted or adjacently-ordered input. uniq uses windowed
+        memory (one previous line) to detect and filter duplicate runs. comm reads one line
+        from each of two sorted files and classifies each line into three columns based on
+        set membership. Both are verified by differential testing against GNU coreutils
+        reference binaries.
+      use_cases:
+        - id: rel05.3-uc001-uniq
+          status: spec_complete
+        - id: rel05.3-uc002-comm
+          status: spec_complete
+    - version: "05.4"
+      name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
+      status: spec_complete
+      description: |
+        Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
+        protocol: GNU two-space format for text mode, asterisk format for binary mode,
+        BSD tag format, and --check verification mode with OK/FAILED reporting. Each
+        delegates to the corresponding Go standard library package (crypto/md5, crypto/sha1,
+        crypto/sha256, crypto/sha512). Verified by differential testing against gmd5sum,
+        gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
+      use_cases:
+        - id: rel05.4-uc001-md5sum
+          status: spec_complete
+        - id: rel05.4-uc002-sha1sum
+          status: spec_complete
+        - id: rel05.4-uc003-sha256sum
+          status: spec_complete
+        - id: rel05.4-uc004-sha512sum
+          status: spec_complete
+    - version: "05.5"
+      name: "Batch 5.5 — ts timestamp stdin lines"
+      status: spec_complete
+      description: |
+        Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
+        prepends a strftime-formatted timestamp to each line. Supports wall-clock (default),
+        elapsed (-s), and incremental (-i) modes, monotonic clock (-m), and subsecond
+        extensions (%.S, %.s, %.T). Originally deferred due to task complexity;
+        promoted to rel05.5 after successful generation in run 19.
+      use_cases:
+        - id: rel05.5-uc001-ts
+          status: spec_complete
+    - version: "06.0"
+      name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
+      status: spec_complete
+      description: |
+        Implement five file and directory manipulation utilities. mkdir creates directories
+        with optional parent creation (-p) and mode setting (-m). rmdir removes empty
+        directories with optional ancestor removal (-p). mktemp creates temporary files or
+        directories with unique names. ln creates hard or symbolic links. unlink removes a
+        single file via the unlink(2) syscall. All are verified by differential testing
+        against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel06.0-uc001-mkdir
+          status: spec_complete
+        - id: rel06.0-uc002-rmdir
+          status: spec_complete
+        - id: rel06.0-uc003-mktemp
+          status: spec_complete
+        - id: rel06.0-uc004-ln
+          status: spec_complete
+        - id: rel06.0-uc005-unlink
+          status: spec_complete
+    - version: "06.1"
+      name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
+      status: spec_complete
+      description: |
+        Implement five environment and identity utilities. env runs a command in a modified
+        environment with variable setting, unsetting, and clean-environment support. printenv
+        prints environment variables with optional NUL-delimited output. id prints user and
+        group IDs with selection and modifier flags. whoami prints the effective username.
+        groups prints group memberships. All are verified by differential testing against
+        GNU coreutils reference binaries.
+      use_cases:
+        - id: rel06.1-uc001-env
+          status: spec_complete
+        - id: rel06.1-uc002-printenv
+          status: spec_complete
+        - id: rel06.1-uc003-id
+          status: spec_complete
+        - id: rel06.1-uc004-whoami
+          status: spec_complete
+        - id: rel06.1-uc005-groups
+          status: spec_complete
