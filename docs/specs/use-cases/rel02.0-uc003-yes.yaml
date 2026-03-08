@@ -16,24 +16,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/yes | head -n 5". yes outputs "y\n" repeatedly. head
-      captures the first 5 lines and closes the pipe, sending SIGPIPE to yes.
+      The operator runs "./bin/yes | head -n 5". yes outputs "y\n" repeatedly until
+      head closes the pipe, sending SIGPIPE. The binary must handle SIGPIPE gracefully
+      via pkg/sys.InstallSIGPIPEHandler.
   - id: F2
     step: |
-      The operator runs "./bin/yes hello world | head -n 3". yes joins the arguments
-      with a space and outputs "hello world\n" repeatedly.
+      The operator tests argument joining and "--" separator. yes joins all arguments
+      with spaces; arguments after "--" are treated as literals.
   - id: F3
     step: |
-      The operator runs "./bin/yes -- --help | head -n 1" to verify that arguments
-      after "--" are treated as literal strings, not flags.
-  - id: F4
-    step: |
-      The differential testing harness (pkg/testutils) executes both "./bin/yes | head -n N"
-      and "gyes | head -n N" with the same arguments and environment.
-  - id: F5
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output for the captured lines.
+      The differential testing harness (pkg/testutils) executes both ./bin/yes and gyes
+      piped through head with the same arguments. Requires F1 (binary must be built).
+      Output is captured after head truncates the infinite stream.
 
 touchpoints:
   - T1: "cmd/yes — repeated output, argument joining, SIGPIPE handling (prd012-yes R1, R2, R3)"
@@ -41,21 +35,15 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/yes compiles and ./bin/yes exists after mage build.
-  - id: S2
-    criterion: |
-      "./bin/yes | head -n 5" produces five lines of "y", matching gyes output.
-  - id: S3
-    criterion: |
-      "./bin/yes hello world | head -n 3" produces three lines of "hello world",
-      matching gyes output.
-  - id: S4
-    criterion: |
-      "./bin/yes -- --help | head -n 1" produces "--help", matching gyes output.
-  - id: S5
     criterion: |
       The differential test passes for default, single-arg, multi-arg, and "--"
-      separator cases.
+      separator cases, confirming output and SIGPIPE handling match gyes.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
 
 out_of_scope:
   - Throughput benchmarking is not part of differential testing. Performance is verified

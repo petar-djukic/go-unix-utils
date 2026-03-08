@@ -16,24 +16,13 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/dirname /usr/bin/sort". dirname strips the last
-      component and prints "/usr/bin" followed by a newline.
+      The operator exercises dirname with simple, nested, and edge-case paths. All
+      operations are pure string manipulation; no filesystem access occurs.
   - id: F2
     step: |
-      The operator runs "./bin/dirname stdio.h". dirname finds no directory component
-      and prints "." (current directory).
-  - id: F3
-    step: |
-      The operator runs "./bin/dirname /usr/bin/ /etc/hosts" to process multiple
-      paths. dirname prints "/usr" and "/etc" on separate lines.
-  - id: F4
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/dirname
-      and gdirname with the same arguments and environment.
-  - id: F5
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/dirname and
+      gdirname with the same arguments. Requires F1 (binary must be built). Edge cases
+      (root, trailing slashes, dots, multiple arguments) are included.
 
 touchpoints:
   - T1: "cmd/dirname — path stripping, trailing slash handling, NUL output (prd016-dirname R1, R2, R3)"
@@ -41,21 +30,18 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/dirname compiles and ./bin/dirname exists after mage build.
-  - id: S2
-    criterion: |
-      "./bin/dirname /usr/bin/sort" produces "/usr/bin", matching gdirname.
-  - id: S3
-    criterion: |
-      No-directory case works: "./bin/dirname stdio.h" produces ".".
-  - id: S4
-    criterion: |
-      Edge cases match: root path ("/"), trailing slashes, ".", "..", multiple
-      arguments all produce output identical to gdirname.
-  - id: S5
     criterion: |
       The differential test passes for simple paths, nested paths, trailing slashes,
-      root, relative paths, dots, multiple arguments, and -z mode.
+      root, relative paths, dots, multiple arguments, and -z mode, confirming full
+      parity with gdirname.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
 
 out_of_scope:
   - Symlink resolution is not tested; dirname operates on string representation only.

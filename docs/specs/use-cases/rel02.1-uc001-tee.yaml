@@ -17,28 +17,17 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "printf 'hello\nworld\n' | ./bin/tee /tmp/out.txt". tee writes
-      the data to stdout and to /tmp/out.txt simultaneously.
+      The operator pipes data through tee to one or more output files. tee writes to
+      stdout and all file arguments simultaneously (fan-out pattern).
   - id: F2
     step: |
-      The operator runs "printf 'line1\n' | ./bin/tee /tmp/a.txt /tmp/b.txt" to verify
-      multi-file output. tee writes identical content to both files and stdout.
+      The operator tests append mode (-a) and passthrough (no file arguments). Append
+      mode must not truncate existing file content before writing.
   - id: F3
     step: |
-      The operator runs "printf 'new\n' | ./bin/tee -a /tmp/existing.txt" to verify
-      append mode. tee appends to the file without truncating existing content.
-  - id: F4
-    step: |
-      The operator runs "printf 'passthrough\n' | ./bin/tee" with no file arguments.
-      tee copies stdin to stdout only (passthrough mode).
-  - id: F5
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/tee and gtee
-      with the same arguments, stdin, and environment.
-  - id: F6
-    step: |
-      The harness compares stdout byte-for-byte, output file contents byte-for-byte,
-      and exit codes. Both binaries must produce identical results.
+      with the same stdin and arguments. Requires F1 (binary must be built). Compares
+      both stdout and output file contents byte-for-byte via file-state comparison.
 
 touchpoints:
   - T1: "cmd/tee — stdin copy, file output, append mode, SIGINT suppression (prd017-tee R1, R2, R3)"
@@ -46,28 +35,22 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/tee compiles and ./bin/tee exists after mage build.
-  - id: S2
-    criterion: |
-      "printf 'hello\nworld\n' | ./bin/tee /tmp/out.txt" produces "hello\nworld\n"
-      on stdout and identical content in /tmp/out.txt, matching gtee.
-  - id: S3
-    criterion: |
-      Multi-file mode works: both output files contain identical content to stdout.
-  - id: S4
-    criterion: |
-      Append mode works: "tee -a" appends to existing files without truncating.
-  - id: S5
-    criterion: |
-      Passthrough mode works: tee with no file arguments copies stdin to stdout.
-  - id: S6
-    criterion: |
-      Write-error handling works: tee exits 1 when an output file cannot be opened,
-      prints a diagnostic to stderr, and continues writing to other destinations.
-  - id: S7
     criterion: |
       The differential test passes for single file, multiple files, append mode,
-      passthrough, and write-error cases.
+      passthrough, and write-error cases, confirming full parity with gtee.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+  - id: S2
+    criterion: |
+      Write-error handling: tee exits 1 when an output file cannot be opened, prints
+      a diagnostic to stderr, and continues writing to remaining destinations. This
+      validates error-recovery across multiple output streams.
+    traces:
+      - AC4
 
 out_of_scope:
   - SIGINT suppression (-i) is tested for compilation but interactive signal delivery
