@@ -55,9 +55,59 @@ non_goals:
   - cmd/mktemp does not read templates from stdin; all input comes from command-line arguments and environment variables.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/mktemp creates a file in /tmp matching the pattern tmp.XXXXXXXXXX and prints its path, structurally matching gmktemp output."
-  - "AC2: go run ./cmd/mktemp -d creates a directory in /tmp with mode 0700, structurally matching gmktemp -d."
-  - "AC3: go run ./cmd/mktemp -p /var/tmp myapp.XXXX creates a file in /var/tmp matching myapp.XXXX, structurally matching gmktemp -p /var/tmp myapp.XXXX."
-  - "AC4: go run ./cmd/mktemp --suffix=.txt creates a file ending in .txt, structurally matching gmktemp --suffix=.txt."
-  - "AC5: Differential test against gmktemp passes for structural validation of default, -d, -p, --suffix, -t, and error cases."
-  - "AC6: cmd/mktemp compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/mktemp creates a file in /tmp matching the pattern tmp.XXXXXXXXXX and prints its path, structurally matching gmktemp output."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "go run ./cmd/mktemp -d creates a directory in /tmp with mode 0700, structurally matching gmktemp -d."
+    traces:
+      - R2.1
+      - R4.3
+  - id: AC3
+    criterion: "go run ./cmd/mktemp -p /var/tmp myapp.XXXX creates a file in /var/tmp matching myapp.XXXX, structurally matching gmktemp -p /var/tmp myapp.XXXX."
+    traces:
+      - R3.1
+      - R4.3
+  - id: AC4
+    criterion: "go run ./cmd/mktemp --suffix=.txt creates a file ending in .txt, structurally matching gmktemp --suffix=.txt."
+    traces:
+      - R3.3
+      - R4.3
+  - id: AC5
+    criterion: "Differential test against gmktemp passes for structural validation of default, -d, -p, --suffix, -t, and error cases."
+    traces:
+      - R1.5
+      - R2.1
+      - R3.1
+      - R3.3
+      - R3.4
+      - R3.6
+      - R4.1
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/mktemp compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R3.6
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

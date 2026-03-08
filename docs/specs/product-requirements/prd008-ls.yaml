@@ -160,22 +160,219 @@ non_goals:
   - --sort=WORD (long-form sort option) is out of scope; only short flags (-t, -S, -r, -U, -v) are supported.
 
 acceptance_criteria:
-  - "AC1: Default mode comparison -- gls and go run ./cmd/ls on a test directory produce identical multi-column output when run in a pseudo-TTY with the same terminal width. Differential test must set LC_ALL=C and --color=never."
-  - "AC2: Single-column comparison -- gls -1 and go run ./cmd/ls -1 produce identical output on the same test directory."
-  - "AC3: Long format comparison -- gls -l and go run ./cmd/ls -l produce identical output on the same test directory. Because mtime display depends on wall clock, differential tests must normalize the mtime column. Because owner/group names may vary, tests must use a fixture where files are owned by the test user, or normalize owner/group fields."
-  - "AC4: Color suppression -- gls --color=auto and go run ./cmd/ls --color=auto produce no ANSI escape sequences when stdout is piped (not a TTY)."
-  - "AC5: Human-readable sizes -- gls -lh and go run ./cmd/ls -lh produce identical size strings on a set of test files with known sizes."
-  - "AC6: Filter flags -- gls -a, gls -A, and gls -d produce identical output to the Go binary with the same flags on a test directory containing dotfiles and subdirectories."
-  - "AC7: Exit codes -- the Go binary exits 1 when given a non-existent path argument and exits 2 when given an invalid option, matching gls behavior."
-  - "AC8: Multi-column forced -- gls -C and go run ./cmd/ls -C produce identical column layout on a test fixture when both are given the same terminal width."
-  - "AC9: Horizontal sort -- gls -x and go run ./cmd/ls -x produce identical output on a fixture."
-  - "AC10: Time sort -- gls -t and go run ./cmd/ls -t produce identical output on a fixture with files of known different modification times."
-  - "AC11: Size sort -- gls -S and go run ./cmd/ls -S produce identical output on a fixture with files of known different sizes."
-  - "AC12: Reverse sort -- gls -r and go run ./cmd/ls -r produce identical reverse-alphabetical output. gls -tr and the Go binary with -tr produce identical reverse-time output."
-  - "AC13: Inode display -- gls -i and go run ./cmd/ls -i produce identical output when run on the same live fixture on the same filesystem."
-  - "AC14: Block count display -- gls -s and go run ./cmd/ls -s produce identical output."
-  - "AC15: Numeric IDs -- gls -n and go run ./cmd/ls -n produce identical long-format output with numeric UID and GID."
-  - "AC16: Classify -- gls -F and go run ./cmd/ls -F produce identical output on a fixture containing a directory, a regular file, an executable, a symlink, and a named pipe."
-  - "AC17: Recursive listing -- gls -R and go run ./cmd/ls -R produce identical output on a fixture with nested subdirectories."
-  - "AC18: Version sort -- gls -v and go run ./cmd/ls -v produce identical output on a fixture containing files named file1, file2, file10, file20."
-  - "AC19: cmd/ls compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "Default mode comparison -- gls and go run ./cmd/ls on a test directory produce identical multi-column output when run in a pseudo-TTY with the same terminal width. Differential test must set LC_ALL=C and --color=never."
+    traces:
+      - R1.3
+      - R1.13
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+  - id: AC2
+    criterion: "Single-column comparison -- gls -1 and go run ./cmd/ls -1 produce identical output on the same test directory."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R1.10
+      - R1.11
+      - R1.12
+      - R1.13
+      - R1.14
+  - id: AC3
+    criterion: "Long format comparison -- gls -l and go run ./cmd/ls -l produce identical output on the same test directory. Because mtime display depends on wall clock, differential tests must normalize the mtime column. Because owner/group names may vary, tests must use a fixture where files are owned by the test user, or normalize owner/group fields."
+    traces:
+      - R1.3
+      - R1.6
+      - R1.13
+      - R1.14
+      - R2.3
+      - R2.11
+      - R2.12
+      - R2.13
+      - R2.14
+      - R3.5
+      - R3.10
+      - R3.12
+      - R4.6
+      - R4.7
+      - R4.8
+  - id: AC4
+    criterion: "Color suppression -- gls --color=auto and go run ./cmd/ls --color=auto produce no ANSI escape sequences when stdout is piped (not a TTY)."
+    traces:
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+  - id: AC5
+    criterion: "Human-readable sizes -- gls -lh and go run ./cmd/ls -lh produce identical size strings on a set of test files with known sizes."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R1.10
+      - R1.11
+      - R1.12
+      - R1.13
+      - R1.14
+  - id: AC6
+    criterion: "Filter flags -- gls -a, gls -A, and gls -d produce identical output to the Go binary with the same flags on a test directory containing dotfiles and subdirectories."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.14
+  - id: AC7
+    criterion: "Exit codes -- the Go binary exits 1 when given a non-existent path argument and exits 2 when given an invalid option, matching gls behavior."
+    traces:
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
+  - id: AC8
+    criterion: "Multi-column forced -- gls -C and go run ./cmd/ls -C produce identical column layout on a test fixture when both are given the same terminal width."
+    traces:
+      - R1.11
+      - R1.12
+      - R1.13
+      - R1.14
+      - R3.10
+      - R3.12
+      - R4.7
+  - id: AC9
+    criterion: "Horizontal sort -- gls -x and go run ./cmd/ls -x produce identical output on a fixture."
+    traces:
+      - R1.13
+      - R1.14
+      - R3.10
+      - R4.7
+  - id: AC10
+    criterion: "Time sort -- gls -t and go run ./cmd/ls -t produce identical output on a fixture with files of known different modification times."
+    traces:
+      - R2.5
+      - R2.7
+      - R2.8
+      - R3.15
+  - id: AC11
+    criterion: "Size sort -- gls -S and go run ./cmd/ls -S produce identical output on a fixture with files of known different sizes."
+    traces:
+      - R2.6
+      - R2.7
+      - R2.8
+  - id: AC12
+    criterion: "Reverse sort -- gls -r and go run ./cmd/ls -r produce identical reverse-alphabetical output. gls -tr and the Go binary with -tr produce identical reverse-time output."
+    traces:
+      - R2.7
+      - R2.8
+  - id: AC13
+    criterion: "Inode display -- gls -i and go run ./cmd/ls -i produce identical output when run on the same live fixture on the same filesystem."
+    traces:
+      - R2.11
+      - R2.15
+      - R4.9
+  - id: AC14
+    criterion: "Block count display -- gls -s and go run ./cmd/ls -s produce identical output."
+    traces:
+      - R2.12
+      - R2.13
+      - R2.15
+      - R3.7
+      - R4.9
+  - id: AC15
+    criterion: "Numeric IDs -- gls -n and go run ./cmd/ls -n produce identical long-format output with numeric UID and GID."
+    traces:
+      - R2.14
+      - R4.6
+  - id: AC16
+    criterion: "Classify -- gls -F and go run ./cmd/ls -F produce identical output on a fixture containing a directory, a regular file, an executable, a symlink, and a named pipe."
+    traces:
+      - R3.8
+      - R3.10
+      - R4.9
+  - id: AC17
+    criterion: "Recursive listing -- gls -R and go run ./cmd/ls -R produce identical output on a fixture with nested subdirectories."
+    traces:
+      - R3.11
+      - R3.12
+      - R3.13
+      - R3.14
+      - R3.15
+      - R4.8
+      - R4.9
+  - id: AC18
+    criterion: "Version sort -- gls -v and go run ./cmd/ls -v produce identical output on a fixture containing files named file1, file2, file10, file20."
+    traces:
+      - R2.7
+      - R2.8
+      - R2.9
+  - id: AC19
+    criterion: "cmd/ls compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R1.10
+      - R1.11
+      - R1.12
+      - R1.13
+      - R1.14
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R2.5
+      - R2.6
+      - R2.7
+      - R2.8
+      - R2.9
+      - R2.10
+      - R2.11
+      - R2.12
+      - R2.13
+      - R2.14
+      - R2.15
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R3.6
+      - R3.7
+      - R3.8
+      - R3.9
+      - R3.10
+      - R3.11
+      - R3.12
+      - R3.13
+      - R3.14
+      - R3.15
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
+      - R4.5
+      - R4.6
+      - R4.7
+      - R4.8
+      - R4.9

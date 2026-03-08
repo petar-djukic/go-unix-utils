@@ -48,8 +48,47 @@ non_goals:
   - SHA-1 is cryptographically broken; this implementation is for compatibility with GNU tools only.
 
 acceptance_criteria:
-  - "AC1: sha1sum on a known file produces the correct SHA-1 hash in GNU format, matching gsha1sum."
-  - "AC2: sha1sum --check on a valid checksum file exits 0 and prints 'FILENAME: OK' for each entry."
-  - "AC3: sha1sum --check on a file with a mismatch exits 1 and prints 'FILENAME: FAILED'."
-  - "AC4: Differential test against gsha1sum passes for all required test cases."
-  - "AC5: cmd/sha1sum compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "sha1sum on a known file produces the correct SHA-1 hash in GNU format, matching gsha1sum."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "sha1sum --check on a valid checksum file exits 0 and prints 'FILENAME: OK' for each entry."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC3
+    criterion: "sha1sum --check on a file with a mismatch exits 1 and prints 'FILENAME: FAILED'."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC4
+    criterion: "Differential test against gsha1sum passes for all required test cases."
+    traces:
+      - R3.1
+  - id: AC5
+    criterion: "cmd/sha1sum compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3

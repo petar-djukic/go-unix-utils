@@ -51,9 +51,55 @@ non_goals:
   - cmd/echo does not read from stdin.
 
 acceptance_criteria:
-  - "AC1: echo hello world produces 'hello world\\n', matching gecho hello world byte-for-byte."
-  - "AC2: echo -n hello produces 'hello' with no trailing newline, matching gecho -n hello."
-  - "AC3: echo -e 'a\\tb\\nc' produces a tab between a and b and a newline between b and c, matching gecho -e."
-  - "AC4: echo -e 'before\\cafter' produces 'before' only with no trailing newline, matching gecho -e."
-  - "AC5: Differential test against gecho passes for all flag combinations on the required test cases."
-  - "AC6: cmd/echo compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "echo hello world produces 'hello world\\n', matching gecho hello world byte-for-byte."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "echo -n hello produces 'hello' with no trailing newline, matching gecho -n hello."
+    traces:
+      - R1.3
+      - R1.4
+      - R4.2
+  - id: AC3
+    criterion: "echo -e 'a\\tb\\nc' produces a tab between a and b and a newline between b and c, matching gecho -e."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC4
+    criterion: "echo -e 'before\\cafter' produces 'before' only with no trailing newline, matching gecho -e."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gecho passes for all flag combinations on the required test cases."
+    traces:
+      - R4.1
+  - id: AC6
+    criterion: "cmd/echo compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

@@ -39,7 +39,37 @@ non_goals:
   - cmd/logname does not print UID, GID, or group memberships; use cmd/id for that.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/logname prints the login name, matching glogname."
-  - "AC2: go run ./cmd/logname extraarg exits 1 with an error message to stderr, matching glogname."
-  - "AC3: Differential test against glogname passes for normal invocation and error cases."
-  - "AC4: cmd/logname compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/logname prints the login name, matching glogname."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC2
+    criterion: "go run ./cmd/logname extraarg exits 1 with an error message to stderr, matching glogname."
+    traces:
+      - R1.1
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "Differential test against glogname passes for normal invocation and error cases."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC4
+    criterion: "cmd/logname compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3

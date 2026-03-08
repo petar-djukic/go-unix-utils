@@ -55,12 +55,84 @@ non_goals:
   - cmd/seq does not implement locale-aware decimal separators; output always uses '.' as the decimal point.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/seq 5 produces lines 1 through 5, matching gseq 5."
-  - "AC2: go run ./cmd/seq 2 5 produces lines 2 through 5, matching gseq."
-  - "AC3: go run ./cmd/seq 1 2 10 produces 1, 3, 5, 7, 9, matching gseq."
-  - "AC4: go run ./cmd/seq 5 -1 1 produces 5, 4, 3, 2, 1 (descending), matching gseq."
-  - "AC5: go run ./cmd/seq -w 8 12 produces 08, 09, 10, 11, 12 (zero-padded), matching gseq."
-  - "AC6: go run ./cmd/seq -f '%.2f' 1 3 produces 1.00, 2.00, 3.00, matching gseq."
-  - "AC7: go run ./cmd/seq -s ', ' 1 3 produces '1, 2, 3' on a single line followed by a newline, matching gseq."
-  - "AC8: Differential test against gseq passes for all argument forms, -w, -f, -s, descending, floating-point, and error cases."
-  - "AC9: cmd/seq compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/seq 5 produces lines 1 through 5, matching gseq 5."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "go run ./cmd/seq 2 5 produces lines 2 through 5, matching gseq."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC3
+    criterion: "go run ./cmd/seq 1 2 10 produces 1, 3, 5, 7, 9, matching gseq."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC4
+    criterion: "go run ./cmd/seq 5 -1 1 produces 5, 4, 3, 2, 1 (descending), matching gseq."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC5
+    criterion: "go run ./cmd/seq -w 8 12 produces 08, 09, 10, 11, 12 (zero-padded), matching gseq."
+    traces:
+      - R3.3
+      - R3.4
+      - R4.4
+  - id: AC6
+    criterion: "go run ./cmd/seq -f '%.2f' 1 3 produces 1.00, 2.00, 3.00, matching gseq."
+    traces:
+      - R3.1
+      - R3.4
+      - R4.4
+  - id: AC7
+    criterion: "go run ./cmd/seq -s ', ' 1 3 produces '1, 2, 3' on a single line followed by a newline, matching gseq."
+    traces:
+      - R2.2
+      - R4.4
+  - id: AC8
+    criterion: "Differential test against gseq passes for all argument forms, -w, -f, -s, descending, floating-point, and error cases."
+    traces:
+      - R1.5
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.2
+      - R4.3
+      - R4.4
+  - id: AC9
+    criterion: "cmd/seq compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

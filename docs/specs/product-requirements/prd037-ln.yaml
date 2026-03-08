@@ -53,9 +53,61 @@ non_goals:
   - cmd/ln does not read target names from stdin; all input comes from command-line arguments.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/ln file1 file2 creates a hard link, and both files share the same inode, matching gln."
-  - "AC2: go run ./cmd/ln -s target linkname creates a symbolic link pointing to target, matching gln -s."
-  - "AC3: go run ./cmd/ln -sf newtarget existing_link replaces the existing link, matching gln -sf."
-  - "AC4: go run ./cmd/ln -s -r /usr/bin/sort ./sort_link creates a relative symlink, matching gln -s -r."
-  - "AC5: Differential test against gln passes for hard links, symlinks, -f, -n, -v, -b, multiple targets, -r, and error cases."
-  - "AC6: cmd/ln compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/ln file1 file2 creates a hard link, and both files share the same inode, matching gln."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/ln -s target linkname creates a symbolic link pointing to target, matching gln -s."
+    traces:
+      - R2.1
+      - R4.2
+  - id: AC3
+    criterion: "go run ./cmd/ln -sf newtarget existing_link replaces the existing link, matching gln -sf."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC4
+    criterion: "go run ./cmd/ln -s -r /usr/bin/sort ./sort_link creates a relative symlink, matching gln -s -r."
+    traces:
+      - R2.1
+      - R2.4
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gln passes for hard links, symlinks, -f, -n, -v, -b, multiple targets, -r, and error cases."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R4.1
+      - R4.2
+  - id: AC6
+    criterion: "cmd/ln compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R3.6
+      - R4.1
+      - R4.2
+      - R4.3

@@ -74,9 +74,65 @@ non_goals:
   - cmd/sponge does not implement atomic writes for passthrough mode (stdout); atomicity applies only to named output files.
 
 acceptance_criteria:
-  - "AC1: seq 1 100 | go run ./cmd/sponge /tmp/out.txt && cat /tmp/out.txt produces 100 lines 1-100, confirming stdin was fully read before the file was opened."
-  - "AC2: The soak-before-write contract is verifiable by the test harness creating a file, running 'cat file | sponge file' and confirming the output equals the original input (not an empty file)."
-  - "AC3: printf 'appended\\n' | go run ./cmd/sponge -a /tmp/existing.txt prepends the original content of existing.txt before 'appended', matching gsponge -a behavior."
-  - "AC4: printf 'hello' | go run ./cmd/sponge produces 'hello' on stdout, matching gsponge with no filename."
-  - "AC5: Differential test against sponge reference binary passes for small input, large input (1 MB+), append mode, and passthrough mode."
-  - "AC6: cmd/sponge compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "seq 1 100 | go run ./cmd/sponge /tmp/out.txt && cat /tmp/out.txt produces 100 lines 1-100, confirming stdin was fully read before the file was opened."
+    traces:
+      - R1.1
+      - R1.2
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R5.2
+      - R6.2
+  - id: AC2
+    criterion: "The soak-before-write contract is verifiable by the test harness creating a file, running 'cat file | sponge file' and confirming the output equals the original input (not an empty file)."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC3
+    criterion: "printf 'appended\\n' | go run ./cmd/sponge -a /tmp/existing.txt prepends the original content of existing.txt before 'appended', matching gsponge -a behavior."
+    traces:
+      - R3.1
+      - R3.2
+  - id: AC4
+    criterion: "printf 'hello' | go run ./cmd/sponge produces 'hello' on stdout, matching gsponge with no filename."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC5
+    criterion: "Differential test against sponge reference binary passes for small input, large input (1 MB+), append mode, and passthrough mode."
+    traces:
+      - R6.1
+      - R6.2
+  - id: AC6
+    criterion: "cmd/sponge compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R2.5
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+      - R5.1
+      - R5.2
+      - R5.3
+      - R5.4
+      - R6.1
+      - R6.2

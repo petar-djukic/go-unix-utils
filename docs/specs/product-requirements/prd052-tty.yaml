@@ -38,7 +38,43 @@ non_goals:
   - cmd/tty does not check terminals connected to stdout or stderr; it checks stdin only.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/tty with stdin from a pipe prints \"not a tty\" and exits 1, matching gtty."
-  - "AC2: go run ./cmd/tty -s with stdin from a pipe produces no output and exits 1, matching gtty."
-  - "AC3: Differential test against gtty passes for piped and terminal stdin cases."
-  - "AC4: cmd/tty compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/tty with stdin from a pipe prints \"not a tty\" and exits 1, matching gtty."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC2
+    criterion: "go run ./cmd/tty -s with stdin from a pipe produces no output and exits 1, matching gtty."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "Differential test against gtty passes for piped and terminal stdin cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC4
+    criterion: "cmd/tty compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3

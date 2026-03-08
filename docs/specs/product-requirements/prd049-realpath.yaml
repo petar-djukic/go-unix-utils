@@ -49,8 +49,55 @@ non_goals:
   - cmd/realpath does not modify symbolic links.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/realpath /tmp prints the canonical path, matching grealpath."
-  - "AC2: go run ./cmd/realpath -e /nonexistent exits 1 with an error, matching grealpath."
-  - "AC3: go run ./cmd/realpath -m /nonexistent/foo prints the constructed path, matching grealpath."
-  - "AC4: Differential test against grealpath passes for all flag combinations and error cases."
-  - "AC5: cmd/realpath compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/realpath /tmp prints the canonical path, matching grealpath."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "go run ./cmd/realpath -e /nonexistent exits 1 with an error, matching grealpath."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+  - id: AC3
+    criterion: "go run ./cmd/realpath -m /nonexistent/foo prints the constructed path, matching grealpath."
+    traces:
+      - R1.4
+      - R4.2
+  - id: AC4
+    criterion: "Differential test against grealpath passes for all flag combinations and error cases."
+    traces:
+      - R1.2
+      - R1.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC5
+    criterion: "cmd/realpath compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

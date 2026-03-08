@@ -52,9 +52,61 @@ non_goals:
   - cmd/basename does not handle encoding; paths are treated as byte sequences with '/' as the separator.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/basename /usr/bin/sort produces 'sort', matching gbasename."
-  - "AC2: go run ./cmd/basename include/stdio.h .h produces 'stdio', matching gbasename."
-  - "AC3: go run ./cmd/basename -a /usr/bin/sort /usr/bin/cat produces 'sort' and 'cat' on separate lines, matching gbasename -a."
-  - "AC4: go run ./cmd/basename -s .h include/stdio.h include/stdlib.h produces 'stdio' and 'stdlib' on separate lines."
-  - "AC5: Differential test against gbasename passes for simple paths, trailing slashes, root, empty string, suffix removal, -a, -s, and -z modes."
-  - "AC6: cmd/basename compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/basename /usr/bin/sort produces 'sort', matching gbasename."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "go run ./cmd/basename include/stdio.h .h produces 'stdio', matching gbasename."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC3
+    criterion: "go run ./cmd/basename -a /usr/bin/sort /usr/bin/cat produces 'sort' and 'cat' on separate lines, matching gbasename -a."
+    traces:
+      - R2.1
+      - R2.2
+      - R3.3
+      - R4.2
+  - id: AC4
+    criterion: "go run ./cmd/basename -s .h include/stdio.h include/stdlib.h produces 'stdio' and 'stdlib' on separate lines."
+    traces:
+      - R2.2
+      - R2.3
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gbasename passes for simple paths, trailing slashes, root, empty string, suffix removal, -a, -s, and -z modes."
+    traces:
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.3
+      - R4.1
+      - R4.2
+  - id: AC6
+    criterion: "cmd/basename compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3

@@ -47,8 +47,50 @@ non_goals:
   - cmd/readlink does not support --relative-to or --relative-base; use cmd/realpath for relative output.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/readlink on a symlink prints the target, matching greadlink."
-  - "AC2: go run ./cmd/readlink -f on a symlink prints the canonical path, matching greadlink."
-  - "AC3: go run ./cmd/readlink on a non-symlink exits 1, matching greadlink."
-  - "AC4: Differential test against greadlink passes for all flag combinations and error cases."
-  - "AC5: cmd/readlink compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/readlink on a symlink prints the target, matching greadlink."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+  - id: AC2
+    criterion: "go run ./cmd/readlink -f on a symlink prints the canonical path, matching greadlink."
+    traces:
+      - R1.3
+      - R4.2
+  - id: AC3
+    criterion: "go run ./cmd/readlink on a non-symlink exits 1, matching greadlink."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.4
+      - R3.1
+      - R3.2
+      - R4.1
+  - id: AC4
+    criterion: "Differential test against greadlink passes for all flag combinations and error cases."
+    traces:
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC5
+    criterion: "cmd/readlink compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3

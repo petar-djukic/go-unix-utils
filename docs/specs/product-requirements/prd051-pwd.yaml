@@ -39,8 +39,43 @@ non_goals:
   - cmd/pwd does not support any output formatting options.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/pwd prints the current directory, matching gpwd."
-  - "AC2: go run ./cmd/pwd -L prints the logical path from PWD, matching gpwd -L."
-  - "AC3: go run ./cmd/pwd -P prints the physical path, matching gpwd -P."
-  - "AC4: Differential test against gpwd passes for all modes and error cases."
-  - "AC5: cmd/pwd compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/pwd prints the current directory, matching gpwd."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/pwd -L prints the logical path from PWD, matching gpwd -L."
+    traces:
+      - R1.2
+      - R1.4
+      - R3.2
+  - id: AC3
+    criterion: "go run ./cmd/pwd -P prints the physical path, matching gpwd -P."
+    traces:
+      - R1.1
+      - R1.3
+      - R1.4
+      - R3.2
+  - id: AC4
+    criterion: "Differential test against gpwd passes for all modes and error cases."
+    traces:
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC5
+    criterion: "cmd/pwd compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3

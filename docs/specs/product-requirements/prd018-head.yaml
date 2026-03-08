@@ -55,10 +55,74 @@ non_goals:
   - cmd/head does not follow files or re-read on change; it reads each input once.
 
 acceptance_criteria:
-  - "AC1: seq 1 20 | go run ./cmd/head produces lines 1 through 10, matching ghead."
-  - "AC2: seq 1 20 | go run ./cmd/head -n 5 produces lines 1 through 5, matching ghead."
-  - "AC3: seq 1 20 | go run ./cmd/head -n -5 produces lines 1 through 15 (all but last 5), matching ghead."
-  - "AC4: printf 'abcdefghij' | go run ./cmd/head -c 5 produces 'abcde', matching ghead."
-  - "AC5: go run ./cmd/head file1.txt file2.txt prints headers '==> file1.txt <==' and '==> file2.txt <==' with correct content, matching ghead."
-  - "AC6: Differential test against ghead passes for default, -n, -c, negative counts, multi-file, -q, -v, stdin, and error cases."
-  - "AC7: cmd/head compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "seq 1 20 | go run ./cmd/head produces lines 1 through 10, matching ghead."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "seq 1 20 | go run ./cmd/head -n 5 produces lines 1 through 5, matching ghead."
+    traces:
+      - R1.2
+      - R1.3
+      - R2.1
+      - R4.4
+  - id: AC3
+    criterion: "seq 1 20 | go run ./cmd/head -n -5 produces lines 1 through 15 (all but last 5), matching ghead."
+    traces:
+      - R1.2
+      - R1.3
+      - R2.1
+      - R4.4
+  - id: AC4
+    criterion: "printf 'abcdefghij' | go run ./cmd/head -c 5 produces 'abcde', matching ghead."
+    traces:
+      - R2.1
+      - R2.2
+      - R4.4
+  - id: AC5
+    criterion: "go run ./cmd/head file1.txt file2.txt prints headers '==> file1.txt <==' and '==> file2.txt <==' with correct content, matching ghead."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC6
+    criterion: "Differential test against ghead passes for default, -n, -c, negative counts, multi-file, -q, -v, stdin, and error cases."
+    traces:
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.3
+      - R3.4
+      - R3.5
+      - R4.3
+      - R4.4
+  - id: AC7
+    criterion: "cmd/head compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

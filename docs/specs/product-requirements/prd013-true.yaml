@@ -44,8 +44,46 @@ non_goals:
   - cmd/true does not perform any computation or I/O beyond the optional help/version output.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/true; echo $? prints 0."
-  - "AC2: go run ./cmd/true foo bar --baz; echo $? prints 0."
-  - "AC3: go run ./cmd/true --help prints a usage message and exits 0, matching gtrue --help."
-  - "AC4: Differential test against gtrue passes for no-args and arbitrary-args cases."
-  - "AC5: cmd/true compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/true; echo $? prints 0."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC2
+    criterion: "go run ./cmd/true foo bar --baz; echo $? prints 0."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC3
+    criterion: "go run ./cmd/true --help prints a usage message and exits 0, matching gtrue --help."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC4
+    criterion: "Differential test against gtrue passes for no-args and arbitrary-args cases."
+    traces:
+      - R4.1
+  - id: AC5
+    criterion: "cmd/true compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3

@@ -94,12 +94,70 @@ non_goals:
   - -0 / --null (NUL-terminated output) is out of scope.
 
 acceptance_criteria:
-  - "AC1: Default mode comparison -- gdu and go run ./cmd/du on a test directory fixture produce identical output. Differential tests must use -k to normalize block size and run both binaries on the same directory on the same filesystem."
-  - "AC2: Summary mode -- gdu -s and go run ./cmd/du -s produce identical single-line output per argument on the same fixture."
-  - "AC3: Human-readable sizes -- gdu -h and go run ./cmd/du -h produce identical size strings on a fixture with directories of known cumulative sizes."
-  - "AC4: Hard-link deduplication -- a fixture containing one file hard-linked twice in different subdirectories produces the same total with gdu and the Go binary. The total must count the file's blocks only once."
-  - "AC5: Apparent size -- gdu --apparent-size and go run ./cmd/du --apparent-size produce identical output on a fixture containing a sparse file (where apparent size differs from block allocation)."
-  - "AC6: Depth limiting -- gdu -d 1 and go run ./cmd/du -d 1 produce identical output, showing only the top-level entries and the argument total."
-  - "AC7: Grand total -- gdu -c dir1 dir2 and go run ./cmd/du -c dir1 dir2 produce identical output including the \"total\" line."
-  - "AC8: Exit codes -- the Go binary exits 1 when given a non-existent directory argument and prints a diagnostic to stderr, matching gdu behavior."
-  - "AC9: cmd/du compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "Default mode comparison -- gdu and go run ./cmd/du on a test directory fixture produce identical output. Differential tests must use -k to normalize block size and run both binaries on the same directory on the same filesystem."
+    traces:
+      - R2.5
+      - R2.8
+  - id: AC2
+    criterion: "Summary mode -- gdu -s and go run ./cmd/du -s produce identical single-line output per argument on the same fixture."
+    traces:
+      - R2.2
+      - R2.4
+  - id: AC3
+    criterion: "Human-readable sizes -- gdu -h and go run ./cmd/du -h produce identical size strings on a fixture with directories of known cumulative sizes."
+    traces:
+      - R2.1
+      - R2.8
+  - id: AC4
+    criterion: "Hard-link deduplication -- a fixture containing one file hard-linked twice in different subdirectories produces the same total with gdu and the Go binary. The total must count the file's blocks only once."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC5
+    criterion: "Apparent size -- gdu --apparent-size and go run ./cmd/du --apparent-size produce identical output on a fixture containing a sparse file (where apparent size differs from block allocation)."
+    traces:
+      - R2.8
+  - id: AC6
+    criterion: "Depth limiting -- gdu -d 1 and go run ./cmd/du -d 1 produce identical output, showing only the top-level entries and the argument total."
+    traces:
+      - R2.4
+  - id: AC7
+    criterion: "Grand total -- gdu -c dir1 dir2 and go run ./cmd/du -c dir1 dir2 produce identical output including the \"total\" line."
+    traces:
+      - R2.1
+      - R2.7
+  - id: AC8
+    criterion: "Exit codes -- the Go binary exits 1 when given a non-existent directory argument and prints a diagnostic to stderr, matching gdu behavior."
+    traces:
+      - R1.2
+      - R1.4
+      - R2.5
+      - R4.1
+      - R4.2
+      - R5.1
+  - id: AC9
+    criterion: "cmd/du compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R2.5
+      - R2.6
+      - R2.7
+      - R2.8
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R5.1

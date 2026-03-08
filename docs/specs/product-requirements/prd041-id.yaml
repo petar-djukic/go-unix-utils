@@ -51,9 +51,58 @@ non_goals:
   - cmd/id does not resolve NIS or LDAP users beyond what the system's name-service switch provides.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/id with no arguments produces uid=N(name) gid=N(name) groups=... matching gid."
-  - "AC2: go run ./cmd/id -u prints the effective UID, matching gid -u."
-  - "AC3: go run ./cmd/id -gn prints the effective group name, matching gid -gn."
-  - "AC4: go run ./cmd/id root prints identity information for root, matching gid root."
-  - "AC5: Differential test against gid passes for default output, -u, -g, -G, -n, -r, named user, and error cases."
-  - "AC6: cmd/id compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/id with no arguments produces uid=N(name) gid=N(name) groups=... matching gid."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC2
+    criterion: "go run ./cmd/id -u prints the effective UID, matching gid -u."
+    traces:
+      - R2.1
+      - R2.4
+      - R3.1
+      - R3.2
+      - R4.2
+  - id: AC3
+    criterion: "go run ./cmd/id -gn prints the effective group name, matching gid -gn."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC4
+    criterion: "go run ./cmd/id root prints identity information for root, matching gid root."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC5
+    criterion: "Differential test against gid passes for default output, -u, -g, -G, -n, -r, named user, and error cases."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC6
+    criterion: "cmd/id compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

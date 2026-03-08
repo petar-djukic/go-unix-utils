@@ -51,9 +51,54 @@ non_goals:
   - cmd/tac does not support files too large to fit in memory; it accumulates all input before producing output.
 
 acceptance_criteria:
-  - "AC1: printf 'a\\nb\\nc\\n' | tac produces 'c\\nb\\na\\n', matching gtac byte-for-byte."
-  - "AC2: printf 'a\\nb\\nc' | tac produces 'c\\nb\\na' (no trailing newline), matching gtac."
-  - "AC3: tac -s : on 'a:b:c:' produces 'c:b:a:', matching gtac -s :."
-  - "AC4: tac -b -s : on ':a:b:c' produces ':c:b:a', matching gtac -b -s :."
-  - "AC5: Differential test against gtac passes for all required test cases."
-  - "AC6: cmd/tac compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "printf 'a\\nb\\nc\\n' | tac produces 'c\\nb\\na\\n', matching gtac byte-for-byte."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "printf 'a\\nb\\nc' | tac produces 'c\\nb\\na' (no trailing newline), matching gtac."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC3
+    criterion: "tac -s : on 'a:b:c:' produces 'c:b:a:', matching gtac -s :."
+    traces:
+      - R2.1
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC4
+    criterion: "tac -b -s : on ':a:b:c' produces ':c:b:a', matching gtac -b -s :."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gtac passes for all required test cases."
+    traces:
+      - R4.1
+  - id: AC6
+    criterion: "cmd/tac compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3

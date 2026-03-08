@@ -37,7 +37,34 @@ non_goals:
   - cmd/hostname does not support -s (short), -f (FQDN), -d (domain), or -i (IP) flags found in the net-tools hostname. The GNU coreutils hostname is a simpler utility.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/hostname prints the system hostname, matching ghostname."
-  - "AC2: go run ./cmd/hostname extraarg exits 1 with an error message to stderr, matching ghostname."
-  - "AC3: Differential test against ghostname passes for normal invocation and error cases."
-  - "AC4: cmd/hostname compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/hostname prints the system hostname, matching ghostname."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC2
+    criterion: "go run ./cmd/hostname extraarg exits 1 with an error message to stderr, matching ghostname."
+    traces:
+      - R1.1
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "Differential test against ghostname passes for normal invocation and error cases."
+    traces:
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC4
+    criterion: "cmd/hostname compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3

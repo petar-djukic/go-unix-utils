@@ -50,9 +50,52 @@ non_goals:
   - cmd/env does not perform shell expansion on COMMAND or its arguments; exec is direct.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/env with no arguments produces the same output as genv with no arguments."
-  - "AC2: go run ./cmd/env FOO=bar env prints an environment that includes FOO=bar, matching genv."
-  - "AC3: go run ./cmd/env -i FOO=bar env produces only FOO=bar (plus any exec-injected variables), matching genv -i."
-  - "AC4: go run ./cmd/env -u HOME env omits HOME from the output, matching genv -u HOME."
-  - "AC5: Differential test against genv passes for environment dump, -i, -u, NAME=VALUE, -0, COMMAND execution, and exit code passthrough."
-  - "AC6: cmd/env compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/env with no arguments produces the same output as genv with no arguments."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC2
+    criterion: "go run ./cmd/env FOO=bar env prints an environment that includes FOO=bar, matching genv."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC3
+    criterion: "go run ./cmd/env -i FOO=bar env produces only FOO=bar (plus any exec-injected variables), matching genv -i."
+    traces:
+      - R2.1
+      - R4.2
+  - id: AC4
+    criterion: "go run ./cmd/env -u HOME env omits HOME from the output, matching genv -u HOME."
+    traces:
+      - R2.2
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against genv passes for environment dump, -i, -u, NAME=VALUE, -0, COMMAND execution, and exit code passthrough."
+    traces:
+      - R1.1
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC6
+    criterion: "cmd/env compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

@@ -52,9 +52,55 @@ non_goals:
   - cmd/nl does not implement locale-aware collation for -b p regex matching; Go regexp is used directly.
 
 acceptance_criteria:
-  - "AC1: printf 'a\\n\\nb\\n' | nl produces '     1\\ta\\n\\n     2\\tb\\n', matching gnl byte-for-byte."
-  - "AC2: printf 'a\\nb\\n' | nl -b a -n ln -w 3 -s ': ' produces '1  : a\\n2  : b\\n', matching gnl."
-  - "AC3: printf '\\\\:\\\\:\\\\:\\nheader\\n\\\\:\\\\:\\nbody line\\n\\\\:\\nbottom\\n' | nl -h a produces correct section-aware numbering, matching gnl."
-  - "AC4: printf 'a\\nb\\n' | nl -v 10 -i 5 produces '    10\\ta\\n    15\\tb\\n', matching gnl."
-  - "AC5: Differential test against gnl passes for all required test cases."
-  - "AC6: cmd/nl compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "printf 'a\\n\\nb\\n' | nl produces '     1\\ta\\n\\n     2\\tb\\n', matching gnl byte-for-byte."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "printf 'a\\nb\\n' | nl -b a -n ln -w 3 -s ': ' produces '1  : a\\n2  : b\\n', matching gnl."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.4
+  - id: AC3
+    criterion: "printf '\\\\:\\\\:\\\\:\\nheader\\n\\\\:\\\\:\\nbody line\\n\\\\:\\nbottom\\n' | nl -h a produces correct section-aware numbering, matching gnl."
+    traces:
+      - R2.2
+  - id: AC4
+    criterion: "printf 'a\\nb\\n' | nl -v 10 -i 5 produces '    10\\ta\\n    15\\tb\\n', matching gnl."
+    traces:
+      - R3.4
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gnl passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "cmd/nl compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

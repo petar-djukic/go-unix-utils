@@ -165,12 +165,101 @@ package_contract:
     - "Must not import any other pkg/ package."
 
 acceptance_criteria:
-  - "AC1: A cmd/ package can define a []DiffTest slice and call RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) from a TestXxx function with no other setup. RunDiffTests runs each DiffTest as a named subtest (t.Run(test.Name, ...)) and calls t.Fatal on the first divergence in any subtest."
-  - "AC2: A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries' stdout, stderr, and exit code."
-  - "AC3: TimestampNormalizer replaces strftime-formatted timestamps (e.g., \"Feb 19 12:34:56\") with a fixed placeholder so that ts differential tests pass despite wall-clock differences."
-  - "AC4: A DiffTest with ExpectedFiles correctly fails when the Go binary writes different file content than expected."
-  - "AC5: A DiffTest that exceeds the timeout fails with a clear timeout message rather than hanging the test run."
-  - "AC6: All pkg/testutils code compiles with no warnings under golangci-lint."
-  - "AC7: ComposeNormalizers combines multiple NormalizeFunc values into a single function that applies them in order."
-  - "AC8: RunDiffTests sets LC_ALL=C by default. A DiffTest with Env=[\"LC_ALL=en_US.UTF-8\"] overrides this default."
-  - "AC9: The usage example in the problem statement is sufficient for a stitch agent to write a cmd/ test file that imports pkg/testutils without recreating the package."
+  - id: AC1
+    criterion: "A cmd/ package can define a []DiffTest slice and call RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) from a TestXxx function with no other setup. RunDiffTests runs each DiffTest as a named subtest (t.Run(test.Name, ...)) and calls t.Fatal on the first divergence in any subtest."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "A passing test run produces no output. A failing test prints the triggering args, stdin, and both binaries' stdout, stderr, and exit code."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.4
+      - R3.1
+      - R3.3
+      - R3.5
+  - id: AC3
+    criterion: "TimestampNormalizer replaces strftime-formatted timestamps (e.g., \"Feb 19 12:34:56\") with a fixed placeholder so that ts differential tests pass despite wall-clock differences."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.5
+      - R2.6
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R3.6
+      - R4.1
+      - R5.1
+      - R5.2
+  - id: AC4
+    criterion: "A DiffTest with ExpectedFiles correctly fails when the Go binary writes different file content than expected."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC5
+    criterion: "A DiffTest that exceeds the timeout fails with a clear timeout message rather than hanging the test run."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "All pkg/testutils code compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R2.5
+      - R2.6
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R3.6
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
+      - R5.1
+      - R5.2
+  - id: AC7
+    criterion: "ComposeNormalizers combines multiple NormalizeFunc values into a single function that applies them in order."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC8
+    criterion: "RunDiffTests sets LC_ALL=C by default. A DiffTest with Env=[\"LC_ALL=en_US.UTF-8\"] overrides this default."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC9
+    criterion: "The usage example in the problem statement is sufficient for a stitch agent to write a cmd/ test file that imports pkg/testutils without recreating the package."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4

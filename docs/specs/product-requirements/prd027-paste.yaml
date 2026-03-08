@@ -50,9 +50,48 @@ non_goals:
   - cmd/paste does not implement Unicode multi-byte delimiter expansion beyond the recognized escape sequences.
 
 acceptance_criteria:
-  - "AC1: paste with two files containing 'a\\nb\\n' and '1\\n2\\n' produces 'a\\t1\\nb\\t2\\n', matching gpaste."
-  - "AC2: paste -d: with the same files produces 'a:1\\nb:2\\n', matching gpaste -d:."
-  - "AC3: paste -s with a file containing 'a\\nb\\nc\\n' produces 'a\\tb\\tc\\n', matching gpaste -s."
-  - "AC4: paste with files of unequal length produces correct output with empty fields for exhausted files, matching gpaste."
-  - "AC5: Differential test against gpaste passes for all required test cases."
-  - "AC6: cmd/paste compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "paste with two files containing 'a\\nb\\n' and '1\\n2\\n' produces 'a\\t1\\nb\\t2\\n', matching gpaste."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "paste -d: with the same files produces 'a:1\\nb:2\\n', matching gpaste -d:."
+    traces:
+      - R2.1
+  - id: AC3
+    criterion: "paste -s with a file containing 'a\\nb\\nc\\n' produces 'a\\tb\\tc\\n', matching gpaste -s."
+    traces:
+      - R3.1
+      - R3.3
+  - id: AC4
+    criterion: "paste with files of unequal length produces correct output with empty fields for exhausted files, matching gpaste."
+    traces:
+      - R1.2
+      - R2.2
+  - id: AC5
+    criterion: "Differential test against gpaste passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "cmd/paste compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

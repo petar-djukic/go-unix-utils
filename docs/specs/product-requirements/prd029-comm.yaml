@@ -52,9 +52,54 @@ non_goals:
   - cmd/comm does not implement locale-aware collation; comparison is byte-for-byte under LC_ALL=C.
 
 acceptance_criteria:
-  - "AC1: comm on file1='a\\nb\\nc\\n' and file2='b\\nc\\nd\\n' produces the three-column output with 'a' in col1, 'd' in col2, and 'b','c' in col3, matching gcomm."
-  - "AC2: comm -12 on the same files produces only 'b\\nc\\n' (common lines), matching gcomm -12."
-  - "AC3: comm -3 on the same files produces 'a\\n\\td\\n' (unique lines), matching gcomm -3."
-  - "AC4: comm --output-delimiter=| uses | instead of tab for column separation, matching gcomm."
-  - "AC5: Differential test against gcomm passes for all required test cases."
-  - "AC6: cmd/comm compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "comm on file1='a\\nb\\nc\\n' and file2='b\\nc\\nd\\n' produces the three-column output with 'a' in col1, 'd' in col2, and 'b','c' in col3, matching gcomm."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "comm -12 on the same files produces only 'b\\nc\\n' (common lines), matching gcomm -12."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC3
+    criterion: "comm -3 on the same files produces 'a\\n\\td\\n' (unique lines), matching gcomm -3."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC4
+    criterion: "comm --output-delimiter=| uses | instead of tab for column separation, matching gcomm."
+    traces:
+      - R3.4
+  - id: AC5
+    criterion: "Differential test against gcomm passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "cmd/comm compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

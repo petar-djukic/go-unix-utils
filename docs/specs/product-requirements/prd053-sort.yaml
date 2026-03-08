@@ -59,10 +59,61 @@ non_goals:
   - cmd/sort does not implement external merge sort for inputs larger than available memory.
 
 acceptance_criteria:
-  - "AC1: printf 'banana\\napple\\ncherry\\n' | go run ./cmd/sort produces apple, banana, cherry, matching gsort."
-  - "AC2: printf '10\\n2\\n1\\n' | go run ./cmd/sort -n produces 1, 2, 10, matching gsort."
-  - "AC3: sort -k2,2 -t: on colon-delimited input produces correct field-based ordering, matching gsort."
-  - "AC4: sort -c on unsorted input exits 1, matching gsort."
-  - "AC5: sort -u removes duplicate lines based on the active key, matching gsort."
-  - "AC6: Differential test against gsort passes for all flag combinations listed in R4.4."
-  - "AC7: cmd/sort compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "printf 'banana\\napple\\ncherry\\n' | go run ./cmd/sort produces apple, banana, cherry, matching gsort."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+  - id: AC2
+    criterion: "printf '10\\n2\\n1\\n' | go run ./cmd/sort -n produces 1, 2, 10, matching gsort."
+    traces:
+      - R2.1
+      - R4.4
+  - id: AC3
+    criterion: "sort -k2,2 -t: on colon-delimited input produces correct field-based ordering, matching gsort."
+    traces:
+      - R3.1
+      - R4.4
+  - id: AC4
+    criterion: "sort -c on unsorted input exits 1, matching gsort."
+    traces:
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
+  - id: AC5
+    criterion: "sort -u removes duplicate lines based on the active key, matching gsort."
+    traces:
+      - R1.5
+      - R4.4
+  - id: AC6
+    criterion: "Differential test against gsort passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.4
+  - id: AC7
+    criterion: "cmd/sort compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
