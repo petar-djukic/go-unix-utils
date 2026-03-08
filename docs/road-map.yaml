@@ -228,7 +228,7 @@ releases:
 
   - version: "06.0"
     name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement five file and directory manipulation utilities. mkdir creates directories
       with optional parent creation (-p) and mode setting (-m). rmdir removes empty
@@ -238,15 +238,15 @@ releases:
       against GNU coreutils reference binaries.
     use_cases:
       - id: rel06.0-uc001-mkdir
-        status: spec_complete
+        status: implemented
       - id: rel06.0-uc002-rmdir
-        status: spec_complete
+        status: implemented
       - id: rel06.0-uc003-mktemp
-        status: spec_complete
+        status: implemented
       - id: rel06.0-uc004-ln
-        status: spec_complete
+        status: implemented
       - id: rel06.0-uc005-unlink
-        status: spec_complete
+        status: implemented
 
   - version: "06.1"
     name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
