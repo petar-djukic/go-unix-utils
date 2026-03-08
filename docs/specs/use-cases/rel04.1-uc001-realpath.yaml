@@ -17,20 +17,17 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/realpath /tmp" to resolve a path. realpath prints
-      the canonical absolute path followed by a newline.
+      Build cmd/realpath via mage build. Requires no prior steps.
   - id: F2
     step: |
-      The operator runs "./bin/realpath -m /nonexistent/foo" to resolve a path
-      that does not exist, constructing the remainder.
+      Run ./bin/realpath with each flag combination (default, -e, -m, -s,
+      --relative-to, --relative-base, multiple operands). Requires F1
+      (binary must be built).
   - id: F3
     step: |
       The differential testing harness (pkg/testutils) executes both ./bin/realpath
-      and grealpath with the same arguments and environment.
-  - id: F4
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output for each flag combination.
+      and grealpath with identical arguments and environment, comparing stdout
+      byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/realpath — path resolution output (prd049-realpath R1, R2, R3)"
@@ -39,16 +36,15 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/realpath compiles and ./bin/realpath exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/realpath /tmp" prints the canonical path, matching grealpath.
-  - id: S3
-    criterion: |
-      "./bin/realpath -m /nonexistent/foo" prints a constructed path, matching grealpath.
-  - id: S4
-    criterion: |
-      The differential test passes for all flag combinations and error cases.
+      The differential test passes for all flag combinations (default, -e, -m, -s,
+      --relative-to, --relative-base, multiple operands, and error cases), confirming
+      full parity with grealpath.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
 
 out_of_scope:
   - Creating files or directories is not supported and not tested.

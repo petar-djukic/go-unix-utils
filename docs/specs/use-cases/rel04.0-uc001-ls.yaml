@@ -19,36 +19,22 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go ls binary on a fixture directory with known file types,
-      sizes, and permissions. Example: ./bin/ls --color=never testdata/ls-fixture/
+      Build cmd/ls via mage build. Requires no prior steps.
   - id: F2
     step: |
-      cmd/ls reads the directory entries, queries terminal width via pkg/sys.TerminalWidth
-      (for default multi-column mode), and obtains file metadata via pkg/sys.Stat for long
-      format. It formats output via pkg/format.Columns (multi-column) or inline formatting
-      (long format with pkg/format.HumanSize for -h).
+      Run ./bin/ls with core flags (default, -1, -l, -lh, -a, -A, -d, --color=never)
+      on a fixture directory with known file types, sizes, and permissions. Requires F1
+      (binary must be built).
   - id: F3
     step: |
-      cmd/ls writes the formatted listing to stdout. The format depends on the active flags:
-      multi-column (default TTY), single-column (default pipe or -1), or long format (-l).
+      The differential testing harness (pkg/testutils) executes both ./bin/ls and gls
+      with identical arguments and environment (LC_ALL=C, --color=never), applies the
+      LsNormalizer to replace mtime columns, and compares normalized outputs byte-for-byte.
+      Requires F1 (binary must be built).
   - id: F4
     step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/ls and gls with
-      the same arguments, environment (LC_ALL=C, --color=never), and working directory.
-  - id: F5
-    step: |
-      The harness applies the LsNormalizer to both outputs. The LsNormalizer replaces the
-      modification time column in -l output (fields matching "Mon DD HH:MM" or "Mon DD  YYYY")
-      with the placeholder "MTIME". This eliminates wall-clock divergence between runs.
-  - id: F6
-    step: |
-      The harness compares the normalized outputs byte-for-byte. Both binaries must produce
-      identical entry names, sort order, column layout, and field values (permissions,
-      hard-link count, owner, group, size).
-  - id: F7
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both raw outputs, both normalized outputs, and both exit codes.
+      Verify error handling: a non-existent path exits 1, an invalid option exits 2,
+      matching gls behavior. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/ls — directory listing, format modes, filter flags, color, human sizes (prd008-ls R1, R2, R3, R4)"
@@ -58,31 +44,25 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/ls compiles and ./bin/ls exists after mage build.
+    criterion: |
+      The differential test passes for all core flag combinations (default, -1, -l,
+      -lh, -a, -A, -d, --color=never), confirming full parity with gls.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
   - id: S2
     criterion: |
-      Default mode with stdout redirected (not a TTY) produces single-column output with
-      one entry per line, matching gls output on the same fixture.
-  - id: S3
-    criterion: |
-      -l long format produces identical output to gls -l after MTIME normalization on the
-      same fixture directory.
-  - id: S4
-    criterion: |
-      -a includes dotfiles (including . and ..) and matches gls -a output on a fixture
-      containing dotfiles.
-  - id: S5
-    criterion: |
-      --color=never produces output with no ANSI escape sequences, matching gls --color=never
-      byte-for-byte.
-  - id: S6
-    criterion: |
-      -lh produces human-readable file sizes that match gls -lh on files with known sizes.
-  - id: S7
-    criterion: |
-      The differential test passes for all core flags: default (single-col redirect),
-      -1, -l, -lh, -a, -A, -d, --color=never. All tests use LC_ALL=C and --color=never
-      (except color-specific tests).
+      Cross-component integration with pkg/sys (TerminalWidth, Stat, IsTerminal) and
+      pkg/format (Columns, HumanSize, FileTypeColor) produces correct output across
+      format modes, validated by the LsNormalizer in the differential harness.
+    traces:
+      - AC3
+      - AC5
 
 out_of_scope:
   - Default multi-column mode on a real TTY is difficult to test deterministically in the

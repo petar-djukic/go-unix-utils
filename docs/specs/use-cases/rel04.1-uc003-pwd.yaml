@@ -17,20 +17,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/pwd" with no arguments. pwd prints the current
-      working directory followed by a newline.
+      Build cmd/pwd via mage build. Requires no prior steps.
   - id: F2
     step: |
-      The operator runs "./bin/pwd -P" to print the physical path with all
-      symlinks resolved.
+      Run ./bin/pwd with each flag combination (default, -L, -P, -L -P precedence).
+      Requires F1 (binary must be built).
   - id: F3
     step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/pwd
-      and gpwd with the same arguments and environment.
-  - id: F4
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/pwd and
+      gpwd with identical arguments and environment, comparing stdout byte-for-byte
+      and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/pwd — working directory output (prd051-pwd R1, R2)"
@@ -39,16 +35,14 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/pwd compiles and ./bin/pwd exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/pwd" prints the current working directory, matching gpwd.
-  - id: S3
-    criterion: |
-      "./bin/pwd -P" prints the physical path, matching gpwd -P.
-  - id: S4
-    criterion: |
-      The differential test passes for logical, physical, and error cases.
+      The differential test passes for all modes (default, -L, -P, -L -P precedence,
+      and error cases), confirming full parity with gpwd.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
 
 out_of_scope:
   - Changing the working directory is not supported and not tested.

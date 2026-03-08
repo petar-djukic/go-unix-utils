@@ -17,16 +17,12 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/logname" with no arguments. logname prints the
-      login name followed by a newline.
+      Build cmd/logname via mage build. Requires no prior steps.
   - id: F2
     step: |
       The differential testing harness (pkg/testutils) executes both ./bin/logname
-      and glogname with the same arguments and environment.
-  - id: F3
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and glogname with identical arguments and environment, comparing stdout
+      byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/logname — login name output (prd053-logname R1, R2)"
@@ -34,16 +30,13 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/logname compiles and ./bin/logname exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/logname" prints the login name, matching glogname.
-  - id: S3
-    criterion: |
-      logname exits with code 0 on success.
-  - id: S4
-    criterion: |
-      The differential test passes for the default invocation.
+      The differential test passes for normal invocation and error cases (extra
+      operand, unknown flag), confirming full parity with glogname.
+    traces:
+      - AC1
+      - AC2
+      - AC3
 
 out_of_scope:
   - Behavior after su or sudo is not tested beyond what the test environment

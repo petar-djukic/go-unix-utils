@@ -17,20 +17,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/uname" with no arguments. uname prints the kernel
-      name followed by a newline.
+      Build cmd/uname via mage build. Requires no prior steps.
   - id: F2
     step: |
-      The operator runs "./bin/uname -a" to print all system information fields
-      in canonical order, space-separated.
+      Run ./bin/uname with each flag combination (default, -s, -n, -r, -v, -m, -p,
+      -i, -o, -a). Requires F1 (binary must be built).
   - id: F3
     step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/uname
-      and guname with the same flags and environment.
-  - id: F4
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output for each flag combination.
+      The differential testing harness (pkg/testutils) executes both ./bin/uname and
+      guname with identical flags and environment, comparing stdout byte-for-byte and
+      exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/uname — system information output (prd044-uname R1, R2, R3)"
@@ -39,19 +35,14 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/uname compiles and ./bin/uname exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/uname" with no arguments prints the kernel name, matching guname.
-  - id: S3
-    criterion: |
-      "./bin/uname -a" prints all fields in canonical order, matching guname -a.
-  - id: S4
-    criterion: |
-      Each individual flag (-s, -n, -r, -v, -m, -p, -i, -o) produces output matching guname.
-  - id: S5
-    criterion: |
-      The differential test passes for all flag combinations and error cases.
+      The differential test passes for all flag combinations (default, -s, -n, -r,
+      -v, -m, -p, -i, -o, -a, and error cases), confirming full parity with guname.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
 
 out_of_scope:
   - Setting system information is not supported and not tested.

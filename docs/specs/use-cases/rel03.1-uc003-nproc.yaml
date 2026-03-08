@@ -16,20 +16,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/nproc" with no arguments. nproc prints the number
-      of available processing units followed by a newline.
+      Build cmd/nproc via mage build. Requires no prior steps.
   - id: F2
     step: |
-      The operator runs "./bin/nproc --ignore=1" to print one fewer than the
-      available count.
+      Run ./bin/nproc with each flag combination (default, --all, --ignore=N).
+      Requires F1 (binary must be built).
   - id: F3
     step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/nproc
-      and gnproc with the same flags and environment.
-  - id: F4
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/nproc and
+      gnproc with identical flags and environment, comparing stdout byte-for-byte and
+      exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/nproc — processor count output (prd046-nproc R1, R2)"
@@ -38,16 +34,14 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/nproc compiles and ./bin/nproc exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/nproc" prints the CPU count, matching gnproc.
-  - id: S3
-    criterion: |
-      "./bin/nproc --ignore=1" prints one fewer than the default, matching gnproc.
-  - id: S4
-    criterion: |
-      The differential test passes for default, --all, --ignore, and error cases.
+      The differential test passes for all flag combinations (default, --all,
+      --ignore=N, --all --ignore=N, and error cases), confirming full parity
+      with gnproc.
+    traces:
+      - AC1
+      - AC2
+      - AC3
 
 out_of_scope:
   - CPU affinity and cgroup limits are not tested; on macOS, available and installed

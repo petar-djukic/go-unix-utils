@@ -17,20 +17,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "echo | ./bin/tty" with stdin redirected from a pipe.
-      tty prints "not a tty" followed by a newline and exits 1.
+      Build cmd/tty via mage build. Requires no prior steps.
   - id: F2
     step: |
-      The operator runs "echo | ./bin/tty -s" with stdin from a pipe. tty prints
-      nothing and exits 1.
+      Run ./bin/tty with each flag combination (default, -s) under both piped stdin
+      and terminal stdin (when available). Requires F1 (binary must be built).
   - id: F3
     step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/tty
-      and gtty with the same arguments and environment.
-  - id: F4
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/tty and
+      gtty with identical arguments and environment, comparing stdout byte-for-byte
+      and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/tty — terminal device name output (prd052-tty R1, R2)"
@@ -39,16 +35,13 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/tty compiles and ./bin/tty exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/tty" with stdin from a pipe prints "not a tty" and exits 1, matching gtty.
-  - id: S3
-    criterion: |
-      "./bin/tty -s" with stdin from a pipe produces no output and exits 1, matching gtty.
-  - id: S4
-    criterion: |
-      The differential test passes for piped and terminal stdin cases.
+      The differential test passes for all flag combinations (default, -s) under
+      piped and terminal stdin, confirming full parity with gtty.
+    traces:
+      - AC1
+      - AC2
+      - AC3
 
 out_of_scope:
   - Terminal configuration is not supported; use stty for that.
