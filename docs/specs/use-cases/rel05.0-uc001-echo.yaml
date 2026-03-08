@@ -17,28 +17,17 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go echo binary with text arguments.
-      Example: ./bin/echo hello world
+      The operator exercises echo in default, -n, -e, -E, and combined-flag modes.
+      -e changes the processing model from literal passthrough to escape-sequence
+      interpretation; \\c within -e terminates output immediately.
   - id: F2
     step: |
-      cmd/echo joins its arguments with spaces, appends a newline (unless -n is given),
-      and writes the result to stdout.
+      The operator tests arguments starting with "-" that are not recognized flags,
+      confirming they are treated as literal text.
   - id: F3
     step: |
-      When -e is given, cmd/echo processes backslash escape sequences in the argument
-      strings before writing. A \\c sequence terminates output immediately.
-  - id: F4
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/echo and gecho
-      with the same args and environment.
-  - id: F5
-    step: |
-      The harness compares stdout byte-for-byte with no normalization. Both binaries must
-      produce identical output bytes and exit codes.
-  - id: F6
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both outputs, and both exit codes.
+      with the same args and environment. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/echo — argument joining, newline suppression, escape sequence interpretation (prd020-echo R1, R2, R3)"
@@ -47,19 +36,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/echo compiles and ./bin/echo exists after mage build.
-  - id: S2
-    criterion: ./bin/echo hello world produces "hello world\n", matching gecho byte-for-byte.
-  - id: S3
-    criterion: The differential test for -n passes; output has no trailing newline.
-  - id: S4
-    criterion: The differential test for -e with escape sequences passes; \\t, \\n, \\a, and octal/hex escapes produce correct bytes.
-  - id: S5
-    criterion: The differential test for -e with \\c passes; output terminates at the \\c position with no trailing newline.
-  - id: S6
-    criterion: The differential test for arguments starting with "-" treated as literals passes.
-  - id: S7
-    criterion: The differential test for combined -n -e passes.
+    criterion: |
+      The differential test passes for no arguments, single/multiple arguments, -n,
+      -e with all escape sequences, -e with \\c, -E, combined -n -e, and arguments
+      starting with "-", confirming full parity with gecho.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Interactive shell built-in echo behavior is not tested; only the standalone binary is covered.

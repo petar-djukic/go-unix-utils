@@ -18,29 +18,17 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go comm binary on two sorted files.
-      Example: comm file1.txt file2.txt
+      The operator exercises comm in full three-column mode and with column suppression
+      flags (-1, -2, -3). Column suppression changes the indentation of remaining columns,
+      requiring correct tab adjustment.
   - id: F2
     step: |
-      cmd/comm reads one line from each file and compares them. The lesser line goes to
-      its column and cmd/comm advances that file. Equal lines go to column 3 and both
-      files advance.
+      The operator tests --output-delimiter and file-exhaustion behavior (one file
+      shorter than the other) to verify correct column assignment for remaining lines.
   - id: F3
     step: |
-      cmd/comm writes each line to the appropriate column with the configured indentation.
-      Suppressed columns are skipped; indentation adjusts for remaining columns.
-  - id: F4
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/comm and gcomm
-      with the same file arguments and environment.
-  - id: F5
-    step: |
-      The harness compares stdout byte-for-byte with no normalization. Both binaries must
-      produce identical output bytes and exit codes.
-  - id: F6
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both outputs, and both exit codes.
+      with the same file arguments and environment. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/comm — three-column comparison, column suppression, indentation, order checking (prd029-comm R1, R2, R3)"
@@ -49,17 +37,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/comm compiles and ./bin/comm exists after mage build.
-  - id: S2
-    criterion: The differential test for full three-column output passes; columns match gcomm byte-for-byte.
-  - id: S3
-    criterion: The differential test for -12 (only common lines) passes.
-  - id: S4
-    criterion: The differential test for -3 (only unique lines) passes.
-  - id: S5
-    criterion: The differential test for -1 (suppress file1-only column) passes.
-  - id: S6
-    criterion: The differential test for --output-delimiter passes; custom separator replaces tabs.
+    criterion: |
+      The differential test passes for full three-column output, -12 common-only,
+      -3 unique-only, -1 suppress, --output-delimiter, and file-exhaustion cases,
+      confirming full parity with gcomm.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - comm does not sort its inputs; tests use pre-sorted files.
