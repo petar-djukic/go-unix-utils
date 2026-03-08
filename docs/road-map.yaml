@@ -194,7 +194,7 @@ releases:
 
   - version: "05.4"
     name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
       protocol: GNU two-space format for text mode, asterisk format for binary mode,
@@ -204,17 +204,17 @@ releases:
       gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
     use_cases:
       - id: rel05.4-uc001-md5sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc002-sha1sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc003-sha256sum
-        status: spec_complete
+        status: implemented
       - id: rel05.4-uc004-sha512sum
-        status: spec_complete
+        status: implemented
 
   - version: "05.5"
     name: "Batch 5.5 — ts timestamp stdin lines"
-    status: spec_complete
+    status: implemented
     description: |
       Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
       prepends a strftime-formatted timestamp to each line. Supports wall-clock (default),
@@ -224,7 +224,7 @@ releases:
       the rel99.2 prefix for traceability to earlier generation runs.
     use_cases:
       - id: rel99.2-uc001-ts
-        status: spec_complete
+        status: implemented
 
   - version: "06.0"
     name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
