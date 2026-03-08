@@ -49,10 +49,65 @@ non_goals:
   - cmd/dirname does not handle encoding; paths are treated as byte sequences with '/' as the separator.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/dirname /usr/bin/sort produces '/usr/bin', matching gdirname."
-  - "AC2: go run ./cmd/dirname stdio.h produces '.', matching gdirname."
-  - "AC3: go run ./cmd/dirname /usr/bin/ produces '/usr', matching gdirname (trailing slash stripped)."
-  - "AC4: go run ./cmd/dirname / produces '/', matching gdirname."
-  - "AC5: go run ./cmd/dirname dir1/file dir2/file produces 'dir1' and 'dir2' on separate lines, matching gdirname."
-  - "AC6: Differential test against gdirname passes for simple paths, nested paths, trailing slashes, root, relative paths, dots, multiple arguments, and -z mode."
-  - "AC7: cmd/dirname compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/dirname /usr/bin/sort produces '/usr/bin', matching gdirname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "go run ./cmd/dirname stdio.h produces '.', matching gdirname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC3
+    criterion: "go run ./cmd/dirname /usr/bin/ produces '/usr', matching gdirname (trailing slash stripped)."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC4
+    criterion: "go run ./cmd/dirname / produces '/', matching gdirname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC5
+    criterion: "go run ./cmd/dirname dir1/file dir2/file produces 'dir1' and 'dir2' on separate lines, matching gdirname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC6
+    criterion: "Differential test against gdirname passes for simple paths, nested paths, trailing slashes, root, relative paths, dots, multiple arguments, and -z mode."
+    traces:
+      - R2.1
+      - R4.1
+      - R4.2
+  - id: AC7
+    criterion: "cmd/dirname compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

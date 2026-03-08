@@ -50,9 +50,58 @@ non_goals:
   - cmd/md5sum does not implement the --strict flag (exit non-zero for improperly formatted lines); --warn is sufficient.
 
 acceptance_criteria:
-  - "AC1: echo -n 'abc' | md5sum produces 'md5sum output matching gmd5sum', verified byte-for-byte."
-  - "AC2: md5sum on a known file produces the correct MD5 hash in GNU format, matching gmd5sum."
-  - "AC3: md5sum --check on a valid checksum file exits 0 and prints 'FILENAME: OK' for each entry."
-  - "AC4: md5sum --check on a checksum file with one mismatch exits 1 and prints 'FILENAME: FAILED'."
-  - "AC5: Differential test against gmd5sum passes for all required test cases."
-  - "AC6: cmd/md5sum compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "echo -n 'abc' | md5sum produces 'md5sum output matching gmd5sum', verified byte-for-byte."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "md5sum on a known file produces the correct MD5 hash in GNU format, matching gmd5sum."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC3
+    criterion: "md5sum --check on a valid checksum file exits 0 and prints 'FILENAME: OK' for each entry."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.4
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC4
+    criterion: "md5sum --check on a checksum file with one mismatch exits 1 and prints 'FILENAME: FAILED'."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.4
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC5
+    criterion: "Differential test against gmd5sum passes for all required test cases."
+    traces:
+      - R3.1
+  - id: AC6
+    criterion: "cmd/md5sum compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

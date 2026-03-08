@@ -51,10 +51,54 @@ non_goals:
   - cmd/tr does not accept file arguments; it reads exclusively from stdin per the POSIX specification.
 
 acceptance_criteria:
-  - "AC1: echo 'hello' | go run ./cmd/tr 'a-z' 'A-Z' produces HELLO, matching gtr."
-  - "AC2: echo 'hello' | go run ./cmd/tr -d 'l' produces heo, matching gtr."
-  - "AC3: echo 'aabbcc' | go run ./cmd/tr -s 'a-c' produces abc, matching gtr."
-  - "AC4: echo 'hello world' | go run ./cmd/tr -c 'a-z\\n' '*' replaces non-alpha characters with *, matching gtr."
-  - "AC5: echo 'hello 123' | go run ./cmd/tr -d '[:digit:]' produces 'hello ', matching gtr."
-  - "AC6: Differential test against gtr passes for all flag combinations listed in R4.3."
-  - "AC7: cmd/tr compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "echo 'hello' | go run ./cmd/tr 'a-z' 'A-Z' produces HELLO, matching gtr."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "echo 'hello' | go run ./cmd/tr -d 'l' produces heo, matching gtr."
+    traces:
+      - R2.1
+      - R2.3
+      - R4.3
+  - id: AC3
+    criterion: "echo 'aabbcc' | go run ./cmd/tr -s 'a-c' produces abc, matching gtr."
+    traces:
+      - R2.2
+      - R2.3
+      - R4.3
+  - id: AC4
+    criterion: "echo 'hello world' | go run ./cmd/tr -c 'a-z\\n' '*' replaces non-alpha characters with *, matching gtr."
+    traces:
+      - R2.4
+      - R4.3
+  - id: AC5
+    criterion: "echo 'hello 123' | go run ./cmd/tr -d '[:digit:]' produces 'hello ', matching gtr."
+    traces:
+      - R2.1
+      - R2.3
+      - R4.3
+  - id: AC6
+    criterion: "Differential test against gtr passes for all flag combinations listed in R4.3."
+    traces:
+      - R4.3
+  - id: AC7
+    criterion: "cmd/tr compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

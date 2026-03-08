@@ -49,9 +49,70 @@ non_goals:
   - cmd/mkdir does not read directory names from stdin; all input comes from command-line arguments.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/mkdir testdir creates a directory named 'testdir', matching gmkdir."
-  - "AC2: go run ./cmd/mkdir -p a/b/c creates the full directory chain a/b/c, matching gmkdir -p."
-  - "AC3: go run ./cmd/mkdir -m 0755 testdir creates a directory with mode 0755, matching gmkdir -m 0755."
-  - "AC4: go run ./cmd/mkdir existing_dir exits non-zero with an error message when existing_dir already exists, matching gmkdir."
-  - "AC5: Differential test against gmkdir passes for single creation, multiple creation, -p, -m, -v, and error cases."
-  - "AC6: cmd/mkdir compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/mkdir testdir creates a directory named 'testdir', matching gmkdir."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/mkdir -p a/b/c creates the full directory chain a/b/c, matching gmkdir -p."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.3
+      - R4.2
+      - R4.3
+  - id: AC3
+    criterion: "go run ./cmd/mkdir -m 0755 testdir creates a directory with mode 0755, matching gmkdir -m 0755."
+    traces:
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.2
+      - R4.3
+  - id: AC4
+    criterion: "go run ./cmd/mkdir existing_dir exits non-zero with an error message when existing_dir already exists, matching gmkdir."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.2
+      - R2.3
+      - R4.1
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gmkdir passes for single creation, multiple creation, -p, -m, -v, and error cases."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC6
+    criterion: "cmd/mkdir compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3

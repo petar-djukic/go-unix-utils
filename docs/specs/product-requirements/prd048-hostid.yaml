@@ -37,7 +37,34 @@ non_goals:
   - cmd/hostid does not support any formatting options.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/hostid prints the host identifier in 8-digit hex, matching ghostid."
-  - "AC2: go run ./cmd/hostid extraarg exits 1 with an error message to stderr, matching ghostid."
-  - "AC3: Differential test against ghostid passes for normal invocation and error cases."
-  - "AC4: cmd/hostid compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/hostid prints the host identifier in 8-digit hex, matching ghostid."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC2
+    criterion: "go run ./cmd/hostid extraarg exits 1 with an error message to stderr, matching ghostid."
+    traces:
+      - R1.1
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "Differential test against ghostid passes for normal invocation and error cases."
+    traces:
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC4
+    criterion: "cmd/hostid compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3

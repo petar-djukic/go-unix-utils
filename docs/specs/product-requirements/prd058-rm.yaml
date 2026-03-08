@@ -53,10 +53,69 @@ non_goals:
   - cmd/rm does not implement shred-on-delete or secure deletion.
 
 acceptance_criteria:
-  - "AC1: touch f && go run ./cmd/rm f removes the file, matching grm."
-  - "AC2: mkdir -p d/sub && go run ./cmd/rm -r d removes the directory tree, matching grm."
-  - "AC3: go run ./cmd/rm -f nonexistent exits 0 silently, matching grm."
-  - "AC4: go run ./cmd/rm -v f prints the removal, matching grm."
-  - "AC5: go run ./cmd/rm dir without -r exits 1 with error, matching grm."
-  - "AC6: Differential test against grm passes for all flag combinations listed in R4.4."
-  - "AC7: cmd/rm compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "touch f && go run ./cmd/rm f removes the file, matching grm."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "mkdir -p d/sub && go run ./cmd/rm -r d removes the directory tree, matching grm."
+    traces:
+      - R1.2
+      - R2.1
+      - R2.3
+      - R2.4
+      - R4.4
+  - id: AC3
+    criterion: "go run ./cmd/rm -f nonexistent exits 0 silently, matching grm."
+    traces:
+      - R2.2
+      - R2.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
+  - id: AC4
+    criterion: "go run ./cmd/rm -v f prints the removal, matching grm."
+    traces:
+      - R3.3
+      - R4.4
+  - id: AC5
+    criterion: "go run ./cmd/rm dir without -r exits 1 with error, matching grm."
+    traces:
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.3
+      - R2.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "Differential test against grm passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.4
+  - id: AC7
+    criterion: "cmd/rm compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

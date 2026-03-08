@@ -126,11 +126,72 @@ non_goals:
   - cmd/version does not parse LS_COLORS, handle signals, or do anything beyond printing a version string.
 
 acceptance_criteria:
-  - "AC1: mage build compiles cmd/version/ to bin/version. Running bin/version prints a version tag string (matching v[0-9]*) followed by a newline and exits 0."
-  - "AC2: bin/version --version prints the same output as bin/version with no arguments."
-  - "AC3: bin/version --bogus prints a usage message to stderr and exits 2."
-  - "AC4: A development build (without ldflags) produces a binary that prints \"dev\"."
-  - "AC5: mage lint runs golangci-lint on cmd/, pkg/, and magefiles/ with no warnings."
-  - "AC6: mage clean removes bin/ and succeeds silently when bin/ does not exist."
-  - "AC7: mage build followed by mage clean followed by ls bin/ shows bin/ does not exist."
-  - "AC8: All configuration fields consumed by build lifecycle targets are documented in R6.1 and present in configuration.yaml."
+  - id: AC1
+    criterion: "mage build compiles cmd/version/ to bin/version. Running bin/version prints a version tag string (matching v[0-9]*) followed by a newline and exits 0."
+    traces:
+      - R1.1
+      - R1.4
+      - R2.3
+      - R3.2
+  - id: AC2
+    criterion: "bin/version --version prints the same output as bin/version with no arguments."
+    traces:
+      - R1.4
+  - id: AC3
+    criterion: "bin/version --bogus prints a usage message to stderr and exits 2."
+    traces:
+      - R1.1
+      - R1.4
+      - R2.3
+      - R3.2
+      - R6.2
+  - id: AC4
+    criterion: "A development build (without ldflags) produces a binary that prints \"dev\"."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC5
+    criterion: "mage lint runs golangci-lint on cmd/, pkg/, and magefiles/ with no warnings."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R5.1
+      - R5.2
+      - R6.1
+      - R6.2
+      - R6.3
+  - id: AC6
+    criterion: "mage clean removes bin/ and succeeds silently when bin/ does not exist."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC7
+    criterion: "mage build followed by mage clean followed by ls bin/ shows bin/ does not exist."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC8
+    criterion: "All configuration fields consumed by build lifecycle targets are documented in R6.1 and present in configuration.yaml."
+    traces:
+      - R6.1

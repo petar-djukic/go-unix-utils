@@ -49,8 +49,35 @@ non_goals:
   - cmd/yes does not implement a line-count limit; it runs until killed or a write error occurs.
 
 acceptance_criteria:
-  - "AC1: yes | head -n 5 produces five lines of 'y', matching gyes | head -n 5 byte-for-byte."
-  - "AC2: yes hello world | head -n 3 produces three lines of 'hello world', matching gyes."
-  - "AC3: yes -- --help | head -n 1 produces '--help', matching gyes."
-  - "AC4: Differential test against gyes passes for default, single-arg, multi-arg, and '--' separator cases."
-  - "AC5: cmd/yes compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "yes | head -n 5 produces five lines of 'y', matching gyes | head -n 5 byte-for-byte."
+    traces:
+      - R4.1
+  - id: AC2
+    criterion: "yes hello world | head -n 3 produces three lines of 'hello world', matching gyes."
+    traces:
+      - R4.1
+  - id: AC3
+    criterion: "yes -- --help | head -n 1 produces '--help', matching gyes."
+    traces:
+      - R1.3
+      - R4.1
+  - id: AC4
+    criterion: "Differential test against gyes passes for default, single-arg, multi-arg, and '--' separator cases."
+    traces:
+      - R4.1
+  - id: AC5
+    criterion: "cmd/yes compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

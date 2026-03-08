@@ -44,9 +44,47 @@ non_goals:
   - cmd/printenv does not print the NAME= prefix when querying specific variables; only the value is printed.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/printenv with no arguments produces the same output as gprintenv."
-  - "AC2: go run ./cmd/printenv HOME produces the value of HOME followed by a newline, matching gprintenv HOME."
-  - "AC3: go run ./cmd/printenv NONEXISTENT exits 1 with no output, matching gprintenv."
-  - "AC4: go run ./cmd/printenv -0 HOME terminates output with a NUL byte instead of a newline, matching gprintenv -0 HOME."
-  - "AC5: Differential test against gprintenv passes for full dump, single variable, multiple variables, missing variables, and -0 mode."
-  - "AC6: cmd/printenv compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/printenv with no arguments produces the same output as gprintenv."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC2
+    criterion: "go run ./cmd/printenv HOME produces the value of HOME followed by a newline, matching gprintenv HOME."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC3
+    criterion: "go run ./cmd/printenv NONEXISTENT exits 1 with no output, matching gprintenv."
+    traces:
+      - R1.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+  - id: AC4
+    criterion: "go run ./cmd/printenv -0 HOME terminates output with a NUL byte instead of a newline, matching gprintenv -0 HOME."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC5
+    criterion: "Differential test against gprintenv passes for full dump, single variable, multiple variables, missing variables, and -0 mode."
+    traces:
+      - R3.1
+  - id: AC6
+    criterion: "cmd/printenv compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3

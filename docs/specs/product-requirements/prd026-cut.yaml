@@ -51,10 +51,60 @@ non_goals:
   - cmd/cut does not implement locale-aware multi-byte character cutting for -c; LC_ALL=C is assumed.
 
 acceptance_criteria:
-  - "AC1: printf 'a:b:c\\n' | cut -d: -f2 produces 'b\\n', matching gcut -d: -f2."
-  - "AC2: printf 'abcdef\\n' | cut -b2-4 produces 'bcd\\n', matching gcut -b2-4."
-  - "AC3: printf 'a:b:c\\n' | cut -d: -f1,3 produces 'a:c\\n', matching gcut -d: -f1,3."
-  - "AC4: printf 'a:b:c\\n' | cut -d: -f2 --complement produces 'a:c\\n', matching gcut --complement."
-  - "AC5: printf 'no-delimiter\\n' | cut -d: -f2 -s produces empty output, matching gcut -s."
-  - "AC6: Differential test against gcut passes for all required test cases."
-  - "AC7: cmd/cut compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "printf 'a:b:c\\n' | cut -d: -f2 produces 'b\\n', matching gcut -d: -f2."
+    traces:
+      - R2.1
+      - R2.2
+  - id: AC2
+    criterion: "printf 'abcdef\\n' | cut -b2-4 produces 'bcd\\n', matching gcut -b2-4."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC3
+    criterion: "printf 'a:b:c\\n' | cut -d: -f1,3 produces 'a:c\\n', matching gcut -d: -f1,3."
+    traces:
+      - R2.1
+      - R2.2
+  - id: AC4
+    criterion: "printf 'a:b:c\\n' | cut -d: -f2 --complement produces 'a:c\\n', matching gcut --complement."
+    traces:
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC5
+    criterion: "printf 'no-delimiter\\n' | cut -d: -f2 -s produces empty output, matching gcut -s."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.2
+  - id: AC6
+    criterion: "Differential test against gcut passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC7
+    criterion: "cmd/cut compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

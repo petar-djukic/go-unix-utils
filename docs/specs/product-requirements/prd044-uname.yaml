@@ -50,8 +50,60 @@ non_goals:
   - cmd/uname does not support long-form flag names beyond --help and --version.
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/uname prints the kernel name, matching guname."
-  - "AC2: go run ./cmd/uname -a prints all fields in canonical order, matching guname."
-  - "AC3: Each individual flag (-s, -n, -r, -v, -m, -p, -i, -o) produces output matching guname."
-  - "AC4: Differential test against guname passes for all flag combinations and error cases."
-  - "AC5: cmd/uname compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/uname prints the kernel name, matching guname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+  - id: AC2
+    criterion: "go run ./cmd/uname -a prints all fields in canonical order, matching guname."
+    traces:
+      - R2.1
+      - R4.2
+  - id: AC3
+    criterion: "Each individual flag (-s, -n, -r, -v, -m, -p, -i, -o) produces output matching guname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R4.2
+  - id: AC4
+    criterion: "Differential test against guname passes for all flag combinations and error cases."
+    traces:
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC5
+    criterion: "cmd/uname compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3

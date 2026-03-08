@@ -56,10 +56,58 @@ non_goals:
   - cmd/cp does not implement SELinux context preservation (--context).
 
 acceptance_criteria:
-  - "AC1: go run ./cmd/cp file1.txt file2.txt creates an identical copy, matching gcp."
-  - "AC2: go run ./cmd/cp -r dir1/ dir2/ recursively copies the directory tree, matching gcp."
-  - "AC3: go run ./cmd/cp -p file1.txt file2.txt preserves mode and timestamps, matching gcp."
-  - "AC4: go run ./cmd/cp -n existing.txt target.txt does not overwrite target, matching gcp."
-  - "AC5: go run ./cmd/cp nonexistent.txt target.txt exits 1 with error on stderr, matching gcp."
-  - "AC6: Differential test against gcp passes for all flag combinations listed in R4.4."
-  - "AC7: cmd/cp compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "go run ./cmd/cp file1.txt file2.txt creates an identical copy, matching gcp."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/cp -r dir1/ dir2/ recursively copies the directory tree, matching gcp."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.4
+      - R4.2
+      - R4.4
+  - id: AC3
+    criterion: "go run ./cmd/cp -p file1.txt file2.txt preserves mode and timestamps, matching gcp."
+    traces:
+      - R3.1
+      - R4.4
+  - id: AC4
+    criterion: "go run ./cmd/cp -n existing.txt target.txt does not overwrite target, matching gcp."
+    traces:
+      - R1.4
+      - R4.4
+  - id: AC5
+    criterion: "go run ./cmd/cp nonexistent.txt target.txt exits 1 with error on stderr, matching gcp."
+    traces:
+      - R2.2
+      - R4.1
+      - R4.2
+      - R4.4
+  - id: AC6
+    criterion: "Differential test against gcp passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.4
+  - id: AC7
+    criterion: "cmd/cp compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

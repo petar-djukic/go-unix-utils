@@ -54,10 +54,59 @@ non_goals:
   - cmd/tail does not implement -F (equivalent to --follow=name --retry).
 
 acceptance_criteria:
-  - "AC1: seq 1 20 | go run ./cmd/tail produces lines 11 through 20, matching gtail."
-  - "AC2: seq 1 20 | go run ./cmd/tail -n 5 produces lines 16 through 20, matching gtail."
-  - "AC3: seq 1 20 | go run ./cmd/tail -n +5 produces lines 5 through 20, matching gtail."
-  - "AC4: printf 'abcdefghij' | go run ./cmd/tail -c 5 produces 'fghij', matching gtail."
-  - "AC5: go run ./cmd/tail file1.txt file2.txt prints headers and correct tail content, matching gtail."
-  - "AC6: Differential test against gtail passes for all static flag combinations listed in R4.3."
-  - "AC7: cmd/tail compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "seq 1 20 | go run ./cmd/tail produces lines 11 through 20, matching gtail."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "seq 1 20 | go run ./cmd/tail -n 5 produces lines 16 through 20, matching gtail."
+    traces:
+      - R1.2
+      - R1.3
+      - R2.1
+      - R4.3
+  - id: AC3
+    criterion: "seq 1 20 | go run ./cmd/tail -n +5 produces lines 5 through 20, matching gtail."
+    traces:
+      - R1.2
+      - R1.3
+      - R2.1
+      - R4.3
+  - id: AC4
+    criterion: "printf 'abcdefghij' | go run ./cmd/tail -c 5 produces 'fghij', matching gtail."
+    traces:
+      - R2.1
+      - R2.2
+      - R4.3
+  - id: AC5
+    criterion: "go run ./cmd/tail file1.txt file2.txt prints headers and correct tail content, matching gtail."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "Differential test against gtail passes for all static flag combinations listed in R4.3."
+    traces:
+      - R4.3
+  - id: AC7
+    criterion: "cmd/tail compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

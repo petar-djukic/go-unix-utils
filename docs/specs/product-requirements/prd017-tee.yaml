@@ -52,8 +52,52 @@ non_goals:
   - cmd/tee does not support writing to named pipes (FIFOs) with special semantics beyond what the OS provides.
 
 acceptance_criteria:
-  - "AC1: printf 'hello\\nworld\\n' | go run ./cmd/tee /tmp/out.txt produces 'hello\\nworld\\n' on stdout and identical content in /tmp/out.txt, matching gtee."
-  - "AC2: printf 'line1\\n' | go run ./cmd/tee /tmp/a.txt /tmp/b.txt writes identical content to both files, matching gtee."
-  - "AC3: printf 'new\\n' | go run ./cmd/tee -a /tmp/existing.txt appends to the file without truncating, matching gtee -a."
-  - "AC4: Differential test against gtee passes for single file, multiple files, append mode, passthrough, and write-error cases."
-  - "AC5: cmd/tee compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "printf 'hello\\nworld\\n' | go run ./cmd/tee /tmp/out.txt produces 'hello\\nworld\\n' on stdout and identical content in /tmp/out.txt, matching gtee."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "printf 'line1\\n' | go run ./cmd/tee /tmp/a.txt /tmp/b.txt writes identical content to both files, matching gtee."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC3
+    criterion: "printf 'new\\n' | go run ./cmd/tee -a /tmp/existing.txt appends to the file without truncating, matching gtee -a."
+    traces:
+      - R1.3
+      - R2.1
+      - R2.3
+      - R4.2
+  - id: AC4
+    criterion: "Differential test against gtee passes for single file, multiple files, append mode, passthrough, and write-error cases."
+    traces:
+      - R2.2
+      - R3.2
+      - R3.4
+      - R4.1
+      - R4.2
+  - id: AC5
+    criterion: "cmd/tee compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3

@@ -52,10 +52,49 @@ non_goals:
   - cmd/uniq does not implement the --group flag available in some GNU versions; the core flags above are sufficient.
 
 acceptance_criteria:
-  - "AC1: printf 'a\\na\\nb\\na\\n' | uniq produces 'a\\nb\\na\\n', matching guniq."
-  - "AC2: printf 'a\\na\\nb\\n' | uniq -c produces '      2 a\\n      1 b\\n', matching guniq -c."
-  - "AC3: printf 'a\\na\\nb\\n' | uniq -d produces 'a\\n', matching guniq -d."
-  - "AC4: printf 'a\\na\\nb\\n' | uniq -u produces 'b\\n', matching guniq -u."
-  - "AC5: printf 'A\\na\\nb\\n' | uniq -i produces 'A\\nb\\n', matching guniq -i."
-  - "AC6: Differential test against guniq passes for all required test cases."
-  - "AC7: cmd/uniq compiles with no warnings under golangci-lint."
+  - id: AC1
+    criterion: "printf 'a\\na\\nb\\na\\n' | uniq produces 'a\\nb\\na\\n', matching guniq."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "printf 'a\\na\\nb\\n' | uniq -c produces '      2 a\\n      1 b\\n', matching guniq -c."
+    traces:
+      - R2.4
+  - id: AC3
+    criterion: "printf 'a\\na\\nb\\n' | uniq -d produces 'a\\n', matching guniq -d."
+    traces:
+      - R2.1
+  - id: AC4
+    criterion: "printf 'a\\na\\nb\\n' | uniq -u produces 'b\\n', matching guniq -u."
+    traces:
+      - R2.3
+  - id: AC5
+    criterion: "printf 'A\\na\\nb\\n' | uniq -i produces 'A\\nb\\n', matching guniq -i."
+    traces:
+      - R3.1
+  - id: AC6
+    criterion: "Differential test against guniq passes for all required test cases."
+    traces:
+      - R3.1
+  - id: AC7
+    criterion: "cmd/uniq compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4
