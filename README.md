@@ -34,7 +34,7 @@ Specifications cover 8 releases across 11 use cases. Seven generation runs have 
 | v0 spec tags | 16 |
 | v1 generation tags | 25 |
 
-Active releases: rel00.0 (infrastructure), rel01.0 (wc), rel01.1 (cat), rel01.2 (sponge), rel01.3 (du). Deferred: rel99.0 (ls core), rel99.1 (ls extended), rel99.2 (ts). Each release contains one utility with its own PRD, use case, and test suite. See [road-map.yaml](docs/road-map.yaml) for status and [utilities.yaml](docs/utilities.yaml) for the full 123-utility catalog with difficulty ratings.
+17 releases implemented: rel00.0 (infrastructure), rel01.1 (cat), rel01.2 (sponge), rel01.3 (du), rel02.0 (true, false, yes, basename, dirname), rel02.1 (tee), rel02.2 (head, seq), rel03.0 (wc), rel04.0 (ls), rel05.0 (echo, tac, nl, fold), rel05.1 (expand, unexpand), rel05.2 (cut, paste), rel05.3 (uniq, comm), rel05.4 (md5sum, sha1sum, sha256sum, sha512sum), rel05.5 (ts), rel06.0 (mkdir, rmdir, mktemp, ln, unlink), rel06.1 (env, printenv, id, whoami, groups). See [road-map.yaml](docs/road-map.yaml) for status.
 
 ## Methodology
 

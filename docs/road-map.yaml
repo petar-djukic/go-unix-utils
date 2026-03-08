@@ -266,11 +266,10 @@ releases:
       Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
       prepends a strftime-formatted timestamp to each line. Supports wall-clock (default),
       elapsed (-s), and incremental (-i) modes, monotonic clock (-m), and subsecond
-      extensions (%.S, %.s, %.T). Originally deferred to rel99.2 due to task complexity;
-      promoted after successful generation in run 19. Use case and spec files retain
-      the rel99.2 prefix for traceability to earlier generation runs.
+      extensions (%.S, %.s, %.T). Originally deferred due to task complexity;
+      promoted to rel05.5 after successful generation in run 19.
     use_cases:
-      - id: rel99.2-uc001-ts
+      - id: rel05.5-uc001-ts
         status: implemented
 
   - version: "06.0"
