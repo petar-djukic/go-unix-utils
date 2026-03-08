@@ -13,7 +13,7 @@ project:
       docs/SPECIFICATIONS.yaml
       docs/road-map.yaml
     releases:
-        - "06.1"
+        - "00.0"
 generation:
     prefix: generation-
     cycles: 6
