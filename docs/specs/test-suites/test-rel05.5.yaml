@@ -3,7 +3,7 @@ title: "Test Suite: rel05.5 — ts timestamp stdin lines"
 release: rel05.5
 
 traces:
-  - rel99.2-uc001-ts
+  - rel05.5-uc001-ts
   - prd004-ts R1
   - prd004-ts R2
   - prd004-ts R3
