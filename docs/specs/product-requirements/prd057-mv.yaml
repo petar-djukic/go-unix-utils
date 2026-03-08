@@ -1,0 +1,62 @@
+id: prd057-mv
+title: "cmd/mv: Move or Rename Files"
+
+problem: |
+  mv renames files within the same filesystem or copies and deletes across filesystems.
+  The macOS BSD mv differs from GNU mv in cross-device fallback behavior and verbose
+  output formatting. The Go implementation must match the Homebrew GNU reference binary
+  (gmv, installed by coreutils) on exit codes and observable file system state for all
+  supported flag combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Move or rename files and directories within and across filesystems.
+  - G2: Support interactive, force, and no-clobber modes for destination conflict resolution.
+  - G3: Support verbose output and target directory specification.
+  - G4: Verify functional parity against gmv via differential testing.
+
+requirements:
+  R1:
+    title: Basic move and rename
+    items:
+      - R1.1: "When given SOURCE DEST, must rename SOURCE to DEST if on the same filesystem, or copy and delete if on different filesystems."
+      - R1.2: "When given multiple SOURCE arguments and a DEST directory, must move each SOURCE into DEST."
+      - R1.3: Must move directories without requiring a recursive flag (unlike cp).
+      - R1.4: "When DEST exists and is a directory, must move SOURCE into DEST as DEST/SOURCE."
+
+  R2:
+    title: Overwrite control
+    items:
+      - R2.1: "-i or --interactive must prompt before overwriting an existing destination file."
+      - R2.2: "-f or --force must not prompt before overwriting. When combined with -i, the last flag given takes precedence."
+      - R2.3: "-n or --no-clobber must not overwrite an existing destination file."
+      - R2.4: "When the destination cannot be overwritten due to permissions, must print an error to stderr."
+
+  R3:
+    title: Output control and target directory
+    items:
+      - R3.1: "-v or --verbose must print the name of each file as it is moved, in the format 'SOURCE -> DEST' or 'renamed SOURCE -> DEST'."
+      - R3.2: "-t DIRECTORY or --target-directory=DIRECTORY must move all SOURCE arguments into DIRECTORY."
+      - R3.3: "-T or --no-target-directory must treat DEST as a normal file, not a directory."
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 when all files are moved successfully.
+      - R4.2: Must exit 1 when any move operation fails (permission denied, source not found).
+      - R4.3: "When moving multiple files and one fails, must continue moving remaining files and exit 1."
+      - R4.4: "Differential tests must compare exit codes and resulting file system state between the Go binary and the reference binary via pkg/testutils. Tests must cover: single file rename, move into directory, multi-file move, -i interactive, -f force, -n no-clobber, -v verbose, -t target directory, directory move, and error cases."
+
+non_goals:
+  - cmd/mv does not implement --backup (make backups of existing destination files).
+  - cmd/mv does not implement --suffix (override backup suffix).
+  - cmd/mv does not implement -u (move only when source is newer).
+  - cmd/mv does not implement SELinux context preservation (--context).
+
+acceptance_criteria:
+  - "AC1: go run ./cmd/mv file1.txt file2.txt renames the file, matching gmv."
+  - "AC2: go run ./cmd/mv file1.txt dir/ moves file into directory, matching gmv."
+  - "AC3: go run ./cmd/mv -n existing.txt target.txt does not overwrite target, matching gmv."
+  - "AC4: go run ./cmd/mv -v file1.txt file2.txt prints the move operation, matching gmv."
+  - "AC5: go run ./cmd/mv nonexistent.txt target.txt exits 1 with error on stderr, matching gmv."
+  - "AC6: Differential test against gmv passes for all flag combinations listed in R4.4."
+  - "AC7: cmd/mv compiles with no warnings under golangci-lint."

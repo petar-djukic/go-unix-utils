@@ -1,0 +1,78 @@
+id: rel07.1-uc003-rm
+title: "Remove files or directories via rm"
+
+summary: |
+  The operator invokes the Go rm binary to delete files and directory trees. The
+  differential testing harness runs both the Go binary and the Homebrew reference
+  binary (grm from coreutils) with the same arguments and environment, then compares
+  exit codes and the resulting file system state.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd058-rm.yaml) and invokes do-work to
+  produce a passing differential test for cmd/rm.
+
+flow:
+  - id: F1
+    step: |
+      The operator creates a test file and runs "./bin/rm testfile". The file is
+      removed from the filesystem.
+  - id: F2
+    step: |
+      The operator creates a directory tree and runs "./bin/rm -r dir/" to
+      recursively remove it.
+  - id: F3
+    step: |
+      The operator runs "./bin/rm -f nonexistent" to verify force mode exits 0
+      silently when the file does not exist.
+  - id: F4
+    step: |
+      The operator runs "./bin/rm -v testfile" to see verbose output showing
+      the removal.
+  - id: F5
+    step: |
+      The operator runs "./bin/rm dir/" without -r to verify it fails with an
+      error on stderr.
+  - id: F6
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/rm and
+      grm with the same arguments and environment.
+  - id: F7
+    step: |
+      The harness compares exit codes and verifies the resulting file system state
+      (file existence) matches between both binaries.
+
+touchpoints:
+  - T1: "cmd/rm — single removal, multi-file, recursive, force, interactive, verbose, empty directory (prd058-rm R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, exit code and file system comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/rm compiles and ./bin/rm exists after mage build.
+  - id: S2
+    criterion: |
+      Single file removal deletes the file from the filesystem, matching grm.
+  - id: S3
+    criterion: |
+      Recursive removal (-r) deletes the entire directory tree.
+  - id: S4
+    criterion: |
+      Force mode (-f) exits 0 silently for non-existent files.
+  - id: S5
+    criterion: |
+      Verbose mode (-v) prints each file as it is removed.
+  - id: S6
+    criterion: |
+      Attempting to remove a directory without -r fails with exit 1.
+  - id: S7
+    criterion: |
+      Refusing to remove '.' or '..' prints an error.
+  - id: S8
+    criterion: |
+      The differential test passes for all flag combinations listed in the PRD.
+
+out_of_scope:
+  - One-file-system mode is excluded per the PRD.
+
+test_suite: test-rel07.1

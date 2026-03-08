@@ -1,0 +1,245 @@
+id: test-rel07.1
+title: "Test Suite: rel07.1 — cp, mv, rm"
+release: rel07.1
+
+traces:
+  - rel07.1-uc001-cp
+  - rel07.1-uc002-mv
+  - rel07.1-uc003-rm
+  - prd056-cp R1
+  - prd056-cp R2
+  - prd056-cp R3
+  - prd056-cp R4
+  - prd057-mv R1
+  - prd057-mv R2
+  - prd057-mv R3
+  - prd057-mv R4
+  - prd058-rm R1
+  - prd058-rm R2
+  - prd058-rm R3
+  - prd058-rm R4
+
+preconditions:
+  - ./bin/cp, ./bin/mv, and ./bin/rm exist (built via mage build).
+  - Reference binaries gcp, gmv, and grm are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "All file operation tests create temporary directories to isolate side effects."
+  - "Tests compare exit codes and resulting file system state (file existence, content, permissions)."
+
+test_cases:
+  # --- cp: single file copy ---
+  - name: cp_single_file
+    description: "cp copies a single file to a new destination. Setup: source.txt contains 'hello'."
+    inputs:
+      args: ["source.txt", "dest.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_exists: "dest.txt"
+      file_content: "hello"
+    traces:
+      - prd056-cp R1.1
+
+  # --- cp: copy into directory ---
+  - name: cp_into_directory
+    description: "cp copies a file into an existing directory. Setup: source.txt exists, destdir/ exists."
+    inputs:
+      args: ["source.txt", "destdir/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_exists: "destdir/source.txt"
+    traces:
+      - prd056-cp R1.1
+
+  # --- cp: recursive directory copy ---
+  - name: cp_recursive
+    description: "cp -r copies a directory tree recursively. Setup: srcdir/sub/file.txt exists."
+    inputs:
+      args: ["-r", "srcdir", "destdir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_exists: "destdir/sub/file.txt"
+    traces:
+      - prd056-cp R2.1
+
+  # --- cp: no-clobber ---
+  - name: cp_no_clobber
+    description: "cp -n does not overwrite an existing file. Setup: source.txt contains 'new', target.txt contains 'old'."
+    inputs:
+      args: ["-n", "source.txt", "target.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_content_target: "old"
+    traces:
+      - prd056-cp R1.4
+
+  # --- cp: directory without -r fails ---
+  - name: cp_directory_without_recursive
+    description: "cp without -r on a directory argument prints an error and exits 1."
+    inputs:
+      args: ["srcdir", "destdir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "directory"
+    traces:
+      - prd056-cp R2.2
+
+  # --- cp: missing source ---
+  - name: cp_missing_source
+    description: "cp with a non-existent source exits 1 with error on stderr."
+    inputs:
+      args: ["nonexistent.txt", "dest.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "nonexistent.txt"
+    traces:
+      - prd056-cp R4.2
+
+  # --- mv: rename file ---
+  - name: mv_rename
+    description: "mv renames a file. Setup: source.txt exists."
+    inputs:
+      args: ["source.txt", "dest.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_exists: "dest.txt"
+      file_not_exists: "source.txt"
+    traces:
+      - prd057-mv R1.1
+
+  # --- mv: move into directory ---
+  - name: mv_into_directory
+    description: "mv moves a file into an existing directory. Setup: file.txt exists, destdir/ exists."
+    inputs:
+      args: ["file.txt", "destdir/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_exists: "destdir/file.txt"
+      file_not_exists: "file.txt"
+    traces:
+      - prd057-mv R1.2
+      - prd057-mv R1.4
+
+  # --- mv: no-clobber ---
+  - name: mv_no_clobber
+    description: "mv -n does not overwrite an existing file. Setup: source.txt contains 'new', target.txt contains 'old'."
+    inputs:
+      args: ["-n", "source.txt", "target.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_content_target: "old"
+    traces:
+      - prd057-mv R2.3
+
+  # --- mv: missing source ---
+  - name: mv_missing_source
+    description: "mv with a non-existent source exits 1 with error on stderr."
+    inputs:
+      args: ["nonexistent.txt", "dest.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "nonexistent.txt"
+    traces:
+      - prd057-mv R4.2
+
+  # --- rm: single file removal ---
+  - name: rm_single_file
+    description: "rm removes a single file. Setup: target.txt exists."
+    inputs:
+      args: ["target.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_not_exists: "target.txt"
+    traces:
+      - prd058-rm R1.1
+
+  # --- rm: recursive directory removal ---
+  - name: rm_recursive
+    description: "rm -r removes a directory tree. Setup: dir/sub/file.txt exists."
+    inputs:
+      args: ["-r", "dir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      file_not_exists: "dir"
+    traces:
+      - prd058-rm R2.1
+
+  # --- rm: force on non-existent ---
+  - name: rm_force_nonexistent
+    description: "rm -f on a non-existent file exits 0 silently."
+    inputs:
+      args: ["-f", "nonexistent.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd058-rm R2.2
+      - prd058-rm R4.3
+
+  # --- rm: directory without -r fails ---
+  - name: rm_directory_without_recursive
+    description: "rm without -r on a directory argument prints an error and exits 1."
+    inputs:
+      args: ["dir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "directory"
+    traces:
+      - prd058-rm R1.2
+
+  # --- rm: refuse dot and dotdot ---
+  - name: rm_refuse_dot
+    description: "rm -r refuses to remove '.' and prints an error."
+    inputs:
+      args: ["-r", "."]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stderr_contains: "."
+    traces:
+      - prd058-rm R1.3

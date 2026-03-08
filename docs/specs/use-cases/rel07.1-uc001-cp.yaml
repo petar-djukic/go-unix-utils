@@ -1,0 +1,78 @@
+id: rel07.1-uc001-cp
+title: "Copy files and directories via cp"
+
+summary: |
+  The operator invokes the Go cp binary to duplicate files and directory trees. The
+  differential testing harness runs both the Go binary and the Homebrew reference
+  binary (gcp from coreutils) with the same arguments and environment, then compares
+  exit codes and the resulting file system state.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd056-cp.yaml) and invokes do-work to
+  produce a passing differential test for cmd/cp.
+
+flow:
+  - id: F1
+    step: |
+      The operator runs "./bin/cp file1.txt file2.txt" to copy a single file.
+      The destination file is created with the same content as the source.
+  - id: F2
+    step: |
+      The operator runs "./bin/cp -r dir1/ dir2/" to recursively copy a directory
+      tree, preserving the structure.
+  - id: F3
+    step: |
+      The operator runs "./bin/cp -p file1.txt file2.txt" to copy with attribute
+      preservation (mode, ownership, timestamps).
+  - id: F4
+    step: |
+      The operator runs "./bin/cp -n existing.txt target.txt" to verify no-clobber
+      mode does not overwrite the existing target.
+  - id: F5
+    step: |
+      The operator runs "./bin/cp -a dir1/ dir2/" to archive-copy a directory tree
+      with all attributes preserved.
+  - id: F6
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/cp and
+      gcp with the same arguments and environment.
+  - id: F7
+    step: |
+      The harness compares exit codes and verifies the resulting file system state
+      (file existence, content, permissions) matches between both binaries.
+
+touchpoints:
+  - T1: "cmd/cp — single copy, multi-file, recursive, preserve, archive, force, no-clobber, interactive, symlinks, verbose (prd056-cp R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, exit code and file system comparison"
+
+success_criteria:
+  - id: S1
+    criterion: cmd/cp compiles and ./bin/cp exists after mage build.
+  - id: S2
+    criterion: |
+      Single file copy creates an identical destination file, matching gcp.
+  - id: S3
+    criterion: |
+      Recursive copy (-r) duplicates the full directory tree.
+  - id: S4
+    criterion: |
+      Preserve mode (-p) retains file mode and timestamps on the copy.
+  - id: S5
+    criterion: |
+      No-clobber (-n) does not overwrite existing files.
+  - id: S6
+    criterion: |
+      Archive mode (-a) preserves all attributes and copies recursively.
+  - id: S7
+    criterion: |
+      Error cases (missing source, directory without -r) produce correct exit codes.
+  - id: S8
+    criterion: |
+      The differential test passes for all flag combinations listed in the PRD.
+
+out_of_scope:
+  - Reflink and sparse file support are excluded per the PRD.
+
+test_suite: test-rel07.1
