@@ -3,7 +3,7 @@ title: "go-unix-utils Release Road Map"
 releases:
     - version: "00.0"
       name: "Batch 0 — foundational infrastructure"
-      status: implemented
+      status: spec_complete
       description: |
         Specify and verify the build lifecycle and shared library infrastructure that all
         subsequent releases depend on. This release covers magefiles/ (build, lint, clean,
