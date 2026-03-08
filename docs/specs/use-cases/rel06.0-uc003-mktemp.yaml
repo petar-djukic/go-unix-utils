@@ -20,32 +20,17 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/mktemp". mktemp creates a temporary file in the
-      system TMPDIR using the default template and prints the absolute path to
-      stdout.
+      The operator exercises mktemp with default file creation, -d directory
+      creation, explicit templates, --tmpdir directory placement, --suffix, -t
+      legacy mode, and -u dry-run. The -d flag changes the created entry from a
+      file (mode 0600) to a directory (mode 0700).
   - id: F2
     step: |
-      The operator runs "./bin/mktemp -d". mktemp creates a temporary directory
-      instead of a file and prints the path to stdout.
-  - id: F3
-    step: |
-      The operator runs "./bin/mktemp /tmp/myapp.XXXXXX" with an explicit
-      template. mktemp replaces the trailing X characters with random characters,
-      creates the file, and prints the resulting path.
-  - id: F4
-    step: |
-      The operator runs "./bin/mktemp --tmpdir=custom myprefix.XXXXXX". mktemp
-      creates the temporary file inside the "custom" directory using the given
-      template prefix.
-  - id: F5
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/mktemp
-      and gmktemp with the same arguments and environment.
-  - id: F6
-    step: |
-      The harness compares exit codes and validates that both outputs share the
-      same path prefix, template structure, and line count. Exact filenames are
-      expected to differ due to randomness.
+      and gmktemp with the same arguments and environment. Requires F1 (binary
+      must be built). Because generated names are random, the harness compares
+      exit codes and structural properties (path prefix, template pattern,
+      permissions) rather than byte-for-byte stdout.
 
 touchpoints:
   - T1: "cmd/mktemp — default temp file, temp directory (-d), explicit template (prd036-mktemp R1, R2, R3)"
@@ -53,23 +38,18 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/mktemp compiles and ./bin/mktemp exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/mktemp" creates a file in TMPDIR, prints its path, and exits 0.
-      The created path exists on disk.
-  - id: S3
-    criterion: |
-      Directory creation works: "./bin/mktemp -d" creates a directory (not a
-      file) and prints its path.
-  - id: S4
-    criterion: |
-      Explicit templates work: "./bin/mktemp /tmp/myapp.XXXXXX" produces a path
-      matching the pattern /tmp/myapp.[a-zA-Z0-9]{6}.
-  - id: S5
-    criterion: |
-      The differential test passes, comparing exit codes and structural output
-      properties for default creation, -d, explicit templates, and --tmpdir.
+      The differential test passes for default file creation, -d directory
+      creation, explicit templates, --tmpdir directory placement, --suffix, -t
+      legacy mode, and error cases, comparing exit codes and structural output
+      properties to confirm parity with gmktemp.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Byte-for-byte stdout comparison; random suffixes make exact matching impossible.

@@ -17,31 +17,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "seq 1 20 | ./bin/tail". tail prints the last 10 lines
-      (lines 11 through 20) to stdout.
+      The operator exercises tail with default 10-line output, explicit -n line
+      count, -n +N plus-offset (start from line N), -c byte count, -c +N byte
+      offset, multi-file headers, -q header suppression, -v forced headers,
+      stdin input, and error on non-existent file. The -c flag changes the
+      counting unit from lines to bytes, and the + prefix reverses the selection
+      direction from end-of-file to start-from-offset.
   - id: F2
     step: |
-      The operator runs "seq 1 20 | ./bin/tail -n 5" to print only the last 5 lines.
-  - id: F3
-    step: |
-      The operator runs "seq 1 20 | ./bin/tail -n +5" to print starting from line 5
-      to the end of input.
-  - id: F4
-    step: |
-      The operator runs "printf 'abcdefghij' | ./bin/tail -c 5" to print the last
-      5 bytes.
-  - id: F5
-    step: |
-      The operator runs "./bin/tail file1.txt file2.txt" to test multi-file output
-      with headers in the format "==> FILENAME <==".
-  - id: F6
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/tail and
-      gtail with the same arguments and environment.
-  - id: F7
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/tail
+      and gtail with the same arguments, stdin, and environment. Requires F1
+      (binary must be built). The harness compares stdout byte-for-byte and exit
+      codes.
 
 touchpoints:
   - T1: "cmd/tail — line-count, byte-count, plus-offset, multi-file headers, quiet/verbose (prd055-tail R1, R2, R3, R4)"
@@ -49,28 +36,19 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/tail compiles and ./bin/tail exists after mage build.
-  - id: S2
     criterion: |
-      "seq 1 20 | ./bin/tail" produces lines 11 through 20, matching gtail.
-  - id: S3
-    criterion: |
-      Explicit line count works: "tail -n 5" produces the last 5 lines.
-  - id: S4
-    criterion: |
-      Plus-offset works: "tail -n +5" prints from line 5 onward.
-  - id: S5
-    criterion: |
-      Byte count works: "tail -c 5" prints the last 5 bytes.
-  - id: S6
-    criterion: |
-      Multi-file headers are printed in the format "==> FILENAME <==", matching gtail.
-  - id: S7
-    criterion: |
-      Header suppression (-q) and forced headers (-v) work correctly.
-  - id: S8
-    criterion: |
-      The differential test passes for all static flag combinations listed in the PRD.
+      The differential test passes for default 10-line output, explicit -n count,
+      -n +N plus-offset, -c byte count, -c +N byte offset, multi-file headers,
+      -q suppression, -v forced headers, stdin input, and error on non-existent
+      file, confirming full parity with gtail.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
 
 out_of_scope:
   - Follow mode (-f) is excluded per the PRD.

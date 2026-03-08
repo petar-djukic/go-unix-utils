@@ -17,34 +17,20 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go ts binary with a known stdin input and a format flag.
-      Example: printf 'line1\nline2\nline3\n' | ./bin/ts '%H:%M:%S'
+      The operator exercises ts in default mode, custom format mode, elapsed mode (-s),
+      and incremental mode (-i). -s and -i change the timestamp source from wall-clock
+      to elapsed-since-start and elapsed-since-previous-line respectively, requiring
+      TZ=GMT internally.
   - id: F2
     step: |
-      cmd/ts reads each line from stdin. For each line, it calls time.Now() to get the
-      current time, formats it with the strftime-equivalent using the given format string,
-      and writes "<timestamp> <line>" to stdout.
+      The operator tests empty stdin (immediate EOF) and invalid flags to verify clean
+      exit behavior and usage error reporting.
   - id: F3
     step: |
-      The output is three lines, each prefixed with an HH:MM:SS timestamp.
-  - id: F4
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/ts and the
-      reference ts binary with the same stdin content, args, and environment.
-  - id: F5
-    step: |
-      The harness applies the TimestampNormalizer from pkg/testutils to both outputs,
-      replacing the HH:MM:SS timestamp prefix with a fixed placeholder string
-      (e.g., "HH:MM:SS").
-  - id: F6
-    step: |
-      The harness compares the normalized outputs byte-for-byte. Both binaries must
-      produce the same line structure: three lines each starting with the placeholder
-      followed by a space and the original line content.
-  - id: F7
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports
-      the triggering args, both raw outputs, and both normalized outputs.
+      reference ts binary with the same stdin content, args, and environment. Requires
+      F1 (binary must be built). The harness applies TimestampNormalizer to both outputs
+      before comparison, replacing wall-clock timestamps with a fixed placeholder.
 
 touchpoints:
   - T1: "cmd/ts — timestamp prefix logic, all flag modes (prd004-ts R1, R2, R3, R4, R5, R6, R7, R8)"
@@ -53,27 +39,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/ts compiles and ./bin/ts exists after mage build.
-  - id: S2
     criterion: |
-      printf 'line1\nline2\nline3\n' | ./bin/ts produces three lines each prefixed
-      with a timestamp in the default format "%b %d %H:%M:%S".
-  - id: S3
-    criterion: |
-      The differential test for the default format mode passes: normalized output from
-      ./bin/ts matches normalized output from the reference ts binary on three-line stdin.
-  - id: S4
-    criterion: |
-      The differential test for -s mode passes: elapsed timestamps increase monotonically
-      across lines and normalized outputs match.
-  - id: S5
-    criterion: |
-      The differential test for -i mode passes: per-line incremental timestamps and
-      normalized outputs match.
-  - id: S6
-    criterion: Empty stdin (immediate EOF) produces no output and exits 0 for both binaries.
-  - id: S7
-    criterion: go test ./cmd/ts/... passes with no failures.
+      The differential test passes for default format, custom format, -s elapsed mode,
+      -i incremental mode, empty stdin, and error cases, confirming full parity with
+      the reference ts binary after timestamp normalization.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - -r mode (relative timestamp conversion) is covered by tests in the test suite but is not the primary flow of this use case.

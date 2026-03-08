@@ -19,35 +19,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/id" with no arguments. id prints the current user's
-      uid, gid, and supplementary groups in the standard format
-      "uid=N(name) gid=N(name) groups=N(name),..." followed by a newline.
+      The operator exercises id with no arguments (default uid/gid/groups line),
+      -u, -g, -G selection flags, -n name modifier, -r real-ID modifier, named
+      user lookup, and error cases (invalid user, conflicting flags). The
+      selection flags (-u, -g, -G) change the output from the full identity line
+      to a single field, and -n further modifies that field from numeric to name.
   - id: F2
     step: |
-      The operator runs "./bin/id -u" to print only the effective numeric user ID.
-  - id: F3
-    step: |
-      The operator runs "./bin/id -g" to print only the effective numeric group ID.
-  - id: F4
-    step: |
-      The operator runs "./bin/id -G" to print all supplementary group IDs,
-      space-separated.
-  - id: F5
-    step: |
-      The operator runs "./bin/id -un" to print the effective username instead of
-      the numeric uid. The -n flag modifies -u, -g, or -G to produce names.
-  - id: F6
-    step: |
-      The operator runs "./bin/id root" to print identity information for a named
-      user rather than the current user.
-  - id: F7
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/id
-      and gid with the same arguments and environment.
-  - id: F8
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and gid with the same arguments and environment. Requires F1 (binary must
+      be built). The harness compares stdout byte-for-byte and exit codes.
 
 touchpoints:
   - T1: "cmd/id — default output, -u, -g, -G, -n, named user lookup (prd041-id R1, R2, R3)"
@@ -55,30 +36,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/id compiles and ./bin/id exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/id" with no arguments produces the standard uid/gid/groups line,
-      matching gid.
-  - id: S3
-    criterion: |
-      The -u flag prints only the numeric uid, matching gid -u.
-  - id: S4
-    criterion: |
-      The -g flag prints only the numeric gid, matching gid -g.
-  - id: S5
-    criterion: |
-      The -G flag prints all supplementary group IDs, matching gid -G.
-  - id: S6
-    criterion: |
-      The -n flag combined with -u, -g, or -G prints names instead of numbers.
-  - id: S7
-    criterion: |
-      A named user argument produces identity information for that user, matching gid.
-  - id: S8
-    criterion: |
-      The differential test passes for default output, -u, -g, -G, -un, -gn, -Gn,
-      named user, and invalid user (error and exit code).
+      The differential test passes for default output (uid/gid/groups), -u, -g,
+      -G, -un, -gn, -Gn, -r real-ID modifier, named user lookup, and invalid
+      user error, confirming full parity with gid.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - SELinux context output (--context / -Z) is not tested.

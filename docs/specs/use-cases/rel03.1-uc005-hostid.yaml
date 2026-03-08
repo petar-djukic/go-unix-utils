@@ -16,16 +16,12 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/hostid" with no arguments. hostid prints the
-      host identifier as an 8-digit hexadecimal number followed by a newline.
+      Build cmd/hostid via mage build. Requires no prior steps.
   - id: F2
     step: |
       The differential testing harness (pkg/testutils) executes both ./bin/hostid
-      and ghostid with the same arguments and environment.
-  - id: F3
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      and ghostid with identical arguments and environment, comparing stdout
+      byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/hostid — host identifier output (prd048-hostid R1, R2)"
@@ -34,16 +30,13 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/hostid compiles and ./bin/hostid exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/hostid" prints the host identifier in 8-digit hex, matching ghostid.
-  - id: S3
-    criterion: |
-      hostid exits with code 0 on success.
-  - id: S4
-    criterion: |
-      The differential test passes for the default invocation.
+      The differential test passes for normal invocation and error cases (extra
+      operand, unknown flag), confirming full parity with ghostid.
+    traces:
+      - AC1
+      - AC2
+      - AC3
 
 out_of_scope:
   - Setting the host identifier is not supported and not tested.

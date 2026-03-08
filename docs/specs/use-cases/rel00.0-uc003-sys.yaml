@@ -19,33 +19,20 @@ flow:
   - id: F1
     step: |
       The operator runs go test ./pkg/sys/... which executes the unit tests for pkg/sys.
-      Unlike cmd/ packages, pkg/sys does not use differential testing because there is no
-      reference binary — it is a library.
+      No reference binary exists; all validation is via unit tests.
   - id: F2
     step: |
-      The TerminalWidth test calls TerminalWidth() and verifies it returns a positive
-      integer when stdout is a terminal, or an error when stdout is a pipe.
+      The terminal tests verify TerminalWidth and IsTerminal against both TTY and pipe
+      file descriptors. These are independent of file metadata tests.
   - id: F3
     step: |
-      The IsTerminal test calls IsTerminal with a pipe fd and verifies it returns false.
-      It calls IsTerminal with a TTY fd (if available in the test environment) and verifies
-      it returns true.
+      The file metadata tests verify Stat, Lstat, and fillFromStat. Lstat depends on a
+      symlink fixture created by the test setup. fillFromStat validates the Darwin/Linux
+      abstraction (st_mtimespec vs st_mtim) using the same fixture.
   - id: F4
     step: |
-      The Stat test calls Stat on a known file and verifies Nlink, Uid, Gid, Dev, Ino,
-      and Blocks match the output of stat(1) on the same file.
-  - id: F5
-    step: |
-      The Lstat test calls Lstat on a symbolic link and verifies that the returned FileInfo
-      has type bits showing symlink, not the target's mode.
-  - id: F6
-    step: |
-      The fillFromStat test verifies that the Darwin/Linux abstraction correctly populates
-      FileInfo.ModTime from st_mtimespec (Darwin) or st_mtim (Linux).
-  - id: F7
-    step: |
-      The InstallSIGPIPEHandler test verifies that writing to a broken pipe after installing
-      the handler causes the process to exit 0 rather than printing a write error.
+      The InstallSIGPIPEHandler test verifies broken-pipe suppression. Independent of
+      F2-F3 (signal handling has no shared state with terminal or stat APIs).
 
 touchpoints:
   - T1: "pkg/sys — TerminalWidth, IsTerminal, InstallSIGPIPEHandler (prd002-sys R1)"
@@ -54,19 +41,24 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: TerminalWidth returns a positive integer on a TTY or an error on a pipe.
+    criterion: |
+      go test ./pkg/sys/... passes on darwin/arm64, validating all three API surfaces
+      (terminal queries, file metadata, signal handling) in a single test run.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
   - id: S2
-    criterion: IsTerminal(pipeFd) returns false.
-  - id: S3
-    criterion: Stat on a known file returns correct Nlink, Uid, Gid, Dev, Ino, Blocks.
-  - id: S4
-    criterion: Lstat on a symlink returns type bits showing symlink.
-  - id: S5
-    criterion: FileInfo.ModTime is populated from the platform-correct field.
-  - id: S6
-    criterion: InstallSIGPIPEHandler causes exit 0 on broken pipe.
-  - id: S7
-    criterion: go test ./pkg/sys/... passes on darwin/arm64 with no failures.
+    criterion: |
+      Lstat on a symlink returns symlink type bits (not the target's mode), and Stat on the
+      same path returns the target's mode. This cross-function check validates that the
+      Darwin/Linux abstraction layer preserves the Stat/Lstat distinction.
+    traces:
+      - AC2
+      - AC3
 
 out_of_scope:
   - SIGWINCH testing requires a real terminal resize event; it is tested manually, not in the harness.

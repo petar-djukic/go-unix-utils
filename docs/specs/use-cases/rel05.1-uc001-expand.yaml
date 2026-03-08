@@ -17,28 +17,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go expand binary on a file or stdin.
-      Example: printf 'col1\tcol2\tcol3\n' | ./bin/expand
+      The operator exercises expand in default mode (tab stop every 8), with a single
+      interval (-t N), and with a tab stop list (-t LIST). The list mode changes tab
+      expansion from uniform intervals to absolute column positions.
   - id: F2
     step: |
-      cmd/expand reads each input character in sequence, tracking the current column
-      position. When it encounters a tab, it writes enough spaces to advance to the
-      next configured tab stop.
+      The operator tests input with no tabs (passthrough) and multiple consecutive tabs
+      to verify each tab advances independently to its stop.
   - id: F3
     step: |
-      Non-tab characters pass through unchanged. Newlines reset the column counter to 1.
-  - id: F4
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/expand and
-      gexpand with the same stdin, args, and environment.
-  - id: F5
-    step: |
-      The harness compares stdout byte-for-byte with no normalization. Both binaries must
-      produce identical output bytes and exit codes.
-  - id: F6
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both outputs, and both exit codes.
+      gexpand with the same stdin, args, and environment. Requires F1 (binary must be
+      built).
 
 touchpoints:
   - T1: "cmd/expand — tab-to-space conversion, tab stop tracking, custom tab stop list (prd024-expand R1, R2, R3)"
@@ -47,17 +37,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/expand compiles and ./bin/expand exists after mage build.
-  - id: S2
-    criterion: The differential test for default mode passes; tabs expand to the next multiple-of-8 column, matching gexpand.
-  - id: S3
-    criterion: The differential test for -t N (single interval) passes; tabs expand to multiples of N.
-  - id: S4
-    criterion: The differential test for -t LIST (multiple stops) passes; each tab reaches the next absolute stop.
-  - id: S5
-    criterion: The differential test for input with no tabs passes; output is identical to input.
-  - id: S6
-    criterion: The differential test for multiple consecutive tabs passes; each tab advances independently to its stop.
+    criterion: |
+      The differential test passes for default tab expansion, -t N single interval,
+      -t LIST absolute positions, no-tab passthrough, and multiple consecutive tabs,
+      confirming full parity with gexpand.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Unicode multi-column character width is not tested; LC_ALL=C single-byte behavior is the requirement.

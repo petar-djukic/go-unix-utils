@@ -17,27 +17,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go sha512sum binary on a file or stdin.
-      Example: sha512sum somefile.txt
+      The operator exercises sha512sum in digest mode (file and stdin), check mode
+      (--check), and tag mode (--tag). --check changes the processing model from digest
+      computation to verification against stored hashes.
   - id: F2
     step: |
-      cmd/sha512sum reads each file, computes its SHA-512 digest using crypto/sha512, and
-      prints the result in GNU format to stdout.
+      The operator tests --check with both matching and mismatching digests to verify
+      OK/FAILED output and correct exit codes.
   - id: F3
     step: |
-      In check mode (--check), cmd/sha512sum reads a checksum file, recomputes each
-      digest, and prints OK or FAILED for each entry.
-  - id: F4
-    step: |
-      The differential testing harness executes both ./bin/sha512sum and gsha512sum with
-      the same inputs and compares stdout byte-for-byte.
-  - id: F5
-    step: |
-      The harness verifies exit codes. If outputs and exit codes match, the test passes.
-  - id: F6
-    step: |
-      If they diverge, the harness reports the triggering args, both outputs, and both
-      exit codes.
+      The differential testing harness (pkg/testutils) executes both ./bin/sha512sum and
+      gsha512sum with the same inputs and compares stdout byte-for-byte. Requires F1
+      (binary must be built).
 
 touchpoints:
   - T1: "cmd/sha512sum — SHA-512 digest computation, GNU format output, check mode, binary/tag flags (prd033-sha512sum R1, R2, R3)"
@@ -46,15 +37,15 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/sha512sum compiles and ./bin/sha512sum exists after mage build.
-  - id: S2
-    criterion: The differential test for digest computation passes; output matches gsha512sum byte-for-byte.
-  - id: S3
-    criterion: The differential test for --check on a valid file passes; exits 0 and prints OK lines.
-  - id: S4
-    criterion: The differential test for --check on a file with a mismatch passes; exits 1 and prints FAILED.
-  - id: S5
-    criterion: The differential test for --tag passes; BSD format output matches gsha512sum --tag.
+    criterion: |
+      The differential test passes for file digest, stdin digest, --check valid,
+      --check mismatch, and --tag BSD format, confirming full parity with gsha512sum.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
 
 out_of_scope:
   - SHA-384 and SHA-512/256 truncations are not implemented.

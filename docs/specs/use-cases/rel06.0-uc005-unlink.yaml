@@ -17,29 +17,16 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/unlink target" where "target" is an existing
-      regular file. unlink removes the file and exits with status 0.
+      The operator exercises unlink with a regular file, a symbolic link, a
+      nonexistent path, a directory, zero arguments, and multiple arguments.
+      unlink is deliberately minimal: it calls unlink(2) on exactly one path
+      and rejects all other usage.
   - id: F2
-    step: |
-      The operator runs "./bin/unlink nonexistent" where the file does not
-      exist. unlink prints an error to stderr and exits with a non-zero status.
-  - id: F3
-    step: |
-      The operator runs "./bin/unlink somedir" where "somedir" is a directory.
-      unlink prints an error to stderr and exits with a non-zero status,
-      refusing to remove directories.
-  - id: F4
-    step: |
-      The operator runs "./bin/unlink" with no arguments. unlink prints a
-      usage error to stderr and exits with a non-zero status.
-  - id: F5
     step: |
       The differential testing harness (pkg/testutils) executes both
       ./bin/unlink and gunlink with the same arguments and environment.
-  - id: F6
-    step: |
-      The harness compares stderr output and exit codes. Both binaries must
-      produce identical behavior.
+      Requires F1 (binary must be built). The harness compares stderr output
+      and exit codes.
 
 touchpoints:
   - T1: "cmd/unlink — single file removal, error on missing file, error on directory (prd038-unlink R1, R2)"
@@ -47,22 +34,17 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/unlink compiles and ./bin/unlink exists after mage build.
-  - id: S2
     criterion: |
-      "./bin/unlink target" removes the file and exits 0, matching gunlink.
-  - id: S3
-    criterion: |
-      Missing file error matches: unlinking a nonexistent path produces stderr
-      and exit code identical to gunlink.
-  - id: S4
-    criterion: |
-      Directory error matches: unlinking a directory produces stderr and exit
-      code identical to gunlink.
-  - id: S5
-    criterion: |
-      The differential test passes for existing file removal, missing file
-      errors, directory errors, and no-argument usage errors.
+      The differential test passes for regular file removal, symbolic link
+      removal, nonexistent path errors, directory errors, zero-argument errors,
+      and multi-argument errors, confirming full parity with gunlink.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Unlinking symbolic links to directories; the test covers regular files and plain directories only.

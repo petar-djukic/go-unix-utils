@@ -16,36 +16,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "./bin/seq 5". seq prints lines 1 through 5, one per line.
+      The operator exercises seq in all three argument forms (LAST, FIRST LAST,
+      FIRST INCREMENT LAST) including descending sequences with negative increments.
   - id: F2
     step: |
-      The operator runs "./bin/seq 2 5" to print a range from 2 to 5.
+      The operator tests output formatting: equal-width padding (-w), printf-style
+      format strings (-f), and custom separators (-s). These interact with the
+      number generation: -w width is computed from the widest endpoint.
   - id: F3
     step: |
-      The operator runs "./bin/seq 1 2 10" to print odd numbers from 1 to 9 with
-      step 2.
-  - id: F4
-    step: |
-      The operator runs "./bin/seq 5 -1 1" to print a descending sequence from 5 to 1.
-  - id: F5
-    step: |
-      The operator runs "./bin/seq -w 8 12" to print zero-padded numbers 08 through 12.
-  - id: F6
-    step: |
-      The operator runs "./bin/seq -f '%.2f' 1 3" to print numbers with two decimal
-      places.
-  - id: F7
-    step: |
-      The operator runs "./bin/seq -s ', ' 1 3" to print numbers separated by commas
-      instead of newlines.
-  - id: F8
-    step: |
       The differential testing harness (pkg/testutils) executes both ./bin/seq and gseq
-      with the same arguments and environment.
-  - id: F9
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      with the same arguments. Requires F1 (binary must be built). Floating-point
+      precision matching is validated by byte-for-byte comparison.
 
 touchpoints:
   - T1: "cmd/seq — argument forms, sequence generation, formatting (prd019-seq R1, R2, R3)"
@@ -53,35 +35,19 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/seq compiles and ./bin/seq exists after mage build.
-  - id: S2
-    criterion: |
-      "seq 5" produces lines 1 through 5, matching gseq.
-  - id: S3
-    criterion: |
-      Two-argument form works: "seq 2 5" produces lines 2 through 5.
-  - id: S4
-    criterion: |
-      Three-argument form works: "seq 1 2 10" produces 1, 3, 5, 7, 9.
-  - id: S5
-    criterion: |
-      Descending sequences work: "seq 5 -1 1" produces 5, 4, 3, 2, 1.
-  - id: S6
-    criterion: |
-      Equal-width padding works: "seq -w 8 12" produces 08, 09, 10, 11, 12.
-  - id: S7
-    criterion: |
-      Format strings work: "seq -f '%.2f' 1 3" produces 1.00, 2.00, 3.00.
-  - id: S8
-    criterion: |
-      Custom separators work: "seq -s ', ' 1 3" produces "1, 2, 3" on one line.
-  - id: S9
-    criterion: |
-      Error cases exit 1: zero step, invalid format, non-numeric arguments.
-  - id: S10
     criterion: |
       The differential test passes for all argument forms, -w, -f, -s, descending,
-      floating-point, and error cases.
+      floating-point, and error cases, confirming full parity with gseq.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
+      - AC8
+      - AC9
 
 out_of_scope:
   - Hexadecimal integer output is excluded; use -f '%a' for hex floating-point.

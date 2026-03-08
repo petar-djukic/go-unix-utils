@@ -16,32 +16,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs "echo 'hello' | ./bin/tr 'a-z' 'A-Z'". tr translates all
-      lowercase letters to uppercase, producing HELLO.
+      The operator exercises tr with basic character translation (SET1 to SET2),
+      -d delete mode, -s squeeze mode, -c complement mode, -ds combined
+      delete-and-squeeze, character ranges, POSIX character classes, case
+      conversion ([:lower:] to [:upper:]), octal escapes, and error cases. The
+      -d flag changes the processing model from translate to delete, removing
+      characters in SET1 rather than mapping them.
   - id: F2
     step: |
-      The operator runs "echo 'hello' | ./bin/tr -d 'l'" to delete all occurrences
-      of 'l', producing heo.
-  - id: F3
-    step: |
-      The operator runs "echo 'aabbcc' | ./bin/tr -s 'a-c'" to squeeze repeated
-      characters, producing abc.
-  - id: F4
-    step: |
-      The operator runs "echo 'hello 123' | ./bin/tr -d '[:digit:]'" to delete all
-      digits using a POSIX character class.
-  - id: F5
-    step: |
-      The operator runs "echo 'hello world' | ./bin/tr -c 'a-z\n' '*'" to complement
-      the set, replacing non-alpha characters with asterisks.
-  - id: F6
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/tr and
-      gtr with the same arguments and environment.
-  - id: F7
-    step: |
-      The harness compares stdout byte-for-byte and exit codes. Both binaries must
-      produce identical output.
+      The differential testing harness (pkg/testutils) executes both ./bin/tr
+      and gtr with the same arguments, stdin, and environment. Requires F1
+      (binary must be built). The harness compares stdout byte-for-byte and exit
+      codes.
 
 touchpoints:
   - T1: "cmd/tr — character translation, deletion, squeezing, complement, character classes, ranges, escapes (prd054-tr R1, R2, R3, R4)"
@@ -49,25 +35,19 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/tr compiles and ./bin/tr exists after mage build.
-  - id: S2
     criterion: |
-      Basic character translation (SET1 to SET2) produces correct output, matching gtr.
-  - id: S3
-    criterion: |
-      Delete mode (-d) removes all characters in SET1 from the input.
-  - id: S4
-    criterion: |
-      Squeeze mode (-s) replaces runs of repeated characters with a single occurrence.
-  - id: S5
-    criterion: |
-      Complement mode (-c) operates on characters not in SET1.
-  - id: S6
-    criterion: |
-      POSIX character classes ([:lower:], [:upper:], [:digit:], etc.) work correctly.
-  - id: S7
-    criterion: |
-      The differential test passes for all flag combinations listed in the PRD.
+      The differential test passes for basic translation, -d delete, -s squeeze,
+      -c complement, -ds combined, character ranges, POSIX character classes,
+      case conversion, octal escapes, and error cases, confirming full parity
+      with gtr.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
 
 out_of_scope:
   - Multibyte character support is excluded per the PRD.

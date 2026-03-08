@@ -19,36 +19,19 @@ flow:
   - id: F1
     step: |
       The operator runs go test ./pkg/format/... which executes the unit tests for
-      pkg/format. Unlike cmd/ packages, pkg/format does not use differential testing
-      because there is no reference binary — it is a library.
+      pkg/format. No reference binary exists; all validation is via unit tests.
   - id: F2
     step: |
-      The Columns test creates a list of 20 filenames and calls Columns(entries, 80).
-      The function distributes entries into the maximum number of columns that fit within
-      80 characters, computing column widths from the longest entry in each column.
+      The Columns and padding tests verify grid layout and string alignment. Columns
+      depends on displayWidth (rune-aware width calculation) for correct column sizing.
   - id: F3
     step: |
-      The PadRight and PadLeft tests verify that strings are padded to the specified
-      display width using rune count, not byte count.
+      The color tests verify FileTypeColor, SetColorEnabled, and ColorEnabled. The
+      color override test depends on SetColorEnabled state to confirm suppression works.
   - id: F4
     step: |
-      The FileTypeColor test calls SetColorEnabled(true), then verifies that each of the
-      eight file types (directory, symlink, executable, block device, character device,
-      socket, pipe, regular) returns the correct ANSI escape sequence per GNU ls defaults.
-  - id: F5
-    step: |
-      The color override test calls SetColorEnabled(false) and verifies that FileTypeColor
-      and Reset return empty strings for all file types. It then calls ResetColorEnabled
-      to restore automatic detection.
-  - id: F6
-    step: |
-      The ColorEnabled test passes an os.Pipe writer and verifies it returns false.
-      It passes a bytes.Buffer and verifies it returns false.
-  - id: F7
-    step: |
-      The HumanSize test verifies binary mode (1024-based): HumanSize(1536, binary)
-      returns "1.5K", HumanSize(0, binary) returns "0". It verifies SI mode (1000-based):
-      HumanSize(1000000, SI) returns "1.0MB".
+      The HumanSize test verifies binary (1024-based) and SI (1000-based) formatting.
+      Independent of F2-F3 (no shared state with column or color APIs).
 
 touchpoints:
   - T1: "pkg/format — Columns, PadRight, PadLeft, displayWidth (prd003-format R1)"
@@ -58,19 +41,23 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: Columns(20 filenames, 80) produces a grid where each row fits within 80 characters.
+    criterion: |
+      go test ./pkg/format/... passes, validating all three API surfaces (column layout,
+      color control, human-readable sizes) in a single test run.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
   - id: S2
-    criterion: PadRight("abc", 10) returns "abc" followed by 7 spaces. PadLeft("abc", 10) returns 7 spaces followed by "abc".
-  - id: S3
-    criterion: FileTypeColor returns the correct ANSI code for all eight file types when color is enabled.
-  - id: S4
-    criterion: SetColorEnabled(false) suppresses all ANSI output. ResetColorEnabled restores automatic detection.
-  - id: S5
-    criterion: ColorEnabled returns false for pipe and non-*os.File writers.
-  - id: S6
-    criterion: HumanSize(1536, binary) returns "1.5K". HumanSize(1000000, SI) returns "1.0MB". HumanSize(0, binary) returns "0".
-  - id: S7
-    criterion: go test ./pkg/format/... passes with no failures.
+    criterion: |
+      ColorEnabled returns false for pipe writers and SetColorEnabled(false) suppresses
+      all ANSI output, confirming the color subsystem interacts correctly with pkg/sys.IsTerminal.
+    traces:
+      - AC3
+      - AC5
 
 out_of_scope:
   - LS_COLORS environment variable parsing is explicitly excluded from pkg/format.

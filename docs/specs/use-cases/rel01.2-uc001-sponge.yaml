@@ -22,33 +22,24 @@ flow:
       to the same file. Example: cat data.txt | ./bin/sponge data.txt
   - id: F2
     step: |
-      cmd/sponge reads all bytes from stdin into an in-memory buffer. If the buffer exceeds
-      the memory threshold, sponge spills to a temp file and continues reading. The output
-      file is not opened during this phase.
+      cmd/sponge reads all bytes from stdin into an in-memory buffer. The output file is
+      not opened during this phase (soak-before-write contract). If the buffer exceeds the
+      memory threshold, sponge spills to a temp file and continues reading.
   - id: F3
     step: |
-      After stdin reaches EOF, cmd/sponge opens the output file. If the output file already
-      exists, sponge reads its permissions for later restoration. In append mode (-a), sponge
-      prepends the original file content to the buffered stdin content.
+      After stdin reaches EOF (requires F2 completion), cmd/sponge opens the output file.
+      If it exists, sponge reads its permissions for restoration. In append mode (-a),
+      sponge prepends the original file content to the buffered stdin content.
   - id: F4
     step: |
-      cmd/sponge writes the buffered content to a temp file, then atomically renames the temp
-      file to the output path. If the rename fails (cross-device), sponge falls back to a
-      byte-for-byte copy.
+      cmd/sponge writes the buffered content to a temp file, then atomically renames it to
+      the output path. Requires F3 (output path and permissions must be resolved). If
+      rename fails (cross-device), sponge falls back to a byte-for-byte copy.
   - id: F5
     step: |
       The differential testing harness (pkg/testutils) executes both ./bin/sponge and the
-      reference sponge binary with the same stdin, args, and environment in isolated temp
-      directories.
-  - id: F6
-    step: |
-      The harness compares the output file contents byte-for-byte using the file-state
-      comparison capability (prd001-testutils R5). Both binaries must produce identical
-      output file content.
-  - id: F7
-    step: |
-      If the file contents match, the test passes. If they diverge, the harness reports the
-      triggering args, both file contents, and both exit codes.
+      reference binary in isolated temp directories, then compares output file contents
+      byte-for-byte using file-state comparison (prd001-testutils R5).
 
 touchpoints:
   - T1: "cmd/sponge — soak-before-write contract, atomic rename, append mode, passthrough (prd007-sponge R1, R2, R3, R4, R5)"
@@ -56,32 +47,26 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/sponge compiles and ./bin/sponge exists after mage build.
-  - id: S2
     criterion: |
       The soak-before-write contract holds: "cat file | ./bin/sponge file" produces a file
       containing the original content (not empty or truncated), confirming sponge did not
-      open the output file until stdin was fully consumed.
-  - id: S3
+      open the output file until stdin was fully consumed. This is the defining integration
+      property that distinguishes sponge from simple redirection.
+    traces:
+      - AC1
+      - AC2
+  - id: S2
     criterion: |
-      Passthrough mode works: "printf 'hello' | ./bin/sponge" writes 'hello' to stdout,
-      matching the reference binary.
-  - id: S4
-    criterion: |
-      Append mode works: "printf 'appended\n' | ./bin/sponge -a existing.txt" produces a
-      file containing [original content][appended\n], matching the reference binary.
-  - id: S5
-    criterion: |
-      Large input (1 MB or more) triggers temp-file spill and produces correct output file
-      content, matching the reference binary.
-  - id: S6
-    criterion: |
-      File permissions are preserved: an output file with mode 0640 retains that mode after
-      sponge overwrites it.
-  - id: S7
-    criterion: |
-      The differential test passes for all modes: small stdin, large stdin, append, passthrough,
-      and soak-before-write contract.
+      The differential test passes for all modes: small stdin, large stdin (spill path),
+      append (-a), passthrough (no file argument), and soak-before-write contract. This
+      validates the full implementation against the reference binary.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
 
 out_of_scope:
   - Cross-device rename fallback is covered in the test suite but is not the primary flow.

@@ -20,37 +20,18 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go ls binary with extended flags on a fixture directory with
-      controlled file sizes, mtimes, and types. Example: ./bin/ls -lR --color=never testdata/ls-fixture/
+      Build cmd/ls via mage build (if not already built). Requires no prior steps.
   - id: F2
     step: |
-      cmd/ls reads directory entries and obtains file metadata via pkg/sys.Stat for sort-by-time
-      (-t), sort-by-size (-S), inode display (-i), and block count display (-s). It formats
-      multi-column output via pkg/format.Columns for -C and -x modes.
+      Run ./bin/ls with extended flags (-C, -x, -t, -S, -r, -U, -v, -i, -s, -n, -F,
+      -R, and combinations) on a fixture directory with controlled sizes, mtimes, and
+      types. Requires F1 (binary must be built).
   - id: F3
     step: |
-      For -R (recursive), cmd/ls descends into each subdirectory and prints a "path:" header
-      followed by the directory contents in the active format mode. Each subdirectory listing
-      applies the same flags (sort, filter, format, metadata).
-  - id: F4
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/ls and gls with
-      the same arguments, environment (LC_ALL=C, --color=never), and working directory.
-  - id: F5
-    step: |
-      The harness applies the LsExtendedNormalizer to both outputs. This normalizer replaces
-      all mtime fields (in long-format output and in recursive subdirectory listings) with the
-      placeholder "MTIME". Inode numbers and block counts are not normalized; both binaries
-      stat the same files on the same filesystem, producing identical values.
-  - id: F6
-    step: |
-      The harness compares the normalized outputs byte-for-byte. Both binaries must produce
-      identical sort order, column layout, metadata values, type indicators, and recursive
-      subdirectory structure.
-  - id: F7
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both raw outputs, both normalized outputs, and both exit codes.
+      The differential testing harness (pkg/testutils) executes both ./bin/ls and gls
+      with identical arguments and environment (LC_ALL=C, --color=never), applies the
+      LsExtendedNormalizer to replace mtime columns across recursive listings, and
+      compares normalized outputs byte-for-byte. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/ls — multi-column layout, sort order, metadata display, classify, recursive (prd008-ls R1, R2, R3, R4)"
@@ -61,43 +42,28 @@ touchpoints:
 success_criteria:
   - id: S1
     criterion: |
-      -C produces multi-column output even when stdout is piped, matching gls -C output on
-      the same fixture with a fixed column width.
+      The differential test passes for all extended flag combinations (-C, -x, -t,
+      -S, -r, -U, -v, -i, -s, -n, -F, -R, and combinations like -Rl, -tr, -SF),
+      confirming full parity with gls.
+    traces:
+      - AC8
+      - AC9
+      - AC10
+      - AC11
+      - AC12
+      - AC13
+      - AC14
+      - AC15
+      - AC16
+      - AC17
+      - AC18
   - id: S2
     criterion: |
-      -x produces horizontal-sorted multi-column output, matching gls -x.
-  - id: S3
-    criterion: |
-      -t sorts entries by modification time (newest first) on a fixture with files of known
-      distinct mtimes, matching gls -t output.
-  - id: S4
-    criterion: |
-      -S sorts entries by size (largest first), matching gls -S output.
-  - id: S5
-    criterion: |
-      -r reverses the sort order, matching gls -r output.
-  - id: S6
-    criterion: |
-      -i prepends inode numbers to each entry, matching gls -i on the same fixture.
-  - id: S7
-    criterion: |
-      -s prepends block counts to each entry, matching gls -s on the same fixture.
-  - id: S8
-    criterion: |
-      -n produces long format with numeric UID/GID instead of names, matching gls -n after
-      MTIME normalization.
-  - id: S9
-    criterion: |
-      -F appends type indicators (/, *, @, |, =) matching gls -F on a fixture with a
-      directory, executable, symlink, and named pipe.
-  - id: S10
-    criterion: |
-      -R recursively lists subdirectories with "path:" headers and blank-line separators,
-      matching gls -R after MTIME normalization.
-  - id: S11
-    criterion: |
-      The differential test passes for all extended flags: -C, -x, -t, -S, -r, -U, -v, -i,
-      -s, -n, -F, -R, and combinations (-Rl, -tr, -SF).
+      Recursive listing (-R) correctly integrates sort, filter, format, and metadata
+      flags across subdirectory boundaries, with "path:" headers and per-directory
+      "total" lines matching gls -lR after mtime normalization.
+    traces:
+      - AC17
 
 out_of_scope:
   - -v (version sort) test uses a simple fixture with files named file1, file2, file10;

@@ -18,32 +18,20 @@ trigger: |
 flow:
   - id: F1
     step: |
-      The operator runs the Go wc binary with stdin input or file arguments.
-      Example: printf 'foo\nbar baz\n' | ./bin/wc
+      Build cmd/wc via mage build. Requires no prior steps.
   - id: F2
     step: |
-      cmd/wc reads from stdin or the named files. For each input, it counts newlines (-l),
-      words (-w), bytes (-c), characters (-m), and max line length (-L) as requested by the
-      active flags. When no flags are given, it counts lines, words, and bytes.
+      Run ./bin/wc with stdin or file arguments using each flag combination (default,
+      -l, -w, -c, -m, -L, multi-file). Requires F1 (binary must be built).
   - id: F3
     step: |
-      cmd/wc writes one line per input in the format "COUNT COUNT COUNT FILENAME" with
-      right-aligned columns. For stdin with no filename, the filename is omitted.
+      The differential testing harness (pkg/testutils) executes both ./bin/wc and gwc
+      with identical stdin, args, and environment and compares stdout byte-for-byte.
+      Requires F1 (binary must be built).
   - id: F4
     step: |
-      When multiple files are given, cmd/wc prints a "total" line with the sum of all counts.
-  - id: F5
-    step: |
-      The differential testing harness (pkg/testutils) executes both ./bin/wc and gwc with
-      the same stdin, args, and environment.
-  - id: F6
-    step: |
-      The harness compares stdout byte-for-byte with no normalization. Both binaries must
-      produce identical count values and column alignment.
-  - id: F7
-    step: |
-      If the outputs match, the test passes. If they diverge, the harness reports the
-      triggering args, both outputs, and both exit codes.
+      Verify error handling: a non-existent file produces stderr output, exits 1, and
+      remaining files are still processed. Requires F1 (binary must be built).
 
 touchpoints:
   - T1: "cmd/wc — line, word, byte, char, max-line-length counting, multi-file totals (prd005-wc R1, R2, R3, R4, R5, R6)"
@@ -51,37 +39,22 @@ touchpoints:
 
 success_criteria:
   - id: S1
-    criterion: cmd/wc compiles and ./bin/wc exists after mage build.
+    criterion: |
+      The differential test passes for all flag combinations (default, -l, -w, -c,
+      -m with LC_ALL=C, -L, multi-file with totals, stdin), confirming full parity
+      with gwc.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC6
   - id: S2
     criterion: |
-      printf 'foo\nbar baz\n' | ./bin/wc produces '2 3 12' (matching gwc output format).
-  - id: S3
-    criterion: |
-      The differential test for default mode passes: ./bin/wc and gwc produce identical
-      output on three-line stdin.
-  - id: S4
-    criterion: |
-      The differential tests for -l, -w, and -c flags each pass: outputs match gwc
-      byte-for-byte.
-  - id: S5
-    criterion: |
-      The differential test for -m with LC_ALL=C passes: character count matches byte
-      count under the C locale.
-  - id: S6
-    criterion: |
-      The differential test for -L passes: max line length matches gwc on multi-line input
-      with varying line lengths.
-  - id: S7
-    criterion: |
-      The differential test for multi-file with total line passes: right-aligned columns
-      and the "total" label match gwc output byte-for-byte.
-  - id: S8
-    criterion: |
-      Empty stdin produces '0 0 0' for default flags, matching gwc.
-  - id: S9
-    criterion: |
-      A non-existent file argument produces an error to stderr, exits 1, and still processes
-      other files on the command line, matching gwc behavior.
+      Error recovery across multiple file operands works correctly: a non-existent file
+      produces stderr output and exit 1 while remaining files are still counted, matching
+      gwc behavior.
+    traces:
+      - AC4
 
 out_of_scope:
   - --files0-from is covered in the test suite but is not the primary flow of this use case.
