@@ -250,7 +250,7 @@ releases:
 
   - version: "06.1"
     name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
-    status: spec_complete
+    status: implemented
     description: |
       Implement five environment and identity utilities. env runs a command in a modified
       environment with variable setting, unsetting, and clean-environment support. printenv
@@ -260,12 +260,12 @@ releases:
       GNU coreutils reference binaries.
     use_cases:
       - id: rel06.1-uc001-env
-        status: spec_complete
+        status: implemented
       - id: rel06.1-uc002-printenv
-        status: spec_complete
+        status: implemented
       - id: rel06.1-uc003-id
-        status: spec_complete
+        status: implemented
       - id: rel06.1-uc004-whoami
-        status: spec_complete
+        status: implemented
       - id: rel06.1-uc005-groups
-        status: spec_complete
+        status: implemented
