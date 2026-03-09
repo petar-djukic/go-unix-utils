@@ -121,6 +121,22 @@ func TestSetColorEnabled_ForceOff(t *testing.T) {
 	assert.False(t, ColorEnabled(w), "override should force false")
 }
 
+func TestSetColorEnabled_MultipleCalls(t *testing.T) {
+	// AC4: Calling SetColorEnabled multiple times uses the last value set.
+	defer ResetColorEnabled()
+
+	var buf bytes.Buffer
+
+	SetColorEnabled(true)
+	require.True(t, ColorEnabled(&buf), "first call: true")
+
+	SetColorEnabled(false)
+	require.False(t, ColorEnabled(&buf), "second call: false")
+
+	SetColorEnabled(true)
+	assert.True(t, ColorEnabled(&buf), "third call: true (last value wins)")
+}
+
 func TestResetColorEnabled(t *testing.T) {
 	// AC4: ResetColorEnabled restores auto-detection.
 	defer ResetColorEnabled()
