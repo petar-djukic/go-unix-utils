@@ -314,7 +314,6 @@ releases:
           status: spec_complete
         - id: rel06.1-uc005-groups
           status: spec_complete
-
     - version: "07.0"
       name: "Batch 7.0 — text processing pipeline (sort, tr, tail)"
       status: spec_complete
@@ -333,7 +332,6 @@ releases:
           status: spec_complete
         - id: rel07.0-uc003-tail
           status: spec_complete
-
     - version: "07.1"
       name: "Batch 7.1 — file operations (cp, mv, rm)"
       status: spec_complete
