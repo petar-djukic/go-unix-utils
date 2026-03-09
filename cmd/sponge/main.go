@@ -4,9 +4,11 @@
 // Implements: prd007-sponge R1.1–R1.5 (core stdin reading, temporary file
 // buffering, and write-back), R2.1–R2.5 (atomic output file handling,
 // permission preservation, lstat-based symlink awareness, and write error
-// handling), R3.1–R3.2 (append mode with existing file content preservation
-// and default permissions for new files). Reads all of stdin into a temporary
-// file before writing to the output file or stdout. Supports -a (append) mode.
+// handling), R3.1–R3.3 (append mode with atomic temp-file prepend and
+// default permissions for new files), R4.1–R4.3 (passthrough mode with
+// in-memory buffering for small input and temp-file fallback for large input).
+// Reads all of stdin before writing to the output file or stdout. Supports
+// -a (append) mode.
 package main
 
 import (
@@ -25,19 +27,24 @@ func main() {
 
 	appendMode, outFile := parseArgs(os.Args[1:])
 
-	// R1.4: create temp file in the same directory as the output file
-	// to ensure atomic rename works on the same filesystem. When no
-	// filename is given, use the system temp directory.
-	tmpDir := os.TempDir()
-	if outFile != "" {
-		tmpDir = filepath.Dir(outFile)
-		if tmpDir == "" {
-			tmpDir = "."
+	// R4.1, R4.3: passthrough mode — buffer stdin in memory and write to
+	// stdout. No temp file is created for passthrough.
+	if outFile == "" {
+		if err := passthrough(); err != nil {
+			fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
+			os.Exit(1)
 		}
+		return
 	}
 
-	// R1.1: read all of stdin into a temporary file before opening or
-	// creating the output file.
+	// File output mode: buffer stdin in a temp file.
+	// R1.4: create temp file in the same directory as the output file
+	// to ensure atomic rename works on the same filesystem.
+	tmpDir := filepath.Dir(outFile)
+	if tmpDir == "" {
+		tmpDir = "."
+	}
+
 	tmp, err := os.CreateTemp(tmpDir, "sponge.*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sponge: failed to create temporary file: %v\n", err)
@@ -46,6 +53,24 @@ func main() {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // best-effort cleanup
 
+	// R3.3: in append mode, copy the original file content into the temp
+	// file first, then append stdin. The original file is read before the
+	// temp file is renamed over it (sponge.c:352-357).
+	if appendMode {
+		if orig, err := os.Open(outFile); err == nil {
+			if _, err := io.Copy(tmp, orig); err != nil {
+				orig.Close()  // best-effort close before exit
+				tmp.Close()   // best-effort close before exit
+				fmt.Fprintf(os.Stderr, "sponge: failed to read original file: %v\n", err)
+				os.Exit(1)
+			}
+			orig.Close()
+		}
+		// R3.2: if the file does not exist, -a behaves like default mode.
+	}
+
+	// R1.1: read all of stdin into the temporary file before opening or
+	// creating the output file.
 	if _, err := io.Copy(tmp, os.Stdin); err != nil {
 		tmp.Close() // best-effort close before exit
 		fmt.Fprintf(os.Stderr, "sponge: error reading stdin: %v\n", err)
@@ -55,25 +80,6 @@ func main() {
 	if err := tmp.Close(); err != nil {
 		fmt.Fprintf(os.Stderr, "sponge: error closing temporary file: %v\n", err)
 		os.Exit(1)
-	}
-
-	if outFile == "" {
-		// R4.1: no filename argument — write buffered stdin to stdout.
-		if err := writeToStdout(tmpName); err != nil {
-			fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
-	if appendMode {
-		// R2.1/R3.1: append buffered stdin to the target file.
-		// R2.2/R3.2: if the file does not exist, create it.
-		if err := appendToFile(tmpName, outFile); err != nil {
-			fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
-			os.Exit(1)
-		}
-		return
 	}
 
 	// R2.3: atomic write — rename temp file over the target.
@@ -134,42 +140,17 @@ func getFileMode(path string) os.FileMode {
 	return info.Mode().Perm()
 }
 
-// writeToStdout opens the temporary file and copies its content to stdout.
-func writeToStdout(tmpName string) error {
-	f, err := os.Open(tmpName)
+// passthrough reads all of stdin into memory and writes it to stdout.
+// R4.1: write buffered stdin to stdout when no output filename is given.
+// R4.3: small input stays in memory without creating a temp file.
+// R4.2: large input is handled transparently by io.ReadAll.
+func passthrough() error {
+	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		return fmt.Errorf("failed to reopen temporary file: %w", err)
+		return fmt.Errorf("error reading stdin: %w", err)
 	}
-	defer f.Close()
-
-	if _, err := io.Copy(os.Stdout, f); err != nil {
+	if _, err := os.Stdout.Write(data); err != nil {
 		return fmt.Errorf("write error: %w", err)
-	}
-	return nil
-}
-
-// appendToFile appends the content of the temp file to the target file.
-// R2.1: when -a is specified, append buffered stdin to the target.
-// R2.2: if the target does not exist, create it.
-func appendToFile(tmpName, dst string) error {
-	in, err := os.Open(tmpName)
-	if err != nil {
-		return fmt.Errorf("failed to open temporary file: %w", err)
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
-	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
-	}
-
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close() // best-effort close before returning error
-		return fmt.Errorf("failed to append to output file: %w", err)
-	}
-
-	if err := out.Close(); err != nil {
-		return fmt.Errorf("failed to close output file: %w", err)
 	}
 	return nil
 }

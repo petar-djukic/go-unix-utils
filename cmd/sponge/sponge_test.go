@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd007-sponge R1.1–R1.4, R2.4–R2.5, R3.1–R3.2 via differential
-// testing against sponge (Homebrew moreutils).
+// Tests: prd007-sponge R1.1–R1.4, R2.4–R2.5, R3.1–R3.3, R4.1–R4.3 via
+// differential testing against sponge (Homebrew moreutils).
 package main
 
 import (
@@ -377,6 +377,107 @@ func TestDiff(t *testing.T) {
 		}
 		if !bytes.Equal(goResult, expected) {
 			t.Errorf("append multiline: expected %q, got %q", expected, goResult)
+		}
+	})
+
+	// R3.3: same-file append pipeline — cat file | sponge -a file must
+	// read the original content before overwriting, producing [original][stdin].
+	t.Run("same_file_append_pipeline", func(t *testing.T) {
+		original := "first\nsecond\n"
+
+		runPipeline := func(t *testing.T, binary, path string) []byte {
+			t.Helper()
+			if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			// Pipe the file's own content back through sponge -a to the same file.
+			// Result should be [original][original] = two copies of the content.
+			cmd := exec.Command("sh", "-c", "cat "+path+" | "+binary+" -a "+path)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("binary failed: %v\n%s", err, out)
+			}
+			result, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read result: %v", err)
+			}
+			return result
+		}
+
+		goResult := runPipeline(t, goBin, filepath.Join(dir, "same_append_go.txt"))
+		refResult := runPipeline(t, refBin, filepath.Join(dir, "same_append_ref.txt"))
+		if !bytes.Equal(goResult, refResult) {
+			t.Errorf("same-file append divergence:\ngo:  %q\nref: %q", goResult, refResult)
+		}
+		expected := original + original
+		if string(goResult) != expected {
+			t.Errorf("same-file append: expected %q, got %q", expected, goResult)
+		}
+	})
+
+	// R4.1, R4.3: passthrough mode with binary data — buffered in memory,
+	// written to stdout without temp file.
+	t.Run("passthrough_binary_data", func(t *testing.T) {
+		// Create binary data with null bytes and high bytes.
+		data := make([]byte, 256)
+		for i := range data {
+			data[i] = byte(i)
+		}
+		tests := []testutils.DiffTest{
+			{
+				Name:    "binary_data_to_stdout",
+				Stdin:   data,
+				WorkDir: dir,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.1, R4.2: passthrough mode with large input verifies that large
+	// data is correctly written to stdout.
+	t.Run("passthrough_large", func(t *testing.T) {
+		// Generate ~1MB of data to exercise the large-input passthrough path.
+		var large strings.Builder
+		for range 50000 {
+			large.WriteString("passthrough large input line\n")
+		}
+		data := []byte(large.String())
+		tests := []testutils.DiffTest{
+			{
+				Name:    "large_passthrough_1mb",
+				Stdin:   data,
+				WorkDir: dir,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R3.3: append mode preserves permissions of the original file.
+	t.Run("append_permission_preservation", func(t *testing.T) {
+		runAndCheckPerms := func(t *testing.T, binary, outPath string, mode os.FileMode) os.FileMode {
+			t.Helper()
+			if err := os.WriteFile(outPath, []byte("old\n"), mode); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			cmd := exec.Command(binary, "-a", outPath)
+			cmd.Stdin = strings.NewReader("new\n")
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("binary %s failed: %v\n%s", binary, err, out)
+			}
+			info, err := os.Stat(outPath)
+			if err != nil {
+				t.Fatalf("stat after write: %v", err)
+			}
+			return info.Mode().Perm()
+		}
+
+		goPerms := runAndCheckPerms(t, goBin, filepath.Join(dir, "append_perms_go.txt"), 0o600)
+		refPerms := runAndCheckPerms(t, refBin, filepath.Join(dir, "append_perms_ref.txt"), 0o600)
+		if goPerms != refPerms {
+			t.Errorf("append permission divergence (0600): go=%o ref=%o", goPerms, refPerms)
 		}
 	})
 }
