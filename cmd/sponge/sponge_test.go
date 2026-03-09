@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd007-sponge R1.1–R1.4 via differential testing against sponge
-// (Homebrew moreutils).
+// Tests: prd007-sponge R1.1–R1.4, R2.4–R2.5, R3.1–R3.2 via differential
+// testing against sponge (Homebrew moreutils).
 package main
 
 import (
@@ -162,5 +162,221 @@ func TestDiff(t *testing.T) {
 			},
 		}
 		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R3.1: append mode with existing file.
+	t.Run("append_existing_file", func(t *testing.T) {
+		original := []byte("original\n")
+		appended := []byte("appended\n")
+		expected := append(original, appended...)
+
+		runAppend := func(t *testing.T, binary, outPath string) []byte {
+			t.Helper()
+			if err := os.WriteFile(outPath, original, 0o644); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			cmd := exec.Command(binary, "-a", outPath)
+			cmd.Stdin = bytes.NewReader(appended)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("binary failed: %v\n%s", err, out)
+			}
+			result, err := os.ReadFile(outPath)
+			if err != nil {
+				t.Fatalf("read result: %v", err)
+			}
+			return result
+		}
+
+		goResult := runAppend(t, goBin, filepath.Join(dir, "append_go.txt"))
+		refResult := runAppend(t, refBin, filepath.Join(dir, "append_ref.txt"))
+		if !bytes.Equal(goResult, refResult) {
+			t.Errorf("append divergence:\ngo:  %q\nref: %q", goResult, refResult)
+		}
+		if !bytes.Equal(goResult, expected) {
+			t.Errorf("append: expected %q, got %q", expected, goResult)
+		}
+	})
+
+	// R3.2: append mode with non-existing file creates new file.
+	t.Run("append_new_file", func(t *testing.T) {
+		content := []byte("new content\n")
+
+		runAppendNew := func(t *testing.T, binary, outPath string) []byte {
+			t.Helper()
+			os.Remove(outPath) // best-effort ensure not exists
+			cmd := exec.Command(binary, "-a", outPath)
+			cmd.Stdin = bytes.NewReader(content)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("binary failed: %v\n%s", err, out)
+			}
+			result, err := os.ReadFile(outPath)
+			if err != nil {
+				t.Fatalf("read result: %v", err)
+			}
+			return result
+		}
+
+		goResult := runAppendNew(t, goBin, filepath.Join(dir, "append_new_go.txt"))
+		refResult := runAppendNew(t, refBin, filepath.Join(dir, "append_new_ref.txt"))
+		if !bytes.Equal(goResult, refResult) {
+			t.Errorf("append new file divergence:\ngo:  %q\nref: %q", goResult, refResult)
+		}
+		if !bytes.Equal(goResult, content) {
+			t.Errorf("append new file: expected %q, got %q", content, goResult)
+		}
+	})
+
+	// R3.1/R2.3: permission preservation when overwriting an existing file.
+	t.Run("permission_preservation", func(t *testing.T) {
+		runAndCheckPerms := func(t *testing.T, binary, outPath string, mode os.FileMode) os.FileMode {
+			t.Helper()
+			if err := os.WriteFile(outPath, []byte("old\n"), mode); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			cmd := exec.Command(binary, outPath)
+			cmd.Stdin = strings.NewReader("new\n")
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("binary %s failed: %v\n%s", binary, err, out)
+			}
+			info, err := os.Stat(outPath)
+			if err != nil {
+				t.Fatalf("stat after write: %v", err)
+			}
+			return info.Mode().Perm()
+		}
+
+		// R3.1: file with 0600 permissions should retain 0600 after sponge.
+		goPerms := runAndCheckPerms(t, goBin, filepath.Join(dir, "perms_go_600.txt"), 0o600)
+		refPerms := runAndCheckPerms(t, refBin, filepath.Join(dir, "perms_ref_600.txt"), 0o600)
+		if goPerms != refPerms {
+			t.Errorf("permission divergence (0600): go=%o ref=%o", goPerms, refPerms)
+		}
+		if goPerms != 0o600 {
+			t.Errorf("expected permissions 0600, got %o", goPerms)
+		}
+
+		// R3.1: file with 0755 permissions should retain 0755 after sponge.
+		goPerms = runAndCheckPerms(t, goBin, filepath.Join(dir, "perms_go_755.txt"), 0o755)
+		refPerms = runAndCheckPerms(t, refBin, filepath.Join(dir, "perms_ref_755.txt"), 0o755)
+		if goPerms != refPerms {
+			t.Errorf("permission divergence (0755): go=%o ref=%o", goPerms, refPerms)
+		}
+		if goPerms != 0o755 {
+			t.Errorf("expected permissions 0755, got %o", goPerms)
+		}
+	})
+
+	// R3.2: new file gets default permissions (0666 & ~umask).
+	t.Run("default_permissions_new_file", func(t *testing.T) {
+		goPath := filepath.Join(dir, "out_new_perms_go.txt")
+		refPath := filepath.Join(dir, "out_new_perms_ref.txt")
+
+		os.Remove(goPath) // best-effort cleanup
+		os.Remove(refPath) // best-effort cleanup
+
+		// Write with Go binary.
+		goCmd := exec.Command(goBin, goPath)
+		goCmd.Stdin = strings.NewReader("test\n")
+		goCmd.Dir = dir
+		if out, err := goCmd.CombinedOutput(); err != nil {
+			t.Fatalf("go binary failed: %v\n%s", err, out)
+		}
+		goInfo, err := os.Stat(goPath)
+		if err != nil {
+			t.Fatalf("stat go output: %v", err)
+		}
+
+		// Write with reference binary.
+		refCmd := exec.Command(refBin, refPath)
+		refCmd.Stdin = strings.NewReader("test\n")
+		refCmd.Dir = dir
+		if out, err := refCmd.CombinedOutput(); err != nil {
+			t.Fatalf("ref binary failed: %v\n%s", err, out)
+		}
+		refInfo, err := os.Stat(refPath)
+		if err != nil {
+			t.Fatalf("stat ref output: %v", err)
+		}
+
+		goPerms := goInfo.Mode().Perm()
+		refPerms := refInfo.Mode().Perm()
+		if goPerms != refPerms {
+			t.Errorf("default permission divergence: go=%o ref=%o", goPerms, refPerms)
+		}
+	})
+
+	// R2.5: error on unwritable output path — both binaries must exit non-zero.
+	t.Run("unwritable_output", func(t *testing.T) {
+		// Create a read-only directory to prevent file creation.
+		roDir := filepath.Join(dir, "readonly")
+		if err := os.Mkdir(roDir, 0o555); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(roDir, 0o755) // best-effort restore for cleanup
+		})
+
+		runBin := func(t *testing.T, binary, outPath string) int {
+			t.Helper()
+			cmd := exec.Command(binary, outPath)
+			cmd.Stdin = strings.NewReader("data\n")
+			cmd.Dir = dir
+			err := cmd.Run()
+			if err == nil {
+				return 0
+			}
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode()
+			}
+			t.Fatalf("unexpected error: %v", err)
+			return -1
+		}
+
+		goExit := runBin(t, goBin, filepath.Join(roDir, "cannot_create.txt"))
+		refExit := runBin(t, refBin, filepath.Join(roDir, "cannot_create_ref.txt"))
+		if goExit != refExit {
+			t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+		if goExit != 1 {
+			t.Errorf("expected exit code 1, got %d", goExit)
+		}
+	})
+
+	// R3.1: append mode preserves existing file content with multiline input.
+	t.Run("append_multiline", func(t *testing.T) {
+		original := []byte("line1\nline2\n")
+		addition := []byte("line3\nline4\n")
+		expected := append(original, addition...)
+
+		runAppend := func(t *testing.T, binary, outPath string) []byte {
+			t.Helper()
+			if err := os.WriteFile(outPath, original, 0o644); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			cmd := exec.Command(binary, "-a", outPath)
+			cmd.Stdin = bytes.NewReader(addition)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("binary failed: %v\n%s", err, out)
+			}
+			result, err := os.ReadFile(outPath)
+			if err != nil {
+				t.Fatalf("read result: %v", err)
+			}
+			return result
+		}
+
+		goResult := runAppend(t, goBin, filepath.Join(dir, "append_multi_go.txt"))
+		refResult := runAppend(t, refBin, filepath.Join(dir, "append_multi_ref.txt"))
+		if !bytes.Equal(goResult, refResult) {
+			t.Errorf("append multiline divergence:\ngo:  %q\nref: %q", goResult, refResult)
+		}
+		if !bytes.Equal(goResult, expected) {
+			t.Errorf("append multiline: expected %q, got %q", expected, goResult)
+		}
 	})
 }

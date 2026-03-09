@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Implements: prd007-sponge R1.1–R1.5 (core stdin reading, temporary file
-// buffering, and write-back), R2.1–R2.3 (atomic output file handling and
-// permission preservation). Reads all of stdin into a temporary file before
-// writing to the output file or stdout. Supports -a (append) mode.
+// buffering, and write-back), R2.1–R2.5 (atomic output file handling,
+// permission preservation, lstat-based symlink awareness, and write error
+// handling), R3.1–R3.2 (append mode with existing file content preservation
+// and default permissions for new files). Reads all of stdin into a temporary
+// file before writing to the output file or stdout. Supports -a (append) mode.
 package main
 
 import (
@@ -12,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -85,9 +88,16 @@ func main() {
 		}
 	}
 
-	// Restore the original file permissions if the target existed.
 	if existingMode != 0 {
+		// R3.1: restore the original file permissions when overwriting.
 		os.Chmod(outFile, existingMode) // best-effort permission restore
+	} else {
+		// R3.2: new file gets default permissions (0666 masked by process umask).
+		// os.CreateTemp uses 0600; we adjust to match the standard 0666 & ~umask
+		// that open(O_CREAT, 0666) would produce.
+		umask := syscall.Umask(0)
+		syscall.Umask(umask)
+		os.Chmod(outFile, os.FileMode(0o666&^umask)) // best-effort permission set
 	}
 }
 
@@ -105,11 +115,21 @@ func parseArgs(args []string) (appendMode bool, outFile string) {
 }
 
 // getFileMode returns the file mode of an existing file, or 0 if it does
-// not exist or cannot be stat'd.
+// not exist or cannot be stat'd. R2.4: uses Lstat (not Stat) so that
+// symlinks are identified rather than followed blindly.
 func getFileMode(path string) os.FileMode {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return 0
+	}
+	// R2.4: if the path is a symlink, resolve the target to get the
+	// actual file permissions of the destination file.
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Stat(path)
+		if err != nil {
+			return 0
+		}
+		return target.Mode().Perm()
 	}
 	return info.Mode().Perm()
 }
