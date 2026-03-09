@@ -52,6 +52,20 @@ func TestHumanSize(t *testing.T) {
 
 		// Default opts (Binary: false is zero value).
 		{"default opts is SI", 1000, HumanSizeOpts{}, "1.0kB"},
+
+		// R3.5: ls -s block counts converted to human-readable.
+		// ls -s shows allocated 1024-byte blocks; ls -sh converts via HumanSize.
+		{"ls -s 4 blocks", 4 * 1024, HumanSizeOpts{Binary: true}, "4.0K"},
+		{"ls -s 8 blocks", 8 * 1024, HumanSizeOpts{Binary: true}, "8.0K"},
+		{"ls -s 128 blocks", 128 * 1024, HumanSizeOpts{Binary: true}, "128.0K"},
+		{"ls -s large file blocks", 4096 * 1024, HumanSizeOpts{Binary: true}, "4.0M"},
+
+		// R3.6: du -h directory sizes as human-readable strings.
+		// du reports byte counts; du -h converts via HumanSize with same binary/SI distinction.
+		{"du -h small dir", 24576, HumanSizeOpts{Binary: true}, "24.0K"},
+		{"du -h medium dir", 5242880, HumanSizeOpts{Binary: true}, "5.0M"},
+		{"du -h large dir", 2147483648, HumanSizeOpts{Binary: true}, "2.0G"},
+		{"du -h SI mode", 5000000, HumanSizeOpts{Binary: false}, "5.0MB"},
 	}
 
 	for _, tc := range tests {
