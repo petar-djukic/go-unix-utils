@@ -106,6 +106,10 @@ prd_index:
     title: "cmd/du: Recursive Directory Disk Usage"
     summary: Report disk usage with recursive traversal, hard-link deduplication, and human-readable output.
     path: docs/specs/product-requirements/prd009-du.yaml
+  - id: prd059-version
+    title: "cmd/version: Version Identity Binary"
+    summary: A cmd/version binary that prints the repository's last known version tag, with ldflags injection and an exported version variable.
+    path: docs/specs/product-requirements/prd059-version.yaml
   - id: prd012-yes
     title: "cmd/yes: Repeatedly Output a String"
     summary: Output a string repeatedly until killed, with buffered writes for throughput.
@@ -513,7 +517,9 @@ coverage_gaps: |
   and test suites in rel00.0 (foundational infrastructure). They are also exercised indirectly
   through the utility use cases that depend on them.
 
-  prd011-magefiles is an infrastructure PRD covered indirectly by rel00.0 use cases.
+  prd011-magefiles documents scaffold-provided build lifecycle targets and is covered
+  indirectly by rel00.0 use cases. prd059-version specifies the cmd/version binary
+  extracted from the original prd011.
 
   ts (prd004-ts) is in rel05.5 with full specification coverage.
 
