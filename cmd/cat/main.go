@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements: prd006-cat R1.1–R1.5 (file concatenation, stdin, binary passthrough,
-// no newline modification), R2.1–R2.3 (line numbering with -n and -b).
+// no newline modification), R2.1–R2.4 (line numbering with -n and -b, blank line
+// definition), R3.1–R3.3 (squeeze blank lines with -s).
 package main
 
 import (
@@ -18,6 +19,7 @@ import (
 type catFlags struct {
 	number         bool // -n: number all output lines. R2.1.
 	numberNonblank bool // -b: number non-blank lines only. R2.2.
+	squeeze        bool // -s: squeeze consecutive blank lines into one. R3.1.
 }
 
 func main() {
@@ -67,23 +69,25 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// catState tracks state across file boundaries for line numbering.
+// catState tracks state across file boundaries for line numbering and squeeze.
 type catState struct {
 	lineNum     int  // next line number to emit
 	atLineStart bool // true when next byte is the first byte of a new line
+	blankCount  int  // R3.1: consecutive blank lines seen so far
 }
 
-// processFile reads from r and writes to w, applying flags. R1.1–R1.5, R2.1–R2.3.
+// processFile reads from r and writes to w, applying flags.
+// R1.1–R1.5, R2.1–R2.4, R3.1–R3.3.
+// R4.9 order: squeeze (-s), then numbering (-n/-b).
 func processFile(r io.Reader, w *bufio.Writer, flags catFlags, state *catState) error {
-	needsNumbering := flags.number || flags.numberNonblank
+	needsProcessing := flags.number || flags.numberNonblank || flags.squeeze
 
-	if !needsNumbering {
+	if !needsProcessing {
 		// R1.1–R1.5: verbatim copy, no transformation, no newline modification.
 		_, err := io.Copy(w, r)
 		return err
 	}
 
-	// Line-numbering mode: process byte by byte via buffered reader.
 	br := bufio.NewReader(r)
 
 	for {
@@ -96,7 +100,20 @@ func processFile(r io.Reader, w *bufio.Writer, flags catFlags, state *catState) 
 		}
 
 		if state.atLineStart {
+			// R2.4: a blank line contains only a newline character.
 			isBlank := (b == '\n')
+
+			if isBlank {
+				state.blankCount++
+
+				// R3.1: suppress consecutive blank lines beyond the first.
+				if flags.squeeze && state.blankCount > 1 {
+					// atLineStart remains true for the next line.
+					continue
+				}
+			} else {
+				state.blankCount = 0
+			}
 
 			if flags.numberNonblank && isBlank {
 				// R2.2: blank lines get no number and no tab prefix.
@@ -107,11 +124,14 @@ func processFile(r io.Reader, w *bufio.Writer, flags catFlags, state *catState) 
 				continue
 			}
 
-			// R2.1: right-justified in width 6, followed by tab.
-			if _, writeErr := fmt.Fprintf(w, "%6d\t", state.lineNum); writeErr != nil {
-				return writeErr
+			if flags.number || flags.numberNonblank {
+				// R2.1: right-justified in width 6, followed by tab.
+				// R3.3: squeeze applied before numbering; suppressed lines don't consume numbers.
+				if _, writeErr := fmt.Fprintf(w, "%6d\t", state.lineNum); writeErr != nil {
+					return writeErr
+				}
+				state.lineNum++
 			}
-			state.lineNum++
 			state.atLineStart = false
 		}
 
@@ -147,6 +167,8 @@ func parseArgs(args []string) (catFlags, []string) {
 				flags.number = true
 			case "--number-nonblank":
 				flags.numberNonblank = true
+			case "--squeeze-blank":
+				flags.squeeze = true
 			default:
 				fmt.Fprintf(os.Stderr, "cat: unrecognized option '%s'\n", arg)
 				os.Exit(1)
@@ -160,6 +182,8 @@ func parseArgs(args []string) (catFlags, []string) {
 				flags.number = true
 			case 'b':
 				flags.numberNonblank = true
+			case 's':
+				flags.squeeze = true
 			case 'u':
 				// R4.8: accepted but ignored.
 			default:
