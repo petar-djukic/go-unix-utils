@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package main implements the cat utility for concatenating and displaying files.
-// Implements prd006-cat (R1, R2, R3, R4, R5).
+// Package main implements the cat command: concatenate and display files.
+// Implements prd006-cat (R1-R5).
 package main
 
 import (
@@ -14,64 +14,25 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// flags holds the parsed command-line flags for cat.
-type flags struct {
+// catOptions holds the parsed command-line flags for cat.
+type catOptions struct {
 	numberAll      bool // -n: number all output lines
-	numberNonBlank bool // -b: number non-blank lines only
-	squeeze        bool // -s: squeeze repeated blank lines
-	showNonPrint   bool // -v: show non-printing characters
-	showEnds       bool // -E: show $ at end of each line
-	showTabs       bool // -T: show tabs as ^I
+	numberNonBlank bool // -b: number non-blank lines only (overrides -n)
+	squeezeBlank   bool // -s: suppress repeated blank lines
+	showEnds       bool // -E: display $ at end of each line
+	showTabs       bool // -T: display TAB as ^I
+	showNonPrint   bool // -v: use ^ and M- notation for non-printing chars
 }
 
-// needsTransform returns true if any transformation flag is active.
-func (f *flags) needsTransform() bool {
-	return f.numberAll || f.numberNonBlank || f.squeeze ||
-		f.showNonPrint || f.showEnds || f.showTabs
-}
-
-func main() {
-	// R5.4: install SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
-	sys.InstallSIGPIPEHandler()
-
-	fl, files := parseArgs(os.Args[1:])
-
-	exitCode := 0
-	if len(files) == 0 {
-		files = []string{"-"}
-	}
-
-	if !fl.needsTransform() {
-		// Fast path: simple copy with no transformations.
-		for _, name := range files {
-			if err := catSimple(name); err != nil {
-				fmt.Fprintf(os.Stderr, "cat: %s\n", err)
-				exitCode = 1
-			}
-		}
-	} else {
-		// Slow path: line-by-line processing with transformations.
-		state := &transformState{}
-		for _, name := range files {
-			if err := catTransform(name, fl, state); err != nil {
-				fmt.Fprintf(os.Stderr, "cat: %s\n", err)
-				exitCode = 1
-			}
-		}
-	}
-
-	os.Exit(exitCode)
-}
-
-// parseArgs parses command-line arguments into flags and file names.
-// R4.8: -u is accepted but has no effect.
-func parseArgs(args []string) (flags, []string) {
-	var fl flags
+// parseFlags parses os.Args and returns options and file arguments.
+// Returns an error if an unknown flag is encountered.
+func parseFlags(args []string) (catOptions, []string) {
+	var opts catOptions
 	var files []string
 
 	for _, arg := range args {
 		if arg == "--" {
-			// Everything after -- is a file name.
+			// Everything after -- is a filename.
 			continue
 		}
 		if arg == "-" {
@@ -82,32 +43,28 @@ func parseArgs(args []string) (flags, []string) {
 			for _, ch := range arg[1:] {
 				switch ch {
 				case 'n':
-					fl.numberAll = true
+					opts.numberAll = true
 				case 'b':
-					fl.numberNonBlank = true
+					opts.numberNonBlank = true
 				case 's':
-					fl.squeeze = true
-				case 'v':
-					fl.showNonPrint = true
+					opts.squeezeBlank = true
 				case 'E':
-					fl.showEnds = true
+					opts.showEnds = true
 				case 'T':
-					fl.showTabs = true
-				case 'A':
-					// R4.5: -A is equivalent to -vET.
-					fl.showNonPrint = true
-					fl.showEnds = true
-					fl.showTabs = true
-				case 'e':
-					// R4.6: -e is equivalent to -vE.
-					fl.showNonPrint = true
-					fl.showEnds = true
-				case 't':
-					// R4.7: -t is equivalent to -vT.
-					fl.showNonPrint = true
-					fl.showTabs = true
-				case 'u':
-					// R4.8: accepted but no effect.
+					opts.showTabs = true
+				case 'v':
+					opts.showNonPrint = true
+				case 'A': // R4.5: -A equivalent to -vET
+					opts.showNonPrint = true
+					opts.showEnds = true
+					opts.showTabs = true
+				case 'e': // R4.6: -e equivalent to -vE
+					opts.showNonPrint = true
+					opts.showEnds = true
+				case 't': // R4.7: -t equivalent to -vT
+					opts.showNonPrint = true
+					opts.showTabs = true
+				case 'u': // R4.8: accepted but no effect
 				default:
 					fmt.Fprintf(os.Stderr, "cat: invalid option -- '%c'\n", ch)
 					os.Exit(1)
@@ -118,158 +75,189 @@ func parseArgs(args []string) (flags, []string) {
 		files = append(files, arg)
 	}
 
-	// R2.3: -b overrides -n.
-	if fl.numberNonBlank {
-		fl.numberAll = false
+	// R2.3: -b overrides -n
+	if opts.numberNonBlank {
+		opts.numberAll = false
 	}
 
-	return fl, files
+	return opts, files
 }
 
-// openInput returns a reader for the given file name. "-" means stdin.
-func openInput(name string) (io.ReadCloser, error) {
-	if name == "-" {
-		return io.NopCloser(os.Stdin), nil
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s", name, err.(*os.PathError).Err)
-	}
-	return f, nil
+// needsTransform returns true if any transformation flag is active.
+func (o catOptions) needsTransform() bool {
+	return o.numberAll || o.numberNonBlank || o.squeezeBlank ||
+		o.showEnds || o.showTabs || o.showNonPrint
 }
 
-// catSimple copies input to stdout with no transformations.
-// R1.4: binary data passes through without corruption.
-func catSimple(name string) error {
-	r, err := openInput(name)
-	if err != nil {
-		return err
-	}
-	defer r.Close() // best-effort close
+// catState tracks state across files for line numbering and blank squeezing.
+type catState struct {
+	lineNum       int
+	prevBlank     bool // true if previous output line was blank
+	atLineStart   bool // true if we are at the beginning of a line
+	exitCode      int
+	stdout        *bufio.Writer
+	opts          catOptions
+}
 
-	_, err = io.Copy(os.Stdout, r)
+// processSimple copies input to output without transformation (R1.4, R1.5).
+func (s *catState) processSimple(r io.Reader) error {
+	_, err := io.Copy(s.stdout, r)
 	return err
 }
 
-// transformState tracks state across files for line numbering and blank squeezing.
-type transformState struct {
-	lineNum       int  // current line number (persists across files)
-	prevBlank     bool // previous output line was blank (for -s)
-	atLineStart   bool // at the start of a line (for numbering)
-	initialized   bool // whether we've started processing
-	pendingSqueze bool // we're in a run of blank lines being squeezed
-}
-
-// catTransform processes a file with transformation flags applied.
-// R4.9: order is squeeze blanks, non-printing display, end-of-line marker, line number.
-func catTransform(name string, fl flags, state *transformState) error {
-	r, err := openInput(name)
-	if err != nil {
-		return err
-	}
-	defer r.Close() // best-effort close
-
-	if !state.initialized {
-		state.lineNum = 0
-		state.atLineStart = true
-		state.initialized = true
-	}
-
-	reader := bufio.NewReader(r)
-	writer := bufio.NewWriter(os.Stdout)
-	defer writer.Flush() // best-effort flush
+// processTransform processes input byte-by-byte applying all active flags.
+// Order of application (R4.9): squeeze blanks, non-printing display, end-of-line, line number.
+func (s *catState) processTransform(r io.Reader) error {
+	br := bufio.NewReaderSize(r, 32*1024)
 
 	for {
-		line, err := reader.ReadBytes('\n')
-		if len(line) == 0 && err != nil {
+		b, err := br.ReadByte()
+		if err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return err
 		}
 
-		hasNewline := len(line) > 0 && line[len(line)-1] == '\n'
-		content := line
-		if hasNewline {
-			content = line[:len(line)-1]
-		}
-
-		isBlank := len(content) == 0 && hasNewline
-
-		// R3.1: squeeze repeated blank lines.
-		if fl.squeeze && isBlank {
-			if state.prevBlank {
-				if err == io.EOF {
-					return nil
-				}
+		// R3.1, R3.2: squeeze blank lines
+		if b == '\n' && s.atLineStart {
+			// This is a blank line (only newline, no other content).
+			if s.opts.squeezeBlank && s.prevBlank {
+				// Suppress repeated blank line.
 				continue
 			}
-		}
-		state.prevBlank = isBlank
+			s.prevBlank = true
 
-		// Line numbering.
-		if state.atLineStart {
-			if fl.numberNonBlank {
-				// R2.2: number non-blank lines only.
-				if !isBlank {
-					state.lineNum++
-					fmt.Fprintf(writer, "%6d\t", state.lineNum)
-				}
-			} else if fl.numberAll {
-				// R2.1: number all lines.
-				state.lineNum++
-				fmt.Fprintf(writer, "%6d\t", state.lineNum)
+			// R2.2: -b skips numbering for blank lines
+			if s.opts.numberNonBlank {
+				// No line number for blank lines.
+			} else if s.opts.numberAll {
+				s.lineNum++
+				fmt.Fprintf(s.stdout, "%6d\t", s.lineNum)
 			}
+
+			if s.opts.showEnds {
+				s.stdout.WriteByte('$')
+			}
+			s.stdout.WriteByte('\n')
+			s.atLineStart = true
+			continue
 		}
 
-		// Write content with transformations.
-		for _, b := range content {
-			if fl.showNonPrint {
-				if b >= 128 {
-					writer.WriteString("M-") //nolint:errcheck
-					b -= 128
-				}
-				if b < 32 && b != '\t' {
-					// R4.1: control characters as ^X.
-					writer.WriteByte('^')           //nolint:errcheck
-					writer.WriteByte(b + '@')       //nolint:errcheck
-					continue
-				}
-				if b == 127 {
-					// R4.1: DEL as ^?.
-					writer.WriteByte('^')     //nolint:errcheck
-					writer.WriteByte('?')     //nolint:errcheck
-					continue
-				}
-				if fl.showTabs && b == '\t' {
-					// R4.4: tab as ^I.
-					writer.WriteByte('^')     //nolint:errcheck
-					writer.WriteByte('I')     //nolint:errcheck
-					continue
-				}
-				writer.WriteByte(b) //nolint:errcheck
-			} else if fl.showTabs && b == '\t' {
-				// R4.4: tab as ^I (without -v).
-				writer.WriteByte('^') //nolint:errcheck
-				writer.WriteByte('I') //nolint:errcheck
+		// We have a non-newline character at start of line, or mid-line content.
+		if s.atLineStart {
+			s.prevBlank = false
+			// R2.1, R2.2: prepend line number
+			if s.opts.numberAll || s.opts.numberNonBlank {
+				s.lineNum++
+				fmt.Fprintf(s.stdout, "%6d\t", s.lineNum)
+			}
+			s.atLineStart = false
+		}
+
+		if b == '\n' {
+			// End of a non-blank line.
+			if s.opts.showEnds {
+				s.stdout.WriteByte('$')
+			}
+			s.stdout.WriteByte('\n')
+			s.atLineStart = true
+			continue
+		}
+
+		if b == '\t' {
+			if s.opts.showTabs {
+				// R4.4: display TAB as ^I
+				s.stdout.WriteByte('^')
+				s.stdout.WriteByte('I')
 			} else {
-				writer.WriteByte(b) //nolint:errcheck
+				// R4.2: -v alone does not alter TAB
+				s.stdout.WriteByte(b)
 			}
+			continue
 		}
 
-		if hasNewline {
-			// R4.3: show $ before newline.
-			if fl.showEnds {
-				writer.WriteByte('$') //nolint:errcheck
-			}
-			writer.WriteByte('\n') //nolint:errcheck
-			state.atLineStart = true
+		if s.opts.showNonPrint {
+			s.writeNonPrint(b)
 		} else {
-			state.atLineStart = false
-		}
-
-		if err == io.EOF {
-			return nil
+			s.stdout.WriteByte(b)
 		}
 	}
+}
+
+// writeNonPrint writes a byte using caret and M- notation per R4.1.
+func (s *catState) writeNonPrint(b byte) {
+	if b >= 128 {
+		s.stdout.WriteByte('M')
+		s.stdout.WriteByte('-')
+		b -= 128
+	}
+	if b < 32 {
+		// Control character: ^X
+		s.stdout.WriteByte('^')
+		s.stdout.WriteByte(b + 64)
+	} else if b == 127 {
+		// DEL: ^?
+		s.stdout.WriteByte('^')
+		s.stdout.WriteByte('?')
+	} else {
+		// Printable character (or printable after M- prefix)
+		s.stdout.WriteByte(b)
+	}
+}
+
+// processFile opens and processes a single file (or stdin for "-").
+func (s *catState) processFile(name string) {
+	var r io.Reader
+	if name == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cat: %s: %s\n", name, err.(*os.PathError).Err)
+			s.exitCode = 1
+			return
+		}
+		defer f.Close()
+		r = f
+	}
+
+	var err error
+	if s.opts.needsTransform() {
+		err = s.processTransform(r)
+	} else {
+		err = s.processSimple(r)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cat: write error: %v\n", err)
+		s.exitCode = 1
+	}
+}
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	opts, files := parseFlags(os.Args[1:])
+
+	s := &catState{
+		opts:        opts,
+		atLineStart: true,
+		stdout:      bufio.NewWriterSize(os.Stdout, 32*1024),
+	}
+
+	// R1.2: read stdin when no files given
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+
+	for _, name := range files {
+		s.processFile(name)
+	}
+
+	if err := s.stdout.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "cat: write error: %v\n", err)
+		s.exitCode = 1
+	}
+
+	os.Exit(s.exitCode)
 }

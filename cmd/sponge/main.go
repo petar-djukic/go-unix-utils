@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package main implements the sponge utility for soaking stdin before writing.
-// Implements prd007-sponge (R1, R2, R3, R4, R5).
+// Package main implements the sponge command: soak stdin and write to file.
+// Implements prd007-sponge (R1-R5).
 package main
 
 import (
@@ -15,113 +15,120 @@ import (
 )
 
 func main() {
-	// R5.4: Install SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 	sys.InstallSIGPIPEHandler()
 
 	appendMode, outFile := parseArgs(os.Args[1:])
 
-	// R1.1: Read all stdin before opening the output file.
+	// R1.1: Read all of stdin before opening the output file.
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sponge: read error: %s\n", err)
+		fmt.Fprintf(os.Stderr, "sponge: read error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// R4.1: No output filename -> write to stdout.
+	// R4.1: No output file, write buffered stdin to stdout.
 	if outFile == "" {
 		if _, err := os.Stdout.Write(data); err != nil {
-			os.Exit(1) // SIGPIPE handled by handler
+			fmt.Fprintf(os.Stderr, "sponge: write error: %v\n", err)
+			os.Exit(1)
 		}
 		return
 	}
 
-	// R2.3, R2.4: Read existing file mode via lstat.
-	var mode os.FileMode = 0o666
-	if info, err := os.Lstat(outFile); err == nil && info.Mode().IsRegular() {
-		mode = info.Mode().Perm()
-	}
-
-	// R3.1: In append mode, prepend existing content.
-	if appendMode {
-		if existing, err := os.ReadFile(outFile); err == nil {
-			data = append(existing, data...)
-		}
-		// R3.2: If file doesn't exist, -a behaves as default.
-	}
-
-	// R2.1: Write via temp file + atomic rename.
-	if err := writeAtomic(outFile, data, mode); err != nil {
-		fmt.Fprintf(os.Stderr, "sponge: %s\n", err)
-		os.Exit(1)
-	}
+	writeToFile(outFile, data, appendMode)
 }
 
-// parseArgs parses command-line arguments into append flag and output filename.
+// parseArgs parses command-line arguments and returns the append flag and
+// output filename. Exits with code 1 on unknown flags.
 func parseArgs(args []string) (appendMode bool, outFile string) {
-	i := 0
-	for i < len(args) {
-		arg := args[i]
-		if arg == "--" {
-			i++
+	endOfFlags := false
+	for _, arg := range args {
+		if endOfFlags {
+			outFile = arg
 			break
 		}
-		if len(arg) > 1 && arg[0] == '-' {
-			for _, ch := range arg[1:] {
-				switch ch {
-				case 'a':
-					appendMode = true
-				default:
-					fmt.Fprintf(os.Stderr, "sponge: invalid option -- '%c'\n", ch)
-					os.Exit(1)
-				}
-			}
-			i++
+		if arg == "--" {
+			endOfFlags = true
 			continue
 		}
+		if arg == "-a" {
+			appendMode = true
+			continue
+		}
+		if len(arg) > 1 && arg[0] == '-' {
+			fmt.Fprintf(os.Stderr, "sponge: invalid option -- '%s'\n", arg[1:])
+			os.Exit(1)
+		}
+		outFile = arg
 		break
 	}
-
-	if i < len(args) {
-		outFile = args[i]
-	}
-
 	return appendMode, outFile
 }
 
-// writeAtomic writes data to outFile via a temp file and atomic rename.
-// R2.1: Atomic rename. R2.2: Cross-device copy fallback. R5.4: Temp file cleanup.
-func writeAtomic(outFile string, data []byte, mode os.FileMode) error {
+// writeToFile writes data to the output file using a temp-file-and-rename
+// strategy for atomicity. In append mode, the original file content is
+// prepended to the data.
+func writeToFile(outFile string, data []byte, appendMode bool) {
+	// R2.3, R2.4: Read existing file permissions via lstat.
+	var mode os.FileMode = 0o666
+	info, statErr := os.Lstat(outFile)
+	if statErr == nil && info.Mode().IsRegular() {
+		mode = info.Mode()
+	}
+
+	// R3.1, R3.2: In append mode, prepend original file content.
+	if appendMode && statErr == nil && info.Mode().IsRegular() {
+		original, err := os.ReadFile(outFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
+			os.Exit(1)
+		}
+		data = append(original, data...)
+	}
+
+	// R2.1: Write to temp file in the same directory, then rename.
 	dir := filepath.Dir(outFile)
 	if dir == "" {
 		dir = "."
 	}
-
 	tmpFile, err := os.CreateTemp(dir, "sponge.")
 	if err != nil {
-		return fmt.Errorf("creating temp file: %w", err)
+		fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
+		os.Exit(1)
 	}
-	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName) // best-effort cleanup; no-op after successful rename
+	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close() // best-effort close
-		return fmt.Errorf("writing temp file: %w", err)
+		tmpFile.Close() // best-effort close before cleanup
+		os.Remove(tmpPath)
+		fmt.Fprintf(os.Stderr, "sponge: write error: %v\n", err)
+		os.Exit(1)
 	}
 	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("closing temp file: %w", err)
+		os.Remove(tmpPath)
+		fmt.Fprintf(os.Stderr, "sponge: write error: %v\n", err)
+		os.Exit(1)
 	}
 
-	if err := os.Chmod(tmpName, mode); err != nil {
-		return fmt.Errorf("setting permissions: %w", err)
+	// R2.3: Restore original file permissions on the temp file.
+	if err := os.Chmod(tmpPath, mode); err != nil {
+		os.Remove(tmpPath)
+		fmt.Fprintf(os.Stderr, "sponge: chmod: %v\n", err)
+		os.Exit(1)
 	}
 
-	// R2.1: Try atomic rename.
-	if err := os.Rename(tmpName, outFile); err != nil {
-		// R2.2: Cross-device fallback.
-		if writeErr := os.WriteFile(outFile, data, mode); writeErr != nil {
-			return fmt.Errorf("writing output: %w", writeErr)
+	// R2.1: Atomic rename.
+	if err := os.Rename(tmpPath, outFile); err != nil {
+		// R2.2: Cross-device fallback — copy content, then remove temp.
+		content, readErr := os.ReadFile(tmpPath)
+		os.Remove(tmpPath) // best-effort cleanup of temp file
+		if readErr != nil {
+			fmt.Fprintf(os.Stderr, "sponge: %v\n", readErr)
+			os.Exit(1)
+		}
+		if writeErr := os.WriteFile(outFile, content, mode); writeErr != nil {
+			fmt.Fprintf(os.Stderr, "sponge: %v\n", writeErr)
+			os.Exit(1)
 		}
 	}
-
-	return nil
 }

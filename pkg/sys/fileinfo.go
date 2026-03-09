@@ -1,21 +1,22 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package sys provides syscall abstractions for Darwin and Linux, exposing
-// terminal queries, extended file metadata, and signal handling.
+// Package sys provides syscall abstractions for Darwin and Linux,
+// wrapping terminal queries, extended file metadata, and signal handling.
 // Implements prd002-sys (R1, R2, R3).
 package sys
 
 import (
 	"fmt"
 	"os"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-// FileInfo holds extended file metadata not available from os.FileInfo.
-// Fields are populated from syscall.Stat_t, abstracting Darwin/Linux divergence.
-// R2.2: struct definition matches the package contract exactly.
+// FileInfo holds extended file metadata from stat(2), abstracting
+// Darwin/Linux divergence in struct field names (st_mtimespec vs st_mtim,
+// st_blocks interpretation). Implements prd002-sys R2.2.
 type FileInfo struct {
 	Mode       os.FileMode // file mode and type bits (from syscall.Stat_t.Mode)
 	Size       int64       // apparent file size in bytes (st_size)
@@ -29,52 +30,66 @@ type FileInfo struct {
 	Blksize    int64       // preferred I/O block size (st_blksize)
 	ModTime    time.Time   // modification time (st_mtime / st_mtimespec)
 	AccessTime time.Time   // access time (st_atime / st_atimespec)
-	ChangeTime time.Time   // change time (st_ctime / st_ctimespec)
+	ChangeTime time.Time   // status change time (st_ctime / st_ctimespec)
 	Info       os.FileInfo // underlying os.FileInfo for os package compatibility
 }
 
 // Stat returns extended file metadata for path, following symbolic links.
-// R2.1: equivalent to os.Stat with additional syscall.Stat_t fields.
+// Equivalent to os.Stat but populates all FileInfo fields from unix.Stat_t.
+// Implements prd002-sys R2.1.
 func Stat(path string) (*FileInfo, error) {
+	var st unix.Stat_t
+	if err := unix.Stat(path, &st); err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)
 	}
-	return fileInfoFromOS(info)
+
+	fi := fillFromStat(&st, info)
+	return fi, nil
 }
 
-// Lstat returns extended file metadata for path without following symbolic links.
-// R2.1: equivalent to os.Lstat with additional syscall.Stat_t fields.
+// Lstat returns extended file metadata for path without following symbolic
+// links. Equivalent to os.Lstat but populates all FileInfo fields from
+// unix.Stat_t. Implements prd002-sys R2.1.
 func Lstat(path string) (*FileInfo, error) {
+	var st unix.Stat_t
+	if err := unix.Lstat(path, &st); err != nil {
+		return nil, fmt.Errorf("lstat %s: %w", path, err)
+	}
+
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("lstat %s: %w", path, err)
 	}
-	return fileInfoFromOS(info)
+
+	fi := fillFromStat(&st, info)
+	return fi, nil
 }
 
-// fileInfoFromOS extracts syscall.Stat_t fields from an os.FileInfo.
-func fileInfoFromOS(info os.FileInfo) (*FileInfo, error) {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return nil, fmt.Errorf("underlying stat type is %T, not *syscall.Stat_t", info.Sys())
-	}
-
+// fillFromStat populates a FileInfo from a unix.Stat_t and os.FileInfo.
+// golang.org/x/sys/unix normalizes the Darwin/Linux time field names
+// (Mtim/Atim/Ctim on both platforms), so no build-tagged files are needed.
+// Implements prd002-sys R2.3.
+func fillFromStat(st *unix.Stat_t, info os.FileInfo) *FileInfo {
 	fi := &FileInfo{
-		Mode:    info.Mode(),
-		Size:    stat.Size,
-		Nlink:   uint64(stat.Nlink),
-		Uid:     stat.Uid,
-		Gid:     stat.Gid,
-		Rdev:    uint64(stat.Rdev),
-		Dev:     uint64(stat.Dev),
-		Ino:     stat.Ino,
-		Blocks:  stat.Blocks,
-		Blksize: int64(stat.Blksize),
-		Info:    info,
+		Mode:       info.Mode(),
+		Size:       st.Size,
+		Nlink:      uint64(st.Nlink),
+		Uid:        st.Uid,
+		Gid:        st.Gid,
+		Rdev:       uint64(st.Rdev),
+		Dev:        uint64(st.Dev),
+		Ino:        st.Ino,
+		Blocks:     st.Blocks,
+		Blksize:    int64(st.Blksize),
+		ModTime:    time.Unix(st.Mtim.Sec, st.Mtim.Nsec),
+		AccessTime: time.Unix(st.Atim.Sec, st.Atim.Nsec),
+		ChangeTime: time.Unix(st.Ctim.Sec, st.Ctim.Nsec),
+		Info:       info,
 	}
-
-	fillTimes(fi, stat)
-
-	return fi, nil
+	return fi
 }
