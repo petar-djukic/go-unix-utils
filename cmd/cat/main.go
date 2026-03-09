@@ -147,98 +147,12 @@ func run(opts catOptions, files []string) int {
 	exitCode := 0
 
 	for _, file := range files {
-		var r io.Reader
-		if file == "-" {
-			r = os.Stdin
-		} else {
-			f, err := os.Open(file)
-			if err != nil {
-				// R5.2: print error, continue processing, exit 1.
-				fmt.Fprintf(os.Stderr, "cat: %s: No such file or directory\n", file)
-				exitCode = 1
-				continue
-			}
-			defer f.Close() // best-effort close; file read completes before next iteration
-			r = f
+		ec := processFile(file, w, needsTransform, numberLines, skipBlankNumbers, &opts, &lineNum, &prevBlank)
+		if ec < 0 {
+			return 1
 		}
-
-		if !needsTransform {
-			// R1.4: no transformation, copy bytes verbatim.
-			if _, err := io.Copy(w, r); err != nil {
-				fmt.Fprintf(os.Stderr, "cat: write error: %v\n", err)
-				return 1
-			}
-			continue
-		}
-
-		// Process byte-by-byte for transformation modes.
-		br := bufio.NewReader(r)
-		atLineStart := true
-
-		for {
-			b, err := br.ReadByte()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				fmt.Fprintf(os.Stderr, "cat: read error: %v\n", err)
-				exitCode = 1
-				break
-			}
-
-			if b == '\n' {
-				isBlank := atLineStart // line was blank if we're still at start
-
-				// R3.1: squeeze consecutive blank lines.
-				if opts.squeeze && isBlank && prevBlank {
-					continue
-				}
-				prevBlank = isBlank
-
-				// Line numbering for blank lines (only with -n, not -b).
-				if atLineStart && numberLines && !skipBlankNumbers {
-					fmt.Fprintf(w, "%6d\t", lineNum)
-					lineNum++
-				}
-
-				// R4.3: show $ before newline.
-				if opts.showEnds {
-					w.WriteByte('$')
-				}
-				w.WriteByte('\n')
-				atLineStart = true
-				continue
-			}
-
-			// Non-newline character: we're on a non-blank line.
-			if atLineStart {
-				prevBlank = false
-				if numberLines {
-					// R2.1, R2.2: prepend line number.
-					fmt.Fprintf(w, "%6d\t", lineNum)
-					lineNum++
-				}
-				atLineStart = false
-			}
-
-			// R4.4: show tabs as ^I.
-			if b == '\t' && opts.showTabs {
-				w.WriteByte('^')
-				w.WriteByte('I')
-				continue
-			}
-
-			// R4.1, R4.2: -v does not alter tab or newline (newline handled above).
-			if b == '\t' {
-				w.WriteByte(b)
-				continue
-			}
-
-			if opts.showNonPrint {
-				writeNonPrinting(w, b)
-			} else {
-				w.WriteByte(b)
-			}
+		if ec > 0 {
+			exitCode = 1
 		}
 	}
 
@@ -248,6 +162,113 @@ func run(opts catOptions, files []string) int {
 	}
 
 	return exitCode
+}
+
+// processFile processes a single file. Returns 0 on success, 1 on read error
+// (continue processing), and -1 on write error (stop immediately).
+func processFile(file string, w *bufio.Writer, needsTransform, numberLines, skipBlankNumbers bool, opts *catOptions, lineNum *int, prevBlank *bool) int {
+	var r io.Reader
+	if file == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(file)
+		if err != nil {
+			// R5.2, D3: print error using OS message, continue processing.
+			fmt.Fprintf(os.Stderr, "cat: %s: %s\n", file, unwrapOSError(err))
+			return 1
+		}
+		defer f.Close()
+		r = f
+	}
+
+	if !needsTransform {
+		// R1.4: no transformation, copy bytes verbatim.
+		if _, err := io.Copy(w, r); err != nil {
+			fmt.Fprintf(os.Stderr, "cat: write error: %v\n", err)
+			return -1
+		}
+		return 0
+	}
+
+	// Process byte-by-byte for transformation modes.
+	br := bufio.NewReader(r)
+	atLineStart := true
+
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Fprintf(os.Stderr, "cat: read error: %v\n", err)
+			return 1
+		}
+
+		if b == '\n' {
+			isBlank := atLineStart
+
+			// R3.1: squeeze consecutive blank lines.
+			if opts.squeeze && isBlank && *prevBlank {
+				continue
+			}
+			*prevBlank = isBlank
+
+			// Line numbering for blank lines (only with -n, not -b).
+			if atLineStart && numberLines && !skipBlankNumbers {
+				fmt.Fprintf(w, "%6d\t", *lineNum)
+				*lineNum++
+			}
+
+			// R4.3: show $ before newline.
+			if opts.showEnds {
+				w.WriteByte('$')
+			}
+			w.WriteByte('\n')
+			atLineStart = true
+			continue
+		}
+
+		// Non-newline character: we're on a non-blank line.
+		if atLineStart {
+			*prevBlank = false
+			if numberLines {
+				// R2.1, R2.2: prepend line number.
+				fmt.Fprintf(w, "%6d\t", *lineNum)
+				*lineNum++
+			}
+			atLineStart = false
+		}
+
+		// R4.4: show tabs as ^I.
+		if b == '\t' && opts.showTabs {
+			w.WriteByte('^')
+			w.WriteByte('I')
+			continue
+		}
+
+		// R4.1, R4.2: -v does not alter tab or newline (newline handled above).
+		if b == '\t' {
+			w.WriteByte(b)
+			continue
+		}
+
+		if opts.showNonPrint {
+			writeNonPrinting(w, b)
+		} else {
+			w.WriteByte(b)
+		}
+	}
+
+	return 0
+}
+
+// unwrapOSError extracts the human-readable error string from an os.PathError,
+// matching the format GNU cat uses (which calls strerror(errno)).
+func unwrapOSError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // writeNonPrinting writes byte b using caret and M- notation per R4.1.
