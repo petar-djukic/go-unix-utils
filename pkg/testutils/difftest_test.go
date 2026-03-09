@@ -378,8 +378,13 @@ func TestTimestampNormalizerInRunDiffTests(t *testing.T) {
 func TestComposeNormalizersEmpty(t *testing.T) {
 	t.Parallel()
 	result := ComposeNormalizers()
-	if result != nil {
-		t.Error("ComposeNormalizers() should return nil for empty input")
+	if result == nil {
+		t.Fatal("ComposeNormalizers() should return identity function, not nil")
+	}
+	input := []byte("hello world")
+	got := result(input)
+	if string(got) != string(input) {
+		t.Errorf("identity function: got %q, want %q", got, input)
 	}
 }
 
