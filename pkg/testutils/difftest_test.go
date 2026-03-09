@@ -439,6 +439,153 @@ func TestBuildBinary(t *testing.T) {
 	}
 }
 
+// TestDivergenceMessageContainsAllFields verifies R3.5: the failure message
+// includes args, stdin, reference stdout/stderr, Go stdout/stderr, and both
+// exit codes. Uses subprocess pattern to capture the failure output.
+func TestDivergenceMessageContainsAllFields(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("TEST_SUBPROCESS_R35_FIELDS") == "1" {
+		goBin := buildMockBinary(t, "go-bin", mockDivergentSource)
+		refBin := buildMockBinary(t, "ref-bin", mockEchoSource)
+		RunDiffTests(t, goBin, refBin, []DiffTest{
+			{
+				Name:     "r35-fields",
+				Args:     []string{"--flag", "value"},
+				Stdin:    []byte("test input data"),
+				ExitCode: 0,
+			},
+		})
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDivergenceMessageContainsAllFields$", "-test.v")
+	cmd.Env = append(os.Environ(), "TEST_SUBPROCESS_R35_FIELDS=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected subprocess test to fail on divergent output")
+	}
+	output := string(out)
+
+	// R3.5: failure message must contain all required fields.
+	requiredFields := []string{
+		"divergence detected",
+		"args:",
+		"--flag",
+		"value",
+		"stdin:",
+		"test input data",
+		"ref stdout:",
+		"go  stdout:",
+		"ref stderr:",
+		"go  stderr:",
+		"ref exit:",
+		"go  exit:",
+	}
+	for _, field := range requiredFields {
+		if !strings.Contains(output, field) {
+			t.Errorf("R3.5: failure message missing %q, got:\n%s", field, output)
+		}
+	}
+}
+
+// TestDivergenceMessageTruncatesStdin verifies R3.5: stdin content in the
+// failure message is truncated to 256 bytes when longer. Uses subprocess
+// pattern to capture the failure output.
+func TestDivergenceMessageTruncatesStdin(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("TEST_SUBPROCESS_R35_TRUNCATE") == "1" {
+		goBin := buildMockBinary(t, "go-bin", mockDivergentSource)
+		refBin := buildMockBinary(t, "ref-bin", mockEchoSource)
+		// Create stdin longer than 256 bytes.
+		longStdin := make([]byte, 300)
+		for i := range longStdin {
+			longStdin[i] = 'A'
+		}
+		// Place a marker at byte 260 that should NOT appear in truncated output.
+		copy(longStdin[260:], []byte("MARKER"))
+		RunDiffTests(t, goBin, refBin, []DiffTest{
+			{
+				Name:     "r35-truncate",
+				ExitCode: 0,
+				Stdin:    longStdin,
+			},
+		})
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDivergenceMessageTruncatesStdin$", "-test.v")
+	cmd.Env = append(os.Environ(), "TEST_SUBPROCESS_R35_TRUNCATE=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected subprocess test to fail on divergent output")
+	}
+	output := string(out)
+
+	// R3.5: stdin must be truncated to 256 bytes — the MARKER at byte 260
+	// must not appear in the failure message.
+	if strings.Contains(output, "MARKER") {
+		t.Errorf("R3.5: stdin was not truncated to 256 bytes, MARKER found in output:\n%s", output)
+	}
+	if !strings.Contains(output, "divergence detected") {
+		t.Errorf("R3.5: expected 'divergence detected' in output, got:\n%s", output)
+	}
+}
+
+// TestNamedSubtests verifies R3.6: each DiffTest runs as a named subtest
+// via t.Run so individual test case failures are identifiable in go test
+// output. Uses subprocess pattern to verify subtest names appear in output.
+func TestNamedSubtests(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("TEST_SUBPROCESS_R36_SUBTESTS") == "1" {
+		goBin := buildMockBinary(t, "go-bin", mockDivergentSource)
+		refBin := buildMockBinary(t, "ref-bin", mockEchoSource)
+		RunDiffTests(t, goBin, refBin, []DiffTest{
+			{Name: "alpha-case", ExitCode: 0},
+			{Name: "beta-case", ExitCode: 0},
+		})
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestNamedSubtests$", "-test.v")
+	cmd.Env = append(os.Environ(), "TEST_SUBPROCESS_R36_SUBTESTS=1")
+	out, _ := cmd.CombinedOutput()
+	output := string(out)
+
+	// R3.6: each DiffTest name must appear as a subtest in the output.
+	if !strings.Contains(output, "alpha-case") {
+		t.Errorf("R3.6: subtest name 'alpha-case' not found in output:\n%s", output)
+	}
+	if !strings.Contains(output, "beta-case") {
+		t.Errorf("R3.6: subtest name 'beta-case' not found in output:\n%s", output)
+	}
+}
+
+// TestNamedSubtestPassingIdentifiable verifies R3.6: passing subtests are
+// also identifiable by name in verbose go test output.
+func TestNamedSubtestPassingIdentifiable(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("TEST_SUBPROCESS_R36_PASSING") == "1" {
+		bin := buildMockBinary(t, "echo", mockEchoSource)
+		RunDiffTests(t, bin, bin, []DiffTest{
+			{Name: "pass-one", ExitCode: 0},
+			{Name: "pass-two", ExitCode: 0},
+		})
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestNamedSubtestPassingIdentifiable$", "-test.v")
+	cmd.Env = append(os.Environ(), "TEST_SUBPROCESS_R36_PASSING=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected subprocess test to pass, got error: %v\n%s", err, out)
+	}
+	output := string(out)
+
+	// R3.6: passing subtest names must be identifiable in verbose output.
+	if !strings.Contains(output, "pass-one") {
+		t.Errorf("R3.6: subtest name 'pass-one' not found in passing output:\n%s", output)
+	}
+	if !strings.Contains(output, "pass-two") {
+		t.Errorf("R3.6: subtest name 'pass-two' not found in passing output:\n%s", output)
+	}
+}
+
 func TestBuildEnv(t *testing.T) {
 	t.Parallel()
 
