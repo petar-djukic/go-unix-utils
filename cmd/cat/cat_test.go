@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd006-cat R1.1–R1.5, R2.1–R2.4, R3.1–R3.3 via differential testing
+// Tests: prd006-cat R1.1–R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.7 via differential testing
 // against gcat (Homebrew GNU cat).
 package main
 
@@ -194,6 +194,139 @@ func TestDiff(t *testing.T) {
 			Name:    "cat_long_squeeze_blank",
 			Args:    []string{"--squeeze-blank"},
 			Stdin:   []byte("a\n\n\n\nb\n"),
+			WorkDir: dir,
+		},
+		// R4.1: -v displays non-printing characters with caret/M- notation.
+		{
+			Name:    "cat_show_nonprinting",
+			Args:    []string{"-v"},
+			Stdin:   []byte{0x01, 0x09, 0x1b, 0x7f, 0x80, 0xff},
+			WorkDir: dir,
+		},
+		// R4.1, R4.2: -v leaves tab and newline alone.
+		{
+			Name:    "cat_v_preserves_tab_newline",
+			Args:    []string{"-v"},
+			Stdin:   []byte("hello\tworld\n"),
+			WorkDir: dir,
+		},
+		// R4.1: -v with full range of control characters.
+		{
+			Name:    "cat_v_control_chars",
+			Args:    []string{"-v"},
+			Stdin:   []byte{0x00, 0x01, 0x02, 0x1e, 0x1f},
+			WorkDir: dir,
+		},
+		// R4.1: -v with high bytes (0x80-0x9F → M-^@..M-^_).
+		{
+			Name:    "cat_v_high_control",
+			Args:    []string{"-v"},
+			Stdin:   []byte{0x80, 0x81, 0x9e, 0x9f},
+			WorkDir: dir,
+		},
+		// R4.1: -v with high printable bytes (0xA0-0xFE → M- ..M-~).
+		{
+			Name:    "cat_v_high_printable",
+			Args:    []string{"-v"},
+			Stdin:   []byte{0xa0, 0xa1, 0xfd, 0xfe},
+			WorkDir: dir,
+		},
+		// R4.3: -E appends "$" before each newline.
+		{
+			Name:    "cat_show_ends",
+			Args:    []string{"-E"},
+			Stdin:   []byte("line one\nline two\n"),
+			WorkDir: dir,
+		},
+		// R4.3: -E with empty lines.
+		{
+			Name:    "cat_show_ends_empty_lines",
+			Args:    []string{"-E"},
+			Stdin:   []byte("a\n\nb\n"),
+			WorkDir: dir,
+		},
+		// R4.4: -T displays tabs as "^I".
+		{
+			Name:    "cat_show_tabs",
+			Args:    []string{"-T"},
+			Stdin:   []byte("col1\tcol2\tcol3\n"),
+			WorkDir: dir,
+		},
+		// R4.5: -A is equivalent to -vET combined.
+		{
+			Name:    "cat_show_all",
+			Args:    []string{"-A"},
+			Stdin:   []byte{0x01, 0x09, 'h', 'e', 'l', 'l', 'o', '\n'},
+			WorkDir: dir,
+		},
+		// R4.6: -e is equivalent to -vE.
+		{
+			Name:    "cat_flag_e",
+			Args:    []string{"-e"},
+			Stdin:   []byte{0x01, 'h', 'e', 'l', 'l', 'o', '\n'},
+			WorkDir: dir,
+		},
+		// R4.7: -t is equivalent to -vT.
+		{
+			Name:    "cat_flag_t",
+			Args:    []string{"-t"},
+			Stdin:   []byte{0x01, 0x09, 'h', 'e', 'l', 'l', 'o', '\n'},
+			WorkDir: dir,
+		},
+		// R4.9: -v -n combined; non-printing display with line numbering.
+		{
+			Name:    "cat_v_with_n",
+			Args:    []string{"-v", "-n"},
+			Stdin:   []byte{0x01, '\n', 0x02, '\n'},
+			WorkDir: dir,
+		},
+		// R4.9: -A -s combined; show all with squeeze.
+		{
+			Name:    "cat_A_with_s",
+			Args:    []string{"-A", "-s"},
+			Stdin:   []byte("a\n\n\n\nb\n"),
+			WorkDir: dir,
+		},
+		// R4.9: -e -b combined; show ends + non-printing with non-blank numbering.
+		{
+			Name:    "cat_e_with_b",
+			Args:    []string{"-e", "-b"},
+			Stdin:   []byte("first\n\nsecond\n"),
+			WorkDir: dir,
+		},
+		// R4.3: --show-ends long flag.
+		{
+			Name:    "cat_long_show_ends",
+			Args:    []string{"--show-ends"},
+			Stdin:   []byte("hello\nworld\n"),
+			WorkDir: dir,
+		},
+		// R4.4: --show-tabs long flag.
+		{
+			Name:    "cat_long_show_tabs",
+			Args:    []string{"--show-tabs"},
+			Stdin:   []byte("a\tb\n"),
+			WorkDir: dir,
+		},
+		// R4.1: --show-nonprinting long flag.
+		{
+			Name:    "cat_long_show_nonprinting",
+			Args:    []string{"--show-nonprinting"},
+			Stdin:   []byte{0x01, '\n'},
+			WorkDir: dir,
+		},
+		// R4.5: --show-all long flag.
+		{
+			Name:    "cat_long_show_all",
+			Args:    []string{"--show-all"},
+			Stdin:   []byte{0x01, 0x09, '\n'},
+			WorkDir: dir,
+		},
+		// R4.1: -v with binary input (all 256 bytes).
+		{
+			Name:    "cat_v_all_bytes",
+			Args:    []string{"-v"},
+			Stdin:   allBytes,
 			WorkDir: dir,
 		},
 	}
