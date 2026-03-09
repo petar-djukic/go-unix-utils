@@ -79,6 +79,97 @@ func TestHumanSizeSI(t *testing.T) {
 	}
 }
 
+// TestHumanSizeLsContext verifies HumanSize for ls -h file size output. R3.5.
+func TestHumanSizeLsContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		bytes int64
+		want  string
+	}{
+		// ls -h file sizes (binary mode, base 1024). R3.5.
+		{"directory block size 4096", 4096, "4.0K"},
+		{"small file 256 bytes", 256, "256"},
+		{"medium file 65536 bytes", 65536, "64K"},
+		{"large file 10 MiB", 10485760, "10M"},
+		{"photo file 3.5 MiB", 3670016, "3.5M"},
+		{"video file 1.2 GiB", 1288490189, "1.2G"},
+		// ls -s block counts are also passed through HumanSize. R3.5.
+		{"ls -s 8 blocks * 512 = 4096", 4096, "4.0K"},
+		{"ls -s 1 block * 512 = 512", 512, "512"},
+		{"ls -s large block count", 524288, "512K"},
+	}
+
+	opts := HumanSizeOpts{Binary: true}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := HumanSize(tc.bytes, opts)
+			if got != tc.want {
+				t.Errorf("HumanSize(%d, binary) = %q, want %q", tc.bytes, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHumanSizeDuContext verifies HumanSize for du -h directory size output. R3.6.
+func TestHumanSizeDuContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("du -h binary", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name  string
+			bytes int64
+			want  string
+		}{
+			// du -h directory sizes (binary mode). R3.6.
+			{"small directory 4K", 4096, "4.0K"},
+			{"node_modules 256 MiB", 268435456, "256M"},
+			{"home directory 50 GiB", 53687091200, "50G"},
+			{"disk usage 1.5 TiB", 1649267441664, "1.5T"},
+		}
+
+		opts := HumanSizeOpts{Binary: true}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				got := HumanSize(tc.bytes, opts)
+				if got != tc.want {
+					t.Errorf("HumanSize(%d, binary) = %q, want %q", tc.bytes, got, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("du --si", func(t *testing.T) {
+		t.Parallel()
+		// du uses the same binary/SI distinction as ls -h. R3.6.
+		tests := []struct {
+			name  string
+			bytes int64
+			want  string
+		}{
+			{"small directory 4000", 4000, "4.0kB"},
+			{"medium directory 250 MB", 250000000, "250MB"},
+			{"large directory 1.5 GB", 1500000000, "1.5GB"},
+			{"very large 2 TB", 2000000000000, "2.0TB"},
+		}
+
+		opts := HumanSizeOpts{Binary: false}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				got := HumanSize(tc.bytes, opts)
+				if got != tc.want {
+					t.Errorf("HumanSize(%d, SI) = %q, want %q", tc.bytes, got, tc.want)
+				}
+			})
+		}
+	})
+}
+
 func TestHumanSizeEdgeCases(t *testing.T) {
 	t.Parallel()
 
