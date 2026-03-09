@@ -4,6 +4,11 @@
 // Package testutils provides a differential testing harness for verifying
 // Go binary implementations against GNU reference binaries. Implements
 // prd001-testutils R1, R2, R3, R4, R5.
+//
+// R3.5: Divergence reporting includes args, stdin (truncated to 256 bytes),
+// reference stdout/stderr, Go stdout/stderr, and both exit codes.
+// R3.6: Each DiffTest runs as a named subtest via t.Run for identifiable
+// failures in go test output.
 package testutils
 
 // DiffTest defines a single differential test case. Each test executes both
