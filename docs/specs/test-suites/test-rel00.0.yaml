@@ -4,6 +4,7 @@ release: rel00.0
 
 traces:
   - rel00.0-uc001-magefiles
+  - prd059-version R1
   - prd011-magefiles R1
   - prd011-magefiles R2
   - prd011-magefiles R3
@@ -40,8 +41,8 @@ test_cases:
       exit_code: 0
       postcondition: bin/version exists and is executable
     traces:
-      - prd011-magefiles R2.1
-      - prd011-magefiles R2.4
+      - prd011-magefiles R1.1
+      - prd059-version R1.1
 
   - name: version_prints_tag
     description: bin/version prints the latest version tag and exits 0.
@@ -52,9 +53,9 @@ test_cases:
       stdout_pattern: "v[0-9]+\\.[0-9]+\\.[0-9]+\n"
       stderr: ""
     traces:
-      - prd011-magefiles R1.1
-      - prd011-magefiles R1.2
-      - prd011-magefiles R1.3
+      - prd059-version R1.1
+      - prd059-version R1.2
+      - prd059-version R1.3
 
   - name: version_flag_identical
     description: bin/version --version produces the same output as bin/version.
@@ -65,7 +66,7 @@ test_cases:
       stdout: same as bin/version with no arguments
       stderr: ""
     traces:
-      - prd011-magefiles R1.4
+      - prd059-version R1.4
 
   - name: version_v_flag_identical
     description: bin/version -v produces the same output as bin/version.
@@ -76,7 +77,7 @@ test_cases:
       stdout: same as bin/version with no arguments
       stderr: ""
     traces:
-      - prd011-magefiles R1.4
+      - prd059-version R1.4
 
   - name: version_unknown_flag
     description: bin/version --bogus prints usage to stderr and exits 2.
@@ -87,7 +88,7 @@ test_cases:
       stdout: ""
       stderr_contains: "usage"
     traces:
-      - prd011-magefiles R1.4
+      - prd059-version R1.4
 
   - name: version_dev_build
     description: A build without ldflags prints "dev".
@@ -98,7 +99,7 @@ test_cases:
       stdout: "dev\n"
       stderr: ""
     traces:
-      - prd011-magefiles R1.2
+      - prd059-version R1.2
 
   - name: lint_passes
     description: mage lint runs golangci-lint with no warnings.
@@ -107,8 +108,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd011-magefiles R3.1
-      - prd011-magefiles R3.2
+      - prd011-magefiles R2.1
 
   - name: clean_removes_bin
     description: mage clean removes the bin/ directory.
@@ -118,7 +118,7 @@ test_cases:
       exit_code: 0
       postcondition: bin/ does not exist
     traces:
-      - prd011-magefiles R4.1
+      - prd011-magefiles R3.1
 
   - name: clean_idempotent
     description: mage clean succeeds when bin/ does not exist.
@@ -127,7 +127,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd011-magefiles R4.1
+      - prd011-magefiles R3.1
 
   # --- uc002-format: pkg/format output formatting ---
 
