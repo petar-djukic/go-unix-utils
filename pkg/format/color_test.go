@@ -10,9 +10,7 @@ import (
 )
 
 func TestFileTypeColor(t *testing.T) {
-	t.Parallel()
-
-	// Force color on so we can test the return values. AC2.
+	// Mutates package-level colorOverride; must not run in parallel.
 	SetColorEnabled(true)
 	t.Cleanup(ResetColorEnabled)
 
@@ -32,7 +30,6 @@ func TestFileTypeColor(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			got := FileTypeColor(tc.mode)
 			if got != tc.want {
 				t.Errorf("FileTypeColor(%v) = %q, want %q", tc.mode, got, tc.want)
@@ -42,8 +39,7 @@ func TestFileTypeColor(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	t.Parallel()
-
+	// Mutates package-level colorOverride; must not run in parallel.
 	SetColorEnabled(true)
 	t.Cleanup(ResetColorEnabled)
 

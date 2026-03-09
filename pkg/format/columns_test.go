@@ -3,65 +3,12 @@
 
 package format
 
-import (
-	"testing"
-)
-
-func TestPadRight(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		s     string
-		width int
-		want  string
-	}{
-		{"shorter", "hi", 5, "hi   "},
-		{"exact", "hello", 5, "hello"},
-		{"longer", "longer", 3, "longer"},
-		{"empty", "", 4, "    "},
-		{"unicode", "café", 6, "café  "},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := PadRight(tc.s, tc.width)
-			if got != tc.want {
-				t.Errorf("PadRight(%q, %d) = %q, want %q", tc.s, tc.width, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestPadLeft(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		s     string
-		width int
-		want  string
-	}{
-		{"shorter", "42", 5, "   42"},
-		{"exact", "hello", 5, "hello"},
-		{"longer", "longer", 3, "longer"},
-		{"empty", "", 3, "   "},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := PadLeft(tc.s, tc.width)
-			if got != tc.want {
-				t.Errorf("PadLeft(%q, %d) = %q, want %q", tc.s, tc.width, got, tc.want)
-			}
-		})
-	}
-}
+import "testing"
 
 func TestColumnsBasic(t *testing.T) {
 	t.Parallel()
 
-	// AC5: column-first fill, respects termWidth.
+	// AC4: column-first fill, respects termWidth.
 	entries := []string{"a", "b", "c", "d", "e", "f"}
 	rows := Columns(entries, 20)
 
@@ -78,7 +25,7 @@ func TestColumnsBasic(t *testing.T) {
 func TestColumnsSingleLongEntry(t *testing.T) {
 	t.Parallel()
 
-	// AC5: single long entry falls back to one column.
+	// Single long entry falls back to one column.
 	entries := []string{"this-is-a-very-long-filename-that-exceeds-width"}
 	rows := Columns(entries, 20)
 
@@ -115,7 +62,6 @@ func TestColumnsColumnFirstOrder(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
-	// Row 0 should be the first item from each column.
 	wantRow0 := []string{"aaa", "ccc", "eee"}
 	wantRow1 := []string{"bbb", "ddd", "fff"}
 

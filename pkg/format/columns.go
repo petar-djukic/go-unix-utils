@@ -3,35 +3,10 @@
 
 package format
 
-import (
-	"strings"
-	"unicode/utf8"
-)
+import "unicode/utf8"
 
 // columnGap is the number of spaces between columns in multi-column output.
 const columnGap = 2
-
-// PadRight pads s with trailing spaces to the given width. R1.2: if s is
-// already wider than width, s is returned unchanged. Width is measured in
-// rune count per R1.3.
-func PadRight(s string, width int) string {
-	runeLen := utf8.RuneCountInString(s)
-	if runeLen >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-runeLen)
-}
-
-// PadLeft pads s with leading spaces to the given width. R1.2: if s is
-// already wider than width, s is returned unchanged. Width is measured in
-// rune count per R1.3.
-func PadLeft(s string, width int) string {
-	runeLen := utf8.RuneCountInString(s)
-	if runeLen >= width {
-		return s
-	}
-	return strings.Repeat(" ", width-runeLen) + s
-}
 
 // Columns arranges entries into columns that fit within termWidth, filling
 // column-first (top to bottom, left to right) like GNU ls default output.
@@ -44,8 +19,8 @@ func Columns(entries []string, termWidth int) [][]string {
 		return nil
 	}
 
-	// Try decreasing column counts from max possible down to 1. D4.
-	maxCols := min(max(termWidth/2, 1), n) // minimum column width is 1 char + 1 gap (except last)
+	// Try decreasing column counts from max possible down to 1.
+	maxCols := min(max(termWidth/2, 1), n)
 
 	for numCols := maxCols; numCols > 1; numCols-- {
 		numRows := (n + numCols - 1) / numCols
