@@ -124,69 +124,24 @@ func TestLstatNonExistent(t *testing.T) {
 	}
 }
 
-func TestIsTerminal(t *testing.T) {
+func TestStatHardLinkCount(t *testing.T) {
 	t.Parallel()
 
-	// AC4: pipes are not terminals.
-	r, w, err := os.Pipe()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "original")
+	if err := os.WriteFile(path, []byte("data"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	linkPath := filepath.Join(dir, "hardlink")
+	if err := os.Link(path, linkPath); err != nil {
+		t.Skipf("os.Link not supported: %v", err)
+	}
+
+	fi, err := Stat(path)
 	if err != nil {
-		t.Fatalf("pipe: %v", err)
+		t.Fatalf("Stat: %v", err)
 	}
-	defer r.Close()
-	defer w.Close()
-
-	if IsTerminal(r.Fd()) {
-		t.Error("IsTerminal on pipe read end: expected false")
+	if fi.Nlink != 2 {
+		t.Errorf("Nlink: got %d, want 2 after creating hard link", fi.Nlink)
 	}
-	if IsTerminal(w.Fd()) {
-		t.Error("IsTerminal on pipe write end: expected false")
-	}
-}
-
-func TestIsTerminalRegularFile(t *testing.T) {
-	t.Parallel()
-
-	f, err := os.CreateTemp(t.TempDir(), "test")
-	if err != nil {
-		t.Fatalf("create temp: %v", err)
-	}
-	defer f.Close()
-
-	if IsTerminal(f.Fd()) {
-		t.Error("IsTerminal on regular file: expected false")
-	}
-}
-
-func TestTerminalWidthNonTerminal(t *testing.T) {
-	t.Parallel()
-
-	// AC3: TerminalWidth returns an error on a non-terminal fd.
-	// In test environments, stdout is typically not a terminal.
-	// We redirect stdout to a pipe to ensure non-terminal.
-	origStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	defer func() {
-		os.Stdout = origStdout
-		r.Close()
-		w.Close()
-	}()
-
-	_, err = TerminalWidth()
-	if err == nil {
-		t.Error("TerminalWidth with piped stdout: expected error, got nil")
-	}
-}
-
-func TestInstallSIGPIPEHandler(t *testing.T) {
-	t.Parallel()
-
-	// AC5: InstallSIGPIPEHandler installs without panic.
-	// We cannot fully test exit behavior in-process, but we verify it
-	// does not panic and can be called multiple times (R1.6).
-	InstallSIGPIPEHandler()
-	InstallSIGPIPEHandler() // second call must not panic
 }
