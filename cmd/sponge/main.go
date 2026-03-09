@@ -6,7 +6,8 @@
 // permission preservation, lstat-based symlink awareness, and write error
 // handling), R3.1–R3.3 (append mode with atomic temp-file prepend and
 // default permissions for new files), R4.1–R4.3 (passthrough mode with
-// in-memory buffering for small input and temp-file fallback for large input).
+// in-memory buffering for small input and temp-file fallback for large input),
+// R5.1–R5.4 (exit codes, error handling, panic recovery, and temp-file cleanup).
 // Reads all of stdin before writing to the output file or stdout. Supports
 // -a (append) mode.
 package main
@@ -15,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"syscall"
 
@@ -22,8 +24,21 @@ import (
 )
 
 func main() {
-	// R5.4: exit 0 on SIGPIPE when stdout is closed by a downstream consumer.
 	sys.InstallSIGPIPEHandler()
+	os.Exit(run())
+}
+
+// run implements the sponge logic and returns the process exit code.
+// R5.1: returns 0 on success. R5.2: returns 1 on any I/O or write error.
+func run() (exitCode int) {
+	// R5.3: recover from allocation failure (panic) and exit with code 1
+	// instead of printing a stack trace.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "sponge: %v\n", r)
+			exitCode = 1
+		}
+	}()
 
 	appendMode, outFile := parseArgs(os.Args[1:])
 
@@ -32,9 +47,9 @@ func main() {
 	if outFile == "" {
 		if err := passthrough(); err != nil {
 			fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
 
 	// File output mode: buffer stdin in a temp file.
@@ -48,10 +63,24 @@ func main() {
 	tmp, err := os.CreateTemp(tmpDir, "sponge.*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sponge: failed to create temporary file: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	tmpName := tmp.Name()
+
+	// R5.4: ensure temp file cleanup on all exit paths. Using return
+	// instead of os.Exit guarantees this defer executes.
 	defer os.Remove(tmpName) // best-effort cleanup
+
+	// R5.4: clean up temp file on SIGINT, SIGTERM, SIGHUP before the
+	// rename completes.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-sigCh
+		os.Remove(tmpName) // best-effort cleanup
+		os.Exit(1)
+	}()
+	defer signal.Stop(sigCh)
 
 	// R3.3: in append mode, copy the original file content into the temp
 	// file first, then append stdin. The original file is read before the
@@ -59,10 +88,10 @@ func main() {
 	if appendMode {
 		if orig, err := os.Open(outFile); err == nil {
 			if _, err := io.Copy(tmp, orig); err != nil {
-				orig.Close()  // best-effort close before exit
-				tmp.Close()   // best-effort close before exit
+				orig.Close() // best-effort close before exit
+				tmp.Close()  // best-effort close before exit
 				fmt.Fprintf(os.Stderr, "sponge: failed to read original file: %v\n", err)
-				os.Exit(1)
+				return 1
 			}
 			orig.Close()
 		}
@@ -74,12 +103,12 @@ func main() {
 	if _, err := io.Copy(tmp, os.Stdin); err != nil {
 		tmp.Close() // best-effort close before exit
 		fmt.Fprintf(os.Stderr, "sponge: error reading stdin: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if err := tmp.Close(); err != nil {
 		fmt.Fprintf(os.Stderr, "sponge: error closing temporary file: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// R2.3: atomic write — rename temp file over the target.
@@ -90,7 +119,7 @@ func main() {
 		// R2.2 (PRD): cross-device fallback — copy content then remove temp file.
 		if err := copyFile(tmpName, outFile); err != nil {
 			fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -105,6 +134,8 @@ func main() {
 		syscall.Umask(umask)
 		os.Chmod(outFile, os.FileMode(0o666&^umask)) // best-effort permission set
 	}
+
+	return 0
 }
 
 // parseArgs extracts the -a flag and the output filename from arguments.

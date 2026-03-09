@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd007-sponge R1.1–R1.4, R2.4–R2.5, R3.1–R3.3, R4.1–R4.3 via
-// differential testing against sponge (Homebrew moreutils).
+// Tests: prd007-sponge R1.1–R1.4, R2.4–R2.5, R3.1–R3.3, R4.1–R4.3,
+// R5.1–R5.4 via differential testing against sponge (Homebrew moreutils).
 package main
 
 import (
@@ -478,6 +478,157 @@ func TestDiff(t *testing.T) {
 		refPerms := runAndCheckPerms(t, refBin, filepath.Join(dir, "append_perms_ref.txt"), 0o600)
 		if goPerms != refPerms {
 			t.Errorf("append permission divergence (0600): go=%o ref=%o", goPerms, refPerms)
+		}
+	})
+
+	// R5.1: both binaries exit 0 on successful file write.
+	t.Run("exit_zero_on_success", func(t *testing.T) {
+		outPath := filepath.Join(dir, "exit0_test.txt")
+		tests := []testutils.DiffTest{
+			{
+				Name:     "exit_zero_file_write",
+				Args:     []string{outPath},
+				Stdin:    []byte("success\n"),
+				WorkDir:  dir,
+				ExitCode: 0,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R5.1: exit 0 on successful passthrough to stdout.
+	t.Run("exit_zero_passthrough", func(t *testing.T) {
+		tests := []testutils.DiffTest{
+			{
+				Name:     "exit_zero_stdout",
+				Stdin:    []byte("passthrough ok\n"),
+				WorkDir:  dir,
+				ExitCode: 0,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R5.2: both binaries exit 1 when the output directory does not exist.
+	// The temp file cannot be created, triggering a descriptive error on stderr.
+	t.Run("exit_one_nonexistent_dir", func(t *testing.T) {
+		badPath := filepath.Join(dir, "no_such_dir", "file.txt")
+
+		runBin := func(t *testing.T, binary string) (int, string) {
+			t.Helper()
+			cmd := exec.Command(binary, badPath)
+			cmd.Stdin = strings.NewReader("data\n")
+			cmd.Dir = dir
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if err == nil {
+				return 0, stderr.String()
+			}
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode(), stderr.String()
+			}
+			t.Fatalf("unexpected error: %v", err)
+			return -1, ""
+		}
+
+		goExit, goStderr := runBin(t, goBin)
+		refExit, _ := runBin(t, refBin)
+		if goExit != refExit {
+			t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+		if goExit != 1 {
+			t.Errorf("expected exit code 1, got %d", goExit)
+		}
+		// R5.2: verify descriptive error message on stderr.
+		if goStderr == "" {
+			t.Error("expected error message on stderr, got empty")
+		}
+	})
+
+	// R5.3: verify the binary exits cleanly (no panic stack trace) on error.
+	// Go's OOM produces an unrecoverable runtime crash, but the recover handler
+	// catches other panics. This test verifies stderr contains a descriptive
+	// message without a Go stack trace.
+	t.Run("no_panic_on_error", func(t *testing.T) {
+		badPath := filepath.Join(dir, "missing_parent", "deep", "file.txt")
+
+		cmd := exec.Command(goBin, badPath)
+		cmd.Stdin = strings.NewReader("data\n")
+		cmd.Dir = dir
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		if err == nil {
+			t.Fatal("expected nonzero exit, got 0")
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("unexpected error type: %v", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+		// R5.3: stderr must not contain Go panic/goroutine stack traces.
+		stderrStr := stderr.String()
+		if strings.Contains(stderrStr, "goroutine") {
+			t.Errorf("go binary panicked (goroutine trace in stderr):\n%s", stderrStr)
+		}
+		if strings.Contains(stderrStr, "panic:") {
+			t.Errorf("go binary panicked (panic: in stderr):\n%s", stderrStr)
+		}
+	})
+
+	// R5.4: verify temp file cleanup after error — no sponge.* files
+	// should remain in the output directory after a failed write.
+	t.Run("temp_file_cleanup_on_error", func(t *testing.T) {
+		cleanupDir := filepath.Join(dir, "cleanup_check")
+		if err := os.Mkdir(cleanupDir, 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+
+		// Create a directory as the output target — rename over a directory
+		// fails, and os.Create on a directory also fails, so sponge exits 1.
+		// The temp file is created in filepath.Dir(outputAsDir) = cleanupDir.
+		outputAsDir := filepath.Join(cleanupDir, "is_a_dir")
+		if err := os.Mkdir(outputAsDir, 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+
+		checkCleanup := func(t *testing.T, binary, label string) {
+			t.Helper()
+			cmd := exec.Command(binary, outputAsDir)
+			cmd.Stdin = strings.NewReader("data\n")
+			cmd.Dir = cleanupDir
+			cmd.Run() // ignore error — we expect failure
+			matches, _ := filepath.Glob(filepath.Join(cleanupDir, "sponge.*"))
+			if len(matches) > 0 {
+				t.Errorf("%s left temp file(s): %v", label, matches)
+			}
+		}
+
+		checkCleanup(t, goBin, "go binary")
+		checkCleanup(t, refBin, "ref binary")
+	})
+
+	// R5.4: verify temp file cleanup on successful write — no leftover
+	// sponge.* files remain after a normal operation.
+	t.Run("temp_file_cleanup_on_success", func(t *testing.T) {
+		cleanupDir := filepath.Join(dir, "cleanup_success")
+		if err := os.Mkdir(cleanupDir, 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+
+		outPath := filepath.Join(cleanupDir, "output.txt")
+		cmd := exec.Command(goBin, outPath)
+		cmd.Stdin = strings.NewReader("data\n")
+		cmd.Dir = cleanupDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("go binary failed: %v\n%s", err, out)
+		}
+		matches, _ := filepath.Glob(filepath.Join(cleanupDir, "sponge.*"))
+		if len(matches) > 0 {
+			t.Errorf("go binary left temp file(s) after success: %v", matches)
 		}
 	})
 }
