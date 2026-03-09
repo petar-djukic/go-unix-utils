@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Implements: prd001-testutils R4.1–R4.2 (task requirements).
+
 package testutils
 
 import (
@@ -11,7 +13,8 @@ import (
 )
 
 // BuildBinary compiles the Go package at pkgPath to a temporary binary and returns
-// the path. The binary is removed via t.Cleanup after the test completes. R1.4 (task).
+// the path. The binary is removed via t.Cleanup after the test completes. R4.1.
+// If compilation fails, t.Fatal is called with the go build stderr output. R4.2.
 func BuildBinary(t *testing.T, pkgPath string) string {
 	t.Helper()
 
