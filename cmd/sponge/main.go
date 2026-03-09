@@ -121,12 +121,12 @@ func run(appendMode bool, outputFile string) int {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			os.Remove(tmpPath) // best-effort cleanup
+			_ = os.Remove(tmpPath) // best-effort cleanup
 		}
 	}()
 
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close() // best-effort close
+		_ = tmpFile.Close() // best-effort close
 		fmt.Fprintf(os.Stderr, "sponge: write error: %v\n", err)
 		return 1
 	}
@@ -180,6 +180,6 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("write output file: %w", err)
 	}
 
-	os.Remove(src) // best-effort cleanup of temp file
+	_ = os.Remove(src) // best-effort cleanup of temp file
 	return nil
 }
