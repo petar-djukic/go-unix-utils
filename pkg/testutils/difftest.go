@@ -5,7 +5,7 @@
 // It runs a Go binary and a GNU reference binary side by side with identical inputs
 // and compares stdout, stderr, and exit code.
 //
-// Implements: prd001-testutils R1.1–R1.4.
+// Implements: prd001-testutils R1.1–R1.4, R5.1–R5.2.
 package testutils
 
 // NormalizeFunc transforms binary output before comparison to handle acceptable
