@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd006-cat R1.1–R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.7 via differential testing
-// against gcat (Homebrew GNU cat).
+// Tests: prd006-cat R1.1–R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.9, R5.1–R5.3 via differential
+// testing against gcat (Homebrew GNU cat).
 package main
 
 import (
@@ -328,6 +328,52 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-v"},
 			Stdin:   allBytes,
 			WorkDir: dir,
+		},
+		// R4.9: -t -b -s combined; show tabs + non-printing with non-blank numbering and squeeze.
+		{
+			Name:    "cat_t_b_s_combined",
+			Args:    []string{"-t", "-b", "-s"},
+			Stdin:   []byte("first\t1\n\n\n\nsecond\t2\n"),
+			WorkDir: dir,
+		},
+		// R4.9: -A -n combined; show all with line numbering.
+		{
+			Name:    "cat_A_n_combined",
+			Args:    []string{"-A", "-n"},
+			Stdin:   []byte{0x01, '\t', 'a', '\n', 'b', '\n'},
+			WorkDir: dir,
+		},
+		// R5.1: successful processing exits 0.
+		{
+			Name:     "cat_exit_0_on_success",
+			Args:     []string{filepath.Join(dir, "file1.txt")},
+			ExitCode: 0,
+			WorkDir:  dir,
+		},
+		// R5.2: missing file followed by valid file; continues processing.
+		{
+			Name:      "cat_missing_then_valid",
+			Args:      []string{filepath.Join(dir, "nonexistent.txt"), filepath.Join(dir, "file2.txt")},
+			ExitCode:  1,
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R5.2: valid file followed by missing file; processes valid file before error.
+		{
+			Name:      "cat_valid_then_missing",
+			Args:      []string{filepath.Join(dir, "file2.txt"), filepath.Join(dir, "doesnotexist.txt")},
+			ExitCode:  1,
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R5.3: write error detection. When stdout is a valid fd, no write error occurs; exits 0.
+		// (Write errors from broken pipes are handled by SIGPIPE handler per R5.4.)
+		{
+			Name:     "cat_no_write_error",
+			Args:     []string{"-n"},
+			Stdin:    []byte("test\n"),
+			ExitCode: 0,
+			WorkDir:  dir,
 		},
 	}
 

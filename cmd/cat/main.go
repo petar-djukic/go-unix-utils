@@ -3,12 +3,14 @@
 
 // Implements: prd006-cat R1.1–R1.5 (file concatenation, stdin, binary passthrough,
 // no newline modification), R2.1–R2.4 (line numbering with -n and -b, blank line
-// definition), R3.1–R3.3 (squeeze blank lines with -s), R4.1–R4.7 (non-printing
-// character display with -v, -E, -T and composite flags -A, -e, -t).
+// definition), R3.1–R3.3 (squeeze blank lines with -s), R4.1–R4.9 (non-printing
+// character display with -v, -E, -T and composite flags -A, -e, -t; flag
+// compatibility and application ordering), R5.1–R5.3 (exit codes and error handling).
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -49,8 +51,8 @@ func main() {
 		} else {
 			f, err := os.Open(name)
 			if err != nil {
-				// R5.2: report error, continue with remaining files.
-				fmt.Fprintf(os.Stderr, "cat: %s: No such file or directory\n", name)
+				// R5.2: report error to stderr, continue with remaining files.
+				fmt.Fprintf(os.Stderr, "cat: %s\n", formatOpenError(name, err))
 				exitCode = 1
 				continue
 			}
@@ -315,4 +317,20 @@ func isFlag(arg string) bool {
 // isLongFlag returns true if the argument is a long flag (starts with "--").
 func isLongFlag(arg string) bool {
 	return len(arg) > 2 && arg[0] == '-' && arg[1] == '-'
+}
+
+// formatOpenError formats an os.Open error to match GNU cat output.
+// R5.2: os.Open returns "*os.PathError" whose Error() is "open <path>: <reason>".
+// GNU cat outputs "cat: <path>: <Reason>" with the strerror() message capitalized.
+// Go's syscall errors are lowercase; we capitalize the first letter of the reason.
+func formatOpenError(name string, err error) string {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		reason := pathErr.Err.Error()
+		if len(reason) > 0 && reason[0] >= 'a' && reason[0] <= 'z' {
+			reason = string(reason[0]-32) + reason[1:]
+		}
+		return fmt.Sprintf("%s: %s", name, reason)
+	}
+	return fmt.Sprintf("%s: %v", name, err)
 }
