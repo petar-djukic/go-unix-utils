@@ -3,7 +3,8 @@
 
 // Implements: prd006-cat R1.1–R1.5 (file concatenation, stdin, binary passthrough,
 // no newline modification), R2.1–R2.4 (line numbering with -n and -b, blank line
-// definition), R3.1–R3.3 (squeeze blank lines with -s).
+// definition), R3.1–R3.3 (squeeze blank lines with -s), R4.1–R4.7 (non-printing
+// character display with -v, -E, -T and composite flags -A, -e, -t).
 package main
 
 import (
@@ -20,6 +21,9 @@ type catFlags struct {
 	number         bool // -n: number all output lines. R2.1.
 	numberNonblank bool // -b: number non-blank lines only. R2.2.
 	squeeze        bool // -s: squeeze consecutive blank lines into one. R3.1.
+	showNonprinting bool // -v: display non-printing characters. R4.1.
+	showEnds       bool // -E: append "$" before each newline. R4.3.
+	showTabs       bool // -T: display tabs as "^I". R4.4.
 }
 
 func main() {
@@ -77,10 +81,11 @@ type catState struct {
 }
 
 // processFile reads from r and writes to w, applying flags.
-// R1.1–R1.5, R2.1–R2.4, R3.1–R3.3.
-// R4.9 order: squeeze (-s), then numbering (-n/-b).
+// R1.1–R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.4.
+// R4.9 order: squeeze (-s), then non-printing (-v/-T), then ends (-E), then numbering (-n/-b).
 func processFile(r io.Reader, w *bufio.Writer, flags catFlags, state *catState) error {
-	needsProcessing := flags.number || flags.numberNonblank || flags.squeeze
+	needsProcessing := flags.number || flags.numberNonblank || flags.squeeze ||
+		flags.showNonprinting || flags.showEnds || flags.showTabs
 
 	if !needsProcessing {
 		// R1.1–R1.5: verbatim copy, no transformation, no newline modification.
@@ -117,6 +122,12 @@ func processFile(r io.Reader, w *bufio.Writer, flags catFlags, state *catState) 
 
 			if flags.numberNonblank && isBlank {
 				// R2.2: blank lines get no number and no tab prefix.
+				// R4.3: append "$" before newline if -E is active.
+				if flags.showEnds {
+					if writeErr := w.WriteByte('$'); writeErr != nil {
+						return writeErr
+					}
+				}
 				if writeErr := w.WriteByte('\n'); writeErr != nil {
 					return writeErr
 				}
@@ -135,13 +146,74 @@ func processFile(r io.Reader, w *bufio.Writer, flags catFlags, state *catState) 
 			state.atLineStart = false
 		}
 
+		if b == '\n' {
+			// R4.3: append "$" before newline.
+			if flags.showEnds {
+				if writeErr := w.WriteByte('$'); writeErr != nil {
+					return writeErr
+				}
+			}
+			if writeErr := w.WriteByte('\n'); writeErr != nil {
+				return writeErr
+			}
+			state.atLineStart = true
+			continue
+		}
+
+		if b == '\t' && flags.showTabs {
+			// R4.4: display tabs as "^I".
+			if _, writeErr := w.WriteString("^I"); writeErr != nil {
+				return writeErr
+			}
+			continue
+		}
+
+		// R4.2: -v must not alter tab (0x09). Tab is handled above; skip it here.
+		if flags.showNonprinting && b != '\t' {
+			if writeErr := writeNonprinting(w, b); writeErr != nil {
+				return writeErr
+			}
+			continue
+		}
+
 		if writeErr := w.WriteByte(b); writeErr != nil {
 			return writeErr
 		}
+	}
+}
 
-		if b == '\n' {
-			state.atLineStart = true
+// writeNonprinting writes byte b using caret/M- notation per R4.1–R4.2.
+// Tab (0x09) and newline (0x0A) are handled by the caller and never reach this function.
+func writeNonprinting(w *bufio.Writer, b byte) error {
+	switch {
+	case b < 0x20: // Control characters 0x00–0x1F (tab/newline handled by caller).
+		if writeErr := w.WriteByte('^'); writeErr != nil {
+			return writeErr
 		}
+		return w.WriteByte(b + 64) // ^@ through ^_
+	case b == 0x7F: // DEL → ^?
+		if writeErr := w.WriteByte('^'); writeErr != nil {
+			return writeErr
+		}
+		return w.WriteByte('?')
+	case b >= 0x80 && b <= 0x9F: // M-^@ through M-^_
+		if _, writeErr := w.WriteString("M-^"); writeErr != nil {
+			return writeErr
+		}
+		return w.WriteByte(b - 0x80 + 64)
+	case b >= 0xA0 && b <= 0xFE: // M-  through M-~
+		if _, writeErr := w.WriteString("M-"); writeErr != nil {
+			return writeErr
+		}
+		return w.WriteByte(b - 0x80)
+	case b == 0xFF: // M-^?
+		if _, writeErr := w.WriteString("M-^"); writeErr != nil {
+			return writeErr
+		}
+		return w.WriteByte('?')
+	default:
+		// Printable ASCII (0x20–0x7E): pass through.
+		return w.WriteByte(b)
 	}
 }
 
@@ -169,6 +241,17 @@ func parseArgs(args []string) (catFlags, []string) {
 				flags.numberNonblank = true
 			case "--squeeze-blank":
 				flags.squeeze = true
+			case "--show-nonprinting":
+				flags.showNonprinting = true
+			case "--show-ends":
+				flags.showEnds = true
+			case "--show-tabs":
+				flags.showTabs = true
+			case "--show-all":
+				// R4.5: -A = -vET.
+				flags.showNonprinting = true
+				flags.showEnds = true
+				flags.showTabs = true
 			default:
 				fmt.Fprintf(os.Stderr, "cat: unrecognized option '%s'\n", arg)
 				os.Exit(1)
@@ -184,6 +267,28 @@ func parseArgs(args []string) (catFlags, []string) {
 				flags.numberNonblank = true
 			case 's':
 				flags.squeeze = true
+			case 'v':
+				// R4.1: show non-printing characters.
+				flags.showNonprinting = true
+			case 'E':
+				// R4.3: show ends.
+				flags.showEnds = true
+			case 'T':
+				// R4.4: show tabs.
+				flags.showTabs = true
+			case 'A':
+				// R4.5: -A = -vET.
+				flags.showNonprinting = true
+				flags.showEnds = true
+				flags.showTabs = true
+			case 'e':
+				// R4.6: -e = -vE.
+				flags.showNonprinting = true
+				flags.showEnds = true
+			case 't':
+				// R4.7: -t = -vT.
+				flags.showNonprinting = true
+				flags.showTabs = true
 			case 'u':
 				// R4.8: accepted but ignored.
 			default:
