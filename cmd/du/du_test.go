@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -25,6 +26,11 @@ func TestDiff(t *testing.T) {
 
 	// Create the standard fixture directory used by most tests.
 	fixtureDir := createFixture(t)
+
+	// Normalizer for stderr: gdu prints "gdu:" while our binary prints "du:".
+	stderrNorm := func(data []byte) []byte {
+		return bytes.Replace(data, []byte("gdu:"), []byte("du:"), -1)
+	}
 
 	// du_default_recursive: default flags with -k on fixture directory.
 	// R1.1, R1.2, R1.3.
@@ -130,17 +136,99 @@ func TestDiff(t *testing.T) {
 	})
 
 	// du_missing_path: non-existent path prints error, exits 1. R4.2.
-	// Normalize stderr: gdu prints "gdu:" while our binary prints "du:".
 	t.Run("du_missing_path", func(t *testing.T) {
-		stderrNorm := func(data []byte) []byte {
-			return bytes.Replace(data, []byte("gdu:"), []byte("du:"), -1)
-		}
 		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
 			{
 				Name:      "missing_path",
 				Args:      []string{"-k", filepath.Join(t.TempDir(), "nonexistent_dir")},
 				WorkDir:   t.TempDir(),
 				Normalize: []testutils.NormalizeFunc{stderrNorm},
+			},
+		})
+	})
+
+	// du_empty_directory: empty dir reports only the directory itself. R1.1.
+	t.Run("du_empty_directory", func(t *testing.T) {
+		emptyDir := filepath.Join(t.TempDir(), "empty")
+		if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+			t.Fatalf("create empty dir: %v", err)
+		}
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "empty_dir",
+				Args:    []string{"-k", emptyDir},
+				WorkDir: t.TempDir(),
+			},
+		})
+	})
+
+	// du_single_file: du on a single file reports its size. R1.1, R2.3.
+	t.Run("du_single_file", func(t *testing.T) {
+		singleFile := filepath.Join(t.TempDir(), "single.txt")
+		if err := os.WriteFile(singleFile, make([]byte, 4096), 0o644); err != nil {
+			t.Fatalf("write single file: %v", err)
+		}
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "single_file",
+				Args:    []string{"-k", singleFile},
+				WorkDir: t.TempDir(),
+			},
+		})
+	})
+
+	// du_permission_denied: unreadable directory prints error, exits 1. R4.2.
+	t.Run("du_permission_denied", func(t *testing.T) {
+		if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+			t.Skip("permission test requires unix")
+		}
+		if os.Getuid() == 0 {
+			t.Skip("permission test not meaningful as root")
+		}
+		base := filepath.Join(t.TempDir(), "perm-fixture")
+		restricted := filepath.Join(base, "noaccess")
+		if err := os.MkdirAll(restricted, 0o755); err != nil {
+			t.Fatalf("create restricted dir: %v", err)
+		}
+		// Write a file inside before restricting access.
+		if err := os.WriteFile(filepath.Join(restricted, "secret.txt"), make([]byte, 1024), 0o644); err != nil {
+			t.Fatalf("write secret file: %v", err)
+		}
+		if err := os.Chmod(restricted, 0o000); err != nil {
+			t.Fatalf("chmod restricted dir: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = os.Chmod(restricted, 0o755) // best-effort restore for cleanup
+		})
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "permission_denied",
+				Args:      []string{"-k", base},
+				WorkDir:   t.TempDir(),
+				Normalize: []testutils.NormalizeFunc{stderrNorm},
+			},
+		})
+	})
+
+	// du_mixed_valid_invalid: mix of valid dir and nonexistent path. R4.2.
+	t.Run("du_mixed_valid_invalid", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "mixed_args",
+				Args:      []string{"-k", fixtureDir, filepath.Join(t.TempDir(), "no_such_dir")},
+				WorkDir:   t.TempDir(),
+				Normalize: []testutils.NormalizeFunc{stderrNorm},
+			},
+		})
+	})
+
+	// du_max_depth_0: -d 0 equivalent to -s. R2.4.
+	t.Run("du_max_depth_0", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "depth_0",
+				Args:    []string{"-k", "-d", "0", fixtureDir},
+				WorkDir: t.TempDir(),
 			},
 		})
 	})
@@ -171,9 +259,9 @@ func createFixture(t *testing.T) string {
 	}
 
 	files := map[string]int{
-		filepath.Join(base, "subdir1", "file_a.txt"):          1024,
+		filepath.Join(base, "subdir1", "file_a.txt"):           1024,
 		filepath.Join(base, "subdir1", "nested", "file_b.txt"): 2048,
-		filepath.Join(base, "subdir2", "file_c.txt"):          512,
+		filepath.Join(base, "subdir2", "file_c.txt"):           512,
 	}
 	for path, size := range files {
 		data := make([]byte, size)

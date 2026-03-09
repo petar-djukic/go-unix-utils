@@ -225,7 +225,8 @@ func walkPath(opts duOptions, path string, depth int, seen map[inodeKey]bool) (i
 		} else {
 			seen[key] = true
 		}
-		if opts.allFiles && (opts.maxDepth < 0 || depth <= opts.maxDepth) {
+		// Print if -a or if this is a top-level argument (depth 0).
+		if (opts.allFiles || depth == 0) && (opts.maxDepth < 0 || depth <= opts.maxDepth) {
 			printEntry(opts, size, path)
 		}
 		return size, 0
@@ -241,8 +242,8 @@ func walkPath(opts duOptions, path string, depth int, seen map[inodeKey]bool) (i
 		} else {
 			seen[key] = true
 		}
-		// R2.3: -a prints individual files.
-		if opts.allFiles && (opts.maxDepth < 0 || depth <= opts.maxDepth) {
+		// R2.3: -a prints individual files; top-level arguments always print.
+		if (opts.allFiles || depth == 0) && (opts.maxDepth < 0 || depth <= opts.maxDepth) {
 			printEntry(opts, size, path)
 		}
 		return size, 0
@@ -318,7 +319,7 @@ func printEntry(opts duOptions, size512 int64, path string) {
 	var sizeStr string
 	switch opts.mode {
 	case modeHuman:
-		// R2.1: human-readable binary mode. Convert 512-byte blocks to bytes.
+		// R2.1: human-readable binary mode (1024-based units).
 		sizeStr = humanReadable(size512 * 512)
 	case modeBlocks1M:
 		// R2.6: 1M blocks. 1M = 2048 512-byte blocks. Integer division, round up.
