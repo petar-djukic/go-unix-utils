@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Binary execution and stdout/stderr/exit-code comparison logic used by
+// RunDiffTests. Implements prd001-testutils R2.1, R2.2, R2.3, R2.4, R2.5,
+// R2.6, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.3, R5.1, R5.2.
 package testutils
 
 import (
@@ -76,6 +79,7 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 				if len(stdinReport) > maxStdinReport {
 					stdinReport = stdinReport[:maxStdinReport]
 				}
+				// Divergence reporting (prd001-testutils R2.4, R3.5)
 				t.Fatalf("divergence detected\n"+
 					"  args:        %v\n"+
 					"  stdin:       %q\n"+
@@ -172,27 +176,4 @@ func runBinary(t *testing.T, binary string, args []string, stdin []byte, env []s
 	}
 
 	return outBuf.Bytes(), errBuf.Bytes(), exitCode
-}
-
-// BuildBinary compiles the Go package at pkgPath to a temporary binary and
-// returns the path. Calls t.Fatal on build failure. Registers t.Cleanup to
-// remove the binary. (task R4)
-func BuildBinary(t *testing.T, pkgPath string) string {
-	t.Helper()
-
-	tmpDir := t.TempDir()
-	binPath := filepath.Join(tmpDir, "test-binary")
-
-	cmd := exec.Command("go", "build", "-o", binPath, ".")
-	cmd.Dir = pkgPath
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("BuildBinary(%q) failed: %v\n%s", pkgPath, err, out)
-	}
-
-	t.Cleanup(func() {
-		os.Remove(binPath) // best-effort cleanup; TempDir removal handles it too
-	})
-
-	return binPath
 }
