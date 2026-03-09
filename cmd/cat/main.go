@@ -5,7 +5,8 @@
 // no newline modification), R2.1–R2.4 (line numbering with -n and -b, blank line
 // definition), R3.1–R3.3 (squeeze blank lines with -s), R4.1–R4.9 (non-printing
 // character display with -v, -E, -T and composite flags -A, -e, -t; flag
-// compatibility and application ordering), R5.1–R5.3 (exit codes and error handling).
+// compatibility and application ordering), R5.1–R5.4 (exit codes, error handling,
+// and SIGPIPE).
 package main
 
 import (
@@ -29,6 +30,7 @@ type catFlags struct {
 }
 
 func main() {
+	// R5.4: exit 0 on SIGPIPE when stdout is closed by a downstream consumer.
 	sys.InstallSIGPIPEHandler()
 
 	flags, files := parseArgs(os.Args[1:])
