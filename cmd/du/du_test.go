@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd009-du R1.1–R1.5, R2.1–R2.7 via differential testing against gdu (Homebrew GNU du).
+// Tests: prd009-du R1.1–R1.5, R2.1–R2.8, R3.1–R3.3 via differential testing against gdu (Homebrew GNU du).
 package main
 
 import (
@@ -53,6 +53,38 @@ func TestDiff(t *testing.T) {
 	}
 	writeFixture(t, largeDir, "big.bin", strings.Repeat("X", 100*1024))
 
+	// R3.1–R3.3: create hard-link fixture for deduplication testing.
+	hardlinkDir := filepath.Join(dir, "hardlinks")
+	hlSubA := filepath.Join(hardlinkDir, "a")
+	hlSubB := filepath.Join(hardlinkDir, "b")
+	if err := os.MkdirAll(hlSubA, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.MkdirAll(hlSubB, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Create original file and hard-link it into sibling directory.
+	origFile := filepath.Join(hlSubA, "original.txt")
+	writeFixture(t, hlSubA, "original.txt", strings.Repeat("D", 4096))
+	if err := os.Link(origFile, filepath.Join(hlSubB, "hardlink.txt")); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+
+	// R3.3: create a second fixture for cross-argument hard-link deduplication.
+	crossArgDir1 := filepath.Join(dir, "cross1")
+	crossArgDir2 := filepath.Join(dir, "cross2")
+	if err := os.Mkdir(crossArgDir1, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	if err := os.Mkdir(crossArgDir2, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	crossOrigFile := filepath.Join(crossArgDir1, "shared.dat")
+	writeFixture(t, crossArgDir1, "shared.dat", strings.Repeat("Z", 8192))
+	if err := os.Link(crossOrigFile, filepath.Join(crossArgDir2, "shared.dat")); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+
 	tests := []testutils.DiffTest{
 		// R1.1: recursive directory traversal including nested dirs and symlink.
 		{
@@ -87,7 +119,7 @@ func TestDiff(t *testing.T) {
 			Name:      "du_nonexistent_path",
 			Args:      []string{filepath.Join(dir, "nonexistent")},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
 		},
 		// R1.5: multiple directory arguments.
 		{
@@ -251,6 +283,65 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "du_grand_total_depth",
 			Args: []string{"-c", "-d", "1", dir},
+		},
+
+		// R2.8: --apparent-size reports st_size instead of st_blocks.
+		{
+			Name: "du_apparent_size",
+			Args: []string{"--apparent-size", dir},
+		},
+		// R2.8: --apparent-size on a single file.
+		{
+			Name: "du_apparent_size_file",
+			Args: []string{"--apparent-size", filepath.Join(dir, "file1.txt")},
+		},
+		// R2.8: --apparent-size with -h. Uses largeDir (exact 100K file) to
+		// avoid rounding divergence between format.HumanSize (math.Round) and
+		// GNU human_readable (ceiling) on fractional totals.
+		{
+			Name: "du_apparent_size_human",
+			Args: []string{"--apparent-size", "-h", largeDir},
+		},
+		// R2.8: --apparent-size with -s.
+		{
+			Name: "du_apparent_size_summary",
+			Args: []string{"--apparent-size", "-s", dir},
+		},
+		// R2.8: --apparent-size with -c.
+		{
+			Name: "du_apparent_size_grand_total",
+			Args: []string{"--apparent-size", "-c", subdir, emptyDir},
+		},
+		// R2.8: --apparent-size with -a to see individual file sizes.
+		{
+			Name: "du_apparent_size_all",
+			Args: []string{"--apparent-size", "-a", subdir},
+		},
+
+		// R3.1, R3.2: hard-link deduplication within a single directory tree.
+		{
+			Name: "du_hardlink_dedup",
+			Args: []string{hardlinkDir},
+		},
+		// R3.1: hard-link dedup with -a shows the file counted once.
+		{
+			Name: "du_hardlink_dedup_all",
+			Args: []string{"-a", hardlinkDir},
+		},
+		// R3.1: hard-link dedup with -c.
+		{
+			Name: "du_hardlink_dedup_total",
+			Args: []string{"-c", hardlinkDir},
+		},
+		// R3.3: cross-argument hard-link deduplication.
+		{
+			Name: "du_hardlink_cross_arg",
+			Args: []string{crossArgDir1, crossArgDir2},
+		},
+		// R3.3: cross-argument hard-link dedup with -c shows correct total.
+		{
+			Name: "du_hardlink_cross_arg_total",
+			Args: []string{"-c", crossArgDir1, crossArgDir2},
 		},
 	}
 
