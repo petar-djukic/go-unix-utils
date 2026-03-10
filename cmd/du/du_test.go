@@ -1,0 +1,106 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Tests: prd009-du R1.1–R1.5 via differential testing against gdu (Homebrew GNU du).
+package main
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	// Create fixture directory structure.
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "subdir")
+	nested := filepath.Join(subdir, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	writeFixture(t, dir, "file1.txt", "hello world content\n")
+	writeFixture(t, subdir, "file2.txt", "subdir file content here\n")
+	writeFixture(t, nested, "file3.txt", "nested file content\n")
+
+	// Create an empty directory.
+	emptyDir := filepath.Join(dir, "empty")
+	if err := os.Mkdir(emptyDir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+
+	// R1.4: create a symlink to verify it is not followed during traversal.
+	if err := os.Symlink(subdir, filepath.Join(dir, "link_to_subdir")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R1.1: recursive directory traversal including nested dirs and symlink.
+		{
+			Name: "du_recursive_traversal",
+			Args: []string{dir},
+		},
+		// R1.1: no arguments defaults to current directory.
+		{
+			Name:    "du_no_args",
+			WorkDir: dir,
+		},
+		// R1.2: single file argument prints only that file's block count.
+		{
+			Name: "du_single_file",
+			Args: []string{filepath.Join(dir, "file1.txt")},
+		},
+		// R1.2, R1.5: multiple arguments processed in order.
+		{
+			Name: "du_multiple_args",
+			Args: []string{
+				filepath.Join(dir, "file1.txt"),
+				subdir,
+			},
+		},
+		// R1.1: empty directory reports only its own blocks.
+		{
+			Name: "du_empty_dir",
+			Args: []string{emptyDir},
+		},
+		// R4.2: nonexistent path exits 1 with diagnostic to stderr.
+		{
+			Name:      "du_nonexistent_path",
+			Args:      []string{filepath.Join(dir, "nonexistent")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R1.5: multiple directory arguments.
+		{
+			Name: "du_multiple_dirs",
+			Args: []string{subdir, emptyDir},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// normalizeBinaryName replaces "gdu:" with "du:" in output so stderr from
+// the reference binary matches our binary's error prefix.
+func normalizeBinaryName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gdu:"), []byte("du:"))
+}
+
+// writeFixture creates a file in dir with the given content.
+func writeFixture(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("writeFixture %s: %v", name, err)
+	}
+}
