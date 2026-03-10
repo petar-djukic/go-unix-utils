@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd009-du R1.1–R1.5 via differential testing against gdu (Homebrew GNU du).
+// Tests: prd009-du R1.1–R1.5, R2.1–R2.3 via differential testing against gdu (Homebrew GNU du).
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -44,6 +45,13 @@ func TestDiff(t *testing.T) {
 	if err := os.Symlink(subdir, filepath.Join(dir, "link_to_subdir")); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
+
+	// Create a large file for human-readable size testing.
+	largeDir := filepath.Join(dir, "largedir")
+	if err := os.Mkdir(largeDir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	writeFixture(t, largeDir, "big.bin", strings.Repeat("X", 100*1024))
 
 	tests := []testutils.DiffTest{
 		// R1.1: recursive directory traversal including nested dirs and symlink.
@@ -86,6 +94,77 @@ func TestDiff(t *testing.T) {
 			Name: "du_multiple_dirs",
 			Args: []string{subdir, emptyDir},
 		},
+
+		// R2.1: human-readable output.
+		{
+			Name: "du_human_readable",
+			Args: []string{"-h", dir},
+		},
+		// R2.1: -h on a single file.
+		{
+			Name: "du_human_readable_file",
+			Args: []string{"-h", filepath.Join(dir, "file1.txt")},
+		},
+		// R2.1: -h on directory with a larger file.
+		{
+			Name: "du_human_readable_large",
+			Args: []string{"-h", largeDir},
+		},
+
+		// R2.2: summary mode.
+		{
+			Name: "du_summary",
+			Args: []string{"-s", dir},
+		},
+		// R2.2: summary with multiple args.
+		{
+			Name: "du_summary_multiple",
+			Args: []string{"-s", subdir, emptyDir},
+		},
+		// R2.2: summary on a single file.
+		{
+			Name: "du_summary_file",
+			Args: []string{"-s", filepath.Join(dir, "file1.txt")},
+		},
+		// R2.2: -s with -h combined.
+		{
+			Name: "du_summary_human",
+			Args: []string{"-sh", dir},
+		},
+
+		// R2.3: all-files mode.
+		{
+			Name: "du_all_files",
+			Args: []string{"-a", dir},
+		},
+		// R2.3: -a on empty directory.
+		{
+			Name: "du_all_files_empty",
+			Args: []string{"-a", emptyDir},
+		},
+		// R2.3: -a with -h combined.
+		{
+			Name: "du_all_files_human",
+			Args: []string{"-ah", dir},
+		},
+		// R2.3: -a with -s is an error (GNU du rejects this combination).
+		{
+			Name:      "du_all_files_summary",
+			Args:      []string{"-as", dir},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
+		},
+
+		// R1.5: multiple directory arguments with -h.
+		{
+			Name: "du_multiple_dirs_human",
+			Args: []string{"-h", subdir, emptyDir},
+		},
+		// R1.5: multiple directory arguments with -a.
+		{
+			Name: "du_multiple_dirs_all",
+			Args: []string{"-a", subdir, emptyDir},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -95,6 +174,28 @@ func TestDiff(t *testing.T) {
 // the reference binary matches our binary's error prefix.
 func normalizeBinaryName(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gdu:"), []byte("du:"))
+}
+
+// normalizeTryLine normalizes the "Try '...' for more information" line
+// so the reference binary path matches our binary name.
+func normalizeTryLine(data []byte) []byte {
+	var result []byte
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("Try '")) {
+			result = append(result, []byte("Try 'du --help' for more information.")...)
+			result = append(result, '\n')
+		} else {
+			result = append(result, line...)
+			result = append(result, '\n')
+		}
+	}
+	// bytes.Split adds an extra trailing newline; trim to match original.
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		result = result[:len(result)-1]
+	} else if len(result) > 1 {
+		result = result[:len(result)-1] // remove extra newline from Split
+	}
+	return result
 }
 
 // writeFixture creates a file in dir with the given content.
