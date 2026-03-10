@@ -7,7 +7,8 @@
 // handling), R3.1–R3.3 (append mode with atomic temp-file prepend and
 // default permissions for new files), R4.1–R4.3 (passthrough mode with
 // in-memory buffering for small input and temp-file fallback for large input),
-// R5.1–R5.4 (exit codes, error handling, panic recovery, and temp-file cleanup).
+// R5.1–R5.4 (exit codes, error handling, panic recovery, and temp-file cleanup),
+// R6.1–R6.2 (--help and --version flags).
 // Reads all of stdin before writing to the output file or stdout. Supports
 // -a (append) mode.
 package main
@@ -39,6 +40,19 @@ func run() (exitCode int) {
 			exitCode = 1
 		}
 	}()
+
+	// R6.1: --help prints usage to stdout and exits 0.
+	// R6.2: --version prints version to stdout and exits 0.
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--help", "-h":
+			fmt.Println("sponge [-a] [file]: soak up standard input and write to a file")
+			return 0
+		case "--version":
+			fmt.Println("sponge (go-unix-utils)")
+			return 0
+		}
+	}
 
 	appendMode, outFile := parseArgs(os.Args[1:])
 

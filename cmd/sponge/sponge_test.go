@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests: prd007-sponge R1.1–R1.4, R2.4–R2.5, R3.1–R3.3, R4.1–R4.3,
-// R5.1–R5.4 via differential testing against sponge (Homebrew moreutils).
+// R5.1–R5.4, R6.1–R6.2 via differential testing against sponge (Homebrew moreutils).
 package main
 
 import (
@@ -629,6 +629,78 @@ func TestDiff(t *testing.T) {
 		matches, _ := filepath.Glob(filepath.Join(cleanupDir, "sponge.*"))
 		if len(matches) > 0 {
 			t.Errorf("go binary left temp file(s) after success: %v", matches)
+		}
+	})
+
+	// R6.1: --help prints usage to stdout and exits 0.
+	t.Run("help_flag", func(t *testing.T) {
+		runHelp := func(t *testing.T, binary, label string) (int, string, string) {
+			t.Helper()
+			cmd := exec.Command(binary, "--help")
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			exitCode := 0
+			if err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					exitCode = exitErr.ExitCode()
+				} else {
+					t.Fatalf("%s: unexpected error: %v", label, err)
+				}
+			}
+			return exitCode, stdout.String(), stderr.String()
+		}
+
+		goExit, goStdout, _ := runHelp(t, goBin, "go")
+		refExit, _, _ := runHelp(t, refBin, "ref")
+
+		// Both must exit 0.
+		if goExit != refExit {
+			t.Errorf("--help exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+		if goExit != 0 {
+			t.Errorf("--help expected exit 0, got %d", goExit)
+		}
+		// Go binary must produce non-empty stdout.
+		if goStdout == "" {
+			t.Error("--help produced no stdout output")
+		}
+	})
+
+	// R6.2: --version prints version to stdout and exits 0.
+	t.Run("version_flag", func(t *testing.T) {
+		runVersion := func(t *testing.T, binary, label string) (int, string, string) {
+			t.Helper()
+			cmd := exec.Command(binary, "--version")
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			exitCode := 0
+			if err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					exitCode = exitErr.ExitCode()
+				} else {
+					t.Fatalf("%s: unexpected error: %v", label, err)
+				}
+			}
+			return exitCode, stdout.String(), stderr.String()
+		}
+
+		goExit, goStdout, _ := runVersion(t, goBin, "go")
+		refExit, _, _ := runVersion(t, refBin, "ref")
+
+		// Both must exit 0.
+		if goExit != refExit {
+			t.Errorf("--version exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+		if goExit != 0 {
+			t.Errorf("--version expected exit 0, got %d", goExit)
+		}
+		// Go binary must produce non-empty stdout.
+		if goStdout == "" {
+			t.Error("--version produced no stdout output")
 		}
 	})
 }
