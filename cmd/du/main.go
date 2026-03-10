@@ -6,7 +6,9 @@
 // R2.1 (-h human-readable), R2.2 (-s summary), R2.3 (-a all files),
 // R2.4 (-d N/--max-depth=N depth limiting), R2.5 (-k), R2.6 (-m),
 // R2.7 (-c grand total), R2.8 (--apparent-size),
-// R3.1–R3.3 (hard-link deduplication by Dev/Ino).
+// R3.1–R3.3 (hard-link deduplication by Dev/Ino),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on error, continue processing),
+// R5.1 (SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler).
 package main
 
 import (

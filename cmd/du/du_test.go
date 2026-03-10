@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd009-du R1.1–R1.5, R2.1–R2.8, R3.1–R3.3 via differential testing against gdu (Homebrew GNU du).
+// Tests: prd009-du R1.1–R1.5, R2.1–R2.8, R3.1–R3.3, R4.1–R4.2, R5.1 via differential testing against gdu (Homebrew GNU du).
 package main
 
 import (
@@ -69,6 +69,22 @@ func TestDiff(t *testing.T) {
 	if err := os.Link(origFile, filepath.Join(hlSubB, "hardlink.txt")); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
+
+	// R4.2: create a directory that cannot be read (permission denied).
+	// Placed outside the main fixture dir to avoid affecting other tests.
+	noReadBase := t.TempDir()
+	noReadDir := filepath.Join(noReadBase, "noread")
+	if err := os.Mkdir(noReadDir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	writeFixture(t, noReadDir, "secret.txt", "hidden content\n")
+	if err := os.Chmod(noReadDir, 0o000); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore permission so t.TempDir() cleanup can remove it.
+		os.Chmod(noReadDir, 0o755) // best-effort restore
+	})
 
 	// R3.3: create a second fixture for cross-argument hard-link deduplication.
 	crossArgDir1 := filepath.Join(dir, "cross1")
@@ -342,6 +358,68 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "du_hardlink_cross_arg_total",
 			Args: []string{"-c", crossArgDir1, crossArgDir2},
+		},
+
+		// R4.1: successful traversal exits 0 (default ExitCode in DiffTest).
+		{
+			Name: "du_exit_0_single_dir",
+			Args: []string{"-s", emptyDir},
+		},
+		// R4.1: multiple valid arguments exit 0.
+		{
+			Name: "du_exit_0_multiple_valid",
+			Args: []string{"-s", subdir, emptyDir, largeDir},
+		},
+
+		// R4.2: nonexistent path mixed with valid path exits 1 but still
+		// processes the valid argument (continues after error).
+		{
+			Name:      "du_error_continues_processing",
+			Args:      []string{"-s", filepath.Join(dir, "nonexistent"), subdir},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
+		},
+		// R4.2: multiple nonexistent paths all produce diagnostics, exit 1.
+		{
+			Name: "du_multiple_errors",
+			Args: []string{
+				filepath.Join(dir, "bad1"),
+				filepath.Join(dir, "bad2"),
+			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
+		},
+		// R4.2: nonexistent path between valid paths — both valid paths
+		// are still processed.
+		{
+			Name: "du_error_between_valid",
+			Args: []string{
+				"-s",
+				emptyDir,
+				filepath.Join(dir, "nonexistent"),
+				subdir,
+			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
+		},
+		// R4.2: nonexistent with -c still prints grand total for valid args.
+		{
+			Name: "du_error_with_grand_total",
+			Args: []string{
+				"-cs",
+				filepath.Join(dir, "nonexistent"),
+				subdir,
+			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
+		},
+		// R4.2: permission denied on unreadable directory exits 1 with
+		// diagnostic to stderr. Continues processing remaining arguments.
+		{
+			Name:      "du_permission_denied",
+			Args:      []string{"-s", noReadDir, emptyDir},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeTryLine},
 		},
 	}
 
