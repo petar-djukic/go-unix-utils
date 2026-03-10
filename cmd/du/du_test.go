@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd009-du R1.1–R1.5, R2.1–R2.3 via differential testing against gdu (Homebrew GNU du).
+// Tests: prd009-du R1.1–R1.5, R2.1–R2.7 via differential testing against gdu (Homebrew GNU du).
 package main
 
 import (
@@ -164,6 +164,93 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "du_multiple_dirs_all",
 			Args: []string{"-a", subdir, emptyDir},
+		},
+
+		// R2.4: depth limiting with -d.
+		{
+			Name: "du_max_depth_0",
+			Args: []string{"-d", "0", dir},
+		},
+		{
+			Name: "du_max_depth_1",
+			Args: []string{"-d", "1", dir},
+		},
+		{
+			Name: "du_max_depth_2",
+			Args: []string{"-d", "2", dir},
+		},
+		// R2.4: --max-depth=N long form.
+		{
+			Name: "du_max_depth_long",
+			Args: []string{"--max-depth=1", dir},
+		},
+		// R2.4: -d 0 is equivalent to -s.
+		{
+			Name: "du_max_depth_0_vs_summary",
+			Args: []string{"-d", "0", dir},
+		},
+		// R2.4: -d with -a shows files within depth.
+		{
+			Name: "du_max_depth_with_all",
+			Args: []string{"-d", "1", "-a", dir},
+		},
+		// R2.4: -d with -h combined.
+		{
+			Name: "du_max_depth_human",
+			Args: []string{"-d", "1", "-h", dir},
+		},
+
+		// R2.5: -k accepted without error (default is already 1K blocks).
+		{
+			Name: "du_k_flag",
+			Args: []string{"-k", dir},
+		},
+		// R2.5: -k combined with other flags.
+		{
+			Name: "du_k_with_summary",
+			Args: []string{"-ks", dir},
+		},
+
+		// R2.6: -m reports in 1M blocks.
+		{
+			Name: "du_m_flag",
+			Args: []string{"-m", dir},
+		},
+		// R2.6: -m on a single file.
+		{
+			Name: "du_m_file",
+			Args: []string{"-m", filepath.Join(dir, "file1.txt")},
+		},
+		// R2.6: -m with summary.
+		{
+			Name: "du_m_summary",
+			Args: []string{"-ms", dir},
+		},
+
+		// R2.7: grand total with -c.
+		{
+			Name: "du_grand_total",
+			Args: []string{"-c", dir},
+		},
+		// R2.7: -c with multiple arguments.
+		{
+			Name: "du_grand_total_multiple",
+			Args: []string{"-c", subdir, emptyDir},
+		},
+		// R2.7: -c with -s.
+		{
+			Name: "du_grand_total_summary",
+			Args: []string{"-cs", subdir, emptyDir},
+		},
+		// R2.7: -c with -h.
+		{
+			Name: "du_grand_total_human",
+			Args: []string{"-ch", dir},
+		},
+		// R2.7: -c with -d.
+		{
+			Name: "du_grand_total_depth",
+			Args: []string{"-c", "-d", "1", dir},
 		},
 	}
 
