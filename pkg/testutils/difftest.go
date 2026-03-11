@@ -5,8 +5,15 @@
 // It implements the DiffTest struct and NormalizeFunc type used by cmd/ packages
 // to verify Go binary output against Homebrew GNU reference binaries.
 //
-// Implements: prd001-testutils R1.1-R1.4
+// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.4
 package testutils
+
+import (
+	"bytes"
+	"fmt"
+	"os/exec"
+	"testing"
+)
 
 // NormalizeFunc is a type alias for a function that normalizes output bytes
 // before comparison. Using a type alias (=) allows plain func literals to be
@@ -32,7 +39,8 @@ type DiffTest struct {
 	Stdin []byte
 
 	// Env is the list of environment variable assignments (KEY=VALUE) added
-	// to the subprocess environment. When nil, the harness sets LC_ALL=C.
+	// to the subprocess environment. When nil, the harness inherits the
+	// current process environment.
 	Env []string
 
 	// WorkDir is the working directory for both subprocess invocations. An
@@ -54,4 +62,81 @@ type DiffTest struct {
 	// the Go binary exits, the harness verifies that each listed file exists
 	// in WorkDir and matches the expected content.
 	ExpectedFiles map[string][]byte
+}
+
+// RunDiffTests iterates over tests and runs each case as t.Run(tc.Name, ...).
+// For each case it executes goBinary and refBinary with identical inputs,
+// applies any NormalizeFunc entries to both stdout outputs, and reports
+// divergence via t.Errorf so all cases run regardless of failures.
+//
+// R2.1-R2.4: RunDiffTests execution engine.
+func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
+	t.Helper()
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			refStdout, refStderr, refCode := runBinary(t, refBinary, tc)
+			goStdout, goStderr, goCode := runBinary(t, goBinary, tc)
+
+			// R2.3: Apply each NormalizeFunc to both stdout outputs before comparison.
+			for _, fn := range tc.Normalize {
+				refStdout = fn(refStdout)
+				goStdout = fn(goStdout)
+			}
+
+			// R2.4: Report divergence with name, args, and readable diff per stream.
+			if refCode != goCode {
+				t.Errorf("exit code mismatch for %q args=%v: ref=%d got=%d",
+					tc.Name, tc.Args, refCode, goCode)
+			}
+			if !bytes.Equal(refStdout, goStdout) {
+				t.Errorf("stdout mismatch for %q args=%v:\n%s",
+					tc.Name, tc.Args, formatDiff("ref stdout", refStdout, "got stdout", goStdout))
+			}
+			if !bytes.Equal(refStderr, goStderr) {
+				t.Errorf("stderr mismatch for %q args=%v:\n%s",
+					tc.Name, tc.Args, formatDiff("ref stderr", refStderr, "got stderr", goStderr))
+			}
+		})
+	}
+}
+
+// runBinary executes binary with the inputs from tc and returns captured
+// stdout, stderr, and exit code. Errors that are not ExitErrors cause t.Fatalf.
+func runBinary(t *testing.T, binary string, tc DiffTest) (stdout, stderr []byte, exitCode int) {
+	t.Helper()
+
+	cmd := exec.Command(binary, tc.Args...)
+
+	// D2: Env nil means inherit the current process environment (cmd.Env nil does that).
+	if tc.Env != nil {
+		cmd.Env = tc.Env
+	}
+	if tc.WorkDir != "" {
+		cmd.Dir = tc.WorkDir
+	}
+	if tc.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(tc.Stdin)
+	}
+
+	// D4: Capture stdout and stderr separately via bytes.Buffer.
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run binary %q: %v", binary, err)
+		}
+	}
+	return outBuf.Bytes(), errBuf.Bytes(), exitCode
+}
+
+// formatDiff returns a human-readable side-by-side label for two byte slices.
+func formatDiff(labelA string, a []byte, labelB string, b []byte) string {
+	return fmt.Sprintf("%s: %q\n%s: %q", labelA, a, labelB, b)
 }
