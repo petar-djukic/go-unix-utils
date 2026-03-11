@@ -5,7 +5,7 @@
 // It implements the DiffTest struct and NormalizeFunc type used by cmd/ packages
 // to verify Go binary output against Homebrew GNU reference binaries.
 //
-// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6
+// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6, R3.3-R3.6
 package testutils
 
 import (
@@ -66,12 +66,19 @@ type DiffTest struct {
 	ExpectedFiles map[string][]byte
 }
 
+// maxStdinDisplay is the maximum number of stdin bytes included in failure
+// messages. Longer input is truncated to this length.
+//
+// R3.5: stdin content is truncated to 256 bytes in failure messages.
+const maxStdinDisplay = 256
+
 // RunDiffTests iterates over tests and runs each case as t.Run(tc.Name, ...).
 // For each case it executes goBinary and refBinary with identical inputs,
-// applies any NormalizeFunc entries to both stdout outputs, and reports
+// applies any NormalizeFunc entries to both stdout and stderr, and reports
 // divergence via t.Errorf so all cases run regardless of failures.
 //
-// R2.1-R2.6: RunDiffTests execution engine.
+// R2.1-R2.6, R3.3-R3.6: RunDiffTests execution engine with stderr normalization
+// and stdin-inclusive divergence reporting.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
@@ -86,24 +93,36 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 			refStdout, refStderr, refCode := runBinary(t, refBinary, tc)
 			goStdout, goStderr, goCode := runBinary(t, goBinary, tc)
 
-			// R2.3: Apply each NormalizeFunc to both stdout outputs before comparison.
+			// R3.1, R3.3: Apply each NormalizeFunc to both stdout and stderr before comparison.
 			for _, fn := range tc.Normalize {
 				refStdout = fn(refStdout)
 				goStdout = fn(goStdout)
+				refStderr = fn(refStderr)
+				goStderr = fn(goStderr)
 			}
 
-			// R2.4: Report divergence with name, args, and readable diff per stream.
+			// R3.5: Truncate stdin display to maxStdinDisplay bytes for failure messages.
+			stdinDisplay := tc.Stdin
+			if len(stdinDisplay) > maxStdinDisplay {
+				stdinDisplay = stdinDisplay[:maxStdinDisplay]
+			}
+
+			// R3.4, R3.5: Report exit code divergence with args and stdin.
 			if refCode != goCode {
-				t.Errorf("exit code mismatch for %q args=%v: ref=%d got=%d",
-					tc.Name, tc.Args, refCode, goCode)
+				t.Errorf("exit code mismatch for %q args=%v stdin=%q: ref=%d got=%d",
+					tc.Name, tc.Args, stdinDisplay, refCode, goCode)
 			}
+			// R3.5: Report stdout divergence with args, stdin, and both exit codes.
 			if !bytes.Equal(refStdout, goStdout) {
-				t.Errorf("stdout mismatch for %q args=%v:\n%s",
-					tc.Name, tc.Args, formatDiff("ref stdout", refStdout, "got stdout", goStdout))
+				t.Errorf("stdout mismatch for %q args=%v stdin=%q ref_exit=%d go_exit=%d:\n%s",
+					tc.Name, tc.Args, stdinDisplay, refCode, goCode,
+					formatDiff("ref stdout", refStdout, "got stdout", goStdout))
 			}
+			// R3.3, R3.5: Report stderr divergence with args, stdin, and both exit codes.
 			if !bytes.Equal(refStderr, goStderr) {
-				t.Errorf("stderr mismatch for %q args=%v:\n%s",
-					tc.Name, tc.Args, formatDiff("ref stderr", refStderr, "got stderr", goStderr))
+				t.Errorf("stderr mismatch for %q args=%v stdin=%q ref_exit=%d go_exit=%d:\n%s",
+					tc.Name, tc.Args, stdinDisplay, refCode, goCode,
+					formatDiff("ref stderr", refStderr, "got stderr", goStderr))
 			}
 		})
 	}
