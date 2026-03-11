@@ -5,7 +5,7 @@
 // It implements the DiffTest struct and NormalizeFunc type used by cmd/ packages
 // to verify Go binary output against Homebrew GNU reference binaries.
 //
-// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6, R3.3-R3.6, R4.2-R4.4
+// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6, R3.3-R3.6, R4.2-R4.4, R5.1-R5.2
 package testutils
 
 import (
@@ -47,7 +47,9 @@ type DiffTest struct {
 	Env []string
 
 	// WorkDir is the working directory for both subprocess invocations. An
-	// empty string means the test's temporary directory is used.
+	// empty string means both binaries inherit the test process working directory.
+	//
+	// R5.1: When non-empty, applied to Cmd.Dir for both the Go and reference binary.
 	WorkDir string
 
 	// ExitCode is the expected exit code that the reference binary produces.
@@ -78,24 +80,13 @@ const maxStdinDisplay = 256
 // applies any NormalizeFunc entries to both stdout and stderr, and reports
 // divergence via t.Errorf so all cases run regardless of failures.
 //
-// R2.1-R2.6, R3.3-R3.6: RunDiffTests execution engine with stderr normalization
-// and stdin-inclusive divergence reporting.
+// R2.1-R2.6, R3.3-R3.6, R5.1-R5.2: RunDiffTests execution engine with stderr
+// normalization, stdin-inclusive divergence reporting, and WorkDir/Env handling.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
-
-			// R2.5, R4.2: Always create a fresh per-test temp dir. When WorkDir
-			// is non-empty it is treated as a source directory whose contents are
-			// copied into the temp dir so each test case gets an isolated copy.
-			workDir := t.TempDir()
-			if tc.WorkDir != "" {
-				if err := copyDir(tc.WorkDir, workDir); err != nil {
-					t.Fatalf("RunDiffTests: failed to copy WorkDir %q: %v", tc.WorkDir, err)
-				}
-			}
-			tc.WorkDir = workDir
 
 			refStdout, refStderr, refCode := runBinary(t, refBinary, tc)
 			goStdout, goStderr, goCode := runBinary(t, goBinary, tc)
@@ -146,12 +137,17 @@ func runBinary(t *testing.T, binary string, tc DiffTest) (stdout, stderr []byte,
 
 	cmd := exec.Command(binary, tc.Args...)
 
-	// R2.6: Build the environment with LC_ALL=C as the default, then merge
-	// any overrides from tc.Env on top (which may replace LC_ALL).
-	cmd.Env = buildEnv(tc.Env)
+	// R5.2: Merge DiffTest.Env with os.Environ() when non-nil; when nil,
+	// leave cmd.Env unset so both binaries inherit the parent environment.
+	if tc.Env != nil {
+		cmd.Env = buildEnv(tc.Env)
+	}
 
-	// R2.5: WorkDir is always set by RunDiffTests (empty → t.TempDir()).
-	cmd.Dir = tc.WorkDir
+	// R5.1: Set Cmd.Dir when WorkDir is non-empty; when empty both binaries
+	// inherit the test process working directory.
+	if tc.WorkDir != "" {
+		cmd.Dir = tc.WorkDir
+	}
 
 	if tc.Stdin != nil {
 		cmd.Stdin = bytes.NewReader(tc.Stdin)
@@ -173,24 +169,21 @@ func runBinary(t *testing.T, binary string, tc DiffTest) (stdout, stderr []byte,
 	return outBuf.Bytes(), errBuf.Bytes(), exitCode
 }
 
-// buildEnv constructs the subprocess environment by starting with the inherited
-// process environment, applying LC_ALL=C as a default, then merging any
-// KEY=VALUE pairs from overrides on top.
+// buildEnv constructs the subprocess environment by seeding from the inherited
+// process environment and merging KEY=VALUE pairs from overrides on top.
+// Later entries in overrides win when a key appears more than once.
 //
-// R2.6: LC_ALL=C is applied before overrides so callers can explicitly set a
-// different locale by including LC_ALL in their DiffTest.Env slice.
+// R5.2: Called only when DiffTest.Env is non-nil; overrides the matching keys
+// from os.Environ() so callers control exactly which variables differ.
 func buildEnv(overrides []string) []string {
 	// Seed from the current process environment.
-	envMap := make(map[string]string, len(os.Environ())+1)
+	envMap := make(map[string]string, len(os.Environ()))
 	for _, kv := range os.Environ() {
 		k, v, _ := strings.Cut(kv, "=")
 		envMap[k] = v
 	}
 
-	// R2.6: Apply LC_ALL=C default before merging overrides.
-	envMap["LC_ALL"] = "C"
-
-	// Merge caller-supplied overrides (may replace LC_ALL or any other key).
+	// Merge caller-supplied overrides (last entry for a key wins).
 	for _, kv := range overrides {
 		k, v, _ := strings.Cut(kv, "=")
 		envMap[k] = v
@@ -206,41 +199,6 @@ func buildEnv(overrides []string) []string {
 // formatDiff returns a human-readable side-by-side label for two byte slices.
 func formatDiff(labelA string, a []byte, labelB string, b []byte) string {
 	return fmt.Sprintf("%s: %q\n%s: %q", labelA, a, labelB, b)
-}
-
-// copyDir recursively copies the contents of src into dst. dst must already
-// exist. Symlinks are not followed; only regular files and directories are
-// copied.
-func copyDir(src, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return fmt.Errorf("reading dir %q: %w", src, err)
-	}
-	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
-		if entry.IsDir() {
-			if mkErr := os.MkdirAll(dstPath, 0o755); mkErr != nil {
-				return fmt.Errorf("creating dir %q: %w", dstPath, mkErr)
-			}
-			if copyErr := copyDir(srcPath, dstPath); copyErr != nil {
-				return copyErr
-			}
-			continue
-		}
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			return fmt.Errorf("stat %q: %w", srcPath, infoErr)
-		}
-		data, readErr := os.ReadFile(srcPath)
-		if readErr != nil {
-			return fmt.Errorf("reading %q: %w", srcPath, readErr)
-		}
-		if writeErr := os.WriteFile(dstPath, data, info.Mode()); writeErr != nil {
-			return fmt.Errorf("writing %q: %w", dstPath, writeErr)
-		}
-	}
-	return nil
 }
 
 // checkExpectedFiles reads each entry in expectedFiles from the working
