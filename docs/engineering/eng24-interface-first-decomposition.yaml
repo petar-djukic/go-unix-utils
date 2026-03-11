@@ -1,0 +1,102 @@
+id: eng24-interface-first-decomposition
+title: "Interface-First Task Decomposition for Stitch"
+
+introduction: |
+  When stitch generates code for a new package, it cannot write correct implementations on
+  the first attempt if the exported types, function signatures, and interfaces have not yet
+  been defined. Without a concrete contract, stitch guesses signatures, guesses receiver
+  names, and guesses return types. The Go compiler then rejects the code, and stitch spends
+  turns correcting build errors rather than writing logic. Observed turn counts of 20-34 per
+  task — versus 4 turns for tasks with clear contracts — trace directly to this problem.
+
+  This guideline instructs the measure agent to decompose PRD work so that contracts are
+  defined before implementations. Stitch tasks that implement against a defined contract
+  consistently complete in fewer turns and do not delete previously generated code.
+
+sections:
+  - title: "The contract-first rule"
+    content: |
+      Every new package introduced by a PRD requires a contract task before any implementation
+      task. A contract task defines all exported types, interfaces, and function signatures
+      without providing function bodies. It produces a compilable Go file containing:
+
+      - Package declaration and import block
+      - All exported struct types with field names and types
+      - All exported interface types
+      - All exported function and method signatures (stub bodies: panic("not implemented"))
+      - All exported constants and variables
+
+      The contract file is the package's public API surface. All subsequent tasks for that
+      package implement these stubs. Stitch for implementation tasks receives the contract
+      file via required_reading and can write correct call sites and return types immediately.
+
+  - title: "Task ordering rule"
+    content: |
+      When measure decomposes a PRD into tasks, it must order them as follows:
+
+      1. Contract task — exported types, interfaces, stub function signatures (one task per
+         new package)
+      2. Implementation tasks — fill in function bodies, one subsystem boundary per task
+         (see eng11-stitch-task-sizing)
+      3. Test tasks — differential tests and unit tests, after implementations are complete
+
+      A task may not implement function bodies in a package that has no contract task unless
+      the package already exists and its contract is visible in the stitch context. Measure
+      must check package_contracts before proposing new implementation tasks.
+
+  - title: "Contract task specification format"
+    content: |
+      The body of a contract task in the GitHub issue must include:
+
+      - required_reading: the PRD and any existing packages this package depends on
+      - files_to_create: one file per package (e.g., pkg/foo/foo.go)
+      - The exact exported names that all subsequent tasks will reference, written as a
+        Go snippet showing types and function signatures
+
+      Example title: "[prd002-sys] pkg/sys package contract — exported types and signatures (R1.0)"
+
+      Example snippet in task body:
+        ```go
+        package sys
+
+        type FileInfo struct { ... }
+
+        func Stat(path string) (FileInfo, error)
+        func Lstat(path string) (FileInfo, error)
+        func TerminalWidth() (int, error)
+        func IsTerminal(fd int) bool
+        func InstallSIGPIPEHandler()
+        func OnTerminalResize(cb func(width int))
+        ```
+
+      The snippet is not the implementation — it is the contract that stitch must honor.
+
+  - title: "Observed evidence"
+    content: |
+      Table 1: Turn counts by task type, generation run 31
+
+      | Task | Type | Turns | Outcome |
+      |------|------|-------|---------|
+      | #818 | signal handling, defined types already present | 4 | success |
+      | #816 | terminal introspection, defined types already present | 10 | success |
+      | #803 | RunDiffTests, no prior package contract | 20 | success after build fixes |
+      | #811 | WorkDir, no prior package contract | 20 | -42 prod LOC (deleted existing code) |
+      | #807 | NormalizeFunc helpers, partial contract | 25 | success after lint cycles |
+      | #813 | FileInfo/Stat, no prior contract | 28 | success after build fixes |
+      | #809 | BuildBinary, no prior contract | 34 | -195 prod LOC (deleted existing code) |
+
+      Tasks 809 and 811 deleted existing production code because stitch discovered signature
+      conflicts at build time and resolved them by removing competing definitions rather than
+      reconciling them. A contract task would have made the authoritative signature visible
+      before any code was written, preventing the conflict.
+
+  - title: "Measure prompt instruction"
+    content: |
+      The measure agent prompt must include the following instruction verbatim:
+
+        Before proposing implementation tasks for a new package, propose a contract task that
+        defines all exported types, interfaces, and function signatures as Go stubs. Title the
+        contract task with the suffix "(contract)" and assign it requirement label R0 or R1.0.
+        Implementation tasks for that package must list the contract file in required_reading.
+        Do not propose implementation tasks for a package that has no contract task and is not
+        already present in package_contracts.
