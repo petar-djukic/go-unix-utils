@@ -5,7 +5,7 @@
 // It implements the DiffTest struct and NormalizeFunc type used by cmd/ packages
 // to verify Go binary output against Homebrew GNU reference binaries.
 //
-// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6, R3.3-R3.6
+// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6, R3.3-R3.6, R4.2-R4.4
 package testutils
 
 import (
@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -85,10 +86,16 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 
-			// R2.5: When WorkDir is empty, both binaries share a per-test temp dir.
-			if tc.WorkDir == "" {
-				tc.WorkDir = t.TempDir()
+			// R2.5, R4.2: Always create a fresh per-test temp dir. When WorkDir
+			// is non-empty it is treated as a source directory whose contents are
+			// copied into the temp dir so each test case gets an isolated copy.
+			workDir := t.TempDir()
+			if tc.WorkDir != "" {
+				if err := copyDir(tc.WorkDir, workDir); err != nil {
+					t.Fatalf("RunDiffTests: failed to copy WorkDir %q: %v", tc.WorkDir, err)
+				}
 			}
+			tc.WorkDir = workDir
 
 			refStdout, refStderr, refCode := runBinary(t, refBinary, tc)
 			goStdout, goStderr, goCode := runBinary(t, goBinary, tc)
@@ -124,6 +131,10 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 					tc.Name, tc.Args, stdinDisplay, refCode, goCode,
 					formatDiff("ref stderr", refStderr, "got stderr", goStderr))
 			}
+
+			// R4.3, R4.4: Check expected file contents in the working directory
+			// after both binaries have run.
+			checkExpectedFiles(t, tc.WorkDir, tc.ExpectedFiles)
 		})
 	}
 }
@@ -195,4 +206,64 @@ func buildEnv(overrides []string) []string {
 // formatDiff returns a human-readable side-by-side label for two byte slices.
 func formatDiff(labelA string, a []byte, labelB string, b []byte) string {
 	return fmt.Sprintf("%s: %q\n%s: %q", labelA, a, labelB, b)
+}
+
+// copyDir recursively copies the contents of src into dst. dst must already
+// exist. Symlinks are not followed; only regular files and directories are
+// copied.
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("reading dir %q: %w", src, err)
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if mkErr := os.MkdirAll(dstPath, 0o755); mkErr != nil {
+				return fmt.Errorf("creating dir %q: %w", dstPath, mkErr)
+			}
+			if copyErr := copyDir(srcPath, dstPath); copyErr != nil {
+				return copyErr
+			}
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return fmt.Errorf("stat %q: %w", srcPath, infoErr)
+		}
+		data, readErr := os.ReadFile(srcPath)
+		if readErr != nil {
+			return fmt.Errorf("reading %q: %w", srcPath, readErr)
+		}
+		if writeErr := os.WriteFile(dstPath, data, info.Mode()); writeErr != nil {
+			return fmt.Errorf("writing %q: %w", dstPath, writeErr)
+		}
+	}
+	return nil
+}
+
+// checkExpectedFiles reads each entry in expectedFiles from the working
+// directory and compares it byte-for-byte against the expected content.
+// Missing files and content mismatches are both reported via t.Errorf.
+//
+// R4.3: Byte-for-byte comparison of each ExpectedFiles entry.
+// R4.4: Missing file causes t.Errorf with path and expected content.
+func checkExpectedFiles(t *testing.T, workDir string, expectedFiles map[string][]byte) {
+	t.Helper()
+	for relPath, expected := range expectedFiles {
+		actualPath := filepath.Join(workDir, filepath.FromSlash(relPath))
+		actual, err := os.ReadFile(actualPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				t.Errorf("expected file %q does not exist in WorkDir; expected content: %q", relPath, expected)
+			} else {
+				t.Errorf("reading expected file %q: %v", relPath, err)
+			}
+			continue
+		}
+		if !bytes.Equal(expected, actual) {
+			t.Errorf("file content mismatch for %q:\nexpected: %q\nactual:   %q", relPath, expected, actual)
+		}
+	}
 }
