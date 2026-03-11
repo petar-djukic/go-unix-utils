@@ -5,13 +5,15 @@
 // It implements the DiffTest struct and NormalizeFunc type used by cmd/ packages
 // to verify Go binary output against Homebrew GNU reference binaries.
 //
-// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.4
+// Implements: prd001-testutils R1.1-R1.4, R2.1-R2.6
 package testutils
 
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -69,12 +71,17 @@ type DiffTest struct {
 // applies any NormalizeFunc entries to both stdout outputs, and reports
 // divergence via t.Errorf so all cases run regardless of failures.
 //
-// R2.1-R2.4: RunDiffTests execution engine.
+// R2.1-R2.6: RunDiffTests execution engine.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
+
+			// R2.5: When WorkDir is empty, both binaries share a per-test temp dir.
+			if tc.WorkDir == "" {
+				tc.WorkDir = t.TempDir()
+			}
 
 			refStdout, refStderr, refCode := runBinary(t, refBinary, tc)
 			goStdout, goStderr, goCode := runBinary(t, goBinary, tc)
@@ -109,13 +116,13 @@ func runBinary(t *testing.T, binary string, tc DiffTest) (stdout, stderr []byte,
 
 	cmd := exec.Command(binary, tc.Args...)
 
-	// D2: Env nil means inherit the current process environment (cmd.Env nil does that).
-	if tc.Env != nil {
-		cmd.Env = tc.Env
-	}
-	if tc.WorkDir != "" {
-		cmd.Dir = tc.WorkDir
-	}
+	// R2.6: Build the environment with LC_ALL=C as the default, then merge
+	// any overrides from tc.Env on top (which may replace LC_ALL).
+	cmd.Env = buildEnv(tc.Env)
+
+	// R2.5: WorkDir is always set by RunDiffTests (empty → t.TempDir()).
+	cmd.Dir = tc.WorkDir
+
 	if tc.Stdin != nil {
 		cmd.Stdin = bytes.NewReader(tc.Stdin)
 	}
@@ -134,6 +141,36 @@ func runBinary(t *testing.T, binary string, tc DiffTest) (stdout, stderr []byte,
 		}
 	}
 	return outBuf.Bytes(), errBuf.Bytes(), exitCode
+}
+
+// buildEnv constructs the subprocess environment by starting with the inherited
+// process environment, applying LC_ALL=C as a default, then merging any
+// KEY=VALUE pairs from overrides on top.
+//
+// R2.6: LC_ALL=C is applied before overrides so callers can explicitly set a
+// different locale by including LC_ALL in their DiffTest.Env slice.
+func buildEnv(overrides []string) []string {
+	// Seed from the current process environment.
+	envMap := make(map[string]string, len(os.Environ())+1)
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		envMap[k] = v
+	}
+
+	// R2.6: Apply LC_ALL=C default before merging overrides.
+	envMap["LC_ALL"] = "C"
+
+	// Merge caller-supplied overrides (may replace LC_ALL or any other key).
+	for _, kv := range overrides {
+		k, v, _ := strings.Cut(kv, "=")
+		envMap[k] = v
+	}
+
+	env := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		env = append(env, k+"="+v)
+	}
+	return env
 }
 
 // formatDiff returns a human-readable side-by-side label for two byte slices.
