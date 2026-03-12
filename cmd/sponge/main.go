@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.2
+// Implements: prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3
 package main
 
 import (
@@ -57,9 +57,9 @@ func main() {
 // writeToFile writes buf atomically to outPath using a temp-file-then-rename
 // strategy. It preserves the mode of an existing output file.
 // When doAppend is true and the output file already exists as a regular file,
-// prepends the existing file content before buf (R3.1–R3.2, R3.3).
+// prepends the existing file content before buf (R3.1–R3.3).
 //
-// Implements: prd007-sponge R1.4, R1.5, R2.1–R2.5, R3.1–R3.2
+// Implements: prd007-sponge R1.4, R1.5, R2.1–R2.5, R3.1–R3.3
 func writeToFile(outPath string, buf []byte, doAppend bool) error {
 	// R2.4: use sys.Lstat (not stat) to check whether the output path exists
 	// and is a regular file (sponge.c:332-333). Symlinks are not followed;
