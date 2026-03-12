@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd007-sponge R3.3, R4.1, R4.2, R4.3
+// Tests: prd007-sponge R3.3, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4
 package main
 
 import (
@@ -128,4 +128,62 @@ func runSpongeAppend(t *testing.T, binary string, originalContent, stdin []byte)
 		t.Fatalf("reading output file: %v", err)
 	}
 	return result
+}
+
+// TestDiff runs the full differential test suite for sponge against gsponge,
+// covering the four core scenarios defined in prd007-sponge R5.1–R5.4.
+func TestDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsponge")
+	if err != nil {
+		t.Skipf("reference binary gsponge not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			// R5.1: basic stdin-to-file write -- verify all buffered stdin bytes
+			// are written to the named output file, producing no stdout or stderr.
+			Name:    "basic_file_write",
+			Args:    []string{"output.txt"},
+			Stdin:   []byte("hello, sponge\n"),
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: t.TempDir(),
+		},
+		{
+			// R5.2: append mode (-a flag) -- verify -a writes stdin to the named
+			// file (creating it when absent) identically to gsponge.
+			Name:    "append_mode",
+			Args:    []string{"-a", "output.txt"},
+			Stdin:   []byte("appended line\n"),
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: t.TempDir(),
+		},
+		{
+			// R5.3: stdout mode (no file argument) -- verify stdin bytes are
+			// written to stdout when no output file is specified.
+			Name:  "stdout_mode",
+			Stdin: []byte("output to stdout\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R5.4: empty stdin, file mode -- verify zero-byte input produces
+			// an empty output file, no stdout, and exit 0.
+			Name:    "empty_stdin_file",
+			Args:    []string{"output.txt"},
+			Stdin:   []byte{},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: t.TempDir(),
+		},
+		{
+			// R5.4: empty stdin, stdout mode -- verify zero-byte input produces
+			// empty stdout and exit 0 when no file argument is given.
+			Name:  "empty_stdin_stdout",
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
