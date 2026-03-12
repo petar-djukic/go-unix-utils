@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd007-sponge R1.1–R1.5, R2.1–R2.3
+// Implements: prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.2
 package main
 
 import (
@@ -20,6 +20,8 @@ func main() {
 	// Install SIGPIPE handler before any I/O per ARCHITECTURE shared_protocols.
 	sys.InstallSIGPIPEHandler()
 
+	// R3.1, R3.2: -a flag enables append mode.
+	doAppend := flag.Bool("a", false, "append to output file")
 	flag.Parse()
 	args := flag.Args()
 
@@ -46,7 +48,7 @@ func main() {
 	}
 
 	outPath := args[0]
-	if err := writeToFile(outPath, buf); err != nil {
+	if err := writeToFile(outPath, buf, *doAppend); err != nil {
 		fmt.Fprintf(os.Stderr, "sponge: %v\n", err)
 		os.Exit(1)
 	}
@@ -54,15 +56,18 @@ func main() {
 
 // writeToFile writes buf atomically to outPath using a temp-file-then-rename
 // strategy. It preserves the mode of an existing output file.
+// When doAppend is true and the output file already exists as a regular file,
+// prepends the existing file content before buf (R3.1–R3.2, R3.3).
 //
-// Implements: prd007-sponge R1.4, R1.5, R2.1–R2.3
-func writeToFile(outPath string, buf []byte) error {
-	// R2.3, R2.4: lstat (not stat) to check whether output file exists and
-	// get its mode for preservation. Symlinks are not followed.
+// Implements: prd007-sponge R1.4, R1.5, R2.1–R2.5, R3.1–R3.2
+func writeToFile(outPath string, buf []byte, doAppend bool) error {
+	// R2.4: use sys.Lstat (not stat) to check whether the output path exists
+	// and is a regular file (sponge.c:332-333). Symlinks are not followed;
+	// a symlink at outPath does not count as an existing regular file.
 	var existingMode os.FileMode
 	fileExists := false
-	if info, err := os.Lstat(outPath); err == nil && info.Mode().IsRegular() {
-		existingMode = info.Mode()
+	if info, err := sys.Lstat(outPath); err == nil && info.Mode.IsRegular() {
+		existingMode = info.Mode
 		fileExists = true
 	}
 
@@ -99,6 +104,24 @@ func writeToFile(outPath string, buf []byte) error {
 		}
 	}()
 
+	// R3.1, R3.2: in append mode, prepend the existing file content into the
+	// temp file before writing the stdin buffer (sponge.c:352-357). Only
+	// applies when the output file already exists and is a regular file;
+	// when it does not exist, -a behaves identically to default mode.
+	if doAppend && fileExists {
+		origFile, err := os.Open(outPath)
+		if err != nil {
+			tmpFile.Close()
+			return fmt.Errorf("opening %s for append: %w", outPath, err)
+		}
+		if _, err := io.Copy(tmpFile, origFile); err != nil {
+			origFile.Close()
+			tmpFile.Close()
+			return fmt.Errorf("reading %s for append: %w", outPath, err)
+		}
+		origFile.Close()
+	}
+
 	// Write buffered stdin content to the temp file.
 	if _, err := tmpFile.Write(buf); err != nil {
 		tmpFile.Close()
@@ -119,6 +142,9 @@ func writeToFile(outPath string, buf []byte) error {
 	if err := os.Rename(tmpPath, outPath); err != nil {
 		// R2.2: rename failed (e.g., cross-device link); fall back to copy
 		// then remove the temp file.
+		// R2.5: copy completes before the temp file (old source) is removed,
+		// so the output file is never in a partially-written state without
+		// the source available for recovery.
 		if copyErr := copyAndReplace(tmpPath, outPath, outMode); copyErr != nil {
 			return fmt.Errorf("writing %s: %w", outPath, copyErr)
 		}
