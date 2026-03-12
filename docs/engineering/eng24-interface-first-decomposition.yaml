@@ -38,11 +38,35 @@ sections:
          new package)
       2. Implementation tasks — fill in function bodies, one subsystem boundary per task
          (see eng11-stitch-task-sizing)
-      3. Test tasks — differential tests and unit tests, after implementations are complete
+      3. Test task — differential tests and unit tests, one task per package after all
+         implementation tasks for that package are complete
 
       A task may not implement function bodies in a package that has no contract task unless
       the package already exists and its contract is visible in the stitch context. Measure
       must check package_contracts before proposing new implementation tasks.
+
+  - title: "Test task specification"
+    content: |
+      Every new package or command requires a dedicated test task as the final task in its
+      decomposition. The test task must not be combined with implementation work. It runs after
+      all implementation tasks are complete so stitch has a stable, fully-implemented package
+      to test against.
+
+      A test task must include:
+
+      - required_reading: the PRD, the implementation files, and the project testing
+        constitution (docs/constitutions/testing.yaml)
+      - files_to_create: the test file (e.g., cmd/foo/foo_test.go or pkg/foo/foo_test.go)
+      - A DiffTest table covering every acceptance criterion in the PRD, using the
+        pkg/testutils harness (see prd001-testutils)
+      - Edge cases: empty input, binary input, large input, error conditions, flag
+        interactions specified in the PRD
+
+      Example title: "[prd006-cat] differential tests -- R5.1-R5.4 (tests)"
+
+      The test task produces only _test.go files. It adds 0 prod LOC by design. Measure
+      must always propose a test task for any PRD that specifies acceptance criteria with
+      observable output (stdout, stderr, exit code).
 
   - title: "Contract task specification format"
     content: |
@@ -94,9 +118,12 @@ sections:
     content: |
       The measure agent prompt must include the following instruction verbatim:
 
-        Before proposing implementation tasks for a new package, propose a contract task that
-        defines all exported types, interfaces, and function signatures as Go stubs. Title the
-        contract task with the suffix "(contract)" and assign it requirement label R0 or R1.0.
-        Implementation tasks for that package must list the contract file in required_reading.
+        For each new package or command, decompose work into three phases in order:
+        (1) A contract task defining all exported types, interfaces, and function signatures
+        as Go stubs — title it with the suffix "(contract)", requirement label R0 or R1.0.
+        (2) Implementation tasks filling in function bodies, one subsystem boundary per task.
+        Each must list the contract file in required_reading.
+        (3) A test task writing differential tests and unit tests against the completed
+        implementation — title it with the suffix "(tests)", produces only _test.go files.
         Do not propose implementation tasks for a package that has no contract task and is not
-        already present in package_contracts.
+        already present in package_contracts. Do not skip the test task.
