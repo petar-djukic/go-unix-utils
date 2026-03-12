@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cat.
 //
-// Implements: prd006-cat R4.9, R5.1-R5.3
+// Implements: prd006-cat R4.9, R5.1-R5.4
 package main
 
 import (
@@ -204,6 +204,24 @@ func TestDiff(t *testing.T) {
 			Name:     "r5.3_large_stdin_with_A_exits0",
 			Args:     []string{"-A"},
 			Stdin:    bytes.Repeat([]byte("line\t\x01\n"), 10000),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R5.4: SIGPIPE handler installed at startup using signal.Notify (not signal.Ignore).
+		// Binary data containing null bytes and control characters passes through unchanged
+		// and exits 0. Verifies the dedicated SIGPIPE goroutine does not interfere with
+		// binary passthrough or cause spurious non-zero exits.
+		{
+			Name:     "r5.4_sigpipe_handler_binary_null_bytes_exit0",
+			Stdin:    []byte("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0d\x0e\x0f\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R5.4: SIGPIPE handler does not interfere with high-volume binary output.
+		// Uses bytes in the 0x80–0xFF range to exercise high-byte passthrough with exit 0.
+		{
+			Name:     "r5.4_sigpipe_handler_high_byte_passthrough",
+			Stdin:    bytes.Repeat([]byte("\x80\x9f\xa0\xfe\xff\n"), 10000),
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
