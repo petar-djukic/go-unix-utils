@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd006-cat R1.1–R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.4
+// Implements: prd006-cat R1.1–R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.8
 package main
 
 import (
@@ -50,6 +50,14 @@ func main() {
 	flagV := flag.Bool("v", false, "use ^ and M- notation, except for LFD and TAB")
 	flagE := flag.Bool("E", false, "display $ at end of each line")
 	flagT := flag.Bool("T", false, "display TAB characters as ^I")
+	// R4.5: -A is equivalent to -v -E -T combined.
+	flagA := flag.Bool("A", false, "equivalent to -v -E -T")
+	// R4.6: -e is equivalent to -v -E combined.
+	flagSmalle := flag.Bool("e", false, "equivalent to -v -E")
+	// R4.7: -t is equivalent to -v -T combined.
+	flagSmallt := flag.Bool("t", false, "equivalent to -v -T")
+	// R4.8: -u is accepted but has no effect.
+	_ = flag.Bool("u", false, "ignored (unbuffered output, provided unconditionally)")
 	flag.Parse()
 
 	p := &processor{
@@ -57,9 +65,9 @@ func main() {
 			numberAll:       *flagN,
 			numberNonBlank:  *flagB,
 			squeeze:         *flagS,
-			showNonPrinting: *flagV,
-			showEnds:        *flagE,
-			showTabs:        *flagT,
+			showNonPrinting: *flagV || *flagA || *flagSmalle || *flagSmallt,
+			showEnds:        *flagE || *flagA || *flagSmalle,
+			showTabs:        *flagT || *flagA || *flagSmallt,
 		},
 		w: bufio.NewWriter(os.Stdout),
 	}
