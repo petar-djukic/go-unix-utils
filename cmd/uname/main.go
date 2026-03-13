@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd044-uname R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8
+// Implements: prd044-uname R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R2.1, R2.2, R3.1
 package main
 
 import (
@@ -25,7 +25,7 @@ func main() {
 	args := os.Args[1:]
 
 	// Parse flags manually to match GNU getopt behavior (combined flags like -snrvm).
-	var flagS, flagN, flagR, flagV, flagM, flagP, flagI bool
+	var flagS, flagN, flagR, flagV, flagM, flagP, flagI, flagO, flagA bool
 	var positional []string
 
 	for _, arg := range args {
@@ -54,6 +54,12 @@ func main() {
 				case 'i':
 					// R1.8: hardware platform.
 					flagI = true
+				case 'o':
+					// R1.9: operating system name.
+					flagO = true
+				case 'a':
+					// R2.1: all fields.
+					flagA = true
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\nTry '%s --help' for more information.\n", programName, ch, programName)
 					os.Exit(1)
@@ -79,10 +85,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// R2.1: -a sets all individual flags.
+	if flagA {
+		flagS = true
+		flagN = true
+		flagR = true
+		flagV = true
+		flagM = true
+		flagP = true
+		flagI = true
+		flagO = true
+	}
+
 	// R1.1: no flags means print kernel name (equivalent to -s).
-	if !flagS && !flagN && !flagR && !flagV && !flagM && !flagP && !flagI {
+	if !flagS && !flagN && !flagR && !flagV && !flagM && !flagP && !flagI && !flagO {
 		flagS = true
 	}
+
+	// R2.1: GNU uname -a omits -p and -i when their values are "unknown".
+	omitUnknownP := flagA && processorType() == "unknown"
+	omitUnknownI := flagA && hardwarePlatform() == "unknown"
 
 	var utsname unix.Utsname
 	if err := unix.Uname(&utsname); err != nil {
@@ -112,14 +134,17 @@ func main() {
 		// R1.6: machine hardware name.
 		fields = append(fields, bytesToString(utsname.Machine))
 	}
-	if flagP {
+	if flagP && !omitUnknownP {
 		// R1.7: processor type — "unknown" if not determinable.
 		fields = append(fields, processorType())
 	}
-	if flagI {
+	if flagI && !omitUnknownI {
 		// R1.8: hardware platform — "unknown" if not determinable.
-		// GNU coreutils returns "unknown" for hardware platform.
-		fields = append(fields, "unknown")
+		fields = append(fields, hardwarePlatform())
+	}
+	if flagO {
+		// R1.9: operating system name.
+		fields = append(fields, operatingSystem())
 	}
 
 	fmt.Println(strings.Join(fields, " "))
@@ -140,6 +165,21 @@ func processorType() string {
 	return "unknown"
 }
 
+// hardwarePlatform returns the hardware platform string matching GNU coreutils behavior.
+// R1.8: GNU coreutils returns "unknown" for hardware platform on all platforms.
+func hardwarePlatform() string {
+	return "unknown"
+}
+
+// operatingSystem returns the operating system name matching GNU coreutils behavior.
+// R1.9: On Darwin, GNU coreutils returns "Darwin". On Linux, it returns "GNU/Linux".
+func operatingSystem() string {
+	if runtime.GOOS == "linux" {
+		return "GNU/Linux"
+	}
+	return "Darwin"
+}
+
 // bytesToString converts a null-terminated byte array to a Go string.
 func bytesToString(field [256]byte) string {
 	for i, b := range field {
@@ -154,6 +194,8 @@ func bytesToString(field [256]byte) string {
 const helpText = `Usage: uname [OPTION]...
 Print certain system information.  With no OPTION, same as -s.
 
+  -a, --all                print all information, in the following order,
+                             except omit -p and -i if unknown:
   -s, --kernel-name        print the kernel name
   -n, --nodename           print the network node hostname
   -r, --kernel-release     print the kernel release
@@ -161,6 +203,7 @@ Print certain system information.  With no OPTION, same as -s.
   -m, --machine            print the machine hardware name
   -p, --processor          print the processor type (non-portable)
   -i, --hardware-platform  print the hardware platform (non-portable)
+  -o, --operating-system   print the operating system
       --help     display this help and exit
       --version  output version information and exit
 `

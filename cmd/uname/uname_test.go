@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd044-uname R4.1, R4.2, R4.3 (differential tests for R1.5, R1.6, R1.7, R1.8)
+// Implements: prd044-uname R4.1, R4.2, R4.3 (differential tests for R1.1-R1.9, R2.1, R2.2, R3.1)
 package main
 
 import (
@@ -89,6 +89,18 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-i"},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R1.9: -o flag — operating system name.
+		{
+			Name: "flag_o",
+			Args: []string{"-o"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: -a flag — all fields in canonical order.
+		{
+			Name: "flag_a",
+			Args: []string{"-a"},
+			Env:  []string{"LC_ALL=C"},
+		},
 		// R2.2: combined flags — fields in canonical order.
 		{
 			Name: "combined_snr",
@@ -107,10 +119,30 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-snrvmpi"},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R2.2: combined flags including -o.
+		{
+			Name: "combined_so",
+			Args: []string{"-so"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: combined flags — all individual flags including -o.
+		{
+			Name: "combined_snrvmpio",
+			Args: []string{"-snrvmpio"},
+			Env:  []string{"LC_ALL=C"},
+		},
 		// R3.1: extra operand — error on stderr, exit 1.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"extraarg"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R3.1: extra operand after valid flag — error on stderr, exit 1.
+		{
+			Name:      "extra_operand_after_flag",
+			Args:      []string{"-s", "extraarg"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: stderrNorm,
