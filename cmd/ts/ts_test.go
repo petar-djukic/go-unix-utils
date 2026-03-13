@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3 (differential tests)
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4 (differential tests)
 package main
 
 import (
@@ -40,6 +40,14 @@ var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 var elapsedNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	re := regexp.MustCompile(`\d{2}:\d{2}:\d{2}`)
 	return re.ReplaceAll(b, []byte("<ELAPSED>"))
+}
+
+// relativeAgeNormalizer replaces relative age strings (e.g., "3d2h15m30s ago")
+// with a fixed placeholder so that differential tests for -r mode are not
+// affected by timing differences between Go and reference binary execution.
+var relativeAgeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`(?:- )?(?:\d+[dhms])+\s+ago`)
+	return re.ReplaceAll(b, []byte("<RELAGE>"))
 }
 
 func TestDiff(t *testing.T) {
@@ -412,6 +420,74 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R6.1, R6.2: -r mode with syslog timestamp replaced by relative age
+			Name:      "relative_syslog",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  1 00:00:00 system boot\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		{
+			// R6.1, R6.2: -r mode with RFC 2822 timestamp
+			Name:      "relative_rfc2822",
+			Args:      []string{"-r"},
+			Stdin:     []byte("16 Jun 1994 07:29:35 GMT\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		{
+			// R6.1, R6.2: -r mode with RFC 2822 timestamp with day-of-week
+			Name:      "relative_rfc2822_with_day",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Thu, 16 Jun 1994 07:29:35 GMT\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		{
+			// R6.4: -r mode with no recognizable timestamp passes through unchanged
+			Name:      "relative_no_timestamp",
+			Args:      []string{"-r"},
+			Stdin:     []byte("just a regular line\n"),
+			Env:       []string{"LC_ALL=C"},
+		},
+		{
+			// R6.4: -r mode with empty stdin produces no output
+			Name:      "relative_empty_stdin",
+			Args:      []string{"-r"},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+		},
+		{
+			// R6.1, R6.4: -r mode with mixed lines (some with timestamps, some without)
+			Name:      "relative_mixed_lines",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  1 00:00:00 boot\nno timestamp here\n16 Jun 1994 07:29:35 GMT\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		{
+			// R6.3: -r with format string reformats syslog timestamp via strftime
+			Name:      "relative_with_format_syslog",
+			Args:      []string{"-r", "%H:%M:%S"},
+			Stdin:     []byte("Jan  1 00:00:00 system boot\n"),
+			Env:       []string{"LC_ALL=C"},
+		},
+		{
+			// R6.4: -r with format string but no timestamp passes through unchanged
+			Name:      "relative_with_format_no_timestamp",
+			Args:      []string{"-r", "%Y-%m-%d"},
+			Stdin:     []byte("no timestamp here\n"),
+			Env:       []string{"LC_ALL=C"},
+		},
+		{
+			// R6.1: -r mode with partial last line (no trailing newline)
+			Name:      "relative_partial_line",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  1 00:00:00 event"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
 	}
 
