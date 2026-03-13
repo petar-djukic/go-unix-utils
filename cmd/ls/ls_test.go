@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5, R1.6, R1.7, R1.8 (differential tests)
+// Implements: prd008-ls R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.12 (differential tests)
 package main
 
 import (
@@ -359,6 +359,147 @@ func TestDiffErrorCases(t *testing.T) {
 			Args:      []string{"/nonexistent_path_for_ls_test"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  2,
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffLongFormatSymlink exercises R1.10: symlink display in long format.
+func TestDiffLongFormatSymlink(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "realfile"), 42)
+
+	// Create a symlink pointing to realfile.
+	if err := os.Symlink("realfile", filepath.Join(dir, "linkfile")); err != nil {
+		t.Fatalf("creating symlink: %v", err)
+	}
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R1.10: symlinks should display " -> target" in long format.
+		{
+			Name:      "long_format_symlink",
+			Args:      []string{"-l", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColumnsFlag exercises R1.11 and R1.12: -C forces multi-column output.
+func TestDiffColumnsFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R1.11: -C forces multi-column even when piped (uses 80 columns).
+		{
+			Name: "columns_flag",
+			Args: []string{"-C", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.12: -C sorts vertically (same direction as default).
+		{
+			Name: "columns_flag_vertical_sort",
+			Args: []string{"-C", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColumnsFlagOverride exercises R1.11 with format flag interactions.
+func TestDiffColumnsFlagOverride(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// -C then -l: long format wins.
+		{
+			Name:      "columns_then_long",
+			Args:      []string{"-C", "-l", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// -l then -C: columns wins.
+		{
+			Name: "long_then_columns",
+			Args: []string{"-l", "-C", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// -1 then -C: columns wins.
+		{
+			Name: "single_then_columns",
+			Args: []string{"-1", "-C", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// -C then -1: single wins.
+		{
+			Name: "columns_then_single",
+			Args: []string{"-C", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffLongFormatTotalBlocks exercises R1.10: "total N" block count line.
+func TestDiffLongFormatTotalBlocks(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create files with known content to produce block allocations.
+	writeFixtureFile(t, filepath.Join(dir, "small"), 10)
+	writeFixtureFile(t, filepath.Join(dir, "medium"), 5000)
+	writeFixtureFile(t, filepath.Join(dir, "large"), 100000)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "total_blocks",
+			Args:      []string{"-l", dir},
+			Env:       []string{"LC_ALL=C"},
 			Normalize: norms,
 		},
 	}

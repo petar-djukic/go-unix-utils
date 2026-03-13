@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8
+// Implements: prd008-ls R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.12
 package main
 
 import (
@@ -27,9 +27,10 @@ const defaultTermWidth = 80
 type formatMode int
 
 const (
-	formatDefault    formatMode = iota // auto-detect based on TTY
-	formatSingle                       // -1: one entry per line
-	formatLong                         // -l: long format
+	formatDefault formatMode = iota // auto-detect based on TTY
+	formatSingle                    // -1: one entry per line
+	formatLong                      // -l: long format
+	formatColumns                   // -C: forced multi-column
 )
 
 // lsOptions holds parsed command-line options.
@@ -48,11 +49,9 @@ func main() {
 	}
 
 	// Parse flags. Each flag character is processed individually to support
-	// combined flags like -la. In GNU ls, -l always takes precedence over -1
-	// since long format is already one-per-line.
+	// combined flags like -la. The last format flag on the command line wins
+	// (R1.14: -C, -x, -l, -1 override each other).
 	var operands []string
-	hasLong := false
-	hasSingle := false
 	pastDash := false
 	for _, arg := range args {
 		if pastDash {
@@ -73,10 +72,16 @@ func main() {
 				switch ch {
 				case '1':
 					// R1.5: single-column output.
-					hasSingle = true
+					// GNU ls: -1 has no effect after -l (long is already one-per-line).
+					if opts.format != formatLong {
+						opts.format = formatSingle
+					}
 				case 'l':
 					// R1.6: long format.
-					hasLong = true
+					opts.format = formatLong
+				case 'C':
+					// R1.11: forced multi-column output.
+					opts.format = formatColumns
 				default:
 					fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 					os.Exit(2)
@@ -85,13 +90,6 @@ func main() {
 			continue
 		}
 		operands = append(operands, arg)
-	}
-
-	// Determine format: -l takes priority over -1.
-	if hasLong {
-		opts.format = formatLong
-	} else if hasSingle {
-		opts.format = formatSingle
 	}
 
 	// R1.2: default to current directory when no arguments given.
@@ -118,7 +116,7 @@ func main() {
 		if fi.Mode.IsDir() {
 			dirs = append(dirs, arg)
 		} else {
-			files = append(files, fileEntry{name: arg, info: fi})
+			files = append(files, fileEntry{name: arg, path: arg, info: fi})
 		}
 	}
 
@@ -161,6 +159,7 @@ func main() {
 // fileEntry pairs an entry name with its metadata.
 type fileEntry struct {
 	name string
+	path string // full filesystem path for operations like Readlink
 	info *sys.FileInfo
 }
 
@@ -187,7 +186,7 @@ func listDir(dir string, isTTY bool, opts lsOptions) error {
 			fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", path, unwrapMsg(statErr))
 			continue
 		}
-		items = append(items, fileEntry{name: name, info: fi})
+		items = append(items, fileEntry{name: name, path: path, info: fi})
 	}
 
 	// R1.3 / D5: sort in C locale byte order (Go sort.Strings is byte-order).
@@ -216,6 +215,17 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		for _, item := range items {
 			fmt.Println(item.name)
 		}
+	case formatColumns:
+		// R1.11: forced multi-column regardless of TTY.
+		// R1.12: vertical sort (column-major), same as format.Columns default.
+		names := extractNames(items)
+		termWidth := defaultTermWidth
+		if isTTY {
+			if tw, err := sys.TerminalWidth(); err == nil {
+				termWidth = tw
+			}
+		}
+		printColumns(names, termWidth)
 	default:
 		// formatDefault: auto-detect.
 		names := extractNames(items)
@@ -231,10 +241,7 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		if err != nil {
 			termWidth = defaultTermWidth
 		}
-		rows := format.Columns(names, termWidth)
-		for _, row := range rows {
-			fmt.Println(strings.Join(row, " "))
-		}
+		printColumns(names, termWidth)
 	}
 }
 
@@ -276,8 +283,16 @@ func printLong(items []fileEntry, isDirListing bool) {
 		// R1.7: size.
 		sizeStr := strconv.FormatInt(fi.Size, 10)
 
-		// Modification time formatting (matching GNU ls).
+		// R1.9: modification time formatting (matching GNU ls).
 		mtimeStr := formatMtime(fi.ModTime)
+
+		// R1.10: symlink display — append " -> target" for symbolic links.
+		nameStr := item.name
+		if fi.Mode&os.ModeSymlink != 0 {
+			if target, linkErr := os.Readlink(item.path); linkErr == nil {
+				nameStr = nameStr + " -> " + target
+			}
+		}
 
 		resolved[i] = resolvedEntry{
 			perm:  perm,
@@ -286,7 +301,7 @@ func printLong(items []fileEntry, isDirListing bool) {
 			group: groupStr,
 			size:  sizeStr,
 			mtime: mtimeStr,
-			name:  item.name,
+			name:  nameStr,
 		}
 
 		if len(nlinkStr) > maxNlink {
@@ -429,6 +444,18 @@ func formatMtime(t time.Time) string {
 		return t.Format("Jan _2 15:04")
 	}
 	return t.Format("Jan _2  2006")
+}
+
+// columnSep is the separator between columns, matching GNU ls (two spaces).
+const columnSep = "  "
+
+// printColumns renders names in multi-column layout using format.Columns.
+// GNU ls uses two-space column separators, so we join with columnSep.
+func printColumns(names []string, termWidth int) {
+	rows := format.Columns(names, termWidth)
+	for _, row := range rows {
+		fmt.Println(strings.Join(row, columnSep))
+	}
 }
 
 // extractNames returns just the name strings from a slice of fileEntry.
