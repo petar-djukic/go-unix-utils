@@ -312,6 +312,69 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a:b:c\nx\ny:z\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+
+		// --- R4.1: Successful processing exits 0 ---
+		{
+			// R4.1: Multiple lines processed successfully exit 0.
+			Name:  "exit_0_multiline_success",
+			Args:  []string{"-d:", "-f1,2"},
+			Stdin: []byte("a:b:c\nd:e:f\ng:h:i\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.1: Byte mode with stdin exits 0.
+			Name:  "exit_0_bytes_stdin",
+			Args:  []string{"-b1-3", "-"},
+			Stdin: []byte("abcdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.2: Exit 1 on file open error, continue processing ---
+		{
+			// R4.2: Multiple nonexistent files all fail, exit 1.
+			Name:     "exit_1_multiple_nonexistent",
+			Args:     []string{"-b1", "/nonexistent/cut_a", "/nonexistent/cut_b"},
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+		{
+			// R4.2: Nonexistent file after stdin — stdin output still produced, exit 1.
+			Name:     "exit_1_stdin_then_nonexistent",
+			Args:     []string{"-f1", "-", "/nonexistent/cut_test_file"},
+			Stdin:    []byte("a\tb\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+
+		// --- R4.3: Exit 1 on invalid arguments (usage errors) ---
+		{
+			// No mode specified — exits 1.
+			Name:     "exit_1_no_mode",
+			Args:     []string{},
+			Stdin:    []byte("abc\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+		{
+			// Invalid range — exits 1.
+			Name:     "exit_1_invalid_range",
+			Args:     []string{"-b0"},
+			Stdin:    []byte("abc\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
