@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd031-sha1sum R1.1–R1.4, R2.1–R2.4, R3.1–R3.2, R4.1–R4.3
+// Implements: prd031-sha1sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2, R4.1–R4.3
 package main
 
 import (
@@ -38,6 +38,9 @@ func main() {
 	flagWarn := flag.Bool("w", false, "warn about improperly formatted checksum lines")
 	flag.BoolVar(flagWarn, "warn", false, "warn about improperly formatted checksum lines")
 
+	// R2.3: --strict exits non-zero for improperly formatted checksum lines.
+	flagStrict := flag.Bool("strict", false, "exit non-zero for improperly formatted checksum lines")
+
 	// R2.4: --quiet suppresses OK lines; --status suppresses all output.
 	flagQuiet := flag.Bool("quiet", false, "don't print OK for each successfully verified file")
 	flagStatus := flag.Bool("status", false, "don't output anything, status code shows success")
@@ -54,6 +57,7 @@ func main() {
 		// R2.1: check mode — verify checksums from files or stdin.
 		opts := checkOpts{
 			warn:   *flagWarn,
+			strict: *flagStrict,
 			quiet:  *flagQuiet,
 			status: *flagStatus,
 		}
@@ -152,6 +156,7 @@ func unwrapPathError(err error) error {
 // checkOpts holds the flags that modify check mode output.
 type checkOpts struct {
 	warn   bool // R2.3: print per-line warnings for malformed lines.
+	strict bool // R2.3: exit non-zero for improperly formatted checksum lines.
 	quiet  bool // R2.4: suppress OK lines.
 	status bool // R2.4: suppress all output; exit code conveys result.
 }
@@ -294,6 +299,11 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 			fmt.Fprintf(os.Stderr, "%s: WARNING: %d computed checksums did NOT match\n",
 				progName, failCount)
 		}
+	}
+
+	// R2.3: --strict exits non-zero when any line is malformed.
+	if opts.strict && malformedCount > 0 {
+		return 1
 	}
 
 	// R2.4: exit 1 when any checksum fails or any file could not be read.
