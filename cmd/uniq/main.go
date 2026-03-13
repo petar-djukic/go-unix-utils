@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/uniq implements the uniq (report or filter adjacent duplicate lines) command.
-// Implements: prd028-uniq R1.1, R1.2, R1.3, R1.4
+// Implements: prd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
 package main
 
 import (
@@ -17,11 +17,12 @@ import (
 
 // config holds all parsed command-line options.
 type config struct {
-	count    bool // -c: prefix lines with count
-	repeated bool // -d: only print duplicate lines
-	unique   bool // -u: only print unique lines
-	inFile   string
-	outFile  string
+	count       bool // -c: prefix lines with count
+	repeated    bool // -d: only print duplicate lines (one per run)
+	allRepeated bool // -D: print all duplicate lines (every copy)
+	unique      bool // -u: only print unique lines
+	inFile      string
+	outFile     string
 }
 
 func main() {
@@ -71,6 +72,8 @@ func parseArgs(args []string) (*config, error) {
 				cfg.count = true
 			case "--repeated":
 				cfg.repeated = true
+			case "--all-repeated":
+				cfg.allRepeated = true
 			case "--unique":
 				cfg.unique = true
 			default:
@@ -88,6 +91,8 @@ func parseArgs(args []string) (*config, error) {
 					cfg.count = true
 				case 'd':
 					cfg.repeated = true
+				case 'D':
+					cfg.allRepeated = true
 				case 'u':
 					cfg.unique = true
 				default:
@@ -160,7 +165,12 @@ func run(cfg *config) error {
 // R1.1: Suppress all but the first occurrence of any run of identical adjacent lines.
 // R1.2: Non-adjacent duplicates are unaffected.
 // R1.4: Comparison is case-sensitive; each line includes its newline terminator.
+// R2.2: -D emits every copy of each duplicate run inline.
 func processUniq(reader io.Reader, w *bufio.Writer, cfg *config) error {
+	if cfg.allRepeated {
+		return processAllRepeated(reader, w, cfg)
+	}
+
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -174,7 +184,6 @@ func processUniq(reader io.Reader, w *bufio.Writer, cfg *config) error {
 		if first {
 			prevLine = line
 			count = 1
-			first = true
 			first = false
 			continue
 		}
@@ -208,6 +217,64 @@ func processUniq(reader io.Reader, w *bufio.Writer, cfg *config) error {
 	return nil
 }
 
+// processAllRepeated handles -D mode, which emits every copy of each duplicate
+// run. Unlike the default mode, lines are emitted inline as the run grows rather
+// than once at the end.
+//
+// R2.2: -D prints all lines of each run that appears more than once.
+func processAllRepeated(reader io.Reader, w *bufio.Writer, _ *config) error {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var prevLine string
+	var count int
+	first := true
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if first {
+			prevLine = line
+			count = 1
+			first = false
+			continue
+		}
+
+		if line == prevLine {
+			// R2.2: Duplicate found; emit the deferred first copy if this is
+			// the second occurrence, then emit the current copy.
+			if count == 1 {
+				if err := writeLine(w, prevLine); err != nil {
+					return err
+				}
+			}
+			if err := writeLine(w, line); err != nil {
+				return err
+			}
+			count++
+			continue
+		}
+
+		// New run starts; reset.
+		prevLine = line
+		count = 1
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read error: %w", err)
+	}
+
+	return nil
+}
+
+// writeLine writes a single line followed by a newline to w.
+func writeLine(w *bufio.Writer, line string) error {
+	if _, err := w.WriteString(line); err != nil {
+		return err
+	}
+	return w.WriteByte('\n')
+}
+
 // emitGroup writes a single group (line repeated count times) to w, respecting
 // the -c, -d, and -u flags.
 //
@@ -224,6 +291,7 @@ func emitGroup(w *bufio.Writer, line string, count int, cfg *config) error {
 	}
 
 	// R2.4: -c prefixes each line with the occurrence count.
+	// R2.4: -c prefixes each line with the occurrence count.
 	if cfg.count {
 		if _, err := fmt.Fprintf(w, "%7d %s\n", count, line); err != nil {
 			return err
@@ -231,11 +299,5 @@ func emitGroup(w *bufio.Writer, line string, count int, cfg *config) error {
 		return nil
 	}
 
-	if _, err := w.WriteString(line); err != nil {
-		return err
-	}
-	if err := w.WriteByte('\n'); err != nil {
-		return err
-	}
-	return nil
+	return writeLine(w, line)
 }
