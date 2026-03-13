@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd033-sha512sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2
+// Implements: prd033-sha512sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2, R4.1–R4.3
 package main
 
 import (
@@ -21,13 +21,14 @@ import (
 const progName = "sha512sum"
 
 func main() {
-	// R1.4/R4.3: install SIGPIPE handler before any I/O.
+	// R4.3: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
 
-	// Use ContinueOnError for GNU-compatible error handling.
+	// R4.3: use ContinueOnError for GNU-compatible error handling.
 	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
 	flag.CommandLine.SetOutput(io.Discard)
 
+	// R4.1: --version flag.
 	flagVersion := flag.Bool("version", false, "output version information and exit")
 	flagBinary := flag.Bool("b", false, "read in binary mode")
 	flag.BoolVar(flagBinary, "binary", false, "read in binary mode")
@@ -50,15 +51,19 @@ func main() {
 	flagQuiet := flag.Bool("quiet", false, "don't print OK for each successfully verified file")
 	flagStatus := flag.Bool("status", false, "don't output anything, status code shows success")
 
+	// R4.3: handle parse errors for GNU-compatible exit codes.
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		if err == flag.ErrHelp {
+			// R4.2: --help prints usage to stdout and exits 0.
 			printUsage()
 			return
 		}
+		// R4.3: invalid option prints error to stderr and exits 1.
 		fmt.Fprintf(os.Stderr, "%s: %v\nTry '%s --help' for more information.\n", progName, err, progName)
 		os.Exit(1)
 	}
 
+	// R4.1: --version prints version information and exits 0.
 	if *flagVersion {
 		fmt.Printf("%s (go-unix-utils) 1.0\n", progName)
 		return
@@ -131,6 +136,8 @@ func main() {
 		}
 	}
 
+	// R4.1: exit 0 when all files processed and all digests match.
+	// R4.2: exit 1 when any file cannot be opened, any digest fails, or checksum file is unreadable.
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
@@ -170,6 +177,7 @@ func unwrapPathError(err error) error {
 }
 
 // printUsage writes GNU-compatible usage information to stdout.
+// R4.2: --help displays usage information and exits 0.
 func printUsage() {
 	fmt.Printf("Usage: %s [OPTION]... [FILE]...\n", progName)
 	fmt.Printf("Print or check SHA512 (512-bit) checksums.\n\n")
