@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3
+// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4
 package main
 
 import (
@@ -26,6 +26,10 @@ func main() {
 	var operands []string
 	// R2.1: -p / --parents flag for recursive parent removal.
 	parents := false
+	// R3.1: --ignore-fail-on-non-empty suppresses non-empty directory errors.
+	ignoreNonEmpty := false
+	// R3.3: -v / --verbose prints a message for each removed directory.
+	verbose := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -38,6 +42,10 @@ func main() {
 			return
 		case arg == "--parents":
 			parents = true
+		case arg == "--ignore-fail-on-non-empty":
+			ignoreNonEmpty = true
+		case arg == "--verbose":
+			verbose = true
 		case arg == "--":
 			// End of flags; remaining args are operands.
 			operands = append(operands, args[i+1:]...)
@@ -54,6 +62,8 @@ func main() {
 				switch flags[j] {
 				case 'p':
 					parents = true
+				case 'v':
+					verbose = true
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, flags[j])
 					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
@@ -74,12 +84,20 @@ func main() {
 
 	exitCode := 0
 	for _, dir := range operands {
+		// R3.3: verbose output is printed before the removal attempt, matching GNU behavior.
+		if verbose {
+			fmt.Fprintf(os.Stdout, "%s: removing directory, '%s'\n", programName, dir)
+		}
 		// R1.1: remove a single empty directory.
 		// R1.2, R2.3: process each operand independently.
 		// R1.4: reject non-directory targets with "Not a directory".
 		if err := syscall.Rmdir(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, dir, err.Error())
-			exitCode = 1
+			// R3.1: suppress error when directory is not empty and --ignore-fail-on-non-empty is set.
+			// R3.2: do not suppress errors for other failure reasons.
+			if !(ignoreNonEmpty && isNonEmptyError(err)) {
+				fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, dir, err.Error())
+				exitCode = 1
+			}
 			continue
 		}
 		// R2.1: with -p, ascend and remove each successive empty parent.
@@ -91,9 +109,16 @@ func main() {
 				if parent == "." || parent == "/" {
 					break
 				}
+				// R3.3: verbose output for each ancestor, before the removal attempt.
+				if verbose {
+					fmt.Fprintf(os.Stdout, "%s: removing directory, '%s'\n", programName, parent)
+				}
 				if err := syscall.Rmdir(parent); err != nil {
-					fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, parent, err.Error())
-					exitCode = 1
+					// R3.4: with -p and --ignore-fail-on-non-empty, suppress non-empty ancestor errors.
+					if !(ignoreNonEmpty && isNonEmptyError(err)) {
+						fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, parent, err.Error())
+						exitCode = 1
+					}
 					break
 				}
 			}
@@ -103,6 +128,14 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// isNonEmptyError reports whether err indicates that a directory removal
+// failed because the directory was not empty.
+//
+// R3.1: used to decide whether --ignore-fail-on-non-empty should suppress the error.
+func isNonEmptyError(err error) bool {
+	return err == syscall.ENOTEMPTY || err == syscall.EEXIST
+}
+
 // printHelp writes usage information to stdout and exits 0.
 //
 // R1.4: --help prints usage to stdout and exits 0.
@@ -110,7 +143,11 @@ func printHelp() {
 	fmt.Print(`Usage: rmdir [OPTION]... DIRECTORY...
 Remove the DIRECTORY(ies), if they are empty.
 
+      --ignore-fail-on-non-empty
+                   ignore each failure that is solely because a directory
+                   is non-empty
   -p, --parents    remove DIRECTORY and its ancestors
+  -v, --verbose    output a diagnostic for every directory processed
       --help       display this help and exit
       --version    output version information and exit
 `)

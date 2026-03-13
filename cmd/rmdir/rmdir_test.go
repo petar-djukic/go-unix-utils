@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3 differential tests
+// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4 differential tests
 package main
 
 import (
@@ -392,5 +392,249 @@ func TestVersion(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("rmdir")) {
 		t.Errorf("--version output missing 'rmdir': %s", out)
+	}
+}
+
+// TestIgnoreFailOnNonEmpty verifies R3.1: --ignore-fail-on-non-empty suppresses
+// error messages and exit code when a directory is not empty.
+func TestIgnoreFailOnNonEmpty(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	// R3.1: non-empty directory with --ignore-fail-on-non-empty exits 0 silently.
+	t.Run("nonempty_suppressed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		nonempty := filepath.Join(tmpDir, "nonempty")
+		if mkErr := os.Mkdir(nonempty, 0o755); mkErr != nil {
+			t.Fatalf("setup: %v", mkErr)
+		}
+		if wErr := os.WriteFile(filepath.Join(nonempty, "file.txt"), []byte("data"), 0o644); wErr != nil {
+			t.Fatalf("setup: %v", wErr)
+		}
+		tests := []testutils.DiffTest{
+			{
+				Name:      "ignore-fail-on-non-empty suppresses non-empty error",
+				Args:      []string{"--ignore-fail-on-non-empty", nonempty},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  0,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R3.2: --ignore-fail-on-non-empty does NOT suppress non-existent directory error.
+	t.Run("nonexistent_not_suppressed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		nonexistent := filepath.Join(tmpDir, "does_not_exist")
+		tests := []testutils.DiffTest{
+			{
+				Name:      "ignore-fail-on-non-empty does not suppress nonexistent error",
+				Args:      []string{"--ignore-fail-on-non-empty", nonexistent},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestVerbose verifies R3.3: -v prints a diagnostic message to stderr for each
+// directory successfully removed. Run per-binary since rmdir is destructive.
+func TestVerbose(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "emptydir")
+	if mkErr := os.Mkdir(target, 0o755); mkErr != nil {
+		t.Fatalf("setup: %v", mkErr)
+	}
+
+	cmd := exec.Command(goBin, "-v", target)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if runErr := cmd.Run(); runErr != nil {
+		t.Fatalf("rmdir -v failed: %v", runErr)
+	}
+
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("directory %q still exists after rmdir -v", target)
+	}
+
+	// R3.3: verbose output goes to stdout, should mention "removing directory" and the target path.
+	stdoutStr := stdout.String()
+	if !bytes.Contains(stdout.Bytes(), []byte("removing directory")) {
+		t.Errorf("verbose output missing 'removing directory': %q", stdoutStr)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(target)) {
+		t.Errorf("verbose output missing target path %q: %q", target, stdoutStr)
+	}
+}
+
+// TestVerboseDiff verifies R3.3: -v output matches grmdir -v for a non-empty
+// directory (where removal fails and no verbose message is printed).
+func TestVerboseDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	// -v on a non-empty directory: should show error but no "removing directory" message.
+	t.Run("verbose_nonempty_error", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		nonempty := filepath.Join(tmpDir, "nonempty")
+		if mkErr := os.Mkdir(nonempty, 0o755); mkErr != nil {
+			t.Fatalf("setup: %v", mkErr)
+		}
+		if wErr := os.WriteFile(filepath.Join(nonempty, "file.txt"), []byte("data"), 0o644); wErr != nil {
+			t.Fatalf("setup: %v", wErr)
+		}
+		tests := []testutils.DiffTest{
+			{
+				Name:      "verbose on non-empty directory",
+				Args:      []string{"-v", nonempty},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestParentsIgnoreNonEmpty verifies R3.4: -p combined with
+// --ignore-fail-on-non-empty suppresses non-empty ancestor errors.
+func TestParentsIgnoreNonEmpty(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	// Create a/b/c where a contains a file (blocker). -p removes c and b,
+	// then fails silently on a because --ignore-fail-on-non-empty is set.
+	for _, bin := range []struct {
+		name string
+		path string
+	}{
+		{"ref", refBin},
+		{"go", goBin},
+	} {
+		t.Run(bin.name, func(t *testing.T) {
+			t.Parallel()
+			tmpDir := t.TempDir()
+			if mkErr := os.MkdirAll(filepath.Join(tmpDir, "a", "b", "c"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+			if wErr := os.WriteFile(filepath.Join(tmpDir, "a", "blocker.txt"), []byte("data"), 0o644); wErr != nil {
+				t.Fatalf("setup: %v", wErr)
+			}
+
+			cmd := exec.Command(bin.path, "-p", "--ignore-fail-on-non-empty", "a/b/c")
+			cmd.Dir = tmpDir
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			runErr := cmd.Run()
+
+			exitCode := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					exitCode = exitErr.ExitCode()
+				} else {
+					t.Fatalf("run error: %v", runErr)
+				}
+			}
+
+			// R3.4: should exit 0 since the only failure is non-empty ancestor.
+			if exitCode != 0 {
+				t.Errorf("expected exit code 0, got %d", exitCode)
+			}
+
+			stderrBytes := stderr.Bytes()
+			for _, fn := range normalize {
+				stderrBytes = fn(stderrBytes)
+			}
+
+			// R3.4: stderr should be empty (non-empty error suppressed).
+			if len(stderrBytes) != 0 {
+				t.Errorf("expected empty stderr, got: %s", stderrBytes)
+			}
+
+			// c and b should be removed, a should remain (non-empty).
+			for _, d := range []string{"a/b/c", "a/b"} {
+				if _, statErr := os.Stat(filepath.Join(tmpDir, d)); !os.IsNotExist(statErr) {
+					t.Errorf("directory %q still exists", d)
+				}
+			}
+			if _, statErr := os.Stat(filepath.Join(tmpDir, "a")); os.IsNotExist(statErr) {
+				t.Error("directory 'a' should still exist (non-empty)")
+			}
+		})
+	}
+}
+
+// TestVerboseParents verifies R3.3 combined with R2.1: -pv prints a message
+// for each ancestor directory removed.
+func TestVerboseParents(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	if mkErr := os.MkdirAll(filepath.Join(tmpDir, "x", "y", "z"), 0o755); mkErr != nil {
+		t.Fatalf("setup: %v", mkErr)
+	}
+
+	cmd := exec.Command(goBin, "-pv", "x/y/z")
+	cmd.Dir = tmpDir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if runErr := cmd.Run(); runErr != nil {
+		t.Fatalf("rmdir -pv failed: %v", runErr)
+	}
+
+	// Should have verbose messages for z, y, and x on stdout.
+	stdoutStr := stdout.String()
+	for _, dir := range []string{"x/y/z", "x/y", "x"} {
+		if !bytes.Contains(stdout.Bytes(), []byte(dir)) {
+			t.Errorf("verbose output missing directory %q: %q", dir, stdoutStr)
+		}
+	}
+
+	// All directories should be removed.
+	for _, d := range []string{"x/y/z", "x/y", "x"} {
+		if _, statErr := os.Stat(filepath.Join(tmpDir, d)); !os.IsNotExist(statErr) {
+			t.Errorf("directory %q still exists after rmdir -pv", d)
+		}
 	}
 }
