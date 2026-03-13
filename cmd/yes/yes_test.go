@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd012-yes R2.1–R2.2, R3.1–R3.2, R4.1–R4.3 (differential tests)
+// Implements: prd012-yes R2.1–R2.2, R3.1–R3.3, R4.1–R4.3 (differential tests)
 package main
 
 import (
@@ -136,25 +136,57 @@ func TestDiffHelpVersion(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestSIGPIPEExitCode verifies R3.2, R4.3: yes exits 0 when stdout is closed early.
+// TestSIGPIPEExitCode verifies R3.1, R3.3, R4.3: yes exits 0 when stdout is
+// closed early (SIGPIPE case), matching the reference binary's behavior.
+// Also verifies R3.3: no error message is printed to stderr on SIGPIPE.
 func TestSIGPIPEExitCode(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
 
-	// Run: goBin | head -1
-	// The head command closes the pipe after one line, sending SIGPIPE to yes.
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("%s | head -1", shellescape(goBin)))
-	var outBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-
-	err := cmd.Run()
+	refBin, err := exec.LookPath(refBinaryName)
 	if err != nil {
-		t.Errorf("expected exit 0 from pipeline, got error: %v", err)
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
 	}
 
-	// Verify we got output (head captured one line).
-	if outBuf.Len() == 0 {
-		t.Error("expected output from yes | head -1, got empty")
+	// runPipeline runs "binary | head -1" and returns stdout, stderr, and
+	// the pipeline exit code.
+	runPipeline := func(t *testing.T, binary string) (stdout, stderr []byte, exitCode int) {
+		t.Helper()
+		shellCmd := fmt.Sprintf("%s | head -1", shellescape(binary))
+		cmd := exec.Command("sh", "-c", shellCmd)
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		code := 0
+		if runErr != nil {
+			if exitErr, ok := runErr.(*exec.ExitError); ok {
+				code = exitErr.ExitCode()
+			}
+		}
+		return outBuf.Bytes(), errBuf.Bytes(), code
+	}
+
+	refOut, refErr, refCode := runPipeline(t, refBin)
+	goOut, goErr, goCode := runPipeline(t, goBin)
+
+	// R4.3: exit codes must match.
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d got=%d", refCode, goCode)
+	}
+
+	// R4.3: stdout must match.
+	if !bytes.Equal(refOut, goOut) {
+		t.Errorf("stdout mismatch:\nref: %q\ngot: %q", refOut, goOut)
+	}
+
+	// R3.3: no error message on stderr for either binary.
+	if len(goErr) != 0 {
+		t.Errorf("expected empty stderr from Go binary on SIGPIPE, got %q", goErr)
+	}
+	if len(refErr) != 0 {
+		t.Errorf("expected empty stderr from ref binary on SIGPIPE, got %q", refErr)
 	}
 }
