@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd049-realpath R1.1–R1.5, R2.1–R2.3, R3.1–R3.3
+// Implements: prd049-realpath R1.1–R1.5, R2.1–R2.3, R3.1–R3.3, R4.1–R4.3
 package main
 
 import (
@@ -16,6 +16,18 @@ import (
 // programName is the name used in error and --help output.
 const programName = "realpath"
 
+// existenceMode controls how missing path components are handled.
+type existenceMode int
+
+const (
+	// modeDefault requires all but the last component to exist.
+	modeDefault existenceMode = iota
+	// modeExisting (-e) requires every component to exist (R1.3).
+	modeExisting
+	// modeMissing (-m) requires no component to exist (R1.4).
+	modeMissing
+)
+
 func main() {
 	// D2: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
@@ -25,6 +37,7 @@ func main() {
 	var (
 		operands     []string
 		stripMode    bool
+		mode         existenceMode
 		relativeTo   string
 		relativeBase string
 	)
@@ -42,6 +55,12 @@ func main() {
 			// End of flags; remaining args are operands.
 			operands = append(operands, args[i+1:]...)
 			i = len(args)
+		case arg == "--canonicalize-existing":
+			// R1.3: -e long form.
+			mode = modeExisting
+		case arg == "--canonicalize-missing":
+			// R1.4: -m long form.
+			mode = modeMissing
 		case arg == "--strip" || arg == "--no-symlinks":
 			// R1.5: do not resolve symlinks.
 			stripMode = true
@@ -79,6 +98,12 @@ func main() {
 			cluster := arg[1:]
 			for _, ch := range cluster {
 				switch ch {
+				case 'e':
+					// R1.3: -e (short form of --canonicalize-existing).
+					mode = modeExisting
+				case 'm':
+					// R1.4: -m (short form of --canonicalize-missing).
+					mode = modeMissing
 				case 's':
 					// R1.5: -s (short form of --strip).
 					stripMode = true
@@ -107,7 +132,7 @@ func main() {
 	var resolvedRelTo, resolvedRelBase string
 	if userSetRelTo {
 		var err error
-		resolvedRelTo, err = resolveInMode(relativeTo, stripMode)
+		resolvedRelTo, err = resolveInMode(relativeTo, stripMode, mode)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: No such file or directory\n", programName, relativeTo)
 			os.Exit(1)
@@ -115,7 +140,7 @@ func main() {
 	}
 	if userSetRelBase {
 		var err error
-		resolvedRelBase, err = resolveInMode(relativeBase, stripMode)
+		resolvedRelBase, err = resolveInMode(relativeBase, stripMode, mode)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: No such file or directory\n", programName, relativeBase)
 			os.Exit(1)
@@ -130,7 +155,7 @@ func main() {
 	// R1.1, R1.2, R3.3: resolve each path and print one per line.
 	exitCode := 0
 	for _, path := range operands {
-		resolved, err := resolveInMode(path, stripMode)
+		resolved, err := resolveInMode(path, stripMode, mode)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: No such file or directory\n", programName, path)
 			exitCode = 1
@@ -156,11 +181,18 @@ func main() {
 }
 
 // resolveInMode resolves a path according to the current mode flags.
-func resolveInMode(path string, strip bool) (string, error) {
+func resolveInMode(path string, strip bool, mode existenceMode) (string, error) {
 	if strip {
-		return resolveStrip(path)
+		return resolveStrip(path, mode)
 	}
-	return resolvePath(path)
+	switch mode {
+	case modeExisting:
+		return resolveCanonExisting(path)
+	case modeMissing:
+		return resolveCanonMissing(path)
+	default:
+		return resolvePath(path)
+	}
 }
 
 // resolvePath resolves a path to its canonical absolute form with all symlinks resolved.
@@ -194,11 +226,64 @@ func resolvePath(path string) (string, error) {
 	return filepath.Join(absDir, base), nil
 }
 
+// resolveCanonExisting resolves a path requiring every component to exist.
+// R1.3: -e / --canonicalize-existing.
+func resolveCanonExisting(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(resolved)
+}
+
+// resolveCanonMissing resolves a path without requiring any component to exist.
+// Resolves symlinks for the longest existing prefix, then appends the remaining
+// components without existence checks.
+// R1.4: -m / --canonicalize-missing.
+func resolveCanonMissing(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+
+	// Try full resolution first (fast path when everything exists).
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		return resolved, nil
+	}
+
+	// Walk up the directory tree to find the deepest existing ancestor.
+	dir := absPath
+	var tail []string
+	for {
+		parent := filepath.Dir(dir)
+		tail = append(tail, filepath.Base(dir))
+		if parent == dir {
+			// Reached filesystem root without finding an existing ancestor.
+			break
+		}
+		dir = parent
+
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			// Found existing ancestor. Rebuild with remaining components.
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		}
+	}
+
+	// Nothing exists; return the cleaned absolute path.
+	return absPath, nil
+}
+
 // resolveStrip resolves a path without following symlinks.
 // R1.5: only clean . and .. components and prepend the working directory for relative paths.
-// In default mode (no -e/-m), all but the last component must exist.
+// Existence checking depends on the mode: default checks all but last, modeExisting
+// checks all including last, modeMissing skips all checks.
 // Existence is checked via os.Lstat (symlinks are not followed).
-func resolveStrip(path string) (string, error) {
+func resolveStrip(path string, mode existenceMode) (string, error) {
 	// Make absolute without cleaning (filepath.Abs calls Clean, which removes ..).
 	if !filepath.IsAbs(path) {
 		wd, err := os.Getwd()
@@ -206,6 +291,11 @@ func resolveStrip(path string) (string, error) {
 			return "", err
 		}
 		path = wd + "/" + path
+	}
+
+	// R1.4: -m mode requires no existence checks; clean and return.
+	if mode == modeMissing {
+		return filepath.Clean(path), nil
 	}
 
 	// Split into path components, preserving . and .. for the walk.
@@ -237,8 +327,10 @@ func resolveStrip(path string) (string, error) {
 			}
 		default:
 			resolved = append(resolved, part)
+			// R1.3: -e mode checks all components including last.
 			// Default mode: all but the last component must exist.
-			if !isLast {
+			needCheck := !isLast || mode == modeExisting
+			if needCheck {
 				checkPath := "/" + strings.Join(resolved, "/")
 				if _, err := os.Lstat(checkPath); err != nil {
 					return "", err
@@ -279,9 +371,11 @@ func printHelp() {
 Print the resolved absolute file name;
 all but the last component must exist
 
-  -s, --strip, --no-symlinks  don't expand symlinks
-      --relative-to=DIR       print the resolved path relative to DIR
-      --relative-base=DIR     print absolute paths unless paths below DIR
+  -e, --canonicalize-existing  all components of the path must exist
+  -m, --canonicalize-missing   no path components need exist or be a directory
+  -s, --strip, --no-symlinks   don't expand symlinks
+      --relative-to=DIR        print the resolved path relative to DIR
+      --relative-base=DIR      print absolute paths unless paths below DIR
       --help     display this help and exit
       --version  output version information and exit
 `)

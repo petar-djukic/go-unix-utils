@@ -128,6 +128,124 @@ func TestDiffHelpVersion(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffExisting tests R1.3: -e / --canonicalize-existing mode.
+// R4.2: cover -e with existing and missing paths.
+func TestDiffExisting(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R1.3: -e with a path that fully exists.
+		{
+			Name: "existing_short_flag",
+			Args: []string{"-e", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.3: --canonicalize-existing long form.
+		{
+			Name: "existing_long_flag",
+			Args: []string{"--canonicalize-existing", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.3: -e with root.
+		{
+			Name: "existing_root",
+			Args: []string{"-e", "/"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.3: -e with a nonexistent last component — must error, exit 1.
+		{
+			Name:     "existing_nonexistent_last",
+			Args:     []string{"-e", "/nonexistent_path_xyz_12345"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R1.3: -e with a nonexistent parent — must error, exit 1.
+		{
+			Name:     "existing_nonexistent_parent",
+			Args:     []string{"-e", "/nonexistent_parent_xyz/child"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R1.3: -e with dot and dotdot on existing paths.
+		{
+			Name: "existing_dotdot",
+			Args: []string{"-e", "/tmp/.."},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	// Normalize stderr for error cases since messages may differ.
+	clearStderr := func(b []byte) []byte { return nil }
+	for i := range tests {
+		if tests[i].ExitCode != 0 {
+			tests[i].Normalize = []testutils.NormalizeFunc{clearStderr}
+		}
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffMissing tests R1.4: -m / --canonicalize-missing mode.
+// R4.2: cover -m with missing paths.
+func TestDiffMissing(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R1.4: -m with a fully existing path.
+		{
+			Name: "missing_existing_path",
+			Args: []string{"-m", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.4: --canonicalize-missing long form.
+		{
+			Name: "missing_long_flag",
+			Args: []string{"--canonicalize-missing", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.4: -m with a completely nonexistent path — should succeed, exit 0.
+		{
+			Name: "missing_nonexistent_deep",
+			Args: []string{"-m", "/nonexistent_parent_xyz/child/grandchild"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.4: -m with nonexistent last component.
+		{
+			Name: "missing_nonexistent_last",
+			Args: []string{"-m", "/nonexistent_path_xyz_12345"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.4: -m with .. components in nonexistent path.
+		{
+			Name: "missing_dotdot",
+			Args: []string{"-m", "/nonexistent_xyz/../tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.4: -m combined with -s (strip + missing).
+		{
+			Name: "missing_with_strip",
+			Args: []string{"-sm", "/nonexistent_parent_xyz/child"},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffStrip tests R1.5: -s / --strip / --no-symlinks mode.
 func TestDiffStrip(t *testing.T) {
 	t.Parallel()
