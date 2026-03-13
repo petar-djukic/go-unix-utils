@@ -1158,6 +1158,194 @@ func TestForceReplace(t *testing.T) {
 	}
 }
 
+// TestLinkTypeAndTarget verifies R4.3: created links point to the correct
+// target and have the correct link type (hard or symbolic), matching gln.
+func TestLinkTypeAndTarget(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	// R4.3: hard link shares inode with target.
+	t.Run("hard_link_same_inode", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "src.txt"), []byte("content\n"), 0o644) //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "hl.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "hl.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Verify Go binary created a hard link (same file, not a symlink).
+		goSrc, _ := os.Stat(filepath.Join(goDir, "src.txt"))
+		goHL, hlErr := os.Stat(filepath.Join(goDir, "hl.txt"))
+		if hlErr != nil {
+			t.Fatalf("hard link not created: %v", hlErr)
+		}
+		if !os.SameFile(goSrc, goHL) {
+			t.Error("hard link does not share inode with source")
+		}
+		// Verify it is not a symlink.
+		goLinkInfo, _ := os.Lstat(filepath.Join(goDir, "hl.txt"))
+		if goLinkInfo.Mode()&os.ModeSymlink != 0 {
+			t.Error("expected hard link, got symlink")
+		}
+
+		// Verify ref binary also created a hard link for parity.
+		refSrc, _ := os.Stat(filepath.Join(refDir, "src.txt"))
+		refHL, refHLErr := os.Stat(filepath.Join(refDir, "hl.txt"))
+		if refHLErr != nil {
+			t.Fatalf("ref hard link not created: %v", refHLErr)
+		}
+		if !os.SameFile(refSrc, refHL) {
+			t.Error("ref hard link does not share inode with source")
+		}
+	})
+
+	// R4.3: symbolic link is a symlink pointing to correct target.
+	t.Run("symlink_correct_type_and_target", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "src.txt"), []byte("content\n"), 0o644) //nolint:errcheck
+		}
+
+		goTarget := filepath.Join(goDir, "src.txt")
+		refTarget := filepath.Join(refDir, "src.txt")
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-s", goTarget, filepath.Join(goDir, "sl.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-s", refTarget, filepath.Join(refDir, "sl.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Verify Go binary created a symlink.
+		goInfo, lstatErr := os.Lstat(filepath.Join(goDir, "sl.txt"))
+		if lstatErr != nil {
+			t.Fatalf("symlink not created: %v", lstatErr)
+		}
+		if goInfo.Mode()&os.ModeSymlink == 0 {
+			t.Error("expected symlink, got non-symlink")
+		}
+
+		// Verify symlink target matches.
+		goReadlink, err := os.Readlink(filepath.Join(goDir, "sl.txt"))
+		if err != nil {
+			t.Fatalf("readlink failed: %v", err)
+		}
+		if goReadlink != goTarget {
+			t.Errorf("symlink target mismatch: got %q, want %q", goReadlink, goTarget)
+		}
+
+		// Verify ref binary also created a symlink for parity.
+		refInfo, refLstatErr := os.Lstat(filepath.Join(refDir, "sl.txt"))
+		if refLstatErr != nil {
+			t.Fatalf("ref symlink not created: %v", refLstatErr)
+		}
+		if refInfo.Mode()&os.ModeSymlink == 0 {
+			t.Error("ref: expected symlink, got non-symlink")
+		}
+		refReadlink, err := os.Readlink(filepath.Join(refDir, "sl.txt"))
+		if err != nil {
+			t.Fatalf("ref readlink failed: %v", err)
+		}
+		if refReadlink != refTarget {
+			t.Errorf("ref symlink target mismatch: got %q, want %q", refReadlink, refTarget)
+		}
+	})
+
+	// R4.3: force-replace preserves correct link type.
+	t.Run("force_replace_preserves_type", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "new_target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "existing.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		// Force-create a symlink over an existing file.
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sf", filepath.Join(goDir, "new_target.txt"), filepath.Join(goDir, "existing.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sf", filepath.Join(refDir, "new_target.txt"), filepath.Join(refDir, "existing.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Verify it is a symlink pointing to the correct target.
+		goInfo, _ := os.Lstat(filepath.Join(goDir, "existing.txt"))
+		if goInfo.Mode()&os.ModeSymlink == 0 {
+			t.Error("expected symlink after -sf, got non-symlink")
+		}
+		goReadlink, err := os.Readlink(filepath.Join(goDir, "existing.txt"))
+		if err != nil {
+			t.Fatalf("readlink failed: %v", err)
+		}
+		if goReadlink != filepath.Join(goDir, "new_target.txt") {
+			t.Errorf("symlink target mismatch after -sf: got %q, want %q",
+				goReadlink, filepath.Join(goDir, "new_target.txt"))
+		}
+	})
+
+	// R4.3: multi-target into directory creates correct link types.
+	t.Run("multi_target_hard_links", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "a.txt"), []byte("a\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "b.txt"), []byte("b\n"), 0o644) //nolint:errcheck
+			os.Mkdir(filepath.Join(d, "dest"), 0o755)                     //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{filepath.Join(goDir, "a.txt"), filepath.Join(goDir, "b.txt"), filepath.Join(goDir, "dest")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{filepath.Join(refDir, "a.txt"), filepath.Join(refDir, "b.txt"), filepath.Join(refDir, "dest")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Verify each link is a hard link sharing inode with its source.
+		for _, name := range []string{"a.txt", "b.txt"} {
+			goSrc, _ := os.Stat(filepath.Join(goDir, name))
+			goLink, linkErr := os.Stat(filepath.Join(goDir, "dest", name))
+			if linkErr != nil {
+				t.Errorf("hard link %q not created in dest: %v", name, linkErr)
+				continue
+			}
+			if !os.SameFile(goSrc, goLink) {
+				t.Errorf("hard link %q does not share inode with source", name)
+			}
+			goLinkInfo, _ := os.Lstat(filepath.Join(goDir, "dest", name))
+			if goLinkInfo.Mode()&os.ModeSymlink != 0 {
+				t.Errorf("expected hard link for %q, got symlink", name)
+			}
+		}
+	})
+}
+
 // TestBackupForceCombo verifies -f with --backup creates backup then replaces.
 func TestBackupForceCombo(t *testing.T) {
 	t.Parallel()
