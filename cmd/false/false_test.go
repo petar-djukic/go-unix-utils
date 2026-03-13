@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"testing"
@@ -95,6 +96,48 @@ func TestDiffHelpVersion(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestNoOutput verifies R4.3: no output is produced on stdout or stderr when
+// invoked without --help or --version. This is an explicit check beyond the
+// implicit verification provided by the differential harness in TestDiff.
+func TestNoOutput(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"no_args", nil},
+		{"single_arg", []string{"foo"}},
+		{"multiple_args", []string{"foo", "bar", "baz"}},
+		{"flag_like_args", []string{"--bar", "-x", "--unknown=value"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.Command(goBin, tc.args...)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			// false always exits 1; ignore the exit error.
+			_ = cmd.Run() // best-effort: exit 1 is expected, not an error condition
+
+			// R4.3: stdout must be empty.
+			if stdout.Len() != 0 {
+				t.Errorf("expected empty stdout, got %q", stdout.Bytes())
+			}
+			// R4.3: stderr must be empty.
+			if stderr.Len() != 0 {
+				t.Errorf("expected empty stderr, got %q", stderr.Bytes())
+			}
+		})
+	}
 }
 
 // TestWriteError verifies R2.3: exit 1 when a write error occurs during

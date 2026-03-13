@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd014-false R1.1–R1.3, R2.1–R2.3, R3.1–R3.2, R4.1–R4.2
+// Implements: prd014-false R1.1–R1.3, R2.1–R2.3, R3.1–R3.2, R4.1–R4.3
 package main
 
 import (
