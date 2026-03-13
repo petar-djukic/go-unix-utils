@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.8 (differential tests)
 package main
 
 import (
@@ -2166,4 +2166,148 @@ func TestDiffSIGPIPE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("R4.4: ls piped to head should exit 0, got error: %v\noutput: %s", err, out)
 	}
+}
+
+// TestDiffNumericIDsImpliesLong exercises R4.6: -n implies -l even without explicit -l.
+func TestDiffNumericIDsImpliesLong(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R4.6: -n without -l still produces long format with numeric UID/GID.
+		{
+			Name:      "numeric_ids_implies_long",
+			Args:      []string{"-n", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R4.6: -n -1 — -n implies -l, and per GNU ls, -1 does not override -l.
+		{
+			Name:      "numeric_ids_with_single",
+			Args:      []string{"-n", "-1", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFormatFlagInteractions exercises R4.7: -C/-x are mutually exclusive with -l/-1,
+// last format flag wins.
+func TestDiffFormatFlagInteractions(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R4.7: -C then -l: long format wins.
+		{
+			Name:      "r47_columns_then_long",
+			Args:      []string{"-C", "-l", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R4.7: -l then -C: columns wins.
+		{
+			Name: "r47_long_then_columns",
+			Args: []string{"-l", "-C", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -x then -l: long format wins.
+		{
+			Name:      "r47_horizontal_then_long",
+			Args:      []string{"-x", "-l", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R4.7: -l then -x: horizontal wins.
+		{
+			Name: "r47_long_then_horizontal",
+			Args: []string{"-l", "-x", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -1 then -C: columns wins.
+		{
+			Name: "r47_single_then_columns",
+			Args: []string{"-1", "-C", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -C then -1: single wins.
+		{
+			Name: "r47_columns_then_single",
+			Args: []string{"-C", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveLongTotal exercises R4.8: -R with -l produces "total N" block line
+// for each subdirectory listing.
+func TestDiffRecursiveLongTotal(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// Create nested directory structure with known file sizes.
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "topfile"), 100)
+
+	sub1 := filepath.Join(dir, "adir")
+	if err := os.Mkdir(sub1, 0o755); err != nil {
+		t.Fatalf("mkdir adir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub1, "inner1"), 200)
+	writeFixtureFile(t, filepath.Join(sub1, "inner2"), 300)
+
+	sub2 := filepath.Join(dir, "bdir")
+	if err := os.Mkdir(sub2, 0o755); err != nil {
+		t.Fatalf("mkdir bdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub2, "deep1"), 400)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R4.8: -lR produces "total N" for each subdirectory.
+		{
+			Name:      "recursive_long_total_per_subdir",
+			Args:      []string{"-lR", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R4.8: -lRh produces human-readable "total" per subdirectory.
+		{
+			Name:      "recursive_long_human_total",
+			Args:      []string{"-lRh", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

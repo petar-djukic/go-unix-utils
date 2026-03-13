@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.8
 package main
 
 import (
@@ -14,10 +14,19 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+// cachedTermWidth holds the current terminal width, updated by the SIGWINCH
+// handler registered via pkg/sys.OnTerminalResize.
+// R4.5: allows ls to adapt column layout if the terminal is resized.
+var (
+	cachedTermWidth int
+	termWidthMu     sync.Mutex
 )
 
 // defaultTermWidth is used for multi-column output when the terminal width
@@ -83,6 +92,22 @@ type lsOptions struct {
 func main() {
 	// R1.4 / D5: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.5: install SIGWINCH handler to update terminal width on resize.
+	if tw, err := sys.TerminalWidth(); err == nil {
+		termWidthMu.Lock()
+		cachedTermWidth = tw
+		termWidthMu.Unlock()
+	} else {
+		termWidthMu.Lock()
+		cachedTermWidth = defaultTermWidth
+		termWidthMu.Unlock()
+	}
+	sys.OnTerminalResize(func(width int) {
+		termWidthMu.Lock()
+		cachedTermWidth = width
+		termWidthMu.Unlock()
+	})
 
 	args := os.Args[1:]
 
@@ -543,9 +568,8 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		names := extractPrefixedNames(items, opts)
 		termWidth := defaultTermWidth
 		if isTTY {
-			if tw, err := sys.TerminalWidth(); err == nil {
-				termWidth = tw
-			}
+			// R4.5: use cached terminal width (updated by SIGWINCH handler).
+			termWidth = getTermWidth()
 		}
 		printColumns(names, termWidth)
 	case formatHorizontal:
@@ -553,9 +577,8 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		names := extractPrefixedNames(items, opts)
 		termWidth := defaultTermWidth
 		if isTTY {
-			if tw, err := sys.TerminalWidth(); err == nil {
-				termWidth = tw
-			}
+			// R4.5: use cached terminal width (updated by SIGWINCH handler).
+			termWidth = getTermWidth()
 		}
 		printHorizontalColumns(names, termWidth)
 	default:
@@ -569,10 +592,8 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 			return
 		}
 		// R1.1 / D3: multi-column output using pkg/format.Columns.
-		termWidth, err := sys.TerminalWidth()
-		if err != nil {
-			termWidth = defaultTermWidth
-		}
+		// R4.5: use cached terminal width (updated by SIGWINCH handler).
+		termWidth := getTermWidth()
 		printColumns(names, termWidth)
 	}
 }
@@ -843,6 +864,18 @@ func formatMtime(t time.Time) string {
 		return t.Format("Jan _2 15:04")
 	}
 	return t.Format("Jan _2  2006")
+}
+
+// getTermWidth returns the current cached terminal width.
+// R4.5: the width is updated by the SIGWINCH handler.
+func getTermWidth() int {
+	termWidthMu.Lock()
+	w := cachedTermWidth
+	termWidthMu.Unlock()
+	if w <= 0 {
+		return defaultTermWidth
+	}
+	return w
 }
 
 // columnSep is the separator between columns, matching GNU ls (two spaces).
