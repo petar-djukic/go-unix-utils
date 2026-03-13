@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4 (differential tests)
+// Implements: prd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4 (differential tests)
 package main
 
 import (
@@ -80,6 +80,11 @@ func TestDiff(t *testing.T) {
 	allCommon2 := writeTestFile(t, tmpDir, "allcommon2.txt", "a\nb\nc\n")
 	multiDup1 := writeTestFile(t, tmpDir, "multidup1.txt", "a\na\nb\n")
 	multiDup2 := writeTestFile(t, tmpDir, "multidup2.txt", "a\nb\nb\n")
+	// R3.1, R3.2, R3.3: Unsorted files for order-checking tests.
+	unsorted1 := writeTestFile(t, tmpDir, "unsorted1.txt", "b\na\nc\n")
+	unsorted2 := writeTestFile(t, tmpDir, "unsorted2.txt", "c\na\nb\n")
+	sorted1 := writeTestFile(t, tmpDir, "sorted1.txt", "a\nb\nc\n")
+	sorted2 := writeTestFile(t, tmpDir, "sorted2.txt", "a\nb\nc\n")
 
 	tests := []testutils.DiffTest{
 		// R1.1, R1.2: Three-column output with sorted files.
@@ -253,6 +258,73 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "suppress_col3_file1_empty",
 			Args: []string{"-3", emptyFile, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: Default order checking — warning on unsorted file1.
+		{
+			Name:      "default_order_unsorted_file1",
+			Args:      []string{unsorted1, sorted2},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.1: Default order checking — warning on unsorted file2.
+		{
+			Name:      "default_order_unsorted_file2",
+			Args:      []string{sorted1, unsorted2},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.1: Default order checking — sorted files produce no warning.
+		{
+			Name: "default_order_sorted",
+			Args: []string{sorted1, sorted2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: --check-order makes unsorted input fatal.
+		{
+			Name:      "check_order_unsorted",
+			Args:      []string{"--check-order", unsorted1, sorted2},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: --check-order with sorted files succeeds.
+		{
+			Name: "check_order_sorted",
+			Args: []string{"--check-order", sorted1, sorted2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --nocheck-order disables sorting check.
+		{
+			Name:      "nocheck_order_unsorted",
+			Args:      []string{"--nocheck-order", unsorted1, unsorted2},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.4: --output-delimiter replaces tab.
+		{
+			Name: "output_delimiter_pipe",
+			Args: []string{"--output-delimiter=|", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --output-delimiter with suppressed columns.
+		{
+			Name: "output_delimiter_with_suppress",
+			Args: []string{"--output-delimiter=,", "-1", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --output-delimiter with empty string.
+		{
+			Name: "output_delimiter_empty",
+			Args: []string{"--output-delimiter=", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --output-delimiter with multi-char string.
+		{
+			Name: "output_delimiter_multi",
+			Args: []string{"--output-delimiter=<=>", file1, file2},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
