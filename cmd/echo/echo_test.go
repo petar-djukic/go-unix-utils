@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/echo against gecho.
-// Implements: prd020-echo R4.1, R4.2, R4.3 (R1.1-R1.4, R2.1-R2.4)
+// Implements: prd020-echo R4.1, R4.2, R4.3 (R1.1-R1.4, R2.1-R2.4, R3.1, R3.2, R3.3)
 package main
 
 import (
@@ -235,6 +235,34 @@ func TestDiff(t *testing.T) {
 			Name: "unknown escape literal",
 			Args: []string{"-e", `\z`},
 			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: Successful output exits 0.
+		{
+			Name:     "exit 0 on success",
+			Args:     []string{"hello"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: Successful output with -n exits 0.
+		{
+			Name:     "exit 0 on success with n flag",
+			Args:     []string{"-n", "hello"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: Successful output with -e exits 0.
+		{
+			Name:     "exit 0 on success with e flag",
+			Args:     []string{"-e", `hello\nworld`},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: No arguments exits 0.
+		{
+			Name:     "exit 0 no arguments",
+			Args:     []string{},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
 		},
 	}
 
