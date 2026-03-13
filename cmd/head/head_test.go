@@ -78,6 +78,12 @@ func TestDiff(t *testing.T) {
 	// Non-existent file for error tests.
 	missing := filepath.Join(dir, "nonexistent.txt")
 
+	// R3.2: unreadable file for permission-denied tests.
+	unreadable := filepath.Join(dir, "noperm.txt")
+	if err := os.WriteFile(unreadable, []byte("secret\n"), 0o000); err != nil {
+		t.Fatalf("writing noperm.txt: %v", err)
+	}
+
 	tests := []testutils.DiffTest{
 		// R1.1: default 10 lines from stdin.
 		{
@@ -285,6 +291,55 @@ func TestDiff(t *testing.T) {
 			Name:  "empty_stdin",
 			Stdin: []byte{},
 			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.1: nonexistent file — error to stderr, exit 1.
+		{
+			Name:      "r3.1_nonexistent_file_error",
+			Args:      []string{missing},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+		// R3.2: unreadable file (permission denied) — error to stderr, exit 1.
+		{
+			Name:      "r3.2_permission_denied",
+			Args:      []string{unreadable},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+		// R3.3: mixed valid and invalid files — processes valid, errors for invalid, exit 1.
+		{
+			Name:      "r3.3_mixed_valid_invalid",
+			Args:      []string{fiveLines, missing, threeLines},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+		// R3.3: valid file then unreadable file — exit 1.
+		{
+			Name:      "r3.3_valid_then_unreadable",
+			Args:      []string{fiveLines, unreadable},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+		// R3.3: unreadable file then valid file — exit 1, continues to valid.
+		{
+			Name:      "r3.3_unreadable_then_valid",
+			Args:      []string{unreadable, fiveLines},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+		// R3.4: multiple nonexistent files — all errors, exit 1.
+		{
+			Name:      "r3.4_multiple_nonexistent",
+			Args:      []string{missing, filepath.Join(dir, "also_missing.txt")},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
 		},
 	}
 

@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -132,12 +133,17 @@ func quote(s string) string {
 
 // openInput opens name for reading and returns the reader and an optional closer.
 // R1.4: "-" returns stdin with no closer.
+// R3.1, R3.2: formats errors to match GNU head: cannot open 'NAME' for reading: REASON.
 func openInput(name string) (io.Reader, io.Closer, error) {
 	if name == "-" {
 		return os.Stdin, nil, nil
 	}
 	f, err := os.Open(name)
 	if err != nil {
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			return nil, nil, fmt.Errorf("cannot open '%s' for reading: %v", name, pathErr.Err)
+		}
 		return nil, nil, err
 	}
 	return f, f, nil
