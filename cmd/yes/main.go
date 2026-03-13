@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd012-yes R1.1–R1.4
+// Implements: prd012-yes R1.1–R1.4, R2.1–R2.2, R3.1–R3.2
 package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 
@@ -13,8 +14,26 @@ import (
 )
 
 func main() {
-	// R1.4, D1: install SIGPIPE handler before any I/O.
+	// R3.1, D2: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
+
+	// R2.1, R2.2: only the first argument is checked for --help/--version.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--help":
+			// R2.2: print usage to stdout and exit 0.
+			if _, err := fmt.Print(helpText); err != nil {
+				os.Exit(1)
+			}
+			return
+		case "--version":
+			// R2.1: print version to stdout and exit 0.
+			if _, err := fmt.Println("yes (go-unix-utils) 0.1"); err != nil {
+				os.Exit(1)
+			}
+			return
+		}
+	}
 
 	// R1.1: default output is "y".
 	line := "y"
@@ -49,3 +68,12 @@ func main() {
 		}
 	}
 }
+
+// helpText is the usage message printed by --help.
+const helpText = `Usage: yes [STRING]...
+  or:  yes OPTION
+Repeatedly output a line with all specified STRING(s), or 'y'.
+
+      --help     display this help and exit
+      --version  output version information and exit
+`
