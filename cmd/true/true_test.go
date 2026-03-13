@@ -5,6 +5,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 
@@ -52,4 +53,73 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelpVersion verifies R2.1 and R2.2: --help and --version exit 0.
+// Output content differs between implementations, so stdout/stderr are
+// normalized to empty; only exit codes are compared.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// --help and --version produce different output between implementations,
+	// so we only compare exit codes by normalizing stdout/stderr to empty.
+	clearOutput := func(b []byte) []byte { return nil }
+
+	tests := []testutils.DiffTest{
+		// R2.1: --help exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R2.2: --version exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestWriteError verifies R2.3: exit 1 when a write error occurs during
+// --help or --version output.
+func TestWriteError(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	for _, flag := range []string{"--help", "--version"} {
+		t.Run(flag, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a pipe and close the read end before the binary writes,
+			// causing a write error on stdout.
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("creating pipe: %v", err)
+			}
+			r.Close() // close read end so writes to w fail
+
+			cmd := exec.Command(goBin, flag)
+			cmd.Stdout = w
+			cmd.Stderr = nil
+
+			// R2.3: the binary should exit non-zero due to write error or SIGPIPE.
+			runErr := cmd.Run()
+			w.Close() // best-effort cleanup
+
+			if runErr == nil {
+				t.Fatalf("expected non-zero exit for %s when stdout is broken, got exit 0", flag)
+			}
+		})
+	}
 }
