@@ -199,6 +199,34 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
+		// --- R3.1: Complement mode (--complement) with -c ---
+		{
+			// R3.1, R3.2: --complement with -c inverts character selection.
+			Name:  "complement_chars",
+			Args:  []string{"--complement", "-c2-4"},
+			Stdin: []byte("abcdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.2: --complement combined with -s and -f ---
+		{
+			// R3.2: --complement with -f and -s suppresses no-delim lines,
+			// then inverts field selection on lines that have the delimiter.
+			Name:  "complement_fields_with_suppress",
+			Args:  []string{"--complement", "-d:", "-s", "-f2"},
+			Stdin: []byte("a:b:c\nno-delim\nx:y:z\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.3: --complement with -f and --output-delimiter ---
+		{
+			// R3.3: Complement fields output in original order with custom output delimiter.
+			Name:  "complement_fields_output_delim",
+			Args:  []string{"--complement", "-d:", "--output-delimiter=,", "-f2"},
+			Stdin: []byte("a:b:c:d\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
 		// --- R2.2: -d requires -f ---
 		{
 			// AC5: -d without -f produces an error.
