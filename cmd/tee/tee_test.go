@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/tee.
 //
-// Implements: prd017-tee R4.1, R4.3
+// Implements: prd017-tee R4.1, R4.2, R4.3
 package main
 
 import (
@@ -72,6 +72,53 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeTeeErrors},
+		},
+		// R1.5: output order preserved — passthrough with data.
+		{
+			Name:     "r1.5_output_order_preserved",
+			Stdin:    []byte("first\nsecond\nthird\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: -a flag accepted — passthrough still works with append flag.
+		{
+			Name:     "r2.1_append_flag_passthrough",
+			Args:     []string{"-a"},
+			Stdin:    []byte("append test\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: --append long flag accepted.
+		{
+			Name:     "r2.1_append_long_flag_passthrough",
+			Args:     []string{"--append"},
+			Stdin:    []byte("long append\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.2: -i flag accepted — passthrough with ignore-interrupts.
+		{
+			Name:     "r2.2_ignore_interrupts_passthrough",
+			Args:     []string{"-i"},
+			Stdin:    []byte("ignore int test\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.3: -a and -i combined — both flags work together.
+		{
+			Name:     "r2.3_combined_ai_flags",
+			Args:     []string{"-ai"},
+			Stdin:    []byte("combined\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.3: -i and -a as separate args.
+		{
+			Name:     "r2.3_separate_i_a_flags",
+			Args:     []string{"-i", "-a"},
+			Stdin:    []byte("separate flags\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
 		},
 	}
 
@@ -153,6 +200,105 @@ func TestFileOutput(t *testing.T) {
 			t.Errorf("expected exit 0, got %d", exitCode)
 		}
 		assertFileContent(t, newFile, input)
+	})
+
+	// R2.1: append mode preserves existing content and appends new data.
+	t.Run("append_mode_preserves_existing", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		appendFile := filepath.Join(outDir, "append.txt")
+		existing := []byte("old\n")
+		if err := os.WriteFile(appendFile, existing, 0o644); err != nil {
+			t.Fatalf("writing existing file: %v", err)
+		}
+		input := []byte("new\n")
+
+		stdout, exitCode := runGoBin(t, goBin, []string{"-a", appendFile}, input)
+		if exitCode != 0 {
+			t.Errorf("expected exit 0, got %d", exitCode)
+		}
+		if !bytes.Equal(stdout, input) {
+			t.Errorf("stdout mismatch: got %q, want %q", stdout, input)
+		}
+		// R2.1: file should contain old + new content.
+		expected := append(existing, input...)
+		assertFileContent(t, appendFile, expected)
+	})
+
+	// R2.1: append mode with --append long flag.
+	t.Run("append_long_flag", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		appendFile := filepath.Join(outDir, "append-long.txt")
+		existing := []byte("first\n")
+		if err := os.WriteFile(appendFile, existing, 0o644); err != nil {
+			t.Fatalf("writing existing file: %v", err)
+		}
+		input := []byte("second\n")
+
+		_, exitCode := runGoBin(t, goBin, []string{"--append", appendFile}, input)
+		if exitCode != 0 {
+			t.Errorf("expected exit 0, got %d", exitCode)
+		}
+		expected := append(existing, input...)
+		assertFileContent(t, appendFile, expected)
+	})
+
+	// R2.1: append mode creates file when it does not exist.
+	t.Run("append_mode_creates_new_file", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		newFile := filepath.Join(outDir, "new-append.txt")
+		input := []byte("appended to new\n")
+
+		_, exitCode := runGoBin(t, goBin, []string{"-a", newFile}, input)
+		if exitCode != 0 {
+			t.Errorf("expected exit 0, got %d", exitCode)
+		}
+		assertFileContent(t, newFile, input)
+	})
+
+	// R2.1: append mode with multiple files.
+	t.Run("append_mode_multiple_files", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		fileA := filepath.Join(outDir, "a.txt")
+		fileB := filepath.Join(outDir, "b.txt")
+		existingA := []byte("aaa\n")
+		existingB := []byte("bbb\n")
+		if err := os.WriteFile(fileA, existingA, 0o644); err != nil {
+			t.Fatalf("writing file A: %v", err)
+		}
+		if err := os.WriteFile(fileB, existingB, 0o644); err != nil {
+			t.Fatalf("writing file B: %v", err)
+		}
+		input := []byte("more\n")
+
+		_, exitCode := runGoBin(t, goBin, []string{"-a", fileA, fileB}, input)
+		if exitCode != 0 {
+			t.Errorf("expected exit 0, got %d", exitCode)
+		}
+		assertFileContent(t, fileA, append(existingA, input...))
+		assertFileContent(t, fileB, append(existingB, input...))
+	})
+
+	// R2.3: combined -ai flag preserves append behavior.
+	t.Run("combined_ai_append_file", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		appendFile := filepath.Join(outDir, "ai.txt")
+		existing := []byte("existing\n")
+		if err := os.WriteFile(appendFile, existing, 0o644); err != nil {
+			t.Fatalf("writing existing file: %v", err)
+		}
+		input := []byte("added\n")
+
+		_, exitCode := runGoBin(t, goBin, []string{"-ai", appendFile}, input)
+		if exitCode != 0 {
+			t.Errorf("expected exit 0, got %d", exitCode)
+		}
+		expected := append(existing, input...)
+		assertFileContent(t, appendFile, expected)
 	})
 }
 
