@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc against gwc (GNU wc from Homebrew coreutils).
-// Implements: prd005-wc R1.1–R1.4 differential testing.
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6 differential testing.
 package main
 
 import (
@@ -49,7 +49,12 @@ func TestDiff(t *testing.T) {
 	binaryFile := filepath.Join(tmpDir, "binary.dat")
 	writeTestFileBytes(t, binaryFile, []byte{0x00, 0x01, 0xFF, 0x0A, 0x41, 0x42})
 
+	// tabfile: contains tabs for -L testing
+	tabFile := filepath.Join(tmpDir, "tabs.txt")
+	writeTestFile(t, tabFile, "a\tb\n12345678c\n")
+
 	tests := []testutils.DiffTest{
+		// === R1.1–R1.4: default behavior (no flags) ===
 		// R1.1, R1.2: stdin with default flags
 		{
 			Name:  "stdin_default",
@@ -145,6 +150,193 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+
+		// === R2.1: -l flag (line count only) ===
+		{
+			Name:  "flag_l_stdin",
+			Args:  []string{"-l"},
+			Stdin: []byte("foo\nbar\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_l_file",
+			Args: []string{"-l", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R2.2: -w flag (word count only) ===
+		{
+			Name:  "flag_w_stdin",
+			Args:  []string{"-w"},
+			Stdin: []byte("foo bar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_w_file",
+			Args: []string{"-w", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R2.3: -c flag (byte count only) ===
+		{
+			Name:  "flag_c_stdin",
+			Args:  []string{"-c"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_c_file",
+			Args: []string{"-c", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R2.4: -m flag (char count) ===
+		{
+			Name:  "flag_m_stdin",
+			Args:  []string{"-m"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_m_file",
+			Args: []string{"-m", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R2.3: -c and -m together (-m takes precedence) ===
+		{
+			Name:  "flag_cm_stdin",
+			Args:  []string{"-c", "-m"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_mc_stdin",
+			Args:  []string{"-m", "-c"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R2.5: -L flag (max line length) ===
+		{
+			Name:  "flag_L_stdin",
+			Args:  []string{"-L"},
+			Stdin: []byte("short\na longer line\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_L_file",
+			Args: []string{"-L", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_L_tabs",
+			Args: []string{"-L", tabFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_L_no_trailing_newline",
+			Args:  []string{"-L"},
+			Stdin: []byte("no newline"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R2.6: combined flags — column order is lines, words, chars/bytes, max-line-length ===
+		{
+			Name:  "flag_lw_stdin",
+			Args:  []string{"-l", "-w"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_wl_stdin",
+			Args:  []string{"-w", "-l"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_lc_stdin",
+			Args:  []string{"-l", "-c"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_lwc_stdin",
+			Args:  []string{"-l", "-w", "-c"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Combined short flags (-lw as single arg)
+		{
+			Name:  "flag_combined_lw",
+			Args:  []string{"-lw"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_combined_lwc",
+			Args:  []string{"-lwc"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// -L combined with other flags
+		{
+			Name:  "flag_lL_stdin",
+			Args:  []string{"-l", "-L"},
+			Stdin: []byte("short\na longer line\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "flag_lwcL_stdin",
+			Args:  []string{"-l", "-w", "-c", "-L"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R2.3: multi-file with selection flags ===
+		{
+			Name: "flag_l_multi_file",
+			Args: []string{"-l", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_w_multi_file",
+			Args: []string{"-w", file1, file2, emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_lw_multi_file",
+			Args: []string{"-lw", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_L_multi_file",
+			Args: []string{"-L", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_lwcL_multi_file",
+			Args: []string{"-lwcL", file1, file2, emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R4.3: empty input with flags ===
+		{
+			Name:  "flag_l_empty_stdin",
+			Args:  []string{"-l"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_c_empty_file",
+			Args: []string{"-c", emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "flag_L_empty_file",
+			Args: []string{"-L", emptyFile},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
