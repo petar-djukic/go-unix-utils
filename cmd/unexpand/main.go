@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/unexpand implements the unexpand (convert spaces to tabs) command.
-// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3
+// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4
 package main
 
 import (
@@ -33,6 +33,22 @@ type tabConfig struct {
 func main() {
 	// R4.4: Install SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.4: Handle --version and --help before flag parsing so they
+	// take precedence and exit 0, matching GNU unexpand behavior.
+	for _, arg := range os.Args[1:] {
+		if arg == "--" {
+			break
+		}
+		if arg == "--version" {
+			fmt.Println("unexpand (go-unix-utils)")
+			os.Exit(0)
+		}
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
+	}
 
 	tc := tabConfig{uniform: true, interval: defaultTabStop}
 	allMode := false
@@ -358,4 +374,22 @@ func writeSpaces(w *bufio.Writer, n int) error {
 		}
 	}
 	return nil
+}
+
+// printHelp writes usage information to stdout, matching the format of
+// GNU unexpand --help output.
+// R4.4: --help prints usage to stdout and exits 0.
+func printHelp() {
+	fmt.Print(`Usage: unexpand [OPTION]... [FILE]...
+Convert spaces to tabs, writing to standard output.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -a, --all              convert all whitespace, instead of just initial whitespace
+      --first-only       convert only leading sequences of whitespace (overrides -a)
+  -t, --tabs=N           have tabs N characters apart instead of 8 (enables -a)
+  -t, --tabs=LIST        use comma separated list of tab positions (enables -a)
+      --help             display this help and exit
+      --version          output version information and exit
+`)
 }

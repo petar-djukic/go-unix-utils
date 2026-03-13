@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3
+// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 // R1.1-R1.4: Default leading-space-to-tab conversion with tab stop 8.
 // R2.1-R2.3: -a flag for all-whitespace conversion.
 // R3.1-R3.3: -t flag for custom tab stops; -t implies -a.
+// R4.1-R4.4: Error handling, exit codes, edge cases, version/help.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -261,9 +262,11 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
-		// === Error cases ===
+		// === R4.1-R4.4: Error handling, exit codes, edge cases ===
+
+		// --- Error conditions (R4.1, R4.2) ---
 		{
-			// Exit 1 on nonexistent file; normalize stderr (format differs).
+			// R4.2: Exit 1 on nonexistent file; normalize stderr (format differs).
 			Name:     "exit_1_nonexistent_file",
 			Args:     []string{"/nonexistent/unexpand_test_file"},
 			ExitCode: 1,
@@ -273,7 +276,7 @@ func TestDiff(t *testing.T) {
 			},
 		},
 		{
-			// Processing continues after error for remaining files.
+			// R4.2: Processing continues after error for remaining files.
 			Name:     "continues_after_error",
 			Args:     []string{"/nonexistent/unexpand_test_file", "-"},
 			Stdin:    []byte("        text\n"),
@@ -281,6 +284,94 @@ func TestDiff(t *testing.T) {
 			Env:      []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{
 				clearStderr,
+			},
+		},
+		{
+			// R4.1: Invalid option exits 1.
+			Name:     "invalid_option",
+			Args:     []string{"-Z"},
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+
+		// --- Edge cases (R4.3) ---
+		{
+			// R4.3: Empty input produces empty output and exit 0.
+			Name:  "empty_stdin",
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Binary data passes through unchanged.
+			Name:  "binary_data_passthrough",
+			Stdin: []byte{0x00, 0x01, 0x02, 0xff, 0xfe, 0x0a},
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Binary data with -a passes through unchanged.
+			Name:  "binary_data_passthrough_a",
+			Args:  []string{"-a"},
+			Stdin: []byte{0x00, 0x01, 0x02, 0xff, 0xfe, 0x0a},
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Lines with no convertible spaces pass through.
+			Name:  "no_convertible_spaces",
+			Stdin: []byte("abcdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Line with only tabs passes through unchanged.
+			Name:  "only_tabs",
+			Stdin: []byte("\t\t\ttext\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Mixed tab/space sequences in leading whitespace.
+			Name:  "mixed_tab_space_leading",
+			Stdin: []byte("\t    \t  text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Mixed tab/space sequences with -a.
+			Name:  "mixed_tab_space_a_flag",
+			Args:  []string{"-a"},
+			Stdin: []byte("text\t    \tnext\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Single newline produces single newline.
+			Name:  "single_newline",
+			Stdin: []byte("\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: Multiple empty lines.
+			Name:  "multiple_empty_lines",
+			Stdin: []byte("\n\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- Version and help (R4.4) ---
+		{
+			// R4.4: --version prints version info to stdout and exits 0.
+			Name: "version_flag",
+			Args: []string{"--version"},
+			Env:  []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				normalizeVersionOutput,
+			},
+		},
+		{
+			// R4.4: --help prints usage to stdout and exits 0.
+			Name: "help_flag",
+			Args: []string{"--help"},
+			Env:  []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStdout,
 			},
 		},
 	}
@@ -293,4 +384,21 @@ func TestDiff(t *testing.T) {
 // GNU unexpand and the Go implementation but exit code and stdout must still match.
 func clearStderr(b []byte) []byte {
 	return nil
+}
+
+// clearStdout is a NormalizeFunc that replaces any stdout with empty bytes.
+// Used for --help tests where help text format differs between implementations
+// but exit code must match.
+func clearStdout(b []byte) []byte {
+	return nil
+}
+
+// normalizeVersionOutput replaces version output with a fixed string so both
+// GNU and Go implementations compare equal. Both print version info to stdout
+// and exit 0; the exact text differs.
+func normalizeVersionOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("version\n")
+	}
+	return b
 }
