@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd034-mkdir R1.1–R1.4
+// Implements: prd034-mkdir R1.1–R1.4, R2.1–R2.3
 package main
 
 import (
@@ -22,6 +22,8 @@ func main() {
 	args := os.Args[1:]
 
 	var operands []string
+	// R2.1: -p / --parents flag for recursive directory creation.
+	parents := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -32,6 +34,8 @@ func main() {
 		case arg == "--version":
 			printVersion()
 			return
+		case arg == "--parents":
+			parents = true
 		case arg == "--":
 			// End of flags; remaining args are operands.
 			operands = append(operands, args[i+1:]...)
@@ -42,10 +46,17 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
 			os.Exit(1)
 		case strings.HasPrefix(arg, "-") && len(arg) > 1:
-			// Unrecognized short option.
-			fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, arg[1])
-			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
-			os.Exit(1)
+			// Parse bundled short options (e.g., -p).
+			for _, ch := range arg[1:] {
+				switch ch {
+				case 'p':
+					parents = true
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, ch)
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+					os.Exit(1)
+				}
+			}
 		default:
 			operands = append(operands, arg)
 		}
@@ -60,13 +71,23 @@ func main() {
 
 	exitCode := 0
 	for _, dir := range operands {
-		// R1.1: create directory with default permissions (0777 modified by umask).
-		// R1.2: process each operand independently.
-		// R1.3: os.Mkdir returns an error when the parent does not exist.
-		// R1.3 (task R1.2): os.Mkdir returns an error when the target already exists.
-		if err := os.Mkdir(dir, 0o777); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: cannot create directory '%s': %s\n", programName, dir, errMessage(err))
-			exitCode = 1
+		if parents {
+			// R2.1: create intermediate parent directories as needed.
+			// R2.2: no error when target already exists with -p.
+			// R2.3: no error when intermediate directories already exist with -p.
+			if err := os.MkdirAll(dir, 0o777); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: cannot create directory '%s': %s\n", programName, dir, errMessage(err))
+				exitCode = 1
+			}
+		} else {
+			// R1.1: create directory with default permissions (0777 modified by umask).
+			// R1.2: process each operand independently.
+			// R1.3: os.Mkdir returns an error when the parent does not exist.
+			// R1.3 (task R1.2): os.Mkdir returns an error when the target already exists.
+			if err := os.Mkdir(dir, 0o777); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: cannot create directory '%s': %s\n", programName, dir, errMessage(err))
+				exitCode = 1
+			}
 		}
 	}
 
@@ -89,6 +110,7 @@ func printHelp() {
 	fmt.Print(`Usage: mkdir [OPTION]... DIRECTORY...
 Create the DIRECTORY(ies), if they do not already exist.
 
+  -p, --parents  no error if existing, make parent directories as needed
       --help     display this help and exit
       --version  output version information and exit
 `)
