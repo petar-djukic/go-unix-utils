@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/md5sum.
 //
-// Implements: prd030-md5sum R1.1–R1.4
+// Implements: prd030-md5sum R1.1–R1.4, R2.1–R2.4
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -184,6 +185,201 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeMd5sumErrors},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCheck runs differential tests for check mode (R2.1–R2.4).
+func TestDiffCheck(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(binGmd5sum)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", binGmd5sum, err)
+	}
+
+	dir := t.TempDir()
+
+	// Create a test file with known content.
+	testFile := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("writing test.txt: %v", err)
+	}
+
+	// Compute correct hash via the reference binary to build checksum files.
+	// hello\n => b1946ac92492d2347c6235b4d2611184
+	correctHash := "b1946ac92492d2347c6235b4d2611184"
+
+	// R2.1: valid checksum file in text mode format (two spaces).
+	validCheckFile := filepath.Join(dir, "valid.md5")
+	if err := os.WriteFile(validCheckFile, []byte(correctHash+"  "+testFile+"\n"), 0o644); err != nil {
+		t.Fatalf("writing valid.md5: %v", err)
+	}
+
+	// R2.1: valid checksum file in binary mode format (space + asterisk).
+	binaryCheckFile := filepath.Join(dir, "binary.md5")
+	if err := os.WriteFile(binaryCheckFile, []byte(correctHash+" *"+testFile+"\n"), 0o644); err != nil {
+		t.Fatalf("writing binary.md5: %v", err)
+	}
+
+	// R2.1: valid checksum in BSD tag format.
+	bsdCheckFile := filepath.Join(dir, "bsd.md5")
+	if err := os.WriteFile(bsdCheckFile, []byte("MD5 ("+testFile+") = "+correctHash+"\n"), 0o644); err != nil {
+		t.Fatalf("writing bsd.md5: %v", err)
+	}
+
+	// R2.2: checksum file with a wrong hash (mismatch).
+	badHash := "0000000000000000000000000000dead"
+	failCheckFile := filepath.Join(dir, "fail.md5")
+	if err := os.WriteFile(failCheckFile, []byte(badHash+"  "+testFile+"\n"), 0o644); err != nil {
+		t.Fatalf("writing fail.md5: %v", err)
+	}
+
+	// R2.2: mixed valid and invalid checksums.
+	secondFile := filepath.Join(dir, "second.txt")
+	if err := os.WriteFile(secondFile, []byte("world\n"), 0o644); err != nil {
+		t.Fatalf("writing second.txt: %v", err)
+	}
+	// world\n => c0e6549d15ec25f21a80e1f979cd1ff4 -- but use a bad hash for it
+	mixedCheckFile := filepath.Join(dir, "mixed.md5")
+	mixedContent := correctHash + "  " + testFile + "\n" + badHash + "  " + secondFile + "\n"
+	if err := os.WriteFile(mixedCheckFile, []byte(mixedContent), 0o644); err != nil {
+		t.Fatalf("writing mixed.md5: %v", err)
+	}
+
+	// R2.3: checksum file with malformed lines.
+	malformedCheckFile := filepath.Join(dir, "malformed.md5")
+	malformedContent := "this is not a valid checksum line\n" + correctHash + "  " + testFile + "\n"
+	if err := os.WriteFile(malformedCheckFile, []byte(malformedContent), 0o644); err != nil {
+		t.Fatalf("writing malformed.md5: %v", err)
+	}
+
+	// All-malformed checksum file.
+	allMalformedFile := filepath.Join(dir, "all_malformed.md5")
+	if err := os.WriteFile(allMalformedFile, []byte("garbage line 1\ngarbage line 2\n"), 0o644); err != nil {
+		t.Fatalf("writing all_malformed.md5: %v", err)
+	}
+
+	// Checksum file referencing a non-existent file.
+	missingRefFile := filepath.Join(dir, "missing_ref.md5")
+	missingPath := filepath.Join(dir, "no_such_file.txt")
+	if err := os.WriteFile(missingRefFile, []byte(correctHash+"  "+missingPath+"\n"), 0o644); err != nil {
+		t.Fatalf("writing missing_ref.md5: %v", err)
+	}
+
+	// normalizeCheckErrors normalizes error messages between GNU and Go for check mode.
+	normalizeCheckErrors := func(b []byte) []byte {
+		// Normalize program name differences (gmd5sum vs md5sum).
+		re := regexp.MustCompile(`g?md5sum`)
+		b = re.ReplaceAll(b, []byte("md5sum"))
+		// Normalize error message casing (Go: "no such file or directory", GNU: "No such file or directory").
+		b = []byte(strings.ReplaceAll(string(b), "No such file or directory", "no such file or directory"))
+		return b
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.1, R2.2: valid checksum file — all OK, exit 0.
+		{
+			Name: "r2.1_check_valid_text_mode",
+			Args: []string{"-c", validCheckFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: valid checksum in binary format.
+		{
+			Name: "r2.1_check_valid_binary_mode",
+			Args: []string{"-c", binaryCheckFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: valid checksum in BSD tag format.
+		{
+			Name: "r2.1_check_valid_bsd_tag",
+			Args: []string{"-c", bsdCheckFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: mismatch — FAILED, exit 1.
+		{
+			Name:      "r2.2_check_mismatch",
+			Args:      []string{"-c", failCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.2: mixed match and mismatch — exit 1.
+		{
+			Name:      "r2.2_check_mixed",
+			Args:      []string{"-c", mixedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.3: malformed lines with --warn — valid checksums pass so exit 0.
+		{
+			Name:      "r2.3_check_malformed_with_warn",
+			Args:      []string{"-c", "--warn", malformedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.3: malformed lines without --warn — valid checksums pass so exit 0.
+		{
+			Name:      "r2.3_check_malformed_no_warn",
+			Args:      []string{"-c", malformedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.3: all malformed — exit 1.
+		{
+			Name:      "r2.3_check_all_malformed",
+			Args:      []string{"-c", allMalformedFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.4: --quiet suppresses OK lines.
+		{
+			Name: "r2.4_check_quiet_all_ok",
+			Args: []string{"-c", "--quiet", validCheckFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: --quiet with failure still shows FAILED.
+		{
+			Name:      "r2.4_check_quiet_with_failure",
+			Args:      []string{"-c", "--quiet", failCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.4: --status suppresses all output.
+		{
+			Name:      "r2.4_check_status_all_ok",
+			Args:      []string{"-c", "--status", validCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.4: --status with failure — no output, exit 1.
+		{
+			Name:      "r2.4_check_status_with_failure",
+			Args:      []string{"-c", "--status", failCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R2.1: check with stdin (pipe checksum lines via stdin).
+		{
+			Name:  "r2.1_check_stdin",
+			Args:  []string{"-c"},
+			Stdin: []byte(correctHash + "  " + testFile + "\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: missing file referenced in checksum — exit 1.
+		{
+			Name:      "r2.2_check_missing_file_ref",
+			Args:      []string{"-c", missingRefFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
 	}
 
