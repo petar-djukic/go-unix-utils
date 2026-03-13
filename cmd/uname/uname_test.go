@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd044-uname R4.1, R4.2, R4.3 (differential tests for R1.1-R1.9, R2.1, R2.2, R3.1)
+// Implements: prd044-uname R3.2, R4.1, R4.2, R4.3 (differential tests for R1.1-R1.9, R2.1, R2.2, R3.1, R3.2)
 package main
 
 import (
@@ -147,13 +147,41 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// R3.2: unknown flag — error on stderr, exit 1.
+		// R3.2: unknown short flag — error on stderr, exit 1.
 		{
 			Name:      "unknown_flag",
 			Args:      []string{"-z"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: stderrNorm,
+		},
+		// R3.2: unknown long flag — error on stderr, exit 1.
+		{
+			Name:      "unknown_long_flag",
+			Args:      []string{"--unknown"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R3.2: unknown flag mixed with valid flags — error on stderr, exit 1.
+		{
+			Name:      "unknown_flag_in_combination",
+			Args:      []string{"-sz"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.2: flags in reverse order still produce canonical order output.
+		{
+			Name: "combined_reverse_order_oms",
+			Args: []string{"-oms"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -a combined with individual flag (redundant but valid).
+		{
+			Name: "flag_a_with_s",
+			Args: []string{"-as"},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
