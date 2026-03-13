@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.11
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15
 package main
 
 import (

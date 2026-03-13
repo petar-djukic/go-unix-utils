@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.11 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15 (differential tests)
 package main
 
 import (
@@ -1790,6 +1790,219 @@ func TestDiffRecursive(t *testing.T) {
 		{
 			Name: "recursive_classify",
 			Args: []string{"-RF", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveFormatMode exercises R3.12: -R respects the current format mode.
+func TestDiffRecursiveFormatMode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// Create nested directory structure.
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "afile"), 10)
+	writeFixtureFile(t, filepath.Join(dir, "bfile"), 20)
+
+	sub := filepath.Join(dir, "cdir")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir cdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub, "inner1"), 30)
+	writeFixtureFile(t, filepath.Join(sub, "inner2"), 40)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.12: -R with -l includes "total N" per subdirectory.
+		{
+			Name:      "recursive_long_total",
+			Args:      []string{"-Rl", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.12: -R with -1 (single-column in each subdirectory).
+		{
+			Name: "recursive_single_column",
+			Args: []string{"-R1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.12: -R with -x (horizontal multi-column in each subdirectory).
+		{
+			Name: "recursive_horizontal",
+			Args: []string{"-Rx", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveNoFollowSymlinks exercises R3.13: -R must not follow symlinks to directories.
+func TestDiffRecursiveNoFollowSymlinks(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+
+	// Real subdirectory with content.
+	realDir := filepath.Join(dir, "realdir")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatalf("mkdir realdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(realDir, "realfile"), 10)
+
+	// Symlink pointing to the real directory — should NOT be recursed.
+	if err := os.Symlink("realdir", filepath.Join(dir, "symdir")); err != nil {
+		t.Fatalf("symlink symdir: %v", err)
+	}
+
+	writeFixtureFile(t, filepath.Join(dir, "topfile"), 5)
+
+	tests := []testutils.DiffTest{
+		// R3.13: symdir should appear in the listing but not be recursed into.
+		{
+			Name: "recursive_no_follow_symlink",
+			Args: []string{"-R", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveFilter exercises R3.14: -R applies filter flags (-a, -A) to subdirectories.
+func TestDiffRecursiveFilter(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+
+	// Create dotfiles in top-level.
+	writeFixtureFile(t, filepath.Join(dir, ".hidden"), 10)
+	writeFixtureFile(t, filepath.Join(dir, "visible"), 20)
+
+	// Create subdirectory with its own dotfiles.
+	sub := filepath.Join(dir, "subdir")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub, ".subhidden"), 15)
+	writeFixtureFile(t, filepath.Join(sub, "subvisible"), 25)
+
+	tests := []testutils.DiffTest{
+		// R3.14: -Ra shows dotfiles (including . and ..) in all subdirectories.
+		{
+			Name: "recursive_filter_all",
+			Args: []string{"-Ra", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -RA shows dotfiles except . and .. in all subdirectories.
+		{
+			Name: "recursive_filter_almost_all",
+			Args: []string{"-RA", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -R without -a/-A hides dotfiles in subdirectories.
+		{
+			Name: "recursive_filter_default",
+			Args: []string{"-R", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveSortOrder exercises R3.15: -R lists directories in sort order.
+func TestDiffRecursiveSortOrder(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+
+	// Create subdirectories with different mtimes for -t ordering.
+	sub1 := filepath.Join(dir, "zdir")
+	if err := os.Mkdir(sub1, 0o755); err != nil {
+		t.Fatalf("mkdir zdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub1, "file_z"), 10)
+
+	sub2 := filepath.Join(dir, "adir")
+	if err := os.Mkdir(sub2, 0o755); err != nil {
+		t.Fatalf("mkdir adir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub2, "file_a"), 20)
+
+	sub3 := filepath.Join(dir, "mdir")
+	if err := os.Mkdir(sub3, 0o755); err != nil {
+		t.Fatalf("mkdir mdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub3, "file_m"), 15)
+
+	writeFixtureFile(t, filepath.Join(dir, "topfile"), 5)
+
+	// Set different mtimes so -t produces a deterministic order.
+	now := time.Now()
+	// zdir is newest, adir is oldest.
+	if err := os.Chtimes(sub1, now, now); err != nil {
+		t.Fatalf("chtimes zdir: %v", err)
+	}
+	if err := os.Chtimes(sub2, now.Add(-2*time.Hour), now.Add(-2*time.Hour)); err != nil {
+		t.Fatalf("chtimes adir: %v", err)
+	}
+	if err := os.Chtimes(sub3, now.Add(-1*time.Hour), now.Add(-1*time.Hour)); err != nil {
+		t.Fatalf("chtimes mdir: %v", err)
+	}
+	// topfile between mdir and adir.
+	if err := os.Chtimes(filepath.Join(dir, "topfile"), now.Add(-90*time.Minute), now.Add(-90*time.Minute)); err != nil {
+		t.Fatalf("chtimes topfile: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.15: -Rt recurses into subdirectories in time-sorted order.
+		{
+			Name: "recursive_sort_time",
+			Args: []string{"-Rt", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -Rr recurses in reverse-alphabetical order.
+		{
+			Name: "recursive_sort_reverse",
+			Args: []string{"-Rr", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -RS recurses in size order.
+		{
+			Name: "recursive_sort_size",
+			Args: []string{"-RS", "-1", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
