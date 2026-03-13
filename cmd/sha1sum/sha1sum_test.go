@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sha1sum.
 //
-// Implements: prd031-sha1sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2
+// Implements: prd031-sha1sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2, R4.1–R4.3
 package main
 
 import (
@@ -539,6 +539,125 @@ func TestDiffCheck(t *testing.T) {
 			Name: "check_long_form",
 			Args: []string{"--check", validCheckFile},
 			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodes runs differential tests for exit code and SIGPIPE behavior (R4.1–R4.3).
+func TestDiffExitCodes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(binGsha1sum)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", binGsha1sum, err)
+	}
+
+	dir := t.TempDir()
+
+	// Known-content file.
+	goodFile := filepath.Join(dir, "good.txt")
+	if err := os.WriteFile(goodFile, []byte("exit code test\n"), 0o644); err != nil {
+		t.Fatalf("writing good.txt: %v", err)
+	}
+
+	secondGood := filepath.Join(dir, "good2.txt")
+	if err := os.WriteFile(secondGood, []byte("second\n"), 0o644); err != nil {
+		t.Fatalf("writing good2.txt: %v", err)
+	}
+
+	// Correct SHA-1 hash for "exit code test\n".
+	correctHash := "8b9788bca6f9fa0177240a6d901cb32c1532d846"
+
+	// Valid checksum file for --check exit 0.
+	validCheck := filepath.Join(dir, "valid_exit.sha1")
+	if err := os.WriteFile(validCheck, []byte(correctHash+"  "+goodFile+"\n"), 0o644); err != nil {
+		t.Fatalf("writing valid_exit.sha1: %v", err)
+	}
+
+	// Wrong hash for --check exit 1.
+	badHash := "0000000000000000000000000000000000000000"
+	failCheck := filepath.Join(dir, "fail_exit.sha1")
+	if err := os.WriteFile(failCheck, []byte(badHash+"  "+goodFile+"\n"), 0o644); err != nil {
+		t.Fatalf("writing fail_exit.sha1: %v", err)
+	}
+
+	// Checksum file referencing non-existent file.
+	missingRef := filepath.Join(dir, "missing_exit.sha1")
+	missingPath := filepath.Join(dir, "no_such.txt")
+	if err := os.WriteFile(missingRef, []byte(correctHash+"  "+missingPath+"\n"), 0o644); err != nil {
+		t.Fatalf("writing missing_exit.sha1: %v", err)
+	}
+
+	// Non-existent checksum file itself.
+	nonexistentCheck := filepath.Join(dir, "no_such_check.sha1")
+
+	// normalizeExitErrors normalizes error messages between GNU and Go.
+	normalizeExitErrors := func(b []byte) []byte {
+		re := regexp.MustCompile(`g?sha1sum`)
+		b = re.ReplaceAll(b, []byte("sha1sum"))
+		b = []byte(strings.ReplaceAll(string(b), "No such file or directory", "no such file or directory"))
+		return b
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 when single file processed successfully.
+		{
+			Name: "r4.1_exit_0_single_file",
+			Args: []string{goodFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.1: exit 0 when multiple files processed successfully.
+		{
+			Name: "r4.1_exit_0_multiple_files",
+			Args: []string{goodFile, secondGood},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.1: exit 0 when stdin processed successfully.
+		{
+			Name:  "r4.1_exit_0_stdin",
+			Stdin: []byte("stdin ok\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: exit 0 when --check with all digests matching.
+		{
+			Name: "r4.1_exit_0_check_all_match",
+			Args: []string{"-c", validCheck},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: exit 1 when file cannot be opened.
+		{
+			Name:      "r4.2_exit_1_missing_file",
+			Args:      []string{filepath.Join(dir, "nonexistent.txt")},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeExitErrors},
+		},
+		// R4.2: exit 1 when digest fails verification in --check.
+		{
+			Name:      "r4.2_exit_1_check_mismatch",
+			Args:      []string{"-c", failCheck},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeExitErrors},
+		},
+		// R4.2: exit 1 when checked file does not exist.
+		{
+			Name:      "r4.2_exit_1_check_missing_ref",
+			Args:      []string{"-c", missingRef},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeExitErrors},
+		},
+		// R4.2: exit 1 when checksum file itself is unreadable.
+		{
+			Name:      "r4.2_exit_1_unreadable_checksum_file",
+			Args:      []string{"-c", nonexistentCheck},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeExitErrors},
 		},
 	}
 
