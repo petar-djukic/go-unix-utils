@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1, R2.2 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.6 (differential tests)
 package main
 
 import (
@@ -737,6 +737,198 @@ func TestDiffFilterLongFormat(t *testing.T) {
 			Args:      []string{"-lA", fixture},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDirOnly exercises R2.3: -d lists directories themselves, not contents.
+func TestDiffDirOnly(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R2.3: -d lists the directory itself, not its contents.
+		{
+			Name: "dir_only",
+			Args: []string{"-d", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -d with -1 (single column).
+		{
+			Name: "dir_only_single",
+			Args: []string{"-d", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -ld lists directory entry in long format without descending.
+		{
+			Name:      "dir_only_long",
+			Args:      []string{"-ld", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R2.3: -d with multiple directories.
+		{
+			Name: "dir_only_multiple",
+			Args: []string{"-d", fixture, filepath.Join(fixture, "subdir")},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFilterPrecedence exercises R2.4: last of -a/-A wins.
+func TestDiffFilterPrecedence(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createDotfileFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.4: -a then -A: -A wins (no . and ..).
+		{
+			Name: "filter_a_then_A",
+			Args: []string{"-a", "-A", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: -A then -a: -a wins (includes . and ..).
+		{
+			Name: "filter_A_then_a",
+			Args: []string{"-A", "-a", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: combined -aA: -A wins (last in combined flag string).
+		{
+			Name: "filter_combined_aA",
+			Args: []string{"-aA", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: combined -Aa: -a wins.
+		{
+			Name: "filter_combined_Aa",
+			Args: []string{"-Aa", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSortTime exercises R2.5: -t sorts by modification time, newest first.
+func TestDiffSortTime(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create files with distinct modification times.
+	now := time.Now()
+	for i, name := range []string{"oldest", "middle", "newest"} {
+		path := filepath.Join(dir, name)
+		writeFixtureFile(t, path, 10)
+		mtime := now.Add(time.Duration(i-3) * time.Hour)
+		os.Chtimes(path, mtime, mtime)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.5: -t sorts by mtime, newest first.
+		{
+			Name: "sort_time",
+			Args: []string{"-t", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.5: -t with long format.
+		{
+			Name:      "sort_time_long",
+			Args:      []string{"-lt", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: normalizeLongFormat(refBin),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSortSize exercises R2.6: -S sorts by file size, largest first.
+func TestDiffSortSize(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create files with distinct sizes.
+	writeFixtureFile(t, filepath.Join(dir, "tiny"), 10)
+	writeFixtureFile(t, filepath.Join(dir, "medium"), 5000)
+	writeFixtureFile(t, filepath.Join(dir, "huge"), 100000)
+
+	tests := []testutils.DiffTest{
+		// R2.6: -S sorts by size, largest first.
+		{
+			Name: "sort_size",
+			Args: []string{"-S", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.6: -S with long format.
+		{
+			Name:      "sort_size_long",
+			Args:      []string{"-lS", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: normalizeLongFormat(refBin),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSortSizeTiebreaker exercises R2.6: same-size entries sorted by name.
+func TestDiffSortSizeTiebreaker(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create files with the same size — tiebreaker is name in C locale order.
+	for _, name := range []string{"cherry", "apple", "banana"} {
+		writeFixtureFile(t, filepath.Join(dir, name), 100)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "sort_size_tiebreaker",
+			Args: []string{"-S", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 

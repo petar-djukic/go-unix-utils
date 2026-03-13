@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1, R2.2
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.6
 package main
 
 import (
@@ -43,10 +43,21 @@ const (
 	filterAlmostAll                   // -A: show dotfiles except . and ..
 )
 
+// sortMode controls how entries are ordered.
+type sortMode int
+
+const (
+	sortName sortMode = iota // default: lexicographic C locale
+	sortTime                 // -t: newest first by mtime
+	sortSize                 // -S: largest first by size
+)
+
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
-	format formatMode
-	filter filterMode
+	format  formatMode
+	filter  filterMode
+	sortBy  sortMode
+	dirOnly bool // -d: list directories themselves, not contents
 }
 
 func main() {
@@ -102,6 +113,15 @@ func main() {
 				case 'A':
 					// R2.2: show dotfiles except . and ..
 					opts.filter = filterAlmostAll
+				case 'd':
+					// R2.3: list directories themselves, not contents.
+					opts.dirOnly = true
+				case 't':
+					// R2.5: sort by modification time, newest first.
+					opts.sortBy = sortTime
+				case 'S':
+					// R2.6: sort by file size, largest first.
+					opts.sortBy = sortSize
 				default:
 					fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 					os.Exit(2)
@@ -133,7 +153,8 @@ func main() {
 			exitCode = 2
 			continue
 		}
-		if fi.Mode.IsDir() {
+		// R2.3: with -d, treat directories as file entries (don't descend).
+		if fi.Mode.IsDir() && !opts.dirOnly {
 			dirs = append(dirs, arg)
 		} else {
 			files = append(files, fileEntry{name: arg, path: arg, info: fi})
@@ -142,7 +163,7 @@ func main() {
 
 	// R1.2: list file arguments first, then directory arguments.
 	// R1.3 / D5: sort file names in C locale byte order.
-	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
+	sortEntries(files, opts.sortBy)
 	sort.Strings(dirs)
 
 	needBlank := false
@@ -181,6 +202,34 @@ type fileEntry struct {
 	name string
 	path string // full filesystem path for operations like Readlink
 	info *sys.FileInfo
+}
+
+// sortEntries sorts a slice of fileEntry according to the given sort mode.
+// R2.5: -t sorts by modification time, newest first, with name tiebreaker.
+// R2.6: -S sorts by file size, largest first, with name tiebreaker.
+func sortEntries(items []fileEntry, mode sortMode) {
+	switch mode {
+	case sortTime:
+		sort.SliceStable(items, func(i, j int) bool {
+			ti := items[i].info.ModTime
+			tj := items[j].info.ModTime
+			if !ti.Equal(tj) {
+				return ti.After(tj)
+			}
+			return items[i].name < items[j].name
+		})
+	case sortSize:
+		sort.SliceStable(items, func(i, j int) bool {
+			si := items[i].info.Size
+			sj := items[j].info.Size
+			if si != sj {
+				return si > sj
+			}
+			return items[i].name < items[j].name
+		})
+	default:
+		sort.Slice(items, func(i, j int) bool { return items[i].name < items[j].name })
+	}
 }
 
 // listDir reads and prints the contents of a single directory.
@@ -224,8 +273,8 @@ func listDir(dir string, isTTY bool, opts lsOptions) error {
 		items = append(items, fileEntry{name: name, path: path, info: fi})
 	}
 
-	// R1.3 / D5: sort in C locale byte order (Go sort.Strings is byte-order).
-	sort.Slice(items, func(i, j int) bool { return items[i].name < items[j].name })
+	// Sort entries according to the active sort mode.
+	sortEntries(items, opts.sortBy)
 
 	printFileEntries(items, isTTY, opts, true)
 	return nil
@@ -559,10 +608,10 @@ func printHorizontalColumns(names []string, termWidth int) {
 	}
 
 	// Print entries row by row with tab-based padding (matching GNU ls).
-	for row := 0; row < nrows; row++ {
+	for row := range nrows {
 		var line strings.Builder
 		pos := 0
-		for col := 0; col < ncols; col++ {
+		for col := range ncols {
 			idx := row*ncols + col
 			if idx >= n {
 				break
