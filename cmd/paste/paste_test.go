@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/paste against gpaste reference binary.
-// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3
+// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -169,6 +169,77 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "zero in delimiter list",
 			Args: []string{`-d:\0;`, file4, file1, file2, file3},
+		},
+		// R3.1: Serial mode — all lines of one file joined on one output line.
+		{
+			Name: "serial single file",
+			Args: []string{"-s", serialFile},
+		},
+		// R3.1: Serial mode with two files produces two output lines.
+		{
+			Name: "serial two files",
+			Args: []string{"-s", file1, file2},
+		},
+		// R3.1: Serial mode with three files of different lengths.
+		{
+			Name: "serial three files different lengths",
+			Args: []string{"-s", file4, file1, file3},
+		},
+		// R3.1: Serial mode with empty file produces empty output line.
+		{
+			Name: "serial empty file",
+			Args: []string{"-s", emptyFile},
+		},
+		// R3.1: Serial mode with empty and non-empty files.
+		{
+			Name: "serial empty and non-empty",
+			Args: []string{"-s", emptyFile, file1},
+		},
+		// R3.1: Serial mode with stdin via dash.
+		{
+			Name:  "serial stdin dash",
+			Args:  []string{"-s", "-"},
+			Stdin: []byte("x\ny\nz\n"),
+		},
+		// R3.2: Serial mode with custom delimiter cycles across fields.
+		{
+			Name: "serial custom delimiter",
+			Args: []string{"-s", "-d:", serialFile},
+		},
+		// R3.2: Serial mode with delimiter list cycling.
+		{
+			Name: "serial delimiter list cycling",
+			Args: []string{"-s", "-d:;", serialFile},
+		},
+		// R3.2: Serial mode delimiter cycling with multiple files.
+		{
+			Name: "serial delimiter cycling multiple files",
+			Args: []string{"-s", "-d:;", file1, file3},
+		},
+		// R3.2: Serial mode with escape delimiter.
+		{
+			Name: "serial escape delimiter",
+			Args: []string{"-s", `-d\n`, serialFile},
+		},
+		// R3.2: Serial mode with \0 delimiter.
+		{
+			Name: "serial zero delimiter",
+			Args: []string{"-s", `-d\0`, serialFile},
+		},
+		// R3.3: -s overrides parallel mode — long option form.
+		{
+			Name: "serial long option",
+			Args: []string{"--serial", serialFile},
+		},
+		// R3.3: -s combined with -d flag.
+		{
+			Name: "serial with delimiter flag",
+			Args: []string{"-sd,", serialFile},
+		},
+		// R3.1: Serial mode single line file.
+		{
+			Name: "serial single line file",
+			Args: []string{"-s", file4},
 		},
 	}
 
