@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd036-mktemp R1.5, R2.1–R2.3, R4.1–R4.4
+// Implements: prd036-mktemp R1.5, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4
 package main
 
 import (
@@ -352,6 +352,173 @@ func runWithStderr(t *testing.T, binary string, args []string, env []string) (in
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Env = buildTestEnv(env)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	exitCode := 0
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run %q: %v", binary, err)
+		}
+	}
+	return exitCode, stderr.Bytes()
+}
+
+// TestDiffMktempNonexistentDir verifies R3.1: template with a directory
+// separator where the directory does not exist produces exit 1 and stderr.
+func TestDiffMktempNonexistentDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tmpDir := t.TempDir()
+	// Template with nonexistent subdirectory. Both binaries should fail.
+	args := []string{"nonexistent/foo.XXXX"}
+	env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+
+	refCode, refStderr := runWithStderrAndDir(t, refBin, args, env, tmpDir)
+	goCode, goStderr := runWithStderrAndDir(t, goBin, args, env, tmpDir)
+
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 1 {
+		t.Errorf("expected exit code 1, got %d", goCode)
+	}
+	if len(goStderr) == 0 {
+		t.Errorf("go produced no stderr on nonexistent dir error")
+	}
+	if len(refStderr) == 0 {
+		t.Errorf("ref produced no stderr on nonexistent dir error")
+	}
+}
+
+// TestDiffMktempUnwritableDir verifies R3.2: unwritable target directory
+// produces exit 1 and stderr.
+func TestDiffMktempUnwritableDir(t *testing.T) {
+	t.Parallel()
+
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test when running as root")
+	}
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tmpDir := t.TempDir()
+	unwritableDir := filepath.Join(tmpDir, "unwritable")
+	if err := os.Mkdir(unwritableDir, 0o555); err != nil {
+		t.Fatalf("failed to create unwritable dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unwritableDir, 0o700) // restore permissions for cleanup
+	})
+
+	env := []string{"TMPDIR=" + unwritableDir, "LC_ALL=C"}
+
+	refCode, refStderr := runWithStderr(t, refBin, nil, env)
+	goCode, goStderr := runWithStderr(t, goBin, nil, env)
+
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 1 {
+		t.Errorf("expected exit code 1, got %d", goCode)
+	}
+	if len(goStderr) == 0 {
+		t.Errorf("go produced no stderr on unwritable dir error")
+	}
+	if len(refStderr) == 0 {
+		t.Errorf("ref produced no stderr on unwritable dir error")
+	}
+}
+
+// TestDiffMktempTooFewXs verifies R3.3: templates with fewer than 3 trailing
+// X characters produce exit 1 and stderr.
+func TestDiffMktempTooFewXs(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "zero Xs", args: []string{"noXatall"}},
+		{name: "one X", args: []string{"oneX"}},
+		{name: "two Xs", args: []string{"twoXX"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+
+			refCode, refStderr := runWithStderr(t, refBin, tc.args, env)
+			goCode, goStderr := runWithStderr(t, goBin, tc.args, env)
+
+			if refCode != goCode {
+				t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+			}
+			if goCode != 1 {
+				t.Errorf("expected exit code 1, got %d", goCode)
+			}
+			if len(goStderr) == 0 {
+				t.Errorf("go produced no stderr for %v", tc.args)
+			}
+			if len(refStderr) == 0 {
+				t.Errorf("ref produced no stderr for %v", tc.args)
+			}
+		})
+	}
+}
+
+// TestMktempRetryOnCollision verifies R3.4: mktemp retries on name collision
+// rather than failing immediately. This test is not differential because
+// collisions depend on random generation. Instead it verifies that creating
+// multiple files in rapid succession with a short template (minimum 3 Xs)
+// all succeed, exercising the retry path if any collision occurs.
+func TestMktempRetryOnCollision(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+	// Use minimum X count (3) to increase collision probability.
+	args := []string{"collision.XXX"}
+
+	// Create several files in sequence; all should succeed.
+	for i := range 10 {
+		out := runOutput(t, goBin, args, env)
+		path := strings.TrimSpace(string(out))
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("iteration %d: created file does not exist: %v", i, err)
+		}
+	}
+}
+
+// runWithStderrAndDir runs binary with args, env, and working directory,
+// returning the exit code and stderr content.
+func runWithStderrAndDir(t *testing.T, binary string, args []string, env []string, dir string) (int, []byte) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Env = buildTestEnv(env)
+	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	exitCode := 0
