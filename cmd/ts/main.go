@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2
 package main
 
 import (
@@ -29,18 +29,30 @@ func main() {
 
 	// Parse flags and positional format argument.
 	incremental := false
+	sinceStart := false
 	var format string
 	for _, arg := range os.Args[1:] {
-		if arg == "-i" {
+		switch arg {
+		case "-i":
 			incremental = true
-		} else {
+		case "-s":
+			sinceStart = true
+		default:
 			format = arg
 		}
 	}
 
-	// R2.1, R3.2: Set default format based on mode.
+	// R3.4: -i and -s are mutually exclusive. When both are given, -i takes
+	// precedence, matching the reference binary behavior (Perl checks $opt{i} first).
+	if incremental && sinceStart {
+		sinceStart = false
+	}
+
+	// R2.1, R3.2, R3.3, R4.2: Set default format based on mode.
+	// R3.3: A custom format argument overrides the -i default; TZ=GMT still applies.
+	// R4.2: Default format in -s mode is "%H:%M:%S" with TZ=GMT, same as -i.
 	if format == "" {
-		if incremental {
+		if incremental || sinceStart {
 			format = incrementalStrftimeFormat
 		} else {
 			format = defaultStrftimeFormat
@@ -66,8 +78,14 @@ func main() {
 				// R3.1: Time elapsed since previous line (first line = since start).
 				delta := now.Sub(prevTime)
 				prevTime = now
-				// R3.2: Convert delta to a time value at epoch 0 in UTC so that
-				// strftime on the result produces correct elapsed strings.
+				// R3.2, R3.3: Convert delta to a time value at epoch 0 in UTC so that
+				// strftime on the result produces correct elapsed strings (TZ=GMT).
+				deltaTime := time.Unix(0, 0).UTC().Add(delta)
+				ts = strftime(format, deltaTime)
+			} else if sinceStart {
+				// R4.1: Time elapsed since ts started, monotonically increasing.
+				delta := now.Sub(startTime)
+				// R4.2: Convert delta to a time value at epoch 0 in UTC (TZ=GMT).
 				deltaTime := time.Unix(0, 0).UTC().Add(delta)
 				ts = strftime(format, deltaTime)
 			} else {

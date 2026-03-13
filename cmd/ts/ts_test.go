@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2 (differential tests)
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2 (differential tests)
 package main
 
 import (
@@ -244,6 +244,86 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("complete\npartial"),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R3.3: custom format overrides -i default; TZ=GMT still applies
+			Name:      "incremental_custom_format_epoch",
+			Args:      []string{"-i", "%s"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{epochNormalizer},
+		},
+		{
+			// R3.3: custom subsecond format with -i mode
+			Name:      "incremental_custom_subsec_T",
+			Args:      []string{"-i", "%.T"},
+			Stdin:     []byte("a\nb\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R3.4: -i and -s together — -i takes precedence (matches reference binary)
+			Name:      "incremental_and_since_start_exclusive",
+			Args:      []string{"-i", "-s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R3.4: -s and -i together (reverse order) — -i still takes precedence
+			Name:      "since_start_and_incremental_exclusive",
+			Args:      []string{"-s", "-i"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R4.1, R4.2: -s mode with default format, single line
+			Name:      "since_start_single_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R4.1: -s mode elapsed time increases monotonically across lines
+			Name:      "since_start_multi_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R4.1, R4.2: -s mode with ten lines for differential coverage
+			Name:      "since_start_ten_lines",
+			Args:      []string{"-s"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R4.1: -s mode with empty stdin
+			Name:      "since_start_empty",
+			Args:      []string{"-s"},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R4.1: -s mode with partial last line
+			Name:      "since_start_partial_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("complete\npartial"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R4.2: -s default format is %H:%M:%S with custom format override
+			Name:      "since_start_custom_format",
+			Args:      []string{"-s", "%.T"},
+			Stdin:     []byte("line1\nline2\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
 		},
 	}
 
