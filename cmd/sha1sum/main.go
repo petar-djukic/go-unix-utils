@@ -248,7 +248,9 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 		}
 
 		if computed == parsed.hash {
-			if !opts.status && !opts.quiet {
+			// R3.2: --quiet suppresses OK lines, but --warn overrides --quiet
+			// (GNU behavior: --warn implies verbose output for diagnostics).
+			if !opts.status && (!opts.quiet || opts.warn) {
 				// R2.2: print OK.
 				fmt.Printf("%s: OK\n", parsed.filename)
 			}
@@ -262,11 +264,10 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 	}
 
 	// Check if no valid lines were found at all.
+	// R3.1: GNU always prints this error even with --status.
 	if validCount == 0 {
-		if !opts.status {
-			fmt.Fprintf(os.Stderr, "%s: %s: no properly formatted checksum lines found\n",
-				progName, source)
-		}
+		fmt.Fprintf(os.Stderr, "%s: %s: no properly formatted checksum lines found\n",
+			progName, source)
 		return 1
 	}
 

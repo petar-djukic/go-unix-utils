@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sha1sum.
 //
-// Implements: prd031-sha1sum R1.1–R1.4, R2.1–R2.3
+// Implements: prd031-sha1sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2
 package main
 
 import (
@@ -487,6 +487,58 @@ func TestDiffCheck(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.1: --status with malformed lines — no output, exit 0 (valid lines pass).
+		{
+			Name:      "check_status_malformed",
+			Args:      []string{"-c", "--status", malformedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.1: --status with all malformed — no output, exit 1.
+		{
+			Name:      "check_status_all_malformed",
+			Args:      []string{"-c", "--status", allMalformedFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.2: --quiet with --strict and malformed — exit 1, suppresses OK.
+		{
+			Name:      "check_quiet_strict_malformed",
+			Args:      []string{"-c", "--quiet", "--strict", malformedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.2: --status with --strict and malformed — no output, exit 1.
+		{
+			Name:      "check_status_strict_malformed",
+			Args:      []string{"-c", "--status", "--strict", malformedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.2: --quiet with --warn and malformed — suppresses OK, shows warnings.
+		{
+			Name:      "check_quiet_warn_malformed",
+			Args:      []string{"-c", "--quiet", "--warn", malformedCheckFile},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.2: --check with --warn on all-malformed file — exit 1.
+		{
+			Name:      "check_warn_all_malformed",
+			Args:      []string{"-c", "--warn", allMalformedFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
+		},
+		// R3.1: --check with long form flag.
+		{
+			Name: "check_long_form",
+			Args: []string{"--check", validCheckFile},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
