@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd016-dirname R4.1–R4.3 (differential tests for R1.1–R1.5, R2.1, R2.2, R3.1–R3.3)
+// Implements: prd016-dirname R4.1–R4.3 (differential tests for R1.1–R1.5, R2.1, R2.2, R3.1–R3.3, R4.1–R4.3)
 package main
 
 import (
@@ -115,6 +115,41 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "zero_mixed",
 			Args: []string{"-z", "file.txt", "/usr/bin/", "/", "a/b/c"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelpVersion verifies R4.1 and R4.2: --version and --help exit 0.
+// Output content differs between implementations, so stdout/stderr are
+// normalized to empty; only exit codes are compared.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// --help and --version produce different output between implementations,
+	// so we only compare exit codes by normalizing stdout/stderr to empty.
+	clearOutput := func(b []byte) []byte { return nil }
+
+	tests := []testutils.DiffTest{
+		// R4.2: --help exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R4.1: --version exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
 	}
 

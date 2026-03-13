@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd016-dirname R1.1–R1.5, R2.1, R2.2, R3.1–R3.3
+// Implements: prd016-dirname R1.1–R1.5, R2.1, R2.2, R3.1–R3.3, R4.1–R4.3
 package main
 
 import (
@@ -28,6 +28,12 @@ func main() {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
+		case arg == "--help":
+			printHelp()
+			return
+		case arg == "--version":
+			printVersion()
+			return
 		case arg == "--":
 			// End of flags; remaining args are operands.
 			operands = append(operands, args[i+1:]...)
@@ -80,6 +86,27 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// printHelp writes usage information to stdout and exits 0.
+//
+// R4.2: --help prints usage information to stdout.
+func printHelp() {
+	fmt.Print(`Usage: dirname [OPTION] NAME...
+Output each NAME with its last non-slash component and trailing slashes
+removed; if NAME contains no /'s, output '.' (meaning the current directory).
+
+  -z, --zero     end each output line with NUL, not newline
+      --help     display this help and exit
+      --version  output version information and exit
+`)
+}
+
+// printVersion writes version information to stdout and exits 0.
+//
+// R4.1: --version prints version information to stdout.
+func printVersion() {
+	fmt.Println("dirname (go-unix-utils) 0.1")
 }
 
 // dirname extracts the directory component from name, implementing the POSIX
