@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4
+// Implements: prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4
 package main
 
 import (
@@ -268,6 +268,136 @@ func TestDiff(t *testing.T) {
 			Name:  "combined rz width 8 with empty lines",
 			Args:  []string{"-nrz", "-w8", "-v100", "-i10"},
 			Stdin: []byte("a\n\nb\n"),
+			Env:   env,
+		},
+
+		// --- R4.1: Section delimiters ---
+		{
+			Name:  "R4.1 header body footer delimiters",
+			Args:  []string{"-ba", "-ha", "-fa"},
+			Stdin: []byte("\\:\\:\\:\nheader line\n\\:\\:\nbody line\n\\:\nfooter line\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.1 delimiter lines not in output",
+			Args:  []string{"-ba"},
+			Stdin: []byte("before\n\\:\\:\\:\nafter header\n\\:\\:\nafter body\n\\:\nafter footer\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.1 body delimiter only",
+			Args:  []string{"-ba"},
+			Stdin: []byte("line1\n\\:\\:\nline2\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.1 footer delimiter only",
+			Args:  []string{"-ba", "-fa"},
+			Stdin: []byte("line1\n\\:\nfooter\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.1 header with default styles",
+			Args:  []string{},
+			Stdin: []byte("\\:\\:\\:\nheader line\n\\:\\:\nbody line\n\\:\nfooter line\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.1 header style a numbers header lines",
+			Args:  []string{"-ha"},
+			Stdin: []byte("\\:\\:\\:\nheader1\nheader2\n\\:\\:\nbody1\n"),
+			Env:   env,
+		},
+
+		// --- R4.2: Counter reset on header delimiter ---
+		{
+			Name:  "R4.2 counter resets on header",
+			Args:  []string{"-ba"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nc\nd\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.2 counter resets to -v value",
+			Args:  []string{"-ba", "-v", "10"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nc\nd\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.2 multiple page resets",
+			Args:  []string{"-ba"},
+			Stdin: []byte("a\n\\:\\:\\:\nb\n\\:\\:\\:\nc\n"),
+			Env:   env,
+		},
+
+		// --- R4.3: -p suppresses counter reset ---
+		{
+			Name:  "R4.3 -p no reset on header",
+			Args:  []string{"-ba", "-p"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nc\nd\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.3 -p with -v start",
+			Args:  []string{"-ba", "-p", "-v", "10"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nc\nd\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.3 -p multiple pages",
+			Args:  []string{"-ba", "-p"},
+			Stdin: []byte("a\n\\:\\:\\:\nb\n\\:\\:\\:\nc\n"),
+			Env:   env,
+		},
+
+		// --- R4.4: -l N blank line grouping ---
+		{
+			Name:  "R4.4 -l1 default with -ba",
+			Args:  []string{"-ba", "-l", "1"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.4 -l2 with -ba",
+			Args:  []string{"-ba", "-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.4 -l2 with -ba three blanks",
+			Args:  []string{"-ba", "-l", "2"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.4 -l2 with -ba four blanks",
+			Args:  []string{"-ba", "-l", "2"},
+			Stdin: []byte("a\n\n\n\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.4 -l3 with -ba",
+			Args:  []string{"-ba", "-l", "3"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.4 -l2 attached",
+			Args:  []string{"-ba", "-l2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R4.4 -l with default body style t",
+			Args:  []string{"-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   env,
+		},
+
+		// --- Combined R4 ---
+		{
+			Name:  "R4 combined sections with -p and -l",
+			Args:  []string{"-ba", "-ha", "-fa", "-p", "-l", "2"},
+			Stdin: []byte("a\n\\:\\:\\:\nb\n\n\nc\n\\:\\:\nd\n"),
 			Env:   env,
 		},
 	}
