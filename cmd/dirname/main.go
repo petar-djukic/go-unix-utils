@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd016-dirname R1.1–R1.4
+// Implements: prd016-dirname R1.1–R1.5, R2.1, R2.2
 package main
 
 import (
@@ -21,17 +21,59 @@ func main() {
 
 	args := os.Args[1:]
 
+	// Parse flags: -z/--zero.
+	var zero bool
+	var operands []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			// End of flags; remaining args are operands.
+			operands = append(operands, args[i+1:]...)
+			i = len(args)
+		case arg == "-z" || arg == "--zero":
+			// R2.1: NUL-terminated output.
+			zero = true
+		case strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-':
+			// Short flag cluster: e.g. -z
+			cluster := arg[1:]
+			for j := 0; j < len(cluster); j++ {
+				switch cluster[j] {
+				case 'z':
+					zero = true
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, cluster[j])
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+					os.Exit(1)
+				}
+			}
+		case strings.HasPrefix(arg, "--"):
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", programName, arg)
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+			os.Exit(1)
+		default:
+			operands = append(operands, arg)
+		}
+	}
+
 	// R3.2: no arguments is an error.
-	if len(args) == 0 {
+	if len(operands) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", programName)
 		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
 		os.Exit(1)
 	}
 
-	// R1.5: process each argument and print one result per line.
-	for _, name := range args {
+	// R2.1: choose line terminator.
+	terminator := "\n"
+	if zero {
+		terminator = "\x00"
+	}
+
+	// R1.5, R2.2: process each argument in order and print one result per line.
+	for _, name := range operands {
 		result := dirname(name)
-		fmt.Println(result)
+		fmt.Print(result + terminator)
 	}
 }
 

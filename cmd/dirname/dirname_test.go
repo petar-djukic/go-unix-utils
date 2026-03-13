@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd016-dirname R4.1–R4.3 (differential tests for R1.1–R1.4)
+// Implements: prd016-dirname R4.1–R4.3 (differential tests for R1.1–R1.5, R2.1, R2.2)
 package main
 
 import (
@@ -94,6 +94,26 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "multiple_mixed",
 			Args: []string{"file.txt", "/usr/bin/", "/", "a/b/c"},
+		},
+		// R2.1: -z flag — NUL-terminated output, single arg.
+		{
+			Name: "zero_single",
+			Args: []string{"-z", "/usr/bin"},
+		},
+		// R2.1: --zero long flag.
+		{
+			Name: "zero_long_flag",
+			Args: []string{"--zero", "/usr/bin"},
+		},
+		// R2.1, R2.2: -z with multiple arguments.
+		{
+			Name: "zero_multiple",
+			Args: []string{"-z", "/usr/bin", "/etc/hosts"},
+		},
+		// R2.1: -z with mixed edge cases.
+		{
+			Name: "zero_mixed",
+			Args: []string{"-z", "file.txt", "/usr/bin/", "/", "a/b/c"},
 		},
 	}
 
