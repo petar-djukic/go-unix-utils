@@ -32,13 +32,14 @@ const (
 
 // linkOpts holds all flag state for a ln invocation.
 type linkOpts struct {
-	symbolic     bool
-	relative     bool
-	force        bool
-	backup       bool
-	backupMethod string
-	suffix       string
-	verbose      bool
+	symbolic      bool
+	relative      bool
+	force         bool
+	noDereference bool
+	backup        bool
+	backupMethod  string
+	suffix        string
+	verbose       bool
 }
 
 func main() {
@@ -69,6 +70,8 @@ func main() {
 			opts.relative = true
 		case arg == "--force":
 			opts.force = true
+		case arg == "--no-dereference":
+			opts.noDereference = true
 		case arg == "--verbose":
 			opts.verbose = true
 		case arg == "--backup":
@@ -111,6 +114,8 @@ func main() {
 					opts.relative = true
 				case 'f':
 					opts.force = true
+				case 'n':
+					opts.noDereference = true
 				case 'v':
 					opts.verbose = true
 				case 'b':
@@ -194,8 +199,15 @@ func main() {
 	}
 
 	// Check if the last operand is a directory for multi-target mode.
+	// R3.2: when -n is set, use Lstat so symlinks to directories are not followed.
 	last := operands[len(operands)-1]
-	lastInfo, err := os.Stat(last)
+	var lastInfo os.FileInfo
+	var err error
+	if opts.noDereference {
+		lastInfo, err = os.Lstat(last)
+	} else {
+		lastInfo, err = os.Stat(last)
+	}
 
 	if len(operands) == 2 && (err != nil || !lastInfo.IsDir()) {
 		// R1.1: ln TARGET LINK_NAME — two-operand form, last is not a directory.
@@ -440,6 +452,8 @@ Create a hard link by default, a symbolic link with --symbolic.
       --backup[=CONTROL]  make a backup of each existing destination file
   -b                      like --backup but does not accept an argument
   -f, --force             remove existing destination files
+  -n, --no-dereference    treat LINK_NAME as a normal file if it is a
+                            symbolic link to a directory
   -r, --relative          with -s, create relative symbolic links
   -s, --symbolic          make symbolic links instead of hard links
   -S, --suffix=SUFFIX     override the usual backup suffix

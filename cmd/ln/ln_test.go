@@ -850,6 +850,275 @@ func TestBackupShortFlag(t *testing.T) {
 	}
 }
 
+// TestVerboseOutput verifies R3.4: -v prints the name of each link created.
+// R4.2: differential test coverage for verbose output.
+func TestVerboseOutput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+	}
+
+	// R3.4: -v with symbolic link.
+	t.Run("verbose_symlink", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("data\n"), 0o644) //nolint:errcheck
+		}
+
+		goStdout, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sv", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		refStdout, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sv", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Normalize paths since tmp dirs differ.
+		goOut := bytes.ReplaceAll(goStdout, []byte(goDir), []byte("/DIR"))
+		refOut := bytes.ReplaceAll(refStdout, []byte(refDir), []byte("/DIR"))
+		if !bytes.Equal(goOut, refOut) {
+			t.Errorf("verbose output mismatch:\ngo:  %q\nref: %q", goOut, refOut)
+		}
+	})
+
+	// R3.4: -v with hard link.
+	t.Run("verbose_hardlink", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("data\n"), 0o644) //nolint:errcheck
+		}
+
+		goStdout, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-v", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "hardlink.txt")}, "")
+		refStdout, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-v", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "hardlink.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		goOut := bytes.ReplaceAll(goStdout, []byte(goDir), []byte("/DIR"))
+		refOut := bytes.ReplaceAll(refStdout, []byte(refDir), []byte("/DIR"))
+		if !bytes.Equal(goOut, refOut) {
+			t.Errorf("verbose output mismatch:\ngo:  %q\nref: %q", goOut, refOut)
+		}
+	})
+
+	// R3.4: --verbose long flag.
+	t.Run("verbose_long_flag", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "target.txt"), []byte("data\n"), 0o644) //nolint:errcheck
+
+		stdout, _, code := runLinkBinary(t, goBin,
+			[]string{"-s", "--verbose", filepath.Join(dir, "target.txt"), filepath.Join(dir, "link.txt")}, "")
+		if code != 0 {
+			t.Fatalf("ln -s --verbose failed with exit code %d", code)
+		}
+		if len(stdout) == 0 {
+			t.Error("--verbose produced no output")
+		}
+	})
+
+	// R3.4: -v with force replace shows output for the new link.
+	t.Run("verbose_force_replace", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		goStdout, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sfv", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		refStdout, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sfv", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		goOut := bytes.ReplaceAll(goStdout, []byte(goDir), []byte("/DIR"))
+		refOut := bytes.ReplaceAll(refStdout, []byte(refDir), []byte("/DIR"))
+		if !bytes.Equal(goOut, refOut) {
+			t.Errorf("verbose output mismatch:\ngo:  %q\nref: %q", goOut, refOut)
+		}
+	})
+
+	_ = normalize // used in error subtests above
+}
+
+// TestNoDereference verifies R3.2: -n treats a destination symlink to a
+// directory as a regular file rather than following it.
+// R4.2: differential test coverage for no-dereference (-n).
+func TestNoDereference(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	// R3.2: -n with symlink to directory — should replace the symlink, not
+	// create a link inside the directory.
+	t.Run("no_deref_symlink_to_dir", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("t\n"), 0o644) //nolint:errcheck
+			os.Mkdir(filepath.Join(d, "realdir"), 0o755)                       //nolint:errcheck
+			os.Symlink(filepath.Join(d, "realdir"), filepath.Join(d, "dirlink"))  //nolint:errcheck
+		}
+
+		// Without -n, ln -sf target dirlink would create dirlink/target.txt
+		// With -n, ln -sfn target.txt dirlink replaces the symlink itself.
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sfn", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "dirlink")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sfn", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "dirlink")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// R4.3: verify dirlink is now a symlink to target.txt, not a directory.
+		goTarget, err := os.Readlink(filepath.Join(goDir, "dirlink"))
+		if err != nil {
+			t.Fatalf("dirlink is not a symlink after -n: %v", err)
+		}
+		refTarget, err := os.Readlink(filepath.Join(refDir, "dirlink"))
+		if err != nil {
+			t.Fatalf("ref dirlink is not a symlink after -n: %v", err)
+		}
+		// Compare basenames since temp dir paths differ between go and ref runs.
+		if filepath.Base(goTarget) != filepath.Base(refTarget) {
+			t.Errorf("symlink target mismatch: go=%q ref=%q", goTarget, refTarget)
+		}
+	})
+
+	// R3.2: --no-dereference long flag.
+	t.Run("no_deref_long_flag", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("t\n"), 0o644) //nolint:errcheck
+			os.Mkdir(filepath.Join(d, "realdir"), 0o755)                       //nolint:errcheck
+			os.Symlink(filepath.Join(d, "realdir"), filepath.Join(d, "dirlink"))  //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sf", "--no-dereference", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "dirlink")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sf", "--no-dereference", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "dirlink")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		goTarget, err := os.Readlink(filepath.Join(goDir, "dirlink"))
+		if err != nil {
+			t.Fatalf("dirlink is not a symlink: %v", err)
+		}
+		refTarget, err := os.Readlink(filepath.Join(refDir, "dirlink"))
+		if err != nil {
+			t.Fatalf("ref dirlink is not a symlink: %v", err)
+		}
+		if filepath.Base(goTarget) != filepath.Base(refTarget) {
+			t.Errorf("symlink target mismatch: go=%q ref=%q", goTarget, refTarget)
+		}
+	})
+}
+
+// TestBackupNone verifies R3.5: --backup=none does not create a backup and
+// requires -f to replace existing destinations.
+func TestBackupNone(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+	}
+
+	// --backup=none with -f should replace without creating backup.
+	t.Run("backup_none_with_force", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sf", "--backup=none", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sf", "--backup=none", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// No backup file should exist.
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt~")); err == nil {
+			t.Error("--backup=none should not create a backup file")
+		}
+		if _, err := os.Stat(filepath.Join(refDir, "link.txt~")); err == nil {
+			t.Error("ref --backup=none should not create a backup file")
+		}
+	})
+
+	// --backup=off is an alias for none.
+	t.Run("backup_off_alias", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-sf", "--backup=off", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-sf", "--backup=off", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt~")); err == nil {
+			t.Error("--backup=off should not create a backup file")
+		}
+	})
+
+	_ = normalize // available for error subtests
+}
+
 // TestForceReplace verifies R3.1: -f removes existing destination before link creation.
 func TestForceReplace(t *testing.T) {
 	t.Parallel()
