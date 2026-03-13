@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd037-ln R1.1–R1.4, R2.1–R2.4, R4.1–R4.3 differential tests
+// Implements: prd037-ln R1.1–R1.4, R2.1–R2.4, R3.1–R3.6, R4.1–R4.3 differential tests
 package main
 
 import (
@@ -487,4 +487,444 @@ func TestRelativeSymlink(t *testing.T) {
 			t.Errorf("expected %q, got %q", filepath.Join("..", "root.txt"), goGot)
 		}
 	})
+}
+
+// TestBackupSimple verifies R3.1 and R3.5: --backup=simple creates a backup
+// with the default ~ suffix before replacing the destination.
+func TestBackupSimple(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, d := range []string{goDir, refDir} {
+		os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+	}
+
+	_, _, goCode := runLinkBinary(t, goBin,
+		[]string{"-s", "--backup=simple", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+	_, _, refCode := runLinkBinary(t, refBin,
+		[]string{"-s", "--backup=simple", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+
+	// R3.1: verify backup file exists with ~ suffix.
+	goBackup, err := os.ReadFile(filepath.Join(goDir, "link.txt~"))
+	if err != nil {
+		t.Fatalf("backup not created: %v", err)
+	}
+	refBackup, err := os.ReadFile(filepath.Join(refDir, "link.txt~"))
+	if err != nil {
+		t.Fatalf("ref backup not created: %v", err)
+	}
+	if !bytes.Equal(goBackup, refBackup) {
+		t.Errorf("backup content mismatch: go=%q ref=%q", goBackup, refBackup)
+	}
+
+	// Verify symlink was created.
+	if _, err := os.Lstat(filepath.Join(goDir, "link.txt")); err != nil {
+		t.Errorf("link not created: %v", err)
+	}
+}
+
+// TestBackupNumbered verifies R3.3: --backup=numbered creates .~1~ style backups.
+func TestBackupNumbered(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, d := range []string{goDir, refDir} {
+		os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644)  //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "link.txt"), []byte("old1\n"), 0o644)   //nolint:errcheck
+	}
+
+	// First backup: should create .~1~
+	_, _, goCode := runLinkBinary(t, goBin,
+		[]string{"-s", "--backup=numbered", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+	_, _, refCode := runLinkBinary(t, refBin,
+		[]string{"-s", "--backup=numbered", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+
+	// R3.3: verify numbered backup .~1~ exists.
+	goBackup, err := os.ReadFile(filepath.Join(goDir, "link.txt.~1~"))
+	if err != nil {
+		t.Fatalf("numbered backup .~1~ not created: %v", err)
+	}
+	refBackup, err := os.ReadFile(filepath.Join(refDir, "link.txt.~1~"))
+	if err != nil {
+		t.Fatalf("ref numbered backup .~1~ not created: %v", err)
+	}
+	if !bytes.Equal(goBackup, refBackup) {
+		t.Errorf("numbered backup content mismatch: go=%q ref=%q", goBackup, refBackup)
+	}
+
+	// Second backup: create new dest and backup again, should create .~2~
+	for _, d := range []string{goDir, refDir} {
+		os.Remove(filepath.Join(d, "link.txt"))                              //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "link.txt"), []byte("old2\n"), 0o644)  //nolint:errcheck
+	}
+
+	_, _, goCode2 := runLinkBinary(t, goBin,
+		[]string{"-s", "--backup=t", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+	_, _, refCode2 := runLinkBinary(t, refBin,
+		[]string{"-s", "--backup=t", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+	if goCode2 != refCode2 {
+		t.Errorf("exit code mismatch (2nd): go=%d ref=%d", goCode2, refCode2)
+	}
+
+	// Verify .~2~ exists.
+	goBackup2, err := os.ReadFile(filepath.Join(goDir, "link.txt.~2~"))
+	if err != nil {
+		t.Fatalf("numbered backup .~2~ not created: %v", err)
+	}
+	refBackup2, err := os.ReadFile(filepath.Join(refDir, "link.txt.~2~"))
+	if err != nil {
+		t.Fatalf("ref numbered backup .~2~ not created: %v", err)
+	}
+	if !bytes.Equal(goBackup2, refBackup2) {
+		t.Errorf("numbered backup .~2~ content mismatch: go=%q ref=%q", goBackup2, refBackup2)
+	}
+}
+
+// TestBackupExisting verifies R3.3: --backup=existing uses numbered if numbered
+// backups already exist, otherwise simple.
+func TestBackupExisting(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	// Sub-test: no prior numbered backups → simple backup.
+	t.Run("no_numbered_uses_simple", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-s", "--backup=existing", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-s", "--backup=existing", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Should create simple backup link.txt~.
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt~")); err != nil {
+			t.Errorf("expected simple backup link.txt~: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(refDir, "link.txt~")); err != nil {
+			t.Errorf("ref expected simple backup link.txt~: %v", err)
+		}
+	})
+
+	// Sub-test: with prior numbered backup → numbered backup.
+	t.Run("with_numbered_uses_numbered", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644)       //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)          //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt.~1~"), []byte("prev\n"), 0o644)    //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-s", "--backup=nil", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-s", "--backup=nil", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Should create numbered backup link.txt.~2~.
+		goBackup, err := os.ReadFile(filepath.Join(goDir, "link.txt.~2~"))
+		if err != nil {
+			t.Fatalf("numbered backup .~2~ not created: %v", err)
+		}
+		refBackup, err := os.ReadFile(filepath.Join(refDir, "link.txt.~2~"))
+		if err != nil {
+			t.Fatalf("ref numbered backup .~2~ not created: %v", err)
+		}
+		if !bytes.Equal(goBackup, refBackup) {
+			t.Errorf("backup content mismatch: go=%q ref=%q", goBackup, refBackup)
+		}
+	})
+}
+
+// TestBackupSuffix verifies R3.6: -S/--suffix overrides the default ~ suffix.
+func TestBackupSuffix(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	t.Run("suffix_long_flag", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-s", "--backup=simple", "--suffix=.bak", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-s", "--backup=simple", "--suffix=.bak", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Verify backup with custom suffix.
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt.bak")); err != nil {
+			t.Errorf("backup with .bak suffix not created: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(refDir, "link.txt.bak")); err != nil {
+			t.Errorf("ref backup with .bak suffix not created: %v", err)
+		}
+	})
+
+	t.Run("suffix_short_flag", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		_, _, goCode := runLinkBinary(t, goBin,
+			[]string{"-s", "--backup=simple", "-S", ".orig", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+		_, _, refCode := runLinkBinary(t, refBin,
+			[]string{"-s", "--backup=simple", "-S", ".orig", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+		if goCode != refCode {
+			t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+		}
+
+		// Verify backup with -S suffix.
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt.orig")); err != nil {
+			t.Errorf("backup with .orig suffix not created: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(refDir, "link.txt.orig")); err != nil {
+			t.Errorf("ref backup with .orig suffix not created: %v", err)
+		}
+	})
+}
+
+// TestBackupVersionControl verifies R3.4: VERSION_CONTROL env var is used when
+// --backup has no explicit argument.
+func TestBackupVersionControl(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	t.Run("version_control_simple", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		goCmd := exec.Command(goBin, "-s", "--backup",
+			filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt"))
+		goCmd.Env = append(os.Environ(), "LC_ALL=C", "VERSION_CONTROL=simple")
+		goCmd.Run() //nolint:errcheck
+
+		refCmd := exec.Command(refBin, "-s", "--backup",
+			filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt"))
+		refCmd.Env = append(os.Environ(), "LC_ALL=C", "VERSION_CONTROL=simple")
+		refCmd.Run() //nolint:errcheck
+
+		// Should create simple backup link.txt~ (not numbered).
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt~")); err != nil {
+			t.Errorf("VERSION_CONTROL=simple did not create simple backup: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(refDir, "link.txt~")); err != nil {
+			t.Errorf("ref VERSION_CONTROL=simple did not create simple backup: %v", err)
+		}
+	})
+
+	t.Run("version_control_numbered", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, d := range []string{goDir, refDir} {
+			os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+		}
+
+		goCmd := exec.Command(goBin, "-s", "--backup",
+			filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt"))
+		goCmd.Env = append(os.Environ(), "LC_ALL=C", "VERSION_CONTROL=numbered")
+		goCmd.Run() //nolint:errcheck
+
+		refCmd := exec.Command(refBin, "-s", "--backup",
+			filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt"))
+		refCmd.Env = append(os.Environ(), "LC_ALL=C", "VERSION_CONTROL=numbered")
+		refCmd.Run() //nolint:errcheck
+
+		// Should create numbered backup .~1~.
+		if _, err := os.Stat(filepath.Join(goDir, "link.txt.~1~")); err != nil {
+			t.Errorf("VERSION_CONTROL=numbered did not create numbered backup: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(refDir, "link.txt.~1~")); err != nil {
+			t.Errorf("ref VERSION_CONTROL=numbered did not create numbered backup: %v", err)
+		}
+	})
+}
+
+// TestBackupShortFlag verifies R3.5: -b is shorthand for --backup (default method).
+func TestBackupShortFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, d := range []string{goDir, refDir} {
+		os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+	}
+
+	// -sb bundles symbolic and backup.
+	_, _, goCode := runLinkBinary(t, goBin,
+		[]string{"-sb", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+	_, _, refCode := runLinkBinary(t, refBin,
+		[]string{"-sb", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+
+	// -b defaults to "existing" which without prior numbered backups creates simple backup.
+	if _, err := os.Stat(filepath.Join(goDir, "link.txt~")); err != nil {
+		t.Errorf("-b did not create backup: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(refDir, "link.txt~")); err != nil {
+		t.Errorf("ref -b did not create backup: %v", err)
+	}
+}
+
+// TestForceReplace verifies R3.1: -f removes existing destination before link creation.
+func TestForceReplace(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, d := range []string{goDir, refDir} {
+		os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+	}
+
+	_, _, goCode := runLinkBinary(t, goBin,
+		[]string{"-sf", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+	_, _, refCode := runLinkBinary(t, refBin,
+		[]string{"-sf", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if goCode != 0 {
+		t.Fatalf("-sf failed with exit code %d", goCode)
+	}
+
+	// Verify the symlink was created (no backup).
+	if _, err := os.Lstat(filepath.Join(goDir, "link.txt")); err != nil {
+		t.Errorf("link not created: %v", err)
+	}
+	// Verify no backup was created (no -b).
+	if _, err := os.Stat(filepath.Join(goDir, "link.txt~")); err == nil {
+		t.Error("-sf should not create backup without -b")
+	}
+}
+
+// TestBackupForceCombo verifies -f with --backup creates backup then replaces.
+func TestBackupForceCombo(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, d := range []string{goDir, refDir} {
+		os.WriteFile(filepath.Join(d, "target.txt"), []byte("new\n"), 0o644) //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "link.txt"), []byte("old\n"), 0o644)   //nolint:errcheck
+	}
+
+	_, _, goCode := runLinkBinary(t, goBin,
+		[]string{"-sf", "--backup=simple", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "link.txt")}, "")
+	_, _, refCode := runLinkBinary(t, refBin,
+		[]string{"-sf", "--backup=simple", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "link.txt")}, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+
+	// Verify backup exists.
+	goBackup, err := os.ReadFile(filepath.Join(goDir, "link.txt~"))
+	if err != nil {
+		t.Fatalf("backup not created with -f --backup: %v", err)
+	}
+	refBackup, err := os.ReadFile(filepath.Join(refDir, "link.txt~"))
+	if err != nil {
+		t.Fatalf("ref backup not created with -f --backup: %v", err)
+	}
+	if !bytes.Equal(goBackup, refBackup) {
+		t.Errorf("backup content mismatch: go=%q ref=%q", goBackup, refBackup)
+	}
 }
