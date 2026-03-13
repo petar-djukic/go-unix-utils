@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd015-basename R1.1–R1.5, R2.1–R2.3, R3.1–R3.4
+// Implements: prd015-basename R1.1–R1.5, R2.1–R2.3, R3.1–R3.4, R4.1–R4.3
 package main
 
 import (
@@ -89,6 +89,11 @@ func main() {
 					os.Exit(1)
 				}
 			}
+		case strings.HasPrefix(arg, "--"):
+			// R4.1: unrecognized long option.
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", programName, arg)
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+			os.Exit(1)
 		default:
 			operands = append(operands, arg)
 		}

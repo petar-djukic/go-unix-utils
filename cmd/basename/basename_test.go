@@ -251,7 +251,7 @@ func TestDiffErrors(t *testing.T) {
 		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
 	}
 
-	// R3.3, R4.3: error on no arguments — exits 1.
+	// R3.3, R4.1, R4.3: error cases — invalid args, missing operands.
 	tests := []testutils.DiffTest{
 		{
 			Name:     "no_args",
@@ -261,6 +261,24 @@ func TestDiffErrors(t *testing.T) {
 		{
 			Name:     "too_many_args",
 			Args:     []string{"a", "b", "c"},
+			ExitCode: 1,
+		},
+		// R4.1: -a with no operands is missing operand.
+		{
+			Name:     "multiple_no_operands",
+			Args:     []string{"-a"},
+			ExitCode: 1,
+		},
+		// R4.1: invalid short option.
+		{
+			Name:     "invalid_short_option",
+			Args:     []string{"-x"},
+			ExitCode: 1,
+		},
+		// R4.1: unrecognized long option.
+		{
+			Name:     "invalid_long_option",
+			Args:     []string{"--invalid"},
 			ExitCode: 1,
 		},
 	}
