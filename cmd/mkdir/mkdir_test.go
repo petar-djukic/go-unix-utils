@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd034-mkdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4 differential tests
+// Implements: prd034-mkdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.3 differential tests
 package main
 
 import (
@@ -34,6 +34,15 @@ func programNameNormalizer(goBin, refBin string) testutils.NormalizeFunc {
 var errCaseNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	re := regexp.MustCompile(`(?m): [A-Z][a-z]`)
 	return re.ReplaceAllFunc(b, bytes.ToLower)
+}
+
+// outputClearNormalizer replaces all output with empty bytes. Used for
+// --version and --help differential tests where the content differs
+// between Go and GNU binaries but the exit code must match.
+//
+// R4.1, R4.2: normalize output to compare only exit codes.
+var outputClearNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return nil
 }
 
 func TestDiff(t *testing.T) {
@@ -115,6 +124,112 @@ func TestDiff(t *testing.T) {
 			{
 				Name:      "no arguments",
 				Args:      []string{},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.1: --version prints version information and exits 0.
+	// Output content differs between Go and GNU; only exit code is compared.
+	t.Run("version_flag", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "version exits 0",
+				Args:      []string{"--version"},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  0,
+				Normalize: []testutils.NormalizeFunc{outputClearNormalizer},
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.2: --help prints usage information and exits 0.
+	// Output content differs between Go and GNU; only exit code is compared.
+	t.Run("help_flag", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "help exits 0",
+				Args:      []string{"--help"},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  0,
+				Normalize: []testutils.NormalizeFunc{outputClearNormalizer},
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.3: error messages match GNU mkdir on stderr with identical exit codes.
+	t.Run("error_invalid_short_option", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "invalid short option -z",
+				Args:      []string{"-z"},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("error_unrecognized_long_option", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "unrecognized long option",
+				Args:      []string{"--badoption"},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("error_missing_mode_short", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "missing -m argument",
+				Args:      []string{"-m"},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("error_missing_mode_long", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "missing --mode argument",
+				Args:      []string{"--mode"},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.3: invalid mode value produces matching error and exit code.
+	t.Run("error_invalid_mode_value", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		target := filepath.Join(tmpDir, "should_not_exist")
+		tests := []testutils.DiffTest{
+			{
+				Name:      "invalid mode value",
+				Args:      []string{"-m", "badmode", target},
 				Env:       []string{"LC_ALL=C"},
 				ExitCode:  1,
 				Normalize: normalize,
