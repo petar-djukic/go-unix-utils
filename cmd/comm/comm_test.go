@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd029-comm R1.1, R1.2, R1.3, R1.4 (differential tests)
+// Implements: prd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4 (differential tests)
 package main
 
 import (
@@ -187,6 +187,72 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "exit_0_success",
 			Args: []string{file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: -1 suppresses column 1 (lines unique to file1).
+		{
+			Name: "suppress_col1",
+			Args: []string{"-1", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -2 suppresses column 2 (lines unique to file2).
+		{
+			Name: "suppress_col2",
+			Args: []string{"-2", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -3 suppresses column 3 (lines common to both).
+		{
+			Name: "suppress_col3",
+			Args: []string{"-3", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1, R2.2: -12 suppresses columns 1 and 2, showing only common lines.
+		{
+			Name: "suppress_col12",
+			Args: []string{"-12", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1, R2.3: -13 suppresses columns 1 and 3.
+		{
+			Name: "suppress_col13",
+			Args: []string{"-13", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2, R2.3: -23 suppresses columns 2 and 3.
+		{
+			Name: "suppress_col23",
+			Args: []string{"-23", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -123 suppresses all columns; no output.
+		{
+			Name: "suppress_all",
+			Args: []string{"-123", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: Separate flags -1 -2 combine correctly.
+		{
+			Name: "suppress_separate_flags",
+			Args: []string{"-1", "-2", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: -1 with identical files (no column 1 lines to suppress).
+		{
+			Name: "suppress_col1_identical",
+			Args: []string{"-1", allCommon1, allCommon2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -2 with no-overlap files.
+		{
+			Name: "suppress_col2_no_overlap",
+			Args: []string{"-2", noOverlap1, noOverlap2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: -3 with empty file.
+		{
+			Name: "suppress_col3_file1_empty",
+			Args: []string{"-3", emptyFile, file2},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
