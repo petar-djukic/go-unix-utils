@@ -38,7 +38,16 @@ func TestDiff(t *testing.T) {
 		return tryPattern.ReplaceAll(b, []byte("Try 'PROG'"))
 	}
 
+	// normalizeInvalidOption normalizes the character(s) reported in the
+	// "invalid option -- 'X'" message so single-char vs multi-char differences
+	// between GNU and our implementation don't cause false failures.
+	invalidOptPattern := regexp.MustCompile(`invalid option -- '([^']*)'`)
+	normalizeInvalidOption := func(b []byte) []byte {
+		return invalidOptPattern.ReplaceAll(b, []byte("invalid option -- 'OPT'"))
+	}
+
 	stderrNorm := []testutils.NormalizeFunc{normalizeProgramName, normalizeTryPath}
+	stderrNormShort := []testutils.NormalizeFunc{normalizeProgramName, normalizeTryPath, normalizeInvalidOption}
 
 	tests := []testutils.DiffTest{
 		// R3.2: stdin redirected from a pipe — prints "not a tty", exit 1.
@@ -79,10 +88,34 @@ func TestDiff(t *testing.T) {
 			ExitCode:  2,
 			Normalize: stderrNorm,
 		},
-		// R3.2: unknown flag — error on stderr, exit 2.
+		// R3.2: unknown long flag — error on stderr, exit 2.
 		{
-			Name:      "unknown_flag",
+			Name:      "unknown_long_flag",
 			Args:      []string{"--unknown"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: stderrNorm,
+		},
+		// R2.2, R3.2: unknown short flag — "invalid option" error on stderr, exit 2.
+		{
+			Name:      "unknown_short_flag",
+			Args:      []string{"-x"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: stderrNormShort,
+		},
+		// R3.2: -s flag combined with extra operand — error takes precedence.
+		{
+			Name:      "silent_with_extra_operand",
+			Args:      []string{"-s", "extra"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: stderrNorm,
+		},
+		// R3.2: multiple extra operands — first is reported.
+		{
+			Name:      "multiple_extra_operands",
+			Args:      []string{"foo", "bar"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  2,
 			Normalize: stderrNorm,

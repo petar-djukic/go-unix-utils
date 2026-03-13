@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd052-tty R1.1, R1.2, R1.3, R2.1, R2.2
+// Implements: prd052-tty R1.1, R1.2, R1.3, R2.1, R2.2, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -38,9 +38,15 @@ func main() {
 			fmt.Println("tty (go-unix-utils) 0.1")
 			return
 		default:
-			if strings.HasPrefix(arg, "-") {
-				// R2.2: Unknown flags produce an error and exit 2.
+			if strings.HasPrefix(arg, "--") {
+				// R2.2: Unknown long flags produce "unrecognized option" error and exit 2.
 				fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\nTry '%s --help' for more information.\n", programName, arg, programName)
+				os.Exit(2)
+			}
+			if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+				// R2.2: Unknown short flags produce "invalid option" error and exit 2.
+				// GNU coreutils reports each unknown character individually.
+				fmt.Fprintf(os.Stderr, "%s: invalid option -- '%s'\nTry '%s --help' for more information.\n", programName, arg[1:], programName)
 				os.Exit(2)
 			}
 			operands = append(operands, arg)
