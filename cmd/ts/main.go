@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3
 package main
 
 import (
@@ -30,6 +30,7 @@ func main() {
 	// Parse flags and positional format argument.
 	incremental := false
 	sinceStart := false
+	monotonic := false
 	var format string
 	for _, arg := range os.Args[1:] {
 		switch arg {
@@ -37,6 +38,9 @@ func main() {
 			incremental = true
 		case "-s":
 			sinceStart = true
+		case "-m":
+			// R5.1: Use monotonic clock instead of wall clock for timestamp sampling.
+			monotonic = true
 		default:
 			format = arg
 		}
@@ -48,9 +52,10 @@ func main() {
 		sinceStart = false
 	}
 
-	// R2.1, R3.2, R3.3, R4.2: Set default format based on mode.
+	// R2.1, R3.2, R3.3, R4.2, R4.3: Set default format based on mode.
 	// R3.3: A custom format argument overrides the -i default; TZ=GMT still applies.
 	// R4.2: Default format in -s mode is "%H:%M:%S" with TZ=GMT, same as -i.
+	// R4.3: A custom format argument overrides the -s default format.
 	if format == "" {
 		if incremental || sinceStart {
 			format = incrementalStrftimeFormat
@@ -58,6 +63,7 @@ func main() {
 			format = defaultStrftimeFormat
 		}
 	}
+
 
 	w := bufio.NewWriter(os.Stdout)
 	reader := bufio.NewReader(os.Stdin)
@@ -76,6 +82,7 @@ func main() {
 			var ts string
 			if incremental {
 				// R3.1: Time elapsed since previous line (first line = since start).
+				// R5.2: -m compatible; time.Sub uses monotonic reading when available.
 				delta := now.Sub(prevTime)
 				prevTime = now
 				// R3.2, R3.3: Convert delta to a time value at epoch 0 in UTC so that
@@ -84,10 +91,19 @@ func main() {
 				ts = strftime(format, deltaTime)
 			} else if sinceStart {
 				// R4.1: Time elapsed since ts started, monotonically increasing.
+				// R4.3: Custom format argument overrides the -s default format.
+				// R5.2: -m compatible; time.Sub uses monotonic reading when available.
 				delta := now.Sub(startTime)
 				// R4.2: Convert delta to a time value at epoch 0 in UTC (TZ=GMT).
 				deltaTime := time.Unix(0, 0).UTC().Add(delta)
 				ts = strftime(format, deltaTime)
+			} else if monotonic {
+				// R5.1: Use monotonic clock for timestamp sampling. Anchor to the
+				// wall-clock start time and advance only by monotonic elapsed, so
+				// the timestamp never jumps if the wall clock is adjusted (R5.3).
+				elapsed := now.Sub(startTime)
+				monoTime := startTime.Add(elapsed)
+				ts = strftime(format, monoTime)
 			} else {
 				// R1.2: Evaluate timestamp at the time each line is received.
 				ts = strftime(format, now)

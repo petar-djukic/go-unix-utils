@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2 (differential tests)
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3 (differential tests)
 package main
 
 import (
@@ -324,6 +324,94 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("line1\nline2\n"),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R4.3: custom format argument overrides -s default format (epoch)
+			Name:      "since_start_custom_format_epoch",
+			Args:      []string{"-s", "%s"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{epochNormalizer},
+		},
+		{
+			// R4.3: custom format argument overrides -s default format (date+time)
+			Name:      "since_start_custom_format_date_time",
+			Args:      []string{"-s", "%H:%M:%.S"},
+			Stdin:     []byte("line1\nline2\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R5.1: -m flag with default mode uses monotonic clock
+			Name:      "monotonic_default",
+			Args:      []string{"-m"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R5.1: -m flag with multi-line input
+			Name:      "monotonic_multi_line",
+			Args:      []string{"-m"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R5.1: -m flag with empty stdin
+			Name:      "monotonic_empty",
+			Args:      []string{"-m"},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R5.2: -m combined with -i mode
+			Name:      "monotonic_incremental",
+			Args:      []string{"-m", "-i"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R5.2: -m combined with -s mode
+			Name:      "monotonic_since_start",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R5.2: -m with custom format string
+			Name:      "monotonic_custom_format",
+			Args:      []string{"-m", "%Y-%m-%dT%H:%M:%S"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R5.2: -m with subsecond extension
+			Name:      "monotonic_subsec",
+			Args:      []string{"-m", "%.T"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R5.3: -m with ten lines verifies monotonic consistency
+			Name:      "monotonic_ten_lines",
+			Args:      []string{"-m"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R5.3: -m with -s and ten lines for monotonic elapsed consistency
+			Name:      "monotonic_since_start_ten_lines",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
 		},
 	}
 
