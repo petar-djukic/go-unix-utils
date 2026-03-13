@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/tee.
 //
-// Implements: prd017-tee R4.1, R4.2, R4.3
+// Implements: prd017-tee R3.1–R3.4, R4.1, R4.2, R4.3
 package main
 
 import (
@@ -119,6 +119,23 @@ func TestDiff(t *testing.T) {
 			Stdin:    []byte("separate flags\n"),
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
+		},
+		// R3.1: exit 0 when all writes succeed (explicit verification).
+		{
+			Name:     "r3.1_success_exit0",
+			Stdin:    []byte("success\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: stdout still receives data when a file fails to open.
+		// Two bad paths — stdout should still pass through all data.
+		{
+			Name:      "r3.3_stdout_continues_multiple_bad_files",
+			Args:      []string{readOnlyPath, filepath.Join(dir, "also-bad", "x.txt")},
+			Stdin:     []byte("still goes to stdout\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeTeeErrors},
 		},
 	}
 
@@ -299,6 +316,47 @@ func TestFileOutput(t *testing.T) {
 		}
 		expected := append(existing, input...)
 		assertFileContent(t, appendFile, expected)
+	})
+
+	// R3.3: good file still receives all data when another file fails to open.
+	t.Run("r3.3_good_file_with_bad_file", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		goodFile := filepath.Join(outDir, "good.txt")
+		badFile := filepath.Join(outDir, "no-such-dir", "bad.txt")
+		input := []byte("data for good file\n")
+
+		stdout, exitCode := runGoBin(t, goBin, []string{badFile, goodFile}, input)
+		if exitCode != 1 {
+			t.Errorf("expected exit 1, got %d", exitCode)
+		}
+		// R3.3: stdout still receives all data.
+		if !bytes.Equal(stdout, input) {
+			t.Errorf("stdout mismatch: got %q, want %q", stdout, input)
+		}
+		// R3.3: good file receives all data despite bad file failure.
+		assertFileContent(t, goodFile, input)
+	})
+
+	// R3.3: multiple good files with a bad file in between.
+	t.Run("r3.3_good_files_around_bad_file", func(t *testing.T) {
+		t.Parallel()
+		outDir := t.TempDir()
+		fileA := filepath.Join(outDir, "a.txt")
+		fileB := filepath.Join(outDir, "b.txt")
+		badFile := filepath.Join(outDir, "missing-dir", "bad.txt")
+		input := []byte("resilient output\n")
+
+		stdout, exitCode := runGoBin(t, goBin, []string{fileA, badFile, fileB}, input)
+		if exitCode != 1 {
+			t.Errorf("expected exit 1, got %d", exitCode)
+		}
+		if !bytes.Equal(stdout, input) {
+			t.Errorf("stdout mismatch: got %q, want %q", stdout, input)
+		}
+		// R3.3: both good files receive all data.
+		assertFileContent(t, fileA, input)
+		assertFileContent(t, fileB, input)
 	})
 }
 
