@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd044-uname R1.1, R1.2, R1.3, R1.4
+// Implements: prd044-uname R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8
 package main
 
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -23,8 +24,8 @@ func main() {
 
 	args := os.Args[1:]
 
-	// Parse flags manually to match GNU getopt behavior (combined flags like -snr).
-	var flagS, flagN, flagR bool
+	// Parse flags manually to match GNU getopt behavior (combined flags like -snrvm).
+	var flagS, flagN, flagR, flagV, flagM, flagP, flagI bool
 	var positional []string
 
 	for _, arg := range args {
@@ -41,6 +42,18 @@ func main() {
 					flagN = true
 				case 'r':
 					flagR = true
+				case 'v':
+					// R1.5: kernel version string.
+					flagV = true
+				case 'm':
+					// R1.6: machine hardware name.
+					flagM = true
+				case 'p':
+					// R1.7: processor type.
+					flagP = true
+				case 'i':
+					// R1.8: hardware platform.
+					flagI = true
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\nTry '%s --help' for more information.\n", programName, ch, programName)
 					os.Exit(1)
@@ -67,7 +80,7 @@ func main() {
 	}
 
 	// R1.1: no flags means print kernel name (equivalent to -s).
-	if !flagS && !flagN && !flagR {
+	if !flagS && !flagN && !flagR && !flagV && !flagM && !flagP && !flagI {
 		flagS = true
 	}
 
@@ -91,8 +104,40 @@ func main() {
 		// R1.4: kernel release string.
 		fields = append(fields, bytesToString(utsname.Release))
 	}
+	if flagV {
+		// R1.5: kernel version string.
+		fields = append(fields, bytesToString(utsname.Version))
+	}
+	if flagM {
+		// R1.6: machine hardware name.
+		fields = append(fields, bytesToString(utsname.Machine))
+	}
+	if flagP {
+		// R1.7: processor type — "unknown" if not determinable.
+		fields = append(fields, processorType())
+	}
+	if flagI {
+		// R1.8: hardware platform — "unknown" if not determinable.
+		// GNU coreutils returns "unknown" for hardware platform.
+		fields = append(fields, "unknown")
+	}
 
 	fmt.Println(strings.Join(fields, " "))
+}
+
+// processorType returns the processor type string matching GNU coreutils behavior.
+// On Darwin, GNU coreutils embeds the processor from the configure-time uname -p:
+// "arm" on Apple Silicon, "i386" on Intel. On Linux, it defaults to "unknown".
+func processorType() string {
+	if runtime.GOOS == "darwin" {
+		switch runtime.GOARCH {
+		case "arm64":
+			return "arm"
+		case "amd64":
+			return "i386"
+		}
+	}
+	return "unknown"
 }
 
 // bytesToString converts a null-terminated byte array to a Go string.
@@ -112,6 +157,10 @@ Print certain system information.  With no OPTION, same as -s.
   -s, --kernel-name        print the kernel name
   -n, --nodename           print the network node hostname
   -r, --kernel-release     print the kernel release
+  -v, --kernel-version     print the kernel version
+  -m, --machine            print the machine hardware name
+  -p, --processor          print the processor type (non-portable)
+  -i, --hardware-platform  print the hardware platform (non-portable)
       --help     display this help and exit
       --version  output version information and exit
 `
