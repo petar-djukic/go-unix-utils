@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.7
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.11
 package main
 
 import (
@@ -75,6 +75,8 @@ type lsOptions struct {
 	showBlocks bool // -s: prepend allocated block count
 	numericIDs  bool      // -n: numeric UID/GID (implies -l)
 	humanSizes  bool      // -h: human-readable sizes (only with -l)
+	classify    bool      // -F: append type indicator character
+	recursive   bool      // -R: recursively list subdirectories
 	color       colorMode // --color: colorization mode
 }
 
@@ -177,6 +179,12 @@ func main() {
 			case 'h':
 				// R3.5: human-readable sizes (only effective with -l).
 				opts.humanSizes = true
+			case 'F':
+				// R3.8: append type indicator character after each entry name.
+				opts.classify = true
+			case 'R':
+				// R3.11: recursively list subdirectory contents.
+				opts.recursive = true
 			case 'n':
 				// R2.14 / R4.6: numeric UID/GID, implies -l.
 				opts.numericIDs = true
@@ -250,7 +258,8 @@ func main() {
 	}
 
 	// Print directory arguments.
-	multipleTargets := len(files) > 0 || len(dirs) > 1
+	// R3.11: when -R is active, always print headers (each subdir gets one).
+	multipleTargets := len(files) > 0 || len(dirs) > 1 || opts.recursive
 	for _, dir := range dirs {
 		if needBlank {
 			fmt.Println()
@@ -258,7 +267,7 @@ func main() {
 		if multipleTargets {
 			fmt.Printf("%s:\n", dir)
 		}
-		if err := listDir(dir, isTTY, opts); err != nil {
+		if err := listDir(dir, isTTY, opts, &exitCode); err != nil {
 			fmt.Fprintf(os.Stderr, "ls: reading directory '%s': %s\n", dir, unwrapMsg(err))
 			if exitCode < 1 {
 				exitCode = 1
@@ -412,7 +421,8 @@ func isDigit(b byte) bool {
 // listDir reads and prints the contents of a single directory.
 // R1.3: entries sorted lexicographically in C locale byte order.
 // R1.4: dotfiles hidden by default.
-func listDir(dir string, isTTY bool, opts lsOptions) error {
+// R3.11-R3.15: when -R is active, recurse into subdirectories.
+func listDir(dir string, isTTY bool, opts lsOptions, exitCode *int) error {
 	// R2.8: for -U (unsorted), use raw readdir to preserve filesystem order.
 	// os.ReadDir sorts entries alphabetically, which defeats -U.
 	names, err := readDirNames(dir, opts.sortBy == sortUnsorted)
@@ -460,6 +470,32 @@ func listDir(dir string, isTTY bool, opts lsOptions) error {
 	}
 
 	printFileEntries(items, isTTY, opts, true)
+
+	// R3.11: recursively list subdirectories when -R is active.
+	// R3.13: do not follow symbolic links to directories.
+	// R3.14: filter flags (-a, -A) apply to each subdirectory.
+	// R3.15: subdirectories are listed in the same sort order as entries.
+	if opts.recursive {
+		for _, item := range items {
+			// Skip "." and ".." to avoid infinite recursion.
+			if item.name == "." || item.name == ".." {
+				continue
+			}
+			// R3.13: only recurse into real directories, not symlinks.
+			if !item.info.Mode.IsDir() {
+				continue
+			}
+			fmt.Println()
+			fmt.Printf("%s:\n", item.path)
+			if recurseErr := listDir(item.path, isTTY, opts, exitCode); recurseErr != nil {
+				fmt.Fprintf(os.Stderr, "ls: reading directory '%s': %s\n", item.path, unwrapMsg(recurseErr))
+				if *exitCode < 1 {
+					*exitCode = 1
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -621,9 +657,17 @@ func printLong(items []fileEntry, isDirListing bool, opts lsOptions) {
 		mtimeStr := formatMtime(fi.ModTime)
 
 		// R3.3: colorize entry name based on file type.
+		// R3.8/R3.10: -F appends type indicator after ANSI reset.
+		// In long format, symlinks show " -> target" which already indicates the type,
+		// so GNU ls omits the "@" indicator for symlinks in long format.
+		classifyInLong := opts.classify
+		isSymlink := fi.Mode&os.ModeSymlink != 0
+		if isSymlink && classifyInLong {
+			classifyInLong = false
+		}
+		nameStr := colorizeEntry(item.name, fi.Mode, classifyInLong)
 		// R1.10: symlink display — append " -> target" for symbolic links.
-		nameStr := colorizeEntry(item.name, fi.Mode)
-		if fi.Mode&os.ModeSymlink != 0 {
+		if isSymlink {
 			if target, linkErr := os.Readlink(item.path); linkErr == nil {
 				nameStr = nameStr + " -> " + target
 			}
@@ -975,7 +1019,8 @@ func extractPrefixedNames(items []fileEntry, opts lsOptions) []string {
 			prefix += format.PadLeft(blkStr, maxBlkWidth) + " "
 		}
 		// R3.3: colorize entry name based on file type.
-		names[i] = prefix + colorizeEntry(item.name, item.info.Mode)
+		// R3.8/R3.10: -F appends type indicator.
+		names[i] = prefix + colorizeEntry(item.name, item.info.Mode, opts.classify)
 	}
 	return names
 }
@@ -990,10 +1035,16 @@ var colorFirstDone bool
 // R3.3: uses pkg/format.FileTypeColor for the opening sequence and
 // pkg/format.Reset for the closing sequence. When color is disabled,
 // FileTypeColor returns "" and no escape sequences appear in output.
-func colorizeEntry(name string, mode os.FileMode) string {
+// R3.8/R3.10: when classify is true, appends the type indicator after the
+// ANSI reset sequence so the indicator is not colorized.
+func colorizeEntry(name string, mode os.FileMode, classify bool) string {
+	indicator := ""
+	if classify {
+		indicator = typeIndicator(mode)
+	}
 	colorCode := format.FileTypeColor(mode)
 	if colorCode == "" {
-		return name
+		return name + indicator
 	}
 	// GNU ls emits a reset before the first colored entry only.
 	var prefix string
@@ -1001,7 +1052,28 @@ func colorizeEntry(name string, mode os.FileMode) string {
 		prefix = format.Reset()
 		colorFirstDone = true
 	}
-	return prefix + colorCode + name + format.Reset()
+	return prefix + colorCode + name + format.Reset() + indicator
+}
+
+// typeIndicator returns the -F classification suffix for the given file mode.
+// R3.8: "/" for directories, "*" for executable regular files, "@" for symlinks,
+// "|" for named pipes, "=" for sockets. Regular non-executable files get "".
+// R3.9: executable is defined as any execute bit set (fi.Mode&0o111 != 0).
+func typeIndicator(mode os.FileMode) string {
+	switch {
+	case mode.IsDir():
+		return "/"
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.IsRegular() && mode.Perm()&0o111 != 0:
+		return "*"
+	default:
+		return ""
+	}
 }
 
 // humanSizeGNU formats a byte count in human-readable binary (1024-base) form

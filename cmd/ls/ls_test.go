@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.7 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.11 (differential tests)
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1650,6 +1651,146 @@ func TestDiffColorWithPrefixes(t *testing.T) {
 			Args:      []string{"--color=always", "-isl", dir},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createClassifyFixture creates a fixture directory with a directory, regular file,
+// executable, symlink, and named pipe for -F classification testing.
+func createClassifyFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	// Regular non-executable file.
+	writeFixtureFile(t, filepath.Join(dir, "regular"), 10)
+
+	// Executable regular file.
+	execPath := filepath.Join(dir, "runme")
+	writeFixtureFile(t, execPath, 10)
+	if err := os.Chmod(execPath, 0o755); err != nil {
+		t.Fatalf("chmod executable: %v", err)
+	}
+
+	// Subdirectory.
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+
+	// Symbolic link.
+	if err := os.Symlink("regular", filepath.Join(dir, "symlink")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	// Named pipe (FIFO).
+	if err := syscall.Mkfifo(filepath.Join(dir, "pipe"), 0o644); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+
+	return dir
+}
+
+// TestDiffClassify exercises R3.8, R3.9, R3.10: -F appends type indicators.
+func TestDiffClassify(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := createClassifyFixture(t)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.8: -F with single-column output.
+		{
+			Name: "classify_single_column",
+			Args: []string{"-F", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.10: -F with long format.
+		{
+			Name:      "classify_long_format",
+			Args:      []string{"-Fl", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.10: -F with --color=never to verify indicator placement.
+		{
+			Name: "classify_color_never",
+			Args: []string{"-F", "--color=never", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursive exercises R3.11: -R recursively lists subdirectories.
+func TestDiffRecursive(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// Create nested directory structure.
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "topfile"), 10)
+
+	sub1 := filepath.Join(dir, "adir")
+	if err := os.Mkdir(sub1, 0o755); err != nil {
+		t.Fatalf("mkdir adir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub1, "inner1"), 20)
+
+	sub2 := filepath.Join(dir, "bdir")
+	if err := os.Mkdir(sub2, 0o755); err != nil {
+		t.Fatalf("mkdir bdir: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub2, "inner2"), 30)
+
+	// Nested subdirectory.
+	sub1sub := filepath.Join(sub1, "nested")
+	if err := os.Mkdir(sub1sub, 0o755); err != nil {
+		t.Fatalf("mkdir nested: %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(sub1sub, "deep"), 5)
+
+	// Symlink to directory (R3.13: should NOT be followed).
+	if err := os.Symlink("adir", filepath.Join(dir, "linkdir")); err != nil {
+		t.Fatalf("symlink linkdir: %v", err)
+	}
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.11: basic recursive listing.
+		{
+			Name: "recursive_basic",
+			Args: []string{"-R", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.12: -R with -l (long format with "total N" per subdir).
+		{
+			Name:      "recursive_long",
+			Args:      []string{"-Rl", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.11 + R3.8: -R with -F (classification in subdirectories).
+		{
+			Name: "recursive_classify",
+			Args: []string{"-RF", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
