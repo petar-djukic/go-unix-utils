@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.3
+// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.4
 package main
 
 import (
@@ -74,6 +74,10 @@ func main() {
 				return headBytesNegative(w, r, byteCount)
 			}
 			return headBytes(w, r, byteCount)
+		}
+		// R1.3: negative -n means all lines except the last N.
+		if *flagN < 0 {
+			return headLinesNegative(w, r, int64(-*flagN))
 		}
 		return headLines(w, r, *flagN)
 	}
@@ -188,6 +192,36 @@ func headLines(w *bufio.Writer, r io.Reader, n int) error {
 		}
 		if err != nil {
 			return fmt.Errorf("read error: %w", err)
+		}
+	}
+	return nil
+}
+
+// headLinesNegative reads all lines from r and writes all except the last n
+// lines to w.
+// R1.3: negative line count — print all but last N lines.
+func headLinesNegative(w *bufio.Writer, r io.Reader, n int64) error {
+	br := bufio.NewReader(r)
+	var lines []string
+	for {
+		line, err := br.ReadString('\n')
+		if len(line) > 0 {
+			lines = append(lines, line)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read error: %w", err)
+		}
+	}
+	end := int64(len(lines)) - n
+	if end <= 0 {
+		return nil
+	}
+	for _, line := range lines[:end] {
+		if _, err := io.WriteString(w, line); err != nil {
+			return fmt.Errorf("write error: %w", err)
 		}
 	}
 	return nil

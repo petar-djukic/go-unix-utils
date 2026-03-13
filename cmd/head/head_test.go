@@ -171,6 +171,34 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
+		// R4.4, R1.3: negative line count — all lines except last 5.
+		{
+			Name:  "r1.3_negative_n_5",
+			Args:  []string{"-n", "-5"},
+			Stdin: []byte("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4, R1.3: negative line count — all lines except last 3.
+		{
+			Name:  "r1.3_negative_n_3",
+			Args:  []string{"-n", "-3"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4, R1.3: negative line count larger than input — produces no output.
+		{
+			Name:  "r1.3_negative_n_larger_than_input",
+			Args:  []string{"-n", "-100"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4, R1.3: negative line count from file.
+		{
+			Name: "r1.3_negative_n_from_file",
+			Args: []string{"-n", "-3", twentyLines},
+			Env:  []string{"LC_ALL=C"},
+		},
+
 		// R2.1: byte-count mode from stdin.
 		{
 			Name:  "r2.1_byte_mode_stdin",
