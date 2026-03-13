@@ -125,9 +125,41 @@ func TestDiff(t *testing.T) {
 				filepath.Join(hardlinkFixture, "dir1", "original.txt"),
 				filepath.Join(hardlinkFixture, "dir2", "linked.txt")},
 		},
+		{
+			// R4.1: exit 0 when all arguments are successfully traversed.
+			// R5.1: SIGPIPE handler installed at startup does not interfere.
+			Name: "exit_0_on_success",
+			Args: []string{"-s", "-k", fixture},
+		},
+		{
+			// R4.2: exit 1 when an argument does not exist. Must print a
+			// diagnostic to stderr and continue processing. Stderr format
+			// differs between binaries (program name, error wording) so
+			// output is normalized away; exit code parity is the assertion.
+			Name:      "nonexistent_path_exit_1",
+			Args:      []string{"-k", filepath.Join(fixture, "does_not_exist")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{ignoreOutput},
+		},
+		{
+			// R4.2: mix of valid and invalid arguments exits 1. Valid
+			// argument output is still produced. Stderr diagnostic format
+			// differs so all output is normalized away for comparison.
+			Name:      "mixed_valid_invalid_exit_1",
+			Args:      []string{"-s", "-k", filepath.Join(fixture, "does_not_exist"), fixture},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{ignoreOutput},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// ignoreOutput returns nil, discarding all content. Used for differential tests
+// where stderr format differs between binaries (different program names and
+// error message formatting) but exit code comparison is sufficient.
+func ignoreOutput(b []byte) []byte {
+	return nil
 }
 
 // buildHardlinkFixture creates a directory structure with hard links for R3.1-R3.3 testing.
