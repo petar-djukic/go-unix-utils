@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd035-rmdir R1.1–R1.4
+// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -23,6 +24,8 @@ func main() {
 	args := os.Args[1:]
 
 	var operands []string
+	// R2.1: -p / --parents flag for recursive parent removal.
+	parents := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -33,6 +36,8 @@ func main() {
 		case arg == "--version":
 			printVersion()
 			return
+		case arg == "--parents":
+			parents = true
 		case arg == "--":
 			// End of flags; remaining args are operands.
 			operands = append(operands, args[i+1:]...)
@@ -47,6 +52,8 @@ func main() {
 			flags := arg[1:]
 			for j := 0; j < len(flags); j++ {
 				switch flags[j] {
+				case 'p':
+					parents = true
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, flags[j])
 					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
@@ -68,11 +75,28 @@ func main() {
 	exitCode := 0
 	for _, dir := range operands {
 		// R1.1: remove a single empty directory.
-		// R1.2: process each operand independently.
+		// R1.2, R2.3: process each operand independently.
 		// R1.4: reject non-directory targets with "Not a directory".
 		if err := syscall.Rmdir(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, dir, err.Error())
 			exitCode = 1
+			continue
+		}
+		// R2.1: with -p, ascend and remove each successive empty parent.
+		// R2.2: stop ascending when a parent is not empty and report an error.
+		if parents {
+			parent := dir
+			for {
+				parent = filepath.Dir(parent)
+				if parent == "." || parent == "/" {
+					break
+				}
+				if err := syscall.Rmdir(parent); err != nil {
+					fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, parent, err.Error())
+					exitCode = 1
+					break
+				}
+			}
 		}
 	}
 
@@ -86,6 +110,7 @@ func printHelp() {
 	fmt.Print(`Usage: rmdir [OPTION]... DIRECTORY...
 Remove the DIRECTORY(ies), if they are empty.
 
+  -p, --parents    remove DIRECTORY and its ancestors
       --help       display this help and exit
       --version    output version information and exit
 `)

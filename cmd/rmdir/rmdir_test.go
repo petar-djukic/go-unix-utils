@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd035-rmdir R1.1–R1.4 differential tests
+// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3 differential tests
 package main
 
 import (
@@ -162,6 +162,23 @@ func TestDiff(t *testing.T) {
 		}
 		testutils.RunDiffTests(t, goBin, refBin, tests)
 	})
+
+	// R2.2: -p on a non-existent path reports an error.
+	t.Run("parents_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		nonexistent := filepath.Join(tmpDir, "x", "y", "z")
+		tests := []testutils.DiffTest{
+			{
+				Name:      "parents with non-existent path",
+				Args:      []string{"-p", nonexistent},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
 }
 
 // TestRemoveSingleEmptyDir verifies R1.1: rmdir removes a single empty directory.
@@ -236,6 +253,127 @@ func TestHelp(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("Usage:")) {
 		t.Errorf("--help output missing 'Usage:': %s", out)
+	}
+}
+
+// TestParentsRemovesAncestors verifies R2.1: rmdir -p a/b/c removes c, b, then a.
+// Uses relative paths with WorkDir to avoid ascending into the tmpdir.
+func TestParentsRemovesAncestors(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	if mkErr := os.MkdirAll(filepath.Join(tmpDir, "a", "b", "c"), 0o755); mkErr != nil {
+		t.Fatalf("setup: %v", mkErr)
+	}
+
+	cmd := exec.Command(goBin, "-p", "a/b/c")
+	cmd.Dir = tmpDir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("rmdir -p failed: %v\noutput: %s", runErr, out)
+	}
+
+	// Verify c, b, and a are all removed.
+	for _, d := range []string{"a/b/c", "a/b", "a"} {
+		if _, statErr := os.Stat(filepath.Join(tmpDir, d)); !os.IsNotExist(statErr) {
+			t.Errorf("directory %q still exists after rmdir -p", d)
+		}
+	}
+}
+
+// TestParentsMultipleArgs verifies R2.3: rmdir -p processes each argument independently.
+func TestParentsMultipleArgs(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	if mkErr := os.MkdirAll(filepath.Join(tmpDir, "x", "y"), 0o755); mkErr != nil {
+		t.Fatalf("setup: %v", mkErr)
+	}
+	if mkErr := os.MkdirAll(filepath.Join(tmpDir, "m", "n"), 0o755); mkErr != nil {
+		t.Fatalf("setup: %v", mkErr)
+	}
+
+	cmd := exec.Command(goBin, "-p", "x/y", "m/n")
+	cmd.Dir = tmpDir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("rmdir -p failed: %v\noutput: %s", runErr, out)
+	}
+
+	for _, d := range []string{"x/y", "x", "m/n", "m"} {
+		if _, statErr := os.Stat(filepath.Join(tmpDir, d)); !os.IsNotExist(statErr) {
+			t.Errorf("directory %q still exists after rmdir -p", d)
+		}
+	}
+}
+
+// TestParentsStopsOnNonempty verifies R2.2: rmdir -p stops ascending when a
+// parent is not empty. Run separately per binary since -p is destructive.
+func TestParentsStopsOnNonempty(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	for _, bin := range []struct {
+		name string
+		path string
+	}{
+		{"ref", refBin},
+		{"go", goBin},
+	} {
+		t.Run(bin.name, func(t *testing.T) {
+			t.Parallel()
+			tmpDir := t.TempDir()
+			if mkErr := os.MkdirAll(filepath.Join(tmpDir, "a", "b", "c"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+			if wErr := os.WriteFile(filepath.Join(tmpDir, "a", "blocker.txt"), []byte("data"), 0o644); wErr != nil {
+				t.Fatalf("setup: %v", wErr)
+			}
+
+			cmd := exec.Command(bin.path, "-p", "a/b/c")
+			cmd.Dir = tmpDir
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			runErr := cmd.Run()
+
+			exitCode := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					exitCode = exitErr.ExitCode()
+				} else {
+					t.Fatalf("run error: %v", runErr)
+				}
+			}
+
+			if exitCode != 1 {
+				t.Errorf("expected exit code 1, got %d", exitCode)
+			}
+
+			stderrBytes := stderr.Bytes()
+			for _, fn := range normalize {
+				stderrBytes = fn(stderrBytes)
+			}
+
+			// Both binaries should report the non-empty ancestor.
+			if !bytes.Contains(stderrBytes, []byte("a")) {
+				t.Errorf("stderr should mention ancestor 'a': %s", stderrBytes)
+			}
+		})
 	}
 }
 
