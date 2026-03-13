@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd051-pwd R1.1–R1.4
+// Implements: prd051-pwd R1.1–R1.4, R2.1–R2.2, R3.1–R3.2
 package main
 
 import (
@@ -32,6 +32,7 @@ func main() {
 
 	args := os.Args[1:]
 	mode := modePhysical // R1.1: default is physical.
+	hasOperands := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -43,12 +44,11 @@ func main() {
 			printVersion()
 			return
 		case arg == "--":
-			// End of flags; any remaining args are positional operands.
+			// End of flags; remaining args are operands.
 			if i+1 < len(args) {
-				fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", programName, args[i+1])
-				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
-				os.Exit(1)
+				hasOperands = true
 			}
+			i = len(args) // skip remaining
 		case arg == "--logical":
 			// R1.2: --logical long form of -L.
 			mode = modeLogical
@@ -78,11 +78,14 @@ func main() {
 				}
 			}
 		default:
-			// R2.1: positional operands are not accepted.
-			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", programName, arg)
-			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
-			os.Exit(1)
+			// R2.1: operands are noted and warned about, matching gpwd behavior.
+			hasOperands = true
 		}
+	}
+
+	// R2.1: warn about non-option arguments, matching gpwd behavior.
+	if hasOperands {
+		fmt.Fprintf(os.Stderr, "%s: ignoring non-option arguments\n", programName)
 	}
 
 	var result string
@@ -94,8 +97,14 @@ func main() {
 		// to the same directory as the physical cwd. Fall back to physical otherwise.
 		result, err = logicalPwd()
 	case modePhysical:
-		// R1.3: resolve symlinks.
-		result, err = os.Getwd()
+		// R1.3: resolve symlinks. os.Getwd() may return a PWD-based path
+		// containing symlinks (Go checks PWD env before syscall), so
+		// EvalSymlinks is needed to match GNU pwd -P behavior.
+		var cwd string
+		cwd, err = os.Getwd()
+		if err == nil {
+			result, err = filepath.EvalSymlinks(cwd)
+		}
 	}
 
 	if err != nil {
