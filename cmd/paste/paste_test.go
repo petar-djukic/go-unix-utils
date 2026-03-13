@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/paste against gpaste reference binary.
-// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4
+// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3
 package main
 
 import (
@@ -109,6 +109,66 @@ func TestDiff(t *testing.T) {
 			Name:  "multiple dash args",
 			Args:  []string{"-", "-"},
 			Stdin: []byte("line1\nline2\nline3\nline4\n"),
+		},
+		// R2.1: Single-character custom delimiter.
+		{
+			Name: "custom delimiter colon",
+			Args: []string{"-d:", file1, file2},
+		},
+		// R2.1: Delimiter list cycles across fields.
+		{
+			Name: "delimiter list cycles across fields",
+			Args: []string{"-d:;", file4, file1, file3},
+		},
+		// R2.1: Single delimiter with three files.
+		{
+			Name: "single delimiter three files",
+			Args: []string{"-d,", file1, file2, file3},
+		},
+		// R2.2: Escape sequence \t (tab) in delimiter.
+		{
+			Name: "escape tab delimiter",
+			Args: []string{`-d\t`, file1, file2},
+		},
+		// R2.2: Escape sequence \n (newline) in delimiter.
+		{
+			Name: "escape newline delimiter",
+			Args: []string{`-d\n`, file1, file2},
+		},
+		// R2.2: Escape sequence \\ (backslash) in delimiter.
+		{
+			Name: "escape backslash delimiter",
+			Args: []string{`-d\\`, file1, file2},
+		},
+		// R2.2: Escape sequence \0 (empty string) in delimiter.
+		{
+			Name: "escape zero delimiter",
+			Args: []string{`-d\0`, file1, file2},
+		},
+		// R2.2: Mixed escape sequences in delimiter list.
+		{
+			Name: "mixed escape delimiters",
+			Args: []string{`-d\t\0`, file4, file1, file3},
+		},
+		// R2.3: Delimiter cycling resets per output line.
+		{
+			Name: "delimiter cycling resets per line",
+			Args: []string{"-d:;", file1, file2, file3},
+		},
+		// R2.1: Long option --delimiters with custom delimiter.
+		{
+			Name: "long option delimiters",
+			Args: []string{"--delimiters=:", file1, file2},
+		},
+		// R2.1: -d with space-separated argument.
+		{
+			Name: "d flag space separated",
+			Args: []string{"-d", ",", file1, file2},
+		},
+		// R2.2: \0 in delimiter list with other delimiters.
+		{
+			Name: "zero in delimiter list",
+			Args: []string{`-d:\0;`, file4, file1, file2, file3},
 		},
 	}
 

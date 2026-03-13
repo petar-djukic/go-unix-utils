@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/paste implements the paste (merge lines of files) command.
-// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4
+// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3
 package main
 
 import (
@@ -17,8 +17,8 @@ import (
 
 // config holds all parsed command-line options.
 type config struct {
-	delimiters string // R2.1: delimiter list (default "\t")
-	serial     bool   // R3.1: -s serial mode
+	delimiters []string // R2.1: delimiter list (default ["\t"])
+	serial     bool     // R3.1: -s serial mode
 	files      []string
 }
 
@@ -51,7 +51,7 @@ func main() {
 // parseArgs parses command-line arguments into a config.
 func parseArgs(args []string) (*config, error) {
 	cfg := &config{
-		delimiters: "\t", // R1.2: Default delimiter is TAB.
+		delimiters: []string{"\t"}, // R1.2: Default delimiter is TAB.
 	}
 	endOfFlags := false
 
@@ -143,42 +143,45 @@ func shortOptValue(rest string, args []string, idx *int) (string, error) {
 	return args[*idx], nil
 }
 
-// parseDelimiterEscapes processes escape sequences in a delimiter string.
+// parseDelimiterEscapes processes escape sequences in a delimiter string and
+// returns a slice where each element is a single delimiter. \0 produces an
+// empty string entry so that cycling counts it as a position.
 // R2.2: Recognizes \n (newline), \t (tab), \\ (backslash), \0 (empty string).
-func parseDelimiterEscapes(s string) string {
-	var b strings.Builder
+func parseDelimiterEscapes(s string) []string {
+	var delims []string
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\\' && i+1 < len(s) {
 			switch s[i+1] {
 			case 'n':
-				b.WriteByte('\n')
+				delims = append(delims, "\n")
 				i++
 			case 't':
-				b.WriteByte('\t')
+				delims = append(delims, "\t")
 				i++
 			case '\\':
-				b.WriteByte('\\')
+				delims = append(delims, "\\")
 				i++
 			case '0':
-				// R2.2: \0 means empty string (no delimiter).
+				// R2.2: \0 means empty string (no delimiter), but counts as a position.
+				delims = append(delims, "")
 				i++
 			default:
-				b.WriteByte(s[i])
+				delims = append(delims, string(s[i]))
 			}
 		} else {
-			b.WriteByte(s[i])
+			delims = append(delims, string(s[i]))
 		}
 	}
-	return b.String()
+	return delims
 }
 
 // getDelimiter returns the delimiter for the given field index (0-based).
 // R2.1, R2.3: Delimiters cycle through the list.
-func getDelimiter(delimiters string, index int) string {
+func getDelimiter(delimiters []string, index int) string {
 	if len(delimiters) == 0 {
 		return ""
 	}
-	return string(delimiters[index%len(delimiters)])
+	return delimiters[index%len(delimiters)]
 }
 
 // run executes the paste operation.
