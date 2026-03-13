@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.8 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.9 (differential tests)
 package main
 
 import (
@@ -2304,6 +2304,99 @@ func TestDiffRecursiveLongTotal(t *testing.T) {
 		{
 			Name:      "recursive_long_human_total",
 			Args:      []string{"-lRh", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveMetadataFlags exercises R4.9: -i, -s, and -F may all be
+// combined with -R, and each subdirectory listing applies the same metadata
+// display and classification options.
+func TestDiffRecursiveMetadataFlags(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// Build a fixture with nested subdirectories, an executable, and a symlink.
+	dir := t.TempDir()
+	sub1 := filepath.Join(dir, "adir")
+	if mkErr := os.Mkdir(sub1, 0o755); mkErr != nil {
+		t.Fatalf("creating subdirectory: %v", mkErr)
+	}
+	writeFixtureFile(t, filepath.Join(dir, "file1"), 100)
+	writeFixtureFile(t, filepath.Join(sub1, "inner1"), 200)
+	writeFixtureFile(t, filepath.Join(sub1, "inner2"), 50)
+
+	// Create an executable file.
+	execFile := filepath.Join(dir, "run.sh")
+	if wErr := os.WriteFile(execFile, []byte("#!/bin/sh\n"), 0o755); wErr != nil {
+		t.Fatalf("creating executable: %v", wErr)
+	}
+
+	// Create a symlink.
+	if lErr := os.Symlink("file1", filepath.Join(dir, "link1")); lErr != nil {
+		t.Fatalf("creating symlink: %v", lErr)
+	}
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R4.9: -iR — inode numbers shown in each subdirectory listing.
+		{
+			Name: "recursive_inode",
+			Args: []string{"-iR", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -sR — block counts shown in each subdirectory listing.
+		{
+			Name: "recursive_blocks",
+			Args: []string{"-sR", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -FR — type indicators shown in each subdirectory listing.
+		{
+			Name: "recursive_classify",
+			Args: []string{"-FR", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -isR — both inode and blocks in recursive listing.
+		{
+			Name: "recursive_inode_blocks",
+			Args: []string{"-isR", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -isFR — inode, blocks, and classify combined with recursive.
+		{
+			Name: "recursive_inode_blocks_classify",
+			Args: []string{"-isFR", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -ilR — inode with long format recursive.
+		{
+			Name:      "recursive_inode_long",
+			Args:      []string{"-ilR", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R4.9: -slR — blocks with long format recursive.
+		{
+			Name:      "recursive_blocks_long",
+			Args:      []string{"-slR", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R4.9: -FlR — classify with long format recursive.
+		{
+			Name:      "recursive_classify_long",
+			Args:      []string{"-FlR", dir},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: norms,
 		},

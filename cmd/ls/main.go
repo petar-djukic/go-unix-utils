@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.8
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.9
 package main
 
 import (
@@ -450,6 +450,7 @@ func isDigit(b byte) bool {
 // R1.3: entries sorted lexicographically in C locale byte order.
 // R1.4: dotfiles hidden by default.
 // R3.11-R3.15: when -R is active, recurse into subdirectories.
+// R4.9: -i, -s, and -F are propagated to each subdirectory listing via opts.
 func listDir(dir string, isTTY bool, opts lsOptions, exitCode *int) error {
 	// R2.8: for -U (unsorted), use raw readdir to preserve filesystem order.
 	// os.ReadDir sorts entries alphabetically, which defeats -U.
