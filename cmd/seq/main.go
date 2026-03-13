@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd019-seq R1.1–R1.4, R2.1–R2.3
+// Implements: prd019-seq R1.1–R1.5, R2.1–R2.3
 package main
 
 import (
@@ -68,7 +68,7 @@ func main() {
 
 	// R1.1: Parse positional arguments.
 	var first, increment, last float64
-	var firstStr, lastStr string
+	var firstStr, incrementStr, lastStr string
 
 	switch len(positional) {
 	case 1:
@@ -77,6 +77,7 @@ func main() {
 		first = 1
 		increment = 1
 		firstStr = "1"
+		incrementStr = "1"
 		lastStr = positional[0]
 	case 2:
 		// seq FIRST LAST
@@ -84,6 +85,7 @@ func main() {
 		last = parseNumber(positional[1])
 		increment = 1
 		firstStr = positional[0]
+		incrementStr = "1"
 		lastStr = positional[1]
 	case 3:
 		// seq FIRST INCREMENT LAST
@@ -91,15 +93,18 @@ func main() {
 		increment = parseNumber(positional[1])
 		last = parseNumber(positional[2])
 		firstStr = positional[0]
+		incrementStr = positional[1]
 		lastStr = positional[2]
 	default:
 		fmt.Fprintf(os.Stderr, "seq: missing operand\n")
+		fmt.Fprintf(os.Stderr, "Try 'seq --help' for more information.\n")
 		os.Exit(1)
 	}
 
 	// R1.5: zero step is an error.
 	if increment == 0 {
-		fmt.Fprintf(os.Stderr, "seq: invalid Zero increment value: '0'\n")
+		fmt.Fprintf(os.Stderr, "seq: invalid Zero increment value: '%s'\n", incrementStr)
+		fmt.Fprintf(os.Stderr, "Try 'seq --help' for more information.\n")
 		os.Exit(1)
 	}
 
@@ -147,6 +152,7 @@ func parseNumber(s string) float64 {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil || math.IsNaN(v) {
 		fmt.Fprintf(os.Stderr, "seq: invalid floating point argument: '%s'\n", s)
+		fmt.Fprintf(os.Stderr, "Try 'seq --help' for more information.\n")
 		os.Exit(1)
 	}
 	return v
