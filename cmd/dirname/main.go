@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd016-dirname R1.1–R1.5, R2.1, R2.2
+// Implements: prd016-dirname R1.1–R1.5, R2.1, R2.2, R3.1–R3.3
 package main
 
 import (
@@ -71,9 +71,14 @@ func main() {
 	}
 
 	// R1.5, R2.2: process each argument in order and print one result per line.
+	// R3.1: exit 0 on success (implicit when no write error occurs).
 	for _, name := range operands {
 		result := dirname(name)
-		fmt.Print(result + terminator)
+		_, err := fmt.Fprint(os.Stdout, result+terminator)
+		if err != nil {
+			// R3.3: exit 1 when a write error occurs on stdout.
+			os.Exit(1)
+		}
 	}
 }
 
