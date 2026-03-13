@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sha512sum.
 //
-// Implements: prd033-sha512sum R1.1–R1.4, R2.1–R2.3
+// Implements: prd033-sha512sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2
 package main
 
 import (
@@ -191,7 +191,7 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestDiffCheck runs differential tests for check mode (R2.1–R2.3).
+// TestDiffCheck runs differential tests for check mode (R2.1–R2.3, R3.1–R3.2).
 func TestDiffCheck(t *testing.T) {
 	t.Parallel()
 
@@ -276,43 +276,43 @@ func TestDiffCheck(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
-		// R2.1: valid checksum file — all OK, exit 0.
+		// R3.1: valid checksum file — per-file OK output, exit 0.
 		{
-			Name: "r2.1_check_valid_text_mode",
+			Name: "r3.1_check_valid_text_mode",
 			Args: []string{"-c", validCheckFile},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R2.1: valid checksum in binary format.
+		// R3.1: valid checksum in binary format — per-file OK output.
 		{
-			Name: "r2.1_check_valid_binary_mode",
+			Name: "r3.1_check_valid_binary_mode",
 			Args: []string{"-c", binaryCheckFile},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R2.1: valid checksum in BSD tag format.
+		// R3.1: valid checksum in BSD tag format — per-file OK output.
 		{
-			Name: "r2.1_check_valid_bsd_tag",
+			Name: "r3.1_check_valid_bsd_tag",
 			Args: []string{"-c", bsdCheckFile},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R2.2: mismatch — FAILED, exit 1.
+		// R3.1/R3.2: mismatch — FAILED line on stdout, summary on stderr, exit 1.
 		{
-			Name:      "r2.2_check_mismatch",
+			Name:      "r3.1_check_mismatch",
 			Args:      []string{"-c", failCheckFile},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
-		// R2.2: mixed match and mismatch — exit 1.
+		// R3.1/R3.2: mixed match and mismatch — exit 1 with summary.
 		{
-			Name:      "r2.2_check_mixed",
+			Name:      "r3.2_check_mixed",
 			Args:      []string{"-c", mixedCheckFile},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
-		// R2.2: malformed lines with --warn — valid checksums pass so exit 0.
+		// R3.2: malformed lines with --warn — valid checksums pass, summary on stderr.
 		{
-			Name:      "r2.2_check_malformed_with_warn",
+			Name:      "r3.2_check_malformed_with_warn",
 			Args:      []string{"-c", "--warn", malformedCheckFile},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
@@ -332,7 +332,7 @@ func TestDiffCheck(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
-		// R2.3: --strict with malformed lines — exit 1.
+		// R2.3/R3.2: --strict with malformed lines — exit 1, summary on stderr.
 		{
 			Name:      "r2.3_check_strict_malformed",
 			Args:      []string{"-c", "--strict", malformedCheckFile},
@@ -346,7 +346,7 @@ func TestDiffCheck(t *testing.T) {
 			Args: []string{"-c", "--strict", validCheckFile},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R2.3: --strict --warn with malformed lines — exit 1 with per-line warnings.
+		// R2.3/R3.2: --strict --warn with malformed lines — exit 1 with per-line warnings and summary.
 		{
 			Name:      "r2.3_check_strict_warn_malformed",
 			Args:      []string{"-c", "--strict", "--warn", malformedCheckFile},
@@ -354,30 +354,30 @@ func TestDiffCheck(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
-		// R2.1: check with stdin (pipe checksum lines via stdin).
+		// R3.1: check with stdin — per-file OK output.
 		{
-			Name:  "r2.1_check_stdin",
+			Name:  "r3.1_check_stdin",
 			Args:  []string{"-c"},
 			Stdin: []byte(correctHash + "  " + testFile + "\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
-		// R2.2: missing file referenced in checksum — exit 1.
+		// R3.1/R3.2: missing file referenced in checksum — FAILED output, summary on stderr, exit 1.
 		{
-			Name:      "r2.2_check_missing_file_ref",
+			Name:      "r3.2_check_missing_file_ref",
 			Args:      []string{"-c", missingRefFile},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
-		// --quiet suppresses OK lines.
+		// R3.1: --quiet suppresses OK lines.
 		{
-			Name: "check_quiet_all_ok",
+			Name: "r3.1_check_quiet_all_ok",
 			Args: []string{"-c", "--quiet", validCheckFile},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// --quiet with failure still shows FAILED.
+		// R3.1: --quiet with failure still shows FAILED.
 		{
-			Name:      "check_quiet_with_failure",
+			Name:      "r3.1_check_quiet_with_failure",
 			Args:      []string{"-c", "--quiet", failCheckFile},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
@@ -444,9 +444,9 @@ func TestDiffCheck(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeCheckErrors},
 		},
-		// R2.1: --check with long form flag.
+		// R3.1: --check with long form flag — per-file OK output.
 		{
-			Name: "check_long_form",
+			Name: "r3.1_check_long_form",
 			Args: []string{"--check", validCheckFile},
 			Env:  []string{"LC_ALL=C"},
 		},

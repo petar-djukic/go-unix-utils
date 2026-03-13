@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd033-sha512sum R1.1–R1.4, R2.1–R2.3
+// Implements: prd033-sha512sum R1.1–R1.4, R2.1–R2.3, R3.1–R3.2
 package main
 
 import (
@@ -138,7 +138,8 @@ func main() {
 
 // hashReader computes the SHA-512 digest of r and prints the result line to stdout.
 // R1.1: GNU format "HASH  FILENAME" (text) or "HASH *FILENAME" (binary).
-// R1.3: BSD tag format "SHA512 (FILENAME) = HASH" when tag is true.
+// R1.3/R3.2: BSD tag format "SHA512 (FILENAME) = HASH" when tag is true.
+// R3.1: -b uses "HASH *FILENAME"; -t (default) uses "HASH  FILENAME".
 func hashReader(r io.Reader, name string, binaryMode, tag bool) error {
 	h := sha512.New()
 	if _, err := io.Copy(h, r); err != nil {
@@ -147,13 +148,13 @@ func hashReader(r io.Reader, name string, binaryMode, tag bool) error {
 	digest := fmt.Sprintf("%x", h.Sum(nil))
 
 	if tag {
-		// R1.3: BSD-style output.
+		// R1.3/R3.2: BSD-style output.
 		fmt.Printf("SHA512 (%s) = %s\n", name, digest)
 	} else if binaryMode {
-		// R1.1: binary mode — "HASH *FILENAME".
+		// R1.1/R3.1: binary mode — "HASH *FILENAME".
 		fmt.Printf("%s *%s\n", digest, name)
 	} else {
-		// R1.1: text mode (default) — "HASH  FILENAME" (two spaces).
+		// R1.1/R3.1: text mode (default) — "HASH  FILENAME" (two spaces).
 		fmt.Printf("%s  %s\n", digest, name)
 	}
 	return nil
@@ -243,8 +244,10 @@ func computeFileHash(filename string) (string, error) {
 //
 // R2.1: Read and parse each line.
 // R2.2: Print "FILENAME: OK" or "FILENAME: FAILED".
-// R2.2: --warn prints per-line warnings for malformed lines.
+// R2.2/R3.1: --warn prints per-line warnings for malformed lines.
 // R2.3: --strict exits non-zero for improperly formatted checksum lines.
+// R3.1: Per-file verification output formatting (OK/FAILED lines on stdout).
+// R3.2: Summary output on stderr for mismatches and unreadable files.
 func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 	scanner := bufio.NewScanner(r)
 	var failCount int
@@ -281,27 +284,29 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 		}
 
 		if computed == parsed.hash {
+			// R3.1: --quiet suppresses OK lines, but --warn overrides --quiet
+			// (GNU behavior: --warn implies verbose output for diagnostics).
 			if !opts.status && (!opts.quiet || opts.warn) {
-				// R2.2: print OK.
+				// R2.2/R3.1: print OK.
 				fmt.Printf("%s: OK\n", parsed.filename)
 			}
 		} else {
 			failCount++
 			if !opts.status {
-				// R2.2: print FAILED.
+				// R2.2/R3.1: print FAILED.
 				fmt.Printf("%s: FAILED\n", parsed.filename)
 			}
 		}
 	}
 
-	// Check if no valid lines were found at all.
+	// R3.1: GNU always prints this error even with --status.
 	if validCount == 0 {
 		fmt.Fprintf(os.Stderr, "%s: %s: no properly formatted checksum lines found\n",
 			progName, source)
 		return 1
 	}
 
-	// R2.2: summary warning for malformed lines on stderr.
+	// R2.2/R3.2: summary warning for malformed lines on stderr.
 	if malformedCount > 0 && !opts.status {
 		if malformedCount == 1 {
 			fmt.Fprintf(os.Stderr, "%s: WARNING: %d line is improperly formatted\n",
@@ -311,7 +316,7 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 				progName, malformedCount)
 		}
 	}
-	// Summary for files that could not be read.
+	// R3.2: summary for files that could not be read.
 	if readErrorCount > 0 && !opts.status {
 		if readErrorCount == 1 {
 			fmt.Fprintf(os.Stderr, "%s: WARNING: %d listed file could not be read\n",
@@ -321,7 +326,7 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 				progName, readErrorCount)
 		}
 	}
-	// Summary for hash mismatches.
+	// R3.2: summary for hash mismatches.
 	if failCount > 0 && !opts.status {
 		if failCount == 1 {
 			fmt.Fprintf(os.Stderr, "%s: WARNING: %d computed checksum did NOT match\n",
