@@ -24,6 +24,12 @@ func main() {
 	// R4.3: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
 
+	// R4.3: use ContinueOnError for GNU-compatible error handling.
+	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
+	flag.CommandLine.SetOutput(io.Discard)
+
+	// R4.1: --version flag.
+	flagVersion := flag.Bool("version", false, "output version information and exit")
 	flagBinary := flag.Bool("b", false, "read in binary mode")
 	flag.BoolVar(flagBinary, "binary", false, "read in binary mode")
 	flagText := flag.Bool("t", false, "read in text mode (default)")
@@ -45,7 +51,23 @@ func main() {
 	flagQuiet := flag.Bool("quiet", false, "don't print OK for each successfully verified file")
 	flagStatus := flag.Bool("status", false, "don't output anything, status code shows success")
 
-	flag.Parse()
+	// R4.3: handle parse errors for GNU-compatible exit codes.
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		if err == flag.ErrHelp {
+			// R4.2: --help prints usage to stdout and exits 0.
+			printUsage()
+			return
+		}
+		// R4.3: invalid option prints error to stderr and exits 1.
+		fmt.Fprintf(os.Stderr, "%s: %v\nTry '%s --help' for more information.\n", progName, err, progName)
+		os.Exit(1)
+	}
+
+	// R4.1: --version prints version information and exits 0.
+	if *flagVersion {
+		fmt.Printf("%s (go-unix-utils) 1.0\n", progName)
+		return
+	}
 
 	// R1.1: default is text mode. -b overrides to binary unless -t is also set.
 	binaryMode := *flagBinary && !*flagText
@@ -313,4 +335,23 @@ func checkChecksums(r io.Reader, source string, opts checkOpts) int {
 	}
 
 	return 0
+}
+
+// printUsage writes GNU-compatible usage information to stdout.
+// R4.2: --help displays usage information and exits 0.
+func printUsage() {
+	fmt.Printf("Usage: %s [OPTION]... [FILE]...\n", progName)
+	fmt.Printf("Print or check SHA256 (256-bit) checksums.\n\n")
+	fmt.Printf("With no FILE, or when FILE is -, read standard input.\n\n")
+	fmt.Printf("  -b, --binary         read in binary mode\n")
+	fmt.Printf("  -c, --check          read checksums from FILEs and check them\n")
+	fmt.Printf("      --tag            create a BSD-style checksum\n")
+	fmt.Printf("  -t, --text           read in text mode (default)\n")
+	fmt.Printf("\nThe following five options are useful only when verifying checksums:\n")
+	fmt.Printf("      --quiet          don't print OK for each successfully verified file\n")
+	fmt.Printf("      --status         don't output anything, status code shows success\n")
+	fmt.Printf("      --strict         exit non-zero for improperly formatted checksum lines\n")
+	fmt.Printf("  -w, --warn           warn about improperly formatted checksum lines\n")
+	fmt.Printf("\n      --help     display this help and exit\n")
+	fmt.Printf("      --version  output version information and exit\n")
 }

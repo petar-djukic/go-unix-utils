@@ -668,6 +668,66 @@ func TestDiffExitCodes(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffVersionHelpErrors runs differential tests for --version, --help, and
+// invalid option handling (R4.1, R4.2, R4.3).
+func TestDiffVersionHelpErrors(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(binGsha256sum)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", binGsha256sum, err)
+	}
+
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "nonexistent.txt")
+
+	// normalizeNonEmpty replaces all non-empty output with a fixed marker so that
+	// implementation-specific text (version strings, help text) does not cause
+	// false failures. Only the exit code is meaningfully compared.
+	normalizeNonEmpty := func(b []byte) []byte {
+		if len(b) == 0 {
+			return b
+		}
+		return []byte("OUTPUT\n")
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1/AC1: --version prints version info and exits 0.
+		{
+			Name:      "r4_version",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.2/AC2: --help prints usage info and exits 0.
+		{
+			Name:      "r4_help",
+			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.3/AC3: invalid option exits non-zero with error on stderr.
+		{
+			Name:      "r4_invalid_option",
+			Args:      []string{"--invalid-option-xyz"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.3/AC4: nonexistent file prints error to stderr and exits non-zero.
+		{
+			Name:      "r4_nonexistent_file",
+			Args:      []string{missing},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSha256sumErrors},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // computeTestHash computes the SHA-256 hash of a file for use in test fixtures.
 func computeTestHash(t *testing.T, path string) string {
 	t.Helper()
