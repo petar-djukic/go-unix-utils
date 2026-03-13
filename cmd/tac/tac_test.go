@@ -219,6 +219,52 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a:b:c"),
 			Env:   env,
 		},
+
+		// --- R3.1: exit 0 on successful processing ---
+		{
+			Name:  "R3.1 exit 0 on success via stdin",
+			Args:  []string{},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   env,
+		},
+		{
+			Name: "R3.1 exit 0 on success via file",
+			Args: []string{fileABC},
+			Env:  env,
+		},
+
+		// --- R3.2: exit 1 on file open/read error, continue for remaining ---
+		{
+			Name:      "R3.2 nonexistent file only",
+			Args:      []string{filepath.Join(tmpDir, "doesnotexist.txt")},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		{
+			Name:      "R3.2 nonexistent file then valid file continues",
+			Args:      []string{filepath.Join(tmpDir, "missing.txt"), fileXY},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		{
+			Name:      "R3.2 valid file then nonexistent file",
+			Args:      []string{fileABC, filepath.Join(tmpDir, "gone.txt")},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+
+		// --- R3.3: exit 1 on stdout write error ---
+		// Stdout write errors cannot be triggered through the DiffTest harness
+		// since it captures stdout via a buffer. The code path is verified
+		// structurally: tacReader returns write errors, and the caller exits 1.
+
+		// --- R3.4: SIGPIPE handling ---
+		// SIGPIPE handling via InstallSIGPIPEHandler is structural; it cannot
+		// be exercised in a DiffTest since the harness captures stdout. The
+		// handler is installed at the top of main().
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
