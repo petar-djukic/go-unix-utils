@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/head.
 //
-// Implements: prd018-head R1.1–R1.5, R3.1–R3.2, R4.1–R4.3
+// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.3
 package main
 
 import (
@@ -67,6 +67,12 @@ func TestDiff(t *testing.T) {
 	noTrailingNL := filepath.Join(dir, "notrail.txt")
 	if err := os.WriteFile(noTrailingNL, []byte("alpha\nbeta"), 0o644); err != nil {
 		t.Fatalf("writing notrail.txt: %v", err)
+	}
+
+	// Binary-ish content file for byte-mode tests.
+	byteFile := filepath.Join(dir, "bytes.txt")
+	if err := os.WriteFile(byteFile, []byte("abcdefghijklmnopqrstuvwxyz"), 0o644); err != nil {
+		t.Fatalf("writing bytes.txt: %v", err)
 	}
 
 	// Non-existent file for error tests.
@@ -138,6 +144,62 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a\nb\nc"),
 			Env:   []string{"LC_ALL=C"},
 		},
+
+		// R2.1: byte-count mode from stdin.
+		{
+			Name:  "r2.1_byte_mode_stdin",
+			Args:  []string{"-c", "5"},
+			Stdin: []byte("abcdefghij"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: byte-count mode from file.
+		{
+			Name: "r2.1_byte_mode_file",
+			Args: []string{"-c", "10", byteFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: -c 0 produces no output.
+		{
+			Name:  "r2.1_byte_mode_zero",
+			Args:  []string{"-c", "0"},
+			Stdin: []byte("should not appear"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -c larger than input.
+		{
+			Name:  "r2.1_byte_mode_larger_than_input",
+			Args:  []string{"-c", "100"},
+			Stdin: []byte("short"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: negative byte count — all but last N bytes.
+		{
+			Name:  "r2.2_negative_byte_count",
+			Args:  []string{"-c", "-5"},
+			Stdin: []byte("abcdefghij"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: negative byte count larger than input.
+		{
+			Name:  "r2.2_negative_byte_count_larger",
+			Args:  []string{"-c", "-100"},
+			Stdin: []byte("tiny"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: negative byte count from file.
+		{
+			Name: "r2.2_negative_byte_count_file",
+			Args: []string{"-c", "-6", byteFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: byte-count with K suffix.
+		{
+			Name:  "r2.3_byte_mode_suffix_K",
+			Args:  []string{"-c", "1K"},
+			Stdin: []byte(strings.Repeat("x", 2048)),
+			Env:   []string{"LC_ALL=C"},
+		},
+
 		// R3.1: multiple files get headers.
 		{
 			Name: "r3.1_multi_file_headers",
@@ -150,12 +212,44 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-n", "2", fiveLines, threeLines},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.1: multiple files with -c.
+		{
+			Name: "r3.1_multi_file_with_c",
+			Args: []string{"-c", "5", fiveLines, threeLines},
+			Env:  []string{"LC_ALL=C"},
+		},
 		// R3.2: single file — no header.
 		{
 			Name: "r3.2_single_file_no_header",
 			Args: []string{fiveLines},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.3: -q suppresses headers for multiple files.
+		{
+			Name: "r3.3_quiet_suppresses_headers",
+			Args: []string{"-q", fiveLines, threeLines},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: -q with -n.
+		{
+			Name: "r3.3_quiet_with_n",
+			Args: []string{"-q", "-n", "2", fiveLines, threeLines},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: -v forces header for single file.
+		{
+			Name: "r3.4_verbose_single_file",
+			Args: []string{"-v", fiveLines},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: -v with stdin.
+		{
+			Name:  "r3.4_verbose_stdin",
+			Args:  []string{"-v"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
 		// R4.1: exit 0 on success.
 		{
 			Name:     "r4.1_exit0_success",
