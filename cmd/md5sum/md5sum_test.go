@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/md5sum.
 //
-// Implements: prd030-md5sum R1.1–R1.4, R2.1–R2.4
+// Implements: prd030-md5sum R1.1–R1.4, R2.1–R2.4, R3.1–R3.3
 package main
 
 import (
@@ -185,6 +185,95 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeMd5sumErrors},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffBinaryTextMode runs differential tests for binary/text mode flags (R3.1–R3.3).
+func TestDiffBinaryTextMode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(binGmd5sum)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", binGmd5sum, err)
+	}
+
+	dir := t.TempDir()
+
+	dataFile := filepath.Join(dir, "data.txt")
+	if err := os.WriteFile(dataFile, []byte("binary text mode test\n"), 0o644); err != nil {
+		t.Fatalf("writing data.txt: %v", err)
+	}
+
+	secondFile := filepath.Join(dir, "second.txt")
+	if err := os.WriteFile(secondFile, []byte("second\n"), 0o644); err != nil {
+		t.Fatalf("writing second.txt: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.1: -b produces "HASH *FILENAME".
+		{
+			Name: "r3.1_binary_flag_short",
+			Args: []string{"-b", dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: --binary long form.
+		{
+			Name: "r3.1_binary_flag_long",
+			Args: []string{"--binary", dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -b with multiple files.
+		{
+			Name: "r3.1_binary_multiple_files",
+			Args: []string{"-b", dataFile, secondFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -b with stdin.
+		{
+			Name:  "r3.1_binary_stdin",
+			Args:  []string{"-b"},
+			Stdin: []byte("stdin binary\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -t (text mode, default) produces "HASH  FILENAME" (two spaces).
+		{
+			Name: "r3.2_text_flag_short",
+			Args: []string{"-t", dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: --text long form.
+		{
+			Name: "r3.2_text_flag_long",
+			Args: []string{"--text", dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: default (no flag) is text mode.
+		{
+			Name: "r3.2_default_text_mode",
+			Args: []string{dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --tag with -b uses BSD tag format (mode has no effect).
+		{
+			Name: "r3.3_tag_with_binary",
+			Args: []string{"--tag", "-b", dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --tag without -b also uses BSD tag format.
+		{
+			Name: "r3.3_tag_without_binary",
+			Args: []string{"--tag", dataFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --tag with multiple files.
+		{
+			Name: "r3.3_tag_multiple_files",
+			Args: []string{"--tag", dataFile, secondFile},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
