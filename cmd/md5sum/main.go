@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd030-md5sum R1.1–R1.4, R2.1–R2.4, R3.1–R3.3
+// Implements: prd030-md5sum R1.1–R1.4, R2.1–R2.4, R3.1–R3.3, R4.1–R4.3
 package main
 
 import (
@@ -21,7 +21,7 @@ import (
 const progName = "md5sum"
 
 func main() {
-	// D1: install SIGPIPE handler before any I/O.
+	// R4.3: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
 
 	flagBinary := flag.Bool("b", false, "read in binary mode")
@@ -112,6 +112,8 @@ func main() {
 		}
 	}
 
+	// R4.1: exit 0 when all files processed and all digests match.
+	// R4.2: exit 1 when any file cannot be opened, any digest fails, or checksum file is unreadable.
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
