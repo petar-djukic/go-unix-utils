@@ -58,6 +58,18 @@ func TestDiff(t *testing.T) {
 		t.Fatalf("writing test file: %v", err)
 	}
 
+	// R2.1: file with colon separator.
+	fileColon := filepath.Join(tmpDir, "colon.txt")
+	if err := os.WriteFile(fileColon, []byte("a:b:c:"), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	// R2.2: file for -b test with separator before records.
+	fileColonBefore := filepath.Join(tmpDir, "colonbefore.txt")
+	if err := os.WriteFile(fileColonBefore, []byte(":a:b:c"), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
 	// R4.3: LC_ALL=C for all tests.
 	env := []string{"LC_ALL=C"}
 
@@ -124,6 +136,88 @@ func TestDiff(t *testing.T) {
 			Env:       env,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+
+		// --- R2.1: custom literal separator ---
+		{
+			Name:  "literal separator colon via stdin",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c:"),
+			Env:   env,
+		},
+		{
+			Name: "literal separator colon via file",
+			Args: []string{"-s", ":", fileColon},
+			Env:  env,
+		},
+		{
+			Name:  "literal separator colon no trailing sep",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c"),
+			Env:   env,
+		},
+		{
+			Name:  "literal separator multi-char",
+			Args:  []string{"-s", "::"},
+			Stdin: []byte("a::b::c::"),
+			Env:   env,
+		},
+		{
+			Name:  "literal separator not found",
+			Args:  []string{"-s", "|"},
+			Stdin: []byte("a:b:c"),
+			Env:   env,
+		},
+
+		// --- R2.2: -b flag (separator before record) ---
+		{
+			Name:  "before flag with newline",
+			Args:  []string{"-b"},
+			Stdin: []byte("\na\nb\nc"),
+			Env:   env,
+		},
+		{
+			Name:  "before flag with colon separator",
+			Args:  []string{"-b", "-s", ":"},
+			Stdin: []byte(":a:b:c"),
+			Env:   env,
+		},
+		{
+			Name: "before flag colon via file",
+			Args: []string{"-b", "-s", ":", fileColonBefore},
+			Env:  env,
+		},
+		{
+			Name:  "before flag colon with trailing sep",
+			Args:  []string{"-b", "-s", ":"},
+			Stdin: []byte(":a:b:c:"),
+			Env:   env,
+		},
+
+		// --- R2.3, R2.4: -r regex separator ---
+		{
+			Name:  "regex separator digit",
+			Args:  []string{"-s", "[0-9]", "-r"},
+			Stdin: []byte("a1b2c3"),
+			Env:   env,
+		},
+		{
+			Name:  "regex separator with before flag",
+			Args:  []string{"-r", "-b", "-s", "[0-9]"},
+			Stdin: []byte("1a2b3c"),
+			Env:   env,
+		},
+		{
+			Name:  "regex separator colon literal match",
+			Args:  []string{"-r", "-s", ":"},
+			Stdin: []byte("a:b:c:"),
+			Env:   env,
+		},
+		{
+			Name:  "regex separator no match",
+			Args:  []string{"-r", "-s", "ZZZ"},
+			Stdin: []byte("a:b:c"),
+			Env:   env,
 		},
 	}
 
