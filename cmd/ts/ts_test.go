@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2 (differential tests)
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2 (differential tests)
 package main
 
 import (
@@ -25,6 +25,21 @@ var isoDateNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 var epochNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	re := regexp.MustCompile(`\d{10,}`)
 	return re.ReplaceAll(b, []byte("<EPOCH>"))
+}
+
+// subsecNormalizer replaces subsecond timestamp patterns (digits/colons followed
+// by .NNNNNN microseconds) with a fixed placeholder. Handles all ts-specific
+// subsecond extensions: %.S (SS.ffffff), %.s (epoch.ffffff), %.T (HH:MM:SS.ffffff).
+var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`[\d:]+\.\d{6}`)
+	return re.ReplaceAll(b, []byte("<SUBSEC>"))
+}
+
+// elapsedNormalizer replaces HH:MM:SS elapsed timestamps with a fixed placeholder
+// so that differential tests for -i mode are not affected by micro-timing differences.
+var elapsedNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d{2}:\d{2}:\d{2}`)
+	return re.ReplaceAll(b, []byte("<ELAPSED>"))
 }
 
 func TestDiff(t *testing.T) {
@@ -140,7 +155,95 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"%%-%H:%M:%S"},
 			Stdin:     []byte("test\n"),
 			Env:       []string{"LC_ALL=C"},
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer, elapsedNormalizer},
+		},
+		{
+			// R2.3: %.S subsecond extension (seconds with microsecond suffix)
+			Name:      "subsec_dot_S",
+			Args:      []string{"%.S"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R2.3: %.s subsecond extension (epoch with microsecond suffix)
+			Name:      "subsec_dot_s",
+			Args:      []string{"%.s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R2.3: %.T subsecond extension (HH:MM:SS with microsecond suffix)
+			Name:      "subsec_dot_T",
+			Args:      []string{"%.T"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R2.3, R2.4: subsecond extension combined with standard specifiers
+			Name:      "subsec_combined_format",
+			Args:      []string{"%Y-%m-%d %.T"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{isoDateNormalizer, subsecNormalizer},
+		},
+		{
+			// R2.3: %.S with multi-line input
+			Name:      "subsec_dot_S_multi_line",
+			Args:      []string{"%.S"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R3.1, R3.2: incremental mode with default format
+			Name:      "incremental_default",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R3.1: incremental mode single line
+			Name:      "incremental_single_line",
+			Args:      []string{"-i"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R3.1: incremental mode empty stdin
+			Name:      "incremental_empty",
+			Args:      []string{"-i"},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R3.1, R3.2: incremental mode ten lines for differential coverage
+			Name:      "incremental_ten_lines",
+			Args:      []string{"-i"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R3.2: incremental mode with custom format overriding default
+			Name:      "incremental_custom_format",
+			Args:      []string{"-i", "%H:%M:%.S"},
+			Stdin:     []byte("line1\nline2\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		{
+			// R3.1: incremental mode with partial last line
+			Name:      "incremental_partial_line",
+			Args:      []string{"-i"},
+			Stdin:     []byte("complete\npartial"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
 		},
 	}
 

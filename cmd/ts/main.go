@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2
 package main
 
 import (
@@ -19,26 +19,61 @@ import (
 // R1.2: The default timestamp format evaluated at the time each line is received.
 const defaultStrftimeFormat = "%b %d %H:%M:%S"
 
+// incrementalStrftimeFormat is the default format for -i mode.
+// R3.2: Default format in -i mode is "%H:%M:%S".
+const incrementalStrftimeFormat = "%H:%M:%S"
+
 func main() {
 	// R1.6 (via SIGPIPE): install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
 
-	// R2.1: Accept optional positional argument as custom strftime format string.
-	format := defaultStrftimeFormat
-	if len(os.Args) > 1 {
-		format = os.Args[1]
+	// Parse flags and positional format argument.
+	incremental := false
+	var format string
+	for _, arg := range os.Args[1:] {
+		if arg == "-i" {
+			incremental = true
+		} else {
+			format = arg
+		}
+	}
+
+	// R2.1, R3.2: Set default format based on mode.
+	if format == "" {
+		if incremental {
+			format = incrementalStrftimeFormat
+		} else {
+			format = defaultStrftimeFormat
+		}
 	}
 
 	w := bufio.NewWriter(os.Stdout)
 	reader := bufio.NewReader(os.Stdin)
+
+	// R3.1: Track start time and previous line time for incremental mode.
+	startTime := time.Now()
+	prevTime := startTime
 
 	for {
 		// R1.5: ReadBytes preserves the delimiter when present; partial lines
 		// at EOF are returned without a trailing newline.
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
-			// R1.2: Evaluate timestamp at the time each line is received.
-			ts := strftime(format, time.Now())
+			// R2.4: Obtain a single time sample per line for atomic second+microsecond.
+			now := time.Now()
+			var ts string
+			if incremental {
+				// R3.1: Time elapsed since previous line (first line = since start).
+				delta := now.Sub(prevTime)
+				prevTime = now
+				// R3.2: Convert delta to a time value at epoch 0 in UTC so that
+				// strftime on the result produces correct elapsed strings.
+				deltaTime := time.Unix(0, 0).UTC().Add(delta)
+				ts = strftime(format, deltaTime)
+			} else {
+				// R1.2: Evaluate timestamp at the time each line is received.
+				ts = strftime(format, now)
+			}
 			// R1.1: Prefix with timestamp and single space.
 			// R1.4: Original newline preserved (included in line from ReadBytes).
 			// R1.5: Partial lines passed through without added newline.
@@ -85,6 +120,31 @@ func strftime(format string, t time.Time) string {
 			continue
 		}
 		i++ // skip '%'
+
+		// R2.3: Handle ts-specific subsecond extensions %.S, %.s, %.T before
+		// other specifiers. These require the full time sample for atomic
+		// second+microsecond formatting (R2.4).
+		if format[i] == '.' && i+1 < len(format) {
+			switch format[i+1] {
+			case 'S':
+				// %.S: seconds with microsecond suffix, e.g. "32.001234"
+				fmt.Fprintf(&buf, "%02d.%06d", t.Second(), t.Nanosecond()/1000)
+				i += 2
+				continue
+			case 's':
+				// %.s: Unix epoch with microsecond suffix, e.g. "1708358732.001234"
+				fmt.Fprintf(&buf, "%d.%06d", t.Unix(), t.Nanosecond()/1000)
+				i += 2
+				continue
+			case 'T':
+				// %.T: HH:MM:SS with microsecond suffix, e.g. "14:05:32.001234"
+				fmt.Fprintf(&buf, "%02d:%02d:%02d.%06d", t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000)
+				i += 2
+				continue
+			default:
+				// Not a subsecond extension; fall through to normal handling.
+			}
+		}
 
 		// Handle %E and %O POSIX alternate-representation modifiers.
 		// In C locale these produce the same output as without the modifier.
