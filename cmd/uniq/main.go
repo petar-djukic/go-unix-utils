@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/uniq implements the uniq (report or filter adjacent duplicate lines) command.
-// Implements: prd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
+// Implements: prd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -21,6 +22,11 @@ type config struct {
 	repeated    bool // -d: only print duplicate lines (one per run)
 	allRepeated bool // -D: print all duplicate lines (every copy)
 	unique      bool // -u: only print unique lines
+	ignoreCase  bool // -i: case-insensitive comparison (R3.1)
+	skipFields  int  // -f N: skip first N fields before comparing (R3.2)
+	skipChars   int  // -s N: skip first N characters before comparing (R3.3)
+	checkChars  int  // -w N: compare only first N characters (R3.4); -1 means all
+	checkCharsSet bool // true when -w was explicitly provided
 	inFile      string
 	outFile     string
 }
@@ -67,15 +73,48 @@ func parseArgs(args []string) (*config, error) {
 
 		// Long options.
 		if strings.HasPrefix(arg, "--") {
-			switch arg {
-			case "--count":
+			switch {
+			case arg == "--count":
 				cfg.count = true
-			case "--repeated":
+			case arg == "--repeated":
 				cfg.repeated = true
-			case "--all-repeated":
+			case arg == "--all-repeated":
 				cfg.allRepeated = true
-			case "--unique":
+			case arg == "--unique":
 				cfg.unique = true
+			case arg == "--ignore-case":
+				cfg.ignoreCase = true
+			case arg == "--skip-fields" || strings.HasPrefix(arg, "--skip-fields="):
+				val, err := parseLongOptValue(arg, "--skip-fields", args, &i)
+				if err != nil {
+					return nil, err
+				}
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return nil, fmt.Errorf("invalid number of fields to skip: '%s'", val)
+				}
+				cfg.skipFields = n
+			case arg == "--skip-chars" || strings.HasPrefix(arg, "--skip-chars="):
+				val, err := parseLongOptValue(arg, "--skip-chars", args, &i)
+				if err != nil {
+					return nil, err
+				}
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return nil, fmt.Errorf("invalid number of bytes to skip: '%s'", val)
+				}
+				cfg.skipChars = n
+			case arg == "--check-chars" || strings.HasPrefix(arg, "--check-chars="):
+				val, err := parseLongOptValue(arg, "--check-chars", args, &i)
+				if err != nil {
+					return nil, err
+				}
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return nil, fmt.Errorf("invalid number of bytes to compare: '%s'", val)
+				}
+				cfg.checkChars = n
+				cfg.checkCharsSet = true
 			default:
 				return nil, fmt.Errorf("unrecognized option '%s'", arg)
 			}
@@ -85,7 +124,8 @@ func parseArgs(args []string) (*config, error) {
 		// Short flags.
 		if strings.HasPrefix(arg, "-") {
 			rest := arg[1:]
-			for _, ch := range rest {
+			for j := 0; j < len(rest); j++ {
+				ch := rest[j]
 				switch ch {
 				case 'c':
 					cfg.count = true
@@ -95,6 +135,42 @@ func parseArgs(args []string) (*config, error) {
 					cfg.allRepeated = true
 				case 'u':
 					cfg.unique = true
+				case 'i':
+					cfg.ignoreCase = true
+				case 'f':
+					val, err := parseShortOptValue(rest, j, args, &i)
+					if err != nil {
+						return nil, err
+					}
+					n, err := strconv.Atoi(val)
+					if err != nil {
+						return nil, fmt.Errorf("invalid number of fields to skip: '%s'", val)
+					}
+					cfg.skipFields = n
+					j = len(rest) // consumed rest
+				case 's':
+					val, err := parseShortOptValue(rest, j, args, &i)
+					if err != nil {
+						return nil, err
+					}
+					n, err := strconv.Atoi(val)
+					if err != nil {
+						return nil, fmt.Errorf("invalid number of bytes to skip: '%s'", val)
+					}
+					cfg.skipChars = n
+					j = len(rest)
+				case 'w':
+					val, err := parseShortOptValue(rest, j, args, &i)
+					if err != nil {
+						return nil, err
+					}
+					n, err := strconv.Atoi(val)
+					if err != nil {
+						return nil, fmt.Errorf("invalid number of bytes to compare: '%s'", val)
+					}
+					cfg.checkChars = n
+					cfg.checkCharsSet = true
+					j = len(rest)
 				default:
 					return nil, fmt.Errorf("invalid option -- '%c'", ch)
 				}
@@ -117,6 +193,95 @@ func parseArgs(args []string) (*config, error) {
 	}
 
 	return cfg, nil
+}
+
+// parseLongOptValue extracts the value for a long option, either from
+// --opt=value form or from the next argument.
+func parseLongOptValue(arg, name string, args []string, i *int) (string, error) {
+	if strings.HasPrefix(arg, name+"=") {
+		return arg[len(name)+1:], nil
+	}
+	*i++
+	if *i >= len(args) {
+		return "", fmt.Errorf("option '%s' requires an argument", name)
+	}
+	return args[*i], nil
+}
+
+// parseShortOptValue extracts the value for a short option that takes an
+// argument. If characters remain after the flag letter in the same token,
+// they form the value; otherwise the next argument is consumed.
+func parseShortOptValue(rest string, j int, args []string, i *int) (string, error) {
+	if j+1 < len(rest) {
+		return rest[j+1:], nil
+	}
+	*i++
+	if *i >= len(args) {
+		return "", fmt.Errorf("option requires an argument -- '%c'", rest[j])
+	}
+	return args[*i], nil
+}
+
+// isBlank returns true if r is a space or tab (POSIX blank class).
+func isBlank(r rune) bool {
+	return r == ' ' || r == '\t'
+}
+
+// compareKey extracts the portion of line used for comparison, applying
+// -f (skip fields), -s (skip chars), and -w (check chars) adjustments.
+//
+// R3.2: -f N skips the first N whitespace-separated fields.
+// R3.3: -s N skips the first N characters after field skipping.
+// R3.4: -w N limits comparison to the first N characters after adjustments.
+func compareKey(line string, cfg *config) string {
+	s := line
+	// R3.2: Skip fields — GNU uniq skips leading blanks then non-blanks per field.
+	if cfg.skipFields > 0 {
+		idx := 0
+		fieldsSkipped := 0
+		for fieldsSkipped < cfg.skipFields && idx < len(s) {
+			// Skip leading blanks (space/tab).
+			for idx < len(s) && isBlank(rune(s[idx])) {
+				idx++
+			}
+			// Skip the non-blank field.
+			for idx < len(s) && !isBlank(rune(s[idx])) {
+				idx++
+			}
+			fieldsSkipped++
+		}
+		s = s[idx:]
+	}
+
+	// R3.3: Skip characters (bytes in LC_ALL=C).
+	if cfg.skipChars > 0 {
+		if cfg.skipChars >= len(s) {
+			s = ""
+		} else {
+			s = s[cfg.skipChars:]
+		}
+	}
+
+	// R3.4: Limit comparison to first N characters (bytes in LC_ALL=C).
+	// When -w is explicitly set, even -w 0 means "compare 0 characters".
+	if cfg.checkCharsSet {
+		if cfg.checkChars < len(s) {
+			s = s[:cfg.checkChars]
+		}
+	}
+
+	// R3.1: Case-insensitive folding.
+	if cfg.ignoreCase {
+		s = strings.ToUpper(s)
+	}
+
+	return s
+}
+
+// linesEqual returns true if two lines are equal under the configured
+// comparison options (-i, -f, -s, -w).
+func linesEqual(a, b string, cfg *config) bool {
+	return compareKey(a, cfg) == compareKey(b, cfg)
 }
 
 // run executes the uniq logic with the given configuration.
@@ -188,8 +353,8 @@ func processUniq(reader io.Reader, w *bufio.Writer, cfg *config) error {
 			continue
 		}
 
-		// R1.4: Case-sensitive comparison of the full line.
-		if line == prevLine {
+		// R1.4, R3.1-R3.4: Compare using configured options.
+		if linesEqual(line, prevLine, cfg) {
 			count++
 			continue
 		}
@@ -222,7 +387,7 @@ func processUniq(reader io.Reader, w *bufio.Writer, cfg *config) error {
 // than once at the end.
 //
 // R2.2: -D prints all lines of each run that appears more than once.
-func processAllRepeated(reader io.Reader, w *bufio.Writer, _ *config) error {
+func processAllRepeated(reader io.Reader, w *bufio.Writer, cfg *config) error {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -240,7 +405,7 @@ func processAllRepeated(reader io.Reader, w *bufio.Writer, _ *config) error {
 			continue
 		}
 
-		if line == prevLine {
+		if linesEqual(line, prevLine, cfg) {
 			// R2.2: Duplicate found; emit the deferred first copy if this is
 			// the second occurrence, then emit the current copy.
 			if count == 1 {
