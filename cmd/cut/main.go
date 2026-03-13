@@ -38,6 +38,7 @@ type config struct {
 	mode            cutMode
 	ranges          []rangeSpec
 	delimiter       byte
+	delimiterSet    bool // true when -d or --delimiter was explicitly specified
 	outputDelimiter string
 	outputDelimSet  bool
 	suppress        bool
@@ -162,6 +163,7 @@ func parseArgs(args []string) (*config, error) {
 					return nil, fmt.Errorf("the delimiter must be a single character")
 				}
 				cfg.delimiter = val[0]
+				cfg.delimiterSet = true
 			case strings.HasPrefix(arg, "--output-delimiter="):
 				cfg.outputDelimiter = arg[len("--output-delimiter="):]
 				cfg.outputDelimSet = true
@@ -242,6 +244,7 @@ func parseArgs(args []string) (*config, error) {
 					return nil, fmt.Errorf("the delimiter must be a single character")
 				}
 				cfg.delimiter = val[0]
+				cfg.delimiterSet = true
 				rest = ""
 			case 's':
 				cfg.suppress = true
@@ -254,6 +257,16 @@ func parseArgs(args []string) (*config, error) {
 	// R1.1, D5: Exactly one of -b, -c, or -f must be specified.
 	if cfg.mode == modeNone {
 		return nil, fmt.Errorf("you must specify a list of bytes, characters, or fields")
+	}
+
+	// R2.2: -d is only valid with -f.
+	if cfg.delimiterSet && cfg.mode != modeFields {
+		return nil, fmt.Errorf("an input delimiter may be specified only when operating on fields")
+	}
+
+	// R2.3: -s is only valid with -f.
+	if cfg.suppress && cfg.mode != modeFields {
+		return nil, fmt.Errorf("suppressing non-delimited lines makes sense\n\tonly when operating on fields")
 	}
 
 	// R2.2: Default output delimiter matches input delimiter.

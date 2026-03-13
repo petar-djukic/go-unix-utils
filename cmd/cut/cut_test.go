@@ -199,6 +199,30 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
+		// --- R2.2: -d requires -f ---
+		{
+			// AC5: -d without -f produces an error.
+			Name:     "delim_without_fields_error",
+			Args:     []string{"-d:", "-b1"},
+			Stdin:    []byte("abc\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+		{
+			// -s without -f produces an error.
+			Name:     "suppress_without_fields_error",
+			Args:     []string{"-s", "-b1"},
+			Stdin:    []byte("abc\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+
 		// --- Edge cases ---
 		{
 			Name:  "empty_input",
