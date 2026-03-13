@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd049-realpath R4.1–R4.3 (differential tests for R1.1–R1.4)
+// Implements: prd049-realpath R4.1–R4.3 (differential tests for R1.1–R1.5, R2.1–R2.3)
 package main
 
 import (
@@ -123,6 +123,173 @@ func TestDiffHelpVersion(t *testing.T) {
 	clearOutput := func(b []byte) []byte { return nil }
 	for i := range tests {
 		tests[i].Normalize = []testutils.NormalizeFunc{clearOutput}
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffStrip tests R1.5: -s / --strip / --no-symlinks mode.
+func TestDiffStrip(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R1.5: -s with /tmp (symlink on macOS) should NOT resolve symlinks.
+		{
+			Name: "strip_short_flag",
+			Args: []string{"-s", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: --strip long form.
+		{
+			Name: "strip_long_flag",
+			Args: []string{"--strip", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: --no-symlinks alias.
+		{
+			Name: "no_symlinks_flag",
+			Args: []string{"--no-symlinks", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -s cleans .. components — intermediate component must exist.
+		{
+			Name:     "strip_dotdot_nonexistent",
+			Args:     []string{"-s", "/tmp/foo/.."},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R1.5: -s cleans .. with existing intermediate.
+		{
+			Name: "strip_dotdot_existing",
+			Args: []string{"-s", "/tmp/.."},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -s cleans . components.
+		{
+			Name: "strip_dot",
+			Args: []string{"-s", "/tmp/."},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -s with nonexistent last component (parent exists).
+		{
+			Name: "strip_nonexistent_last",
+			Args: []string{"-s", "/tmp/nonexistent_xyz_12345"},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	// Normalize stderr for error cases since messages may differ.
+	clearStderr := func(b []byte) []byte { return nil }
+	for i := range tests {
+		if tests[i].ExitCode != 0 {
+			tests[i].Normalize = []testutils.NormalizeFunc{clearStderr}
+		}
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRelativeTo tests R2.1: --relative-to output.
+func TestDiffRelativeTo(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.1: print /tmp relative to /.
+		{
+			Name: "relative_to_root",
+			Args: []string{"--relative-to=/", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: print / relative to /tmp.
+		{
+			Name: "relative_to_tmp",
+			Args: []string{"--relative-to=/tmp", "/"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: same directory yields ".".
+		{
+			Name: "relative_to_same",
+			Args: []string{"--relative-to=/tmp", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: combined with -s to avoid symlink interference.
+		{
+			Name: "relative_to_with_strip",
+			Args: []string{"-s", "--relative-to=/", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRelativeBase tests R2.2: --relative-base output.
+func TestDiffRelativeBase(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.2: path under base → relative output.
+		{
+			Name: "base_under",
+			Args: []string{"-s", "--relative-base=/", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: path equals base → ".".
+		{
+			Name: "base_equals",
+			Args: []string{"-s", "--relative-base=/tmp", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRelativeBoth tests R2.3: --relative-to + --relative-base combined.
+func TestDiffRelativeBoth(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.3: path starts with base → apply relative-to.
+		{
+			Name: "both_under_base",
+			Args: []string{"-s", "--relative-to=/", "--relative-base=/", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: path does NOT start with base → print absolute.
+		{
+			Name: "both_outside_base",
+			Args: []string{"-s", "--relative-to=/var", "--relative-base=/var", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
