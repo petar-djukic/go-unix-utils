@@ -3,11 +3,12 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.3
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.7
 package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/user"
 	"sort"
@@ -72,8 +73,9 @@ type lsOptions struct {
 	dirOnly    bool // -d: list directories themselves, not contents
 	showInode  bool // -i: prepend inode number
 	showBlocks bool // -s: prepend allocated block count
-	numericIDs bool      // -n: numeric UID/GID (implies -l)
-	color      colorMode // --color: colorization mode
+	numericIDs  bool      // -n: numeric UID/GID (implies -l)
+	humanSizes  bool      // -h: human-readable sizes (only with -l)
+	color       colorMode // --color: colorization mode
 }
 
 func main() {
@@ -172,6 +174,9 @@ func main() {
 			case 's':
 				// R2.12: prepend allocated block count.
 				opts.showBlocks = true
+			case 'h':
+				// R3.5: human-readable sizes (only effective with -l).
+				opts.humanSizes = true
 			case 'n':
 				// R2.14 / R4.6: numeric UID/GID, implies -l.
 				opts.numericIDs = true
@@ -469,13 +474,18 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		return
 	}
 
-	// R2.12/R2.13: print total block line for -s directory listings (all formats).
+	// R2.12/R2.13/R3.7: print total block line for -s directory listings (all formats).
 	if opts.showBlocks && isDirListing && opts.format != formatLong {
 		var totalBlocks int64
 		for _, item := range items {
 			totalBlocks += item.info.Blocks
 		}
-		fmt.Printf("total %d\n", totalBlocks/2)
+		if opts.humanSizes {
+			// R3.7: convert 512-byte blocks to bytes for human-readable display.
+			fmt.Printf("total %s\n", humanSizeGNU(totalBlocks*512))
+		} else {
+			fmt.Printf("total %d\n", totalBlocks/2)
+		}
 	}
 
 	switch opts.format {
@@ -569,10 +579,15 @@ func printLong(items []fileEntry, isDirListing bool, opts lsOptions) {
 			}
 		}
 
-		// R2.12: allocated block count in 1K units.
+		// R2.12 / R3.7: allocated block count in 1K units; human-readable when -h.
 		var blkStr string
 		if opts.showBlocks {
-			blkStr = strconv.FormatInt(fi.Blocks/2, 10)
+			if opts.humanSizes {
+				// R3.7: convert 512-byte blocks to bytes for human-readable display.
+				blkStr = humanSizeGNU(fi.Blocks * 512)
+			} else {
+				blkStr = strconv.FormatInt(fi.Blocks/2, 10)
+			}
 			if len(blkStr) > maxBlk {
 				maxBlk = len(blkStr)
 			}
@@ -594,8 +609,13 @@ func printLong(items []fileEntry, isDirListing bool, opts lsOptions) {
 			groupStr = resolveGroup(fi.Gid)
 		}
 
-		// R1.7: size.
-		sizeStr := strconv.FormatInt(fi.Size, 10)
+		// R1.7 / R3.5: size — human-readable when -h is active with -l.
+		var sizeStr string
+		if opts.humanSizes {
+			sizeStr = humanSizeGNU(fi.Size)
+		} else {
+			sizeStr = strconv.FormatInt(fi.Size, 10)
+		}
 
 		// R1.9: modification time formatting (matching GNU ls).
 		mtimeStr := formatMtime(fi.ModTime)
@@ -636,13 +656,19 @@ func printLong(items []fileEntry, isDirListing bool, opts lsOptions) {
 	}
 
 	// Print total block count line only for directory listings.
+	// R3.6: when -h is active, convert total to human-readable form.
 	if isDirListing {
 		var totalBlocks int64
 		for _, item := range items {
 			totalBlocks += item.info.Blocks
 		}
-		// Convert 512-byte blocks to 1K-block units.
-		fmt.Printf("total %d\n", totalBlocks/2)
+		if opts.humanSizes {
+			// R3.6: convert 512-byte blocks to bytes for human-readable display.
+			fmt.Printf("total %s\n", humanSizeGNU(totalBlocks*512))
+		} else {
+			// Convert 512-byte blocks to 1K-block units.
+			fmt.Printf("total %d\n", totalBlocks/2)
+		}
 	}
 
 	// Print each entry.
@@ -918,8 +944,14 @@ func extractPrefixedNames(items []fileEntry, opts lsOptions) []string {
 	}
 	if opts.showBlocks {
 		for _, item := range items {
-			w := len(strconv.FormatInt(item.info.Blocks/2, 10))
-			if w > maxBlkWidth {
+			var blk string
+			if opts.humanSizes {
+				// R3.7: convert 512-byte blocks to bytes for human-readable display.
+				blk = humanSizeGNU(item.info.Blocks * 512)
+			} else {
+				blk = strconv.FormatInt(item.info.Blocks/2, 10)
+			}
+			if w := len(blk); w > maxBlkWidth {
 				maxBlkWidth = w
 			}
 		}
@@ -933,7 +965,13 @@ func extractPrefixedNames(items []fileEntry, opts lsOptions) []string {
 			prefix += format.PadLeft(inoStr, maxInoWidth) + " "
 		}
 		if opts.showBlocks {
-			blkStr := strconv.FormatInt(item.info.Blocks/2, 10)
+			var blkStr string
+			if opts.humanSizes {
+				// R3.7: convert 512-byte blocks to bytes for human-readable display.
+				blkStr = humanSizeGNU(item.info.Blocks * 512)
+			} else {
+				blkStr = strconv.FormatInt(item.info.Blocks/2, 10)
+			}
 			prefix += format.PadLeft(blkStr, maxBlkWidth) + " "
 		}
 		// R3.3: colorize entry name based on file type.
@@ -964,6 +1002,31 @@ func colorizeEntry(name string, mode os.FileMode) string {
 		colorFirstDone = true
 	}
 	return prefix + colorCode + name + format.Reset()
+}
+
+// humanSizeGNU formats a byte count in human-readable binary (1024-base) form
+// with ceiling rounding, matching GNU coreutils human_readable() behavior.
+// R3.5/R3.6/R3.7: used for -h file sizes, total line, and block counts.
+func humanSizeGNU(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+	f := float64(n)
+	i := 0
+	for f >= 1024 && i < len(suffixes)-1 {
+		f /= 1024
+		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%d", n)
+	}
+	// GNU coreutils uses ceiling rounding (human_ceiling).
+	if f >= 10 {
+		return fmt.Sprintf("%d%s", int64(math.Ceil(f)), suffixes[i])
+	}
+	c := math.Ceil(f*10) / 10
+	return fmt.Sprintf("%.1f%s", c, suffixes[i])
 }
 
 // unwrapMsg extracts a user-friendly error message, stripping Go error prefixes.

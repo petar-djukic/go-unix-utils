@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.3 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.7 (differential tests)
 package main
 
 import (
@@ -1420,6 +1420,187 @@ func TestDiffColorAlways(t *testing.T) {
 		{
 			Name: "color_bare",
 			Args: []string{"--color", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorSuppression exercises R3.4: no ANSI escapes when color is suppressed.
+func TestDiffColorSuppression(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// Create fixture with diverse file types that would normally be colorized.
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "regular"), 10)
+	os.Mkdir(filepath.Join(dir, "mydir"), 0o755)
+	writeFixtureFile(t, filepath.Join(dir, "runme"), 10)
+	os.Chmod(filepath.Join(dir, "runme"), 0o755)
+	os.Symlink("regular", filepath.Join(dir, "mylink"))
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.4: --color=never with diverse file types — no ANSI.
+		{
+			Name: "color_suppressed_never",
+			Args: []string{"--color=never", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --color=auto piped (non-TTY) with diverse file types — no ANSI.
+		{
+			Name: "color_suppressed_auto_piped",
+			Args: []string{"--color=auto", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --color=never with long format and diverse file types.
+		{
+			Name:      "color_suppressed_never_long",
+			Args:      []string{"--color=never", "-l", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.4: --color=auto piped with long format.
+		{
+			Name:      "color_suppressed_auto_piped_long",
+			Args:      []string{"--color=auto", "-l", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHumanSizes exercises R3.5: -h with -l shows human-readable sizes.
+func TestDiffHumanSizes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create files with various sizes to test human-readable formatting.
+	writeFixtureFile(t, filepath.Join(dir, "empty"), 0)
+	writeFixtureFile(t, filepath.Join(dir, "small"), 100)
+	writeFixtureFile(t, filepath.Join(dir, "medium"), 5000)
+	writeFixtureFile(t, filepath.Join(dir, "large"), 100000)
+	writeFixtureFile(t, filepath.Join(dir, "huge"), 2000000)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.5: -lh shows human-readable sizes in long format.
+		{
+			Name:      "human_sizes_long",
+			Args:      []string{"-lh", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.5: -h without -l has no visible effect.
+		{
+			Name: "human_sizes_no_long",
+			Args: []string{"-h", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.5: -h without -l in default mode has no visible effect.
+		{
+			Name: "human_sizes_no_long_default",
+			Args: []string{"-h", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHumanSizesTotalLine exercises R3.6: -h applies to "total N" line.
+func TestDiffHumanSizesTotalLine(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create files with enough blocks to produce a human-readable total.
+	writeFixtureFile(t, filepath.Join(dir, "big1"), 500000)
+	writeFixtureFile(t, filepath.Join(dir, "big2"), 500000)
+	writeFixtureFile(t, filepath.Join(dir, "big3"), 500000)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.6: -lh total line uses human-readable format.
+		{
+			Name:      "human_sizes_total_line",
+			Args:      []string{"-lh", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHumanSizesBlocks exercises R3.7: -h applies to -s block counts.
+func TestDiffHumanSizesBlocks(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "small"), 100)
+	writeFixtureFile(t, filepath.Join(dir, "medium"), 5000)
+	writeFixtureFile(t, filepath.Join(dir, "large"), 100000)
+	writeFixtureFile(t, filepath.Join(dir, "huge"), 2000000)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.7: -sh shows human-readable block counts.
+		{
+			Name: "human_blocks_single",
+			Args: []string{"-sh", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.7: -slh shows human-readable blocks in long format.
+		{
+			Name:      "human_blocks_long",
+			Args:      []string{"-slh", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.7: -sh with default (piped) mode.
+		{
+			Name: "human_blocks_default",
+			Args: []string{"-sh", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.7: -ish — inode + human-readable blocks.
+		{
+			Name: "human_blocks_with_inode",
+			Args: []string{"-ish", "-1", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
