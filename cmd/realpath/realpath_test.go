@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd049-realpath R4.1–R4.3 (differential tests for R1.1–R1.5, R2.1–R2.3)
+// Implements: prd049-realpath R4.1–R4.3 (differential tests for R1.1–R1.5, R2.1–R2.3, R3.1–R3.3)
 package main
 
 import (
@@ -295,7 +295,8 @@ func TestDiffRelativeBoth(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-func TestDiffErrors(t *testing.T) {
+// TestDiffErrorNoOperand tests R3.1: no operand produces usage error, exit 1.
+func TestDiffErrorNoOperand(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
@@ -306,19 +307,108 @@ func TestDiffErrors(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
-		// R3.1: no arguments.
+		// R3.1: no arguments at all.
 		{
 			Name:     "no_args",
 			Args:     []string{},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 1,
 		},
+		// R3.1: only flags, no operands.
+		{
+			Name:     "flags_only_no_operand",
+			Args:     []string{"-s"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
 	}
 
 	// Error messages differ between implementations; normalize stderr.
-	clearOutput := func(b []byte) []byte { return nil }
+	clearStderr := func(b []byte) []byte { return nil }
 	for i := range tests {
-		tests[i].Normalize = []testutils.NormalizeFunc{clearOutput}
+		tests[i].Normalize = []testutils.NormalizeFunc{clearStderr}
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffErrorUnknownFlag tests R3.2: unknown flags produce error, exit 1.
+func TestDiffErrorUnknownFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.2: unknown short flag.
+		{
+			Name:     "unknown_short_flag",
+			Args:     []string{"-j", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R3.2: unknown long flag.
+		{
+			Name:     "unknown_long_flag",
+			Args:     []string{"--bogus", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+	}
+
+	// Error messages differ between implementations; normalize stderr.
+	clearStderr := func(b []byte) []byte { return nil }
+	for i := range tests {
+		tests[i].Normalize = []testutils.NormalizeFunc{clearStderr}
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffErrorMixedPaths tests R3.3: multiple paths where some fail still
+// print successful resolutions and exit 1.
+func TestDiffErrorMixedPaths(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.3: first path succeeds, second fails (parent does not exist).
+		{
+			Name:     "first_ok_second_fails",
+			Args:     []string{"/tmp", "/nonexistent_parent_xyz/child"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R3.3: first fails, second succeeds.
+		{
+			Name:     "first_fails_second_ok",
+			Args:     []string{"/nonexistent_parent_xyz/child", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R3.3: multiple failures.
+		{
+			Name:     "both_fail",
+			Args:     []string{"/nonexistent_parent_xyz/a", "/nonexistent_parent_xyz/b"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+	}
+
+	// Error messages differ between implementations; normalize stderr.
+	clearStderr := func(b []byte) []byte { return nil }
+	for i := range tests {
+		tests[i].Normalize = []testutils.NormalizeFunc{clearStderr}
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
