@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd051-pwd R3.1–R3.2 (differential tests for R1.1–R1.4, R2.1–R2.2)
+// Implements: prd051-pwd R3.1–R3.3 (differential tests for R1.1–R1.4, R2.1–R2.2)
 package main
 
 import (
@@ -19,6 +19,7 @@ const refBinaryName = "gpwd"
 // TestDiff tests R1.1–R1.4, R2.1–R2.2 via differential comparison with gpwd.
 // R3.1: compares stdout and exit codes between the Go binary and gpwd.
 // R3.2: covers default invocation, -L, -P, -L -P precedence, and error cases.
+// R3.3: all differential tests set LC_ALL=C in the environment.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -183,6 +184,13 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// === R3.3: explicit LC_ALL=C locale test with logical mode ===
+		{
+			Name:    "lc_all_c_logical",
+			Args:    []string{"-L"},
+			Env:     []string{"LC_ALL=C", "PWD=" + symlinkDir},
+			WorkDir: physicalRealDir,
 		},
 	}
 
