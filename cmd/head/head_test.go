@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/head.
 //
-// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.3
+// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.4
 package main
 
 import (
@@ -27,6 +27,26 @@ var headErrRe = regexp.MustCompile(`(?m)^g?head: (?:cannot open '|open )(.+?)(?:
 // normalizeHeadErrors replaces head/ghead error lines with a canonical form.
 func normalizeHeadErrors(b []byte) []byte {
 	return headErrRe.ReplaceAll(b, []byte("PROG: $1: ERROR"))
+}
+
+// normalizeVersionOutput replaces all version output with a canonical string.
+// GNU ghead and Go head produce different version strings; this normalizer
+// ensures the differential test compares only that non-empty output was produced.
+func normalizeVersionOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("VERSION_OUTPUT\n")
+	}
+	return b
+}
+
+// normalizeHelpOutput replaces all help output with a canonical string.
+// GNU ghead and Go head produce different help text; this normalizer
+// ensures the differential test compares only that non-empty output was produced.
+func normalizeHelpOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("HELP_OUTPUT\n")
+	}
+	return b
 }
 
 func TestDiff(t *testing.T) {
@@ -340,6 +360,33 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+
+		// R3.5: error on unopenable file, continues to remaining files.
+		{
+			Name:      "r3.5_error_continues_remaining",
+			Args:      []string{missing, fiveLines},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeHeadErrors},
+		},
+
+		// R4.1: --version prints version info to stdout and exits 0.
+		{
+			Name:      "r4.1_version_flag",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeVersionOutput},
+		},
+
+		// R4.2: --help prints usage to stdout and exits 0.
+		{
+			Name:      "r4.2_help_flag",
+			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeHelpOutput},
 		},
 	}
 

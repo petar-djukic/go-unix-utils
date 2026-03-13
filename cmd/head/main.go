@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.2
+// Implements: prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.3
 package main
 
 import (
@@ -24,6 +24,22 @@ const defaultLines = 10
 func main() {
 	// D1: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.1, R4.2: Handle --version and --help before flag parsing so they
+	// take precedence and exit 0, matching GNU head behavior.
+	for _, arg := range os.Args[1:] {
+		if arg == "--" {
+			break
+		}
+		if arg == "--version" {
+			fmt.Println("head (go-unix-utils)")
+			os.Exit(0)
+		}
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
+	}
 
 	flagN := flag.Int("n", defaultLines, "print the first NUM lines instead of the first 10")
 	flag.IntVar(flagN, "lines", defaultLines, "print the first NUM lines instead of the first 10")
@@ -251,4 +267,25 @@ func parseCount(s string) (int64, bool, error) {
 	}
 
 	return num * multiplier, negative, nil
+}
+
+// printHelp writes usage information to stdout, matching the structure of
+// GNU head --help output.
+// R4.2: --help prints usage to stdout and exits 0.
+func printHelp() {
+	fmt.Print(`Usage: head [OPTION]... [FILE]...
+Print the first 10 lines of each FILE to standard output.
+With more than one FILE, precede each with a header giving the file name.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -c, --bytes=NUM        print the first NUM bytes; with leading '-',
+                         print all but the last NUM bytes of each file
+  -n, --lines=NUM        print the first NUM lines instead of the first 10;
+                         with leading '-', print all but the last NUM lines
+  -q, --quiet, --silent  never print headers giving file names
+  -v, --verbose          always print headers giving file names
+      --help             display this help and exit
+      --version          output version information and exit
+`)
 }
