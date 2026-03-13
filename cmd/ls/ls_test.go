@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.10 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.14 (differential tests)
 package main
 
 import (
@@ -1129,6 +1129,151 @@ func TestDiffSortPrecedence(t *testing.T) {
 			Name: "sort_unsorted_then_time",
 			Args: []string{"-U", "-t", "-1", dir},
 			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInodeDisplay exercises R2.11: -i prepends inode number.
+func TestDiffInodeDisplay(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R2.11: -i in single-column mode.
+		{
+			Name: "inode_single",
+			Args: []string{"-i", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11: -i in long format — inode before permissions.
+		{
+			Name:      "inode_long",
+			Args:      []string{"-il", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R2.11: -i in default (piped) mode.
+		{
+			Name: "inode_default",
+			Args: []string{"-i", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffBlockDisplay exercises R2.12: -s prepends allocated block count.
+func TestDiffBlockDisplay(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R2.12: -s in single-column mode.
+		{
+			Name: "blocks_single",
+			Args: []string{"-s", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.13: -s with -l — block counts in long format with total line.
+		{
+			Name:      "blocks_long",
+			Args:      []string{"-sl", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R2.12: -s in default (piped) mode.
+		{
+			Name: "blocks_default",
+			Args: []string{"-s", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInodeBlocksCombined exercises R2.15: -i and -s combined.
+func TestDiffInodeBlocksCombined(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R2.15: -is in single-column mode — inode first, then blocks.
+		{
+			Name: "inode_blocks_single",
+			Args: []string{"-is", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -is with -l.
+		{
+			Name:      "inode_blocks_long",
+			Args:      []string{"-isl", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffNumericIDs exercises R2.14: -n displays numeric UID/GID.
+func TestDiffNumericIDs(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R2.14: -n implies -l with numeric UID/GID.
+		{
+			Name:      "numeric_ids",
+			Args:      []string{"-n", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R2.14: -n with -i — inode + numeric long format.
+		{
+			Name:      "numeric_ids_with_inode",
+			Args:      []string{"-ni", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
 		},
 	}
 

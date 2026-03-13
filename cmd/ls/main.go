@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.10
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.14
 package main
 
 import (
@@ -56,11 +56,14 @@ const (
 
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
-	format  formatMode
-	filter  filterMode
-	sortBy  sortMode
-	reverse bool // -r: reverse sort order
-	dirOnly bool // -d: list directories themselves, not contents
+	format     formatMode
+	filter     filterMode
+	sortBy     sortMode
+	reverse    bool // -r: reverse sort order
+	dirOnly    bool // -d: list directories themselves, not contents
+	showInode  bool // -i: prepend inode number
+	showBlocks bool // -s: prepend allocated block count
+	numericIDs bool // -n: numeric UID/GID (implies -l)
 }
 
 func main() {
@@ -134,7 +137,17 @@ func main() {
 				case 'v':
 					// R2.9: natural version sort.
 					opts.sortBy = sortVersion
-				default:
+			case 'i':
+				// R2.11: prepend inode number.
+				opts.showInode = true
+			case 's':
+				// R2.12: prepend allocated block count.
+				opts.showBlocks = true
+			case 'n':
+				// R2.14 / R4.6: numeric UID/GID, implies -l.
+				opts.numericIDs = true
+				opts.format = formatLong
+			default:
 					fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 					os.Exit(2)
 				}
@@ -416,18 +429,29 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		return
 	}
 
+	// R2.12/R2.13: print total block line for -s directory listings (all formats).
+	if opts.showBlocks && isDirListing && opts.format != formatLong {
+		var totalBlocks int64
+		for _, item := range items {
+			totalBlocks += item.info.Blocks
+		}
+		fmt.Printf("total %d\n", totalBlocks/2)
+	}
+
 	switch opts.format {
 	case formatLong:
-		printLong(items, isDirListing)
+		printLong(items, isDirListing, opts)
 	case formatSingle:
 		// R1.5: single-column output regardless of TTY.
-		for _, item := range items {
-			fmt.Println(item.name)
+		// R2.11/R2.12/R2.15: prepend inode and/or blocks if requested.
+		names := extractPrefixedNames(items, opts)
+		for _, name := range names {
+			fmt.Println(name)
 		}
 	case formatColumns:
 		// R1.11: forced multi-column regardless of TTY.
 		// R1.12: vertical sort (column-major), same as format.Columns default.
-		names := extractNames(items)
+		names := extractPrefixedNames(items, opts)
 		termWidth := defaultTermWidth
 		if isTTY {
 			if tw, err := sys.TerminalWidth(); err == nil {
@@ -437,7 +461,7 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		printColumns(names, termWidth)
 	case formatHorizontal:
 		// R1.13: forced multi-column with horizontal (row-major) fill.
-		names := extractNames(items)
+		names := extractPrefixedNames(items, opts)
 		termWidth := defaultTermWidth
 		if isTTY {
 			if tw, err := sys.TerminalWidth(); err == nil {
@@ -447,7 +471,7 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 		printHorizontalColumns(names, termWidth)
 	default:
 		// formatDefault: auto-detect.
-		names := extractNames(items)
+		names := extractPrefixedNames(items, opts)
 		if !isTTY {
 			// R1.2: one entry per line for non-terminal output.
 			for _, name := range names {
@@ -468,14 +492,21 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 // R1.6: permission string, nlink, owner, group, size, mtime, name.
 // R1.7: metadata from pkg/sys.Lstat.
 // R1.8: owner/group name resolution with numeric fallback.
-func printLong(items []fileEntry, isDirListing bool) {
+// R2.11: -i prepends inode number.
+// R2.12: -s prepends block count.
+// R2.14: -n uses numeric UID/GID.
+func printLong(items []fileEntry, isDirListing bool, opts lsOptions) {
 	// Compute column widths for alignment.
+	maxIno := 0
+	maxBlk := 0
 	maxNlink := 0
 	maxOwner := 0
 	maxGroup := 0
 	maxSize := 0
 
 	type resolvedEntry struct {
+		ino   string
+		blk   string
 		perm  string
 		nlink string
 		owner string
@@ -489,15 +520,39 @@ func printLong(items []fileEntry, isDirListing bool) {
 	for i, item := range items {
 		fi := item.info
 
+		// R2.11: inode number.
+		var inoStr string
+		if opts.showInode {
+			inoStr = strconv.FormatUint(fi.Ino, 10)
+			if len(inoStr) > maxIno {
+				maxIno = len(inoStr)
+			}
+		}
+
+		// R2.12: allocated block count in 1K units.
+		var blkStr string
+		if opts.showBlocks {
+			blkStr = strconv.FormatInt(fi.Blocks/2, 10)
+			if len(blkStr) > maxBlk {
+				maxBlk = len(blkStr)
+			}
+		}
+
 		// R1.6: permission string.
 		perm := permissionString(fi.Mode)
 
 		// R1.7: nlink.
 		nlinkStr := strconv.FormatUint(fi.Nlink, 10)
 
-		// R1.8: resolve owner and group names.
-		ownerStr := resolveUser(fi.Uid)
-		groupStr := resolveGroup(fi.Gid)
+		// R2.14: numeric UID/GID; R1.8: resolve owner and group names.
+		var ownerStr, groupStr string
+		if opts.numericIDs {
+			ownerStr = strconv.FormatUint(uint64(fi.Uid), 10)
+			groupStr = strconv.FormatUint(uint64(fi.Gid), 10)
+		} else {
+			ownerStr = resolveUser(fi.Uid)
+			groupStr = resolveGroup(fi.Gid)
+		}
 
 		// R1.7: size.
 		sizeStr := strconv.FormatInt(fi.Size, 10)
@@ -514,6 +569,8 @@ func printLong(items []fileEntry, isDirListing bool) {
 		}
 
 		resolved[i] = resolvedEntry{
+			ino:   inoStr,
+			blk:   blkStr,
 			perm:  perm,
 			nlink: nlinkStr,
 			owner: ownerStr,
@@ -549,7 +606,16 @@ func printLong(items []fileEntry, isDirListing bool) {
 
 	// Print each entry.
 	for _, r := range resolved {
-		fmt.Printf("%s %s %s %s %s %s %s\n",
+		// R2.15: inode first, then block count, then long-format fields.
+		var prefix string
+		if opts.showInode {
+			prefix += format.PadLeft(r.ino, maxIno) + " "
+		}
+		if opts.showBlocks {
+			prefix += format.PadLeft(r.blk, maxBlk) + " "
+		}
+		fmt.Printf("%s%s %s %s %s %s %s %s\n",
+			prefix,
 			r.perm,
 			format.PadLeft(r.nlink, maxNlink),
 			format.PadRight(r.owner, maxOwner),
@@ -798,6 +864,51 @@ func extractNames(items []fileEntry) []string {
 	names := make([]string, len(items))
 	for i, item := range items {
 		names[i] = item.name
+	}
+	return names
+}
+
+// extractPrefixedNames returns entry names with inode and/or block count prefixes.
+// R2.11: -i prepends inode number. R2.12: -s prepends block count.
+// R2.15: when both are given, inode is printed first, then block count.
+// When neither -i nor -s is set, falls back to extractNames.
+func extractPrefixedNames(items []fileEntry, opts lsOptions) []string {
+	if !opts.showInode && !opts.showBlocks {
+		return extractNames(items)
+	}
+
+	// Compute max widths for right-alignment.
+	maxInoWidth := 0
+	maxBlkWidth := 0
+	if opts.showInode {
+		for _, item := range items {
+			w := len(strconv.FormatUint(item.info.Ino, 10))
+			if w > maxInoWidth {
+				maxInoWidth = w
+			}
+		}
+	}
+	if opts.showBlocks {
+		for _, item := range items {
+			w := len(strconv.FormatInt(item.info.Blocks/2, 10))
+			if w > maxBlkWidth {
+				maxBlkWidth = w
+			}
+		}
+	}
+
+	names := make([]string, len(items))
+	for i, item := range items {
+		var prefix string
+		if opts.showInode {
+			inoStr := strconv.FormatUint(item.info.Ino, 10)
+			prefix += format.PadLeft(inoStr, maxInoWidth) + " "
+		}
+		if opts.showBlocks {
+			blkStr := strconv.FormatInt(item.info.Blocks/2, 10)
+			prefix += format.PadLeft(blkStr, maxBlkWidth) + " "
+		}
+		names[i] = prefix + item.name
 	}
 	return names
 }
