@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd034-mkdir R1.1–R1.4, R2.1–R2.3 differential tests
+// Implements: prd034-mkdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4 differential tests
 package main
 
 import (
@@ -299,6 +299,193 @@ func TestParentsExistingTarget(t *testing.T) {
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// compareDirModes runs both binaries with the given args (each creating a dir
+// in its own temp directory) and compares the resulting permission bits on a
+// target relative path. This is necessary because mkdir is destructive: we
+// cannot use RunDiffTests for creation scenarios.
+func compareDirModes(t *testing.T, goBin, refBin string, flagArgs []string, targetRel string) {
+	t.Helper()
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	goTarget := filepath.Join(goDir, targetRel)
+	refTarget := filepath.Join(refDir, targetRel)
+
+	goArgs := append(flagArgs, goTarget)
+	refArgs := append(flagArgs, refTarget)
+
+	goCmd := exec.Command(goBin, goArgs...)
+	goCmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := goCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go binary %v failed: %v\noutput: %s", goArgs, err, out)
+	}
+
+	refCmd := exec.Command(refBin, refArgs...)
+	refCmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := refCmd.CombinedOutput(); err != nil {
+		t.Fatalf("ref binary %v failed: %v\noutput: %s", refArgs, err, out)
+	}
+
+	goInfo, err := os.Stat(goTarget)
+	if err != nil {
+		t.Fatalf("go dir %q not created: %v", goTarget, err)
+	}
+	refInfo, err := os.Stat(refTarget)
+	if err != nil {
+		t.Fatalf("ref dir %q not created: %v", refTarget, err)
+	}
+
+	if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
+		t.Errorf("permission mismatch for args %v target %q: go=%o ref=%o",
+			flagArgs, targetRel, goInfo.Mode().Perm(), refInfo.Mode().Perm())
+	}
+}
+
+// TestModeOctal verifies R3.1, R3.3: mkdir -m with octal mode sets the
+// correct permission bits, matching gmkdir.
+func TestModeOctal(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		mode string
+	}{
+		{"0755", "0755"},
+		{"0700", "0700"},
+		{"0777", "0777"},
+		{"0644", "0644"},
+		{"755", "755"},
+		{"0500", "0500"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareDirModes(t, goBin, refBin, []string{"-m", tc.mode}, "testdir")
+		})
+	}
+}
+
+// TestModeSymbolic verifies R3.1, R3.2: mkdir -m with symbolic mode sets the
+// correct permission bits, matching gmkdir.
+func TestModeSymbolic(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		mode string
+	}{
+		{"u=rwx,go=rx", "u=rwx,go=rx"},
+		{"a=rwx", "a=rwx"},
+		{"u=rwx", "u=rwx"},
+		{"u=rwx,g=rx,o=", "u=rwx,g=rx,o="},
+		{"a=rx", "a=rx"},
+		{"u=rwx,go=", "u=rwx,go="},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareDirModes(t, goBin, refBin, []string{"-m", tc.mode}, "testdir")
+		})
+	}
+}
+
+// TestModeLongOption verifies R3.1: --mode=MODE works the same as -m MODE.
+func TestModeLongOption(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	compareDirModes(t, goBin, refBin, []string{"--mode=0750"}, "testdir")
+}
+
+// TestModeWithParents verifies R3.3: -p -m applies mode only to the final
+// directory; intermediate directories get default permissions.
+func TestModeWithParents(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	goTarget := filepath.Join(goDir, "a", "b", "c")
+	refTarget := filepath.Join(refDir, "a", "b", "c")
+
+	goCmd := exec.Command(goBin, "-p", "-m", "0700", goTarget)
+	goCmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := goCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go mkdir -p -m 0700 failed: %v\noutput: %s", err, out)
+	}
+
+	refCmd := exec.Command(refBin, "-p", "-m", "0700", refTarget)
+	refCmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := refCmd.CombinedOutput(); err != nil {
+		t.Fatalf("gmkdir -p -m 0700 failed: %v\noutput: %s", err, out)
+	}
+
+	// R3.3: final directory should have mode 0700.
+	for _, pair := range []struct {
+		label string
+		path  string
+	}{
+		{"go", goTarget},
+		{"ref", refTarget},
+	} {
+		info, statErr := os.Stat(pair.path)
+		if statErr != nil {
+			t.Fatalf("%s: final dir not created: %v", pair.label, statErr)
+		}
+		if info.Mode().Perm() != 0o700 {
+			t.Errorf("%s: final dir mode=%o, want 0700", pair.label, info.Mode().Perm())
+		}
+	}
+
+	// R3.3: intermediate directories should have default permissions (matching between go and ref).
+	for _, sub := range []string{"a", "a/b"} {
+		goInfo, goErr := os.Stat(filepath.Join(goDir, sub))
+		if goErr != nil {
+			t.Fatalf("go: intermediate %q not created: %v", sub, goErr)
+		}
+		refInfo, refErr := os.Stat(filepath.Join(refDir, sub))
+		if refErr != nil {
+			t.Fatalf("ref: intermediate %q not created: %v", sub, refErr)
+		}
+		if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
+			t.Errorf("intermediate %q permission mismatch: go=%o ref=%o",
+				sub, goInfo.Mode().Perm(), refInfo.Mode().Perm())
+		}
+	}
+}
+
+// TestModeBundledFlag verifies that -pm MODE works (bundled short flags).
+func TestModeBundledFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	compareDirModes(t, goBin, refBin, []string{"-pm", "0755"}, "a/b")
 }
 
 // TestParentsExistingIntermediate verifies R2.3: -p does not report an error
