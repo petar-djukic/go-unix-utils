@@ -8,10 +8,12 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -358,6 +360,232 @@ func TestFileOutput(t *testing.T) {
 		assertFileContent(t, fileA, input)
 		assertFileContent(t, fileB, input)
 	})
+}
+
+// TestDiffFileOutput runs both Go and reference binaries with file arguments
+// in separate temp directories and compares their file output byte-for-byte.
+//
+// R4.1: Compares stdout output, file content, and exit codes between Go and ref.
+// R4.2: Covers single file, multiple files, append mode, write-error handling.
+// R4.3: Verifies file content matches stdout byte-for-byte.
+func TestDiffFileOutput(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(binGtee)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", binGtee, err)
+	}
+
+	// R4.2: single file — compare Go and ref file output.
+	t.Run("single_file", func(t *testing.T) {
+		t.Parallel()
+		input := []byte("hello\nworld\n")
+
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		goFile := filepath.Join(goDir, "out.txt")
+		refFile := filepath.Join(refDir, "out.txt")
+
+		goStdout, goExit := runGoBin(t, goBin, []string{goFile}, input)
+		refStdout, refExit := runGoBin(t, refBin, []string{refFile}, input)
+
+		compareResults(t, goStdout, refStdout, goExit, refExit)
+		compareFileContent(t, goFile, refFile, "out.txt")
+		// R4.3: file content matches stdout.
+		assertFileContent(t, goFile, goStdout)
+	})
+
+	// R4.2: multiple files — compare Go and ref output for both files.
+	t.Run("multiple_files", func(t *testing.T) {
+		t.Parallel()
+		input := []byte("line1\nline2\nline3\n")
+
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		goFileA := filepath.Join(goDir, "a.txt")
+		goFileB := filepath.Join(goDir, "b.txt")
+		refFileA := filepath.Join(refDir, "a.txt")
+		refFileB := filepath.Join(refDir, "b.txt")
+
+		goStdout, goExit := runGoBin(t, goBin, []string{goFileA, goFileB}, input)
+		refStdout, refExit := runGoBin(t, refBin, []string{refFileA, refFileB}, input)
+
+		compareResults(t, goStdout, refStdout, goExit, refExit)
+		compareFileContent(t, goFileA, refFileA, "a.txt")
+		compareFileContent(t, goFileB, refFileB, "b.txt")
+		// R4.3: both files match stdout.
+		assertFileContent(t, goFileA, goStdout)
+		assertFileContent(t, goFileB, goStdout)
+	})
+
+	// R4.2: append mode — both binaries append to existing files identically.
+	t.Run("append_mode", func(t *testing.T) {
+		t.Parallel()
+		existing := []byte("old content\n")
+		input := []byte("new content\n")
+
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		goFile := filepath.Join(goDir, "append.txt")
+		refFile := filepath.Join(refDir, "append.txt")
+
+		if err := os.WriteFile(goFile, existing, 0o644); err != nil {
+			t.Fatalf("writing go existing file: %v", err)
+		}
+		if err := os.WriteFile(refFile, existing, 0o644); err != nil {
+			t.Fatalf("writing ref existing file: %v", err)
+		}
+
+		goStdout, goExit := runGoBin(t, goBin, []string{"-a", goFile}, input)
+		refStdout, refExit := runGoBin(t, refBin, []string{"-a", refFile}, input)
+
+		compareResults(t, goStdout, refStdout, goExit, refExit)
+		compareFileContent(t, goFile, refFile, "append.txt")
+	})
+
+	// R4.2: write-error handling — both binaries exit 1 for bad path.
+	t.Run("write_error", func(t *testing.T) {
+		t.Parallel()
+		input := []byte("data\n")
+
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		goBadPath := filepath.Join(goDir, "no-such-dir", "file.txt")
+		refBadPath := filepath.Join(refDir, "no-such-dir", "file.txt")
+
+		goStdout, goExit := runGoBin(t, goBin, []string{goBadPath}, input)
+		refStdout, refExit := runGoBin(t, refBin, []string{refBadPath}, input)
+
+		// Both should exit 1 and still write stdin to stdout.
+		compareResults(t, goStdout, refStdout, goExit, refExit)
+	})
+
+	// R4.2: write error with one good file — good file still gets output.
+	t.Run("write_error_with_good_file", func(t *testing.T) {
+		t.Parallel()
+		input := []byte("partial success\n")
+
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		goGood := filepath.Join(goDir, "good.txt")
+		refGood := filepath.Join(refDir, "good.txt")
+		goBad := filepath.Join(goDir, "no-dir", "bad.txt")
+		refBad := filepath.Join(refDir, "no-dir", "bad.txt")
+
+		goStdout, goExit := runGoBin(t, goBin, []string{goBad, goGood}, input)
+		refStdout, refExit := runGoBin(t, refBin, []string{refBad, refGood}, input)
+
+		compareResults(t, goStdout, refStdout, goExit, refExit)
+		compareFileContent(t, goGood, refGood, "good.txt")
+		// R4.3: good file matches stdout despite bad file failure.
+		assertFileContent(t, goGood, goStdout)
+	})
+}
+
+// TestSIGINTSuppression verifies that tee -i continues reading after receiving
+// SIGINT, matching GNU tee behavior.
+//
+// R4.2: SIGINT suppression (-i with a signal sent during operation).
+func TestSIGINTSuppression(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	outDir := t.TempDir()
+	outFile := filepath.Join(outDir, "sigint.txt")
+
+	cmd := exec.Command(goBin, "-i", outFile)
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("creating stdin pipe: %v", err)
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("creating stdout pipe: %v", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting tee: %v", err)
+	}
+
+	// Write first chunk.
+	firstChunk := []byte("before signal\n")
+	if _, err := stdinPipe.Write(firstChunk); err != nil {
+		t.Fatalf("writing first chunk: %v", err)
+	}
+
+	// Read first chunk from stdout to confirm tee is running and has
+	// set up its signal handlers.
+	buf := make([]byte, len(firstChunk))
+	if _, err := io.ReadFull(stdoutPipe, buf); err != nil {
+		t.Fatalf("reading first chunk from stdout: %v", err)
+	}
+
+	// Send SIGINT — tee -i should ignore it and continue.
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+		t.Fatalf("sending SIGINT: %v", err)
+	}
+
+	// Write second chunk after SIGINT — tee should still be running.
+	secondChunk := []byte("after signal\n")
+	if _, err := stdinPipe.Write(secondChunk); err != nil {
+		t.Fatalf("writing second chunk: %v", err)
+	}
+
+	// Read second chunk from stdout to confirm tee processed it.
+	buf2 := make([]byte, len(secondChunk))
+	if _, err := io.ReadFull(stdoutPipe, buf2); err != nil {
+		t.Fatalf("reading second chunk from stdout: %v", err)
+	}
+
+	// Close stdin to signal EOF.
+	if err := stdinPipe.Close(); err != nil {
+		t.Fatalf("closing stdin: %v", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		t.Errorf("tee -i exited with error after SIGINT: %v", err)
+	}
+
+	expected := []byte("before signal\nafter signal\n")
+
+	// Verify stdout contains both chunks.
+	stdout := append(buf, buf2...)
+	if !bytes.Equal(stdout, expected) {
+		t.Errorf("stdout mismatch: got %q, want %q", stdout, expected)
+	}
+
+	// R4.3: file content matches stdout.
+	assertFileContent(t, outFile, expected)
+}
+
+// compareResults checks that Go and reference binary produced the same stdout
+// and exit code.
+func compareResults(t *testing.T, goStdout, refStdout []byte, goExit, refExit int) {
+	t.Helper()
+	if goExit != refExit {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goExit, refExit)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\n  go:  %q\n  ref: %q", goStdout, refStdout)
+	}
+}
+
+// compareFileContent reads the files at goPath and refPath and verifies their
+// contents are byte-for-byte identical.
+func compareFileContent(t *testing.T, goPath, refPath, label string) {
+	t.Helper()
+	goContent, err := os.ReadFile(goPath)
+	if err != nil {
+		t.Fatalf("reading go file %s: %v", label, err)
+	}
+	refContent, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("reading ref file %s: %v", label, err)
+	}
+	if !bytes.Equal(goContent, refContent) {
+		t.Errorf("file %s content mismatch:\n  go:  %q\n  ref: %q", label, goContent, refContent)
+	}
 }
 
 // runGoBin executes the Go tee binary with the given args and stdin,
