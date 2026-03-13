@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.14 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.3 (differential tests)
 package main
 
 import (
@@ -1272,6 +1272,201 @@ func TestDiffNumericIDs(t *testing.T) {
 		{
 			Name:      "numeric_ids_with_inode",
 			Args:      []string{"-ni", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInodeBlocksCombinedFormats exercises R2.15 with additional format modes.
+func TestDiffInodeBlocksCombinedFormats(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.15: -is in default (piped) mode — inode first, then blocks.
+		{
+			Name: "inode_blocks_default",
+			Args: []string{"-is", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -is with -C (forced columns).
+		{
+			Name: "inode_blocks_columns",
+			Args: []string{"-isC", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -is with -x (horizontal columns).
+		{
+			Name: "inode_blocks_horizontal",
+			Args: []string{"-isx", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorNever exercises R3.1: --color=never produces no ANSI escapes.
+func TestDiffColorNever(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.1/R3.4: --color=never suppresses all ANSI sequences.
+		{
+			Name: "color_never",
+			Args: []string{"--color=never", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: --color=never with long format.
+		{
+			Name:      "color_never_long",
+			Args:      []string{"--color=never", "-l", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: normalizeLongFormat(refBin),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorAuto exercises R3.2: --color=auto with piped stdout emits no ANSI.
+func TestDiffColorAuto(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.2: --color=auto with piped stdout (not a TTY) — no ANSI codes.
+		{
+			Name: "color_auto_piped",
+			Args: []string{"--color=auto", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: --color=auto with piped long format.
+		{
+			Name:      "color_auto_piped_long",
+			Args:      []string{"--color=auto", "-l", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: normalizeLongFormat(refBin),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorAlways exercises R3.1/R3.3: --color=always emits ANSI codes.
+func TestDiffColorAlways(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// Create fixture with diverse file types for color testing.
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "regular"), 10)
+	os.Mkdir(filepath.Join(dir, "mydir"), 0o755)
+	writeFixtureFile(t, filepath.Join(dir, "runme"), 10)
+	os.Chmod(filepath.Join(dir, "runme"), 0o755)
+	os.Symlink("regular", filepath.Join(dir, "mylink"))
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.1/R3.3: --color=always in single-column mode.
+		{
+			Name: "color_always_single",
+			Args: []string{"--color=always", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --color=always with long format — names colorized.
+		{
+			Name:      "color_always_long",
+			Args:      []string{"--color=always", "-l", dir},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R3.1: bare --color (no value) defaults to "always".
+		{
+			Name: "color_bare",
+			Args: []string{"--color", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorWithPrefixes exercises R3.3 combined with R2.11/R2.12/R2.15.
+func TestDiffColorWithPrefixes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "afile"), 100)
+	os.Mkdir(filepath.Join(dir, "bdir"), 0o755)
+
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R3.3 + R2.11: --color=always with -i.
+		{
+			Name: "color_with_inode",
+			Args: []string{"--color=always", "-i", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3 + R2.12: --color=always with -s.
+		{
+			Name: "color_with_blocks",
+			Args: []string{"--color=always", "-s", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3 + R2.15: --color=always with -is.
+		{
+			Name: "color_with_inode_blocks",
+			Args: []string{"--color=always", "-is", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3 + R2.15 + long format.
+		{
+			Name:      "color_with_inode_blocks_long",
+			Args:      []string{"--color=always", "-isl", dir},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: norms,
 		},

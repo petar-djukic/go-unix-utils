@@ -14,15 +14,17 @@ import (
 
 // ANSI SGR escape sequences for file-type colorization.
 // Color assignments match GNU ls LS_COLORS defaults per prd003-format R2.4.
+// GNU dircolors defaults use bold (01;XX) for directories, symlinks, executables,
+// sockets; and background+bold (40;33;01) for block/char devices.
 const (
-	ansiReset         = "\033[0m"
-	ansiDirectory     = "\033[34m"   // blue
-	ansiSymlink       = "\033[36m"   // cyan
-	ansiExecutable    = "\033[32m"   // green
-	ansiBlockDevice   = "\033[33;1m" // yellow bold
-	ansiCharDevice    = "\033[33;1m" // yellow bold
-	ansiSocket        = "\033[35m"   // magenta
-	ansiNamedPipe     = "\033[33m"   // yellow
+	ansiReset       = "\033[0m"
+	ansiDirectory   = "\033[01;34m"   // bold blue (di=01;34)
+	ansiSymlink     = "\033[01;36m"   // bold cyan (ln=01;36)
+	ansiExecutable  = "\033[01;32m"   // bold green (ex=01;32)
+	ansiBlockDevice = "\033[40;33;01m" // bold yellow on black (bd=40;33;01)
+	ansiCharDevice  = "\033[40;33;01m" // bold yellow on black (cd=40;33;01)
+	ansiSocket      = "\033[01;35m"   // bold magenta (so=01;35)
+	ansiNamedPipe   = "\033[40;33m"   // yellow on black (pi=40;33)
 )
 
 // colorOverride holds the package-level color override installed by SetColorEnabled.

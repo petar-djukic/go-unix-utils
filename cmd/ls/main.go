@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.14
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.3
 package main
 
 import (
@@ -43,6 +43,15 @@ const (
 	filterAlmostAll                   // -A: show dotfiles except . and ..
 )
 
+// colorMode controls colorized output.
+type colorMode int
+
+const (
+	colorNever  colorMode = iota // --color=never: no ANSI escape sequences
+	colorAuto                    // --color=auto: colorize only when stdout is a TTY
+	colorAlways                  // --color=always: always emit ANSI escape sequences
+)
+
 // sortMode controls how entries are ordered.
 type sortMode int
 
@@ -63,7 +72,8 @@ type lsOptions struct {
 	dirOnly    bool // -d: list directories themselves, not contents
 	showInode  bool // -i: prepend inode number
 	showBlocks bool // -s: prepend allocated block count
-	numericIDs bool // -n: numeric UID/GID (implies -l)
+	numericIDs bool      // -n: numeric UID/GID (implies -l)
+	color      colorMode // --color: colorization mode
 }
 
 func main() {
@@ -91,7 +101,26 @@ func main() {
 			continue
 		}
 		if strings.HasPrefix(arg, "--") {
-			// Long options not yet supported.
+			// R3.1: --color=always|auto|never; --color without value defaults to "always".
+			if arg == "--color" {
+				opts.color = colorAlways
+				continue
+			}
+			if strings.HasPrefix(arg, "--color=") {
+				val := arg[len("--color="):]
+				switch val {
+				case "always":
+					opts.color = colorAlways
+				case "auto":
+					opts.color = colorAuto
+				case "never":
+					opts.color = colorNever
+				default:
+					fmt.Fprintf(os.Stderr, "ls: invalid argument '%s' for '--color'\n", val)
+					os.Exit(2)
+				}
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "ls: unrecognized option '%s'\n", arg)
 			os.Exit(2)
 		}
@@ -164,6 +193,17 @@ func main() {
 
 	// D4: detect whether stdout is a terminal for output mode selection.
 	isTTY := sys.IsTerminal(os.Stdout.Fd())
+
+	// R3.1-R3.3: configure color output based on --color flag.
+	switch opts.color {
+	case colorAlways:
+		format.SetColorEnabled(true)
+	case colorNever:
+		format.SetColorEnabled(false)
+	case colorAuto:
+		// R3.2: colorize only when stdout is a TTY.
+		format.SetColorEnabled(isTTY)
+	}
 
 	// Separate file and directory arguments.
 	var files []fileEntry
@@ -560,8 +600,9 @@ func printLong(items []fileEntry, isDirListing bool, opts lsOptions) {
 		// R1.9: modification time formatting (matching GNU ls).
 		mtimeStr := formatMtime(fi.ModTime)
 
+		// R3.3: colorize entry name based on file type.
 		// R1.10: symlink display — append " -> target" for symbolic links.
-		nameStr := item.name
+		nameStr := colorizeEntry(item.name, fi.Mode)
 		if fi.Mode&os.ModeSymlink != 0 {
 			if target, linkErr := os.Readlink(item.path); linkErr == nil {
 				nameStr = nameStr + " -> " + target
@@ -859,24 +900,11 @@ func readDirNames(dir string, raw bool) ([]string, error) {
 	return dirNames, nil
 }
 
-// extractNames returns just the name strings from a slice of fileEntry.
-func extractNames(items []fileEntry) []string {
-	names := make([]string, len(items))
-	for i, item := range items {
-		names[i] = item.name
-	}
-	return names
-}
-
-// extractPrefixedNames returns entry names with inode and/or block count prefixes.
+// extractPrefixedNames returns entry names with optional inode/block prefixes and color.
 // R2.11: -i prepends inode number. R2.12: -s prepends block count.
 // R2.15: when both are given, inode is printed first, then block count.
-// When neither -i nor -s is set, falls back to extractNames.
+// R3.3: entry names are colorized based on file type when color is enabled.
 func extractPrefixedNames(items []fileEntry, opts lsOptions) []string {
-	if !opts.showInode && !opts.showBlocks {
-		return extractNames(items)
-	}
-
 	// Compute max widths for right-alignment.
 	maxInoWidth := 0
 	maxBlkWidth := 0
@@ -908,9 +936,34 @@ func extractPrefixedNames(items []fileEntry, opts lsOptions) []string {
 			blkStr := strconv.FormatInt(item.info.Blocks/2, 10)
 			prefix += format.PadLeft(blkStr, maxBlkWidth) + " "
 		}
-		names[i] = prefix + item.name
+		// R3.3: colorize entry name based on file type.
+		names[i] = prefix + colorizeEntry(item.name, item.info.Mode)
 	}
 	return names
+}
+
+// colorFirstDone tracks whether the initial ANSI reset has been emitted.
+// GNU ls emits a reset sequence (\033[0m) before the very first colored entry
+// name in the output to clear any pre-existing terminal color state. Subsequent
+// colored entries rely on the trailing reset from the previous entry.
+var colorFirstDone bool
+
+// colorizeEntry wraps a name with ANSI color codes based on file type.
+// R3.3: uses pkg/format.FileTypeColor for the opening sequence and
+// pkg/format.Reset for the closing sequence. When color is disabled,
+// FileTypeColor returns "" and no escape sequences appear in output.
+func colorizeEntry(name string, mode os.FileMode) string {
+	colorCode := format.FileTypeColor(mode)
+	if colorCode == "" {
+		return name
+	}
+	// GNU ls emits a reset before the first colored entry only.
+	var prefix string
+	if !colorFirstDone {
+		prefix = format.Reset()
+		colorFirstDone = true
+	}
+	return prefix + colorCode + name + format.Reset()
 }
 
 // unwrapMsg extracts a user-friendly error message, stripping Go error prefixes.
