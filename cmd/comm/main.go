@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/comm implements the comm (compare two sorted files line by line) command.
-// Implements: prd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
+// Implements: prd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4
 package main
 
 import (
@@ -19,16 +19,18 @@ import (
 const progName = "comm"
 
 func main() {
-	// R1.4: Install SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
+	// R4.4: Install SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 	sys.InstallSIGPIPEHandler()
 
 	if err := run(os.Args[1:]); err != nil {
 		// R3.1, R3.2: orderError already printed its message to stderr.
+		// R4.2, R4.3: File open errors and write errors also exit 1.
 		if _, ok := err.(*orderError); !ok {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		}
 		os.Exit(1)
 	}
+	// R4.1: Exit 0 when all inputs processed successfully.
 }
 
 // orderMode controls how comm handles unsorted input.
