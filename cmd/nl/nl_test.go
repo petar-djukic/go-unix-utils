@@ -1,0 +1,146 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Implements: prd022-nl R1.1–R1.4, R2.1–R2.4
+package main
+
+import (
+	"os/exec"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+// refBinaryName is the Homebrew GNU reference binary for nl.
+const refBinaryName = "gnl"
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	// D3: LC_ALL=C for all tests.
+	env := []string{"LC_ALL=C"}
+
+	tests := []testutils.DiffTest{
+		// --- R1.1, R1.2: Default line numbering ---
+		{
+			Name:  "R1.1 default numbering non-empty lines",
+			Args:  []string{},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R1.2 empty lines not numbered",
+			Args:  []string{},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R1.3 stdin dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   env,
+		},
+
+		// --- R2.1: -b STYLE body numbering ---
+		{
+			Name:  "R2.1 body style a numbers all lines",
+			Args:  []string{"-ba"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.1 body style a attached",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("x\n\ny\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.1 body style t explicit",
+			Args:  []string{"-bt"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.1 body style n numbers no lines",
+			Args:  []string{"-bn"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.1 body style pRE regex match",
+			Args:  []string{"-bp^[0-9]"},
+			Stdin: []byte("1first\nsecond\n3third\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.1 body style pRE no match",
+			Args:  []string{"-bp^ZZZ"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+
+		// --- R2.2: -h STYLE header numbering ---
+		{
+			Name:  "R2.2 header style a parsed",
+			Args:  []string{"-ha"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.2 header style n default",
+			Args:  []string{"-hn"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+
+		// --- R2.3: -f STYLE footer numbering ---
+		{
+			Name:  "R2.3 footer style a parsed",
+			Args:  []string{"-fa"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.3 footer style n default",
+			Args:  []string{"-fn"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+
+		// --- R2.4: style n passes through with no number ---
+		{
+			Name:  "R2.4 style n no number no separator",
+			Args:  []string{"-bn"},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R2.4 style n with empty lines",
+			Args:  []string{"-bn"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   env,
+		},
+
+		// --- Combined flags ---
+		{
+			Name:  "combined body a with header n",
+			Args:  []string{"-ba", "-hn"},
+			Stdin: []byte("line1\n\nline3\n"),
+			Env:   env,
+		},
+		{
+			Name:  "body regex with footer style",
+			Args:  []string{"-bp^x", "-fn"},
+			Stdin: []byte("x1\ny2\nx3\n"),
+			Env:   env,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
