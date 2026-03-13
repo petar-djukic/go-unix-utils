@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.6 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.10 (differential tests)
 package main
 
 import (
@@ -928,6 +928,206 @@ func TestDiffSortSizeTiebreaker(t *testing.T) {
 		{
 			Name: "sort_size_tiebreaker",
 			Args: []string{"-S", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffReverse exercises R2.7: -r reverses the current sort order.
+func TestDiffReverse(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.7: -r reverses default alphabetical sort.
+		{
+			Name: "reverse_default",
+			Args: []string{"-r", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffReverseTime exercises R2.7: -tr reverses time sort.
+func TestDiffReverseTime(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	now := time.Now()
+	for i, name := range []string{"oldest", "middle", "newest"} {
+		path := filepath.Join(dir, name)
+		writeFixtureFile(t, path, 10)
+		mtime := now.Add(time.Duration(i-3) * time.Hour)
+		os.Chtimes(path, mtime, mtime)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.7: -tr reverses time sort (oldest first).
+		{
+			Name: "reverse_time",
+			Args: []string{"-tr", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffReverseSize exercises R2.7: -rS reverses size sort.
+func TestDiffReverseSize(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "tiny"), 10)
+	writeFixtureFile(t, filepath.Join(dir, "medium"), 5000)
+	writeFixtureFile(t, filepath.Join(dir, "huge"), 100000)
+
+	tests := []testutils.DiffTest{
+		// R2.7: -rS reverses size sort (smallest first).
+		{
+			Name: "reverse_size",
+			Args: []string{"-rS", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffUnsorted exercises R2.8: -U disables sorting.
+func TestDiffUnsorted(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.8: -U lists in directory order.
+		{
+			Name: "unsorted",
+			Args: []string{"-U", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.8: -rU accepted without error (-r has no meaningful effect with -U).
+		{
+			Name: "unsorted_with_reverse",
+			Args: []string{"-rU", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffVersionSort exercises R2.9: -v uses natural version sort.
+func TestDiffVersionSort(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	for _, name := range []string{"file1", "file2", "file10", "file20", "file3"} {
+		writeFixtureFile(t, filepath.Join(dir, name), 10)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.9: -v sorts file2 before file10.
+		{
+			Name: "version_sort",
+			Args: []string{"-v", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.7+R2.9: -rv reverses version sort.
+		{
+			Name: "version_sort_reverse",
+			Args: []string{"-rv", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSortPrecedence exercises R2.10: last sort flag wins.
+func TestDiffSortPrecedence(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	now := time.Now()
+	for i, name := range []string{"aaa", "bbb", "ccc"} {
+		path := filepath.Join(dir, name)
+		writeFixtureFile(t, path, (3-i)*1000)
+		mtime := now.Add(time.Duration(i-3) * time.Hour)
+		os.Chtimes(path, mtime, mtime)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.10: -t then -S: -S wins (size sort).
+		{
+			Name: "sort_time_then_size",
+			Args: []string{"-t", "-S", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.10: -S then -t: -t wins (time sort).
+		{
+			Name: "sort_size_then_time",
+			Args: []string{"-S", "-t", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.10: -t then -U: -U wins (unsorted).
+		{
+			Name: "sort_time_then_unsorted",
+			Args: []string{"-t", "-U", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.10: -U then -t: -t wins (time sort).
+		{
+			Name: "sort_unsorted_then_time",
+			Args: []string{"-U", "-t", "-1", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}

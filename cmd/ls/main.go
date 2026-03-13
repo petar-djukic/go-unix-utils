@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.6
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.10
 package main
 
 import (
@@ -47,9 +47,11 @@ const (
 type sortMode int
 
 const (
-	sortName sortMode = iota // default: lexicographic C locale
-	sortTime                 // -t: newest first by mtime
-	sortSize                 // -S: largest first by size
+	sortName     sortMode = iota // default: lexicographic C locale
+	sortTime                     // -t: newest first by mtime
+	sortSize                     // -S: largest first by size
+	sortUnsorted                 // -U: directory order (no sorting)
+	sortVersion                  // -v: natural version sort
 )
 
 // lsOptions holds parsed command-line options.
@@ -57,6 +59,7 @@ type lsOptions struct {
 	format  formatMode
 	filter  filterMode
 	sortBy  sortMode
+	reverse bool // -r: reverse sort order
 	dirOnly bool // -d: list directories themselves, not contents
 }
 
@@ -122,6 +125,15 @@ func main() {
 				case 'S':
 					// R2.6: sort by file size, largest first.
 					opts.sortBy = sortSize
+				case 'r':
+					// R2.7: reverse the current sort order.
+					opts.reverse = true
+				case 'U':
+					// R2.8: disable sorting, list in directory order.
+					opts.sortBy = sortUnsorted
+				case 'v':
+					// R2.9: natural version sort.
+					opts.sortBy = sortVersion
 				default:
 					fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 					os.Exit(2)
@@ -164,6 +176,11 @@ func main() {
 	// R1.2: list file arguments first, then directory arguments.
 	// R1.3 / D5: sort file names in C locale byte order.
 	sortEntries(files, opts.sortBy)
+	// R2.7: reverse sort order if -r is given.
+	// R2.8: -r with -U has no effect (directory order is not reversible).
+	if opts.reverse && opts.sortBy != sortUnsorted {
+		reverseEntries(files)
+	}
 	sort.Strings(dirs)
 
 	needBlank := false
@@ -207,8 +224,14 @@ type fileEntry struct {
 // sortEntries sorts a slice of fileEntry according to the given sort mode.
 // R2.5: -t sorts by modification time, newest first, with name tiebreaker.
 // R2.6: -S sorts by file size, largest first, with name tiebreaker.
+// R2.7: reverse inverts the final order.
+// R2.8: sortUnsorted skips sorting entirely.
+// R2.9: sortVersion uses natural version sort (strverscmp).
 func sortEntries(items []fileEntry, mode sortMode) {
 	switch mode {
+	case sortUnsorted:
+		// R2.8: no sorting, preserve directory order.
+		return
 	case sortTime:
 		sort.SliceStable(items, func(i, j int) bool {
 			ti := items[i].info.ModTime
@@ -227,16 +250,114 @@ func sortEntries(items []fileEntry, mode sortMode) {
 			}
 			return items[i].name < items[j].name
 		})
+	case sortVersion:
+		// R2.9: natural version sort using strverscmp semantics.
+		sort.SliceStable(items, func(i, j int) bool {
+			return strverscmp(items[i].name, items[j].name) < 0
+		})
 	default:
 		sort.Slice(items, func(i, j int) bool { return items[i].name < items[j].name })
 	}
+}
+
+// reverseEntries reverses a slice of fileEntry in place.
+// R2.7: -r reverses the current sort order.
+func reverseEntries(items []fileEntry) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+}
+
+// strverscmp compares two strings using natural version sort semantics,
+// matching the glibc strverscmp behavior used by GNU ls -v.
+// R2.9: runs of digits are compared numerically, not lexicographically.
+func strverscmp(a, b string) int {
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		ca, cb := a[i], b[j]
+		// Both digits: compare numerically.
+		if isDigit(ca) && isDigit(cb) {
+			// Skip leading zeros and compare digit runs.
+			cmp := compareDigitRuns(a[i:], b[j:])
+			if cmp != 0 {
+				return cmp
+			}
+			// Advance past the digit runs.
+			for i < len(a) && isDigit(a[i]) {
+				i++
+			}
+			for j < len(b) && isDigit(b[j]) {
+				j++
+			}
+			continue
+		}
+		if ca != cb {
+			return int(ca) - int(cb)
+		}
+		i++
+		j++
+	}
+	return len(a) - len(b)
+}
+
+// compareDigitRuns compares two strings that start with digit runs numerically.
+// Handles leading zeros correctly: shorter numeric value wins; on equal value,
+// fewer leading zeros wins (matching strverscmp).
+func compareDigitRuns(a, b string) int {
+	// Count leading zeros.
+	az, bz := 0, 0
+	for az < len(a) && a[az] == '0' {
+		az++
+	}
+	for bz < len(b) && b[bz] == '0' {
+		bz++
+	}
+
+	// Find lengths of digit runs after leading zeros.
+	ai := az
+	for ai < len(a) && isDigit(a[ai]) {
+		ai++
+	}
+	bi := bz
+	for bi < len(b) && isDigit(b[bi]) {
+		bi++
+	}
+
+	aLen := ai - az // significant digits in a
+	bLen := bi - bz // significant digits in b
+
+	// Longer significant digit run is larger.
+	if aLen != bLen {
+		return aLen - bLen
+	}
+
+	// Same length: compare digit by digit.
+	for k := range aLen {
+		if a[az+k] != b[bz+k] {
+			return int(a[az+k]) - int(b[bz+k])
+		}
+	}
+
+	// Equal numeric value: more leading zeros sorts first.
+	if az != bz {
+		return bz - az
+	}
+
+	return 0
+}
+
+// isDigit returns true if b is an ASCII digit.
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
 }
 
 // listDir reads and prints the contents of a single directory.
 // R1.3: entries sorted lexicographically in C locale byte order.
 // R1.4: dotfiles hidden by default.
 func listDir(dir string, isTTY bool, opts lsOptions) error {
-	entries, err := os.ReadDir(dir)
+	// R2.8: for -U (unsorted), use raw readdir to preserve filesystem order.
+	// os.ReadDir sorts entries alphabetically, which defeats -U.
+	names, err := readDirNames(dir, opts.sortBy == sortUnsorted)
 	if err != nil {
 		return err
 	}
@@ -256,8 +377,7 @@ func listDir(dir string, isTTY bool, opts lsOptions) error {
 		}
 	}
 
-	for _, e := range entries {
-		name := e.Name()
+	for _, name := range names {
 		// R1.4: hide dotfiles by default.
 		// R2.1/R2.2: -a and -A include dotfiles.
 		if strings.HasPrefix(name, ".") && opts.filter == filterDefault {
@@ -275,6 +395,11 @@ func listDir(dir string, isTTY bool, opts lsOptions) error {
 
 	// Sort entries according to the active sort mode.
 	sortEntries(items, opts.sortBy)
+	// R2.7: reverse sort order if -r is given.
+	// R2.8: -r with -U has no effect (directory order is not reversible).
+	if opts.reverse && opts.sortBy != sortUnsorted {
+		reverseEntries(items)
+	}
 
 	printFileEntries(items, isTTY, opts, true)
 	return nil
@@ -647,6 +772,25 @@ func writeTabPad(buf *strings.Builder, currentPos, targetPos int) int {
 		}
 	}
 	return pos
+}
+
+// readDirNames returns the names of directory entries. When raw is true,
+// entries are returned in filesystem order (for -U); otherwise sorted
+// alphabetically (matching os.ReadDir behavior).
+func readDirNames(dir string, raw bool) ([]string, error) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	dirNames, err := f.Readdirnames(-1)
+	f.Close() // best-effort close; read already succeeded or failed
+	if err != nil {
+		return nil, err
+	}
+	if !raw {
+		sort.Strings(dirNames)
+	}
+	return dirNames, nil
 }
 
 // extractNames returns just the name strings from a slice of fileEntry.
