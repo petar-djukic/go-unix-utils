@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.12 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1, R2.2 (differential tests)
 package main
 
 import (
@@ -431,7 +431,7 @@ func TestDiffColumnsFlag(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestDiffColumnsFlagOverride exercises R1.11 with format flag interactions.
+// TestDiffColumnsFlagOverride exercises R1.11, R1.14 with format flag interactions.
 func TestDiffColumnsFlagOverride(t *testing.T) {
 	t.Parallel()
 
@@ -469,6 +469,43 @@ func TestDiffColumnsFlagOverride(t *testing.T) {
 		{
 			Name: "columns_then_single",
 			Args: []string{"-C", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.14: -x then -l: long format wins.
+		{
+			Name:      "horizontal_then_long",
+			Args:      []string{"-x", "-l", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R1.14: -l then -x: horizontal wins.
+		{
+			Name: "long_then_horizontal",
+			Args: []string{"-l", "-x", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.14: -x then -1: single wins.
+		{
+			Name: "horizontal_then_single",
+			Args: []string{"-x", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.14: -1 then -x: horizontal wins.
+		{
+			Name: "single_then_horizontal",
+			Args: []string{"-1", "-x", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.14: -C then -x: horizontal wins.
+		{
+			Name: "columns_then_horizontal",
+			Args: []string{"-C", "-x", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.14: -x then -C: columns wins.
+		{
+			Name: "horizontal_then_columns",
+			Args: []string{"-x", "-C", fixture},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
@@ -535,6 +572,171 @@ func TestDiffEmptyDir(t *testing.T) {
 			Args:      []string{"-l", emptyDir},
 			Env:       []string{"LC_ALL=C"},
 			Normalize: normalizeLongFormat(refBin),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHorizontalFlag exercises R1.13: -x produces horizontal multi-column output.
+func TestDiffHorizontalFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R1.13: -x forces horizontal multi-column even when piped (uses 80 columns).
+		{
+			Name: "horizontal_flag",
+			Args: []string{"-x", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHorizontalMany exercises R1.13 with enough entries to require multiple rows.
+func TestDiffHorizontalMany(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	dir := t.TempDir()
+	// Create many files to force multiple rows in horizontal layout.
+	// Names are 6 chars so column width (6+2 sep = 8) aligns to GNU ls tab stops.
+	for _, name := range []string{"file01", "file02", "file03", "file04", "file05", "file06", "file07", "file08", "file09", "file10", "file11", "file12"} {
+		writeFixtureFile(t, filepath.Join(dir, name), 10)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "horizontal_many_entries",
+			Args: []string{"-x", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createDotfileFixture sets up a directory with dotfiles for testing -a and -A.
+func createDotfileFixture(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "visible"), 10)
+	writeFixtureFile(t, filepath.Join(dir, ".hidden"), 10)
+	writeFixtureFile(t, filepath.Join(dir, ".secret"), 10)
+	if err := os.Mkdir(filepath.Join(dir, ".hiddendir"), 0o755); err != nil {
+		t.Fatalf("creating .hiddendir: %v", err)
+	}
+
+	return dir
+}
+
+// TestDiffFilterAll exercises R2.1: -a includes all entries including . and ..
+func TestDiffFilterAll(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createDotfileFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.1: -a shows all entries including . and ..
+		{
+			Name: "filter_all",
+			Args: []string{"-a", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: -a with -1 for clear single-column output.
+		{
+			Name: "filter_all_single",
+			Args: []string{"-a", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFilterAlmostAll exercises R2.2: -A includes dotfiles except . and ..
+func TestDiffFilterAlmostAll(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createDotfileFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.2: -A shows dotfiles but not . and ..
+		{
+			Name: "filter_almost_all",
+			Args: []string{"-A", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -A with -1 for clear single-column output.
+		{
+			Name: "filter_almost_all_single",
+			Args: []string{"-A", "-1", fixture},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFilterLongFormat exercises R2.1 and R2.2 with -l.
+func TestDiffFilterLongFormat(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createDotfileFixture(t)
+	norms := normalizeLongFormat(refBin)
+
+	tests := []testutils.DiffTest{
+		// R2.1: -la shows all entries in long format.
+		{
+			Name:      "filter_all_long",
+			Args:      []string{"-la", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
+		},
+		// R2.2: -lA shows dotfiles except . and .. in long format.
+		{
+			Name:      "filter_almost_all_long",
+			Args:      []string{"-lA", fixture},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: norms,
 		},
 	}
 

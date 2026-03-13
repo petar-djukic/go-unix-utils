@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.12
+// Implements: prd008-ls R1.1-R1.14, R2.1, R2.2
 package main
 
 import (
@@ -27,15 +27,26 @@ const defaultTermWidth = 80
 type formatMode int
 
 const (
-	formatDefault formatMode = iota // auto-detect based on TTY
-	formatSingle                    // -1: one entry per line
-	formatLong                      // -l: long format
-	formatColumns                   // -C: forced multi-column
+	formatDefault    formatMode = iota // auto-detect based on TTY
+	formatSingle                       // -1: one entry per line
+	formatLong                         // -l: long format
+	formatColumns                      // -C: forced multi-column (vertical)
+	formatHorizontal                   // -x: forced multi-column (horizontal)
+)
+
+// filterMode controls which entries are shown.
+type filterMode int
+
+const (
+	filterDefault   filterMode = iota // hide dotfiles
+	filterAll                         // -a: show all including . and ..
+	filterAlmostAll                   // -A: show dotfiles except . and ..
 )
 
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
 	format formatMode
+	filter filterMode
 }
 
 func main() {
@@ -80,8 +91,17 @@ func main() {
 					// R1.6: long format.
 					opts.format = formatLong
 				case 'C':
-					// R1.11: forced multi-column output.
+					// R1.11: forced multi-column output (vertical).
 					opts.format = formatColumns
+				case 'x':
+					// R1.13: forced multi-column output (horizontal).
+					opts.format = formatHorizontal
+				case 'a':
+					// R2.1: show all entries including . and ..
+					opts.filter = filterAll
+				case 'A':
+					// R2.2: show dotfiles except . and ..
+					opts.filter = filterAlmostAll
 				default:
 					fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 					os.Exit(2)
@@ -173,10 +193,25 @@ func listDir(dir string, isTTY bool, opts lsOptions) error {
 	}
 
 	var items []fileEntry
+
+	// R2.1: -a adds "." and ".." entries.
+	if opts.filter == filterAll {
+		for _, dotEntry := range []string{".", ".."} {
+			dotPath := dir + "/" + dotEntry
+			fi, statErr := sys.Lstat(dotPath)
+			if statErr != nil {
+				fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", dotPath, unwrapMsg(statErr))
+				continue
+			}
+			items = append(items, fileEntry{name: dotEntry, path: dotPath, info: fi})
+		}
+	}
+
 	for _, e := range entries {
 		name := e.Name()
-		// R1.4 / R1.3: hide dotfiles by default.
-		if strings.HasPrefix(name, ".") {
+		// R1.4: hide dotfiles by default.
+		// R2.1/R2.2: -a and -A include dotfiles.
+		if strings.HasPrefix(name, ".") && opts.filter == filterDefault {
 			continue
 		}
 		// R1.7: obtain metadata via pkg/sys.Lstat.
@@ -226,6 +261,16 @@ func printFileEntries(items []fileEntry, isTTY bool, opts lsOptions, isDirListin
 			}
 		}
 		printColumns(names, termWidth)
+	case formatHorizontal:
+		// R1.13: forced multi-column with horizontal (row-major) fill.
+		names := extractNames(items)
+		termWidth := defaultTermWidth
+		if isTTY {
+			if tw, err := sys.TerminalWidth(); err == nil {
+				termWidth = tw
+			}
+		}
+		printHorizontalColumns(names, termWidth)
 	default:
 		// formatDefault: auto-detect.
 		names := extractNames(items)
@@ -456,6 +501,103 @@ func printColumns(names []string, termWidth int) {
 	for _, row := range rows {
 		fmt.Println(strings.Join(row, columnSep))
 	}
+}
+
+// tabStop is the default tab stop width used by GNU ls for column alignment.
+const tabStop = 8
+
+// printHorizontalColumns renders names in horizontal multi-column layout
+// with tab-based padding matching GNU ls behavior.
+// R1.13: entries fill across columns first, then down to the next row.
+func printHorizontalColumns(names []string, termWidth int) {
+	n := len(names)
+	if n == 0 {
+		return
+	}
+	if termWidth <= 0 {
+		for _, name := range names {
+			fmt.Println(name)
+		}
+		return
+	}
+
+	// Find max columns that fit. Column width = max_entry_width + 2 (matching GNU ls).
+	ncols := 1
+	var colWidths []int
+	for tryNCols := n; tryNCols >= 1; tryNCols-- {
+		// Row-major fill: entry i is in column i % tryNCols.
+		cw := make([]int, tryNCols)
+		for i, e := range names {
+			col := i % tryNCols
+			if w := len(e); w > cw[col] {
+				cw[col] = w
+			}
+		}
+
+		// Total = sum of (colWidth + 2) for non-last columns + last column width.
+		total := 0
+		for c, w := range cw {
+			total += w
+			if c < tryNCols-1 {
+				total += 2
+			}
+		}
+
+		if total <= termWidth {
+			ncols = tryNCols
+			colWidths = cw
+			break
+		}
+	}
+
+	nrows := (n + ncols - 1) / ncols
+
+	// Compute column start positions.
+	colStarts := make([]int, ncols)
+	for c := 1; c < ncols; c++ {
+		colStarts[c] = colStarts[c-1] + colWidths[c-1] + 2
+	}
+
+	// Print entries row by row with tab-based padding (matching GNU ls).
+	for row := 0; row < nrows; row++ {
+		var line strings.Builder
+		pos := 0
+		for col := 0; col < ncols; col++ {
+			idx := row*ncols + col
+			if idx >= n {
+				break
+			}
+
+			// Advance to column start using tabs and spaces.
+			if col > 0 {
+				target := colStarts[col]
+				pos = writeTabPad(&line, pos, target)
+			}
+
+			entry := names[idx]
+			line.WriteString(entry)
+			pos += len(entry)
+		}
+		fmt.Println(line.String())
+	}
+}
+
+// writeTabPad writes a mix of tab and space characters to advance from
+// currentPos to targetPos, matching GNU ls column padding behavior.
+// Returns the new position after padding.
+func writeTabPad(buf *strings.Builder, currentPos, targetPos int) int {
+	pos := currentPos
+	for pos < targetPos {
+		nextTab := ((pos / tabStop) + 1) * tabStop
+		if nextTab <= targetPos {
+			buf.WriteByte('\t')
+			pos = nextTab
+		} else {
+			buf.WriteByte(' ')
+			pos++
+		}
+	}
+	return pos
 }
 
 // extractNames returns just the name strings from a slice of fileEntry.
