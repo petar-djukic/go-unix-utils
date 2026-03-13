@@ -145,7 +145,7 @@ func foldFile(name string, w *bufio.Writer, cfg foldConfig) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close() // best-effort cleanup, error ignored
+	defer func() { _ = f.Close() }() // best-effort cleanup, error ignored
 	return foldReader(f, w, cfg)
 }
 
