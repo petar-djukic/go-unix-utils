@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc against gwc (GNU wc from Homebrew coreutils).
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6 differential testing.
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2 differential testing.
 package main
 
 import (
@@ -336,6 +336,66 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "flag_L_empty_file",
 			Args: []string{"-L", emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R2.5: -L tab expansion and display columns ===
+		// R2.5: tab at position 0 advances to column 8.
+		{
+			Name:  "R2.5_tab_expansion",
+			Args:  []string{"-L"},
+			Stdin: []byte("\tX\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.5: -L combined with -l shows both columns.
+		{
+			Name:  "R2.5_L_with_l",
+			Args:  []string{"-lL"},
+			Stdin: []byte("short\na much longer line here\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R2.6: combined flag output order verification ===
+		// R2.6: -Lwc must output in order: words, bytes, max-line-length (not flag order).
+		{
+			Name:  "R2.6_Lwc_order",
+			Args:  []string{"-Lwc"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.6: all flags combined in reverse order must still produce lines, words, bytes, max-line-length.
+		{
+			Name:  "R2.6_Lcwl_order",
+			Args:  []string{"-Lcwl"},
+			Stdin: []byte("abc\ndef ghi\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R3.1: multi-file column alignment ===
+		// R3.1: columns must be wide enough for the largest count across all files.
+		{
+			Name: "R3.1_alignment_multi_file",
+			Args: []string{file1, file2, emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: multi-file with -lw flag to verify alignment of subset columns.
+		{
+			Name: "R3.1_alignment_lw_multi",
+			Args: []string{"-lw", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R3.2: total line with "total" label ===
+		// R3.2: total line sums counts from all files.
+		{
+			Name: "R3.2_total_line",
+			Args: []string{file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: total line with three files including empty.
+		{
+			Name: "R3.2_total_three_files",
+			Args: []string{"-lwc", file1, file2, emptyFile},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
