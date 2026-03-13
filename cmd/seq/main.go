@@ -124,8 +124,12 @@ func main() {
 		firstStr = positional[0]
 		incrementStr = positional[1]
 		lastStr = positional[2]
-	default:
+	case 0:
 		fmt.Fprintf(os.Stderr, "seq: missing operand\n")
+		fmt.Fprintf(os.Stderr, "Try 'seq --help' for more information.\n")
+		os.Exit(1)
+	default:
+		fmt.Fprintf(os.Stderr, "seq: extra operand '%s'\n", positional[3])
 		fmt.Fprintf(os.Stderr, "Try 'seq --help' for more information.\n")
 		os.Exit(1)
 	}

@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/seq.
 //
-// Implements: prd019-seq R1.5, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3
+// Implements: prd019-seq R1.5, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3
 package main
 
 import (
@@ -28,6 +28,26 @@ var seqTryRe = regexp.MustCompile(`(?m)Try '[^']*g?seq --help'`)
 func normalizeSeqErrors(b []byte) []byte {
 	b = seqErrRe.ReplaceAll(b, []byte("seq: "))
 	b = seqTryRe.ReplaceAll(b, []byte("Try 'seq --help'"))
+	return b
+}
+
+// normalizeVersionOutput replaces all version output with a canonical string.
+// GNU gseq and Go seq produce different version strings; this normalizer
+// ensures the differential test compares only that non-empty output was produced.
+func normalizeVersionOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("VERSION_OUTPUT\n")
+	}
+	return b
+}
+
+// normalizeHelpOutput replaces all help output with a canonical string.
+// GNU gseq and Go seq produce different help text; this normalizer
+// ensures the differential test compares only that non-empty output was produced.
+func normalizeHelpOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("HELP_OUTPUT\n")
+	}
 	return b
 }
 
@@ -344,6 +364,88 @@ func TestDiff(t *testing.T) {
 			Name: "equal_width_float",
 			Args: []string{"-w", "0.5", "0.1", "1.0"},
 			Env:  []string{"LC_ALL=C"},
+		},
+
+		// R3.4: -w with descending float sequence.
+		{
+			Name: "r3.4_equal_width_descending_float",
+			Args: []string{"-w", "1.0", "-0.1", "0.5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: large integer equal-width.
+		{
+			Name: "r3.4_equal_width_large",
+			Args: []string{"-w", "1", "1000"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: boundary — last value exactly on boundary.
+		{
+			Name: "r3.4_boundary_exact_last",
+			Args: []string{"0.0", "0.2", "1.0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: boundary — floating-point rounding near boundary.
+		{
+			Name: "r3.4_boundary_float_rounding",
+			Args: []string{"0.1", "0.2", "0.9"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: very small step.
+		{
+			Name: "r3.4_small_step",
+			Args: []string{"0.00", "0.01", "0.05"},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// R4.1: --version prints version info to stdout and exits 0.
+		{
+			Name:      "r4.1_version_flag",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeVersionOutput},
+		},
+
+		// R4.2: --help prints usage to stdout and exits 0.
+		{
+			Name:      "r4.2_help_flag",
+			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeHelpOutput},
+		},
+
+		// R4.3: missing operand — exit 1.
+		{
+			Name:      "r4.3_missing_operand",
+			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R4.3: extra operand — exit 1.
+		{
+			Name:      "r4.3_extra_operand",
+			Args:      []string{"1", "1", "10", "20"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R4.3: non-numeric argument — exit 1.
+		{
+			Name:      "r4.3_non_numeric_last",
+			Args:      []string{"1", "xyz"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R4.3: non-numeric first argument — exit 1.
+		{
+			Name:      "r4.3_non_numeric_first",
+			Args:      []string{"foo", "5"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
 		},
 	}
 
