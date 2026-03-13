@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd022-nl R1.1–R1.4, R2.1–R2.4
+// Implements: prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4
 package main
 
 import (
@@ -138,6 +138,136 @@ func TestDiff(t *testing.T) {
 			Name:  "body regex with footer style",
 			Args:  []string{"-bp^x", "-fn"},
 			Stdin: []byte("x1\ny2\nx3\n"),
+			Env:   env,
+		},
+
+		// --- R3.1: -n FORMAT line number format ---
+		{
+			Name:  "R3.1 format rn default",
+			Args:  []string{"-ba", "-n", "rn"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.1 format ln left-justified",
+			Args:  []string{"-ba", "-n", "ln"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.1 format ln attached",
+			Args:  []string{"-ba", "-nln"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.1 format rz leading zeros",
+			Args:  []string{"-ba", "-n", "rz"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.1 format rz attached",
+			Args:  []string{"-ba", "-nrz"},
+			Stdin: []byte("x\ny\n"),
+			Env:   env,
+		},
+
+		// --- R3.2: -w N field width ---
+		{
+			Name:  "R3.2 width 3",
+			Args:  []string{"-ba", "-w", "3"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.2 width 10",
+			Args:  []string{"-ba", "-w", "10"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.2 width attached",
+			Args:  []string{"-ba", "-w3"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.2 width with rz format",
+			Args:  []string{"-ba", "-nrz", "-w", "8"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+
+		// --- R3.3: -s SEP separator ---
+		{
+			Name:  "R3.3 separator colon-space",
+			Args:  []string{"-ba", "-s", ": "},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.3 separator empty",
+			Args:  []string{"-ba", "-s", ""},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.3 separator multi-char",
+			Args:  []string{"-ba", "-s", " | "},
+			Stdin: []byte("x\ny\n"),
+			Env:   env,
+		},
+
+		// --- R3.4: -v N start value and -i N increment ---
+		{
+			Name:  "R3.4 start at 10",
+			Args:  []string{"-ba", "-v", "10"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.4 start at 10 attached",
+			Args:  []string{"-ba", "-v10"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.4 increment 5",
+			Args:  []string{"-ba", "-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.4 increment attached",
+			Args:  []string{"-ba", "-i5"},
+			Stdin: []byte("a\nb\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.4 start 10 increment 5",
+			Args:  []string{"-ba", "-v", "10", "-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "R3.4 start and increment with non-empty only",
+			Args:  []string{"-v", "100", "-i", "10"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   env,
+		},
+
+		// --- Combined R3.1-R3.4 ---
+		{
+			Name:  "combined ln width 3 separator colon start 10 inc 5",
+			Args:  []string{"-ba", "-n", "ln", "-w", "3", "-s", ": ", "-v", "10", "-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:  "combined rz width 8 with empty lines",
+			Args:  []string{"-nrz", "-w8", "-v100", "-i10"},
+			Stdin: []byte("a\n\nb\n"),
 			Env:   env,
 		},
 	}

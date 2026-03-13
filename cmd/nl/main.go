@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/nl implements the nl (number lines) command.
-// Implements: prd022-nl R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
+// Implements: prd022-nl R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -35,6 +36,16 @@ const (
 	styleRegex                       // pRE: number lines matching regex
 )
 
+// numberFormat represents the line number output format.
+// R3.1: Formats are ln (left-justified), rn (right-justified, default), rz (right-justified with zeros).
+type numberFormat int
+
+const (
+	formatRN numberFormat = iota // rn: right-justified, no leading zeros (default)
+	formatLN                     // ln: left-justified, no leading zeros
+	formatRZ                     // rz: right-justified, leading zeros
+)
+
 // sectionStyle holds a parsed numbering style and optional regex pattern.
 type sectionStyle struct {
 	style   numberStyle
@@ -46,6 +57,11 @@ type nlConfig struct {
 	bodyStyle   sectionStyle
 	headerStyle sectionStyle
 	footerStyle sectionStyle
+	format      numberFormat // R3.1: line number format
+	width       int          // R3.2: line number field width
+	separator   string       // R3.3: separator between number and content
+	startNum    int          // R3.4: initial line number (-v)
+	increment   int          // R3.4: line number increment (-i)
 	files       []string
 }
 
@@ -70,6 +86,34 @@ func parseStyle(s string) (sectionStyle, error) {
 	}
 }
 
+// parseFormat parses a number format string into a numberFormat.
+// R3.1: Formats are ln, rn, rz.
+func parseFormat(s string) (numberFormat, error) {
+	switch s {
+	case "ln":
+		return formatLN, nil
+	case "rn":
+		return formatRN, nil
+	case "rz":
+		return formatRZ, nil
+	default:
+		return formatRN, fmt.Errorf("invalid line number format: %q", s)
+	}
+}
+
+// consumeValue returns the value for a flag. If rest is non-empty, it is used
+// as the attached value. Otherwise the next argument is consumed.
+func consumeValue(rest string, args []string, i *int, flagName string) (string, error) {
+	if rest != "" {
+		return rest, nil
+	}
+	*i++
+	if *i >= len(args) {
+		return "", fmt.Errorf("option requires an argument -- '%s'", flagName)
+	}
+	return args[*i], nil
+}
+
 // parseArgs parses command-line arguments into an nlConfig.
 // Handles GNU-style flags where the value can be attached (-ba) or separate (-b a).
 func parseArgs(args []string) (nlConfig, error) {
@@ -77,6 +121,11 @@ func parseArgs(args []string) (nlConfig, error) {
 		bodyStyle:   sectionStyle{style: styleNonEmpty}, // R2.1: default body style is t
 		headerStyle: sectionStyle{style: styleNone},     // R2.2: default header style is n
 		footerStyle: sectionStyle{style: styleNone},     // R2.3: default footer style is n
+		format:      formatRN,                           // R3.1: default format is rn
+		width:       defaultWidth,                       // R3.2: default width is 6
+		separator:   defaultSeparator,                   // R3.3: default separator is tab
+		startNum:    defaultStartNum,                    // R3.4: default start is 1
+		increment:   defaultIncrement,                   // R3.4: default increment is 1
 	}
 
 	i := 0
@@ -93,44 +142,92 @@ func parseArgs(args []string) (nlConfig, error) {
 			continue
 		}
 
-		// Try to match -b, -h, -f with attached or separate value.
-		var flagChar byte
-		var rest string
-		if len(arg) >= 2 && (arg[1] == 'b' || arg[1] == 'h' || arg[1] == 'f') {
-			flagChar = arg[1]
-			rest = arg[2:]
-		} else {
-			// Unknown flag — pass as file to match GNU nl behavior (will error on open).
+		if len(arg) < 2 {
 			cfg.files = append(cfg.files, arg)
 			i++
 			continue
 		}
 
-		var styleStr string
-		if rest != "" {
-			// Attached: -ba, -bt, -bn, -bpRE
-			styleStr = rest
-		} else {
-			// Separate: -b a
-			i++
-			if i >= len(args) {
-				return cfg, fmt.Errorf("option requires an argument -- '%c'", flagChar)
-			}
-			styleStr = args[i]
-		}
-
-		style, err := parseStyle(styleStr)
-		if err != nil {
-			return cfg, err
-		}
+		flagChar := arg[1]
+		rest := arg[2:]
 
 		switch flagChar {
-		case 'b':
-			cfg.bodyStyle = style
-		case 'h':
-			cfg.headerStyle = style
-		case 'f':
-			cfg.footerStyle = style
+		case 'b', 'h', 'f':
+			val, err := consumeValue(rest, args, &i, string(flagChar))
+			if err != nil {
+				return cfg, err
+			}
+			style, err := parseStyle(val)
+			if err != nil {
+				return cfg, err
+			}
+			switch flagChar {
+			case 'b':
+				cfg.bodyStyle = style
+			case 'h':
+				cfg.headerStyle = style
+			case 'f':
+				cfg.footerStyle = style
+			}
+
+		case 'n':
+			// R3.1: -n FORMAT
+			val, err := consumeValue(rest, args, &i, "n")
+			if err != nil {
+				return cfg, err
+			}
+			cfg.format, err = parseFormat(val)
+			if err != nil {
+				return cfg, err
+			}
+
+		case 'w':
+			// R3.2: -w N
+			val, err := consumeValue(rest, args, &i, "w")
+			if err != nil {
+				return cfg, err
+			}
+			w, err := strconv.Atoi(val)
+			if err != nil {
+				return cfg, fmt.Errorf("invalid width: %q", val)
+			}
+			cfg.width = w
+
+		case 's':
+			// R3.3: -s SEP
+			val, err := consumeValue(rest, args, &i, "s")
+			if err != nil {
+				return cfg, err
+			}
+			cfg.separator = val
+
+		case 'v':
+			// R3.4: -v N
+			val, err := consumeValue(rest, args, &i, "v")
+			if err != nil {
+				return cfg, err
+			}
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return cfg, fmt.Errorf("invalid starting line number: %q", val)
+			}
+			cfg.startNum = n
+
+		case 'i':
+			// R3.4: -i N
+			val, err := consumeValue(rest, args, &i, "i")
+			if err != nil {
+				return cfg, err
+			}
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return cfg, fmt.Errorf("invalid line number increment: %q", val)
+			}
+			cfg.increment = n
+
+		default:
+			// Unknown flag — pass as file to match GNU nl behavior (will error on open).
+			cfg.files = append(cfg.files, arg)
 		}
 
 		i++
@@ -168,18 +265,18 @@ func main() {
 	}
 
 	exitCode := 0
-	lineNum := defaultStartNum
+	lineNum := cfg.startNum // R3.4: initial line number from -v
 
 	if len(cfg.files) == 0 {
 		// R1.3: No file arguments — read from stdin.
-		if err := nlReader(os.Stdin, &lineNum, cfg.bodyStyle); err != nil {
+		if err := nlReader(os.Stdin, &lineNum, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "nl: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
 		// R1.3, R1.4: Process each file in argument order with continuous numbering.
 		for _, arg := range cfg.files {
-			if err := nlFile(arg, &lineNum, cfg.bodyStyle); err != nil {
+			if err := nlFile(arg, &lineNum, cfg); err != nil {
 				fmt.Fprintf(os.Stderr, "nl: %v\n", err)
 				exitCode = 1
 			}
@@ -191,39 +288,54 @@ func main() {
 	}
 }
 
+// formatNumber formats a line number according to the given format and width.
+// R3.1: ln = left-justified, rn = right-justified, rz = right-justified with zeros.
+// R3.2: width controls the field width.
+func formatNumber(num int, f numberFormat, width int) string {
+	switch f {
+	case formatLN:
+		return fmt.Sprintf("%-*d", width, num)
+	case formatRZ:
+		return fmt.Sprintf("%0*d", width, num)
+	default: // formatRN
+		return fmt.Sprintf("%*d", width, num)
+	}
+}
+
 // nlFile opens name and numbers its lines to stdout.
 // R1.3: "-" reads from stdin.
-func nlFile(name string, lineNum *int, bodyStyle sectionStyle) error {
+func nlFile(name string, lineNum *int, cfg nlConfig) error {
 	if name == "-" {
-		return nlReader(os.Stdin, lineNum, bodyStyle)
+		return nlReader(os.Stdin, lineNum, cfg)
 	}
 	f, err := os.Open(name)
 	if err != nil {
 		return err
 	}
 	defer f.Close() // best-effort cleanup, error ignored
-	return nlReader(f, lineNum, bodyStyle)
+	return nlReader(f, lineNum, cfg)
 }
 
 // nlReader reads lines from r and writes them to stdout with line numbering.
 //
-// R1.1: Non-empty lines are numbered with right-justified numbers in a field
-// of width 6, separated from content by a tab.
+// R1.1: Non-empty lines are numbered with configurable format, width, and separator.
 // R1.2: Empty lines pass through with padding but no number.
 // R1.4: lineNum is shared across files for continuous numbering.
 // R2.1-R2.4: bodyStyle controls which lines get numbered.
-func nlReader(r io.Reader, lineNum *int, bodyStyle sectionStyle) error {
+// R3.1-R3.4: Format, width, separator, and increment are configurable.
+func nlReader(r io.Reader, lineNum *int, cfg nlConfig) error {
 	// R1.2, R2.4: Unnumbered lines get width + len(separator) spaces of padding.
-	emptyPrefix := strings.Repeat(" ", defaultWidth+len(defaultSeparator))
+	emptyPrefix := strings.Repeat(" ", cfg.width+len(cfg.separator))
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
 		var err error
-		if shouldNumber(bodyStyle, line) {
-			// R1.1, R2.1: Number this line per the active body style.
-			_, err = fmt.Fprintf(os.Stdout, "%*d%s%s\n", defaultWidth, *lineNum, defaultSeparator, line)
-			*lineNum += defaultIncrement
+		if shouldNumber(cfg.bodyStyle, line) {
+			// R1.1, R2.1, R3.1-R3.3: Number this line with configured format.
+			numStr := formatNumber(*lineNum, cfg.format, cfg.width)
+			_, err = fmt.Fprintf(os.Stdout, "%s%s%s\n", numStr, cfg.separator, line)
+			*lineNum += cfg.increment // R3.4: increment by configured value
 		} else {
 			// R1.2, R2.4: Line not numbered — pass through with padding.
 			_, err = fmt.Fprintf(os.Stdout, "%s%s\n", emptyPrefix, line)
