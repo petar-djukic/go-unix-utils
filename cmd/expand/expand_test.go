@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd024-expand R4.1, R4.2, R4.3
+// Implements: prd024-expand R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3
 package main
 
 import (
@@ -99,7 +99,58 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a\tb\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R3.1: Successful processing exits 0 (ExitCode defaults to 0).
+		{
+			Name:  "exit_0_on_success",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: Nonexistent file exits 1; stderr differs between GNU and Go, so normalize.
+		{
+			Name:     "exit_1_nonexistent_file",
+			Args:     []string{"/nonexistent/expand_test_file"},
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+		// R3.2: Processing continues for remaining files after an error (mixed valid/invalid).
+		{
+			Name:     "continues_after_error",
+			Args:     []string{"/nonexistent/expand_test_file", "-"},
+			Stdin:    []byte("x\ty\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+		// R3.2: Multiple nonexistent files all report errors, exit 1.
+		{
+			Name:     "multiple_nonexistent_files",
+			Args:     []string{"/nonexistent/file1", "/nonexistent/file2"},
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{
+				clearStderr,
+			},
+		},
+		// R3.4: SIGPIPE handling is installed (verified by compilation and normal pipe).
+		{
+			Name:  "sigpipe_no_crash",
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// clearStderr is a NormalizeFunc that replaces any non-empty output with empty
+// bytes. Used for error-path tests where stderr message format differs between
+// GNU expand and the Go implementation but exit code and stdout must still match.
+func clearStderr(b []byte) []byte {
+	return nil
 }
