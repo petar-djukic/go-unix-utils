@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/seq.
 //
-// Implements: prd019-seq R1.5, R2.1, R2.2, R2.3
+// Implements: prd019-seq R1.5, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -229,6 +229,120 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "equal_width_neg_to_pos",
 			Args: []string{"-w", "-5", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// R3.1: floating-point sequence with decimal increment.
+		// AC1: seq 0.5 0.1 1.0 produces correct decimal precision.
+		{
+			Name: "r3.1_float_seq_0.5_0.1_1.0",
+			Args: []string{"0.5", "0.1", "1.0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// AC2: seq 1 0.5 3 produces 1.0, 1.5, 2.0, 2.5, 3.0.
+		{
+			Name: "r3.1_float_seq_1_0.5_3",
+			Args: []string{"1", "0.5", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: IEEE 754 rounding — seq 0.1 0.1 0.3 must include 0.3.
+		// AC3: 0.3 must not be skipped due to floating-point rounding.
+		{
+			Name: "r3.3_ieee754_0.1_0.1_0.3",
+			Args: []string{"0.1", "0.1", "0.3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1, R2.4: -f format string with floating-point output.
+		// AC4: seq -f '%.3f' 1 0.5 2 applies format string.
+		{
+			Name: "r3.1_format_string_float",
+			Args: []string{"-f", "%.3f", "1", "0.5", "2"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -f format string with integer sequence.
+		{
+			Name: "r3.1_format_string_integer",
+			Args: []string{"-f", "%.2f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -f with %e format.
+		{
+			Name: "r3.1_format_string_e",
+			Args: []string{"-f", "%e", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -f with %g format.
+		{
+			Name: "r3.1_format_string_g",
+			Args: []string{"-f", "%g", "0.5", "0.5", "2.0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: invalid format — no conversion specifier.
+		{
+			Name:      "r3.2_format_no_directive",
+			Args:      []string{"-f", "hello", "1", "3"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R3.2: invalid format — unknown conversion specifier.
+		{
+			Name:      "r3.2_format_unknown_directive",
+			Args:      []string{"-f", "%d", "1", "3"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R3.2: invalid format — too many conversion specifiers.
+		{
+			Name:      "r3.2_format_too_many_directives",
+			Args:      []string{"-f", "%f %f", "1", "3"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R3.4: -f and -w are mutually exclusive — GNU seq errors.
+		{
+			Name:      "r3.4_format_and_equal_width_error",
+			Args:      []string{"-f", "%.2f", "-w", "1", "10"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
+		},
+		// R3.1: --format= long form.
+		{
+			Name: "r3.1_format_long_form",
+			Args: []string{"--format=%.1f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -fFORMAT combined form.
+		{
+			Name: "r3.1_format_combined_form",
+			Args: []string{"-f%.1f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: precision auto-detected from increment operand.
+		{
+			Name: "r3.2_precision_from_increment",
+			Args: []string{"1", "0.25", "2"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: another IEEE 754 edge case.
+		{
+			Name: "r3.3_ieee754_1.0_0.1_1.3",
+			Args: []string{"1.0", "0.1", "1.3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// Floating-point descending.
+		{
+			Name: "float_descending",
+			Args: []string{"1.0", "-0.5", "-1.0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// Equal-width with float.
+		{
+			Name: "equal_width_float",
+			Args: []string{"-w", "0.5", "0.1", "1.0"},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}

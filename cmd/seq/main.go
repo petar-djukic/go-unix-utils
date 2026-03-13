@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd019-seq R1.1–R1.5, R2.1–R2.3
+// Implements: prd019-seq R1.1–R1.5, R2.1–R2.4, R3.1–R3.4
 package main
 
 import (
@@ -38,6 +38,8 @@ func main() {
 	// and positional arguments (e.g., seq -w 1 10, seq -s ', ' 3).
 	separator := "\n"
 	equalWidth := false
+	var formatStr string
+	hasFormat := false
 	var positional []string
 
 	args := os.Args[1:]
@@ -56,14 +58,41 @@ func main() {
 				os.Exit(1)
 			}
 			separator = args[i]
-		} else if strings.HasPrefix(arg, "-s") {
+		} else if strings.HasPrefix(arg, "-s") && !isNumeric(arg) {
 			// -sFOO form
 			separator = arg[2:]
 		} else if strings.HasPrefix(arg, "--separator=") {
 			separator = arg[len("--separator="):]
+		} else if arg == "-f" || arg == "--format" {
+			// R3.1: -f FORMAT form.
+			i++
+			if i >= len(args) {
+				fmt.Fprintf(os.Stderr, "seq: option requires an argument -- 'f'\n")
+				os.Exit(1)
+			}
+			formatStr = args[i]
+			hasFormat = true
+		} else if strings.HasPrefix(arg, "-f") && !isNumeric(arg) {
+			// R3.1: -fFORMAT combined form.
+			formatStr = arg[2:]
+			hasFormat = true
+		} else if strings.HasPrefix(arg, "--format=") {
+			// R3.1: --format=FORMAT long form.
+			formatStr = arg[len("--format="):]
+			hasFormat = true
 		} else {
 			positional = append(positional, arg)
 		}
+	}
+
+	// R3.1, R3.2: Validate format string if provided.
+	if hasFormat {
+		goFmt, err := parseFormat(formatStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "seq: %v\n", err)
+			os.Exit(1)
+		}
+		formatStr = goFmt
 	}
 
 	// R1.1: Parse positional arguments.
@@ -108,24 +137,44 @@ func main() {
 		os.Exit(1)
 	}
 
-	// R2.3: Determine output format based on input precision.
-	format := defaultFormat(firstStr, lastStr)
+	// R3.4: -f and -w are mutually exclusive. GNU seq errors when both are given.
+	if hasFormat && equalWidth {
+		fmt.Fprintf(os.Stderr, "seq: format string may not be specified when printing equal width strings\n")
+		fmt.Fprintf(os.Stderr, "Try 'seq --help' for more information.\n")
+		os.Exit(1)
+	}
 
-	// R3.3: Equal-width zero padding.
-	if equalWidth {
-		format = equalWidthFormat(first, last, firstStr, lastStr)
+	// Determine output format.
+	var format string
+	if hasFormat {
+		format = formatStr
+	} else if equalWidth {
+		// R3.3: Equal-width zero padding.
+		format = equalWidthFormat(first, last, firstStr, incrementStr, lastStr)
+	} else {
+		// R2.3, R3.2: Determine output format based on input precision.
+		format = defaultFormat(firstStr, incrementStr, lastStr)
+	}
+
+	// D3: Compute epsilon for floating-point boundary comparison to avoid
+	// skipping the final value due to IEEE 754 rounding.
+	maxVal := math.Max(math.Abs(first), math.Max(math.Abs(last), math.Abs(increment)))
+	epsilon := maxVal * 1e-12
+	if epsilon < 1e-15 {
+		epsilon = 1e-15
 	}
 
 	w := bufio.NewWriter(os.Stdout)
 
-	// R1.2: Generate the sequence.
+	// R1.2: Generate the sequence using multiplication to avoid error accumulation.
 	printed := false
-	for val := first; ; val += increment {
+	for i := 0; ; i++ {
+		val := first + float64(i)*increment
 		// R1.2: Stop when next value exceeds LAST.
-		if increment > 0 && val > last*(1+1e-14)+1e-14 {
+		if increment > 0 && val-last > epsilon {
 			break
 		}
-		if increment < 0 && val < last*(1+1e-14)-1e-14 {
+		if increment < 0 && last-val > epsilon {
 			break
 		}
 
@@ -147,6 +196,21 @@ func main() {
 	}
 }
 
+// isNumeric returns true if s looks like a numeric argument (starts with a
+// digit, '.', or '-' followed by a digit or '.').
+func isNumeric(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if s[0] >= '0' && s[0] <= '9' || s[0] == '.' {
+		return true
+	}
+	if s[0] == '-' && len(s) > 1 && (s[1] >= '0' && s[1] <= '9' || s[1] == '.') {
+		return true
+	}
+	return false
+}
+
 // parseNumber parses a string as a float64, exiting with an error on failure.
 func parseNumber(s string) float64 {
 	v, err := strconv.ParseFloat(s, 64)
@@ -158,13 +222,72 @@ func parseNumber(s string) float64 {
 	return v
 }
 
+// parseFormat validates a printf format string per R3.1/R3.2 and converts
+// C-style %a/%A to Go-style %x/%X for hex floats. Returns the Go-compatible
+// format string or an error if the format is invalid.
+func parseFormat(format string) (string, error) {
+	result := []byte(format)
+	count := 0
+	for i := 0; i < len(result); i++ {
+		if result[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(result) {
+			return "", fmt.Errorf("format '%s' ends in %%", format)
+		}
+		if result[i] == '%' {
+			continue
+		}
+		// Skip flags: -, +, #, 0, space, ' (thousand separator).
+		for i < len(result) && strings.ContainsRune("-+ #0'", rune(result[i])) {
+			i++
+		}
+		// Skip width.
+		for i < len(result) && result[i] >= '0' && result[i] <= '9' {
+			i++
+		}
+		// Skip precision.
+		if i < len(result) && result[i] == '.' {
+			i++
+			for i < len(result) && result[i] >= '0' && result[i] <= '9' {
+				i++
+			}
+		}
+		if i >= len(result) {
+			return "", fmt.Errorf("format '%s' ends in %%", format)
+		}
+		conv := result[i]
+		switch conv {
+		case 'a':
+			result[i] = 'x' // Go uses %x for hex float.
+		case 'A':
+			result[i] = 'X' // Go uses %X for hex float.
+		case 'e', 'f', 'g', 'E', 'F', 'G':
+			// Valid as-is in Go fmt.
+		default:
+			return "", fmt.Errorf("format '%s' has unknown %%%c directive", format, conv)
+		}
+		count++
+	}
+	if count == 0 {
+		return "", fmt.Errorf("format '%s' has no %% directive", format)
+	}
+	if count > 1 {
+		return "", fmt.Errorf("format '%s' has too many %% directives", format)
+	}
+	return string(result), nil
+}
+
 // defaultFormat returns a printf format string that preserves the decimal
 // precision of the input arguments. R2.3: integer inputs produce integer
-// output; floating-point inputs use the maximum precision of the inputs.
-func defaultFormat(firstStr, lastStr string) string {
+// output; floating-point inputs use the maximum precision of all operands.
+// R3.2: precision is auto-detected from the operand with the most decimal places.
+func defaultFormat(firstStr, incrementStr, lastStr string) string {
 	p1 := decimalPrecision(firstStr)
-	p2 := decimalPrecision(lastStr)
-	prec := max(p1, p2)
+	p2 := decimalPrecision(incrementStr)
+	p3 := decimalPrecision(lastStr)
+	prec := max(p1, max(p2, p3))
 	if prec == 0 {
 		return "%g"
 	}
@@ -184,12 +307,12 @@ func decimalPrecision(s string) int {
 
 // equalWidthFormat returns a zero-padded format string. R3.3: width is
 // determined by the widest of FIRST and LAST formatted with the default format.
-func equalWidthFormat(first, last float64, firstStr, lastStr string) string {
-	base := defaultFormat(firstStr, lastStr)
+func equalWidthFormat(first, last float64, firstStr, incrementStr, lastStr string) string {
+	base := defaultFormat(firstStr, incrementStr, lastStr)
 	s1 := fmt.Sprintf(base, first)
 	s2 := fmt.Sprintf(base, last)
 	width := max(len(s1), len(s2))
-	prec := max(decimalPrecision(firstStr), decimalPrecision(lastStr))
+	prec := max(decimalPrecision(firstStr), max(decimalPrecision(incrementStr), decimalPrecision(lastStr)))
 	if prec == 0 {
 		return fmt.Sprintf("%%0%dg", width)
 	}
@@ -203,6 +326,7 @@ func printHelp() {
   or:  seq [OPTION]... FIRST INCREMENT LAST
 Print numbers from FIRST to LAST, in steps of INCREMENT.
 
+  -f, --format=FORMAT   use printf style floating-point FORMAT
   -s, --separator=STRING  use STRING to separate numbers (default: \n)
   -w, --equal-width       equalize width by padding with leading zeroes
       --help              display this help and exit
