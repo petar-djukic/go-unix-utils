@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd045-arch R1.1, R1.2, R2.1, R2.2
+// Implements: prd045-arch R1.1, R1.2, R2.1, R2.2, R3.1, R3.2
 package main
 
 import (
@@ -23,14 +23,20 @@ func main() {
 
 	args := os.Args[1:]
 
-	// R2.1, R2.2: check for --help and --version before anything else.
+	// R2.1, R2.2, R3.1, R3.2: check for --help and --version before anything else.
 	if len(args) > 0 {
 		switch args[0] {
 		case "--help":
-			fmt.Print(helpText)
+			// R3.2: print usage to stdout and exit 0; exit 1 on write error.
+			if _, err := fmt.Print(helpText); err != nil {
+				os.Exit(1)
+			}
 			return
 		case "--version":
-			fmt.Println("arch (go-unix-utils) 0.1")
+			// R3.1: print version to stdout and exit 0; exit 1 on write error.
+			if _, err := fmt.Println("arch (go-unix-utils) 0.1"); err != nil {
+				os.Exit(1)
+			}
 			return
 		}
 	}
