@@ -299,7 +299,7 @@ func foldReader(r io.Reader, w *bufio.Writer, cfg foldConfig) error {
 }
 
 // hardWrap writes buf contents with hard wraps at cfg.width, resetting state.
-func hardWrap(w *bufio.Writer, buf *[]byte, col *int, lastSpace *int, cfg foldConfig) error {
+func hardWrap(w *bufio.Writer, buf *[]byte, col *int, lastSpace *int, _ foldConfig) error {
 	if _, werr := w.Write(*buf); werr != nil {
 		return fmt.Errorf("write error: %w", werr)
 	}

@@ -172,6 +172,48 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-w", "5", "-s"},
 			Stdin: []byte("ab cdefghij\n"),
 		},
+		// R3.1: Break at last space before wrap column with multiple spaces.
+		{
+			Name:  "space_break_multiple_spaces",
+			Args:  []string{"-w", "10", "-s"},
+			Stdin: []byte("one two three four five six\n"),
+		},
+		// R3.2: Fallback to hard break when first word exceeds width.
+		{
+			Name:  "space_break_first_word_exceeds",
+			Args:  []string{"-w", "3", "-s"},
+			Stdin: []byte("abcdef gh\n"),
+		},
+		// R3.3: Space is last char on output line before inserted newline.
+		{
+			Name:  "space_break_space_retained",
+			Args:  []string{"-w", "5", "-s"},
+			Stdin: []byte("ab cd efgh\n"),
+		},
+		// R3.4: Space-break combined with byte mode on tab-containing input.
+		{
+			Name:  "space_break_byte_mode_tab",
+			Args:  []string{"-w", "8", "-s", "-b"},
+			Stdin: []byte("abc\t def ghi\n"),
+		},
+		// R3.1: Break at space at exactly the wrap column.
+		{
+			Name:  "space_break_at_exact_column",
+			Args:  []string{"-w", "5", "-s"},
+			Stdin: []byte("abcd efgh\n"),
+		},
+		// R3.2: No space in segment, repeated hard wraps.
+		{
+			Name:  "space_break_no_space_repeated",
+			Args:  []string{"-w", "4", "-s"},
+			Stdin: []byte("abcdefghijkl\n"),
+		},
+		// R3.4: -s -b with no trailing newline.
+		{
+			Name:  "space_break_byte_no_newline",
+			Args:  []string{"-w", "6", "-s", "-b"},
+			Stdin: []byte("ab cd efgh ij"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
