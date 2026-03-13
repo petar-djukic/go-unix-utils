@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R7.1, R7.2, R7.3 (differential tests)
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R7.1, R7.2, R7.3, R8.1, R8.2, R9.1, R9.2 (differential tests)
 package main
 
 import (
@@ -548,6 +548,63 @@ func TestDiff(t *testing.T) {
 			Stdin:    []byte("hello\n"),
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 255,
+		},
+		{
+			// R8.1: TZ=UTC causes wall-clock timestamps to be in UTC.
+			// Both Go and reference binary respect the TZ environment variable.
+			Name:      "tz_utc_default_format",
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R8.1: TZ=UTC with custom format string.
+			Name:      "tz_utc_custom_format",
+			Args:      []string{"%Y-%m-%dT%H:%M:%S"},
+			Stdin:     []byte("line1\nline2\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R8.1: TZ=UTC with multi-line input verifies consistent zone behavior.
+			Name:      "tz_utc_multi_line",
+			Stdin:     []byte("a\nb\nc\nd\ne\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			// R8.2: In -i mode, elapsed formatting uses TZ=GMT internally regardless
+			// of the user's TZ setting. Setting TZ=US/Eastern must not affect output.
+			Name:      "tz_incremental_ignores_user_tz",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Env:       []string{"LC_ALL=C", "TZ=US/Eastern"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R8.2: In -s mode, elapsed formatting uses TZ=GMT internally regardless
+			// of the user's TZ setting. Setting TZ=US/Eastern must not affect output.
+			Name:      "tz_since_start_ignores_user_tz",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Env:       []string{"LC_ALL=C", "TZ=US/Eastern"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R8.2: In -i mode with TZ=UTC, elapsed formatting still works correctly.
+			Name:      "tz_utc_incremental",
+			Args:      []string{"-i"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
+		},
+		{
+			// R8.2: In -s mode with TZ=UTC, elapsed formatting still works correctly.
+			Name:      "tz_utc_since_start",
+			Args:      []string{"-s"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{elapsedNormalizer},
 		},
 	}
 
