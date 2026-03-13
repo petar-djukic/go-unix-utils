@@ -3,7 +3,7 @@
 
 // cmd/ls lists directory contents and file arguments.
 //
-// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15
+// Implements: prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4
 package main
 
 import (
@@ -222,6 +222,7 @@ func main() {
 	var files []fileEntry
 	var dirs []string
 	exitCode := 0
+	failedArgs := 0
 
 	for _, arg := range operands {
 		fi, err := sys.Lstat(arg)
@@ -229,6 +230,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", arg, unwrapMsg(err))
 			// R4.2: exit 2 for cannot access a command-line argument.
 			exitCode = 2
+			failedArgs++
 			continue
 		}
 		// R2.3: with -d, treat directories as file entries (don't descend).
@@ -259,7 +261,8 @@ func main() {
 
 	// Print directory arguments.
 	// R3.11: when -R is active, always print headers (each subdir gets one).
-	multipleTargets := len(files) > 0 || len(dirs) > 1 || opts.recursive
+	// R4.2: failed args count toward multiple targets for directory header display.
+	multipleTargets := len(files) > 0 || len(dirs) > 1 || failedArgs > 0 || opts.recursive
 	for _, dir := range dirs {
 		if needBlank {
 			fmt.Println()

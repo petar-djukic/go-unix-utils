@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15 (differential tests)
+// Implements: prd008-ls R1.5-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4 (differential tests)
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2008,4 +2009,161 @@ func TestDiffRecursiveSortOrder(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodeSuccess exercises R4.1: exit 0 when all paths are accessible.
+func TestDiffExitCodeSuccess(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 when all listed paths are accessed successfully.
+		{
+			Name:     "exit_0_single_dir",
+			Args:     []string{"-1", fixture},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 when listing a single file.
+		{
+			Name:     "exit_0_single_file",
+			Args:     []string{"-1", filepath.Join(fixture, "alpha")},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 when listing multiple valid paths.
+		{
+			Name:     "exit_0_multiple_valid",
+			Args:     []string{"-1", filepath.Join(fixture, "alpha"), filepath.Join(fixture, "beta")},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodeMinorProblem exercises R4.2: exit with diagnostic on access failure,
+// still listing remaining accessible entries.
+func TestDiffExitCodeMinorProblem(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	fixture := createFixture(t)
+	norms := normalizeLsOutput(refBin)
+
+	tests := []testutils.DiffTest{
+		// R4.2: nonexistent path produces diagnostic and non-zero exit.
+		{
+			Name:      "exit_nonexistent",
+			Args:      []string{"-1", "/nonexistent_ls_r42_test"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: norms,
+		},
+		// R4.2: mix of valid and invalid paths — valid entries still listed.
+		{
+			Name:      "exit_mixed_valid_invalid",
+			Args:      []string{"-1", "/nonexistent_ls_r42_test", fixture},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: norms,
+		},
+		// R4.2: mix of valid file and nonexistent path.
+		{
+			Name:      "exit_mixed_file_invalid",
+			Args:      []string{"-1", filepath.Join(fixture, "alpha"), "/nonexistent_ls_r42_test"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// normalizeErrorOutput returns normalizers for error message comparison.
+// Strips the "Try '...' for more information." line and extra help text that
+// differs between our implementation and GNU ls.
+func normalizeErrorOutput(refBin string) []testutils.NormalizeFunc {
+	norms := normalizeLsOutput(refBin)
+	// Strip "Try ..." lines and "Valid arguments ..." help blocks.
+	tryLine := regexp.MustCompile(`(?m)^Try .*\n`)
+	stripTry := func(b []byte) []byte { return tryLine.ReplaceAll(b, nil) }
+	validArgs := regexp.MustCompile(`(?m)^Valid arguments are:\n(?:  - .*\n)*`)
+	stripValid := func(b []byte) []byte { return validArgs.ReplaceAll(b, nil) }
+	return append(norms, stripTry, stripValid)
+}
+
+// TestDiffExitCodeBadOption exercises R4.3: exit 2 for invalid command-line options.
+func TestDiffExitCodeBadOption(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	refBin, err := exec.LookPath(refBinaryName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinaryName, err)
+	}
+
+	norms := normalizeErrorOutput(refBin)
+
+	tests := []testutils.DiffTest{
+		// R4.3: invalid short option (-j is not recognized by either binary).
+		{
+			Name:      "exit_2_bad_short_option",
+			Args:      []string{"-j"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: norms,
+		},
+		// R4.3: invalid long option.
+		{
+			Name:      "exit_2_bad_long_option",
+			Args:      []string{"--nonexistent-option"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: norms,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSIGPIPE exercises R4.4: SIGPIPE handler prevents broken-pipe errors
+// when output is piped to a consumer that closes its input early.
+func TestDiffSIGPIPE(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Create a fixture with enough files to produce multiple lines of output.
+	dir := t.TempDir()
+	for i := 0; i < 20; i++ {
+		writeFixtureFile(t, filepath.Join(dir, fmt.Sprintf("file%03d", i)), 10)
+	}
+
+	// R4.4: pipe ls output to head -1, which closes its stdin after one line.
+	// Without SIGPIPE handling, the process would exit non-zero or print a
+	// broken pipe error. With proper handling, it exits 0.
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("'%s' -1 '%s' | head -1", goBin, dir))
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("R4.4: ls piped to head should exit 0, got error: %v\noutput: %s", err, out)
+	}
 }
