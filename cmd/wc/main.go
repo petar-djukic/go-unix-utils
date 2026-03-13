@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.3
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -23,6 +24,17 @@ const stdinMinWidth = 7
 // tabWidth is the tab stop interval used by -L for display column calculation.
 // R2.5: each tab advances to the next multiple of 8.
 const tabWidth = 8
+
+// totalMode controls when the totals line is printed.
+// R3.3: --total=auto|always|only|never.
+type totalMode int
+
+const (
+	totalAuto   totalMode = iota // default: print total when >1 file
+	totalAlways                  // always print total
+	totalOnly                    // print only the total line
+	totalNever                   // never print total
+)
 
 // counts holds the accumulated counts for a single input.
 type counts struct {
@@ -85,7 +97,7 @@ func main() {
 
 // run parses arguments and processes inputs. Returns exit code.
 func run(args []string) int {
-	sel, fileArgs := parseFlags(args)
+	sel, fileArgs, tmode := parseFlags(args)
 
 	// R2.2: when no selection flag is given, default to lines, words, bytes.
 	if !sel.anySet() {
@@ -118,6 +130,7 @@ func run(args []string) int {
 		results := make([]fileResult, 0, len(fileArgs))
 		var total counts
 		for _, arg := range fileArgs {
+			// R4.1: "-" is treated as stdin by countFile.
 			c, err := countFile(arg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "wc: %s\n", formatError(arg, err))
@@ -135,12 +148,25 @@ func run(args []string) int {
 			results = append(results, fileResult{c: c, name: arg, ok: true})
 		}
 
-		showTotal := len(fileArgs) > 1
+		// R3.3: determine whether to show total.
+		var showTotal bool
+		switch tmode {
+		case totalAuto:
+			showTotal = len(fileArgs) > 1
+		case totalAlways:
+			showTotal = true
+		case totalOnly:
+			// Handled separately below.
+		case totalNever:
+			showTotal = false
+		}
 
 		// For single file (not stdin via "-"), recompute width from actual
 		// counts. GNU wc uses count-based width for single file but
 		// stdinMinWidth when the single arg is "-".
-		if len(fileArgs) == 1 && fileArgs[0] != "-" {
+		// R3.3: when totalAlways, keep file-size-based width for single file
+		// because the total line creates multi-line output.
+		if len(fileArgs) == 1 && fileArgs[0] != "-" && tmode != totalAlways {
 			for _, r := range results {
 				if r.ok {
 					width = computeWidthFromCounts([]counts{r.c}, counts{}, false, sel, false)
@@ -148,17 +174,22 @@ func run(args []string) int {
 			}
 		}
 
-		for _, r := range results {
-			if !r.ok {
-				// GNU wc does not print a line for files that failed to open.
-				continue
+		if tmode == totalOnly {
+			// R3.3: --total=only prints compact totals with width 1 and no label.
+			printCounts(w, total, "", 1, sel)
+		} else {
+			for _, r := range results {
+				if !r.ok {
+					// GNU wc does not print a line for files that failed to open.
+					continue
+				}
+				printCounts(w, r.c, r.name, width, sel)
 			}
-			printCounts(w, r.c, r.name, width, sel)
-		}
 
-		// R1.4: print total when more than one file argument.
-		if showTotal {
-			printCounts(w, total, "total", width, sel)
+			// R1.4, R3.3: print total when determined by totalMode.
+			if showTotal {
+				printCounts(w, total, "total", width, sel)
+			}
 		}
 	}
 
@@ -235,15 +266,18 @@ func computeWidthFromCounts(fileCounts []counts, total counts, includeTotal bool
 	return w
 }
 
-// parseFlags extracts selection flags and file arguments from args.
+// parseFlags extracts selection flags, file arguments, and total mode from args.
 // GNU wc accepts flags with a single dash, supports combined flags (e.g., -lw),
 // and treats "--" as end-of-flags.
-func parseFlags(args []string) (selection, []string) {
+// R3.3: handles --total[=VALUE].
+func parseFlags(args []string) (selection, []string, totalMode) {
 	var sel selection
 	var fileArgs []string
+	tmode := totalAuto
 	endOfFlags := false
 
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if endOfFlags || arg == "-" || !isFlag(arg) {
 			fileArgs = append(fileArgs, arg)
 			continue
@@ -251,6 +285,26 @@ func parseFlags(args []string) (selection, []string) {
 		if arg == "--" {
 			endOfFlags = true
 			continue
+		}
+		// R3.3: handle --total=VALUE and --total VALUE.
+		if arg == "--total" {
+			if i+1 < len(args) {
+				i++
+				tmode = parseTotalValue(args[i])
+			} else {
+				fmt.Fprintf(os.Stderr, "wc: option '--total' requires an argument\n")
+				os.Exit(1)
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "--total=") {
+			tmode = parseTotalValue(arg[len("--total="):])
+			continue
+		}
+		// Reject unknown long options.
+		if strings.HasPrefix(arg, "--") {
+			fmt.Fprintf(os.Stderr, "wc: unrecognized option '%s'\n", arg)
+			os.Exit(1)
 		}
 		// Process each character in the flag string.
 		for _, ch := range arg[1:] {
@@ -271,7 +325,26 @@ func parseFlags(args []string) (selection, []string) {
 			}
 		}
 	}
-	return sel, fileArgs
+	return sel, fileArgs, tmode
+}
+
+// parseTotalValue converts a --total value string to a totalMode.
+// R3.3: valid values are auto, always, only, never.
+func parseTotalValue(value string) totalMode {
+	switch value {
+	case "auto":
+		return totalAuto
+	case "always":
+		return totalAlways
+	case "only":
+		return totalOnly
+	case "never":
+		return totalNever
+	default:
+		fmt.Fprintf(os.Stderr, "wc: invalid argument '%s' for '--total'\n", value)
+		os.Exit(1)
+		return totalAuto // unreachable
+	}
 }
 
 // isFlag returns true if arg looks like a flag (starts with "-" and has more chars).

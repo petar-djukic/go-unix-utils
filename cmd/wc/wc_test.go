@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc against gwc (GNU wc from Homebrew coreutils).
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2 differential testing.
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.3 differential testing.
 package main
 
 import (
@@ -396,6 +396,109 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "R3.2_total_three_files",
 			Args: []string{"-lwc", file1, file2, emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R3.3: --total flag modes ===
+		// R3.3: --total=always with single file — prints file + total.
+		{
+			Name: "R3.3_total_always_single",
+			Args: []string{"--total=always", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=always with multiple files — same as default multi-file.
+		{
+			Name: "R3.3_total_always_multi",
+			Args: []string{"--total=always", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=only with single file — prints only the total line.
+		{
+			Name: "R3.3_total_only_single",
+			Args: []string{"--total=only", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=only with multiple files — prints only the total line.
+		{
+			Name: "R3.3_total_only_multi",
+			Args: []string{"--total=only", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=never with single file — no total (same as default single).
+		{
+			Name: "R3.3_total_never_single",
+			Args: []string{"--total=never", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=never with multiple files — no total line.
+		{
+			Name: "R3.3_total_never_multi",
+			Args: []string{"--total=never", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=auto explicit — same as default.
+		{
+			Name: "R3.3_total_auto_multi",
+			Args: []string{"--total=auto", file1, file2},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=always with "-" as file arg.
+		{
+			Name:  "R3.3_total_always_dash",
+			Args:  []string{"--total=always", "-"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=always combined with selection flags.
+		{
+			Name: "R3.3_total_always_lw",
+			Args: []string{"-lw", "--total=always", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=only with three files.
+		{
+			Name: "R3.3_total_only_three_files",
+			Args: []string{"--total=only", file1, file2, emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R4.1: "-" treated as stdin file argument ===
+		// R4.1: single dash as file argument reads stdin and labels as "-".
+		{
+			Name:  "R4.1_dash_stdin",
+			Args:  []string{"-"},
+			Stdin: []byte("a b c\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: dash with named file shows total.
+		{
+			Name:  "R4.1_dash_with_file",
+			Args:  []string{"-", file1},
+			Stdin: []byte("one two three\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R4.2: binary input ===
+		// R4.2: binary stdin with selection flags.
+		{
+			Name:  "R4.2_binary_stdin_lc",
+			Args:  []string{"-lc"},
+			Stdin: []byte{0x00, 0xFF, 0x0A, 0x80, 0x41},
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R4.3: empty input ===
+		// R4.3: empty stdin with all flags.
+		{
+			Name:  "R4.3_empty_stdin_lwcL",
+			Args:  []string{"-lwcL"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.3: empty file with default flags.
+		{
+			Name: "R4.3_empty_file_default",
+			Args: []string{emptyFile},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
