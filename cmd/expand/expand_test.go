@@ -143,6 +143,58 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a\tb\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R4.2: -t N with a single interval.
+		{
+			Name:  "tab_stop_single_interval_4",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "tab_stop_single_interval_2",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("a\tb\tc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "tab_stop_single_interval_12",
+			Args:  []string{"-t", "12"},
+			Stdin: []byte("\thello\t!\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -t LIST with multiple tab stops.
+		{
+			Name:  "tab_stop_list",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("a\tb\tc\td\te\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "tab_stop_list_1_5_9",
+			Args:  []string{"-t", "1,5,9"},
+			Stdin: []byte("a\tb\tc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "tab_stop_list_past_last_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("12345678\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -t LIST with tabs before and at and past explicit stops.
+		{
+			Name:  "tab_stop_list_multiple_lines",
+			Args:  []string{"-t", "3,6,9"},
+			Stdin: []byte("a\tb\tc\n\t\t\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -t N with multiple consecutive tabs.
+		{
+			Name:  "tab_stop_interval_consecutive_tabs",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("\t\t\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
