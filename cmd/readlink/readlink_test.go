@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd050-readlink R4.1–R4.3 (differential tests for R1.1–R1.6, R2.1–R2.2)
+// Implements: prd050-readlink R4.1–R4.3 (differential tests for R1.1–R1.6, R2.1–R2.2, R3.1–R3.2)
 package main
 
 import (
@@ -16,8 +16,8 @@ import (
 // refBinaryName is the Homebrew GNU reference binary for readlink.
 const refBinaryName = "greadlink"
 
-// TestDiff tests R1.1–R1.6, R2.1–R2.2: default readlink behavior with symlinks,
-// non-symlinks, canonicalization modes, -n flag, and multiple operands.
+// TestDiff tests R1.1–R1.6, R2.1–R2.2, R3.1–R3.2: default readlink behavior with symlinks,
+// non-symlinks, canonicalization modes, -n flag, multiple operands, and error cases.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -274,6 +274,45 @@ func TestDiff(t *testing.T) {
 			Name:      "no_newline_ignored_multiple_canon_f",
 			Args:      []string{"-n", "-f", symlinkFile, chainedSymlink},
 			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// === R3.1: no operand — usage error, exit 1 ===
+		{
+			Name:      "no_operand",
+			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// === R3.2: unknown flags — error, exit 1 ===
+		{
+			Name:      "unknown_long_flag",
+			Args:      []string{"--bogus-flag"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		{
+			Name:      "unknown_short_flag",
+			Args:      []string{"-Z"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// R3.2: unknown flag in a cluster with valid flags.
+		{
+			Name:      "unknown_flag_in_cluster",
+			Args:      []string{"-fZ"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// R3.1: no operand with valid flags — still missing operand.
+		{
+			Name:      "flags_only_no_operand",
+			Args:      []string{"-f"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr},
 		},
 	}
