@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/unexpand implements the unexpand (convert spaces to tabs) command.
-// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3
+// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -222,12 +223,7 @@ func isAtTabStop(col int, tc *tabConfig) bool {
 	if tc.uniform {
 		return col%tc.interval == 0
 	}
-	for _, stop := range tc.stops {
-		if stop == col {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tc.stops, col)
 }
 
 // advanceTab returns the column after a tab character at the given position.

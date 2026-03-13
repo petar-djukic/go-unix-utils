@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3
+// Implements: prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -15,7 +15,8 @@ import (
 // GNU reference binary (gunexpand) via pkg/testutils.RunDiffTests.
 //
 // R1.1-R1.4: Default leading-space-to-tab conversion with tab stop 8.
-// R2.1-R2.3: -a flag for all-whitespace conversion; -t flag for custom tab stops.
+// R2.1-R2.3: -a flag for all-whitespace conversion.
+// R3.1-R3.3: -t flag for custom tab stops; -t implies -a.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
