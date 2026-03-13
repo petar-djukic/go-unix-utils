@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd046-nproc R3.1, R3.2, R3.3 (differential tests)
+// Implements: prd046-nproc R2.1, R2.2, R2.3, R3.1, R3.2, R3.3 (differential tests)
 package main
 
 import (
@@ -69,6 +69,22 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "extra_operand",
 			Args:      []string{"extraarg"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.2: --ignore with non-numeric value — exit 1 with error on stderr.
+		{
+			Name:      "ignore_non_numeric",
+			Args:      []string{"--ignore=abc"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.2: --ignore (space-separated) with non-numeric value — exit 1.
+		{
+			Name:      "ignore_space_non_numeric",
+			Args:      []string{"--ignore", "abc"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: stderrNorm,
