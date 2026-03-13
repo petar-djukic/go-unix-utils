@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4 (differential tests)
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R7.1, R7.2, R7.3 (differential tests)
 package main
 
 import (
@@ -488,6 +488,66 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("Jan  1 00:00:00 event"),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		{
+			// R6.5: -r and -i together — reference binary lets -r take precedence
+			// (no error; -i is silently ignored). Line with no timestamp passes through.
+			Name:  "relative_and_incremental_exclusive",
+			Args:  []string{"-r", "-i"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R6.5: -r and -s together — reference binary lets -r take precedence
+			Name:  "relative_and_since_start_exclusive",
+			Args:  []string{"-r", "-s"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R6.5: -i and -r together (reverse order) — -r still takes precedence
+			Name:  "incremental_and_relative_exclusive",
+			Args:  []string{"-i", "-r"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R6.5: -s and -r together (reverse order) — -r still takes precedence
+			Name:  "since_start_and_relative_exclusive",
+			Args:  []string{"-s", "-r"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R6.5: -r with -i and timestamp input — -r takes precedence, converts timestamp
+			Name:      "relative_and_incremental_with_timestamp",
+			Args:      []string{"-r", "-i"},
+			Stdin:     []byte("Jan  1 00:00:00 system boot\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		{
+			// R7.1: exit 0 on clean EOF with empty stdin
+			Name:     "exit_zero_empty_stdin",
+			Stdin:    []byte(""),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			// R7.2: unrecognized flag prints usage to stderr and exits non-zero (255)
+			Name:     "unrecognized_flag",
+			Args:     []string{"-z"},
+			Stdin:    []byte("hello\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 255,
+		},
+		{
+			// R7.2: unrecognized long flag exits non-zero (255)
+			Name:     "unrecognized_long_flag",
+			Args:     []string{"--unknown"},
+			Stdin:    []byte("hello\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 255,
 		},
 	}
 

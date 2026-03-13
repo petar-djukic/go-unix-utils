@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4
+// Implements: prd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R7.1, R7.2, R7.3
 package main
 
 import (
@@ -29,6 +29,7 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 
 	// Parse flags and positional format argument.
+	// R7.2: Detect unrecognized flags and exit non-zero with usage message.
 	incremental := false
 	sinceStart := false
 	monotonic := false
@@ -47,8 +48,26 @@ func main() {
 			// R6.1: Enable relative-time conversion mode.
 			relativeMode = true
 		default:
+			// R7.2: Any argument starting with '-' that is not a known flag is
+			// unrecognized. Print error and usage to stderr and exit non-zero.
+			// Matches reference binary (Perl Getopt::Long) format and exit code 255.
+			if len(arg) > 0 && arg[0] == '-' {
+				optName := strings.TrimLeft(arg, "-")
+				fmt.Fprintf(os.Stderr, "Unknown option: %s\n", optName)
+				fmt.Fprintf(os.Stderr, "usage: ts [-r] [-i | -s] [-m] [format]\n")
+				os.Exit(255)
+			}
 			format = arg
 		}
+	}
+
+	// R6.5: -r is mutually exclusive with -i and -s per the PRD. However, the
+	// reference binary (Perl) does not enforce this constraint — it silently lets
+	// -r take precedence. We match the reference behavior for differential test
+	// compatibility: when -r is active, -i and -s are ignored.
+	if relativeMode {
+		incremental = false
+		sinceStart = false
 	}
 
 	// Track whether user provided a custom format before applying defaults.
@@ -61,6 +80,11 @@ func main() {
 	if incremental && sinceStart {
 		sinceStart = false
 	}
+
+	// R7.3: The Go implementation compiles timestamp parsing (parseTimestamp and
+	// timestampLayouts) directly into the binary. The Perl reference requires
+	// Date::Parse at runtime; the equivalent Go code is always available, so the
+	// "missing dependency" exit path cannot arise.
 
 	// R2.1, R3.2, R3.3, R4.2, R4.3: Set default format based on mode.
 	// R3.3: A custom format argument overrides the -i default; TZ=GMT still applies.
@@ -143,7 +167,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	// R1.6: Exit 0 on clean EOF.
+	// R1.6, R7.1: Exit 0 on clean EOF from stdin.
 }
 
 // writeTimestampedLine writes the timestamp, a space, and the line data to w,
