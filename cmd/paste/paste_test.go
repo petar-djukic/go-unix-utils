@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/paste against gpaste reference binary.
-// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3
+// Implements: prd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4
 package main
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -241,7 +242,48 @@ func TestDiff(t *testing.T) {
 			Name: "serial single line file",
 			Args: []string{"-s", file4},
 		},
+		// R4.1: Exit 0 when all inputs processed successfully.
+		{
+			Name: "exit 0 on success",
+			Args: []string{file1, file2},
+		},
+		// R4.1: Exit 0 with serial mode success.
+		{
+			Name: "exit 0 serial success",
+			Args: []string{"-s", file1},
+		},
+		// R4.2: Exit 1 when input file cannot be opened.
+		{
+			Name:      "exit 1 nonexistent file",
+			Args:      []string{filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.2: Exit 1 on nonexistent file in parallel with valid file.
+		{
+			Name:      "exit 1 nonexistent with valid file",
+			Args:      []string{filepath.Join(dir, "no_such_file.txt"), file1},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.2: Exit 1 on nonexistent file in serial mode.
+		{
+			Name:      "exit 1 nonexistent serial",
+			Args:      []string{"-s", filepath.Join(dir, "missing.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// stderrPattern matches error messages from both Go and gpaste to normalize them.
+var stderrPattern = regexp.MustCompile(`(?m)^.*: .*: [Nn]o such file or directory\n?`)
+
+// normalizeStderr replaces error messages with a canonical form so that
+// differences in program name and path formatting between Go and gpaste
+// do not cause false failures.
+func normalizeStderr(b []byte) []byte {
+	return stderrPattern.ReplaceAll(b, []byte("OPEN_ERROR\n"))
 }
