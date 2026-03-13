@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.3
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.4, R5.1–R5.2, R6.1
 package main
 
 import (
@@ -97,13 +97,23 @@ func main() {
 
 // run parses arguments and processes inputs. Returns exit code.
 func run(args []string) int {
-	sel, fileArgs, tmode := parseFlags(args)
+	sel, fileArgs, tmode, files0From := parseFlags(args)
 
 	// R2.2: when no selection flag is given, default to lines, words, bytes.
 	if !sel.anySet() {
 		sel.lines = true
 		sel.words = true
 		sel.bytesFlag = true
+	}
+
+	// R4.4: --files0-from=FILE reads NUL-delimited filenames.
+	if files0From != "" {
+		extraFiles, err := readFiles0From(files0From)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "wc: %s\n", err)
+			return 1
+		}
+		fileArgs = append(fileArgs, extraFiles...)
 	}
 
 	w := bufio.NewWriter(os.Stdout)
@@ -122,9 +132,16 @@ func run(args []string) int {
 		printCounts(w, c, "", width, sel)
 	} else {
 		// Determine column width upfront for multi-file case.
-		// GNU wc uses number_width(sum_of_file_sizes) for multi-file,
+		// GNU wc uses number_width(sum_of_sizes) for multi-file,
 		// and count-based width for single file.
-		width := computeWidthForFiles(fileArgs)
+		// R4.4: when --files0-from=- (stdin), GNU wc uses minimum width
+		// because it cannot stat files upfront. When --files0-from=FILE,
+		// stat-based width applies normally.
+		files0FromStdin := files0From == "-"
+		width := 1
+		if !files0FromStdin {
+			width = computeWidthForFiles(fileArgs)
+		}
 
 		// R1.2: read from named files in order.
 		results := make([]fileResult, 0, len(fileArgs))
@@ -166,7 +183,7 @@ func run(args []string) int {
 		// stdinMinWidth when the single arg is "-".
 		// R3.3: when totalAlways, keep file-size-based width for single file
 		// because the total line creates multi-line output.
-		if len(fileArgs) == 1 && fileArgs[0] != "-" && tmode != totalAlways {
+		if !files0FromStdin && len(fileArgs) == 1 && fileArgs[0] != "-" && tmode != totalAlways {
 			for _, r := range results {
 				if r.ok {
 					width = computeWidthFromCounts([]counts{r.c}, counts{}, false, sel, false)
@@ -266,14 +283,17 @@ func computeWidthFromCounts(fileCounts []counts, total counts, includeTotal bool
 	return w
 }
 
-// parseFlags extracts selection flags, file arguments, and total mode from args.
+// parseFlags extracts selection flags, file arguments, total mode, and
+// --files0-from value from args.
 // GNU wc accepts flags with a single dash, supports combined flags (e.g., -lw),
 // and treats "--" as end-of-flags.
 // R3.3: handles --total[=VALUE].
-func parseFlags(args []string) (selection, []string, totalMode) {
+// R4.4: handles --files0-from=FILE.
+func parseFlags(args []string) (selection, []string, totalMode, string) {
 	var sel selection
 	var fileArgs []string
 	tmode := totalAuto
+	files0From := ""
 	endOfFlags := false
 
 	for i := 0; i < len(args); i++ {
@@ -301,6 +321,21 @@ func parseFlags(args []string) (selection, []string, totalMode) {
 			tmode = parseTotalValue(arg[len("--total="):])
 			continue
 		}
+		// R4.4: handle --files0-from=FILE and --files0-from FILE.
+		if arg == "--files0-from" {
+			if i+1 < len(args) {
+				i++
+				files0From = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "wc: option '--files0-from' requires an argument\n")
+				os.Exit(1)
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "--files0-from=") {
+			files0From = arg[len("--files0-from="):]
+			continue
+		}
 		// Reject unknown long options.
 		if strings.HasPrefix(arg, "--") {
 			fmt.Fprintf(os.Stderr, "wc: unrecognized option '%s'\n", arg)
@@ -325,7 +360,7 @@ func parseFlags(args []string) (selection, []string, totalMode) {
 			}
 		}
 	}
-	return sel, fileArgs, tmode
+	return sel, fileArgs, tmode, files0From
 }
 
 // parseTotalValue converts a --total value string to a totalMode.
@@ -350,6 +385,43 @@ func parseTotalValue(value string) totalMode {
 // isFlag returns true if arg looks like a flag (starts with "-" and has more chars).
 func isFlag(arg string) bool {
 	return len(arg) > 1 && arg[0] == '-'
+}
+
+// readFiles0From reads NUL-delimited filenames from the specified source.
+// R4.4: when source is "-", filenames are read from stdin.
+func readFiles0From(source string) ([]string, error) {
+	var r io.Reader
+	if source == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(source)
+		if err != nil {
+			return nil, fmt.Errorf("cannot open %q for reading: %w", source, err)
+		}
+		defer f.Close() // best-effort cleanup, error ignored
+		r = f
+	}
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading %q: %w", source, err)
+	}
+
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	// Split on NUL bytes. A trailing NUL produces an empty final element
+	// which we discard (GNU wc ignores trailing NUL).
+	raw := strings.Split(string(data), "\x00")
+	var files []string
+	for _, name := range raw {
+		if name == "" {
+			continue
+		}
+		files = append(files, name)
+	}
+	return files, nil
 }
 
 // countFile opens a named file and counts its contents.

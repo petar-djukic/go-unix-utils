@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc against gwc (GNU wc from Homebrew coreutils).
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.3 differential testing.
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.4, R5.1–R5.2, R6.1 differential testing.
+// R5.1: All differential tests set LC_ALL=C to avoid locale-dependent divergence.
 package main
 
 import (
@@ -52,6 +53,14 @@ func TestDiff(t *testing.T) {
 	// tabfile: contains tabs for -L testing
 	tabFile := filepath.Join(tmpDir, "tabs.txt")
 	writeTestFile(t, tabFile, "a\tb\n12345678c\n")
+
+	// files0: NUL-delimited file list for --files0-from testing (R4.4)
+	files0File := filepath.Join(tmpDir, "filelist.txt")
+	writeTestFileBytes(t, files0File, []byte(file1+"\x00"+file2+"\x00"))
+
+	// files0Single: NUL-delimited file list with single entry
+	files0Single := filepath.Join(tmpDir, "filelist_single.txt")
+	writeTestFileBytes(t, files0Single, []byte(file1+"\x00"))
 
 	tests := []testutils.DiffTest{
 		// === R1.1–R1.4: default behavior (no flags) ===
@@ -499,6 +508,67 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "R4.3_empty_file_default",
 			Args: []string{emptyFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R4.4: --files0-from ===
+		// R4.4: read NUL-delimited filenames from a file.
+		{
+			Name: "R4.4_files0_from_file",
+			Args: []string{"--files0-from=" + files0File},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: --files0-from with selection flags.
+		{
+			Name: "R4.4_files0_from_lw",
+			Args: []string{"-lw", "--files0-from=" + files0File},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: --files0-from=- reads filenames from stdin.
+		{
+			Name:  "R4.4_files0_from_stdin",
+			Args:  []string{"--files0-from=-"},
+			Stdin: []byte(file1 + "\x00" + file2 + "\x00"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: --files0-from with single file in list.
+		{
+			Name: "R4.4_files0_from_single",
+			Args: []string{"--files0-from=" + files0Single},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R5.1, R5.2: locale handling ===
+		// R5.2: under LC_ALL=C, -m and -c produce identical counts.
+		{
+			Name:  "R5.2_m_equals_c_under_C_locale",
+			Args:  []string{"-m"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R5.2_c_under_C_locale",
+			Args:  []string{"-c"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R5.2: -m on file under LC_ALL=C matches -c.
+		{
+			Name: "R5.2_m_file_C_locale",
+			Args: []string{"-m", file1},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R6.1: exit code 0 on success ===
+		// R6.1: successful processing exits 0 (ExitCode defaults to 0).
+		{
+			Name:  "R6.1_exit_0_stdin",
+			Stdin: []byte("test\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name: "R6.1_exit_0_file",
+			Args: []string{file1},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
