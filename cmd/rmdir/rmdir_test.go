@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4 differential tests
+// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.3 differential tests
 package main
 
 import (
@@ -637,4 +637,243 @@ func TestVerboseParents(t *testing.T) {
 			t.Errorf("directory %q still exists after rmdir -pv", d)
 		}
 	}
+}
+
+// runBinaryCapture executes binary with args in the given dir and returns
+// stdout, stderr, and exit code. Used by differential tests for destructive
+// operations where RunDiffTests cannot be used (both binaries would share
+// the same filesystem state).
+//
+// R4.1: helper for comparing stdout, stderr, and exit codes between binaries.
+func runBinaryCapture(t *testing.T, binary string, args []string, dir string) (stdout, stderr []byte, exitCode int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	runErr := cmd.Run()
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run binary %q: %v", binary, runErr)
+		}
+	}
+	return outBuf.Bytes(), errBuf.Bytes(), exitCode
+}
+
+// applyNormalizers applies a list of normalizer functions to a byte slice.
+func applyNormalizers(b []byte, fns []testutils.NormalizeFunc) []byte {
+	for _, fn := range fns {
+		b = fn(b)
+	}
+	return b
+}
+
+// compareBinaryOutputs runs both binaries in separate temp dirs with identical
+// setup, compares exit code, stdout, and stderr after normalization.
+//
+// R4.1: differential comparison of stdout, stderr, and exit codes.
+func compareBinaryOutputs(t *testing.T, name string, goBin, refBin string, args []string,
+	setupFn func(t *testing.T, dir string), normalize []testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+
+		// Set up separate temp dirs for each binary.
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+		setupFn(t, refDir)
+		setupFn(t, goDir)
+
+		refStdout, refStderr, refCode := runBinaryCapture(t, refBin, args, refDir)
+		goStdout, goStderr, goCode := runBinaryCapture(t, goBin, args, goDir)
+
+		refStdout = applyNormalizers(refStdout, normalize)
+		goStdout = applyNormalizers(goStdout, normalize)
+		refStderr = applyNormalizers(refStderr, normalize)
+		goStderr = applyNormalizers(goStderr, normalize)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", refStdout, goStdout)
+		}
+		if !bytes.Equal(refStderr, goStderr) {
+			t.Errorf("stderr mismatch:\nref: %q\ngo:  %q", refStderr, goStderr)
+		}
+	})
+}
+
+// TestDiffSingleEmptyDir verifies R4.2: differential test for single empty
+// directory removal. Both binaries get their own temp dir so the destructive
+// rmdir does not interfere.
+func TestDiffSingleEmptyDir(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	compareBinaryOutputs(t, "single_empty_dir", goBin, refBin,
+		[]string{"emptydir"},
+		func(t *testing.T, dir string) {
+			t.Helper()
+			if mkErr := os.Mkdir(filepath.Join(dir, "emptydir"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+		},
+		normalize,
+	)
+}
+
+// TestDiffMultipleDirs verifies R4.2: differential test for multiple directory
+// removal.
+func TestDiffMultipleDirs(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	compareBinaryOutputs(t, "multiple_empty_dirs", goBin, refBin,
+		[]string{"dir_a", "dir_b", "dir_c"},
+		func(t *testing.T, dir string) {
+			t.Helper()
+			for _, d := range []string{"dir_a", "dir_b", "dir_c"} {
+				if mkErr := os.Mkdir(filepath.Join(dir, d), 0o755); mkErr != nil {
+					t.Fatalf("setup: %v", mkErr)
+				}
+			}
+		},
+		normalize,
+	)
+}
+
+// TestDiffParentsNested verifies R4.2: differential test for -p with nested
+// empty directories.
+func TestDiffParentsNested(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	compareBinaryOutputs(t, "parents_nested_empty", goBin, refBin,
+		[]string{"-p", "a/b/c"},
+		func(t *testing.T, dir string) {
+			t.Helper()
+			if mkErr := os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+		},
+		normalize,
+	)
+}
+
+// TestDiffParentsStopsOnNonempty verifies R4.3: differential test that -p
+// stops ascending correctly when a parent is not empty, matching grmdir.
+func TestDiffParentsStopsOnNonempty(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	// R4.3: -p a/b/c where "a" contains a blocker file. Should remove c and b,
+	// fail on a, and exit 1.
+	compareBinaryOutputs(t, "parents_stops_on_nonempty", goBin, refBin,
+		[]string{"-p", "a/b/c"},
+		func(t *testing.T, dir string) {
+			t.Helper()
+			if mkErr := os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+			if wErr := os.WriteFile(filepath.Join(dir, "a", "blocker.txt"), []byte("data"), 0o644); wErr != nil {
+				t.Fatalf("setup: %v", wErr)
+			}
+		},
+		normalize,
+	)
+}
+
+// TestDiffVerboseSuccess verifies R4.2: differential test for -v verbose
+// output on successful directory removal.
+func TestDiffVerboseSuccess(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	compareBinaryOutputs(t, "verbose_single_empty_dir", goBin, refBin,
+		[]string{"-v", "emptydir"},
+		func(t *testing.T, dir string) {
+			t.Helper()
+			if mkErr := os.Mkdir(filepath.Join(dir, "emptydir"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+		},
+		normalize,
+	)
+}
+
+// TestDiffVerboseParents verifies R4.2: differential test for -pv with nested
+// empty directories, checking verbose output for each ancestor.
+func TestDiffVerboseParents(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		errCaseNormalizer,
+	}
+
+	compareBinaryOutputs(t, "verbose_parents_nested", goBin, refBin,
+		[]string{"-pv", "x/y/z"},
+		func(t *testing.T, dir string) {
+			t.Helper()
+			if mkErr := os.MkdirAll(filepath.Join(dir, "x", "y", "z"), 0o755); mkErr != nil {
+				t.Fatalf("setup: %v", mkErr)
+			}
+		},
+		normalize,
+	)
 }

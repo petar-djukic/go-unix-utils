@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4
+// Implements: prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.3
 package main
 
 import (
@@ -116,7 +116,7 @@ func main() {
 				if err := syscall.Rmdir(parent); err != nil {
 					// R3.4: with -p and --ignore-fail-on-non-empty, suppress non-empty ancestor errors.
 					if !(ignoreNonEmpty && isNonEmptyError(err)) {
-						fmt.Fprintf(os.Stderr, "%s: failed to remove '%s': %s\n", programName, parent, err.Error())
+						fmt.Fprintf(os.Stderr, "%s: failed to remove directory '%s': %s\n", programName, parent, err.Error())
 						exitCode = 1
 					}
 					break
