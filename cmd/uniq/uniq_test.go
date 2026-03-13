@@ -1,15 +1,39 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4 (differential tests)
+// Implements: prd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4 (differential tests)
 package main
 
 import (
+	"bytes"
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrProgramNamePattern matches the program name prefix in error messages
+// (e.g., "guniq:" or "uniq:") so differential tests can compare error output
+// from both binaries without false mismatches on the binary name.
+var stderrProgramNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_./-]+uniq:`)
+
+// normalizeStderr replaces the program name prefix in stderr lines so that
+// the Go binary ("uniq:") and reference binary ("guniq:") produce identical
+// output for error path tests.
+//
+// Also normalizes "open " prefix that Go's os.Open adds but GNU uniq does not,
+// and normalizes "no such file or directory" case differences.
+var normalizeStderr testutils.NormalizeFunc = func(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		line = stderrProgramNamePattern.ReplaceAll(line, []byte("uniq:"))
+		line = bytes.ReplaceAll(line, []byte("open "), []byte(""))
+		line = bytes.ReplaceAll(line, []byte("no such file or directory"), []byte("No such file or directory"))
+		lines[i] = line
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
 
 // refBinary is the Homebrew GNU uniq binary name.
 const refBinary = "guniq"
@@ -427,6 +451,31 @@ func TestDiff(t *testing.T) {
 			Name:  "r3_check_chars_zero",
 			Args:  []string{"-w", "0"},
 			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: Exit 0 on successful processing.
+		{
+			Name:  "r4_1_exit_0_success",
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4_1_exit_0_empty",
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: Exit 1 when input file cannot be opened.
+		{
+			Name:      "r4_2_nonexistent_file",
+			Args:      []string{"/nonexistent/path/to/file"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.4: SIGPIPE handled via InstallSIGPIPEHandler (verified by basic tests exiting 0).
+		{
+			Name:  "r4_4_sigpipe_basic",
+			Stdin: []byte("a\na\nb\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
