@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd036-mktemp R1.1–R1.4
+// Implements: prd036-mktemp R1.1–R1.5, R2.1–R2.3
 package main
 
 import (
@@ -31,10 +31,24 @@ func main() {
 
 	args := os.Args[1:]
 
+	// R2.1: Parse -d/--directory flag.
+	dirMode := false
+	var remaining []string
+	for _, arg := range args {
+		if arg == "-d" || arg == "--directory" {
+			dirMode = true
+		} else if arg == "--" {
+			// Stop processing flags.
+			continue
+		} else {
+			remaining = append(remaining, arg)
+		}
+	}
+
 	template := defaultTemplate
-	if len(args) > 0 {
+	if len(remaining) > 0 {
 		// Use last non-flag argument as template.
-		template = args[len(args)-1]
+		template = remaining[len(remaining)-1]
 	}
 
 	// R1.1: Use TMPDIR if set, otherwise /tmp.
@@ -46,23 +60,46 @@ func main() {
 	// R1.3: Replace trailing X characters with random alphanumeric characters.
 	name, err := expandTemplate(template)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: failed to generate random name: %v\n", programName, err)
+		// R1.5: Print error to stderr and exit 1 on failure.
+		fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': %v\n",
+			programName, entityType(dirMode), template, err)
 		os.Exit(1)
 	}
 
 	path := dir + "/" + name
 
-	// R1.4: Create the file with mode 0600 (owner read-write only).
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", programName, template, err)
-		os.Exit(1)
+	if dirMode {
+		// R2.1, R2.2: Create directory with mode 0700 (owner read-write-execute only).
+		if err := os.Mkdir(path, 0o700); err != nil {
+			// R1.5: Print error to stderr and exit 1 on failure.
+			fmt.Fprintf(os.Stderr, "%s: failed to create directory via template '%s': %v\n",
+				programName, template, err)
+			os.Exit(1)
+		}
+	} else {
+		// R1.4: Create the file with mode 0600 (owner read-write only).
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			// R1.5: Print error to stderr and exit 1 on failure.
+			fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n",
+				programName, template, err)
+			os.Exit(1)
+		}
+		// best-effort close; file was created successfully
+		_ = f.Close()
 	}
-	// best-effort close; file was created successfully
-	_ = f.Close()
 
-	// R1.1: Print the absolute path to stdout.
+	// R1.1, R2.3: Print the absolute path to stdout.
+	// R1.5: Implicit exit 0 on success.
 	fmt.Println(path)
+}
+
+// entityType returns "directory" or "file" for error messages based on dirMode.
+func entityType(dirMode bool) string {
+	if dirMode {
+		return "directory"
+	}
+	return "file"
 }
 
 // expandTemplate replaces the trailing sequence of X characters in template
