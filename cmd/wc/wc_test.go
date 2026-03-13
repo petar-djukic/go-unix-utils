@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc against gwc (GNU wc from Homebrew coreutils).
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.4, R5.1–R5.2, R6.1 differential testing.
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.4, R5.1–R5.2, R6.1–R6.3 differential testing.
 // R5.1: All differential tests set LC_ALL=C to avoid locale-dependent divergence.
 package main
 
@@ -61,6 +61,13 @@ func TestDiff(t *testing.T) {
 	// files0Single: NUL-delimited file list with single entry
 	files0Single := filepath.Join(tmpDir, "filelist_single.txt")
 	writeTestFileBytes(t, files0Single, []byte(file1+"\x00"))
+
+	// noReadFile: file with no read permission (R6.2 permission denied testing)
+	noReadFile := filepath.Join(tmpDir, "noread.txt")
+	writeTestFile(t, noReadFile, "secret content\n")
+	if err := os.Chmod(noReadFile, 0o000); err != nil {
+		t.Fatalf("chmod noread file: %v", err)
+	}
 
 	tests := []testutils.DiffTest{
 		// === R1.1–R1.4: default behavior (no flags) ===
@@ -570,6 +577,66 @@ func TestDiff(t *testing.T) {
 			Name: "R6.1_exit_0_file",
 			Args: []string{file1},
 			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R6.2: exit 1 when input file cannot be opened/read ===
+		// R6.2: non-existent file exits 1.
+		{
+			Name:      "R6.2_nonexistent_file",
+			Args:      []string{filepath.Join(tmpDir, "does_not_exist.txt")},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R6.2: non-existent file mixed with valid files — valid files still
+		// get counted, exit code is 1.
+		{
+			Name:      "R6.2_nonexistent_mixed_before",
+			Args:      []string{filepath.Join(tmpDir, "missing.txt"), file1},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R6.2: valid file before non-existent file — valid file counted, exit 1.
+		{
+			Name:      "R6.2_nonexistent_mixed_after",
+			Args:      []string{file1, filepath.Join(tmpDir, "missing.txt")},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R6.2: non-existent file between two valid files — both valid files
+		// counted, total includes both, exit 1.
+		{
+			Name:      "R6.2_nonexistent_between_valid",
+			Args:      []string{file1, filepath.Join(tmpDir, "missing.txt"), file2},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R6.2: non-existent file with selection flags — exits 1.
+		{
+			Name:      "R6.2_nonexistent_with_flags",
+			Args:      []string{"-lw", filepath.Join(tmpDir, "gone.txt"), file1},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R6.2: permission denied file — exits 1.
+		{
+			Name:      "R6.2_permission_denied",
+			Args:      []string{noReadFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R6.2: permission denied mixed with valid file — valid file counted, exit 1.
+		{
+			Name:      "R6.2_permission_denied_mixed",
+			Args:      []string{noReadFile, file1},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
 	}
 

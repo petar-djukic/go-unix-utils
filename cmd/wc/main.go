@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.4, R5.1–R5.2, R6.1
+// Implements: prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3, R4.1–R4.4, R5.1–R5.2, R6.1–R6.3
 package main
 
 import (
@@ -150,6 +150,8 @@ func run(args []string) int {
 			// R4.1: "-" is treated as stdin by countFile.
 			c, err := countFile(arg)
 			if err != nil {
+				// R6.2: report the error, set exit code 1, but continue
+				// processing remaining files.
 				fmt.Fprintf(os.Stderr, "wc: %s\n", formatError(arg, err))
 				exitCode = 1
 				results = append(results, fileResult{name: arg, ok: false})
@@ -210,6 +212,7 @@ func run(args []string) int {
 		}
 	}
 
+	// R6.3: exit 1 when a write error occurs on stdout.
 	if err := w.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "wc: write error: %v\n", err)
 		return 1
