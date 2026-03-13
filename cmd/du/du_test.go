@@ -28,6 +28,10 @@ func TestDiff(t *testing.T) {
 	fixture := t.TempDir()
 	buildFixture(t, fixture)
 
+	// Build a fixture with hard links for R3.1-R3.3 testing.
+	hardlinkFixture := t.TempDir()
+	buildHardlinkFixture(t, hardlinkFixture)
+
 	tests := []testutils.DiffTest{
 		{
 			// Single file argument: both binaries should print one line.
@@ -79,9 +83,78 @@ func TestDiff(t *testing.T) {
 			Name: "grand_total_human",
 			Args: []string{"-h", "-c", fixture},
 		},
+		{
+			// R2.8: --apparent-size reports st_size instead of st_blocks.
+			Name: "apparent_size",
+			Args: []string{"--apparent-size", "-k", fixture},
+		},
+		{
+			// R2.8: --apparent-size with -a shows apparent sizes for all files.
+			Name: "apparent_size_all_files",
+			Args: []string{"--apparent-size", "-a", "-k", fixture},
+		},
+		{
+			// R2.8: --apparent-size combined with -h for human-readable output.
+			Name: "apparent_size_human",
+			Args: []string{"--apparent-size", "-h", fixture},
+		},
+		{
+			// R2.8: --apparent-size with -s shows apparent size total only.
+			Name: "apparent_size_summary",
+			Args: []string{"--apparent-size", "-s", "-k", fixture},
+		},
+		{
+			// R3.1, R3.2: hard-linked file counted only once; summary avoids
+			// traversal-order dependency between Go (alphabetical) and gdu (readdir).
+			Name: "hardlink_dedup_summary",
+			Args: []string{"-s", "-k", hardlinkFixture},
+		},
+		{
+			// R3.3: cross-argument dedup — same file via two hard links passed as
+			// separate arguments. The second argument contributes 0 since the inode
+			// was already counted by the first. Command-line order is deterministic.
+			Name: "hardlink_dedup_cross_arg_file",
+			Args: []string{"-k", "-c",
+				filepath.Join(hardlinkFixture, "dir1", "original.txt"),
+				filepath.Join(hardlinkFixture, "dir2", "linked.txt")},
+		},
+		{
+			// R3.3: cross-argument dedup with --apparent-size.
+			Name: "hardlink_dedup_cross_arg_apparent",
+			Args: []string{"--apparent-size", "-k", "-c",
+				filepath.Join(hardlinkFixture, "dir1", "original.txt"),
+				filepath.Join(hardlinkFixture, "dir2", "linked.txt")},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// buildHardlinkFixture creates a directory structure with hard links for R3.1-R3.3 testing.
+// Layout:
+//
+//	dir/dir1/original.txt (file with content)
+//	dir/dir2/linked.txt   (hard link to dir1/original.txt)
+func buildHardlinkFixture(t *testing.T, dir string) {
+	t.Helper()
+
+	dir1 := filepath.Join(dir, "dir1")
+	if err := os.Mkdir(dir1, 0o755); err != nil {
+		t.Fatalf("buildHardlinkFixture: %v", err)
+	}
+	original := filepath.Join(dir1, "original.txt")
+	if err := os.WriteFile(original, []byte("hardlink test content\n"), 0o644); err != nil {
+		t.Fatalf("buildHardlinkFixture: %v", err)
+	}
+
+	dir2 := filepath.Join(dir, "dir2")
+	if err := os.Mkdir(dir2, 0o755); err != nil {
+		t.Fatalf("buildHardlinkFixture: %v", err)
+	}
+	linked := filepath.Join(dir2, "linked.txt")
+	if err := os.Link(original, linked); err != nil {
+		t.Fatalf("buildHardlinkFixture: %v", err)
+	}
 }
 
 // buildFixture creates a reproducible directory structure for differential testing.

@@ -3,7 +3,7 @@
 
 // cmd/du reports disk usage for files and directory trees.
 //
-// Implements: prd009-du R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R3.1-R3.3, R4.1, R4.2, R5.1
+// Implements: prd009-du R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R3.1-R3.3, R4.1, R4.2, R5.1
 package main
 
 import (
@@ -29,24 +29,42 @@ type config struct {
 	allFiles      bool // -a: print a size line for every file, not just directories
 	megaBlocks    bool // -m: report sizes in 1048576-byte (1M) blocks
 	grandTotal    bool // -c: print a grand total line after all arguments
+	apparentSize  bool // --apparent-size: use st_size instead of st_blocks (R2.8)
 	maxDepth      int  // -d N / --max-depth=N: max reported depth; -1 means unlimited
 }
 
-// formatSize converts a 512-byte block count to the configured output format.
+// fileBytes returns the size contribution of fi in bytes.
+//
+// R2.8: --apparent-size uses fi.Size (st_size) for non-directory files. Directories
+// contribute 0 in apparent-size mode, matching GNU du behavior on macOS APFS where
+// directory metadata is stored in filesystem B-tree structures rather than data forks.
+// R1.2: default uses fi.Blocks (st_blocks, 512-byte block count) converted to bytes.
+func (c *config) fileBytes(fi *sys.FileInfo) int64 {
+	if c.apparentSize {
+		if fi.Mode.IsDir() {
+			return 0
+		}
+		return fi.Size
+	}
+	return fi.Blocks * 512
+}
+
+// formatSize converts a byte count to the configured output format.
 //
 // R2.1: -h uses pkg/format.HumanSize with binary (1024-base) mode.
 // R2.6: -m reports sizes in 1M blocks, rounding up.
 // R1.2: default output is 1K blocks.
-func (c *config) formatSize(blocks512 int64) string {
+func (c *config) formatSize(bytes int64) string {
 	if c.humanReadable {
-		// R2.1: convert 512-byte blocks to bytes, then format as human-readable binary.
-		return format.HumanSize(blocks512*512, format.HumanSizeOpts{Binary: true})
+		// R2.1: format bytes as human-readable binary.
+		return format.HumanSize(bytes, format.HumanSizeOpts{Binary: true})
 	}
 	if c.megaBlocks {
-		// R2.6: convert to 1048576-byte (1M) blocks, rounding up.
-		return fmt.Sprintf("%d", toMBlocks(blocks512))
+		// R2.6: convert bytes to 1048576-byte (1M) blocks, rounding up.
+		return fmt.Sprintf("%d", ceilDiv(bytes, 1048576))
 	}
-	return fmt.Sprintf("%d", toKBlocks(blocks512))
+	// R1.2: convert bytes to 1024-byte (1K) blocks, rounding up.
+	return fmt.Sprintf("%d", ceilDiv(bytes, 1024))
 }
 
 func main() {
@@ -74,6 +92,8 @@ func main() {
 	flag.BoolVar(&cfg.megaBlocks, "m", false, "use 1048576-byte (1M) block size")
 	// R2.7: -c prints a grand total after all arguments.
 	flag.BoolVar(&cfg.grandTotal, "c", false, "produce a grand total")
+	// R2.8: --apparent-size reports st_size instead of st_blocks.
+	flag.BoolVar(&cfg.apparentSize, "apparent-size", false, "print apparent sizes rather than disk usage")
 
 	flag.Parse()
 
@@ -91,13 +111,13 @@ func main() {
 	// R3.3: seen map is shared across all arguments for cross-argument deduplication.
 	seen := make(map[inodeKey]struct{})
 	exitCode := 0
-	var grandTotalBlocks int64
+	var grandTotalBytes int64
 
 	// R1.5: process multiple directory arguments in the order given on the command line.
 	for _, arg := range args {
 		// R4.2: print error and continue processing remaining arguments on failure.
 		total, err := runArg(arg, seen, cfg)
-		grandTotalBlocks += total
+		grandTotalBytes += total
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "du: %v\n", err)
 			exitCode = 1
@@ -106,14 +126,14 @@ func main() {
 
 	// R2.7: print grand total line after all arguments when -c is given.
 	if cfg.grandTotal {
-		fmt.Printf("%s\ttotal\n", cfg.formatSize(grandTotalBlocks))
+		fmt.Printf("%s\ttotal\n", cfg.formatSize(grandTotalBytes))
 	}
 
 	os.Exit(exitCode)
 }
 
 // runArg processes one command-line argument (file or directory).
-// Returns the total 512-byte block count for the argument and any traversal error.
+// Returns the total size in bytes for the argument and any traversal error.
 func runArg(path string, seen map[inodeKey]struct{}, cfg *config) (int64, error) {
 	// R1.4: use Lstat so symbolic links are not followed.
 	fi, err := sys.Lstat(path)
@@ -122,16 +142,17 @@ func runArg(path string, seen map[inodeKey]struct{}, cfg *config) (int64, error)
 	}
 
 	if !fi.Mode.IsDir() {
-		// Single file argument: count and print its own blocks.
+		// Single file argument: count and print its size.
 		key := inodeKey{Dev: fi.Dev, Ino: fi.Ino}
-		var blocks int64
-		if _, dup := seen[key]; !dup {
-			seen[key] = struct{}{}
-			blocks = fi.Blocks
+		if _, dup := seen[key]; dup {
+			// R3.1, R3.3: already counted; skip entirely matching GNU du behavior.
+			return 0, nil
 		}
+		seen[key] = struct{}{}
+		sizeBytes := cfg.fileBytes(fi)
 		// R1.3: "SIZE\tPATH\n" format.
-		fmt.Printf("%s\t%s\n", cfg.formatSize(blocks), path)
-		return blocks, nil
+		fmt.Printf("%s\t%s\n", cfg.formatSize(sizeBytes), path)
+		return sizeBytes, nil
 	}
 
 	// R3.3: if this directory root was already counted by a previous argument, skip it
@@ -152,7 +173,7 @@ func runArg(path string, seen map[inodeKey]struct{}, cfg *config) (int64, error)
 }
 
 // walkDir recursively traverses dir at the given depth, printing entries according
-// to cfg, and returns the total 512-byte block count for dir and all its contents.
+// to cfg, and returns the total size in bytes for dir and all its contents.
 //
 // R1.1: recursive directory traversal with accumulated usage.
 // R1.4: sys.Lstat does not follow symbolic links.
@@ -174,8 +195,8 @@ func walkDir(dir string, seen map[inodeKey]struct{}, cfg *config, depth int) (to
 	}
 	seen[key] = struct{}{}
 
-	// Include the directory inode's own block allocation.
-	total = fi.Blocks
+	// Include the directory inode's own size contribution.
+	total = cfg.fileBytes(fi)
 	ok = true
 
 	entries, err := os.ReadDir(dir)
@@ -209,14 +230,17 @@ func walkDir(dir string, seen map[inodeKey]struct{}, cfg *config, depth int) (to
 				continue
 			}
 			childKey := inodeKey{Dev: childFi.Dev, Ino: childFi.Ino}
-			if _, dup := seen[childKey]; !dup {
-				seen[childKey] = struct{}{}
-				total += childFi.Blocks
+			if _, dup := seen[childKey]; dup {
+				// R3.1: already counted; skip entirely (no output, no contribution).
+				continue
 			}
+			seen[childKey] = struct{}{}
+			childBytes := cfg.fileBytes(childFi)
+			total += childBytes
 			// R2.3: -a prints a size line for every file encountered.
 			// R2.4: only print within maxDepth (or unlimited).
 			if cfg.allFiles && (cfg.maxDepth < 0 || childDepth <= cfg.maxDepth) {
-				fmt.Printf("%s\t%s\n", cfg.formatSize(childFi.Blocks), childPath)
+				fmt.Printf("%s\t%s\n", cfg.formatSize(childBytes), childPath)
 			}
 		}
 	}
@@ -224,17 +248,8 @@ func walkDir(dir string, seen map[inodeKey]struct{}, cfg *config, depth int) (to
 	return total, ok
 }
 
-// toKBlocks converts a 512-byte block count (st_blocks) to 1024-byte (1K) blocks.
-//
-// R1.2: default output unit is 1024-byte (1K) blocks.
-func toKBlocks(blocks512 int64) int64 {
-	return (blocks512 + 1) / 2
-}
-
-// toMBlocks converts a 512-byte block count (st_blocks) to 1048576-byte (1M) blocks,
-// rounding up.
-//
-// R2.6: -m reports sizes in 1M blocks.
-func toMBlocks(blocks512 int64) int64 {
-	return (blocks512 + 2047) / 2048
+// ceilDiv returns the ceiling of a / b for non-negative a and positive b.
+// Used to convert byte counts to block units with rounding up.
+func ceilDiv(a, b int64) int64 {
+	return (a + b - 1) / b
 }
