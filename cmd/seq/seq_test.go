@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/seq.
 //
-// Implements: prd019-seq R1.5, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3
+// Implements: prd019-seq R1.5, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4
 package main
 
 import (
@@ -61,27 +61,27 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
-		// R1.1: single argument — seq LAST.
+		// R1.1, R4.4: single argument — seq LAST.
 		{
-			Name: "r1.1_single_arg_seq_5",
+			Name: "r1.1_r4.4_single_arg_seq_5",
 			Args: []string{"5"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R1.1: two arguments — seq FIRST LAST.
+		// R1.1, R4.4: two arguments — seq FIRST LAST.
 		{
-			Name: "r1.1_two_args_seq_2_5",
+			Name: "r1.1_r4.4_two_args_seq_2_5",
 			Args: []string{"2", "5"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R1.1: three arguments — seq FIRST STEP LAST.
+		// R1.1, R4.4: three arguments — seq FIRST STEP LAST.
 		{
-			Name: "r1.1_three_args_seq_1_2_10",
+			Name: "r1.1_r4.4_three_args_seq_1_2_10",
 			Args: []string{"1", "2", "10"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R1.2: descending sequence.
+		// R1.2, R4.4: descending sequence.
 		{
-			Name: "r1.2_descending_seq_5_neg1_1",
+			Name: "r1.2_r4.4_descending_seq_5_neg1_1",
 			Args: []string{"5", "-1", "1"},
 			Env:  []string{"LC_ALL=C"},
 		},
@@ -91,9 +91,9 @@ func TestDiff(t *testing.T) {
 			Args: []string{"3", "3"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R1.4: empty sequence — positive step, FIRST > LAST.
+		// R1.4, R4.4: empty sequence — positive step, FIRST > LAST.
 		{
-			Name: "r1.4_empty_sequence_positive",
+			Name: "r1.4_r4.4_empty_sequence_positive",
 			Args: []string{"5", "1", "3"},
 			Env:  []string{"LC_ALL=C"},
 		},
@@ -104,9 +104,9 @@ func TestDiff(t *testing.T) {
 			Env:  []string{"LC_ALL=C"},
 		},
 
-		// R1.5: zero step error.
+		// R1.5, R4.4: zero step error.
 		{
-			Name:      "r1.5_zero_step_error",
+			Name:      "r1.5_r4.4_zero_step_error",
 			Args:      []string{"1", "0", "5"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
@@ -142,9 +142,9 @@ func TestDiff(t *testing.T) {
 			Env:  []string{"LC_ALL=C"},
 		},
 
-		// R2.2: custom separator -s.
+		// R2.2, R4.4: custom separator -s.
 		{
-			Name: "r2.2_separator_comma_space",
+			Name: "r2.2_r4.4_separator_comma_space",
 			Args: []string{"-s", ", ", "1", "5"},
 			Env:  []string{"LC_ALL=C"},
 		},
@@ -179,9 +179,9 @@ func TestDiff(t *testing.T) {
 			Args: []string{"1", "5"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R2.3: floating-point inputs preserve precision.
+		// R2.3, R4.4: floating-point inputs preserve precision.
 		{
-			Name: "r2.3_float_precision",
+			Name: "r2.3_r4.4_float_precision",
 			Args: []string{"0.1", "0.1", "0.5"},
 			Env:  []string{"LC_ALL=C"},
 		},
@@ -198,9 +198,9 @@ func TestDiff(t *testing.T) {
 			Env:  []string{"LC_ALL=C"},
 		},
 
-		// R3.3: equal-width zero padding.
+		// R3.3, R4.4: equal-width zero padding.
 		{
-			Name: "r3.3_equal_width",
+			Name: "r3.3_r4.4_equal_width",
 			Args: []string{"-w", "8", "12"},
 			Env:  []string{"LC_ALL=C"},
 		},
@@ -279,9 +279,9 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-f", "%.3f", "1", "0.5", "2"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R3.1: -f format string with integer sequence.
+		// R3.1, R4.4: -f format string with integer sequence.
 		{
-			Name: "r3.1_format_string_integer",
+			Name: "r3.1_r4.4_format_string_integer",
 			Args: []string{"-f", "%.2f", "1", "3"},
 			Env:  []string{"LC_ALL=C"},
 		},
@@ -297,17 +297,17 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-f", "%g", "0.5", "0.5", "2.0"},
 			Env:  []string{"LC_ALL=C"},
 		},
-		// R3.2: invalid format — no conversion specifier.
+		// R3.2, R4.4: invalid format — no conversion specifier.
 		{
-			Name:      "r3.2_format_no_directive",
+			Name:      "r3.2_r4.4_format_no_directive",
 			Args:      []string{"-f", "hello", "1", "3"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeSeqErrors},
 		},
-		// R3.2: invalid format — unknown conversion specifier.
+		// R3.2, R4.4: invalid format — unknown conversion specifier.
 		{
-			Name:      "r3.2_format_unknown_directive",
+			Name:      "r3.2_r4.4_format_unknown_directive",
 			Args:      []string{"-f", "%d", "1", "3"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
