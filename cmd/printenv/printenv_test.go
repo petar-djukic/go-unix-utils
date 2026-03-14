@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd040-printenv R2.2, R2.3, R2.4, R3.1
+// Tests: prd040-printenv R2.2, R2.3, R2.4, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -143,6 +143,44 @@ func TestDiff(t *testing.T) {
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 1,
 		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelpVersion verifies that --help and --version exit 0.
+// Output content differs between implementations, so stdout/stderr are
+// normalized to empty and only exit codes are compared.
+//
+// R3.2, R3.3: --version and --help differential tests.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gprintenv")
+	if err != nil {
+		t.Skipf("reference binary gprintenv not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// --help exits 0.
+		{
+			Name: "help_flag",
+			Args: []string{"--help"},
+		},
+		// --version exits 0.
+		{
+			Name: "version_flag",
+			Args: []string{"--version"},
+		},
+	}
+
+	// --help and --version produce different output between implementations,
+	// so we only compare exit codes by normalizing stdout/stderr to empty.
+	clearOutput := func(b []byte) []byte { return nil }
+
+	for i := range tests {
+		tests[i].Normalize = []testutils.NormalizeFunc{clearOutput}
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
