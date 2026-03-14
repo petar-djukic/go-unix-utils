@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4
+// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3
 package main
 
 import (
@@ -18,6 +18,11 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// errUserDeclined is returned when the user answers "n" to an interactive prompt.
+// The caller uses this to set exit code 1 without printing an error message,
+// matching GNU mv behavior.
+var errUserDeclined = errors.New("user declined")
 
 // programName is the name used in error messages.
 const programName = "mv"
@@ -184,7 +189,11 @@ func main() {
 			target = filepath.Join(dest, filepath.Base(src))
 		}
 		if err := moveEntry(src, target, opts); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			// R2.1: user declining an interactive prompt sets exit code 1
+			// without printing an error message, matching GNU mv.
+			if !errors.Is(err, errUserDeclined) {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			}
 			exitCode = 1
 		}
 	}
@@ -214,13 +223,15 @@ func moveEntry(src, dst string, opts mvOpts) error {
 	}
 
 	// R2.1: -i prompts before overwriting an existing destination file.
+	// When the user declines, return errUserDeclined so the caller exits 1
+	// without printing an error message, matching GNU mv behavior.
 	if opts.overwrite == modeInteractive {
 		if _, statErr := os.Lstat(dst); statErr == nil {
 			fmt.Fprintf(os.Stderr, "%s: overwrite '%s'? ", programName, dst)
 			reader := bufio.NewReader(os.Stdin)
 			response, readErr := reader.ReadString('\n')
 			if readErr != nil || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(response)), "y") {
-				return nil
+				return errUserDeclined
 			}
 		}
 	}

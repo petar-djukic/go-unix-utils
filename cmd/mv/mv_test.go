@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4 differential tests
+// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3 differential tests
 package main
 
 import (
@@ -698,6 +698,283 @@ func TestDiffFlagPrecedenceFN(t *testing.T) {
 		}
 		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); statErr != nil {
 			t.Errorf("source removed despite -n being last: %v", statErr)
+		}
+	})
+}
+
+// runMvWithStdin runs the binary with args in workDir, providing stdin, and
+// returns stdout, stderr, and exit code.
+func runMvWithStdin(t *testing.T, binary string, args []string, workDir string, stdin []byte) ([]byte, []byte, int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run %q: %v", binary, err)
+		}
+	}
+	return stdout.Bytes(), stderr.Bytes(), exitCode
+}
+
+// TestDiffVerboseDirectoryMove verifies -v prints move operation for directories.
+// R3.1: verbose output for directory move.
+func TestDiffVerboseDirectoryMove(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("verbose_directory_move", func(t *testing.T) {
+		t.Parallel()
+
+		norm := programNameNormalizer(goBin, refBin)
+		pathNorm := func(dir string) testutils.NormalizeFunc {
+			return func(b []byte) []byte {
+				return bytes.ReplaceAll(b, []byte(dir), []byte("/tmp/test"))
+			}
+		}
+
+		// Reference.
+		refDir := t.TempDir()
+		setupDir(t, filepath.Join(refDir, "srcdir"))
+		setupFile(t, filepath.Join(refDir, "srcdir", "file.txt"), "data\n")
+		refStdout, _, refCode := runMvAndCapture(t, refBin,
+			[]string{"-v", filepath.Join(refDir, "srcdir"), filepath.Join(refDir, "dstdir")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupDir(t, filepath.Join(goDir, "srcdir"))
+		setupFile(t, filepath.Join(goDir, "srcdir", "file.txt"), "data\n")
+		goStdout, _, goCode := runMvAndCapture(t, goBin,
+			[]string{"-v", filepath.Join(goDir, "srcdir"), filepath.Join(goDir, "dstdir")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+
+		normRef := norm(pathNorm(refDir)(refStdout))
+		normGo := norm(pathNorm(goDir)(goStdout))
+		if !bytes.Equal(normRef, normGo) {
+			t.Errorf("verbose stdout:\nref: %q\ngo:  %q", normRef, normGo)
+		}
+
+		// Verify directory was actually moved.
+		data, readErr := os.ReadFile(filepath.Join(goDir, "dstdir", "file.txt"))
+		if readErr != nil {
+			t.Errorf("inner file not found after move: %v", readErr)
+			return
+		}
+		if string(data) != "data\n" {
+			t.Errorf("inner file content mismatch: got %q", data)
+		}
+	})
+}
+
+// TestDiffInteractive verifies -i prompts and respects y/n responses.
+// R2.1: -i interactive mode.
+func TestDiffInteractive(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	norm := programNameNormalizer(goBin, refBin)
+	pathNorm := func(dir string) testutils.NormalizeFunc {
+		return func(b []byte) []byte {
+			return bytes.ReplaceAll(b, []byte(dir), []byte("/tmp/test"))
+		}
+	}
+
+	t.Run("interactive_yes", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		refStdout, refStderr, refCode := runMvWithStdin(t, refBin,
+			[]string{"-i", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "", []byte("y\n"))
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		goStdout, goStderr, goCode := runMvWithStdin(t, goBin,
+			[]string{"-i", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "", []byte("y\n"))
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+
+		// Normalize stderr (prompt text).
+		normRefStderr := norm(pathNorm(refDir)(refStderr))
+		normGoStderr := norm(pathNorm(goDir)(goStderr))
+		if !bytes.Equal(normRefStderr, normGoStderr) {
+			t.Errorf("stderr:\nref: %q\ngo:  %q", normRefStderr, normGoStderr)
+		}
+
+		// File should be moved.
+		data, readErr := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if readErr != nil {
+			t.Fatalf("destination not readable: %v", readErr)
+		}
+		if string(data) != "new\n" {
+			t.Errorf("-i y: expected overwrite, got %q", data)
+		}
+		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); !os.IsNotExist(statErr) {
+			t.Errorf("source still exists after mv -i (answered y)")
+		}
+	})
+
+	t.Run("interactive_no", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvWithStdin(t, refBin,
+			[]string{"-i", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "", []byte("n\n"))
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvWithStdin(t, goBin,
+			[]string{"-i", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "", []byte("n\n"))
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+
+		// Destination should keep original content.
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "old\n" {
+			t.Errorf("-i n: expected no overwrite, got %q", data)
+		}
+		// Source should still exist.
+		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); statErr != nil {
+			t.Errorf("source removed despite -i (answered n): %v", statErr)
+		}
+	})
+}
+
+// TestDiffFlagPrecedenceIF verifies that -i -f and -f -i follow last-flag-wins.
+// R2.2: last flag wins for -i/-f interaction.
+func TestDiffFlagPrecedenceIF(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("i_then_f_overwrites", func(t *testing.T) {
+		t.Parallel()
+
+		// -i -f → force wins, should overwrite without prompting.
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{"-i", "-f", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{"-i", "-f", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "new\n" {
+			t.Errorf("-i -f: expected overwrite, got %q", data)
+		}
+	})
+
+	t.Run("f_then_i_prompts_yes", func(t *testing.T) {
+		t.Parallel()
+
+		// -f -i → interactive wins, should prompt. Answer y.
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvWithStdin(t, refBin,
+			[]string{"-f", "-i", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "", []byte("y\n"))
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvWithStdin(t, goBin,
+			[]string{"-f", "-i", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "", []byte("y\n"))
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "new\n" {
+			t.Errorf("-f -i y: expected overwrite, got %q", data)
+		}
+	})
+
+	t.Run("f_then_i_prompts_no", func(t *testing.T) {
+		t.Parallel()
+
+		// -f -i → interactive wins, should prompt. Answer n.
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvWithStdin(t, refBin,
+			[]string{"-f", "-i", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "", []byte("n\n"))
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvWithStdin(t, goBin,
+			[]string{"-f", "-i", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "", []byte("n\n"))
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "old\n" {
+			t.Errorf("-f -i n: expected no overwrite, got %q", data)
+		}
+		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); statErr != nil {
+			t.Errorf("source removed despite -i n: %v", statErr)
 		}
 	})
 }
