@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements: prd055-tail R4.3 -- differential tests against gtail reference binary
+// R2.1–R2.3: byte counting, from-beginning offsets, and suffix multipliers
 package main
 
 import (
@@ -56,6 +57,16 @@ func TestDiff(t *testing.T) {
 	byteContent := "abcdefghijklmnopqrstuvwxyz"
 	fileBytes := filepath.Join(tmpDir, "bytes.txt")
 	if err := os.WriteFile(fileBytes, []byte(byteContent), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	// R2.3: larger file for suffix multiplier tests (2048 bytes).
+	largeBuf := make([]byte, 2048)
+	for i := range largeBuf {
+		largeBuf[i] = byte('A' + (i % 26))
+	}
+	fileLarge := filepath.Join(tmpDir, "large.txt")
+	if err := os.WriteFile(fileLarge, largeBuf, 0o644); err != nil {
 		t.Fatalf("writing test file: %v", err)
 	}
 
@@ -223,6 +234,107 @@ func TestDiff(t *testing.T) {
 			Name:  "c-plus-1-all",
 			Args:  []string{"-c", "+1"},
 			Stdin: []byte(byteContent),
+		},
+		// R2.1: -c with --bytes= long form
+		{
+			Name: "bytes-long-form",
+			Args: []string{"--bytes=5", fileBytes},
+		},
+		// R2.2: --bytes=+N from beginning
+		{
+			Name: "bytes-long-form-plus",
+			Args: []string{"--bytes=+10", fileBytes},
+		},
+		// R2.2: -c +N with larger offset than file size
+		{
+			Name: "c-plus-beyond-end",
+			Args: []string{"-c", "+100", fileBytes},
+		},
+		// R2.2: -n +N with offset beyond file line count
+		{
+			Name:  "n-plus-beyond-end",
+			Args:  []string{"-n", "+100"},
+			Stdin: []byte(lines5),
+		},
+		// R2.3: -c with suffix b (512 bytes)
+		{
+			Name:  "c-suffix-b",
+			Args:  []string{"-c", "1b"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: -c with suffix K (1024 bytes)
+		{
+			Name:  "c-suffix-K",
+			Args:  []string{"-c", "1K"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: -c with suffix KiB (1024 bytes, same as K)
+		{
+			Name:  "c-suffix-KiB",
+			Args:  []string{"-c", "1KiB"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: -c with suffix kB (1000 bytes)
+		{
+			Name:  "c-suffix-kB",
+			Args:  []string{"-c", "1kB"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: -c with suffix b combined with +N
+		{
+			Name:  "c-plus-suffix-b",
+			Args:  []string{"-c", "+1b"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.1: -c with byte count larger than input
+		{
+			Name:  "c-larger-than-input",
+			Args:  []string{"-c", "100"},
+			Stdin: []byte(byteContent),
+		},
+		// R2.1: -c with multi-file
+		{
+			Name: "c-multi-file",
+			Args: []string{"-c", "5", fileBytes, file5},
+		},
+		// R2.2: -c +N with multi-file
+		{
+			Name: "c-plus-multi-file",
+			Args: []string{"-c", "+10", fileBytes, file5},
+		},
+		// R2.1: -c with -q on multi-file
+		{
+			Name: "c-quiet-multi-file",
+			Args: []string{"-q", "-c", "5", fileBytes, file5},
+		},
+		// R2.1: -c with -v on single file
+		{
+			Name: "c-verbose-single-file",
+			Args: []string{"-v", "-c", "5", fileBytes},
+		},
+		// R2.3: -c with suffix K and --bytes= form
+		{
+			Name:  "bytes-long-form-suffix-K",
+			Args:  []string{"--bytes=1K"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: -c with suffix kB via short form
+		{
+			Name:  "c-suffix-kB-short",
+			Args:  []string{"-c1kB"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: -c with suffix M (larger than input, outputs all)
+		{
+			Name:  "c-suffix-M-larger-than-input",
+			Args:  []string{"-c", "1M"},
+			Stdin: []byte(largeBuf),
+		},
+		// R2.3: suffix with from-start via --bytes=+1K
+		{
+			Name:  "bytes-long-form-plus-suffix-K",
+			Args:  []string{"--bytes=+1K"},
+			Stdin: []byte(largeBuf),
 		},
 	}
 

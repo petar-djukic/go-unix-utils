@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd055-tail R1.1–R1.4, R2.1–R2.2, R3.1–R3.4, R4.1–R4.4
+// Implements: prd055-tail R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4
 package main
 
 import (
@@ -332,7 +332,10 @@ func tailBytesFromStart(w *bufio.Writer, r io.Reader, n int64) error {
 // parseCount parses a count string that may include a '+' prefix for from-start
 // mode and/or a multiplier suffix. Returns the absolute value, whether the count
 // is from-start (+N), and any parse error.
-// R2.3: supports b (512), K/KiB (1024), M/MiB (1048576), G/GiB (1073741824).
+// R2.3: supports GNU coreutils block size suffixes: b (512), kB (1000), K/KiB (1024),
+// MB (1000^2), M/MiB (1024^2), GB (1000^3), G/GiB (1024^3), TB (1000^4), T/TiB (1024^4),
+// PB (1000^5), P/PiB (1024^5), EB (1000^6), E/EiB (1024^6), ZB (1000^7), Z/ZiB (1024^7),
+// YB (1000^8), Y/YiB (1024^8).
 func parseCount(s string) (int64, bool, error) {
 	fromStart := false
 	if strings.HasPrefix(s, "+") {
@@ -355,23 +358,38 @@ func parseCount(s string) (int64, bool, error) {
 	}
 
 	suffix := s[i:]
-	var multiplier int64
-	switch suffix {
-	case "":
-		multiplier = 1
-	case "b":
-		multiplier = 512
-	case "K", "KiB":
-		multiplier = 1024
-	case "M", "MiB":
-		multiplier = 1048576
-	case "G", "GiB":
-		multiplier = 1073741824
-	default:
+	multiplier, ok := suffixMultipliers[suffix]
+	if !ok {
 		return 0, false, fmt.Errorf("invalid suffix: %q", suffix)
 	}
 
 	return num * multiplier, fromStart, nil
+}
+
+// suffixMultipliers maps GNU coreutils block size suffixes to their byte multipliers.
+// R2.3: SI suffixes (kB, MB, GB, ...) use powers of 1000; binary suffixes
+// (K/KiB, M/MiB, G/GiB, ...) use powers of 1024. b=512 is a special case.
+var suffixMultipliers = map[string]int64{
+	"":    1,
+	"b":   512,
+	"kB":  1000,
+	"K":   1024,
+	"KiB": 1024,
+	"MB":  1000 * 1000,
+	"M":   1024 * 1024,
+	"MiB": 1024 * 1024,
+	"GB":  1000 * 1000 * 1000,
+	"G":   1024 * 1024 * 1024,
+	"GiB": 1024 * 1024 * 1024,
+	"TB":  1000 * 1000 * 1000 * 1000,
+	"T":   1024 * 1024 * 1024 * 1024,
+	"TiB": 1024 * 1024 * 1024 * 1024,
+	"PB":  1000 * 1000 * 1000 * 1000 * 1000,
+	"P":   1024 * 1024 * 1024 * 1024 * 1024,
+	"PiB": 1024 * 1024 * 1024 * 1024 * 1024,
+	"EB":  1000 * 1000 * 1000 * 1000 * 1000 * 1000,
+	"E":   1024 * 1024 * 1024 * 1024 * 1024 * 1024,
+	"EiB": 1024 * 1024 * 1024 * 1024 * 1024 * 1024,
 }
 
 // printHelp writes usage information to stdout.
