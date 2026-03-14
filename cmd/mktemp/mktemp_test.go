@@ -699,11 +699,260 @@ func TestDiffMktempQuietUnwritable(t *testing.T) {
 	}
 }
 
+// TestDiffMktempCustomTemplate verifies custom template support.
+// GNU mktemp creates in the current directory when a template is provided
+// without -t, -p, or --tmpdir flags.
+//
+// R4.3: custom template coverage.
+// R4.4: Structural validation only — no exact filename comparison.
+func TestDiffMktempCustomTemplate(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	workDir := t.TempDir()
+	env := []string{"LC_ALL=C"}
+	args := []string{"myapp.XXXX"}
+
+	refCode, refStdout, _ := runFullInDir(t, refBin, args, env, workDir)
+	goCode, goStdout, _ := runFullInDir(t, goBin, args, env, workDir)
+
+	// R4.1: Exit codes must match.
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 0 {
+		t.Errorf("expected exit code 0, got %d", goCode)
+	}
+
+	goName := strings.TrimSpace(string(goStdout))
+	refName := strings.TrimSpace(string(refStdout))
+
+	// R4.2, R4.4: Name matches myapp.XXXX pattern (structural, not exact).
+	pattern := regexp.MustCompile(`^myapp\.[A-Za-z0-9]{4}$`)
+	if !pattern.MatchString(filepath.Base(goName)) {
+		t.Errorf("go name does not match pattern: %s", goName)
+	}
+	if !pattern.MatchString(filepath.Base(refName)) {
+		t.Errorf("ref name does not match pattern: %s", refName)
+	}
+
+	// R4.2: File exists after creation in the working directory.
+	goFullPath := filepath.Join(workDir, filepath.Base(goName))
+	if _, err := os.Stat(goFullPath); err != nil {
+		t.Errorf("go file does not exist: %v", err)
+	}
+
+	// Cleanup.
+	_ = os.Remove(filepath.Join(workDir, filepath.Base(refName))) // best-effort cleanup
+	_ = os.Remove(goFullPath)                                     // best-effort cleanup
+}
+
+// TestDiffMktempSuffix verifies --suffix appends the suffix after random characters.
+//
+// R3.3: --suffix=SUFF appends SUFF after the random characters.
+// R4.3: --suffix coverage.
+// R4.4: Structural validation only.
+func TestDiffMktempSuffix(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tmpDir := t.TempDir()
+	env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+	args := []string{"--suffix=.txt"}
+
+	refCode, refStdout, _ := runFull(t, refBin, args, env)
+	goCode, goStdout, _ := runFull(t, goBin, args, env)
+
+	// R4.1: Exit codes must match.
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 0 {
+		t.Errorf("expected exit code 0, got %d", goCode)
+	}
+
+	goPath := strings.TrimSpace(string(goStdout))
+	refPath := strings.TrimSpace(string(refStdout))
+
+	// R4.2: Output is a valid path in the expected directory.
+	if filepath.Dir(goPath) != tmpDir {
+		t.Errorf("go path not in TMPDIR: %s", goPath)
+	}
+	if filepath.Dir(refPath) != tmpDir {
+		t.Errorf("ref path not in TMPDIR: %s", refPath)
+	}
+
+	// R4.2, R4.4: Name matches tmp.XXXXXXXXXX.txt pattern (structural).
+	pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}\.txt$`)
+	if !pattern.MatchString(filepath.Base(goPath)) {
+		t.Errorf("go name does not match pattern: %s", filepath.Base(goPath))
+	}
+	if !pattern.MatchString(filepath.Base(refPath)) {
+		t.Errorf("ref name does not match pattern: %s", filepath.Base(refPath))
+	}
+
+	// R4.2: File exists after creation.
+	if _, err := os.Stat(goPath); err != nil {
+		t.Errorf("go file does not exist: %v", err)
+	}
+
+	_ = os.Remove(refPath) // best-effort cleanup
+	_ = os.Remove(goPath)  // best-effort cleanup
+}
+
+// TestDiffMktempExplicitDir verifies -p DIR uses DIR as parent directory.
+//
+// R3.1: -p DIR overrides TMPDIR.
+// R4.3: -p with explicit directory coverage.
+// R4.4: Structural validation only.
+func TestDiffMktempExplicitDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tmpDir := t.TempDir()
+	explicitDir := filepath.Join(tmpDir, "explicit")
+	if err := os.Mkdir(explicitDir, 0o755); err != nil {
+		t.Fatalf("failed to create explicit dir: %v", err)
+	}
+
+	env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+	args := []string{"-p", explicitDir}
+
+	refCode, refStdout, _ := runFull(t, refBin, args, env)
+	goCode, goStdout, _ := runFull(t, goBin, args, env)
+
+	// R4.1: Exit codes must match.
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 0 {
+		t.Errorf("expected exit code 0, got %d", goCode)
+	}
+
+	goPath := strings.TrimSpace(string(goStdout))
+	refPath := strings.TrimSpace(string(refStdout))
+
+	// R3.1: Both paths must be in the explicit directory, not TMPDIR.
+	if filepath.Dir(goPath) != explicitDir {
+		t.Errorf("go path not in explicit dir: got %s, want parent %s", goPath, explicitDir)
+	}
+	if filepath.Dir(refPath) != explicitDir {
+		t.Errorf("ref path not in explicit dir: got %s, want parent %s", refPath, explicitDir)
+	}
+
+	// R4.2: File exists after creation.
+	if _, err := os.Stat(goPath); err != nil {
+		t.Errorf("go file does not exist: %v", err)
+	}
+
+	_ = os.Remove(refPath) // best-effort cleanup
+	_ = os.Remove(goPath)  // best-effort cleanup
+}
+
+// TestDiffMktempLegacyT verifies -t legacy BSD compatibility mode.
+// With -t, the template is interpreted as a filename in TMPDIR rather than
+// in the current directory (which is the default for custom templates).
+//
+// R3.4: -t treats template as filename in TMPDIR.
+// R4.3: -t legacy mode coverage.
+// R4.4: Structural validation only.
+func TestDiffMktempLegacyT(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tmpDir := t.TempDir()
+	env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+	// -t forces TMPDIR; template must still have trailing Xs.
+	args := []string{"-t", "myprefix.XXXX"}
+
+	refCode, refStdout, _ := runFull(t, refBin, args, env)
+	goCode, goStdout, _ := runFull(t, goBin, args, env)
+
+	// R4.1: Exit codes must match.
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 0 {
+		t.Errorf("expected exit code 0, got %d", goCode)
+	}
+
+	goPath := strings.TrimSpace(string(goStdout))
+	refPath := strings.TrimSpace(string(refStdout))
+
+	// R3.4: Path must be in TMPDIR (not cwd).
+	if filepath.Dir(goPath) != tmpDir {
+		t.Errorf("go path not in TMPDIR: %s", goPath)
+	}
+	if filepath.Dir(refPath) != tmpDir {
+		t.Errorf("ref path not in TMPDIR: %s", refPath)
+	}
+
+	// R4.2, R4.4: Name matches myprefix.XXXX pattern (structural).
+	pattern := regexp.MustCompile(`^myprefix\.[A-Za-z0-9]{4}$`)
+	if !pattern.MatchString(filepath.Base(goPath)) {
+		t.Errorf("go name does not match pattern: %s", filepath.Base(goPath))
+	}
+	if !pattern.MatchString(filepath.Base(refPath)) {
+		t.Errorf("ref name does not match pattern: %s", filepath.Base(refPath))
+	}
+
+	// R4.2: File exists after creation.
+	if _, err := os.Stat(goPath); err != nil {
+		t.Errorf("go file does not exist: %v", err)
+	}
+
+	_ = os.Remove(refPath) // best-effort cleanup
+	_ = os.Remove(goPath)  // best-effort cleanup
+}
+
 // runFull runs binary with args and env, returning exit code, stdout, and stderr.
 func runFull(t *testing.T, binary string, args []string, env []string) (int, []byte, []byte) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Env = buildTestEnv(env)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	exitCode := 0
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run %q: %v", binary, err)
+		}
+	}
+	return exitCode, stdout.Bytes(), stderr.Bytes()
+}
+
+// runFullInDir runs binary with args, env, and working directory,
+// returning exit code, stdout, and stderr.
+func runFullInDir(t *testing.T, binary string, args []string, env []string, dir string) (int, []byte, []byte) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Env = buildTestEnv(env)
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

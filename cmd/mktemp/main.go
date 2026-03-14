@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.6
+// Implements: prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.6, R4.3, R4.4
 package main
 
 import (
@@ -44,40 +44,89 @@ func main() {
 
 	args := os.Args[1:]
 
-	// Parse flags: -d/--directory, -u/--dry-run, -q/--quiet.
+	// Parse flags.
 	dirMode := false
 	dryRun := false
 	quiet := false
+	legacyT := false
+	suffix := ""
+	explicitDir := ""
+	explicitDirSet := false
 	var remaining []string
-	for _, arg := range args {
-		switch arg {
-		case "-d", "--directory":
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-d" || arg == "--directory":
 			// R2.1: Directory mode.
 			dirMode = true
-		case "-u", "--dry-run":
+		case arg == "-u" || arg == "--dry-run":
 			// R3.5: Dry-run mode.
 			dryRun = true
-		case "-q", "--quiet":
+		case arg == "-q" || arg == "--quiet":
 			// R3.6: Quiet mode.
 			quiet = true
-		case "--":
-			// Stop processing flags.
-			continue
+		case arg == "-t":
+			// R3.4: Legacy BSD compatibility mode.
+			legacyT = true
+		case arg == "-p":
+			// R3.1: -p DIR uses DIR as parent directory.
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 'p'\n", programName)
+				os.Exit(1)
+			}
+			i++
+			explicitDir = args[i]
+			explicitDirSet = true
+		case strings.HasPrefix(arg, "--tmpdir="):
+			// R3.1: --tmpdir=DIR uses DIR as parent directory.
+			explicitDir = strings.TrimPrefix(arg, "--tmpdir=")
+			explicitDirSet = true
+		case arg == "--tmpdir":
+			// R3.2: --tmpdir without value uses TMPDIR or /tmp.
+			// No-op; default behavior already uses TMPDIR.
+		case strings.HasPrefix(arg, "--suffix="):
+			// R3.3: --suffix=SUFF appends SUFF after random characters.
+			suffix = strings.TrimPrefix(arg, "--suffix=")
+		case arg == "--":
+			// Stop processing flags; remaining args are positional.
+			remaining = append(remaining, args[i+1:]...)
+			i = len(args)
 		default:
 			remaining = append(remaining, arg)
 		}
 	}
 
+	// Determine template and whether a custom template was provided.
 	template := defaultTemplate
+	customTemplate := false
 	if len(remaining) > 0 {
 		// Use last non-flag argument as template.
 		template = remaining[len(remaining)-1]
+		customTemplate = true
 	}
 
-	// R1.1: Use TMPDIR if set, otherwise /tmp.
-	dir := os.Getenv("TMPDIR")
-	if dir == "" {
-		dir = "/tmp"
+	// Determine parent directory.
+	// GNU mktemp behavior: when no template is provided, --tmpdir is implied
+	// (uses TMPDIR or /tmp). When a template IS provided without -t/-p/--tmpdir,
+	// files are created in the current directory.
+	var dir string
+	if explicitDirSet {
+		// R3.1: -p DIR or --tmpdir=DIR overrides TMPDIR.
+		dir = explicitDir
+	} else if legacyT || !customTemplate {
+		// R3.4: -t forces TMPDIR. R1.1: No template implies --tmpdir.
+		dir = os.Getenv("TMPDIR")
+		if dir == "" {
+			dir = "/tmp"
+		}
+	}
+
+	// R3.3: Validate suffix does not contain directory separator.
+	if suffix != "" && strings.Contains(suffix, "/") {
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "%s: invalid suffix '%s', contains directory separator\n", programName, suffix)
+		}
+		os.Exit(1)
 	}
 
 	// R3.3: Validate template has at least 3 trailing X characters.
@@ -90,7 +139,7 @@ func main() {
 
 	// R3.1: When template contains a directory separator, verify the parent
 	// directory of the full path exists before attempting creation.
-	fullTemplatePath := filepath.Join(dir, template)
+	fullTemplatePath := filepath.Join(dir, template+suffix)
 	parentDir := filepath.Dir(fullTemplatePath)
 	info, err := os.Stat(parentDir)
 	if err != nil || !info.IsDir() {
@@ -112,7 +161,7 @@ func main() {
 			}
 			os.Exit(1)
 		}
-		path := filepath.Join(dir, name)
+		path := filepath.Join(dir, name+suffix)
 		fmt.Println(path)
 		return
 	}
@@ -129,7 +178,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		path := filepath.Join(dir, name)
+		// R3.3: Append suffix after random character expansion.
+		path := filepath.Join(dir, name+suffix)
 
 		if dirMode {
 			// R2.1, R2.2: Create directory with mode 0700 (owner read-write-execute only).
