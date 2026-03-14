@@ -191,8 +191,11 @@ func applyNormalizers(b []byte, fns []testutils.NormalizeFunc) []byte {
 // compareBinaryOutputs runs both binaries in separate temp dirs with identical
 // setup, compares exit code, stdout, and stderr after normalization.
 // Used for destructive operations where RunDiffTests cannot be used.
+// R3.3: postCheckFn runs after both binaries execute to verify post-conditions
+// (e.g., file removal) in both directories.
 func compareBinaryOutputs(t *testing.T, name string, goBin, refBin string, args []string,
-	setupFn func(t *testing.T, dir string), normalize []testutils.NormalizeFunc) {
+	setupFn func(t *testing.T, dir string), normalize []testutils.NormalizeFunc,
+	postCheckFn func(t *testing.T, goDir, refDir string)) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		t.Parallel()
@@ -219,6 +222,10 @@ func compareBinaryOutputs(t *testing.T, name string, goBin, refBin string, args 
 		if !bytes.Equal(refStderr, goStderr) {
 			t.Errorf("stderr mismatch:\nref: %q\ngo:  %q", refStderr, goStderr)
 		}
+
+		if postCheckFn != nil {
+			postCheckFn(t, goDir, refDir)
+		}
 	})
 }
 
@@ -238,6 +245,7 @@ func TestDiffRemoveRegularFile(t *testing.T) {
 		errCaseNormalizer,
 	}
 
+	// R3.3: postCheckFn verifies the file no longer exists after successful unlink.
 	compareBinaryOutputs(t, "remove_regular_file", goBin, refBin,
 		[]string{"target.txt"},
 		func(t *testing.T, dir string) {
@@ -247,6 +255,17 @@ func TestDiffRemoveRegularFile(t *testing.T) {
 			}
 		},
 		normalize,
+		func(t *testing.T, goDir, refDir string) {
+			t.Helper()
+			goTarget := filepath.Join(goDir, "target.txt")
+			if _, statErr := os.Lstat(goTarget); !os.IsNotExist(statErr) {
+				t.Errorf("R3.3: file %q still exists after go unlink", goTarget)
+			}
+			refTarget := filepath.Join(refDir, "target.txt")
+			if _, statErr := os.Lstat(refTarget); !os.IsNotExist(statErr) {
+				t.Errorf("R3.3: file %q still exists after ref unlink", refTarget)
+			}
+		},
 	)
 }
 
@@ -265,6 +284,7 @@ func TestDiffRemoveSymlink(t *testing.T) {
 		errCaseNormalizer,
 	}
 
+	// R3.3: postCheckFn verifies the symlink no longer exists after successful unlink.
 	compareBinaryOutputs(t, "remove_symlink", goBin, refBin,
 		[]string{"link"},
 		func(t *testing.T, dir string) {
@@ -278,6 +298,23 @@ func TestDiffRemoveSymlink(t *testing.T) {
 			}
 		},
 		normalize,
+		func(t *testing.T, goDir, refDir string) {
+			t.Helper()
+			// R3.3: symlink itself must be removed.
+			goLink := filepath.Join(goDir, "link")
+			if _, statErr := os.Lstat(goLink); !os.IsNotExist(statErr) {
+				t.Errorf("R3.3: symlink %q still exists after go unlink", goLink)
+			}
+			refLink := filepath.Join(refDir, "link")
+			if _, statErr := os.Lstat(refLink); !os.IsNotExist(statErr) {
+				t.Errorf("R3.3: symlink %q still exists after ref unlink", refLink)
+			}
+			// R3.2: symlink target must still exist (unlink removes the link, not the target).
+			goTarget := filepath.Join(goDir, "target.txt")
+			if _, statErr := os.Stat(goTarget); statErr != nil {
+				t.Errorf("R3.2: symlink target %q was removed by go unlink (should only remove link)", goTarget)
+			}
+		},
 	)
 }
 
@@ -311,6 +348,47 @@ func TestRemoveRegularFile(t *testing.T) {
 	// R3.3: file no longer exists after successful invocation.
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 		t.Fatalf("file %q still exists after unlink", target)
+	}
+}
+
+// TestRemoveSymlink verifies R3.2, R3.3: the Go binary successfully removes
+// a symbolic link, the link no longer exists, and the target file is preserved.
+func TestRemoveSymlink(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "target.txt")
+	if wErr := os.WriteFile(target, []byte("content"), 0o644); wErr != nil {
+		t.Fatalf("setup: %v", wErr)
+	}
+	link := filepath.Join(tmpDir, "testlink")
+	if sErr := os.Symlink(target, link); sErr != nil {
+		t.Fatalf("setup: %v", sErr)
+	}
+
+	cmd := exec.Command(goBin, link)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if runErr := cmd.Run(); runErr != nil {
+		t.Fatalf("unlink failed: %v\nstderr: %s", runErr, stderr.String())
+	}
+
+	// R1.2: no stdout output on success.
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got: %q", stdout.String())
+	}
+
+	// R3.3: symlink no longer exists after successful invocation.
+	if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
+		t.Fatalf("symlink %q still exists after unlink", link)
+	}
+
+	// R3.2: symlink target must still exist.
+	if _, statErr := os.Stat(target); statErr != nil {
+		t.Fatalf("symlink target %q was removed (should only remove link): %v", target, statErr)
 	}
 }
 
