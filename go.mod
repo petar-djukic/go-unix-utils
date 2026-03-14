@@ -4,4 +4,4 @@ go 1.26.1
 
 replace github.com/petar-djukic/go-unix-utils => ./
 
-require github.com/mesh-intelligence/cobbler-scaffold v0.20260310.0 // indirect
+require golang.org/x/sys v0.42.0

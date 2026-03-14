@@ -1,0 +1,146 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Implements: prd016-dirname R1.1–R1.5, R2.1, R2.2, R3.1–R3.3, R4.1–R4.3
+package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+// programName is the name used in error output.
+const programName = "dirname"
+
+func main() {
+	// D2: install SIGPIPE handler before any I/O.
+	sys.InstallSIGPIPEHandler()
+
+	args := os.Args[1:]
+
+	// Parse flags: -z/--zero.
+	var zero bool
+	var operands []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--help":
+			printHelp()
+			return
+		case arg == "--version":
+			printVersion()
+			return
+		case arg == "--":
+			// End of flags; remaining args are operands.
+			operands = append(operands, args[i+1:]...)
+			i = len(args)
+		case arg == "-z" || arg == "--zero":
+			// R2.1: NUL-terminated output.
+			zero = true
+		case strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-':
+			// Short flag cluster: e.g. -z
+			cluster := arg[1:]
+			for j := 0; j < len(cluster); j++ {
+				switch cluster[j] {
+				case 'z':
+					zero = true
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, cluster[j])
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+					os.Exit(1)
+				}
+			}
+		case strings.HasPrefix(arg, "--"):
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", programName, arg)
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+			os.Exit(1)
+		default:
+			operands = append(operands, arg)
+		}
+	}
+
+	// R3.2: no arguments is an error.
+	if len(operands) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", programName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+		os.Exit(1)
+	}
+
+	// R2.1: choose line terminator.
+	terminator := "\n"
+	if zero {
+		terminator = "\x00"
+	}
+
+	// R1.5, R2.2: process each argument in order and print one result per line.
+	// R3.1: exit 0 on success (implicit when no write error occurs).
+	for _, name := range operands {
+		result := dirname(name)
+		_, err := fmt.Fprint(os.Stdout, result+terminator)
+		if err != nil {
+			// R3.3: exit 1 when a write error occurs on stdout.
+			os.Exit(1)
+		}
+	}
+}
+
+// printHelp writes usage information to stdout and exits 0.
+//
+// R4.2: --help prints usage information to stdout.
+func printHelp() {
+	fmt.Print(`Usage: dirname [OPTION] NAME...
+Output each NAME with its last non-slash component and trailing slashes
+removed; if NAME contains no /'s, output '.' (meaning the current directory).
+
+  -z, --zero     end each output line with NUL, not newline
+      --help     display this help and exit
+      --version  output version information and exit
+`)
+}
+
+// printVersion writes version information to stdout and exits 0.
+//
+// R4.1: --version prints version information to stdout.
+func printVersion() {
+	fmt.Println("dirname (go-unix-utils) 0.1")
+}
+
+// dirname extracts the directory component from name, implementing the POSIX
+// dirname algorithm.
+//
+// R1.1: Strip trailing slashes, then remove the last component.
+// R1.2: If name contains no '/' after trailing-slash removal, return ".".
+// R1.3: Trailing slashes are stripped before extracting the directory component.
+// R1.4: Handle root path (/) and all-slash inputs by returning "/".
+func dirname(name string) string {
+	// R1.3: strip trailing slashes.
+	stripped := strings.TrimRight(name, "/")
+
+	// R1.4: all slashes or empty → "/". Empty input per GNU dirname also yields ".".
+	if stripped == "" {
+		if name == "" {
+			return "."
+		}
+		return "/"
+	}
+
+	// R1.2: no slash means no directory component → ".".
+	i := strings.LastIndex(stripped, "/")
+	if i < 0 {
+		return "."
+	}
+
+	// R1.1: take everything before the last '/'.
+	dir := stripped[:i]
+
+	// R1.4: strip trailing slashes from result; if empty, return "/".
+	dir = strings.TrimRight(dir, "/")
+	if dir == "" {
+		return "/"
+	}
+	return dir
+}
