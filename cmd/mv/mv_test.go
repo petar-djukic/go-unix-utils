@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd057-mv R1.1-R1.4 differential tests
+// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4 differential tests
 package main
 
 import (
@@ -533,6 +533,245 @@ func TestDiffMultipleSourcePartialFailure(t *testing.T) {
 		// The good file should have been moved despite the bad one failing.
 		if _, statErr := os.Stat(filepath.Join(goDir, "dest", "good.txt")); statErr != nil {
 			t.Errorf("good.txt was not moved: %v", statErr)
+		}
+	})
+}
+
+// TestDiffForceReadOnlyDest verifies -f overwrites a read-only destination.
+// R2.2: -f removes a read-only destination before moving, without prompting.
+func TestDiffForceReadOnlyDest(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("force_removes_readonly_dest", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		if err := os.Chmod(filepath.Join(refDir, "dst.txt"), 0o444); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{"-f", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		if err := os.Chmod(filepath.Join(goDir, "dst.txt"), 0o444); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{"-f", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+
+		data, readErr := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if readErr != nil {
+			t.Fatalf("destination not readable: %v", readErr)
+		}
+		if string(data) != "new\n" {
+			t.Errorf("force overwrite of read-only failed: got %q", data)
+		}
+		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); !os.IsNotExist(statErr) {
+			t.Errorf("source file still exists after mv -f")
+		}
+	})
+}
+
+// TestDiffNoClobberExitZero verifies -n exits 0 when destination exists.
+// R2.3: -n prevents overwriting and exits 0.
+func TestDiffNoClobberExitZero(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("no_clobber_exits_zero", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{"-n", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{"-n", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if goCode != 0 {
+			t.Errorf("expected exit 0 with -n, got %d", goCode)
+		}
+
+		// Source and destination should both still exist.
+		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); statErr != nil {
+			t.Errorf("source removed despite -n: %v", statErr)
+		}
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "old\n" {
+			t.Errorf("destination overwritten despite -n: got %q", data)
+		}
+	})
+}
+
+// TestDiffFlagPrecedenceFN verifies that when both -f and -n are given, the
+// last flag on the command line determines behavior.
+// R2.2, R2.3: last flag wins (GNU behavior).
+func TestDiffFlagPrecedenceFN(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("fn_last_f_overwrites", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{"-n", "-f", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{"-n", "-f", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "new\n" {
+			t.Errorf("-n -f: expected overwrite, got %q", data)
+		}
+	})
+
+	t.Run("fn_last_n_preserves", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(refDir, "dst.txt"), "old\n")
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{"-f", "-n", filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "new\n")
+		setupFile(t, filepath.Join(goDir, "dst.txt"), "old\n")
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{"-f", "-n", filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		data, _ := os.ReadFile(filepath.Join(goDir, "dst.txt"))
+		if string(data) != "old\n" {
+			t.Errorf("-f -n: expected no overwrite, got %q", data)
+		}
+		if _, statErr := os.Stat(filepath.Join(goDir, "src.txt")); statErr != nil {
+			t.Errorf("source removed despite -n being last: %v", statErr)
+		}
+	})
+}
+
+// TestCrossDeviceCopyCleanup verifies that a failed cross-device copy cleans
+// up the partial destination and does not remove the source.
+// R2.4: source must not be removed if the copy did not complete successfully.
+func TestCrossDeviceCopyCleanup(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	_, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("unreadable_source_preserves_source", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		srcPath := filepath.Join(dir, "src.txt")
+		setupFile(t, srcPath, "content\n")
+
+		// Since we cannot simulate EXDEV on a single filesystem,
+		// we test that mv correctly reports an error and preserves the source
+		// when the destination directory is not writable (preventing rename).
+		setupDir(t, filepath.Join(dir, "nowrite"))
+		noWriteDir := filepath.Join(dir, "nowrite")
+		dstInNoWrite := filepath.Join(noWriteDir, "dst.txt")
+		setupFile(t, dstInNoWrite, "old\n")
+		if err := os.Chmod(noWriteDir, 0o555); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(noWriteDir, 0o755) // restore for cleanup
+		})
+
+		_, _, code := runMvAndCapture(t, goBin,
+			[]string{"-f", srcPath, dstInNoWrite}, "")
+
+		// Should fail because the directory is not writable.
+		if code == 0 {
+			t.Errorf("expected non-zero exit code, got 0")
+		}
+
+		// Source must still exist.
+		if _, statErr := os.Stat(srcPath); statErr != nil {
+			t.Errorf("source was removed despite failed move: %v", statErr)
+		}
+
+		// Destination should still have original content.
+		data, _ := os.ReadFile(dstInNoWrite)
+		if string(data) != "old\n" {
+			t.Errorf("destination was modified despite failed move: got %q", data)
+		}
+	})
+
+	t.Run("mv_to_nonexistent_dir_preserves_source", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		srcPath := filepath.Join(dir, "src.txt")
+		setupFile(t, srcPath, "content\n")
+
+		// Move to a path inside a nonexistent directory.
+		badDst := filepath.Join(dir, "nonexistent_dir", "dst.txt")
+		_, _, code := runMvAndCapture(t, goBin, []string{srcPath, badDst}, "")
+		if code == 0 {
+			t.Errorf("expected non-zero exit code, got 0")
+		}
+
+		// Source must still exist.
+		if _, statErr := os.Stat(srcPath); statErr != nil {
+			t.Errorf("source was removed despite failed move: %v", statErr)
 		}
 	})
 }

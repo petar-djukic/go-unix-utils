@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd057-mv R1.1-R1.4
+// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4
 package main
 
 import (
@@ -198,6 +198,7 @@ func main() {
 //
 // R1.1: rename on same filesystem, copy-then-remove on cross-device.
 // R2.1-R2.3: overwrite control via opts.overwrite.
+// R2.2: -f removes read-only destination before moving.
 func moveEntry(src, dst string, opts mvOpts) error {
 	// Check if source exists.
 	_, err := os.Lstat(src)
@@ -224,6 +225,15 @@ func moveEntry(src, dst string, opts mvOpts) error {
 		}
 	}
 
+	// R2.2: -f removes a read-only destination before moving, without prompting.
+	if opts.overwrite == modeForce {
+		if dstInfo, statErr := os.Lstat(dst); statErr == nil {
+			if dstInfo.Mode().Perm()&0o200 == 0 {
+				os.Remove(dst) // best-effort removal; rename below will report any remaining error
+			}
+		}
+	}
+
 	// R3.1: verbose output to stdout, matching GNU mv.
 	if opts.verbose {
 		fmt.Printf("renamed '%s' -> '%s'\n", src, dst)
@@ -235,22 +245,21 @@ func moveEntry(src, dst string, opts mvOpts) error {
 		return nil
 	}
 
-	// R1.1: detect cross-device error and fall back to copy-then-remove.
-	var linkErr *os.LinkError
-	if errors.As(err, &linkErr) {
-		var errno syscall.Errno
-		if errors.As(linkErr.Err, &errno) && errno == syscall.EXDEV {
-			return crossDeviceMove(src, dst)
-		}
+	// D1: detect cross-device error and fall back to copy-then-remove.
+	if errors.Is(err, syscall.EXDEV) {
+		return crossDeviceMove(src, dst)
 	}
 
 	return fmt.Errorf("cannot move '%s' to '%s': %s", src, dst, sysErrMsg(err))
 }
 
 // crossDeviceMove copies src to dst and removes src, handling both files and directories.
+// Preserves metadata (mode, timestamps, ownership where possible).
 //
 // R1.1: cross-device fallback via copy-then-remove.
 // R1.3: directories are moved without requiring a recursive flag.
+// R2.1: preserves all metadata on cross-device move.
+// R2.4: cleans up partial destination on copy failure; source is not removed.
 func crossDeviceMove(src, dst string) error {
 	srcInfo, err := os.Lstat(src)
 	if err != nil {
@@ -259,6 +268,8 @@ func crossDeviceMove(src, dst string) error {
 
 	if srcInfo.IsDir() {
 		if err := crossDeviceCopyDir(src, dst); err != nil {
+			// R2.4: clean up partial destination on failure.
+			os.RemoveAll(dst) // best-effort cleanup
 			return err
 		}
 		return os.RemoveAll(src)
@@ -276,12 +287,17 @@ func crossDeviceMove(src, dst string) error {
 	}
 
 	if err := copyFileContent(src, dst, srcInfo.Mode().Perm()); err != nil {
+		// R2.4: clean up partial destination on failure.
+		os.Remove(dst) // best-effort cleanup
 		return err
 	}
+	// R2.1: preserve timestamps and ownership after successful copy.
+	preserveMetadata(src, dst)
 	return os.Remove(src)
 }
 
 // crossDeviceCopyDir recursively copies a directory for cross-device moves.
+// R2.1: preserves directory metadata (timestamps, ownership) after children are copied.
 func crossDeviceCopyDir(src, dst string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
@@ -304,7 +320,31 @@ func crossDeviceCopyDir(src, dst string) error {
 			return err
 		}
 	}
+	// R2.1: preserve directory metadata after all children are copied
+	// (child writes would reset timestamps if done earlier).
+	preserveMetadata(src, dst)
 	return nil
+}
+
+// preserveMetadata copies timestamps and ownership from src to dst.
+// Mode is already preserved by copyFileContent via the perm parameter.
+// Ownership preservation requires root; failures are best-effort.
+//
+// R2.1: preserve all metadata on cross-device move.
+func preserveMetadata(src, dst string) {
+	srcFI, err := sys.Lstat(src)
+	if err != nil {
+		return // best-effort: metadata stat failure is not fatal for mv
+	}
+	isSymlink := srcFI.Mode&os.ModeSymlink != 0
+
+	// Preserve timestamps.
+	if !isSymlink {
+		os.Chtimes(dst, srcFI.AccessTime, srcFI.ModTime) // best-effort
+	}
+
+	// Preserve ownership (requires root).
+	os.Lchown(dst, int(srcFI.Uid), int(srcFI.Gid)) // best-effort
 }
 
 // copyFileContent copies the content and permissions of src to dst.
