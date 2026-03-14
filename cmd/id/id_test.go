@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd041-id R1.1, R1.2, R1.3 (differential tests)
+// Implements: prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4 (differential tests)
 package main
 
 import (
@@ -74,6 +74,98 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "nonexistent_user",
 			Args:      []string{"nonexistent_user_xyz_99"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.1: -u prints effective UID.
+		{
+			Name: "flag_u",
+			Args: []string{"-u"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: -u with named user.
+		{
+			Name: "flag_u_named_root",
+			Args: []string{"-u", "root"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1 + R3.1: -un prints effective user name.
+		{
+			Name: "flag_un",
+			Args: []string{"-un"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: --user long flag.
+		{
+			Name: "flag_user_long",
+			Args: []string{"--user"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -g prints effective GID.
+		{
+			Name: "flag_g",
+			Args: []string{"-g"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -g with named user.
+		{
+			Name: "flag_g_named_root",
+			Args: []string{"-g", "root"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2 + R3.1: -gn prints effective group name.
+		{
+			Name: "flag_gn",
+			Args: []string{"-gn"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -G prints all group IDs space-separated.
+		{
+			Name: "flag_G",
+			Args: []string{"-G"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -G with named user.
+		{
+			Name: "flag_G_named_root",
+			Args: []string{"-G", "root"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3 + R3.1: -Gn prints all group names space-separated.
+		{
+			Name: "flag_Gn",
+			Args: []string{"-Gn"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: conflicting selection flags — exit 1.
+		{
+			Name:      "conflict_u_g",
+			Args:      []string{"-u", "-g"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.4: conflicting selection flags -u -G — exit 1.
+		{
+			Name:      "conflict_u_G",
+			Args:      []string{"-u", "-G"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.4: conflicting selection flags -g -G — exit 1.
+		{
+			Name:      "conflict_g_G",
+			Args:      []string{"-g", "-G"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R3.1: -n without selection flag is an error.
+		{
+			Name:      "flag_n_alone",
+			Args:      []string{"-n"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: stderrNorm,

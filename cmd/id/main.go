@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd041-id R1.1, R1.2, R1.3
+// Implements: prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4
 package main
 
 import (
@@ -21,53 +21,156 @@ func main() {
 	// D2: install SIGPIPE handler before any I/O.
 	sys.InstallSIGPIPEHandler()
 
-	args := os.Args[1:]
+	opts, username := parseArgs(os.Args[1:])
 
-	// Handle --help and --version before processing.
-	if len(args) > 0 {
-		switch args[0] {
-		case "--help":
-			fmt.Print(helpText)
-			return
-		case "--version":
-			fmt.Println("id (go-unix-utils) 0.1")
-			return
-		}
+	// R2.4: only one of -u, -g, -G may be specified at a time.
+	selCount := boolCount(opts.flagUser, opts.flagGroup, opts.flagGroups)
+	if selCount > 1 {
+		fmt.Fprintf(os.Stderr, "%s: cannot print \"only\" of more than one choice\n", programName)
+		os.Exit(1)
 	}
 
-	// R1.1, R1.2: no arguments — current user; one argument — named user.
-	if len(args) == 0 {
-		if err := printCurrentUser(); err != nil {
+	// R3.1: -n without a selection flag is an error.
+	if opts.flagName && selCount == 0 {
+		fmt.Fprintf(os.Stderr, "%s: printing only names or real IDs requires -u, -g, or -G\n", programName)
+		os.Exit(1)
+	}
+
+	if username == "" {
+		if err := printCurrentUser(opts); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			os.Exit(1)
 		}
-		return
+	} else {
+		if err := printNamedUser(username, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			os.Exit(1)
+		}
+	}
+}
+
+// options holds the parsed command-line flags.
+type options struct {
+	flagUser   bool // -u / --user
+	flagGroup  bool // -g / --group
+	flagGroups bool // -G / --groups
+	flagName   bool // -n / --name
+}
+
+// parseArgs parses command-line arguments and returns options and an optional username.
+// Handles --help and --version directly (exits the process).
+func parseArgs(args []string) (options, string) {
+	var opts options
+	var username string
+
+	for _, arg := range args {
+		switch {
+		case arg == "--help":
+			fmt.Print(helpText)
+			os.Exit(0)
+		case arg == "--version":
+			fmt.Println("id (go-unix-utils) 0.1")
+			os.Exit(0)
+		case arg == "--user":
+			opts.flagUser = true
+		case arg == "--group":
+			opts.flagGroup = true
+		case arg == "--groups":
+			opts.flagGroups = true
+		case arg == "--name":
+			opts.flagName = true
+		case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--"):
+			// R2.1-R2.3: short flags, can be combined (e.g., -un, -Gn).
+			for _, ch := range arg[1:] {
+				switch ch {
+				case 'u':
+					opts.flagUser = true
+				case 'g':
+					opts.flagGroup = true
+				case 'G':
+					opts.flagGroups = true
+				case 'n':
+					opts.flagName = true
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, ch)
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+					os.Exit(1)
+				}
+			}
+		default:
+			username = arg
+		}
 	}
 
-	// R1.2: username argument provided.
-	username := args[0]
-	if err := printNamedUser(username); err != nil {
-		// R1.3: exit 1 with error on stderr for nonexistent user.
-		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
-		os.Exit(1)
+	return opts, username
+}
+
+// boolCount returns the number of true values among its arguments.
+func boolCount(flags ...bool) int {
+	n := 0
+	for _, f := range flags {
+		if f {
+			n++
+		}
 	}
+	return n
 }
 
 // printCurrentUser prints identity information for the current process user
 // using syscall-level uid/gid and os.Getgroups().
 //
 // R1.1: uid=N(name) gid=N(name) groups=N(name),N(name),...
-func printCurrentUser() error {
+// R2.1-R2.3: flag-specific output modes.
+func printCurrentUser(opts options) error {
 	uid := os.Getuid()
 	gid := os.Getgid()
 
 	uidStr := strconv.Itoa(uid)
 	gidStr := strconv.Itoa(gid)
 
+	// R2.1: -u prints only the effective UID.
+	if opts.flagUser {
+		if opts.flagName {
+			fmt.Println(lookupUserName(uidStr))
+		} else {
+			fmt.Println(uidStr)
+		}
+		return nil
+	}
+
+	// R2.2: -g prints only the effective GID.
+	if opts.flagGroup {
+		if opts.flagName {
+			fmt.Println(lookupGroupName(gidStr))
+		} else {
+			fmt.Println(gidStr)
+		}
+		return nil
+	}
+
+	// R2.3: -G prints all group IDs, space-separated.
+	if opts.flagGroups {
+		gids, err := os.Getgroups()
+		if err != nil {
+			return fmt.Errorf("failed to get supplementary groups: %w", err)
+		}
+		entries := make([]string, len(gids))
+		for i, g := range gids {
+			gs := strconv.Itoa(g)
+			if opts.flagName {
+				entries[i] = lookupGroupName(gs)
+			} else {
+				entries[i] = gs
+			}
+		}
+		fmt.Println(strings.Join(entries, " "))
+		return nil
+	}
+
+	// R1.1: default output — full identity line.
 	userName := lookupUserName(uidStr)
 	groupName := lookupGroupName(gidStr)
 
-	// R1.2: supplementary groups from the process.
 	gids, err := os.Getgroups()
 	if err != nil {
 		return fmt.Errorf("failed to get supplementary groups: %w", err)
@@ -91,16 +194,55 @@ func printCurrentUser() error {
 //
 // R1.2: query named user from the system user database.
 // R1.3: returns error if the user does not exist.
-func printNamedUser(username string) error {
+// R2.1-R2.3: flag-specific output modes.
+func printNamedUser(username string, opts options) error {
 	u, err := user.Lookup(username)
 	if err != nil {
 		return fmt.Errorf("'%s': no such user", username)
 	}
 
+	// R2.1: -u prints only the effective UID.
+	if opts.flagUser {
+		if opts.flagName {
+			fmt.Println(u.Username)
+		} else {
+			fmt.Println(u.Uid)
+		}
+		return nil
+	}
+
+	// R2.2: -g prints only the effective GID.
+	if opts.flagGroup {
+		if opts.flagName {
+			fmt.Println(lookupGroupName(u.Gid))
+		} else {
+			fmt.Println(u.Gid)
+		}
+		return nil
+	}
+
+	// R2.3: -G prints all group IDs, space-separated.
+	if opts.flagGroups {
+		gids, err := u.GroupIds()
+		if err != nil {
+			return fmt.Errorf("failed to get groups for '%s': %w", username, err)
+		}
+		entries := make([]string, len(gids))
+		for i, gs := range gids {
+			if opts.flagName {
+				entries[i] = lookupGroupName(gs)
+			} else {
+				entries[i] = gs
+			}
+		}
+		fmt.Println(strings.Join(entries, " "))
+		return nil
+	}
+
+	// R1.1: default output — full identity line.
 	userName := u.Username
 	groupName := lookupGroupName(u.Gid)
 
-	// R1.2: supplementary groups from user database.
 	gids, err := u.GroupIds()
 	if err != nil {
 		return fmt.Errorf("failed to get groups for '%s': %w", username, err)
@@ -149,6 +291,10 @@ const helpText = `Usage: id [OPTION]... [USER]
 Print user and group information for each specified USER,
 or (when USER omitted) for the current process.
 
+  -u, --user     print only the effective user ID
+  -g, --group    print only the effective group ID
+  -G, --groups   print all group IDs
+  -n, --name     print a name instead of a number, for -ugG
       --help     display this help and exit
       --version  output version information and exit
 `
