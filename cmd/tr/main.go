@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/tr implements the tr (translate or delete characters) command.
-// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3
+// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3
 package main
 
 import (
@@ -34,10 +34,11 @@ func main() {
 
 // config holds all parsed command-line options.
 type config struct {
-	set1        string
-	set2        string
-	deleteMode  bool
-	squeezeMode bool
+	set1           string
+	set2           string
+	deleteMode     bool
+	squeezeMode    bool
+	complementMode bool
 }
 
 // parseArgs parses command-line arguments into a config.
@@ -56,7 +57,7 @@ func parseArgs(args []string) (*config, error) {
 			break
 		}
 
-		// D4: Handle --help, --version, --delete, --squeeze-repeats.
+		// D4: Handle --help, --version, --delete, --squeeze-repeats, --complement.
 		if strings.HasPrefix(arg, "--") {
 			switch arg {
 			case "--help":
@@ -69,13 +70,15 @@ func parseArgs(args []string) (*config, error) {
 				cfg.deleteMode = true
 			case "--squeeze-repeats":
 				cfg.squeezeMode = true
+			case "--complement":
+				cfg.complementMode = true
 			default:
 				return nil, fmt.Errorf("unrecognized option '%s'", arg)
 			}
 			continue
 		}
 
-		// Short flags: -d, -s, or combined like -ds, -sd.
+		// Short flags: -d, -s, -c, -C, or combined like -ds, -cd.
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 			valid := true
 			for _, ch := range arg[1:] {
@@ -84,6 +87,8 @@ func parseArgs(args []string) (*config, error) {
 					cfg.deleteMode = true
 				case 's':
 					cfg.squeezeMode = true
+				case 'c', 'C':
+					cfg.complementMode = true
 				default:
 					valid = false
 				}
@@ -98,33 +103,34 @@ func parseArgs(args []string) (*config, error) {
 	}
 
 	// Validate operand count based on mode.
+	// R4.2: Exit 1 on usage errors with GNU-compatible messages.
 	switch {
 	case cfg.deleteMode && !cfg.squeezeMode:
 		// R3.1: -d alone requires exactly SET1.
 		if len(positional) < 1 {
-			return nil, fmt.Errorf("missing operand")
+			return nil, fmt.Errorf("missing operand\nTry 'tr --help' for more information.")
 		}
 		if len(positional) > 1 {
-			return nil, fmt.Errorf("extra operand %q\nOnly one string may be given when deleting without squeezing repeats.", positional[1])
+			return nil, fmt.Errorf("extra operand '%s'\nOnly one string may be given when deleting without squeezing repeats.\nTry 'tr --help' for more information.", positional[1])
 		}
 		cfg.set1 = positional[0]
 	case cfg.deleteMode && cfg.squeezeMode:
 		// R3.3: -ds requires SET1 and SET2.
 		if len(positional) < 2 {
-			return nil, fmt.Errorf("missing operand")
+			return nil, fmt.Errorf("missing operand\nTry 'tr --help' for more information.")
 		}
 		if len(positional) > 2 {
-			return nil, fmt.Errorf("extra operand %q", positional[2])
+			return nil, fmt.Errorf("extra operand '%s'\nTry 'tr --help' for more information.", positional[2])
 		}
 		cfg.set1 = positional[0]
 		cfg.set2 = positional[1]
 	case cfg.squeezeMode:
 		// R3.2: -s with one operand squeezes SET1; with two, translates then squeezes SET2.
 		if len(positional) < 1 {
-			return nil, fmt.Errorf("missing operand")
+			return nil, fmt.Errorf("missing operand\nTry 'tr --help' for more information.")
 		}
 		if len(positional) > 2 {
-			return nil, fmt.Errorf("extra operand %q", positional[2])
+			return nil, fmt.Errorf("extra operand '%s'\nTry 'tr --help' for more information.", positional[2])
 		}
 		cfg.set1 = positional[0]
 		if len(positional) == 2 {
@@ -132,11 +138,14 @@ func parseArgs(args []string) (*config, error) {
 		}
 	default:
 		// Translation mode: requires SET1 and SET2.
-		if len(positional) < 2 {
-			return nil, fmt.Errorf("missing operand")
+		if len(positional) == 0 {
+			return nil, fmt.Errorf("missing operand\nTry 'tr --help' for more information.")
+		}
+		if len(positional) == 1 {
+			return nil, fmt.Errorf("missing operand after '%s'\nTwo strings must be given when translating.\nTry 'tr --help' for more information.", positional[0])
 		}
 		if len(positional) > 2 {
-			return nil, fmt.Errorf("extra operand %q", positional[2])
+			return nil, fmt.Errorf("extra operand '%s'\nTry 'tr --help' for more information.", positional[2])
 		}
 		cfg.set1 = positional[0]
 		cfg.set2 = positional[1]
@@ -154,12 +163,31 @@ func byteSet(chars []byte) [256]bool {
 	return set
 }
 
+// complementSet returns all byte values 0-255 that are NOT in the given set,
+// in ascending order.
+// R2.4: -c/-C complements SET1.
+func complementSet(set []byte) []byte {
+	member := byteSet(set)
+	var result []byte
+	for i := 0; i < 256; i++ {
+		if !member[i] {
+			result = append(result, byte(i))
+		}
+	}
+	return result
+}
+
 // run executes the tr operation with the given configuration.
 // R1.2: Reads from stdin and writes translated output to stdout.
 func run(cfg *config, r io.Reader, w io.Writer) error {
 	set1Bytes, err := expandSet(cfg.set1)
 	if err != nil {
 		return err
+	}
+
+	// R2.4: Complement SET1 when -c/-C is active.
+	if cfg.complementMode {
+		set1Bytes = complementSet(set1Bytes)
 	}
 
 	br := bufio.NewReader(r)
@@ -620,7 +648,7 @@ func expandCharClass(name string) ([]byte, error) {
 			result = append(result, b)
 		}
 	default:
-		return nil, fmt.Errorf("invalid character class %q", name)
+		return nil, fmt.Errorf("invalid character class '%s'", name)
 	}
 	return result, nil
 }

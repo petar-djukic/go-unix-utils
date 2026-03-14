@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3 (differential tests)
+// Implements: prd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1, R4.2, R4.3 (differential tests)
 package main
 
 import (
@@ -564,6 +564,137 @@ func TestDiff(t *testing.T) {
 			Name:  "r3.3 delete squeeze no squeeze needed",
 			Args:  []string{"-ds", "x", "abc"},
 			Stdin: []byte("abcxabc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R4.1: Successful exit code (0) -- covered implicitly by all tests above
+		// with ExitCode defaulting to 0. These tests explicitly document R4.1.
+		{
+			Name:  "r4.1 translate exits 0",
+			Args:  []string{"a", "b"},
+			Stdin: []byte("abc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.1 delete exits 0",
+			Args:  []string{"-d", "a"},
+			Stdin: []byte("abc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.1 squeeze exits 0",
+			Args:  []string{"-s", "a"},
+			Stdin: []byte("aaa\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R4.2: Usage error exit code (1).
+		{
+			Name:      "r4.2 missing operand",
+			Args:      []string{},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeTrErrors},
+		},
+		{
+			Name:      "r4.2 translate missing set2",
+			Args:      []string{"abc"},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeTrErrors},
+		},
+		{
+			Name:      "r4.2 invalid character class",
+			Args:      []string{"[:bogus:]", "x"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeTrErrors},
+		},
+		{
+			Name:      "r4.2 delete with extra operand",
+			Args:      []string{"-d", "a", "b"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeTrErrors},
+		},
+		{
+			Name:      "r4.2 extra operand in translate",
+			Args:      []string{"a", "b", "c"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeTrErrors},
+		},
+
+		// R4.3, R2.4: Complement mode (-c/-C/--complement).
+		{
+			Name:  "r4.3 complement translate replaces non-alpha",
+			Args:  []string{"-c", "a-z\\n", "*"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement translate uppercase flag",
+			Args:  []string{"-C", "a-z\\n", "*"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement long flag",
+			Args:  []string{"--complement", "a-z\\n", "*"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement delete non-alpha",
+			Args:  []string{"-cd", "a-z"},
+			Stdin: []byte("hello 123 world!\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement delete keep digits",
+			Args:  []string{"-cd", "[:digit:]\\n"},
+			Stdin: []byte("abc 123 def 456\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement squeeze non-alpha",
+			Args:  []string{"-cs", "a-z", "\\n"},
+			Stdin: []byte("hello 123 world 456 foo\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement delete squeeze",
+			Args:  []string{"-cds", "[:alpha:]", "\\n"},
+			Stdin: []byte("hello   world\n123\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement translate non-alpha to star",
+			Args:  []string{"-c", "[:alpha:]\\n", "*"},
+			Stdin: []byte("abc 123 def\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement with class lower",
+			Args:  []string{"-cd", "[:lower:]"},
+			Stdin: []byte("Hello World 123\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement empty input",
+			Args:  []string{"-c", "abc", "X"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4.3 complement all chars in set",
+			Args:  []string{"-c", "a-z", "X"},
+			Stdin: []byte("hello\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
