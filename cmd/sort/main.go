@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/sort implements the sort (sort lines of text files) command.
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4
 package main
 
 import (
@@ -27,6 +27,16 @@ const (
 	sortHumanNumeric                  // R2.2: -h numeric with SI suffixes
 	sortMonth                         // R2.3: -M month abbreviation
 	sortVersion                       // R2.4: -V version number segments
+)
+
+// checkMode represents the check-sorted mode.
+// R4.2: -c checks whether input is sorted; -C suppresses the diagnostic.
+type checkMode int
+
+const (
+	checkNone  checkMode = iota // default: sort mode
+	checkDiag                   // -c: check and print diagnostic on disorder
+	checkQuiet                  // -C: check silently
 )
 
 // keyDef represents a single -k KEYDEF specification.
@@ -61,15 +71,16 @@ var monthRank = map[string]int{
 
 // config holds all parsed command-line options.
 type config struct {
-	reverse      bool     // -r: reverse sort order
-	unique       bool     // -u: output only the first of equal consecutive lines
-	stable       bool     // -s: preserve input order of equal lines
-	ignoreBlanks bool     // -b: ignore leading blanks in sort keys
-	outputFile   string   // -o FILE: write output to FILE
-	mode         sortMode // active sort comparison mode
-	keys         []keyDef // R3.2: -k KEYDEF key specifications
-	separator    byte     // R3.1: -t CHAR field separator
-	hasSeparator bool     // true when -t was specified
+	reverse      bool      // -r: reverse sort order
+	unique       bool      // -u: output only the first of equal consecutive lines
+	stable       bool      // -s: preserve input order of equal lines
+	ignoreBlanks bool      // -b: ignore leading blanks in sort keys
+	outputFile   string    // -o FILE: write output to FILE
+	mode         sortMode  // active sort comparison mode
+	check        checkMode // R4.2: -c/-C check-sorted mode
+	keys         []keyDef  // R3.2: -k KEYDEF key specifications
+	separator    byte      // R3.1: -t CHAR field separator
+	hasSeparator bool      // true when -t was specified
 	files        []string
 }
 
@@ -84,9 +95,28 @@ func main() {
 	}
 
 	if err := run(cfg); err != nil {
+		if de, ok := err.(*disorderError); ok {
+			// R4.2: -c prints diagnostic; -C is silent.
+			if cfg.check == checkDiag {
+				fmt.Fprintf(os.Stderr, "sort: %s\n", de)
+			}
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "sort: %v\n", err)
 		os.Exit(2)
 	}
+}
+
+// disorderError signals that -c/-C detected unsorted input.
+// R4.2: The diagnostic message matches GNU sort format.
+type disorderError struct {
+	source string // file name or "-" for stdin
+	lineNo int    // 1-based line number
+	line   string // content of the disordered line
+}
+
+func (e *disorderError) Error() string {
+	return fmt.Sprintf("%s:%d: disorder: %s", e.source, e.lineNo, e.line)
 }
 
 // parseArgs parses command-line arguments into a config.
@@ -135,7 +165,21 @@ func parseArgs(args []string) (*config, error) {
 				cfg.mode = sortMonth
 			case arg == "--version-sort":
 				cfg.mode = sortVersion
-			case arg == "--ignore-leading-blanks":
+			case arg == "--check" || strings.HasPrefix(arg, "--check="):
+			if strings.HasPrefix(arg, "--check=") {
+				val := arg[len("--check="):]
+				switch val {
+				case "diagnose-first":
+					cfg.check = checkDiag
+				case "quiet", "silent":
+					cfg.check = checkQuiet
+				default:
+					return nil, fmt.Errorf("invalid argument %q for '--check'", val)
+				}
+			} else {
+				cfg.check = checkDiag
+			}
+		case arg == "--ignore-leading-blanks":
 				cfg.ignoreBlanks = true
 			case arg == "--key" || strings.HasPrefix(arg, "--key="):
 				val, err := parseLongOptValue(arg, "--key", args, &i)
@@ -185,6 +229,10 @@ func parseArgs(args []string) (*config, error) {
 					cfg.mode = sortVersion
 				case 'b':
 					cfg.ignoreBlanks = true
+				case 'c':
+					cfg.check = checkDiag
+				case 'C':
+					cfg.check = checkQuiet
 				case 'k':
 					val, err := parseShortOptValue(rest, j, args, &i)
 					if err != nil {
@@ -276,6 +324,15 @@ func run(cfg *config) error {
 		applyGlobalReverse = cfg.reverse
 	}
 
+	// R4.2: -c/-C check whether input is already sorted.
+	if cfg.check != checkNone {
+		source := "-"
+		if len(cfg.files) > 0 && cfg.files[0] != "-" {
+			source = cfg.files[0]
+		}
+		return checkSorted(lines, cmp, applyGlobalReverse, source)
+	}
+
 	// GNU sort applies a last-resort full-line lexicographic comparison
 	// when the primary key comparison is equal, unless -s or -u is active.
 	useLastResort := !cfg.stable && !cfg.unique &&
@@ -309,6 +366,29 @@ func run(cfg *config) error {
 
 	// R1.6: -o FILE writes output to FILE instead of stdout.
 	return writeOutput(cfg, lines)
+}
+
+// checkSorted verifies that lines are in sorted order. Returns nil if sorted,
+// or a *disorderError indicating the first out-of-order line.
+// R4.2: -c and -C check modes.
+func checkSorted(lines [][]byte, cmp func(a, b []byte) int, reverse bool, source string) error {
+	for i := 1; i < len(lines); i++ {
+		c := cmp(lines[i-1], lines[i])
+		outOfOrder := false
+		if reverse {
+			outOfOrder = c < 0
+		} else {
+			outOfOrder = c > 0
+		}
+		if outOfOrder {
+			return &disorderError{
+				source: source,
+				lineNo: i + 1,
+				line:   string(lines[i]),
+			}
+		}
+	}
+	return nil
 }
 
 // buildCompareFunc returns a comparison function for the given sort mode.

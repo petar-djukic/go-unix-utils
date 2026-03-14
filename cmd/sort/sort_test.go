@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4 differential tests
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4 differential tests
 package main
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -412,6 +413,128 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a:1\nb:01\nc:2\nd:02\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R4.1: Exit 0 on successful sort (implicit in all above tests).
+		// R4.2: -c check sorted input exits 0.
+		{
+			Name:  "check_sorted",
+			Args:  []string{"-c"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -c check unsorted input exits 1 with diagnostic.
+		{
+			Name:      "check_unsorted",
+			Args:      []string{"-c"},
+			Stdin:     []byte("c\na\nb\n"),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.2: -C (check=quiet) unsorted input exits 1 without diagnostic.
+		{
+			Name:     "check_quiet_unsorted",
+			Args:     []string{"-C"},
+			Stdin:    []byte("c\na\nb\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+		},
+		// R4.2: -C sorted input exits 0.
+		{
+			Name:  "check_quiet_sorted",
+			Args:  []string{"-C"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: --check long form with unsorted input.
+		{
+			Name:      "check_long_unsorted",
+			Args:      []string{"--check"},
+			Stdin:     []byte("b\na\n"),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.2: --check=quiet long form.
+		{
+			Name:     "check_quiet_long",
+			Args:     []string{"--check=quiet"},
+			Stdin:    []byte("b\na\n"),
+			ExitCode: 1,
+			Env:      []string{"LC_ALL=C"},
+		},
+		// R4.2: --check=diagnose-first long form.
+		{
+			Name:      "check_diagnose_first",
+			Args:      []string{"--check=diagnose-first"},
+			Stdin:     []byte("z\na\n"),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.2: -c with empty input (trivially sorted).
+		{
+			Name:  "check_empty",
+			Args:  []string{"-c"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -c with single line (trivially sorted).
+		{
+			Name:  "check_single_line",
+			Args:  []string{"-c"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -c with -n numeric check.
+		{
+			Name:  "check_numeric_sorted",
+			Args:  []string{"-c", "-n"},
+			Stdin: []byte("1\n2\n10\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -c with -n numeric check unsorted.
+		{
+			Name:      "check_numeric_unsorted",
+			Args:      []string{"-c", "-n"},
+			Stdin:     []byte("1\n10\n2\n"),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.2: -c with -r reverse check.
+		{
+			Name:  "check_reverse_sorted",
+			Args:  []string{"-c", "-r"},
+			Stdin: []byte("c\nb\na\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -c with -r reverse check unsorted.
+		{
+			Name:      "check_reverse_unsorted",
+			Args:      []string{"-c", "-r"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.3: Invalid flag exits 2.
+		{
+			Name:      "invalid_flag",
+			Args:      []string{"--invalid-xyz"},
+			Stdin:     []byte(""),
+			ExitCode:  2,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R4.3: Invalid short flag exits 2.
+		{
+			Name:      "invalid_short_flag",
+			Args:      []string{"-Z"},
+			Stdin:     []byte(""),
+			ExitCode:  2,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -552,4 +675,21 @@ func TestDiffOutputFile(t *testing.T) {
 			t.Errorf("-o inplace mismatch:\nref: %q\ngot: %q", refData, goData)
 		}
 	})
+}
+
+// stderrBinaryName matches the binary name prefix in stderr messages
+// (e.g., "gsort:" or "sort:" or a full path to the binary).
+var stderrBinaryName = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryHelp matches the "Try '...' for more information." line
+// that GNU coreutils prints after error messages.
+var stderrTryHelp = regexp.MustCompile(`(?m)^Try '.*' for more information\.\n?`)
+
+// normalizeStderr replaces the binary name prefix in stderr and removes
+// the "Try ... --help" line so that differences between "sort:" and
+// "gsort:" do not cause false failures.
+func normalizeStderr(b []byte) []byte {
+	b = stderrBinaryName.ReplaceAll(b, []byte("SORT:"))
+	b = stderrTryHelp.ReplaceAll(b, nil)
+	return b
 }
