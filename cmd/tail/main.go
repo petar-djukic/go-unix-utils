@@ -187,13 +187,14 @@ func main() {
 
 		printed := false
 		for _, arg := range files {
-			r, closer, err := openInput(arg)
-			if err != nil {
-				// R4.4: print error and continue.
-				fmt.Fprintf(os.Stderr, "tail: %v\n", err)
+			r, closer, openErr := openInput(arg)
+			if openErr != nil {
+				// R4.4: file cannot be opened — no header, print error, continue.
+				fmt.Fprintf(os.Stderr, "tail: %v\n", openErr)
 				exitCode = 1
 				continue
 			}
+
 			if showHeaders {
 				// R3.1: blank line between files.
 				if printed {
@@ -205,11 +206,25 @@ func main() {
 				}
 				fmt.Fprintf(w, "==> %s <==\n", name)
 			}
+			printed = true
+
+			// R4.2, R4.4: check if the file is readable (e.g., not a directory).
+			// GNU tail prints the header first, then reports the read error.
+			if f, ok := r.(*os.File); ok && arg != "-" {
+				if err := checkReadable(arg, f); err != nil {
+					w.Flush() // best-effort flush before stderr
+					fmt.Fprintf(os.Stderr, "tail: %v\n", err)
+					exitCode = 1
+					closer.Close() // best-effort cleanup
+					continue
+				}
+			}
+
 			if err := processInput(r); err != nil {
+				w.Flush() // best-effort flush before stderr
 				fmt.Fprintf(os.Stderr, "tail: %v\n", err)
 				exitCode = 1
 			}
-			printed = true
 			if closer != nil {
 				closer.Close() // best-effort cleanup, error ignored
 			}
@@ -227,6 +242,7 @@ func main() {
 
 // openInput opens name for reading and returns the reader and an optional closer.
 // R1.4: "-" returns stdin with no closer.
+// R4.4: returns a descriptive error when the file cannot be opened.
 func openInput(name string) (io.Reader, io.Closer, error) {
 	if name == "-" {
 		return os.Stdin, nil, nil
@@ -239,6 +255,20 @@ func openInput(name string) (io.Reader, io.Closer, error) {
 		return nil, nil, err
 	}
 	return f, f, nil
+}
+
+// checkReadable checks if an opened file is actually readable (not a directory).
+// R4.2, R4.4: GNU tail prints "error reading 'name': Is a directory" after the
+// header for directory arguments.
+func checkReadable(name string, f *os.File) error {
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("error reading '%s': %v", name, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("error reading '%s': Is a directory", name)
+	}
+	return nil
 }
 
 // tailLines reads all input from r and writes the last n lines to w.

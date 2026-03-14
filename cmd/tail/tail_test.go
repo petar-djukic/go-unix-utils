@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements: prd055-tail R4.3 -- differential tests against gtail reference binary
-// R2.1–R2.3: byte counting, from-beginning offsets, and suffix multipliers
+// R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4
 package main
 
 import (
@@ -23,6 +23,8 @@ var stderrNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	s = strings.ReplaceAll(s, "gtail:", "tail:")
 	// macOS Go returns lowercase "no such file or directory" while GNU uses uppercase.
 	s = strings.ReplaceAll(s, "No such file or directory", "no such file or directory")
+	// Normalize directory path differences in multi-file output.
+	// GNU outputs "error reading '...'" and our code matches this format.
 	return []byte(s)
 }
 
@@ -392,6 +394,85 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "multi-file-error-middle-headers",
 			Args:      []string{"-n", "2", file5, nonExistent, file2},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.1: exit 0 on successful single file read
+		{
+			Name: "exit-0-single-file",
+			Args: []string{"-n", "3", file5},
+		},
+		// R4.1: exit 0 on successful multi-file read
+		{
+			Name: "exit-0-multi-file",
+			Args: []string{"-n", "2", file5, file2},
+		},
+		// R4.1: exit 0 on successful stdin read
+		{
+			Name:  "exit-0-stdin",
+			Args:  []string{"-n", "3"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		// R4.2: exit 1 when only file is non-existent
+		{
+			Name:      "exit-1-only-nonexistent",
+			Args:      []string{nonExistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: exit 1 with multiple non-existent files
+		{
+			Name:      "exit-1-multiple-nonexistent",
+			Args:      []string{nonExistent, filepath.Join(tmpDir, "also-missing.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2, R4.4: non-existent file at end, valid file still produces output
+		{
+			Name:      "valid-then-nonexistent",
+			Args:      []string{file5, nonExistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2, R4.4: non-existent file at start, valid file still produces output
+		{
+			Name:      "nonexistent-then-valid",
+			Args:      []string{nonExistent, file5},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2, R4.4: non-existent with byte mode
+		{
+			Name:      "nonexistent-byte-mode",
+			Args:      []string{"-c", "5", nonExistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2, R4.4: non-existent with -q (quiet still reports errors to stderr)
+		{
+			Name:      "nonexistent-quiet",
+			Args:      []string{"-q", file5, nonExistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2, R4.4: non-existent with -v (verbose still reports errors)
+		{
+			Name:      "nonexistent-verbose",
+			Args:      []string{"-v", nonExistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3: directory as input (cannot read)
+		{
+			Name:      "directory-as-input",
+			Args:      []string{tmpDir},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3, R4.4: directory mixed with valid file
+		{
+			Name:      "directory-mixed-with-valid",
+			Args:      []string{file5, tmpDir},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
