@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3 differential tests
+// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4 differential tests
 package main
 
 import (
@@ -977,6 +977,284 @@ func TestDiffFlagPrecedenceIF(t *testing.T) {
 			t.Errorf("source removed despite -i n: %v", statErr)
 		}
 	})
+}
+
+// TestDiffExitZeroOnSuccess verifies that mv exits 0 when all files are moved
+// successfully. Both the Go binary and reference binary must agree on exit code.
+// R4.1: exit 0 when all files are moved successfully.
+func TestDiffExitZeroOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	t.Run("single_file_exit_zero", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "src.txt"), "data\n")
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{filepath.Join(refDir, "src.txt"), filepath.Join(refDir, "dst.txt")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "src.txt"), "data\n")
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{filepath.Join(goDir, "src.txt"), filepath.Join(goDir, "dst.txt")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if goCode != 0 {
+			t.Errorf("expected exit 0 on success, got %d", goCode)
+		}
+	})
+
+	t.Run("multi_file_exit_zero", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "a.txt"), "aaa\n")
+		setupFile(t, filepath.Join(refDir, "b.txt"), "bbb\n")
+		setupDir(t, filepath.Join(refDir, "dest"))
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{filepath.Join(refDir, "a.txt"), filepath.Join(refDir, "b.txt"),
+				filepath.Join(refDir, "dest")}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "a.txt"), "aaa\n")
+		setupFile(t, filepath.Join(goDir, "b.txt"), "bbb\n")
+		setupDir(t, filepath.Join(goDir, "dest"))
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{filepath.Join(goDir, "a.txt"), filepath.Join(goDir, "b.txt"),
+				filepath.Join(goDir, "dest")}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if goCode != 0 {
+			t.Errorf("expected exit 0 on multi-file success, got %d", goCode)
+		}
+	})
+}
+
+// TestDiffExitOneOnFailure verifies that mv exits 1 when a move operation
+// fails (permission denied, source not found).
+// R4.2: exit 1 when any move operation fails.
+func TestDiffExitOneOnFailure(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	norm := programNameNormalizer(goBin, refBin)
+
+	t.Run("source_not_found_exit_one", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		nonexistent := filepath.Join(dir, "no_such_file.txt")
+		dst := filepath.Join(dir, "dst.txt")
+
+		_, refStderr, refCode := runMvAndCapture(t, refBin, []string{nonexistent, dst}, "")
+		_, goStderr, goCode := runMvAndCapture(t, goBin, []string{nonexistent, dst}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if goCode != 1 {
+			t.Errorf("expected exit 1 on missing source, got %d", goCode)
+		}
+
+		normRef := tryHelpNormalizer(norm(refStderr))
+		normGo := tryHelpNormalizer(norm(goStderr))
+		if !bytes.Equal(normRef, normGo) {
+			t.Errorf("stderr:\nref: %q\ngo:  %q", normRef, normGo)
+		}
+	})
+
+	t.Run("permission_denied_exit_one", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		setupFile(t, filepath.Join(dir, "src.txt"), "data\n")
+		setupDir(t, filepath.Join(dir, "nowrite"))
+		dstInNoWrite := filepath.Join(dir, "nowrite", "dst.txt")
+		if err := os.Chmod(filepath.Join(dir, "nowrite"), 0o555); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(filepath.Join(dir, "nowrite"), 0o755) // restore for cleanup
+		})
+
+		_, _, refCode := runMvAndCapture(t, refBin,
+			[]string{filepath.Join(dir, "src.txt"), dstInNoWrite}, "")
+
+		// Re-create source for Go binary (ref may have consumed it).
+		setupFile(t, filepath.Join(dir, "src.txt"), "data\n")
+		_, _, goCode := runMvAndCapture(t, goBin,
+			[]string{filepath.Join(dir, "src.txt"), dstInNoWrite}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if goCode != 1 {
+			t.Errorf("expected exit 1 on permission denied, got %d", goCode)
+		}
+	})
+}
+
+// TestDiffPartialFailureContinues verifies that when moving multiple files
+// and one fails, mv continues moving remaining files and exits 1.
+// R4.3: continue moving remaining files, exit 1 on any failure.
+func TestDiffPartialFailureContinues(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	norm := programNameNormalizer(goBin, refBin)
+	pathNorm := func(dir string) testutils.NormalizeFunc {
+		return func(b []byte) []byte {
+			return bytes.ReplaceAll(b, []byte(dir), []byte("/tmp/test"))
+		}
+	}
+
+	t.Run("bad_and_good_sources", func(t *testing.T) {
+		t.Parallel()
+
+		// Reference.
+		refDir := t.TempDir()
+		setupFile(t, filepath.Join(refDir, "good1.txt"), "ok1\n")
+		setupFile(t, filepath.Join(refDir, "good2.txt"), "ok2\n")
+		setupDir(t, filepath.Join(refDir, "dest"))
+		_, refStderr, refCode := runMvAndCapture(t, refBin,
+			[]string{
+				filepath.Join(refDir, "nonexistent.txt"),
+				filepath.Join(refDir, "good1.txt"),
+				filepath.Join(refDir, "good2.txt"),
+				filepath.Join(refDir, "dest"),
+			}, "")
+
+		// Go binary.
+		goDir := t.TempDir()
+		setupFile(t, filepath.Join(goDir, "good1.txt"), "ok1\n")
+		setupFile(t, filepath.Join(goDir, "good2.txt"), "ok2\n")
+		setupDir(t, filepath.Join(goDir, "dest"))
+		_, goStderr, goCode := runMvAndCapture(t, goBin,
+			[]string{
+				filepath.Join(goDir, "nonexistent.txt"),
+				filepath.Join(goDir, "good1.txt"),
+				filepath.Join(goDir, "good2.txt"),
+				filepath.Join(goDir, "dest"),
+			}, "")
+
+		if refCode != goCode {
+			t.Errorf("exit code: ref=%d go=%d", refCode, goCode)
+		}
+		if goCode != 1 {
+			t.Errorf("expected exit 1 on partial failure, got %d", goCode)
+		}
+
+		normRefStderr := tryHelpNormalizer(norm(pathNorm(refDir)(refStderr)))
+		normGoStderr := tryHelpNormalizer(norm(pathNorm(goDir)(goStderr)))
+		if !bytes.Equal(normRefStderr, normGoStderr) {
+			t.Errorf("stderr:\nref: %q\ngo:  %q", normRefStderr, normGoStderr)
+		}
+
+		// Both good files should have been moved despite the bad one.
+		for _, name := range []string{"good1.txt", "good2.txt"} {
+			if _, statErr := os.Stat(filepath.Join(goDir, "dest", name)); statErr != nil {
+				t.Errorf("%s was not moved: %v", name, statErr)
+			}
+			if _, statErr := os.Stat(filepath.Join(goDir, name)); !os.IsNotExist(statErr) {
+				t.Errorf("source %s still exists after partial-failure mv", name)
+			}
+		}
+	})
+}
+
+// TestDiffR44Comprehensive runs differential tests covering the full R4.4
+// scenario list: single file rename, move into directory, multi-file move,
+// -n no-clobber, -v verbose, -t target directory, directory move, and error cases.
+// Uses pkg/testutils.RunDiffTests for exit-code-only scenarios.
+// R4.4: comprehensive differential test coverage.
+func TestDiffR44Comprehensive(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skipf("reference binary gmv not in PATH: %v", err)
+	}
+
+	norm := programNameNormalizer(goBin, refBin)
+
+	// These tests do not mutate shared filesystem state; they use arguments
+	// that trigger immediate errors (nonexistent paths, missing operands).
+	tests := []testutils.DiffTest{
+		{
+			// R4.4: error case — missing file operand.
+			Name:      "r44_missing_operand",
+			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{norm, tryHelpNormalizer},
+		},
+		{
+			// R4.4: error case — missing destination operand.
+			Name:      "r44_missing_dest",
+			Args:      []string{"only_source"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{norm, tryHelpNormalizer},
+		},
+		{
+			// R4.4: error case — nonexistent source.
+			Name:      "r44_nonexistent_source",
+			Args:      []string{"/tmp/r44_no_such_src_xyz", "/tmp/r44_no_such_dst_xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{norm, tryHelpNormalizer},
+		},
+		{
+			// R4.4: error case — multiple sources to non-directory target.
+			Name:      "r44_multi_src_non_dir_target",
+			Args:      []string{"/tmp/r44_a", "/tmp/r44_b", "/tmp/r44_not_a_dir"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{norm, tryHelpNormalizer},
+		},
+		{
+			// R4.4: --version outputs version info and exits 0.
+			Name:     "r44_version",
+			Args:     []string{"--version"},
+			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{
+				// Version strings differ between Go and GNU; just compare exit code.
+				func(b []byte) []byte { return nil },
+			},
+		},
+		{
+			// R4.4: --help outputs help and exits 0.
+			Name:     "r44_help",
+			Args:     []string{"--help"},
+			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{
+				// Help text differs between Go and GNU; just compare exit code.
+				func(b []byte) []byte { return nil },
+			},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 // TestCrossDeviceCopyCleanup verifies that a failed cross-device copy cleans

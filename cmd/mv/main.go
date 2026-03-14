@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3
+// Implements: prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4
 package main
 
 import (
@@ -175,8 +175,13 @@ func main() {
 	}
 
 	// R1.2: multiple sources require destination to be a directory.
+	// R4.2: distinguish "not found" from "not a directory" to match GNU mv.
 	if len(sources) > 1 && !destIsDir {
-		fmt.Fprintf(os.Stderr, "%s: target '%s' is not a directory\n", programName, dest)
+		if destErr != nil {
+			fmt.Fprintf(os.Stderr, "%s: target '%s': No such file or directory\n", programName, dest)
+		} else {
+			fmt.Fprintf(os.Stderr, "%s: target '%s' is not a directory\n", programName, dest)
+		}
 		os.Exit(1)
 	}
 
