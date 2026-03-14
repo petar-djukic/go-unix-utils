@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4 differential tests
+// Implements: prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4 differential tests
 package main
 
 import (
@@ -1229,4 +1229,166 @@ func TestDiffFlagOrderIF(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(refDir, "order.txt")); !os.IsNotExist(statErr) {
 		t.Errorf("ref binary did not remove the file with -i -f")
 	}
+}
+
+// TestDiffVersion verifies that rm --version prints version info and exits 0.
+// R4.2: --version outputs version information to stdout and exits 0.
+func TestDiffVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "version",
+			Args:     []string{"--version"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{
+				// Version strings differ between Go and GNU; just compare exit code.
+				func(b []byte) []byte { return nil },
+			},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelp verifies that rm --help prints usage info and exits 0.
+// R4.3: --help outputs usage information to stdout and exits 0.
+func TestDiffHelp(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "help",
+			Args:     []string{"--help"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{
+				// Help text differs between Go and GNU; just compare exit code.
+				func(b []byte) []byte { return nil },
+			},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffPartialFailureExitCode verifies that when some operands succeed and
+// others fail, rm exits 1.
+// R4.1, R4.4: exit 1 when any operand fails, even if others succeed.
+func TestDiffPartialFailureExitCode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupFile(t, goDir, "exists.txt", "data\n")
+	setupFile(t, refDir, "exists.txt", "data\n")
+
+	// One file exists, one does not — partial failure.
+	args := []string{"exists.txt", "no_such_file"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if goCode != 1 {
+		t.Errorf("expected exit code 1 for partial failure, got %d", goCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify the existing file was still removed despite the other operand failing.
+	if _, statErr := os.Stat(filepath.Join(goDir, "exists.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove exists.txt despite partial failure")
+	}
+}
+
+// TestDiffAllSuccessExitCode verifies that rm exits 0 when all operands succeed.
+// R4.1: exit 0 when all files are removed successfully.
+func TestDiffAllSuccessExitCode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupFile(t, goDir, "a.txt", "aaa\n")
+	setupFile(t, goDir, "b.txt", "bbb\n")
+	setupFile(t, refDir, "a.txt", "aaa\n")
+	setupFile(t, refDir, "b.txt", "bbb\n")
+
+	args := []string{"a.txt", "b.txt"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if goCode != 0 {
+		t.Errorf("expected exit code 0, got %d", goCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+}
+
+// TestDiffNonexistentErrorMessage verifies that rm on a nonexistent file prints
+// a diagnostic to stderr matching GNU rm format.
+// R4.1: error handling for nonexistent files writes diagnostics to stderr.
+func TestDiffNonexistentErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	nameNorm := programNameNormalizer(goBin, refBin)
+	tests := []testutils.DiffTest{
+		{
+			Name:      "nonexistent_error_msg",
+			Args:      []string{"absolutely_does_not_exist_12345"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{nameNorm},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
