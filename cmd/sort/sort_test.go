@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6 differential tests
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7 differential tests
 package main
 
 import (
@@ -130,6 +130,41 @@ func TestDiff(t *testing.T) {
 			Name:  "unique_all_same",
 			Args:  []string{"-u"},
 			Stdin: []byte("a\na\na\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.5: -u with already unique input.
+		{
+			Name:  "unique_already_unique",
+			Args:  []string{"-u"},
+			Stdin: []byte("c\na\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.7: -s stable sort preserves input order of equal lines.
+		{
+			Name:  "stable_sort",
+			Args:  []string{"-s"},
+			Stdin: []byte("banana\napple\ncherry\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.7: --stable long form.
+		{
+			Name:  "stable_sort_long",
+			Args:  []string{"--stable"},
+			Stdin: []byte("cherry\napple\nbanana\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.7: -s combined with -r.
+		{
+			Name:  "stable_reverse",
+			Args:  []string{"-s", "-r"},
+			Stdin: []byte("apple\ncherry\nbanana\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.7: -s combined with -u.
+		{
+			Name:  "stable_unique",
+			Args:  []string{"-su"},
+			Stdin: []byte("b\na\nb\nc\na\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}

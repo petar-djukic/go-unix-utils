@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/sort implements the sort (sort lines of text files) command.
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7
 package main
 
 import (
@@ -21,6 +21,7 @@ import (
 type config struct {
 	reverse    bool   // -r: reverse sort order
 	unique     bool   // -u: output only the first of equal consecutive lines
+	stable     bool   // -s: preserve input order of equal lines
 	outputFile string // -o FILE: write output to FILE
 	files      []string
 }
@@ -71,6 +72,8 @@ func parseArgs(args []string) (*config, error) {
 				cfg.reverse = true
 			case arg == "--unique":
 				cfg.unique = true
+			case arg == "--stable":
+				cfg.stable = true
 			case arg == "--output" || strings.HasPrefix(arg, "--output="):
 				val, err := parseLongOptValue(arg, "--output", args, &i)
 				if err != nil {
@@ -93,6 +96,8 @@ func parseArgs(args []string) (*config, error) {
 					cfg.reverse = true
 				case 'u':
 					cfg.unique = true
+				case 's':
+					cfg.stable = true
 				case 'o':
 					val, err := parseShortOptValue(rest, j, args, &i)
 					if err != nil {
@@ -150,14 +155,20 @@ func run(cfg *config) error {
 
 	// R1.1: Sort lexicographically using byte values (LC_ALL=C).
 	// D2: byte-level comparison, no locale-aware collation.
-	sort.SliceStable(lines, func(i, j int) bool {
+	lessFunc := func(i, j int) bool {
 		cmp := bytes.Compare(lines[i], lines[j])
 		if cfg.reverse {
 			// R1.4: -r reverses the sort order.
 			return cmp > 0
 		}
 		return cmp < 0
-	})
+	}
+	if cfg.stable {
+		// R1.7: -s preserves input order of lines that compare equal.
+		sort.SliceStable(lines, lessFunc)
+	} else {
+		sort.Slice(lines, lessFunc)
+	}
 
 	// R1.5: -u outputs only the first of consecutive equal lines after sorting.
 	if cfg.unique {
