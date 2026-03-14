@@ -336,6 +336,65 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--bytes=+1K"},
 			Stdin: []byte(largeBuf),
 		},
+		// R3.1: multi-file with stdin via dash shows "standard input" header
+		{
+			Name:  "multi-file-with-stdin-dash",
+			Args:  []string{file5, "-"},
+			Stdin: []byte("stdin line\n"),
+		},
+		// R3.2: single file no header (--lines form)
+		{
+			Name: "single-file-no-header-lines",
+			Args: []string{"--lines=3", file5},
+		},
+		// R3.3: --quiet long form suppresses headers
+		{
+			Name: "quiet-long-form-multi-file",
+			Args: []string{"--quiet", file20, file5},
+		},
+		// R3.3: --silent long form suppresses headers
+		{
+			Name: "silent-long-form-multi-file",
+			Args: []string{"--silent", file20, file5},
+		},
+		// R3.3: -q with single file (no-op, but must not error)
+		{
+			Name: "quiet-single-file",
+			Args: []string{"-q", file5},
+		},
+		// R3.4: --verbose long form forces header on single file
+		{
+			Name: "verbose-long-form-single-file",
+			Args: []string{"--verbose", file5},
+		},
+		// R3.4: -v with multiple files (headers still shown)
+		{
+			Name: "verbose-multi-file",
+			Args: []string{"-v", file20, file5},
+		},
+		// R3.4: -v with stdin (no files) shows "standard input" header
+		{
+			Name:  "verbose-stdin-no-files",
+			Args:  []string{"-v"},
+			Stdin: []byte(lines5),
+		},
+		// R3.1: multi-file with -n +N from start
+		{
+			Name: "multi-file-n-plus-3",
+			Args: []string{"-n", "+3", file20, file5},
+		},
+		// R3.1: multi-file with -c byte mode
+		{
+			Name: "multi-file-c-3",
+			Args: []string{"-c", "3", fileBytes, file5},
+		},
+		// R3.1, R4.4: non-existent between valid files with headers
+		{
+			Name:      "multi-file-error-middle-headers",
+			Args:      []string{"-n", "2", file5, nonExistent, file2},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
