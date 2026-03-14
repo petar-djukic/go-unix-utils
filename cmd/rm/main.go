@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd058-rm R1.1-R1.4, R2.2, R3.3
+// Implements: prd058-rm R1.1-R1.4, R2.1-R2.4, R3.3
 package main
 
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"unicode"
@@ -19,10 +21,18 @@ import (
 // programName is the name used in error messages.
 const programName = "rm"
 
+// errAlreadyReported signals that errors have been printed to stderr
+// by the function that encountered them. The main loop should not
+// print this error again.
+var errAlreadyReported = errors.New("already reported")
+
 // rmOpts holds all flag state for an rm invocation.
 type rmOpts struct {
-	force   bool // -f: ignore nonexistent files, never prompt
-	verbose bool // -v: print each removal
+	force         bool // -f: ignore nonexistent files, never prompt
+	recursive     bool // -r/-R: remove directories recursively
+	dir           bool // -d: remove empty directories
+	verbose       bool // -v: print each removal
+	oneFileSystem bool // --one-file-system: skip directories on different devices
 }
 
 func main() {
@@ -38,8 +48,14 @@ func main() {
 		switch {
 		case arg == "--force":
 			opts.force = true
+		case arg == "--recursive":
+			opts.recursive = true
+		case arg == "--dir":
+			opts.dir = true
 		case arg == "--verbose":
 			opts.verbose = true
+		case arg == "--one-file-system":
+			opts.oneFileSystem = true
 		case arg == "--version":
 			fmt.Println("rm (go-unix-utils) 0.1")
 			os.Exit(0)
@@ -61,6 +77,10 @@ func main() {
 				switch flags[j] {
 				case 'f':
 					opts.force = true
+				case 'r', 'R':
+					opts.recursive = true
+				case 'd':
+					opts.dir = true
 				case 'v':
 					opts.verbose = true
 				default:
@@ -88,7 +108,9 @@ func main() {
 	exitCode := 0
 	for _, path := range operands {
 		if err := removeFile(path, opts); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			if !errors.Is(err, errAlreadyReported) {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			}
 			exitCode = 1
 		}
 	}
@@ -98,14 +120,16 @@ func main() {
 	}
 }
 
-// removeFile removes a single file at path, respecting the options.
+// removeFile removes a single file or directory at path, respecting the options.
 //
 // R1.1: Remove files using os.Remove (unlink).
-// R1.2: Without -r, refuse to remove directories.
+// R1.2: Without -r or -d, refuse to remove directories.
 // R1.3: Refuse to remove '.' or '..'.
 // R1.4: Print error and continue on failure.
+// R2.1: -r removes directories recursively.
 // R2.2: -f suppresses errors for nonexistent files.
-// R3.3: -v prints "removed '<path>'" to stdout.
+// R2.4: -d removes empty directories.
+// R3.3: -v prints removal messages to stdout.
 func removeFile(path string, opts rmOpts) error {
 	// Check if the path exists.
 	info, statErr := os.Lstat(path)
@@ -117,12 +141,30 @@ func removeFile(path string, opts rmOpts) error {
 		return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(statErr))
 	}
 
-	// R1.2: without -r, refuse to remove directories.
-	// R1.3: '.' and '..' are directories, so this check covers them too.
-	// The special "refusing to remove '.' or '..'" message is emitted only
-	// with -r (implemented in a later task). Without -r, the generic
-	// directory error matches GNU rm behavior.
 	if info.IsDir() {
+		// R1.3/D3: Reject '.' and '..' when -r or -d is active.
+		base := filepath.Base(path)
+		if (opts.recursive || opts.dir) && (base == "." || base == "..") {
+			return fmt.Errorf("refusing to remove '.' or '..' directory: skipping '%s'", path)
+		}
+
+		// R2.1: -r removes directories recursively.
+		if opts.recursive {
+			return removeRecursive(path, opts)
+		}
+
+		// R2.4: -d removes empty directories.
+		if opts.dir {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
+			}
+			if opts.verbose {
+				fmt.Fprintf(os.Stdout, "removed directory '%s'\n", path)
+			}
+			return nil
+		}
+
+		// R1.2: Without -r or -d, refuse to remove directories.
 		return fmt.Errorf("cannot remove '%s': Is a directory", path)
 	}
 
@@ -143,13 +185,97 @@ func removeFile(path string, opts rmOpts) error {
 	return nil
 }
 
+// entry records a path and whether it is a directory, used for post-order removal.
+type entry struct {
+	path  string
+	isDir bool
+}
+
+// removeRecursive removes a directory tree rooted at path. It collects entries
+// via filepath.WalkDir and removes them in reverse order (children before
+// parents) per D4.
+//
+// R2.1: Recursive directory removal.
+// R2.3: --one-file-system skips directories on different devices.
+// D2: Symlinks are removed but never followed.
+// D4: Post-order removal via reversed WalkDir collection.
+func removeRecursive(path string, opts rmOpts) error {
+	var rootDev uint64
+	if opts.oneFileSystem {
+		fi, err := sys.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
+		}
+		rootDev = fi.Dev
+	}
+
+	var entries []entry
+	hadError := false
+
+	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Permission denied or other error accessing this entry.
+			fmt.Fprintf(os.Stderr, "%s: cannot remove '%s': %s\n", programName, p, sysErrMsg(err))
+			hadError = true
+			return nil
+		}
+
+		// R2.3: --one-file-system skips directories on different devices.
+		if opts.oneFileSystem && d.IsDir() && p != path {
+			fi, statErr := sys.Lstat(p)
+			if statErr != nil {
+				fmt.Fprintf(os.Stderr, "%s: cannot remove '%s': %s\n", programName, p, sysErrMsg(statErr))
+				hadError = true
+				return filepath.SkipDir
+			}
+			if fi.Dev != rootDev {
+				fmt.Fprintf(os.Stderr, "%s: skipping '%s', since it's on a different device\n", programName, p)
+				return filepath.SkipDir
+			}
+		}
+
+		entries = append(entries, entry{path: p, isDir: d.IsDir()})
+		return nil
+	})
+
+	// D4: Remove in reverse order (children before parents).
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if err := os.Remove(e.path); err != nil {
+			if opts.force && errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "%s: cannot remove '%s': %s\n", programName, e.path, sysErrMsg(err))
+			hadError = true
+			continue
+		}
+		// R3.3: -v prints each removal to stdout.
+		if opts.verbose {
+			if e.isDir {
+				fmt.Fprintf(os.Stdout, "removed directory '%s'\n", e.path)
+			} else {
+				fmt.Fprintf(os.Stdout, "removed '%s'\n", e.path)
+			}
+		}
+	}
+
+	if hadError {
+		return errAlreadyReported
+	}
+	return nil
+}
+
 // printUsage prints a brief usage message to stdout.
 func printUsage() {
 	fmt.Println("Usage: rm [OPTION]... [FILE]...")
 	fmt.Println("Remove (unlink) the FILE(s).")
 	fmt.Println()
 	fmt.Println("  -f, --force           ignore nonexistent files and arguments, never prompt")
+	fmt.Println("  -r, -R, --recursive   remove directories and their contents recursively")
+	fmt.Println("  -d, --dir             remove empty directories")
 	fmt.Println("  -v, --verbose         explain what is being done")
+	fmt.Println("      --one-file-system when removing a hierarchy recursively, skip any")
+	fmt.Println("                          directory on a different file system")
 	fmt.Println("      --help            display this help and exit")
 	fmt.Println("      --version         output version information and exit")
 }

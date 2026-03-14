@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd058-rm R1.1-R1.4, R2.2, R3.3 differential tests
+// Implements: prd058-rm R1.1-R1.4, R2.1-R2.4, R3.3 differential tests
 package main
 
 import (
@@ -237,6 +237,22 @@ func setupFile(t *testing.T, dir, name, content string) string {
 	return path
 }
 
+// setupTree creates a directory tree for recursive removal tests:
+//
+//	<dir>/tree/
+//	<dir>/tree/sub/
+//	<dir>/tree/sub/leaf.txt
+//
+// Uses a single child per directory to avoid ordering issues in verbose output.
+func setupTree(t *testing.T, dir string) {
+	t.Helper()
+	subDir := filepath.Join(dir, "tree", "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	setupFile(t, subDir, "leaf.txt", "data\n")
+}
+
 // normalizeBinaryNames replaces binary paths with "rm" in output for comparison.
 func normalizeBinaryNames(b []byte, goBin, refBin string) []byte {
 	b = bytes.ReplaceAll(b, []byte(refBin), []byte("rm"))
@@ -445,5 +461,415 @@ func TestDiffBundledFlags(t *testing.T) {
 	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
 	if !bytes.Equal(goStderr, refStderr) {
 		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+}
+
+// TestDiffRecursiveRemoval verifies rm -r removes a directory tree.
+// AC1: rm -r removes a directory tree including nested files and subdirectories.
+func TestDiffRecursiveRemoval(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"-r", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify tree was removed.
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
+	}
+}
+
+// TestDiffRecursiveUpperR verifies rm -R behaves identically to rm -r.
+// AC2: rm -R behaves identically to rm -r.
+func TestDiffRecursiveUpperR(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"-R", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify tree was removed.
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
+	}
+}
+
+// TestDiffDirEmptyDir verifies rm -d removes an empty directory.
+// AC3: rm -d removes an empty directory.
+func TestDiffDirEmptyDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	if err := os.Mkdir(filepath.Join(goDir, "emptydir"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(refDir, "emptydir"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	args := []string{"-d", "emptydir"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify directory was removed.
+	if _, statErr := os.Stat(filepath.Join(goDir, "emptydir")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the empty directory")
+	}
+}
+
+// TestDiffDirNonEmptyDir verifies rm -d fails on non-empty directory.
+// AC3: rm -d fails with diagnostic on non-empty directory.
+func TestDiffDirNonEmptyDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	nameNorm := programNameNormalizer(goBin, refBin)
+
+	// Create a non-empty directory that both binaries will try (and fail) to remove.
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "nonempty")
+	if mkErr := os.Mkdir(targetDir, 0o755); mkErr != nil {
+		t.Fatalf("mkdir: %v", mkErr)
+	}
+	setupFile(t, targetDir, "child.txt", "data\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "dir_nonempty",
+			Args:      []string{"-d", targetDir},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{nameNorm},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+
+	// Verify directory still exists.
+	if _, statErr := os.Stat(targetDir); statErr != nil {
+		t.Errorf("directory should still exist after failed rm -d: %v", statErr)
+	}
+}
+
+// TestDiffRecursiveForce verifies rm -rf removes a directory tree silently.
+func TestDiffRecursiveForce(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"-rf", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify tree was removed.
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
+	}
+}
+
+// TestDiffRecursiveVerbose verifies rm -rv prints each removal in the tree.
+// Uses a simple tree with one child per directory to avoid ordering issues.
+func TestDiffRecursiveVerbose(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"-rv", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+}
+
+// TestDiffRecursiveSymlinkNotFollowed verifies that rm -r removes symlinks
+// without following them into the target directory.
+// AC5: Recursive removal does not follow symlinks to directories.
+// D2: Symlinks encountered during recursive traversal are removed but never followed.
+func TestDiffRecursiveSymlinkNotFollowed(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	// Create target directory that should survive removal.
+	for _, dir := range []string{goDir, refDir} {
+		targetDir := filepath.Join(dir, "target_dir")
+		if err := os.Mkdir(targetDir, 0o755); err != nil {
+			t.Fatalf("mkdir target: %v", err)
+		}
+		setupFile(t, targetDir, "precious.txt", "keep\n")
+
+		// Create tree with a symlink to target_dir.
+		treeDir := filepath.Join(dir, "tree")
+		if err := os.Mkdir(treeDir, 0o755); err != nil {
+			t.Fatalf("mkdir tree: %v", err)
+		}
+		setupFile(t, treeDir, "file.txt", "data\n")
+		if err := os.Symlink(targetDir, filepath.Join(treeDir, "link")); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+	}
+
+	args := []string{"-r", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify tree was removed.
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
+	}
+
+	// Verify target_dir and its contents still exist (symlink was not followed).
+	if _, statErr := os.Stat(filepath.Join(goDir, "target_dir", "precious.txt")); statErr != nil {
+		t.Errorf("target_dir/precious.txt should still exist: %v", statErr)
+	}
+}
+
+// TestDiffRecursiveDot verifies that rm -r . and rm -r .. produce errors.
+// AC6: rm -r . and rm -r .. both produce an error and exit non-zero.
+// D3: Reject arguments '.' and '..' with error matching GNU rm behavior.
+func TestDiffRecursiveDot(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	nameNorm := programNameNormalizer(goBin, refBin)
+	tests := []testutils.DiffTest{
+		{
+			Name:      "recursive_dot",
+			Args:      []string{"-r", "."},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{nameNorm},
+		},
+		{
+			Name:      "recursive_dotdot",
+			Args:      []string{"-r", ".."},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{nameNorm},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffOneFileSystemSameDevice verifies that --one-file-system works
+// normally on a tree that resides on a single device (no skipping).
+// AC4: rm --one-file-system skips directories on different mount points.
+func TestDiffOneFileSystemSameDevice(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"--one-file-system", "-r", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Verify tree was removed (same device, so no skipping).
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
+	}
+}
+
+// TestDiffRecursiveLongFlag verifies --recursive works.
+func TestDiffRecursiveLongFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"--recursive", "tree"}
+
+	goStdout, goStderr, goCode := runAndCapture(t, goBin, args, goDir)
+	refStdout, refStderr, refCode := runAndCapture(t, refBin, args, refDir)
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
 	}
 }
