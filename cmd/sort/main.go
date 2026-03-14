@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/sort implements the sort (sort lines of text files) command.
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
 package main
 
 import (
@@ -29,6 +29,21 @@ const (
 	sortVersion                       // R2.4: -V version number segments
 )
 
+// keyDef represents a single -k KEYDEF specification.
+// R3.2: KEYDEF format is F[.C][OPTS][,F[.C][OPTS]].
+type keyDef struct {
+	startField  int      // 1-based start field number
+	startChar   int      // 1-based start character position (0 = field start)
+	endField    int      // 1-based end field number (0 = end of line)
+	endChar     int      // 1-based end character position (0 = end of field)
+	mode        sortMode // per-key sort mode
+	hasMode     bool     // true if mode was explicitly set on this key
+	reverse     bool     // per-key reverse
+	hasReverse  bool     // true if reverse was explicitly set on this key
+	ignoreBlank bool     // per-key ignore leading blanks
+	hasBlank    bool     // true if ignoreBlank was explicitly set on this key
+}
+
 // siMultipliers maps SI suffix characters to their multiplier values.
 // R2.2: K, M, G, T, P, E, Z, Y suffixes for human-numeric sort.
 var siMultipliers = map[byte]float64{
@@ -46,12 +61,16 @@ var monthRank = map[string]int{
 
 // config holds all parsed command-line options.
 type config struct {
-	reverse    bool     // -r: reverse sort order
-	unique     bool     // -u: output only the first of equal consecutive lines
-	stable     bool     // -s: preserve input order of equal lines
-	outputFile string   // -o FILE: write output to FILE
-	mode       sortMode // active sort comparison mode
-	files      []string
+	reverse      bool     // -r: reverse sort order
+	unique       bool     // -u: output only the first of equal consecutive lines
+	stable       bool     // -s: preserve input order of equal lines
+	ignoreBlanks bool     // -b: ignore leading blanks in sort keys
+	outputFile   string   // -o FILE: write output to FILE
+	mode         sortMode // active sort comparison mode
+	keys         []keyDef // R3.2: -k KEYDEF key specifications
+	separator    byte     // R3.1: -t CHAR field separator
+	hasSeparator bool     // true when -t was specified
+	files        []string
 }
 
 func main() {
@@ -116,6 +135,28 @@ func parseArgs(args []string) (*config, error) {
 				cfg.mode = sortMonth
 			case arg == "--version-sort":
 				cfg.mode = sortVersion
+			case arg == "--ignore-leading-blanks":
+				cfg.ignoreBlanks = true
+			case arg == "--key" || strings.HasPrefix(arg, "--key="):
+				val, err := parseLongOptValue(arg, "--key", args, &i)
+				if err != nil {
+					return nil, err
+				}
+				kd, err := parseKeyDef(val)
+				if err != nil {
+					return nil, err
+				}
+				cfg.keys = append(cfg.keys, kd)
+			case arg == "--field-separator" || strings.HasPrefix(arg, "--field-separator="):
+				val, err := parseLongOptValue(arg, "--field-separator", args, &i)
+				if err != nil {
+					return nil, err
+				}
+				if len(val) != 1 {
+					return nil, fmt.Errorf("multi-character tab %q", val)
+				}
+				cfg.separator = val[0]
+				cfg.hasSeparator = true
 			default:
 				return nil, fmt.Errorf("unrecognized option '%s'", arg)
 			}
@@ -142,6 +183,30 @@ func parseArgs(args []string) (*config, error) {
 					cfg.mode = sortMonth
 				case 'V':
 					cfg.mode = sortVersion
+				case 'b':
+					cfg.ignoreBlanks = true
+				case 'k':
+					val, err := parseShortOptValue(rest, j, args, &i)
+					if err != nil {
+						return nil, err
+					}
+					kd, err := parseKeyDef(val)
+					if err != nil {
+						return nil, err
+					}
+					cfg.keys = append(cfg.keys, kd)
+					j = len(rest) // consumed rest
+				case 't':
+					val, err := parseShortOptValue(rest, j, args, &i)
+					if err != nil {
+						return nil, err
+					}
+					if len(val) != 1 {
+						return nil, fmt.Errorf("multi-character tab %q", val)
+					}
+					cfg.separator = val[0]
+					cfg.hasSeparator = true
+					j = len(rest) // consumed rest
 				case 'o':
 					val, err := parseShortOptValue(rest, j, args, &i)
 					if err != nil {
@@ -197,19 +262,31 @@ func run(cfg *config) error {
 		return err
 	}
 
-	// Build comparison function based on sort mode.
-	cmp := buildCompareFunc(cfg.mode)
+	// Build comparison function based on sort mode and key specifications.
+	// R3.2: When keys are specified, use key-based comparison.
+	var cmp func(a, b []byte) int
+	var applyGlobalReverse bool
+
+	if len(cfg.keys) > 0 {
+		cmp = buildKeyCompareFunc(cfg)
+		// Per-key reverse is handled inside buildKeyCompareFunc.
+		applyGlobalReverse = false
+	} else {
+		cmp = buildCompareFunc(cfg.mode)
+		applyGlobalReverse = cfg.reverse
+	}
 
 	// GNU sort applies a last-resort full-line lexicographic comparison
 	// when the primary key comparison is equal, unless -s or -u is active.
-	useLastResort := !cfg.stable && !cfg.unique && cfg.mode != sortLexicographic
+	useLastResort := !cfg.stable && !cfg.unique &&
+		(len(cfg.keys) > 0 || cfg.mode != sortLexicographic)
 
 	lessFunc := func(i, j int) bool {
 		c := cmp(lines[i], lines[j])
 		if c == 0 && useLastResort {
 			c = bytes.Compare(lines[i], lines[j])
 		}
-		if cfg.reverse {
+		if applyGlobalReverse {
 			// R1.4: -r reverses the sort order.
 			return c > 0
 		}
@@ -573,6 +650,219 @@ func isDigit(c byte) bool {
 
 func isAlpha(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// --- R3.2: Key definition parsing ---
+
+// parseKeyDef parses a KEYDEF string from -k into a keyDef.
+// R3.2: Format is F[.C][OPTS][,F[.C][OPTS]].
+func parseKeyDef(s string) (keyDef, error) {
+	kd := keyDef{}
+	parts := strings.SplitN(s, ",", 2)
+
+	// Parse start position.
+	field, char, rest := parseFieldPos(parts[0])
+	kd.startField = field
+	kd.startChar = char
+	parseKeyOpts(&kd, rest)
+
+	// Parse end position if present.
+	if len(parts) > 1 {
+		field, char, rest = parseFieldPos(parts[1])
+		kd.endField = field
+		kd.endChar = char
+		parseKeyOpts(&kd, rest)
+	}
+
+	if kd.startField < 1 {
+		return kd, fmt.Errorf("invalid key field number")
+	}
+	return kd, nil
+}
+
+// parseFieldPos parses F[.C] from the beginning of s, returning the field
+// number, character position, and remaining string (modifier letters).
+func parseFieldPos(s string) (field, char int, rest string) {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i > 0 {
+		field, _ = strconv.Atoi(s[:i])
+	}
+	rest = s[i:]
+
+	if len(rest) > 0 && rest[0] == '.' {
+		rest = rest[1:]
+		j := 0
+		for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+			j++
+		}
+		if j > 0 {
+			char, _ = strconv.Atoi(rest[:j])
+		}
+		rest = rest[j:]
+	}
+	return
+}
+
+// parseKeyOpts parses modifier letters (n, h, M, V, r, b) from a string
+// and applies them to the key definition.
+func parseKeyOpts(kd *keyDef, opts string) {
+	for _, c := range opts {
+		switch c {
+		case 'n':
+			kd.mode = sortNumeric
+			kd.hasMode = true
+		case 'h':
+			kd.mode = sortHumanNumeric
+			kd.hasMode = true
+		case 'M':
+			kd.mode = sortMonth
+			kd.hasMode = true
+		case 'V':
+			kd.mode = sortVersion
+			kd.hasMode = true
+		case 'r':
+			kd.reverse = true
+			kd.hasReverse = true
+		case 'b':
+			kd.ignoreBlank = true
+			kd.hasBlank = true
+		}
+	}
+}
+
+// --- R3.1, R3.2: Key extraction ---
+
+// extractKey extracts the sort key bytes from a line based on the key definition.
+// R3.1: Uses the configured field separator or default blank-to-non-blank.
+// R3.2: Respects field and character positions from the KEYDEF.
+func extractKey(line []byte, kd keyDef, sep byte, hasSep bool, globalIgnoreBlank bool) []byte {
+	var fields [][]byte
+	if hasSep {
+		fields = bytes.Split(line, []byte{sep})
+	} else {
+		fields = bytes.Fields(line)
+	}
+
+	sf := kd.startField - 1
+	if sf >= len(fields) {
+		return nil
+	}
+
+	ef := len(fields) - 1
+	if kd.endField > 0 {
+		ef = kd.endField - 1
+		if ef >= len(fields) {
+			ef = len(fields) - 1
+		}
+	}
+	if sf > ef {
+		return nil
+	}
+
+	ignoreBlank := globalIgnoreBlank
+	if kd.hasBlank {
+		ignoreBlank = kd.ignoreBlank
+	}
+
+	// Single field, no character offsets: return the whole field.
+	if sf == ef && kd.startChar <= 1 && kd.endChar == 0 {
+		f := fields[sf]
+		if ignoreBlank {
+			f = bytes.TrimLeft(f, " \t")
+		}
+		return f
+	}
+
+	// Single field with character positions.
+	if sf == ef {
+		f := fields[sf]
+		if ignoreBlank {
+			f = bytes.TrimLeft(f, " \t")
+		}
+		startOff := 0
+		if kd.startChar > 1 {
+			startOff = kd.startChar - 1
+		}
+		endOff := len(f)
+		if kd.endChar > 0 && kd.endChar < len(f) {
+			endOff = kd.endChar
+		}
+		if startOff >= len(f) || startOff >= endOff {
+			return nil
+		}
+		return f[startOff:endOff]
+	}
+
+	// Multi-field range.
+	var result []byte
+	for i := sf; i <= ef; i++ {
+		f := fields[i]
+		if i == sf {
+			if ignoreBlank {
+				f = bytes.TrimLeft(f, " \t")
+			}
+			if kd.startChar > 1 {
+				off := kd.startChar - 1
+				if off >= len(f) {
+					f = nil
+				} else {
+					f = f[off:]
+				}
+			}
+		}
+		if i == ef && kd.endChar > 0 {
+			if kd.endChar < len(f) {
+				f = f[:kd.endChar]
+			}
+		}
+		if len(result) > 0 {
+			if hasSep {
+				result = append(result, sep)
+			} else {
+				result = append(result, ' ')
+			}
+		}
+		result = append(result, f...)
+	}
+	return result
+}
+
+// --- R3.2, R3.3: Key-based comparison ---
+
+// buildKeyCompareFunc returns a comparison function that compares lines
+// using the configured key specifications. Per-key modes and reverse
+// settings are applied within the function.
+// R3.3: Earlier keys take precedence; later keys break ties.
+func buildKeyCompareFunc(cfg *config) func(a, b []byte) int {
+	return func(a, b []byte) int {
+		for _, kd := range cfg.keys {
+			ka := extractKey(a, kd, cfg.separator, cfg.hasSeparator, cfg.ignoreBlanks)
+			kb := extractKey(b, kd, cfg.separator, cfg.hasSeparator, cfg.ignoreBlanks)
+
+			mode := cfg.mode
+			if kd.hasMode {
+				mode = kd.mode
+			}
+
+			cmp := buildCompareFunc(mode)
+			c := cmp(ka, kb)
+
+			if c != 0 {
+				rev := cfg.reverse
+				if kd.hasReverse {
+					rev = kd.reverse
+				}
+				if rev {
+					c = -c
+				}
+				return c
+			}
+		}
+		return 0
+	}
 }
 
 // writeOutput writes sorted lines to the configured output destination.

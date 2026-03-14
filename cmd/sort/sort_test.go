@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4 differential tests
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4 differential tests
 package main
 
 import (
@@ -319,6 +319,97 @@ func TestDiff(t *testing.T) {
 			Name:  "version_sort_reverse",
 			Args:  []string{"-Vr"},
 			Stdin: []byte("file1\nfile10\nfile2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1, R3.2: -t with -k and -n: numeric sort on second colon-delimited field.
+		{
+			Name:  "key_numeric_colon",
+			Args:  []string{"-t:", "-k2,2", "-n"},
+			Stdin: []byte("c:10\na:2\nb:1\nd:20\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k with per-key numeric modifier.
+		{
+			Name:  "key_perkey_numeric",
+			Args:  []string{"-t:", "-k2,2n"},
+			Stdin: []byte("c:10\na:2\nb:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1, R3.2: -t with -k and -h: human-numeric sort on key field.
+		{
+			Name:  "key_human_numeric",
+			Args:  []string{"-t:", "-k2,2", "-h"},
+			Stdin: []byte("a:1K\nb:2M\nc:500\nd:1G\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k with per-key human-numeric modifier.
+		{
+			Name:  "key_perkey_human",
+			Args:  []string{"-t:", "-k2,2h"},
+			Stdin: []byte("a:1G\nb:1M\nc:1K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1, R3.2: -t with -k and -M: month sort on key field.
+		{
+			Name:  "key_month",
+			Args:  []string{"-t:", "-k2,2", "-M"},
+			Stdin: []byte("a:MAR\nb:JAN\nc:FEB\nd:DEC\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k with per-key month modifier.
+		{
+			Name:  "key_perkey_month",
+			Args:  []string{"-t:", "-k2,2M"},
+			Stdin: []byte("x:DEC\ny:JAN\nz:JUL\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1, R3.2: -t with -k and -V: version sort on key field.
+		{
+			Name:  "key_version",
+			Args:  []string{"-t:", "-k2,2", "-V"},
+			Stdin: []byte("a:1.10\nb:1.2\nc:1.1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k with per-key version modifier.
+		{
+			Name:  "key_perkey_version",
+			Args:  []string{"-t:", "-k2,2V"},
+			Stdin: []byte("a:file10\nb:file2\nc:file1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: Multiple -k options. First key takes precedence, second breaks ties.
+		{
+			Name:  "multi_key",
+			Args:  []string{"-t:", "-k1,1", "-k2,2n"},
+			Stdin: []byte("b:2\na:10\na:3\nb:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k with reverse per-key modifier.
+		{
+			Name:  "key_perkey_reverse",
+			Args:  []string{"-t:", "-k2,2nr"},
+			Stdin: []byte("a:10\nb:2\nc:1\nd:20\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: -b ignore leading blanks with key sort.
+		{
+			Name:  "key_ignore_blanks",
+			Args:  []string{"-b", "-k2,2"},
+			Stdin: []byte("1  b\n2 a\n3   c\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k without -t uses blank-separated fields, numeric.
+		{
+			Name:  "key_blank_fields_numeric",
+			Args:  []string{"-k2,2", "-n"},
+			Stdin: []byte("a 10\nb 2\nc 1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1, R3.2: -k with global -n and -u.
+		{
+			Name:  "key_numeric_unique",
+			Args:  []string{"-t:", "-k2,2", "-nu"},
+			Stdin: []byte("a:1\nb:01\nc:2\nd:02\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
