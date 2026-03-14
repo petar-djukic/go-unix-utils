@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4 differential tests
+// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4 differential tests
 package main
 
 import (
@@ -208,5 +208,348 @@ func TestDiffMultipleSourcesCopy(t *testing.T) {
 			},
 		}
 		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestDiffRecursiveCopy verifies recursive directory copying with -r.
+// R2.1: -r copies directories recursively preserving structure.
+// Note: differential tests compare exit code and stdout/stderr only. Filesystem
+// state is verified in TestRecursiveCopyState which runs the go binary alone.
+func TestDiffRecursiveCopy(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	// Each binary needs its own temp dir so the first run doesn't affect the
+	// second. We run each independently and compare outputs manually.
+	for _, flagVariant := range []struct {
+		name string
+		flag string
+	}{
+		{"r_flag", "-r"},
+		{"R_flag", "-R"},
+		{"recursive_long", "--recursive"},
+	} {
+		fv := flagVariant
+		t.Run(fv.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Shared source tree.
+			srcBase := t.TempDir()
+			srcDir := filepath.Join(srcBase, "srcdir")
+			subDir := filepath.Join(srcDir, "sub")
+			os.MkdirAll(subDir, 0o755)                                       //nolint:errcheck
+			os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("aaa\n"), 0o644) //nolint:errcheck
+			os.WriteFile(filepath.Join(subDir, "b.txt"), []byte("bbb\n"), 0o644) //nolint:errcheck
+
+			// Separate dest dirs for ref and go binaries.
+			refDir := t.TempDir()
+			goDir := t.TempDir()
+
+			refDst := filepath.Join(refDir, "dstdir")
+			goDst := filepath.Join(goDir, "dstdir")
+
+			refTests := []testutils.DiffTest{{
+				Name:     fv.name + "_ref_vs_go",
+				Args:     []string{fv.flag, srcDir, refDst},
+				Env:      []string{"LC_ALL=C"},
+				ExitCode: 0,
+			}}
+			goTests := []testutils.DiffTest{{
+				Name:     fv.name + "_ref_vs_go",
+				Args:     []string{fv.flag, srcDir, goDst},
+				Env:      []string{"LC_ALL=C"},
+				ExitCode: 0,
+			}}
+
+			// Run ref binary with refDst, go binary with goDst via
+			// separate RunDiffTests calls using goBin as both ref and go
+			// in each call, then compare results. Actually, just run each
+			// binary directly and compare exit codes.
+			runAndCheck := func(binary, dst string) (int, []byte, []byte) {
+				t.Helper()
+				cmd := exec.Command(binary, fv.flag, srcDir, dst)
+				cmd.Env = append(os.Environ(), "LC_ALL=C")
+				var outBuf, errBuf bytes.Buffer
+				cmd.Stdout = &outBuf
+				cmd.Stderr = &errBuf
+				runErr := cmd.Run()
+				code := 0
+				if runErr != nil {
+					if exitErr, ok := runErr.(*exec.ExitError); ok {
+						code = exitErr.ExitCode()
+					} else {
+						t.Fatalf("failed to run %q: %v", binary, runErr)
+					}
+				}
+				return code, outBuf.Bytes(), errBuf.Bytes()
+			}
+
+			refCode, refOut, refErr := runAndCheck(refBin, refDst)
+			goCode, goOut, goErr := runAndCheck(goBin, goDst)
+
+			_ = refTests
+			_ = goTests
+
+			if refCode != goCode {
+				t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+			}
+			if !bytes.Equal(refOut, goOut) {
+				t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", refOut, goOut)
+			}
+			if !bytes.Equal(refErr, goErr) {
+				t.Errorf("stderr mismatch:\nref: %q\ngo:  %q", refErr, goErr)
+			}
+		})
+	}
+}
+
+// TestRecursiveCopyState verifies the filesystem state after recursive copy
+// using only the go binary. This avoids the shared-directory problem in
+// differential tests where both binaries write to the same destination.
+// R2.1: directory structure is preserved.
+func TestRecursiveCopyState(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "srcdir")
+	subDir := filepath.Join(srcDir, "sub")
+	os.MkdirAll(subDir, 0o755)                                            //nolint:errcheck
+	os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("file a\n"), 0o644) //nolint:errcheck
+	os.WriteFile(filepath.Join(subDir, "b.txt"), []byte("file b\n"), 0o644) //nolint:errcheck
+
+	dstDir := filepath.Join(dir, "dstdir")
+	cmd := exec.Command(goBin, "-r", srcDir, dstDir)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cp -r failed: %v\n%s", err, out)
+	}
+
+	// Verify directory structure preserved.
+	checkFile := func(path string, want []byte) {
+		t.Helper()
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("missing file %s: %v", path, err)
+			return
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("file %s content = %q, want %q", path, got, want)
+		}
+	}
+	checkFile(filepath.Join(dstDir, "a.txt"), []byte("file a\n"))
+	checkFile(filepath.Join(dstDir, "sub", "b.txt"), []byte("file b\n"))
+}
+
+// TestDiffDirectoryWithoutR verifies that copying a directory without -r fails.
+// R2.2: must refuse and print error to stderr.
+func TestDiffDirectoryWithoutR(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		tryHelpNormalizer,
+	}
+
+	t.Run("dir_without_r", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		srcDir := filepath.Join(dir, "mydir")
+		os.Mkdir(srcDir, 0o755) //nolint:errcheck
+
+		tests := []testutils.DiffTest{
+			{
+				Name:      "omit_directory_no_r",
+				Args:      []string{srcDir, filepath.Join(dir, "copy")},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestDiffSymlinkDereference verifies -L follows symlinks in source.
+// R2.3: -L copies the file the symlink points to, not the link itself.
+func TestDiffSymlinkDereference(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("dereference_symlink_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		realFile := filepath.Join(dir, "real.txt")
+		content := []byte("real content\n")
+		os.WriteFile(realFile, content, 0o644) //nolint:errcheck
+		linkFile := filepath.Join(dir, "link.txt")
+		os.Symlink(realFile, linkFile) //nolint:errcheck
+
+		// Use separate destinations: ref creates copy_ref.txt, go creates copy_go.txt.
+		// Both should succeed with exit 0 and no output.
+		refDst := filepath.Join(dir, "copy_ref.txt")
+		goDst := filepath.Join(dir, "copy_go.txt")
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			cmd := exec.Command(binary, "-L", linkFile, dst)
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, refOut, refErr := runBin(refBin, refDst)
+		goCode, goOut, goErr := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+		if !bytes.Equal(refOut, goOut) {
+			t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", refOut, goOut)
+		}
+		if !bytes.Equal(refErr, goErr) {
+			t.Errorf("stderr mismatch:\nref: %q\ngo:  %q", refErr, goErr)
+		}
+
+		// Verify go binary produced a regular file, not a symlink.
+		info, sErr := os.Lstat(goDst)
+		if sErr != nil {
+			t.Fatalf("lstat copy: %v", sErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Errorf("expected regular file, got symlink")
+		}
+		// Verify content matches.
+		got, _ := os.ReadFile(goDst)
+		if !bytes.Equal(got, content) {
+			t.Errorf("copy content = %q, want %q", got, content)
+		}
+	})
+}
+
+// TestSymlinkNoDereferenceState verifies -P and default -r symlink handling
+// using only the go binary. R2.4: symlinks are preserved.
+func TestSymlinkNoDereferenceState(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("r_preserves_symlink_by_default", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+
+		srcDir := filepath.Join(dir, "srcdir")
+		os.Mkdir(srcDir, 0o755)                                              //nolint:errcheck
+		os.WriteFile(filepath.Join(srcDir, "real.txt"), []byte("real\n"), 0o644) //nolint:errcheck
+		os.Symlink("real.txt", filepath.Join(srcDir, "link.txt"))            //nolint:errcheck
+
+		dstDir := filepath.Join(dir, "dstdir")
+		cmd := exec.Command(goBin, "-r", srcDir, dstDir)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp -r failed: %v\n%s", err, out)
+		}
+
+		// Verify symlink preserved.
+		linkPath := filepath.Join(dstDir, "link.txt")
+		info, lErr := os.Lstat(linkPath)
+		if lErr != nil {
+			t.Fatalf("lstat: %v", lErr)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("expected symlink, got regular file")
+		}
+		target, rErr := os.Readlink(linkPath)
+		if rErr != nil {
+			t.Fatalf("readlink: %v", rErr)
+		}
+		if target != "real.txt" {
+			t.Errorf("symlink target = %q, want %q", target, "real.txt")
+		}
+	})
+
+	t.Run("explicit_P_preserves_symlink", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+
+		srcDir := filepath.Join(dir, "srcdir")
+		os.Mkdir(srcDir, 0o755)                                                //nolint:errcheck
+		os.WriteFile(filepath.Join(srcDir, "data.txt"), []byte("hello\n"), 0o644) //nolint:errcheck
+		os.Symlink("data.txt", filepath.Join(srcDir, "sym.txt"))               //nolint:errcheck
+
+		dstDir := filepath.Join(dir, "dstdir")
+		cmd := exec.Command(goBin, "-rP", srcDir, dstDir)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp -rP failed: %v\n%s", err, out)
+		}
+
+		linkPath := filepath.Join(dstDir, "sym.txt")
+		info, lErr := os.Lstat(linkPath)
+		if lErr != nil {
+			t.Fatalf("lstat: %v", lErr)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("expected symlink, got regular file")
+		}
+	})
+
+	t.Run("rL_dereferences_symlink_in_dir", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+
+		srcDir := filepath.Join(dir, "srcdir")
+		os.Mkdir(srcDir, 0o755)                                             //nolint:errcheck
+		realFile := filepath.Join(dir, "target.txt")
+		content := []byte("target data\n")
+		os.WriteFile(realFile, content, 0o644)                              //nolint:errcheck
+		os.Symlink(realFile, filepath.Join(srcDir, "link.txt"))             //nolint:errcheck
+
+		dstDir := filepath.Join(dir, "dstdir")
+		cmd := exec.Command(goBin, "-rL", srcDir, dstDir)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp -rL failed: %v\n%s", err, out)
+		}
+
+		// Verify it's a regular file, not a symlink.
+		linkCopy := filepath.Join(dstDir, "link.txt")
+		info, lErr := os.Lstat(linkCopy)
+		if lErr != nil {
+			t.Fatalf("lstat: %v", lErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Errorf("expected regular file, got symlink")
+		}
+		got, _ := os.ReadFile(linkCopy)
+		if !bytes.Equal(got, content) {
+			t.Errorf("file content = %q, want %q", got, content)
+		}
 	})
 }
