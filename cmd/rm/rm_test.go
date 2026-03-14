@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd058-rm R1.1-R1.4, R2.1-R2.4, R3.3 differential tests
+// Implements: prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4 differential tests
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -871,5 +872,361 @@ func TestDiffRecursiveLongFlag(t *testing.T) {
 
 	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
 		t.Errorf("Go binary did not remove the directory tree")
+	}
+}
+
+// runAndCaptureWithStdin runs the binary with args and stdin content in workDir.
+func runAndCaptureWithStdin(t *testing.T, binary string, args []string, workDir, stdin string) ([]byte, []byte, int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	runErr := cmd.Run()
+	exitCode := 0
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run %q: %v", binary, runErr)
+		}
+	}
+	return stdout.Bytes(), stderr.Bytes(), exitCode
+}
+
+// promptNormalizer strips interactive prompt lines from stderr so that
+// minor formatting differences between Go and GNU rm do not cause failures.
+var promptRe = regexp.MustCompile(`(?m)^(rm|grm): (remove|descend into) .*\? \n?`)
+
+var promptNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return promptRe.ReplaceAll(b, nil)
+}
+
+// TestDiffInteractiveYes verifies rm -i prompts and removes on confirmation.
+// R3.1 / AC1: -i prompts before every removal.
+func TestDiffInteractiveYes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupFile(t, goDir, "ifile.txt", "data\n")
+	setupFile(t, refDir, "ifile.txt", "data\n")
+
+	args := []string{"-i", "ifile.txt"}
+
+	goStdout, goStderr, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "y\n")
+	refStdout, refStderr, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "y\n")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	// Normalize prompts and binary names for stderr comparison.
+	goStderr = promptNormalizer(normalizeBinaryNames(goStderr, goBin, refBin))
+	refStderr = promptNormalizer(normalizeBinaryNames(refStderr, goBin, refBin))
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Both binaries should have removed the file.
+	if _, statErr := os.Stat(filepath.Join(goDir, "ifile.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the file")
+	}
+	if _, statErr := os.Stat(filepath.Join(refDir, "ifile.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("ref binary did not remove the file")
+	}
+}
+
+// TestDiffInteractiveNo verifies rm -i skips on non-confirmation without error.
+// R3.1 / AC1: skipping on non-confirmation does not produce an error exit code.
+func TestDiffInteractiveNo(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupFile(t, goDir, "keep.txt", "data\n")
+	setupFile(t, refDir, "keep.txt", "data\n")
+
+	args := []string{"-i", "keep.txt"}
+
+	goStdout, goStderr, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "n\n")
+	refStdout, refStderr, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "n\n")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = promptNormalizer(normalizeBinaryNames(goStderr, goBin, refBin))
+	refStderr = promptNormalizer(normalizeBinaryNames(refStderr, goBin, refBin))
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Both binaries should NOT have removed the file.
+	if _, statErr := os.Stat(filepath.Join(goDir, "keep.txt")); statErr != nil {
+		t.Errorf("Go binary removed the file despite 'n' answer: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(refDir, "keep.txt")); statErr != nil {
+		t.Errorf("ref binary removed the file despite 'n' answer: %v", statErr)
+	}
+}
+
+// TestDiffInteractiveOnceYes verifies rm -I prompts once for >3 files and
+// removes all on confirmation.
+// R3.2 / AC2: -I prompts once when removing more than three files.
+func TestDiffInteractiveOnceYes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	files := []string{"a.txt", "b.txt", "c.txt", "d.txt"}
+	for _, f := range files {
+		setupFile(t, goDir, f, "data\n")
+		setupFile(t, refDir, f, "data\n")
+	}
+
+	args := append([]string{"-I"}, files...)
+
+	goStdout, goStderr, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "y\n")
+	refStdout, refStderr, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "y\n")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = promptNormalizer(normalizeBinaryNames(goStderr, goBin, refBin))
+	refStderr = promptNormalizer(normalizeBinaryNames(refStderr, goBin, refBin))
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// All files should be removed.
+	for _, f := range files {
+		if _, statErr := os.Stat(filepath.Join(goDir, f)); !os.IsNotExist(statErr) {
+			t.Errorf("Go binary did not remove %s", f)
+		}
+	}
+}
+
+// TestDiffInteractiveOnceNo verifies rm -I exits without removing on non-confirmation.
+// R3.2 / AC2: exit without removal on non-confirmation.
+func TestDiffInteractiveOnceNo(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	files := []string{"a.txt", "b.txt", "c.txt", "d.txt"}
+	for _, f := range files {
+		setupFile(t, goDir, f, "data\n")
+		setupFile(t, refDir, f, "data\n")
+	}
+
+	args := append([]string{"-I"}, files...)
+
+	goStdout, goStderr, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "n\n")
+	refStdout, refStderr, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "n\n")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = promptNormalizer(normalizeBinaryNames(goStderr, goBin, refBin))
+	refStderr = promptNormalizer(normalizeBinaryNames(refStderr, goBin, refBin))
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// No files should be removed.
+	for _, f := range files {
+		if _, statErr := os.Stat(filepath.Join(goDir, f)); statErr != nil {
+			t.Errorf("Go binary removed %s despite 'n' answer: %v", f, statErr)
+		}
+	}
+}
+
+// TestDiffInteractiveOnceRecursive verifies rm -rI prompts once for recursive removal.
+// R3.2 / AC2: -I prompts when removing recursively.
+func TestDiffInteractiveOnceRecursive(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupTree(t, goDir)
+	setupTree(t, refDir)
+
+	args := []string{"-rI", "tree"}
+
+	// Confirm recursive removal.
+	goStdout, goStderr, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "y\n")
+	refStdout, refStderr, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "y\n")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = promptNormalizer(normalizeBinaryNames(goStderr, goBin, refBin))
+	refStderr = promptNormalizer(normalizeBinaryNames(refStderr, goBin, refBin))
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// Tree should be removed.
+	if _, statErr := os.Stat(filepath.Join(goDir, "tree")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the directory tree")
+	}
+}
+
+// TestDiffPreserveRoot verifies that rm -r --preserve-root / refuses to remove '/'.
+// R3.4 / AC4: --preserve-root prevents recursive removal of root.
+func TestDiffPreserveRoot(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	nameNorm := programNameNormalizer(goBin, refBin)
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "preserve_root_slash",
+			Args:      []string{"-r", "--preserve-root", "/"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{nameNorm, tryHelpNormalizer},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFlagOrderFI verifies that rm -f -i uses -i behavior (last flag wins).
+// AC5: rm -f -i uses -i behavior.
+func TestDiffFlagOrderFI(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupFile(t, goDir, "order.txt", "data\n")
+	setupFile(t, refDir, "order.txt", "data\n")
+
+	// -f -i: -i is last, so prompting is active. Empty stdin → EOF → decline.
+	args := []string{"-f", "-i", "order.txt"}
+
+	_, _, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "")
+	_, _, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+
+	// File should NOT be removed (EOF → decline).
+	if _, statErr := os.Stat(filepath.Join(goDir, "order.txt")); statErr != nil {
+		t.Errorf("Go binary removed the file despite -i with EOF stdin: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(refDir, "order.txt")); statErr != nil {
+		t.Errorf("ref binary removed the file despite -i with EOF stdin: %v", statErr)
+	}
+}
+
+// TestDiffFlagOrderIF verifies that rm -i -f uses -f behavior (last flag wins).
+// AC5: rm -i -f uses -f behavior.
+func TestDiffFlagOrderIF(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	setupFile(t, goDir, "order.txt", "data\n")
+	setupFile(t, refDir, "order.txt", "data\n")
+
+	// -i -f: -f is last, so force mode is active. No prompting.
+	args := []string{"-i", "-f", "order.txt"}
+
+	goStdout, goStderr, goCode := runAndCaptureWithStdin(t, goBin, args, goDir, "")
+	refStdout, refStderr, refCode := runAndCaptureWithStdin(t, refBin, args, refDir, "")
+
+	if goCode != refCode {
+		t.Errorf("exit code mismatch: go=%d ref=%d", goCode, refCode)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Errorf("stdout mismatch:\ngo:  %q\nref: %q", goStdout, refStdout)
+	}
+	goStderr = normalizeBinaryNames(goStderr, goBin, refBin)
+	refStderr = normalizeBinaryNames(refStderr, goBin, refBin)
+	if !bytes.Equal(goStderr, refStderr) {
+		t.Errorf("stderr mismatch:\ngo:  %q\nref: %q", goStderr, refStderr)
+	}
+
+	// File SHOULD be removed (-f wins).
+	if _, statErr := os.Stat(filepath.Join(goDir, "order.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("Go binary did not remove the file with -i -f")
+	}
+	if _, statErr := os.Stat(filepath.Join(refDir, "order.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("ref binary did not remove the file with -i -f")
 	}
 }
