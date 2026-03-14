@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4 differential tests
+// Implements: prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4 differential tests
 package main
 
 import (
@@ -918,6 +918,369 @@ func TestVerboseOutput(t *testing.T) {
 		// Should contain entries for directory and files.
 		if !bytes.Contains([]byte(output), []byte("->")) {
 			t.Errorf("verbose output missing '->' entries: %q", output)
+		}
+	})
+}
+
+// TestDiffExitCodeSuccess verifies exit 0 on successful copy.
+// R4.1: must exit 0 when all files are copied successfully.
+func TestDiffExitCodeSuccess(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("exit_0_on_success", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		os.WriteFile(src, []byte("ok\n"), 0o644) //nolint:errcheck
+
+		tests := []testutils.DiffTest{
+			{
+				Name:     "successful_copy_exit_0",
+				Args:     []string{src, dst},
+				Env:      []string{"LC_ALL=C"},
+				ExitCode: 0,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestDiffExitCodeFailure verifies exit 1 on failed copy operations.
+// R4.2: must exit 1 when any copy operation fails.
+func TestDiffExitCodeFailure(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	normalize := []testutils.NormalizeFunc{
+		programNameNormalizer(goBin, refBin),
+		tryHelpNormalizer,
+	}
+
+	t.Run("exit_1_missing_source", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "nonexistent_exit_1",
+				Args:      []string{filepath.Join(dir, "no_such"), filepath.Join(dir, "dst")},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("exit_1_dir_without_r", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		srcDir := filepath.Join(dir, "adir")
+		os.Mkdir(srcDir, 0o755) //nolint:errcheck
+
+		tests := []testutils.DiffTest{
+			{
+				Name:      "dir_no_r_exit_1",
+				Args:      []string{srcDir, filepath.Join(dir, "copy")},
+				Env:       []string{"LC_ALL=C"},
+				ExitCode:  1,
+				Normalize: normalize,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestDiffTargetDirectory verifies -t DIRECTORY flag.
+// R4.3: -t copies all SOURCE arguments into DIRECTORY.
+func TestDiffTargetDirectory(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("t_flag_single_source", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "file.txt")
+		content := []byte("target dir test\n")
+		os.WriteFile(src, content, 0o644) //nolint:errcheck
+
+		// Each binary needs its own dest dir.
+		refDst := filepath.Join(dir, "ref_out")
+		goDst := filepath.Join(dir, "go_out")
+		os.Mkdir(refDst, 0o755) //nolint:errcheck
+		os.Mkdir(goDst, 0o755)  //nolint:errcheck
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			cmd := exec.Command(binary, "-t", dst, src)
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, refOut, _ := runBin(refBin, refDst)
+		goCode, goOut, _ := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+		if !bytes.Equal(refOut, goOut) {
+			t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", refOut, goOut)
+		}
+
+		// Verify file was copied into the target directory.
+		got, rErr := os.ReadFile(filepath.Join(goDst, "file.txt"))
+		if rErr != nil {
+			t.Fatalf("file not found in target dir: %v", rErr)
+		}
+		if !bytes.Equal(got, content) {
+			t.Errorf("content = %q, want %q", got, content)
+		}
+	})
+
+	t.Run("t_flag_multiple_sources", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src1 := filepath.Join(dir, "a.txt")
+		src2 := filepath.Join(dir, "b.txt")
+		contentA := []byte("aaa\n")
+		contentB := []byte("bbb\n")
+		os.WriteFile(src1, contentA, 0o644) //nolint:errcheck
+		os.WriteFile(src2, contentB, 0o644) //nolint:errcheck
+
+		refDst := filepath.Join(dir, "ref_out")
+		goDst := filepath.Join(dir, "go_out")
+		os.Mkdir(refDst, 0o755) //nolint:errcheck
+		os.Mkdir(goDst, 0o755)  //nolint:errcheck
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			cmd := exec.Command(binary, "-t", dst, src1, src2)
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, _, _ := runBin(refBin, refDst)
+		goCode, _, _ := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+
+		// Verify both files copied.
+		gotA, _ := os.ReadFile(filepath.Join(goDst, "a.txt"))
+		gotB, _ := os.ReadFile(filepath.Join(goDst, "b.txt"))
+		if !bytes.Equal(gotA, contentA) {
+			t.Errorf("a.txt content = %q, want %q", gotA, contentA)
+		}
+		if !bytes.Equal(gotB, contentB) {
+			t.Errorf("b.txt content = %q, want %q", gotB, contentB)
+		}
+	})
+
+	t.Run("target_directory_long_option", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "data.txt")
+		content := []byte("long opt\n")
+		os.WriteFile(src, content, 0o644) //nolint:errcheck
+
+		refDst := filepath.Join(dir, "ref_out")
+		goDst := filepath.Join(dir, "go_out")
+		os.Mkdir(refDst, 0o755) //nolint:errcheck
+		os.Mkdir(goDst, 0o755)  //nolint:errcheck
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			cmd := exec.Command(binary, "--target-directory="+dst, src)
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, _, _ := runBin(refBin, refDst)
+		goCode, _, _ := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+
+		got, rErr := os.ReadFile(filepath.Join(goDst, "data.txt"))
+		if rErr != nil {
+			t.Fatalf("file not found: %v", rErr)
+		}
+		if !bytes.Equal(got, content) {
+			t.Errorf("content = %q, want %q", got, content)
+		}
+	})
+}
+
+// TestDiffNoClobber verifies -n does not overwrite existing files.
+// R1.4, R4.4: differential test for no-clobber mode.
+func TestDiffNoClobber(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("no_clobber_preserves_existing", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		os.WriteFile(src, []byte("new content\n"), 0o644) //nolint:errcheck
+
+		originalContent := []byte("original\n")
+
+		// Each binary gets its own destination that already exists.
+		refDst := filepath.Join(dir, "ref_existing.txt")
+		goDst := filepath.Join(dir, "go_existing.txt")
+		os.WriteFile(refDst, originalContent, 0o644) //nolint:errcheck
+		os.WriteFile(goDst, originalContent, 0o644)  //nolint:errcheck
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			cmd := exec.Command(binary, "-n", src, dst)
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, _, _ := runBin(refBin, refDst)
+		goCode, _, _ := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+
+		// Verify go binary did not overwrite the existing file.
+		got, _ := os.ReadFile(goDst)
+		if !bytes.Equal(got, originalContent) {
+			t.Errorf("file was overwritten: got %q, want %q", got, originalContent)
+		}
+	})
+}
+
+// TestDiffForceFlag verifies -f removes unwritable destination and retries.
+// R1.3, R4.4: differential test for force mode.
+func TestDiffForceFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("force_overwrites_readonly", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		content := []byte("forced\n")
+		os.WriteFile(src, content, 0o644) //nolint:errcheck
+
+		// Each binary gets its own read-only destination.
+		refDst := filepath.Join(dir, "ref_ro.txt")
+		goDst := filepath.Join(dir, "go_ro.txt")
+		os.WriteFile(refDst, []byte("old\n"), 0o444) //nolint:errcheck
+		os.WriteFile(goDst, []byte("old\n"), 0o444)  //nolint:errcheck
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			cmd := exec.Command(binary, "-f", src, dst)
+			cmd.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			cmd.Stdout = &outBuf
+			cmd.Stderr = &errBuf
+			runErr := cmd.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, _, _ := runBin(refBin, refDst)
+		goCode, _, _ := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+
+		// Verify go binary wrote the new content.
+		got, rErr := os.ReadFile(goDst)
+		if rErr != nil {
+			t.Fatalf("reading dst: %v", rErr)
+		}
+		if !bytes.Equal(got, content) {
+			t.Errorf("content = %q, want %q", got, content)
 		}
 	})
 }

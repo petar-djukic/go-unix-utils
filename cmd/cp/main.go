@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
+// Implements: prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -30,11 +31,15 @@ type preserveAttrs struct {
 
 // cpOpts holds all flag state for a cp invocation.
 type cpOpts struct {
-	recursive   bool
-	dereference bool // -L: follow symlinks in source
-	noDerefer   bool // -P: preserve symlinks (default with -r)
-	preserve    preserveAttrs
-	verbose     bool
+	recursive      bool
+	dereference    bool // -L: follow symlinks in source
+	noDerefer      bool // -P: preserve symlinks (default with -r)
+	preserve       preserveAttrs
+	verbose        bool
+	interactive    bool   // -i: prompt before overwrite
+	force          bool   // -f: remove destination if can't open, then retry
+	noClobber      bool   // -n: do not overwrite existing files
+	targetDir      string // -t DIRECTORY: copy all sources into DIRECTORY
 }
 
 func main() {
@@ -57,6 +62,15 @@ func main() {
 		case arg == "--verbose":
 			// R3.4: --verbose long option.
 			opts.verbose = true
+		case arg == "--interactive":
+			// R1.2: --interactive long option.
+			opts.interactive = true
+		case arg == "--force":
+			// R1.3: --force long option.
+			opts.force = true
+		case arg == "--no-clobber":
+			// R1.4: --no-clobber long option.
+			opts.noClobber = true
 		case arg == "--archive":
 			// R3.2: --archive is equivalent to -dR --preserve=all.
 			opts.recursive = true
@@ -68,6 +82,18 @@ func main() {
 		case arg == "--preserve":
 			// R3.1: bare --preserve is equivalent to --preserve=mode,ownership,timestamps.
 			opts.preserve = preserveAttrs{mode: true, ownership: true, timestamps: true}
+		case strings.HasPrefix(arg, "--target-directory="):
+			// R4.3: --target-directory=DIRECTORY long option.
+			opts.targetDir = arg[len("--target-directory="):]
+		case arg == "--target-directory":
+			// R4.3: --target-directory DIRECTORY (separate argument).
+			if i+1 < len(args) {
+				i++
+				opts.targetDir = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "%s: option '--target-directory' requires an argument\n", programName)
+				os.Exit(1)
+			}
 		case arg == "--":
 			operands = append(operands, args[i+1:]...)
 			i = len(args)
@@ -99,6 +125,27 @@ func main() {
 				case 'd':
 					// -d is equivalent to --no-dereference (part of -a expansion).
 					opts.noDerefer = true
+				case 'i':
+					// R1.2: -i interactive mode.
+					opts.interactive = true
+				case 'f':
+					// R1.3: -f force mode.
+					opts.force = true
+				case 'n':
+					// R1.4: -n no-clobber mode.
+					opts.noClobber = true
+				case 't':
+					// R4.3: -t DIRECTORY short option.
+					if j+1 < len(flags) {
+						opts.targetDir = flags[j+1:]
+						j = len(flags)
+					} else if i+1 < len(args) {
+						i++
+						opts.targetDir = args[i]
+					} else {
+						fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 't'\n", programName)
+						os.Exit(1)
+					}
 				default:
 					// Ignore unrecognized short flags for forward compatibility.
 				}
@@ -106,11 +153,6 @@ func main() {
 		default:
 			operands = append(operands, arg)
 		}
-	}
-
-	if len(operands) < 2 {
-		fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
-		os.Exit(1)
 	}
 
 	// R2.4: -P is the default with -r when neither -L nor -P is explicit.
@@ -123,12 +165,35 @@ func main() {
 		opts.noDerefer = false
 	}
 
-	// R1.1: last argument is the destination; all preceding are sources.
-	dest := operands[len(operands)-1]
-	sources := operands[:len(operands)-1]
+	// R4.3: -t DIRECTORY makes all operands sources, copied into DIRECTORY.
+	var dest string
+	var sources []string
+
+	if opts.targetDir != "" {
+		if len(operands) < 1 {
+			fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
+			os.Exit(1)
+		}
+		dest = opts.targetDir
+		sources = operands
+	} else {
+		if len(operands) < 2 {
+			fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
+			os.Exit(1)
+		}
+		// R1.1: last argument is the destination; all preceding are sources.
+		dest = operands[len(operands)-1]
+		sources = operands[:len(operands)-1]
+	}
 
 	destInfo, destErr := os.Stat(dest)
 	destIsDir := destErr == nil && destInfo.IsDir()
+
+	// R4.3: -t requires the target to be an existing directory.
+	if opts.targetDir != "" && !destIsDir {
+		fmt.Fprintf(os.Stderr, "%s: target directory '%s': No such file or directory\n", programName, dest)
+		os.Exit(1)
+	}
 
 	// R1.1: multiple sources require destination to be a directory.
 	if len(sources) > 1 && !destIsDir {
@@ -136,6 +201,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// R4.1, R4.2: exit 0 on success, exit 1 on any failure.
 	exitCode := 0
 	for _, src := range sources {
 		target := dest
@@ -195,7 +261,29 @@ func copyEntry(src, dst string, opts cpOpts) error {
 		return copyDir(src, dst, opts)
 	}
 
-	if err := copyFile(src, dst); err != nil {
+	// R1.4: -n prevents overwriting existing files. When -n and -i are
+	// combined, -n takes precedence.
+	if opts.noClobber {
+		if _, statErr := os.Lstat(dst); statErr == nil {
+			return nil
+		}
+	}
+
+	// R1.2: -i prompts before overwriting an existing destination file.
+	if opts.interactive && !opts.noClobber {
+		if _, statErr := os.Lstat(dst); statErr == nil {
+			fmt.Fprintf(os.Stderr, "%s: overwrite '%s'? ", programName, dst)
+			reader := bufio.NewReader(os.Stdin)
+			response, readErr := reader.ReadString('\n')
+			if readErr != nil || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(response)), "y") {
+				return nil
+			}
+		}
+	}
+
+	// R1.3: -f removes destination if it cannot be opened for writing,
+	// then retries the copy.
+	if err := copyFile(src, dst, opts.force); err != nil {
 		return err
 	}
 	// R3.1, R3.3: apply attribute preservation after successful file copy.
@@ -260,9 +348,9 @@ func copySymlink(src, dst string) error {
 }
 
 // copyFile copies the regular file at src to dst using streaming I/O.
-// R1.2: preserves file content byte-for-byte.
-// R1.3: reports errors for missing source, unwritable destination, etc.
-func copyFile(src, dst string) error {
+// R1.1: preserves file content byte-for-byte.
+// R1.3: when force is true, removes destination and retries if it cannot be opened.
+func copyFile(src, dst string, force bool) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
@@ -283,7 +371,15 @@ func copyFile(src, dst string) error {
 
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
 	if err != nil {
-		return fmt.Errorf("cannot create regular file '%s': %s", dst, sysErrMsg(err))
+		// R1.3: -f removes destination and retries when the file cannot be opened.
+		if force {
+			if rmErr := os.Remove(dst); rmErr == nil {
+				out, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("cannot create regular file '%s': %s", dst, sysErrMsg(err))
+		}
 	}
 
 	if _, err := io.Copy(out, in); err != nil {
