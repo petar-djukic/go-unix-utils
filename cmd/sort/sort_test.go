@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7 differential tests
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4 differential tests
 package main
 
 import (
@@ -165,6 +165,160 @@ func TestDiff(t *testing.T) {
 			Name:  "stable_unique",
 			Args:  []string{"-su"},
 			Stdin: []byte("b\na\nb\nc\na\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -n numeric sort.
+		{
+			Name:  "numeric_sort",
+			Args:  []string{"-n"},
+			Stdin: []byte("10\n2\n1\n20\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -n with negative numbers.
+		{
+			Name:  "numeric_sort_negative",
+			Args:  []string{"-n"},
+			Stdin: []byte("5\n-3\n0\n-10\n3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -n with decimal numbers.
+		{
+			Name:  "numeric_sort_decimal",
+			Args:  []string{"-n"},
+			Stdin: []byte("1.5\n1.2\n1.10\n0.5\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -n with non-numeric lines (treated as 0).
+		{
+			Name:  "numeric_sort_nonnumeric",
+			Args:  []string{"-n"},
+			Stdin: []byte("abc\n5\ndef\n0\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -n with leading whitespace.
+		{
+			Name:  "numeric_sort_whitespace",
+			Args:  []string{"-n"},
+			Stdin: []byte("  10\n2\n  1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --numeric-sort long form.
+		{
+			Name:  "numeric_sort_long",
+			Args:  []string{"--numeric-sort"},
+			Stdin: []byte("10\n2\n1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -nr numeric reverse.
+		{
+			Name:  "numeric_reverse",
+			Args:  []string{"-nr"},
+			Stdin: []byte("10\n2\n1\n20\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -nu numeric unique.
+		{
+			Name:  "numeric_unique",
+			Args:  []string{"-nu"},
+			Stdin: []byte("1\n01\n2\n02\n3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -h human-numeric sort.
+		{
+			Name:  "human_numeric_sort",
+			Args:  []string{"-h"},
+			Stdin: []byte("1K\n2M\n500\n1G\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -h with mixed suffixes.
+		{
+			Name:  "human_numeric_mixed",
+			Args:  []string{"-h"},
+			Stdin: []byte("1.5K\n1K\n2K\n500\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: --human-numeric-sort long form.
+		{
+			Name:  "human_numeric_long",
+			Args:  []string{"--human-numeric-sort"},
+			Stdin: []byte("1G\n1M\n1K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -h with no suffix (plain numbers).
+		{
+			Name:  "human_numeric_no_suffix",
+			Args:  []string{"-h"},
+			Stdin: []byte("100\n10\n1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -M month sort.
+		{
+			Name:  "month_sort",
+			Args:  []string{"-M"},
+			Stdin: []byte("MAR\nJAN\nFEB\nDEC\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -M with lowercase months.
+		{
+			Name:  "month_sort_lowercase",
+			Args:  []string{"-M"},
+			Stdin: []byte("mar\njan\nfeb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -M unknown strings sort before JAN.
+		{
+			Name:  "month_sort_unknown",
+			Args:  []string{"-M"},
+			Stdin: []byte("JAN\nXYZ\nFEB\nAAA\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: --month-sort long form.
+		{
+			Name:  "month_sort_long",
+			Args:  []string{"--month-sort"},
+			Stdin: []byte("DEC\nJAN\nJUL\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -M all months.
+		{
+			Name:  "month_sort_all",
+			Args:  []string{"-M"},
+			Stdin: []byte("DEC\nJUN\nMAR\nSEP\nJAN\nJUL\nAPR\nOCT\nFEB\nAUG\nMAY\nNOV\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -V version sort.
+		{
+			Name:  "version_sort",
+			Args:  []string{"-V"},
+			Stdin: []byte("file10\nfile2\nfile1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -V with dotted versions.
+		{
+			Name:  "version_sort_dotted",
+			Args:  []string{"-V"},
+			Stdin: []byte("1.10\n1.2\n1.1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: --version-sort long form.
+		{
+			Name:  "version_sort_long",
+			Args:  []string{"--version-sort"},
+			Stdin: []byte("a2\na10\na1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -V with complex version strings.
+		{
+			Name:  "version_sort_complex",
+			Args:  []string{"-V"},
+			Stdin: []byte("lib-1.10.0\nlib-1.2.0\nlib-1.9.0\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -V reverse.
+		{
+			Name:  "version_sort_reverse",
+			Args:  []string{"-Vr"},
+			Stdin: []byte("file1\nfile10\nfile2\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}

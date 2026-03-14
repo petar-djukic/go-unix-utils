@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/sort implements the sort (sort lines of text files) command.
-// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7
+// Implements: prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4
 package main
 
 import (
@@ -12,17 +12,45 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// sortMode represents the active comparison mode for sorting.
+type sortMode int
+
+const (
+	sortLexicographic sortMode = iota // default: byte-value comparison
+	sortNumeric                       // R2.1: -n numeric value
+	sortHumanNumeric                  // R2.2: -h numeric with SI suffixes
+	sortMonth                         // R2.3: -M month abbreviation
+	sortVersion                       // R2.4: -V version number segments
+)
+
+// siMultipliers maps SI suffix characters to their multiplier values.
+// R2.2: K, M, G, T, P, E, Z, Y suffixes for human-numeric sort.
+var siMultipliers = map[byte]float64{
+	'K': 1e3, 'M': 1e6, 'G': 1e9, 'T': 1e12,
+	'P': 1e15, 'E': 1e18, 'Z': 1e21, 'Y': 1e24,
+}
+
+// monthRank maps uppercase three-letter month abbreviations to their rank.
+// R2.3: JAN < FEB < ... < DEC, unknown strings get rank 0 (sort before JAN).
+var monthRank = map[string]int{
+	"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
+	"MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
+	"SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
 // config holds all parsed command-line options.
 type config struct {
-	reverse    bool   // -r: reverse sort order
-	unique     bool   // -u: output only the first of equal consecutive lines
-	stable     bool   // -s: preserve input order of equal lines
-	outputFile string // -o FILE: write output to FILE
+	reverse    bool     // -r: reverse sort order
+	unique     bool     // -u: output only the first of equal consecutive lines
+	stable     bool     // -s: preserve input order of equal lines
+	outputFile string   // -o FILE: write output to FILE
+	mode       sortMode // active sort comparison mode
 	files      []string
 }
 
@@ -80,6 +108,14 @@ func parseArgs(args []string) (*config, error) {
 					return nil, err
 				}
 				cfg.outputFile = val
+			case arg == "--numeric-sort":
+				cfg.mode = sortNumeric
+			case arg == "--human-numeric-sort":
+				cfg.mode = sortHumanNumeric
+			case arg == "--month-sort":
+				cfg.mode = sortMonth
+			case arg == "--version-sort":
+				cfg.mode = sortVersion
 			default:
 				return nil, fmt.Errorf("unrecognized option '%s'", arg)
 			}
@@ -98,6 +134,14 @@ func parseArgs(args []string) (*config, error) {
 					cfg.unique = true
 				case 's':
 					cfg.stable = true
+				case 'n':
+					cfg.mode = sortNumeric
+				case 'h':
+					cfg.mode = sortHumanNumeric
+				case 'M':
+					cfg.mode = sortMonth
+				case 'V':
+					cfg.mode = sortVersion
 				case 'o':
 					val, err := parseShortOptValue(rest, j, args, &i)
 					if err != nil {
@@ -153,18 +197,27 @@ func run(cfg *config) error {
 		return err
 	}
 
-	// R1.1: Sort lexicographically using byte values (LC_ALL=C).
-	// D2: byte-level comparison, no locale-aware collation.
+	// Build comparison function based on sort mode.
+	cmp := buildCompareFunc(cfg.mode)
+
+	// GNU sort applies a last-resort full-line lexicographic comparison
+	// when the primary key comparison is equal, unless -s or -u is active.
+	useLastResort := !cfg.stable && !cfg.unique && cfg.mode != sortLexicographic
+
 	lessFunc := func(i, j int) bool {
-		cmp := bytes.Compare(lines[i], lines[j])
+		c := cmp(lines[i], lines[j])
+		if c == 0 && useLastResort {
+			c = bytes.Compare(lines[i], lines[j])
+		}
 		if cfg.reverse {
 			// R1.4: -r reverses the sort order.
-			return cmp > 0
+			return c > 0
 		}
-		return cmp < 0
+		return c < 0
 	}
-	if cfg.stable {
-		// R1.7: -s preserves input order of lines that compare equal.
+	// R1.7: -s preserves input order. -u also implies stable sort in GNU sort
+	// to ensure the first of equal elements (in input order) is kept.
+	if cfg.stable || cfg.unique {
 		sort.SliceStable(lines, lessFunc)
 	} else {
 		sort.Slice(lines, lessFunc)
@@ -172,11 +225,31 @@ func run(cfg *config) error {
 
 	// R1.5: -u outputs only the first of consecutive equal lines after sorting.
 	if cfg.unique {
-		lines = dedup(lines)
+		lines = dedupWith(lines, func(a, b []byte) bool {
+			return cmp(a, b) == 0
+		})
 	}
 
 	// R1.6: -o FILE writes output to FILE instead of stdout.
 	return writeOutput(cfg, lines)
+}
+
+// buildCompareFunc returns a comparison function for the given sort mode.
+func buildCompareFunc(mode sortMode) func(a, b []byte) int {
+	switch mode {
+	case sortNumeric:
+		return compareNumeric
+	case sortHumanNumeric:
+		return compareHumanNumeric
+	case sortMonth:
+		return compareMonth
+	case sortVersion:
+		return compareVersion
+	default:
+		return func(a, b []byte) int {
+			return bytes.Compare(a, b)
+		}
+	}
 }
 
 // readAllLines reads all lines from the given files (or stdin if none).
@@ -229,19 +302,277 @@ func readLines(r io.Reader) ([][]byte, error) {
 	return lines, nil
 }
 
-// dedup removes consecutive duplicate lines from a sorted slice.
-// R1.5: -u suppresses consecutive equal lines.
-func dedup(lines [][]byte) [][]byte {
+// dedupWith removes consecutive elements where equal returns true.
+// R1.5: -u suppresses consecutive equal lines using the active comparison.
+func dedupWith(lines [][]byte, equal func(a, b []byte) bool) [][]byte {
 	if len(lines) == 0 {
 		return lines
 	}
 	result := [][]byte{lines[0]}
 	for i := 1; i < len(lines); i++ {
-		if !bytes.Equal(lines[i], lines[i-1]) {
+		if !equal(lines[i], lines[i-1]) {
 			result = append(result, lines[i])
 		}
 	}
 	return result
+}
+
+// --- R2.1: Numeric sort ---
+
+// compareNumeric compares two lines by their numeric value.
+// R2.1: Parsing leading whitespace and optional sign.
+func compareNumeric(a, b []byte) int {
+	va := parseNumeric(a)
+	vb := parseNumeric(b)
+	switch {
+	case va < vb:
+		return -1
+	case va > vb:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// parseNumeric extracts a numeric value from the beginning of a byte slice.
+// Skips leading whitespace, reads optional sign, digits, and decimal point.
+func parseNumeric(b []byte) float64 {
+	i := 0
+	for i < len(b) && (b[i] == ' ' || b[i] == '\t') {
+		i++
+	}
+	if i >= len(b) {
+		return 0
+	}
+	start := i
+	if b[i] == '+' || b[i] == '-' {
+		i++
+	}
+	hasDigits := false
+	for i < len(b) && b[i] >= '0' && b[i] <= '9' {
+		hasDigits = true
+		i++
+	}
+	if i < len(b) && b[i] == '.' {
+		i++
+		for i < len(b) && b[i] >= '0' && b[i] <= '9' {
+			hasDigits = true
+			i++
+		}
+	}
+	if !hasDigits {
+		return 0
+	}
+	val, err := strconv.ParseFloat(string(b[start:i]), 64)
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+// --- R2.2: Human-numeric sort ---
+
+// compareHumanNumeric compares two lines by numeric value with SI suffixes.
+// R2.2: Recognizes K, M, G, T, P, E, Z, Y suffixes.
+func compareHumanNumeric(a, b []byte) int {
+	va := parseHumanNumeric(a)
+	vb := parseHumanNumeric(b)
+	switch {
+	case va < vb:
+		return -1
+	case va > vb:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// parseHumanNumeric extracts a numeric value with an optional SI suffix.
+func parseHumanNumeric(b []byte) float64 {
+	i := 0
+	for i < len(b) && (b[i] == ' ' || b[i] == '\t') {
+		i++
+	}
+	if i >= len(b) {
+		return 0
+	}
+	start := i
+	if b[i] == '+' || b[i] == '-' {
+		i++
+	}
+	hasDigits := false
+	for i < len(b) && b[i] >= '0' && b[i] <= '9' {
+		hasDigits = true
+		i++
+	}
+	if i < len(b) && b[i] == '.' {
+		i++
+		for i < len(b) && b[i] >= '0' && b[i] <= '9' {
+			hasDigits = true
+			i++
+		}
+	}
+	if !hasDigits {
+		return 0
+	}
+	val, err := strconv.ParseFloat(string(b[start:i]), 64)
+	if err != nil {
+		return 0
+	}
+	// Check for SI suffix.
+	if i < len(b) {
+		if mult, ok := siMultipliers[b[i]]; ok {
+			val *= mult
+		}
+	}
+	return val
+}
+
+// --- R2.3: Month sort ---
+
+// compareMonth compares two lines by month abbreviation.
+// R2.3: Unknown strings sort before JAN.
+func compareMonth(a, b []byte) int {
+	ma := parseMonthRank(a)
+	mb := parseMonthRank(b)
+	switch {
+	case ma < mb:
+		return -1
+	case ma > mb:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// parseMonthRank extracts a month rank from the beginning of a byte slice.
+// Skips leading whitespace, reads three characters, and maps to month rank.
+func parseMonthRank(b []byte) int {
+	i := 0
+	for i < len(b) && (b[i] == ' ' || b[i] == '\t') {
+		i++
+	}
+	if i+3 > len(b) {
+		return 0
+	}
+	abbr := strings.ToUpper(string(b[i : i+3]))
+	if rank, ok := monthRank[abbr]; ok {
+		return rank
+	}
+	return 0
+}
+
+// --- R2.4: Version sort ---
+
+// compareVersion compares two lines using version number sorting.
+// R2.4: Natural sort of version number segments using gnulib filevercmp algorithm.
+func compareVersion(a, b []byte) int {
+	if len(a) == 0 {
+		if len(b) == 0 {
+			return 0
+		}
+		return -1
+	}
+	if len(b) == 0 {
+		return 1
+	}
+	// Split at file extension boundary and compare prefix then suffix.
+	aPrefix := filePrefixLen(a)
+	bPrefix := filePrefixLen(b)
+	result := verrevcmp(a[:aPrefix], b[:bPrefix])
+	if result != 0 {
+		return result
+	}
+	return verrevcmp(a[aPrefix:], b[bPrefix:])
+}
+
+// filePrefixLen returns the length of the file name prefix before the
+// last extension-like segment (a dot followed by an alpha character or ~).
+func filePrefixLen(s []byte) int {
+	prefixLen := len(s)
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' && i+1 < len(s) &&
+			(isAlpha(s[i+1]) || s[i+1] == '~') {
+			prefixLen = i
+		}
+	}
+	return prefixLen
+}
+
+// verrevcmp implements the gnulib version comparison algorithm.
+func verrevcmp(a, b []byte) int {
+	ai, bi := 0, 0
+	for ai < len(a) || bi < len(b) {
+		// Compare non-digit characters using version ordering.
+		for (ai < len(a) && !isDigit(a[ai])) || (bi < len(b) && !isDigit(b[bi])) {
+			ac := charOrder(a, ai)
+			bc := charOrder(b, bi)
+			if ac != bc {
+				if ac < bc {
+					return -1
+				}
+				return 1
+			}
+			ai++
+			bi++
+		}
+		// Skip leading zeros in digit runs.
+		for ai < len(a) && a[ai] == '0' {
+			ai++
+		}
+		for bi < len(b) && b[bi] == '0' {
+			bi++
+		}
+		// Compare digit runs by length, then by value.
+		firstDiff := 0
+		for ai < len(a) && bi < len(b) && isDigit(a[ai]) && isDigit(b[bi]) {
+			if firstDiff == 0 {
+				firstDiff = int(a[ai]) - int(b[bi])
+			}
+			ai++
+			bi++
+		}
+		if ai < len(a) && isDigit(a[ai]) {
+			return 1
+		}
+		if bi < len(b) && isDigit(b[bi]) {
+			return -1
+		}
+		if firstDiff != 0 {
+			if firstDiff < 0 {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// charOrder returns the sort order for a character in version comparison,
+// following gnulib's filevercmp ordering.
+func charOrder(s []byte, pos int) int {
+	if pos >= len(s) {
+		return 0
+	}
+	c := s[pos]
+	if isDigit(c) {
+		return 0
+	}
+	if isAlpha(c) {
+		return int(c)
+	}
+	if c == '~' {
+		return -1
+	}
+	return int(c) + 256
+}
+
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
+func isAlpha(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // writeOutput writes sorted lines to the configured output destination.
