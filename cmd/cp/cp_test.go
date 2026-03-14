@@ -1,16 +1,18 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4 differential tests
+// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4 differential tests
 package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -550,6 +552,451 @@ func TestSymlinkNoDereferenceState(t *testing.T) {
 		got, _ := os.ReadFile(linkCopy)
 		if !bytes.Equal(got, content) {
 			t.Errorf("file content = %q, want %q", got, content)
+		}
+	})
+}
+
+// TestPreserveTimestamps verifies -p preserves modification timestamps.
+// R3.1: -p preserves mode, ownership, and modification timestamps.
+func TestPreserveTimestamps(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+	content := []byte("preserve me\n")
+	os.WriteFile(src, content, 0o644) //nolint:errcheck
+
+	// Set a known timestamp on the source file.
+	knownTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+	os.Chtimes(src, knownTime, knownTime) //nolint:errcheck
+
+	cmd := exec.Command(goBin, "-p", src, dst)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cp -p failed: %v\n%s", err, out)
+	}
+
+	// Verify modification time is preserved.
+	dstInfo, sErr := os.Stat(dst)
+	if sErr != nil {
+		t.Fatalf("stat dst: %v", sErr)
+	}
+	if !dstInfo.ModTime().Equal(knownTime) {
+		t.Errorf("mod time = %v, want %v", dstInfo.ModTime(), knownTime)
+	}
+}
+
+// TestPreserveMode verifies -p preserves file permission bits.
+// R3.1: -p preserves mode.
+func TestPreserveMode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+	content := []byte("mode test\n")
+	// Use a non-default mode.
+	os.WriteFile(src, content, 0o755) //nolint:errcheck
+
+	cmd := exec.Command(goBin, "-p", src, dst)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cp -p failed: %v\n%s", err, out)
+	}
+
+	srcInfo, _ := os.Stat(src)
+	dstInfo, sErr := os.Stat(dst)
+	if sErr != nil {
+		t.Fatalf("stat dst: %v", sErr)
+	}
+	if srcInfo.Mode().Perm() != dstInfo.Mode().Perm() {
+		t.Errorf("mode = %o, want %o", dstInfo.Mode().Perm(), srcInfo.Mode().Perm())
+	}
+}
+
+// TestDiffPreserveFlag verifies -p produces matching exit code and stdout/stderr
+// against gcp. R3.1 differential test.
+func TestDiffPreserveFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("preserve_single_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		os.WriteFile(src, []byte("data\n"), 0o644) //nolint:errcheck
+
+		knownTime := time.Date(2019, 3, 1, 10, 30, 0, 0, time.UTC)
+		os.Chtimes(src, knownTime, knownTime) //nolint:errcheck
+
+		refDst := filepath.Join(dir, "ref_dst.txt")
+		goDst := filepath.Join(dir, "go_dst.txt")
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			c := exec.Command(binary, "-p", src, dst)
+			c.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			c.Stdout = &outBuf
+			c.Stderr = &errBuf
+			runErr := c.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, refOut, refErr := runBin(refBin, refDst)
+		goCode, goOut, goErr := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+		if !bytes.Equal(refOut, goOut) {
+			t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", refOut, goOut)
+		}
+		// Normalize stderr for program name differences.
+		norm := programNameNormalizer(goBin, refBin)
+		if !bytes.Equal(norm(refErr), norm(goErr)) {
+			t.Errorf("stderr mismatch:\nref: %q\ngo:  %q", refErr, goErr)
+		}
+
+		// Both should have preserved the timestamp.
+		refInfo, _ := os.Stat(refDst)
+		goInfo, _ := os.Stat(goDst)
+		if !refInfo.ModTime().Equal(goInfo.ModTime()) {
+			t.Errorf("modtime mismatch: ref=%v go=%v", refInfo.ModTime(), goInfo.ModTime())
+		}
+	})
+}
+
+// TestArchiveMode verifies -a (archive) copies recursively, preserves symlinks,
+// and preserves attributes. R3.2 differential test.
+func TestArchiveMode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "srcdir")
+	subDir := filepath.Join(srcDir, "sub")
+	os.MkdirAll(subDir, 0o755)                                                //nolint:errcheck
+	os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("aaa\n"), 0o644)      //nolint:errcheck
+	os.WriteFile(filepath.Join(subDir, "b.txt"), []byte("bbb\n"), 0o644)      //nolint:errcheck
+	os.Symlink("a.txt", filepath.Join(srcDir, "link.txt"))                    //nolint:errcheck
+
+	// Set known timestamps.
+	knownTime := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	os.Chtimes(filepath.Join(srcDir, "a.txt"), knownTime, knownTime) //nolint:errcheck
+
+	dstDir := filepath.Join(dir, "dstdir")
+	cmd := exec.Command(goBin, "-a", srcDir, dstDir)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cp -a failed: %v\n%s", err, out)
+	}
+
+	// Verify directory structure.
+	checkFile := func(path string, want []byte) {
+		t.Helper()
+		got, rErr := os.ReadFile(path)
+		if rErr != nil {
+			t.Errorf("missing file %s: %v", path, rErr)
+			return
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("file %s content = %q, want %q", path, got, want)
+		}
+	}
+	checkFile(filepath.Join(dstDir, "a.txt"), []byte("aaa\n"))
+	checkFile(filepath.Join(dstDir, "sub", "b.txt"), []byte("bbb\n"))
+
+	// Verify symlink preserved (not dereferenced).
+	linkPath := filepath.Join(dstDir, "link.txt")
+	info, lErr := os.Lstat(linkPath)
+	if lErr != nil {
+		t.Fatalf("lstat link: %v", lErr)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected symlink, got regular file")
+	}
+
+	// Verify timestamps preserved on a.txt.
+	aInfo, _ := os.Stat(filepath.Join(dstDir, "a.txt"))
+	if !aInfo.ModTime().Equal(knownTime) {
+		t.Errorf("a.txt mod time = %v, want %v", aInfo.ModTime(), knownTime)
+	}
+}
+
+// TestDiffArchiveFlag verifies -a produces matching exit code and output
+// against gcp. R3.2 differential test.
+func TestDiffArchiveFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("archive_recursive_copy", func(t *testing.T) {
+		t.Parallel()
+		srcBase := t.TempDir()
+		srcDir := filepath.Join(srcBase, "src")
+		os.MkdirAll(filepath.Join(srcDir, "sub"), 0o755)                    //nolint:errcheck
+		os.WriteFile(filepath.Join(srcDir, "f.txt"), []byte("ff\n"), 0o644) //nolint:errcheck
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+		refDst := filepath.Join(refDir, "dst")
+		goDst := filepath.Join(goDir, "dst")
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			c := exec.Command(binary, "-a", srcDir, dst)
+			c.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			c.Stdout = &outBuf
+			c.Stderr = &errBuf
+			runErr := c.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, refOut, _ := runBin(refBin, refDst)
+		goCode, goOut, _ := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+		if !bytes.Equal(refOut, goOut) {
+			t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", refOut, goOut)
+		}
+	})
+}
+
+// TestPreserveAttrList verifies --preserve=ATTR_LIST with individual attributes.
+// R3.3: comma-separated attribute selection.
+func TestPreserveAttrList(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("preserve_timestamps_only", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		os.WriteFile(src, []byte("ts only\n"), 0o644) //nolint:errcheck
+
+		knownTime := time.Date(2018, 7, 4, 0, 0, 0, 0, time.UTC)
+		os.Chtimes(src, knownTime, knownTime) //nolint:errcheck
+
+		cmd := exec.Command(goBin, "--preserve=timestamps", src, dst)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp --preserve=timestamps failed: %v\n%s", err, out)
+		}
+
+		dstInfo, _ := os.Stat(dst)
+		if !dstInfo.ModTime().Equal(knownTime) {
+			t.Errorf("mod time = %v, want %v", dstInfo.ModTime(), knownTime)
+		}
+	})
+
+	t.Run("preserve_mode_only", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		os.WriteFile(src, []byte("mode only\n"), 0o755) //nolint:errcheck
+
+		cmd := exec.Command(goBin, "--preserve=mode", src, dst)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp --preserve=mode failed: %v\n%s", err, out)
+		}
+
+		srcInfo, _ := os.Stat(src)
+		dstInfo, _ := os.Stat(dst)
+		if srcInfo.Mode().Perm() != dstInfo.Mode().Perm() {
+			t.Errorf("mode = %o, want %o", dstInfo.Mode().Perm(), srcInfo.Mode().Perm())
+		}
+	})
+
+	t.Run("preserve_all", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		os.WriteFile(src, []byte("all\n"), 0o755) //nolint:errcheck
+
+		knownTime := time.Date(2017, 12, 25, 0, 0, 0, 0, time.UTC)
+		os.Chtimes(src, knownTime, knownTime) //nolint:errcheck
+
+		cmd := exec.Command(goBin, "--preserve=all", src, dst)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp --preserve=all failed: %v\n%s", err, out)
+		}
+
+		srcInfo, _ := os.Stat(src)
+		dstInfo, _ := os.Stat(dst)
+		if srcInfo.Mode().Perm() != dstInfo.Mode().Perm() {
+			t.Errorf("mode = %o, want %o", dstInfo.Mode().Perm(), srcInfo.Mode().Perm())
+		}
+		if !dstInfo.ModTime().Equal(knownTime) {
+			t.Errorf("mod time = %v, want %v", dstInfo.ModTime(), knownTime)
+		}
+	})
+}
+
+// TestVerboseOutput verifies -v prints each file as it is copied.
+// R3.4: -v or --verbose prints each file name.
+func TestVerboseOutput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("verbose_single_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		os.WriteFile(src, []byte("verbose\n"), 0o644) //nolint:errcheck
+
+		cmd := exec.Command(goBin, "-v", src, dst)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		var outBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("cp -v failed: %v", err)
+		}
+
+		// R3.4: verbose output goes to stdout, matching GNU cp.
+		expected := fmt.Sprintf("'%s' -> '%s'\n", src, dst)
+		if outBuf.String() != expected {
+			t.Errorf("verbose output = %q, want %q", outBuf.String(), expected)
+		}
+	})
+
+	t.Run("verbose_recursive", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		srcDir := filepath.Join(dir, "srcdir")
+		os.MkdirAll(filepath.Join(srcDir, "sub"), 0o755)                    //nolint:errcheck
+		os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("a\n"), 0o644)  //nolint:errcheck
+		os.WriteFile(filepath.Join(srcDir, "sub", "b.txt"), []byte("b\n"), 0o644) //nolint:errcheck
+
+		dstDir := filepath.Join(dir, "dstdir")
+		cmd := exec.Command(goBin, "-rv", srcDir, dstDir)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		var outBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("cp -rv failed: %v", err)
+		}
+
+		output := outBuf.String()
+		// Should contain entries for directory and files.
+		if !bytes.Contains([]byte(output), []byte("->")) {
+			t.Errorf("verbose output missing '->' entries: %q", output)
+		}
+	})
+}
+
+// TestDiffVerboseFlag verifies -v produces matching output against gcp.
+// R3.4 differential test.
+func TestDiffVerboseFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	t.Run("verbose_single_file_diff", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		os.WriteFile(src, []byte("verbose diff\n"), 0o644) //nolint:errcheck
+
+		refDst := filepath.Join(dir, "ref_dst.txt")
+		goDst := filepath.Join(dir, "go_dst.txt")
+
+		normalize := []testutils.NormalizeFunc{
+			programNameNormalizer(goBin, refBin),
+		}
+
+		runBin := func(binary, dst string) (int, []byte, []byte) {
+			t.Helper()
+			c := exec.Command(binary, "-v", src, dst)
+			c.Env = append(os.Environ(), "LC_ALL=C")
+			var outBuf, errBuf bytes.Buffer
+			c.Stdout = &outBuf
+			c.Stderr = &errBuf
+			runErr := c.Run()
+			code := 0
+			if runErr != nil {
+				if exitErr, ok := runErr.(*exec.ExitError); ok {
+					code = exitErr.ExitCode()
+				} else {
+					t.Fatalf("failed to run %q: %v", binary, runErr)
+				}
+			}
+			return code, outBuf.Bytes(), errBuf.Bytes()
+		}
+
+		refCode, refOut, refErr := runBin(refBin, refDst)
+		goCode, goOut, goErr := runBin(goBin, goDst)
+
+		if refCode != goCode {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+		}
+
+		// Normalize destination paths in verbose stdout since they differ.
+		dstNorm := func(b []byte) []byte {
+			b = bytes.ReplaceAll(b, []byte(refDst), []byte("DST"))
+			b = bytes.ReplaceAll(b, []byte(goDst), []byte("DST"))
+			return b
+		}
+
+		normRefOut := dstNorm(refOut)
+		normGoOut := dstNorm(goOut)
+		for _, fn := range normalize {
+			normRefOut = fn(normRefOut)
+			normGoOut = fn(normGoOut)
+		}
+
+		if !bytes.Equal(normRefOut, normGoOut) {
+			t.Errorf("stdout mismatch:\nref: %q\ngo:  %q", normRefOut, normGoOut)
+		}
+
+		// Stderr should also match (empty for successful copy).
+		for _, fn := range normalize {
+			refErr = fn(refErr)
+			goErr = fn(goErr)
+		}
+		if !bytes.Equal(refErr, goErr) {
+			t.Errorf("stderr mismatch:\nref: %q\ngo:  %q", refErr, goErr)
 		}
 	})
 }

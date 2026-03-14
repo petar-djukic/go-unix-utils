@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
+// Implements: prd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
 package main
 
 import (
@@ -21,11 +21,20 @@ import (
 // programName is the name used in error messages.
 const programName = "cp"
 
+// preserveAttrs tracks which file attributes to preserve on copy.
+type preserveAttrs struct {
+	mode       bool
+	ownership  bool
+	timestamps bool
+}
+
 // cpOpts holds all flag state for a cp invocation.
 type cpOpts struct {
 	recursive   bool
 	dereference bool // -L: follow symlinks in source
 	noDerefer   bool // -P: preserve symlinks (default with -r)
+	preserve    preserveAttrs
+	verbose     bool
 }
 
 func main() {
@@ -45,6 +54,20 @@ func main() {
 			opts.dereference = true
 		case arg == "--no-dereference":
 			opts.noDerefer = true
+		case arg == "--verbose":
+			// R3.4: --verbose long option.
+			opts.verbose = true
+		case arg == "--archive":
+			// R3.2: --archive is equivalent to -dR --preserve=all.
+			opts.recursive = true
+			opts.noDerefer = true
+			opts.preserve = preserveAttrs{mode: true, ownership: true, timestamps: true}
+		case strings.HasPrefix(arg, "--preserve="):
+			// R3.3: --preserve=ATTR_LIST with comma-separated attributes.
+			parsePreserveList(arg[len("--preserve="):], &opts.preserve)
+		case arg == "--preserve":
+			// R3.1: bare --preserve is equivalent to --preserve=mode,ownership,timestamps.
+			opts.preserve = preserveAttrs{mode: true, ownership: true, timestamps: true}
 		case arg == "--":
 			operands = append(operands, args[i+1:]...)
 			i = len(args)
@@ -61,6 +84,20 @@ func main() {
 				case 'L':
 					opts.dereference = true
 				case 'P':
+					opts.noDerefer = true
+				case 'p':
+					// R3.1: -p is equivalent to --preserve=mode,ownership,timestamps.
+					opts.preserve = preserveAttrs{mode: true, ownership: true, timestamps: true}
+				case 'a':
+					// R3.2: -a is equivalent to -dR --preserve=all.
+					opts.recursive = true
+					opts.noDerefer = true
+					opts.preserve = preserveAttrs{mode: true, ownership: true, timestamps: true}
+				case 'v':
+					// R3.4: -v verbose mode.
+					opts.verbose = true
+				case 'd':
+					// -d is equivalent to --no-dereference (part of -a expansion).
 					opts.noDerefer = true
 				default:
 					// Ignore unrecognized short flags for forward compatibility.
@@ -130,6 +167,11 @@ func copyEntry(src, dst string, opts cpOpts) error {
 		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
 	}
 
+	// R3.4: verbose output to stdout before the copy, matching GNU cp.
+	if opts.verbose {
+		fmt.Printf("'%s' -> '%s'\n", src, dst)
+	}
+
 	// Handle symlinks.
 	if srcLstat.Mode()&os.ModeSymlink != 0 {
 		if opts.noDerefer {
@@ -153,7 +195,11 @@ func copyEntry(src, dst string, opts cpOpts) error {
 		return copyDir(src, dst, opts)
 	}
 
-	return copyFile(src, dst)
+	if err := copyFile(src, dst); err != nil {
+		return err
+	}
+	// R3.1, R3.3: apply attribute preservation after successful file copy.
+	return applyPreservation(src, dst, opts.preserve)
 }
 
 // copyDir recursively copies the directory at src to dst.
@@ -187,6 +233,15 @@ func copyDir(src, dst string, opts cpOpts) error {
 			}
 		}
 	}
+
+	// R3.1, R3.3: apply attribute preservation to the directory itself after
+	// its contents have been copied (timestamps would be reset by child writes).
+	if presErr := applyPreservation(src, dst, opts.preserve); presErr != nil {
+		if firstErr == nil {
+			firstErr = presErr
+		}
+	}
+
 	return firstErr
 }
 
@@ -239,6 +294,72 @@ func copyFile(src, dst string) error {
 	if err := out.Close(); err != nil {
 		return fmt.Errorf("closing '%s': %s", dst, sysErrMsg(err))
 	}
+	return nil
+}
+
+// parsePreserveList parses a comma-separated attribute list and sets the
+// corresponding fields on attrs.
+//
+// R3.3: supported attributes are mode, ownership, timestamps, links, all.
+func parsePreserveList(list string, attrs *preserveAttrs) {
+	for _, attr := range strings.Split(list, ",") {
+		switch strings.TrimSpace(attr) {
+		case "mode":
+			attrs.mode = true
+		case "ownership":
+			attrs.ownership = true
+		case "timestamps":
+			attrs.timestamps = true
+		case "links":
+			// R3.3: links attribute is accepted but hard link preservation
+			// is not implemented (no-op for compatibility).
+		case "all":
+			attrs.mode = true
+			attrs.ownership = true
+			attrs.timestamps = true
+		}
+	}
+}
+
+// applyPreservation sets the preserved attributes on dst based on src metadata.
+//
+// R3.1: -p preserves mode, ownership, and timestamps.
+// R3.3: --preserve=ATTR_LIST selectively preserves attributes.
+func applyPreservation(src, dst string, attrs preserveAttrs) error {
+	if !attrs.mode && !attrs.ownership && !attrs.timestamps {
+		return nil
+	}
+
+	srcFI, err := sys.Lstat(src)
+	if err != nil {
+		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
+	}
+
+	isSymlink := srcFI.Mode&os.ModeSymlink != 0
+
+	// R3.1: preserve file mode bits.
+	if attrs.mode && !isSymlink {
+		if chErr := os.Chmod(dst, srcFI.Mode.Perm()); chErr != nil {
+			return fmt.Errorf("preserving permissions for '%s': %s", dst, sysErrMsg(chErr))
+		}
+	}
+
+	// R3.1: preserve ownership (uid/gid).
+	if attrs.ownership {
+		if chErr := os.Lchown(dst, int(srcFI.Uid), int(srcFI.Gid)); chErr != nil {
+			// Ownership preservation may fail without root; best-effort.
+			fmt.Fprintf(os.Stderr, "%s: preserving ownership for '%s': %s\n",
+				programName, dst, sysErrMsg(chErr))
+		}
+	}
+
+	// R3.1: preserve modification and access timestamps.
+	if attrs.timestamps && !isSymlink {
+		if chErr := os.Chtimes(dst, srcFI.AccessTime, srcFI.ModTime); chErr != nil {
+			return fmt.Errorf("preserving times for '%s': %s", dst, sysErrMsg(chErr))
+		}
+	}
+
 	return nil
 }
 
