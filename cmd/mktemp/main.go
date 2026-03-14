@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.4
+// Implements: prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.6
 package main
 
 import (
@@ -44,16 +44,26 @@ func main() {
 
 	args := os.Args[1:]
 
-	// R2.1: Parse -d/--directory flag.
+	// Parse flags: -d/--directory, -u/--dry-run, -q/--quiet.
 	dirMode := false
+	dryRun := false
+	quiet := false
 	var remaining []string
 	for _, arg := range args {
-		if arg == "-d" || arg == "--directory" {
+		switch arg {
+		case "-d", "--directory":
+			// R2.1: Directory mode.
 			dirMode = true
-		} else if arg == "--" {
+		case "-u", "--dry-run":
+			// R3.5: Dry-run mode.
+			dryRun = true
+		case "-q", "--quiet":
+			// R3.6: Quiet mode.
+			quiet = true
+		case "--":
 			// Stop processing flags.
 			continue
-		} else {
+		default:
 			remaining = append(remaining, arg)
 		}
 	}
@@ -72,7 +82,9 @@ func main() {
 
 	// R3.3: Validate template has at least 3 trailing X characters.
 	if countTrailingXs(template) < minTrailingXs {
-		fmt.Fprintf(os.Stderr, "%s: too few X's in template '%s'\n", programName, template)
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "%s: too few X's in template '%s'\n", programName, template)
+		}
 		os.Exit(1)
 	}
 
@@ -82,9 +94,27 @@ func main() {
 	parentDir := filepath.Dir(fullTemplatePath)
 	info, err := os.Stat(parentDir)
 	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': No such file or directory\n",
-			programName, entityType(dirMode), fullTemplatePath)
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': No such file or directory\n",
+				programName, entityType(dirMode), fullTemplatePath)
+		}
 		os.Exit(1)
+	}
+
+	// R3.5: Dry-run mode generates a name without creating the file or directory.
+	if dryRun {
+		fmt.Fprintf(os.Stderr, "%s: warning: remember to use --dry-run for safety\n", programName)
+		name, err := expandTemplate(template)
+		if err != nil {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': %v\n",
+					programName, entityType(dirMode), fullTemplatePath, err)
+			}
+			os.Exit(1)
+		}
+		path := filepath.Join(dir, name)
+		fmt.Println(path)
+		return
 	}
 
 	// R3.4: Retry loop for name collision (EEXIST).
@@ -92,8 +122,10 @@ func main() {
 		// R1.3: Replace trailing X characters with random alphanumeric characters.
 		name, err := expandTemplate(template)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': %v\n",
-				programName, entityType(dirMode), fullTemplatePath, err)
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': %v\n",
+					programName, entityType(dirMode), fullTemplatePath, err)
+			}
 			os.Exit(1)
 		}
 
@@ -123,14 +155,18 @@ func main() {
 		}
 
 		// R3.2: Permission denied and other creation errors.
-		fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': %s\n",
-			programName, entityType(dirMode), fullTemplatePath, unwrapPathError(err))
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': %s\n",
+				programName, entityType(dirMode), fullTemplatePath, unwrapPathError(err))
+		}
 		os.Exit(1)
 	}
 
 	// All retries exhausted.
-	fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': too many attempts\n",
-		programName, entityType(dirMode), fullTemplatePath)
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "%s: failed to create %s via template '%s': too many attempts\n",
+			programName, entityType(dirMode), fullTemplatePath)
+	}
 	os.Exit(1)
 }
 

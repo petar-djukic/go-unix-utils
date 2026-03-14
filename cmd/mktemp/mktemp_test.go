@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd036-mktemp R1.5, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4
+// Implements: prd036-mktemp R1.5, R2.1–R2.3, R3.1–R3.6, R4.1–R4.4
 package main
 
 import (
@@ -530,6 +530,192 @@ func runWithStderrAndDir(t *testing.T, binary string, args []string, env []strin
 		}
 	}
 	return exitCode, stderr.Bytes()
+}
+
+// TestDiffMktempDryRun verifies R3.5: -u/--dry-run prints the name without
+// creating the file or directory, and prints a warning to stderr.
+//
+// R3.5: -u prints name without creating, warns on stderr.
+// R4.1: Exit code parity with gmktemp.
+// R4.2: Structural validation — path is in expected directory, no file created.
+func TestDiffMktempDryRun(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "dry-run short flag", args: []string{"-u"}},
+		{name: "dry-run long flag", args: []string{"--dry-run"}},
+		{name: "dry-run with directory mode", args: []string{"-u", "-d"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+
+			// Run both binaries.
+			refCode, refStdout, _ := runFull(t, refBin, tc.args, env)
+			goCode, goStdout, goStderr := runFull(t, goBin, tc.args, env)
+
+			// R4.1: Exit codes must match.
+			if refCode != goCode {
+				t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+			}
+			if goCode != 0 {
+				t.Errorf("expected exit code 0, got %d", goCode)
+			}
+
+			// R4.2: Output is a valid path in the expected directory.
+			goPath := strings.TrimSpace(string(goStdout))
+			refPath := strings.TrimSpace(string(refStdout))
+			if filepath.Dir(goPath) != tmpDir {
+				t.Errorf("go path not in TMPDIR: %s", goPath)
+			}
+			if filepath.Dir(refPath) != tmpDir {
+				t.Errorf("ref path not in TMPDIR: %s", refPath)
+			}
+
+			// R4.2: Name matches default tmp.XXXXXXXXXX pattern.
+			pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+			if !pattern.MatchString(filepath.Base(goPath)) {
+				t.Errorf("go name does not match pattern: %s", filepath.Base(goPath))
+			}
+
+			// R3.5: File or directory must NOT exist (dry-run).
+			if _, err := os.Stat(goPath); err == nil {
+				t.Errorf("dry-run created entity at %s, expected no creation", goPath)
+			}
+
+			// R3.5: Warning must appear on stderr.
+			if len(goStderr) == 0 {
+				t.Errorf("go produced no stderr warning for dry-run")
+			}
+		})
+	}
+}
+
+// TestDiffMktempQuiet verifies R3.6: -q/--quiet suppresses error messages
+// on failure while still producing the correct exit code.
+//
+// R3.6: -q suppresses stderr error messages.
+// R4.1: Exit code parity with gmktemp.
+func TestDiffMktempQuiet(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "quiet short flag too few Xs", args: []string{"-q", "badXX"}},
+		{name: "quiet long flag too few Xs", args: []string{"--quiet", "badXX"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			env := []string{"TMPDIR=" + tmpDir, "LC_ALL=C"}
+
+			refCode, _, _ := runFull(t, refBin, tc.args, env)
+			goCode, _, goStderr := runFull(t, goBin, tc.args, env)
+
+			// R4.1: Exit codes must match.
+			if refCode != goCode {
+				t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+			}
+			if goCode != 1 {
+				t.Errorf("expected exit code 1, got %d", goCode)
+			}
+
+			// R3.6: Stderr must be empty when -q is used.
+			if len(goStderr) != 0 {
+				t.Errorf("go produced stderr with -q: %q", goStderr)
+			}
+		})
+	}
+}
+
+// TestDiffMktempQuietUnwritable verifies R3.6 with a permission error:
+// -q suppresses stderr even for creation failures.
+//
+// R3.6: -q suppresses stderr on permission errors.
+// R4.1: Exit code parity.
+func TestDiffMktempQuietUnwritable(t *testing.T) {
+	t.Parallel()
+
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test when running as root")
+	}
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath(refBinName)
+	if err != nil {
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+
+	tmpDir := t.TempDir()
+	unwritableDir := filepath.Join(tmpDir, "unwritable")
+	if err := os.Mkdir(unwritableDir, 0o555); err != nil {
+		t.Fatalf("failed to create unwritable dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unwritableDir, 0o700) // restore permissions for cleanup
+	})
+
+	env := []string{"TMPDIR=" + unwritableDir, "LC_ALL=C"}
+	args := []string{"-q"}
+
+	refCode, _, _ := runFull(t, refBin, args, env)
+	goCode, _, goStderr := runFull(t, goBin, args, env)
+
+	// R4.1: Exit codes must match.
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	if goCode != 1 {
+		t.Errorf("expected exit code 1, got %d", goCode)
+	}
+
+	// R3.6: Stderr must be empty with -q.
+	if len(goStderr) != 0 {
+		t.Errorf("go produced stderr with -q: %q", goStderr)
+	}
+}
+
+// runFull runs binary with args and env, returning exit code, stdout, and stderr.
+func runFull(t *testing.T, binary string, args []string, env []string) (int, []byte, []byte) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Env = buildTestEnv(env)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	exitCode := 0
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run %q: %v", binary, err)
+		}
+	}
+	return exitCode, stdout.Bytes(), stderr.Bytes()
 }
 
 // buildTestEnv merges overrides with the current process environment.
