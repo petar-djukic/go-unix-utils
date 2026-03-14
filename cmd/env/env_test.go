@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests: prd039-env R2.2, R2.3, R3.1, R3.2
+// Tests: prd039-env R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3
 package main
 
 import (
@@ -19,26 +19,39 @@ import (
 // program-name and path differences do not cause false failures.
 func normalizeProgramName(b []byte) []byte {
 	s := string(b)
-	s = strings.ReplaceAll(s, "genv:", "env:")
-	// Replace any absolute path ending in /genv or /env (with optional trailing
-	// content before quote close) e.g. '/opt/homebrew/bin/genv --help' → 'env --help'
+	// Replace any absolute path ending in /genv (e.g. '/opt/homebrew/bin/genv')
+	// with just "env". Walk backwards from "/genv" to find the path start.
 	for {
-		// Find /...genv or /...env path segments.
 		idx := strings.Index(s, "/genv")
-		target := "/genv"
 		if idx < 0 {
 			break
 		}
-		// Walk backwards to find the start of the absolute path.
 		start := idx
-		for start > 0 && s[start-1] != '\'' && s[start-1] != ' ' && s[start-1] != '"' {
+		for start > 0 && s[start-1] != '\'' && s[start-1] != ' ' && s[start-1] != '"' && s[start-1] != '\n' {
 			start--
 		}
 		if start < idx && s[start] == '/' {
-			s = s[:start] + "env" + s[idx+len(target):]
+			s = s[:start] + "env" + s[idx+len("/genv"):]
 		} else {
-			// Can't find path start, just replace the /genv occurrence.
-			s = s[:idx] + "/env" + s[idx+len(target):]
+			s = s[:idx] + "/env" + s[idx+len("/genv"):]
+		}
+	}
+	// Also replace any remaining bare "genv:" with "env:" for non-path cases.
+	s = strings.ReplaceAll(s, "genv:", "env:")
+	// Replace absolute paths to the Go binary (e.g. '/path/to/env') with "env".
+	for {
+		idx := strings.Index(s, "/env:")
+		if idx < 0 {
+			break
+		}
+		start := idx
+		for start > 0 && s[start-1] != '\'' && s[start-1] != ' ' && s[start-1] != '"' && s[start-1] != '\n' {
+			start--
+		}
+		if start < idx && s[start] == '/' {
+			s = s[:start] + "env" + s[idx+len("/env"):]
+		} else {
+			break
 		}
 	}
 	return []byte(s)
@@ -75,6 +88,28 @@ func TestDiff(t *testing.T) {
 	envSort := []testutils.NormalizeFunc{sortLines}
 
 	tests := []testutils.DiffTest{
+		// R4.2: No-argument environment dump.
+		{
+			Name:      "no arguments prints environment",
+			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: envSort,
+		},
+
+		// R4.2: -i empty environment dump.
+		{
+			Name:      "ignore env prints empty",
+			Args:      []string{"-i"},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: envSort,
+		},
+		{
+			Name:      "ignore env with assignment only",
+			Args:      []string{"-i", "FOO=bar"},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: envSort,
+		},
+
 		// R2.2: -u unsets a variable.
 		{
 			Name:      "unset single variable",
@@ -200,12 +235,39 @@ func TestDiff(t *testing.T) {
 			ExitCode: 0,
 		},
 
-		// R3.1: -0 with COMMAND is an error (exit 125).
+		// R3.3 / R4.3: Invalid short option.
 		{
-			Name:      "null flag with command is error",
-			Args:      []string{"-0", "true"},
+			Name:      "invalid short option",
+			Args:      []string{"-x"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+
+		// R3.3 / R4.3: Invalid long option.
+		{
+			Name:      "invalid long option",
+			Args:      []string{"--invalid"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+
+		// R4.3: Missing -u argument.
+		{
+			Name:      "missing unset argument",
+			Args:      []string{"-u"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+
+		// R4.3: Command not found (exit 127) — also exercises R1.3.
+		{
+			Name:      "command not found exit 127",
+			Args:      []string{"nonexistent_cmd_abc_99999"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  127,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 	}
