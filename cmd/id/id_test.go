@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4 (differential tests)
+// Implements: prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3 (differential tests)
 package main
 
 import (
@@ -170,6 +170,46 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
+		// R3.2: -r with -u prints real UID.
+		{
+			Name: "flag_ru",
+			Args: []string{"-ru"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: -r with -g prints real GID.
+		{
+			Name: "flag_rg",
+			Args: []string{"-rg"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: -r with -un prints real user name.
+		{
+			Name: "flag_run",
+			Args: []string{"-run"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: -r with -gn prints real group name.
+		{
+			Name: "flag_rgn",
+			Args: []string{"-rgn"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: -r without -u or -g is an error.
+		{
+			Name:      "flag_r_alone",
+			Args:      []string{"-r"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R3.2: -r with named user and -u.
+		{
+			Name: "flag_ru_named_root",
+			Args: []string{"-ru", "root"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: named user lookup for current user (already tested above).
+		// R3.3: nonexistent user — already tested above as "nonexistent_user".
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

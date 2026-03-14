@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4
+// Implements: prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -36,6 +36,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// R3.2: -r without -u or -g is an error.
+	if opts.flagReal && !opts.flagUser && !opts.flagGroup {
+		fmt.Fprintf(os.Stderr, "%s: printing only names or real IDs requires -u, -g, or -G\n", programName)
+		os.Exit(1)
+	}
+
 	if username == "" {
 		if err := printCurrentUser(opts); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
@@ -55,6 +61,7 @@ type options struct {
 	flagGroup  bool // -g / --group
 	flagGroups bool // -G / --groups
 	flagName   bool // -n / --name
+	flagReal   bool // -r / --real
 }
 
 // parseArgs parses command-line arguments and returns options and an optional username.
@@ -79,6 +86,8 @@ func parseArgs(args []string) (options, string) {
 			opts.flagGroups = true
 		case arg == "--name":
 			opts.flagName = true
+		case arg == "--real":
+			opts.flagReal = true
 		case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--"):
 			// R2.1-R2.3: short flags, can be combined (e.g., -un, -Gn).
 			for _, ch := range arg[1:] {
@@ -91,6 +100,8 @@ func parseArgs(args []string) (options, string) {
 					opts.flagGroups = true
 				case 'n':
 					opts.flagName = true
+				case 'r':
+					opts.flagReal = true
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", programName, ch)
 					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
@@ -128,22 +139,32 @@ func printCurrentUser(opts options) error {
 	uidStr := strconv.Itoa(uid)
 	gidStr := strconv.Itoa(gid)
 
-	// R2.1: -u prints only the effective UID.
+	// R2.1: -u prints only the UID.
+	// R3.2: effective by default; real with -r.
 	if opts.flagUser {
+		id := uidStr
+		if !opts.flagReal {
+			id = strconv.Itoa(os.Geteuid())
+		}
 		if opts.flagName {
-			fmt.Println(lookupUserName(uidStr))
+			fmt.Println(lookupUserName(id))
 		} else {
-			fmt.Println(uidStr)
+			fmt.Println(id)
 		}
 		return nil
 	}
 
-	// R2.2: -g prints only the effective GID.
+	// R2.2: -g prints only the GID.
+	// R3.2: effective by default; real with -r.
 	if opts.flagGroup {
+		id := gidStr
+		if !opts.flagReal {
+			id = strconv.Itoa(os.Getegid())
+		}
 		if opts.flagName {
-			fmt.Println(lookupGroupName(gidStr))
+			fmt.Println(lookupGroupName(id))
 		} else {
-			fmt.Println(gidStr)
+			fmt.Println(id)
 		}
 		return nil
 	}
@@ -295,6 +316,7 @@ or (when USER omitted) for the current process.
   -g, --group    print only the effective group ID
   -G, --groups   print all group IDs
   -n, --name     print a name instead of a number, for -ugG
+  -r, --real     print the real ID instead of the effective ID, with -ug
       --help     display this help and exit
       --version  output version information and exit
 `
