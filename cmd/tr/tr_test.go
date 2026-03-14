@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4 (differential tests)
+// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3 (differential tests)
 package main
 
 import (
@@ -408,6 +408,162 @@ func TestDiff(t *testing.T) {
 			Name:  "r2.4 repeat count 1",
 			Args:  []string{"abc", "[X*1]YZ"},
 			Stdin: []byte("abc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.1: Delete mode (-d).
+		{
+			Name:  "r3.1 delete single char",
+			Args:  []string{"-d", "l"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete multiple chars",
+			Args:  []string{"-d", "aeiou"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete with range",
+			Args:  []string{"-d", "a-z"},
+			Stdin: []byte("Hello World 123\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete digits",
+			Args:  []string{"-d", "[:digit:]"},
+			Stdin: []byte("hello 123 world 456\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete newline",
+			Args:  []string{"-d", `\n`},
+			Stdin: []byte("line1\nline2\nline3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete no match",
+			Args:  []string{"-d", "xyz"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete all chars",
+			Args:  []string{"-d", "[:print:][:cntrl:]"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete --delete long flag",
+			Args:  []string{"--delete", "l"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.1 delete empty input",
+			Args:  []string{"-d", "abc"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.2: Squeeze mode (-s).
+		{
+			Name:  "r3.2 squeeze single set",
+			Args:  []string{"-s", "a-z"},
+			Stdin: []byte("aabbcc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze spaces",
+			Args:  []string{"-s", " "},
+			Stdin: []byte("hello   world   foo\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze newlines",
+			Args:  []string{"-s", `\n`},
+			Stdin: []byte("a\n\n\nb\n\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze no repeats",
+			Args:  []string{"-s", "abc"},
+			Stdin: []byte("abcabc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze with translate",
+			Args:  []string{"-s", "a-z", "A-Z"},
+			Stdin: []byte("aabbcc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze translate lower to upper",
+			Args:  []string{"-s", "[:lower:]", "[:upper:]"},
+			Stdin: []byte("aabbbccdd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze --squeeze-repeats long flag",
+			Args:  []string{"--squeeze-repeats", "a-c"},
+			Stdin: []byte("aabbcc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze empty input",
+			Args:  []string{"-s", "abc"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze only matching chars",
+			Args:  []string{"-s", "a"},
+			Stdin: []byte("baaab\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.2 squeeze translate set2 shorter",
+			Args:  []string{"-s", "abc", "x"},
+			Stdin: []byte("aabbcc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.3: Combined delete-squeeze (-ds).
+		{
+			Name:  "r3.3 delete squeeze basic",
+			Args:  []string{"-ds", "aeiou", "a-z"},
+			Stdin: []byte("aabbbcddee hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.3 delete squeeze digits and spaces",
+			Args:  []string{"-ds", "[:digit:]", " "},
+			Stdin: []byte("abc 123 def  456  ghi\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.3 delete squeeze separate flags",
+			Args:  []string{"-d", "-s", "aeiou", "a-z"},
+			Stdin: []byte("aabbbcddee hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.3 delete squeeze reverse flag order",
+			Args:  []string{"-sd", "aeiou", "a-z"},
+			Stdin: []byte("aabbbcddee hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.3 delete squeeze empty after delete",
+			Args:  []string{"-ds", "a-z", " "},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3.3 delete squeeze no squeeze needed",
+			Args:  []string{"-ds", "x", "abc"},
+			Stdin: []byte("abcxabc\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}

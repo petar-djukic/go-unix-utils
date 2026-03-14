@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/tr implements the tr (translate or delete characters) command.
-// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
+// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3
 package main
 
 import (
@@ -34,12 +34,16 @@ func main() {
 
 // config holds all parsed command-line options.
 type config struct {
-	set1 string
-	set2 string
+	set1        string
+	set2        string
+	deleteMode  bool
+	squeezeMode bool
 }
 
 // parseArgs parses command-line arguments into a config.
 // R1.1: Parse two operand strings (SET1, SET2) from positional arguments.
+// R3.1: Parse -d/--delete flag for delete mode.
+// R3.2: Parse -s/--squeeze-repeats flag for squeeze mode.
 func parseArgs(args []string) (*config, error) {
 	cfg := &config{}
 	var positional []string
@@ -52,7 +56,7 @@ func parseArgs(args []string) (*config, error) {
 			break
 		}
 
-		// D4: Handle --help and --version.
+		// D4: Handle --help, --version, --delete, --squeeze-repeats.
 		if strings.HasPrefix(arg, "--") {
 			switch arg {
 			case "--help":
@@ -61,48 +65,160 @@ func parseArgs(args []string) (*config, error) {
 			case "--version":
 				fmt.Println("tr (go-unix-utils)")
 				os.Exit(0)
+			case "--delete":
+				cfg.deleteMode = true
+			case "--squeeze-repeats":
+				cfg.squeezeMode = true
 			default:
 				return nil, fmt.Errorf("unrecognized option '%s'", arg)
 			}
 			continue
 		}
 
+		// Short flags: -d, -s, or combined like -ds, -sd.
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			return nil, fmt.Errorf("unrecognized option '%s'", arg)
+			valid := true
+			for _, ch := range arg[1:] {
+				switch ch {
+				case 'd':
+					cfg.deleteMode = true
+				case 's':
+					cfg.squeezeMode = true
+				default:
+					valid = false
+				}
+			}
+			if !valid {
+				return nil, fmt.Errorf("unrecognized option '%s'", arg)
+			}
+			continue
 		}
 
 		positional = append(positional, arg)
 	}
 
-	if len(positional) < 2 {
-		return nil, fmt.Errorf("missing operand")
-	}
-	if len(positional) > 2 {
-		return nil, fmt.Errorf("extra operand %q", positional[2])
+	// Validate operand count based on mode.
+	switch {
+	case cfg.deleteMode && !cfg.squeezeMode:
+		// R3.1: -d alone requires exactly SET1.
+		if len(positional) < 1 {
+			return nil, fmt.Errorf("missing operand")
+		}
+		if len(positional) > 1 {
+			return nil, fmt.Errorf("extra operand %q\nOnly one string may be given when deleting without squeezing repeats.", positional[1])
+		}
+		cfg.set1 = positional[0]
+	case cfg.deleteMode && cfg.squeezeMode:
+		// R3.3: -ds requires SET1 and SET2.
+		if len(positional) < 2 {
+			return nil, fmt.Errorf("missing operand")
+		}
+		if len(positional) > 2 {
+			return nil, fmt.Errorf("extra operand %q", positional[2])
+		}
+		cfg.set1 = positional[0]
+		cfg.set2 = positional[1]
+	case cfg.squeezeMode:
+		// R3.2: -s with one operand squeezes SET1; with two, translates then squeezes SET2.
+		if len(positional) < 1 {
+			return nil, fmt.Errorf("missing operand")
+		}
+		if len(positional) > 2 {
+			return nil, fmt.Errorf("extra operand %q", positional[2])
+		}
+		cfg.set1 = positional[0]
+		if len(positional) == 2 {
+			cfg.set2 = positional[1]
+		}
+	default:
+		// Translation mode: requires SET1 and SET2.
+		if len(positional) < 2 {
+			return nil, fmt.Errorf("missing operand")
+		}
+		if len(positional) > 2 {
+			return nil, fmt.Errorf("extra operand %q", positional[2])
+		}
+		cfg.set1 = positional[0]
+		cfg.set2 = positional[1]
 	}
 
-	cfg.set1 = positional[0]
-	cfg.set2 = positional[1]
 	return cfg, nil
 }
 
-// run executes the tr transliteration with the given configuration.
+// byteSet builds a 256-element boolean lookup table from a byte slice.
+func byteSet(chars []byte) [256]bool {
+	var set [256]bool
+	for _, b := range chars {
+		set[b] = true
+	}
+	return set
+}
+
+// run executes the tr operation with the given configuration.
 // R1.2: Reads from stdin and writes translated output to stdout.
 func run(cfg *config, r io.Reader, w io.Writer) error {
-	// R1.3, R1.4: Expand SET specifications (ranges, escapes, classes, repetition).
 	set1Bytes, err := expandSet(cfg.set1)
 	if err != nil {
 		return err
 	}
-	set2Bytes, err := expandSet(cfg.set2)
-	if err != nil {
-		return err
+
+	br := bufio.NewReader(r)
+	bw := bufio.NewWriter(w)
+
+	switch {
+	case cfg.deleteMode && !cfg.squeezeMode:
+		// R3.1: Delete mode -- remove all characters in SET1.
+		if err := runDelete(br, bw, set1Bytes); err != nil {
+			return err
+		}
+	case cfg.deleteMode && cfg.squeezeMode:
+		// R3.3: Combined delete-squeeze -- delete SET1, then squeeze SET2.
+		set2Bytes, err := expandSet(cfg.set2)
+		if err != nil {
+			return err
+		}
+		if err := runDeleteSqueeze(br, bw, set1Bytes, set2Bytes); err != nil {
+			return err
+		}
+	case cfg.squeezeMode && cfg.set2 != "":
+		// R3.2: Squeeze with translation -- translate SET1→SET2, then squeeze SET2.
+		set2Bytes, err := expandSet(cfg.set2)
+		if err != nil {
+			return err
+		}
+		table := buildTranslationTable(set1Bytes, set2Bytes)
+		if err := runTranslateSqueeze(br, bw, table, set2Bytes); err != nil {
+			return err
+		}
+	case cfg.squeezeMode:
+		// R3.2: Squeeze only -- squeeze repeated characters in SET1.
+		if err := runSqueeze(br, bw, set1Bytes); err != nil {
+			return err
+		}
+	default:
+		// R1.1: Translation mode.
+		set2Bytes, err := expandSet(cfg.set2)
+		if err != nil {
+			return err
+		}
+		if len(set1Bytes) == 0 {
+			return fmt.Errorf("when not truncating set1, string2 must be non-empty")
+		}
+		table := buildTranslationTable(set1Bytes, set2Bytes)
+		if err := runTranslate(br, bw, table); err != nil {
+			return err
+		}
 	}
 
-	if len(set1Bytes) == 0 {
-		return fmt.Errorf("when not truncating set1, string2 must be non-empty")
+	if err := bw.Flush(); err != nil {
+		return fmt.Errorf("write error: %w", err)
 	}
+	return nil
+}
 
+// buildTranslationTable creates a 256-byte identity table and maps SET1 bytes
+// to SET2 bytes. When SET2 is shorter, its last character is repeated.
+func buildTranslationTable(set1Bytes, set2Bytes []byte) [256]byte {
 	// R1.1: When SET2 is shorter than SET1, extend SET2 by repeating its last character.
 	if len(set2Bytes) > 0 && len(set2Bytes) < len(set1Bytes) {
 		last := set2Bytes[len(set2Bytes)-1]
@@ -111,8 +227,6 @@ func run(cfg *config, r io.Reader, w io.Writer) error {
 		}
 	}
 
-	// Build a 256-byte translation table.
-	// R1.1: Translate each character in SET1 to the corresponding character in SET2.
 	var table [256]byte
 	for i := range table {
 		table[i] = byte(i)
@@ -122,15 +236,16 @@ func run(cfg *config, r io.Reader, w io.Writer) error {
 			table[b] = set2Bytes[i]
 		}
 	}
+	return table
+}
 
-	// D3: Read stdin byte-by-byte and apply translation table.
-	br := bufio.NewReader(r)
-	bw := bufio.NewWriter(w)
+// runTranslate applies the translation table to each byte from input.
+func runTranslate(br *bufio.Reader, bw *bufio.Writer, table [256]byte) error {
 	for {
 		b, err := br.ReadByte()
 		if err != nil {
 			if err == io.EOF {
-				break
+				return nil
 			}
 			return fmt.Errorf("read error: %w", err)
 		}
@@ -138,10 +253,101 @@ func run(cfg *config, r io.Reader, w io.Writer) error {
 			return fmt.Errorf("write error: %w", writeErr)
 		}
 	}
-	if err := bw.Flush(); err != nil {
-		return fmt.Errorf("write error: %w", err)
+}
+
+// runDelete removes all characters in deleteSet from the input.
+// R3.1: Delete mode.
+func runDelete(br *bufio.Reader, bw *bufio.Writer, deleteChars []byte) error {
+	set := byteSet(deleteChars)
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("read error: %w", err)
+		}
+		if set[b] {
+			continue
+		}
+		if writeErr := bw.WriteByte(b); writeErr != nil {
+			return fmt.Errorf("write error: %w", writeErr)
+		}
 	}
-	return nil
+}
+
+// runSqueeze replaces runs of repeated characters in squeezeChars with a single occurrence.
+// R3.2: Squeeze-only mode (no translation).
+func runSqueeze(br *bufio.Reader, bw *bufio.Writer, squeezeChars []byte) error {
+	set := byteSet(squeezeChars)
+	lastByte := -1
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("read error: %w", err)
+		}
+		if set[b] && int(b) == lastByte {
+			continue
+		}
+		lastByte = int(b)
+		if writeErr := bw.WriteByte(b); writeErr != nil {
+			return fmt.Errorf("write error: %w", writeErr)
+		}
+	}
+}
+
+// runTranslateSqueeze translates via table, then squeezes repeated characters in SET2.
+// R3.2: Squeeze with translation.
+func runTranslateSqueeze(br *bufio.Reader, bw *bufio.Writer, table [256]byte, squeezeChars []byte) error {
+	set := byteSet(squeezeChars)
+	lastByte := -1
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("read error: %w", err)
+		}
+		translated := table[b]
+		if set[translated] && int(translated) == lastByte {
+			continue
+		}
+		lastByte = int(translated)
+		if writeErr := bw.WriteByte(translated); writeErr != nil {
+			return fmt.Errorf("write error: %w", writeErr)
+		}
+	}
+}
+
+// runDeleteSqueeze deletes characters in SET1, then squeezes repeated characters in SET2.
+// R3.3: Combined -ds mode.
+func runDeleteSqueeze(br *bufio.Reader, bw *bufio.Writer, deleteChars, squeezeChars []byte) error {
+	deleteSet := byteSet(deleteChars)
+	squeezeSet := byteSet(squeezeChars)
+	lastByte := -1
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("read error: %w", err)
+		}
+		if deleteSet[b] {
+			continue
+		}
+		if squeezeSet[b] && int(b) == lastByte {
+			continue
+		}
+		lastByte = int(b)
+		if writeErr := bw.WriteByte(b); writeErr != nil {
+			return fmt.Errorf("write error: %w", writeErr)
+		}
+	}
 }
 
 // expandSet expands a SET specification string into a byte slice.
