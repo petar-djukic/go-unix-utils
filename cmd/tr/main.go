@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/tr implements the tr (translate or delete characters) command.
-// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4
+// Implements: prd054-tr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
 package main
 
 import (
@@ -274,6 +274,7 @@ func parseRepetition(s []byte, pos int, ch byte, starPos int) (int, []byte, erro
 	}
 
 	// Parse count, which may be octal (leading 0) or decimal.
+	// R2.4: [c*0] is equivalent to [c*] -- repeat to fill SET1 length.
 	var count int64
 	var err error
 	if strings.HasPrefix(countStr, "0") && len(countStr) > 1 {
@@ -283,6 +284,11 @@ func parseRepetition(s []byte, pos int, ch byte, starPos int) (int, []byte, erro
 	}
 	if err != nil {
 		return 0, nil, fmt.Errorf("invalid repeat count %q", countStr)
+	}
+
+	// R2.4: When count is 0, treat as [c*] -- repeat to fill.
+	if count == 0 {
+		return consumed, []byte{ch}, nil
 	}
 
 	result := make([]byte, count)
