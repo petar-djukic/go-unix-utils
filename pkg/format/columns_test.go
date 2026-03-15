@@ -201,3 +201,46 @@ func TestColumns(t *testing.T) {
 		assert.Equal(t, []string{"a", "c"}, result[1])
 	})
 }
+
+func TestFormatSizeColumn(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		bytes int64
+		width int
+		opts  HumanSizeOpts
+		want  string
+	}{
+		// R3.5: ls -h right-aligns file sizes in -l output.
+		{"ls -h small file padded", 1536, 6, HumanSizeOpts{Binary: true}, " 1.5Ki"},
+		{"ls -h exact unit padded", 1048576, 6, HumanSizeOpts{Binary: true}, "   1Mi"},
+		{"ls -h large file padded", 1572864, 6, HumanSizeOpts{Binary: true}, " 1.5Mi"},
+		{"ls -h zero padded", 0, 6, HumanSizeOpts{Binary: true}, "     0"},
+		{"ls -h below threshold padded", 512, 6, HumanSizeOpts{Binary: true}, "   512"},
+
+		// R3.5: ls -s block counts use the same conversion after caller
+		// multiplies blocks by block size.
+		{"ls -s 8 blocks of 512", 8 * 512, 6, HumanSizeOpts{Binary: true}, "   4Ki"},
+
+		// R3.6: du -h right-aligns directory sizes.
+		{"du -h directory size SI", 1500000, 6, HumanSizeOpts{Binary: false}, "  1.5M"},
+		{"du -h directory size binary", 1073741824, 6, HumanSizeOpts{Binary: true}, "   1Gi"},
+		{"du -h small directory", 4096, 6, HumanSizeOpts{Binary: true}, "   4Ki"},
+
+		// Edge cases.
+		{"width smaller than output", 1073741824, 2, HumanSizeOpts{Binary: true}, "1Gi"},
+		{"exact width match", 1024, 3, HumanSizeOpts{Binary: true}, "1Ki"},
+		{"zero width", 1024, 0, HumanSizeOpts{Binary: true}, "1Ki"},
+		{"negative width", 1024, -1, HumanSizeOpts{Binary: true}, "1Ki"},
+		{"single byte", 1, 6, HumanSizeOpts{Binary: true}, "     1"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := FormatSizeColumn(tc.bytes, tc.width, tc.opts)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

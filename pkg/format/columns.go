@@ -3,6 +3,12 @@
 
 // Implements prd003-format R1.1-R1.4: column alignment and padding functions
 // for multi-column tabular output matching GNU ls column-layout behavior.
+//
+// R3.5: ls -h shows file sizes in human-readable form in -l output; PadLeft
+// right-aligns HumanSize output in fixed-width size columns. The same
+// conversion applies to ls -s block counts.
+// R3.6: du -h outputs directory sizes as human-readable strings; PadLeft
+// right-aligns HumanSize output for consistent tabular du output.
 
 package format
 
@@ -130,4 +136,16 @@ func buildGrid(entries []string, numCols, rows int) [][]string {
 		result[row] = cols
 	}
 	return result
+}
+
+// FormatSizeColumn converts a byte count to a human-readable string and
+// right-aligns it within a fixed-width column. This composes HumanSize with
+// PadLeft to produce the size field used in tabular output.
+//
+// R3.5: ls -h uses this to right-align file sizes in -l output. The same
+// conversion applies to ls -s block counts, where the caller multiplies
+// blocks by block size before passing to this function.
+// R3.6: du -h uses this to right-align directory sizes in tabular output.
+func FormatSizeColumn(bytes int64, width int, opts HumanSizeOpts) string {
+	return PadLeft(HumanSize(bytes, opts), width)
 }
