@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cat (prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3,
-// R4.1-R4.4).
+// R4.1-R4.9).
 
 package main_test
 
@@ -23,7 +23,9 @@ import (
 // R2.2 (-b non-blank numbering), R2.3 (-b overrides -n), R2.4 (blank
 // line definition), R3.1 (-s squeeze), R3.2 (squeeze across files),
 // R3.3 (-s combined with -n/-b), R4.1 (-v show-nonprinting), R4.2 (-v
-// tab/newline exemption), R4.3 (-E show-ends), and R4.4 (-T show-tabs).
+// tab/newline exemption), R4.3 (-E show-ends), R4.4 (-T show-tabs),
+// R4.5 (-A equivalent to -vET), R4.6 (-e equivalent to -vE),
+// R4.7 (-t equivalent to -vT), and R4.8 (-u accepted, no effect).
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -373,6 +375,87 @@ func TestDiff(t *testing.T) {
 			Name:     "r4.7_t_combined",
 			Args:     []string{"-t"},
 			Stdin:    []byte("hi\t\x01\n\n"),
+			ExitCode: 0,
+		},
+		// --- R4.5: -A equivalent to -vET (additional coverage) ---
+		{
+			// R4.5: -A with binary input shows non-printing, tabs as ^I, $ at ends.
+			Name:     "r4.5_A_binary",
+			Args:     []string{"-A"},
+			Stdin:    []byte{0x00, 0x09, 0x7F, 0x80, 0xFF, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.5: -A with mixed text and control characters.
+			Name:     "r4.5_A_mixed_text",
+			Args:     []string{"-A"},
+			Stdin:    []byte("hello\tworld\x01\nfoo\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.5: -A with blank lines.
+			Name:     "r4.5_A_blank_lines",
+			Args:     []string{"-A"},
+			Stdin:    []byte("a\n\n\nb\n"),
+			ExitCode: 0,
+		},
+		// --- R4.6: -e equivalent to -vE (additional coverage) ---
+		{
+			// R4.6: -e with binary input shows non-printing and $ but tabs pass through.
+			Name:     "r4.6_e_binary",
+			Args:     []string{"-e"},
+			Stdin:    []byte{0x00, 0x09, 0x7F, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.6: -e preserves tabs (does not show ^I).
+			Name:     "r4.6_e_tabs_preserved",
+			Args:     []string{"-e"},
+			Stdin:    []byte("a\tb\n"),
+			ExitCode: 0,
+		},
+		// --- R4.7: -t equivalent to -vT (additional coverage) ---
+		{
+			// R4.7: -t with binary input shows non-printing and tabs as ^I but no $.
+			Name:     "r4.7_t_binary",
+			Args:     []string{"-t"},
+			Stdin:    []byte{0x00, 0x09, 0x7F, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.7: -t does not show $ at end of lines.
+			Name:     "r4.7_t_no_ends",
+			Args:     []string{"-t"},
+			Stdin:    []byte("a\tb\n\n"),
+			ExitCode: 0,
+		},
+		// --- R4.8: -u accepted but has no effect ---
+		{
+			// R4.8: -u alone produces identical output to no flags.
+			Name:     "r4.8_u_no_effect",
+			Args:     []string{"-u"},
+			Stdin:    []byte("hello\nworld\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.8: -u with binary data produces identical output.
+			Name:     "r4.8_u_binary",
+			Args:     []string{"-u"},
+			Stdin:    []byte{0x00, 0x01, 0x7F, 0x80, 0xFF, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.8: -u combined with other flags does not alter their behavior.
+			Name:     "r4.8_u_with_n",
+			Args:     []string{"-un"},
+			Stdin:    []byte("a\nb\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.8: -u combined with -A.
+			Name:     "r4.8_u_with_A",
+			Args:     []string{"-uA"},
+			Stdin:    []byte("hi\t\x01\n"),
 			ExitCode: 0,
 		},
 		// --- R4.9: transformation order with other flags ---

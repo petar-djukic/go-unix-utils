@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd006-cat R1.1-R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4: cmd/cat
+// Implements prd006-cat R1.1-R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9: cmd/cat
 // binary with file concatenation, stdin reading, line numbering, blank-line
-// squeezing, show-nonprinting, show-ends, show-tabs, and error handling.
+// squeezing, show-nonprinting, show-ends, show-tabs, combined display flags
+// (-A, -e, -t), ignored -u flag, and error handling.
 
 package main
 
