@@ -37,107 +37,53 @@ func InstallSIGPIPEHandler() {
 	})
 }
 
-// winchMu protects winchCallbacks and winchCancel.
+// winchMu protects winchCallbacks.
 var winchMu sync.Mutex
 
 // winchCallbacks holds registered SIGWINCH callbacks in registration order.
-// Each entry has a unique ID for cancel/deregistration.
-var winchCallbacks []winchEntry
+var winchCallbacks []func(int)
 
-// winchCancel holds the signal.Stop function for the current SIGWINCH channel.
-// nil when no listener goroutine is running.
-var winchCancel func()
-
-// winchEntry pairs a callback with a unique ID for deregistration.
-type winchEntry struct {
-	id       uint64
-	callback func(int)
-}
-
-// winchNextID is the next callback ID to assign.
-var winchNextID uint64
+// winchOnce ensures the SIGWINCH listener goroutine is started at most once.
+var winchOnce sync.Once
 
 // OnTerminalResize registers a callback that is invoked when the terminal is
 // resized (SIGWINCH). The callback receives the new terminal width obtained by
 // calling TerminalWidth(). If TerminalWidth() returns an error, the callback
 // is not invoked.
 //
-// R3.1: Registers a SIGWINCH handler via signal.Notify.
+// R3.1: Registers a SIGWINCH handler via signal.Notify. The goroutine runs
+// for the lifetime of the process.
 // R3.2: Multiple callbacks are supported; each is called in registration order.
-//
-// Returns a cancel function that deregisters the callback. When all callbacks
-// are deregistered, the SIGWINCH listener goroutine is stopped.
-func OnTerminalResize(callback func(width int)) func() {
+func OnTerminalResize(callback func(width int)) {
 	winchMu.Lock()
-	defer winchMu.Unlock()
+	winchCallbacks = append(winchCallbacks, callback)
+	winchMu.Unlock()
 
-	id := winchNextID
-	winchNextID++
-
-	winchCallbacks = append(winchCallbacks, winchEntry{id: id, callback: callback})
-
-	// Start the listener goroutine if this is the first callback.
-	if winchCancel == nil {
-		startWinchListener()
-	}
-
-	return func() {
-		removeWinchCallback(id)
-	}
+	// Start the listener goroutine on the first call.
+	winchOnce.Do(startWinchListener)
 }
 
 // startWinchListener starts a goroutine that listens for SIGWINCH signals and
-// invokes all registered callbacks. Must be called with winchMu held.
+// invokes all registered callbacks. Called once via winchOnce.
 func startWinchListener() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGWINCH)
 
-	done := make(chan struct{})
-	winchCancel = func() {
-		signal.Stop(c)
-		close(done)
-	}
-
 	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case <-c:
-				width, err := TerminalWidth()
-				if err != nil {
-					continue
-				}
-				winchMu.Lock()
-				// Copy the slice to release the lock before calling callbacks.
-				cbs := make([]winchEntry, len(winchCallbacks))
-				copy(cbs, winchCallbacks)
-				winchMu.Unlock()
+		for range c {
+			width, err := TerminalWidth()
+			if err != nil {
+				continue
+			}
+			winchMu.Lock()
+			// Copy the slice to release the lock before calling callbacks.
+			cbs := make([]func(int), len(winchCallbacks))
+			copy(cbs, winchCallbacks)
+			winchMu.Unlock()
 
-				for _, entry := range cbs {
-					entry.callback(width)
-				}
+			for _, cb := range cbs {
+				cb(width)
 			}
 		}
 	}()
-}
-
-// removeWinchCallback removes a callback by ID. If no callbacks remain, stops
-// the SIGWINCH listener goroutine.
-func removeWinchCallback(id uint64) {
-	winchMu.Lock()
-	defer winchMu.Unlock()
-
-	for i, entry := range winchCallbacks {
-		if entry.id == id {
-			winchCallbacks = append(winchCallbacks[:i], winchCallbacks[i+1:]...)
-			break
-		}
-	}
-
-	// Stop the listener if no callbacks remain.
-	if len(winchCallbacks) == 0 && winchCancel != nil {
-		winchCancel()
-		winchCancel = nil
-	}
 }
