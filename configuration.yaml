@@ -38,6 +38,7 @@ project:
         - "07.0"
         - "07.1"
         - "08.0"
+        - "08.1"
 generation:
     prefix: generation-
     cycles: 6

@@ -1,0 +1,99 @@
+id: prd072-od
+title: "cmd/od: Octal and Other Format Dump"
+
+problem: |
+  Shell scripts and debugging workflows use od to display file contents in octal, hexadecimal,
+  decimal, or character formats. The macOS BSD od differs from GNU od in default output format,
+  address radix options, and type specification syntax. The Go implementation must match the
+  Homebrew GNU reference binary (god, installed by coreutils) in output and exit codes for
+  all supported flag combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Dump file contents in configurable numeric and character formats.
+  - G2: Support address radix control, byte range selection, and multiple type specifiers.
+  - G3: Support traditional and POSIX-style invocations.
+  - G4: Verify functional parity against god via differential testing.
+
+requirements:
+  R1:
+    title: Default behavior and type specifiers
+    items:
+      - R1.1: "When invoked with no type options, must display input in the default format: octal 2-byte words (equivalent to -t o2), with an octal address offset in the left column."
+      - R1.2: "-t TYPE or --format=TYPE must display input in the given format. TYPE consists of a format letter (a for named characters, c for C-style characters, d for signed decimal, f for floating point, o for octal, u for unsigned decimal, x for hexadecimal) optionally followed by a size in bytes."
+      - R1.3: Multiple -t options may be given; each produces an additional line of output per input block.
+      - R1.4: Must read from FILE arguments in order, or from stdin when no file is given or "-" is specified.
+
+  R2:
+    title: Address format and byte range
+    items:
+      - R2.1: "-A RADIX or --address-radix=RADIX must set the address offset format. RADIX is d (decimal), o (octal), x (hexadecimal), or n (no addresses)."
+      - R2.2: "-j BYTES or --skip-bytes=BYTES must skip BYTES input bytes before formatting. BYTES may have a multiplier suffix (b for 512, k for 1024, m for 1048576)."
+      - R2.3: "-N BYTES or --read-bytes=BYTES must format at most BYTES input bytes."
+      - R2.4: "Must display a final line containing only the address of the byte past the last byte read (the file size offset)."
+
+  R3:
+    title: Output width and traditional options
+    items:
+      - R3.1: "-w[N] or --width[=N] must set the number of input bytes per output line (default 16). When -w is given without a value, must use 32."
+      - R3.2: Must support traditional short options as aliases for type specifiers. -b is equivalent to -t o1, -c is -t c, -d is -t u2, -o is -t o2, -s is -t d2, -x is -t x2.
+      - R3.3: "Duplicate bytes in multi-line output must be replaced with '*' on a line by itself to indicate repetition, matching GNU od behavior."
+      - R3.4: "-v or --output-duplicates must print all input data, disabling the '*' duplicate suppression."
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 when the dump completes successfully.
+      - R4.2: Must exit 1 when an invalid option is given or a file cannot be opened.
+      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
+      - R4.4: "Tests must cover: default octal dump, -t with each format letter (a, c, d, f, o, u, x) and size variants, -A address radix modes, -j skip bytes, -N read bytes, -w output width, -v output duplicates, traditional short options (-b, -c, -d, -o, -s, -x), multiple -t options, duplicate suppression with '*', stdin input, multi-file input, and error cases (invalid type, missing file)."
+
+non_goals:
+  - cmd/od does not implement --strings (-S) string extraction mode.
+  - cmd/od does not implement --endian for byte-order control beyond native order.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "printf '\\x01\\x02\\x03\\x04' | go run ./cmd/od produces octal dump output matching god."
+    traces:
+      - R1.1
+      - R1.4
+      - R2.4
+  - id: AC2
+    criterion: "printf 'hello' | go run ./cmd/od -A x -t x1 produces hex dump with hex addresses, matching god."
+    traces:
+      - R1.2
+      - R2.1
+  - id: AC3
+    criterion: "printf 'hello world' | go run ./cmd/od -j 6 -N 5 -t c dumps only 'world', matching god."
+    traces:
+      - R1.2
+      - R2.2
+      - R2.3
+  - id: AC4
+    criterion: "go run ./cmd/od -t x1 -t c testfile produces two format lines per block, matching god."
+    traces:
+      - R1.3
+  - id: AC5
+    criterion: "Differential test against god passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/od compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

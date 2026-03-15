@@ -376,3 +376,32 @@ releases:
           status: spec_complete
         - id: rel08.0-uc007-expr
           status: spec_complete
+    - version: "08.1"
+      name: "Batch 8.1 — file splitting, joining, formatting, and data display (split, csplit, join, fmt, numfmt, od, printf)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement seven utilities for file splitting, field joining, text formatting, number
+        conversion, and data display. split divides files into pieces by line count, byte count,
+        or chunk count. csplit splits files at context-determined boundaries using regular
+        expressions or line numbers. join performs relational joins on two sorted files. fmt
+        reformats text paragraphs to a specified width. numfmt converts numbers between raw
+        and human-readable formats with SI/IEC suffixes. od dumps file contents in octal,
+        hexadecimal, and other formats. printf formats and prints data using printf-style
+        format strings. All are verified by differential testing against GNU coreutils
+        reference binaries.
+      use_cases:
+        - id: rel08.1-uc001-split
+          status: spec_complete
+        - id: rel08.1-uc002-csplit
+          status: spec_complete
+        - id: rel08.1-uc003-join
+          status: spec_complete
+        - id: rel08.1-uc004-fmt
+          status: spec_complete
+        - id: rel08.1-uc005-numfmt
+          status: spec_complete
+        - id: rel08.1-uc006-od
+          status: spec_complete
+        - id: rel08.1-uc007-printf
+          status: spec_complete

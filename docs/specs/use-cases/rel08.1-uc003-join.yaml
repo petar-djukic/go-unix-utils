@@ -1,0 +1,50 @@
+id: rel08.1-uc003-join
+title: "Join lines of two files on a common field via join"
+
+summary: |
+  The operator invokes the Go join binary to perform relational joins on two sorted files.
+  The differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gjoin from coreutils) with the same arguments and environment, then compares stdout and
+  exit codes. All tests use LC_ALL=C for deterministic collation.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd069-join.yaml) and invokes do-work to produce
+  a passing differential test for cmd/join.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises join with default first-field join, -1/-2 field selection,
+      -j combined field, -t custom separator, -o output format, -a unpairable lines,
+      -v unpairable only, -e empty replacement, --header, stdin as one input, and error
+      cases (missing file, invalid field number).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/join and gjoin
+      with the same arguments and environment. Requires F1 (binary must be built). Tests
+      compare stdout and exit codes under LC_ALL=C.
+
+touchpoints:
+  - T1: "cmd/join — field join, separators, unpairable lines, header mode (prd069-join R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for default join, field selection, custom separators,
+      output format, unpairable lines, empty replacement, header mode, stdin input, and
+      error cases, confirming output and exit code parity with gjoin.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Locale-aware collation beyond LC_ALL=C is excluded per the PRD.
+  - "--nocheck-order is excluded per the PRD."
+
+test_suite: test-rel08.1

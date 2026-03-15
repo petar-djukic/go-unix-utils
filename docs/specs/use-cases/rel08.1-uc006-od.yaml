@@ -1,0 +1,52 @@
+id: rel08.1-uc006-od
+title: "Dump file contents in octal and other formats via od"
+
+summary: |
+  The operator invokes the Go od binary to display file contents in configurable numeric
+  and character formats. The differential testing harness runs both the Go binary and the
+  Homebrew reference binary (god from coreutils) with the same arguments and environment,
+  then compares stdout and exit codes.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd072-od.yaml) and invokes do-work to produce
+  a passing differential test for cmd/od.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises od with default octal dump, -t with each format letter
+      (a, c, d, f, o, u, x) and size variants, -A address radix modes, -j skip bytes,
+      -N read bytes, -w output width, -v output duplicates, traditional short options
+      (-b, -c, -d, -o, -s, -x), multiple -t options, duplicate suppression, stdin input,
+      multi-file input, and error cases (invalid type, missing file).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/od and god
+      with the same arguments and environment. Requires F1 (binary must be built). Tests
+      compare stdout and exit codes under LC_ALL=C.
+
+touchpoints:
+  - T1: "cmd/od — format dump, address radix, byte range, duplicate suppression (prd072-od R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for default octal dump, all type specifiers, address
+      radix modes, byte skip and limit, output width, duplicate suppression, traditional
+      options, multiple format lines, stdin and multi-file input, and error cases,
+      confirming output and exit code parity with god.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - "--strings (-S) mode is excluded per the PRD."
+  - "--endian byte-order control is excluded per the PRD."
+
+test_suite: test-rel08.1

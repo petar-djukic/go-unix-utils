@@ -1,0 +1,548 @@
+id: test-rel08.1
+title: "Test Suite: rel08.1 — split, csplit, join, fmt, numfmt, od, printf"
+release: rel08.1
+
+traces:
+  - rel08.1-uc001-split
+  - rel08.1-uc002-csplit
+  - rel08.1-uc003-join
+  - rel08.1-uc004-fmt
+  - rel08.1-uc005-numfmt
+  - rel08.1-uc006-od
+  - rel08.1-uc007-printf
+  - prd067-split R1
+  - prd067-split R2
+  - prd067-split R3
+  - prd067-split R4
+  - prd068-csplit R1
+  - prd068-csplit R2
+  - prd068-csplit R3
+  - prd068-csplit R4
+  - prd069-join R1
+  - prd069-join R2
+  - prd069-join R3
+  - prd069-join R4
+  - prd070-fmt R1
+  - prd070-fmt R2
+  - prd070-fmt R3
+  - prd070-fmt R4
+  - prd071-numfmt R1
+  - prd071-numfmt R2
+  - prd071-numfmt R3
+  - prd071-numfmt R4
+  - prd072-od R1
+  - prd072-od R2
+  - prd072-od R3
+  - prd072-od R4
+  - prd073-printf R1
+  - prd073-printf R2
+  - prd073-printf R3
+  - prd073-printf R4
+
+preconditions:
+  - ./bin/split, ./bin/csplit, ./bin/join, ./bin/fmt, ./bin/numfmt, ./bin/od, and ./bin/printf exist (built via mage build).
+  - Reference binaries gsplit, gcsplit, gjoin, gfmt, gnumfmt, god, and gprintf are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "split and csplit tests compare output file contents and exit codes."
+  - "join tests use pre-sorted input files for deterministic comparison."
+  - "fmt tests use fixed input text for deterministic paragraph formatting comparison."
+  - "numfmt tests use fixed numeric inputs for deterministic conversion comparison."
+  - "od tests use fixed binary inputs for deterministic dump comparison."
+  - "printf tests use fixed format strings and arguments for deterministic output comparison."
+
+test_cases:
+  # --- split ---
+  - name: split_default_lines
+    description: "seq 1 2500 | split; expect xaa (1000 lines), xab (1000 lines), xac (500 lines)."
+    inputs:
+      args: []
+      stdin: "seq 1 2500 output"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd067-split R1.1
+      - prd067-split R1.4
+
+  - name: split_custom_lines
+    description: "seq 1 10 | split -l 3; expect 4 files (3+3+3+1 lines)."
+    inputs:
+      args: ["-l", "3"]
+      stdin: "seq 1 10 output"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd067-split R1.3
+
+  - name: split_bytes
+    description: "split -b 10 testfile; expect pieces of 10 bytes each."
+    inputs:
+      args: ["-b", "10"]
+      stdin: "20 bytes of input"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd067-split R2.1
+
+  - name: split_numeric_suffix
+    description: "split -d -a 3 input prefix_; expect prefix_000, prefix_001, etc."
+    inputs:
+      args: ["-d", "-a", "3"]
+      stdin: "multi-line input"
+      env: ["LC_ALL=C"]
+    normalization: "compare output filenames and contents"
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd067-split R3.1
+      - prd067-split R3.2
+
+  - name: split_chunks
+    description: "split -n 3 testfile; expect 3 roughly equal pieces."
+    inputs:
+      args: ["-n", "3"]
+      stdin: "input data for chunking"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd067-split R2.3
+
+  # --- csplit ---
+  - name: csplit_regex_split
+    description: "printf 'a\\nb\\nc\\nd\\n' | csplit - /c/; expect xx00 (a,b) and xx01 (c,d)."
+    inputs:
+      args: ["-", "/c/"]
+      stdin: "a\nb\nc\nd\n"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: "byte counts per piece"
+      stderr: ""
+    traces:
+      - prd068-csplit R1.2
+      - prd068-csplit R3.1
+
+  - name: csplit_line_number
+    description: "seq 1 10 | csplit - 4 7; expect xx00 (1-3), xx01 (4-6), xx02 (7-10)."
+    inputs:
+      args: ["-", "4", "7"]
+      stdin: "seq 1 10 output"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: "byte counts per piece"
+      stderr: ""
+    traces:
+      - prd068-csplit R1.4
+      - prd068-csplit R4.1
+
+  - name: csplit_repeat_star
+    description: "csplit input '/pattern/' '{*}'; repeat pattern to end of file."
+    inputs:
+      args: ["-", "/pattern/", "{*}"]
+      stdin: "line1\npattern\nline2\npattern\nline3\n"
+      env: ["LC_ALL=C"]
+    normalization: "compare output file contents"
+    expected:
+      exit_code: 0
+      stdout: "byte counts per piece"
+      stderr: ""
+    traces:
+      - prd068-csplit R2.2
+
+  - name: csplit_no_match
+    description: "csplit input '/nomatch/'; expect exit 1 with error."
+    inputs:
+      args: ["-", "/nomatch/"]
+      stdin: "a\nb\nc\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd068-csplit R2.4
+      - prd068-csplit R4.2
+
+  # --- join ---
+  - name: join_default
+    description: "join on default first field; matching lines joined."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "joined lines"
+      stderr: ""
+    traces:
+      - prd069-join R1.1
+      - prd069-join R1.2
+
+  - name: join_custom_field
+    description: "join -t ',' -1 2 -2 1 file1 file2; join on specified fields with comma separator."
+    inputs:
+      args: ["-t", ",", "-1", "2", "-2", "1"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "joined lines with comma separator"
+      stderr: ""
+    traces:
+      - prd069-join R2.1
+      - prd069-join R2.4
+
+  - name: join_unpairable
+    description: "join -a 1 -e EMPTY -o 0,1.2,2.2 file1 file2; unpairable lines from file 1."
+    inputs:
+      args: ["-a", "1", "-e", "EMPTY", "-o", "0,1.2,2.2"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "joined and unpairable lines with EMPTY replacement"
+      stderr: ""
+    traces:
+      - prd069-join R2.3
+      - prd069-join R3.1
+      - prd069-join R3.3
+
+  - name: join_header
+    description: "join --header file1 file2; first line treated as header."
+    inputs:
+      args: ["--header"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "header line followed by joined data lines"
+      stderr: ""
+    traces:
+      - prd069-join R3.4
+
+  # --- fmt ---
+  - name: fmt_default_width
+    description: "fmt on long paragraph; expect lines wrapped at 75 characters."
+    inputs:
+      args: []
+      stdin: "a long paragraph of text that exceeds 75 characters in a single line and needs reformatting to fit within the default width"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "reformatted paragraph within 75 chars"
+      stderr: ""
+    traces:
+      - prd070-fmt R1.1
+      - prd070-fmt R1.4
+
+  - name: fmt_custom_width
+    description: "fmt -w 30 on text; expect lines wrapped at 30 characters."
+    inputs:
+      args: ["-w", "30"]
+      stdin: "a line of text that exceeds thirty characters"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "reformatted text within 30 chars"
+      stderr: ""
+    traces:
+      - prd070-fmt R2.1
+      - prd070-fmt R2.3
+
+  - name: fmt_split_only
+    description: "fmt -s on text with long and short lines; long lines split, short lines unchanged."
+    inputs:
+      args: ["-s"]
+      stdin: "short\na very long line that exceeds the default width and should be split into multiple lines"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "short line unchanged, long line split"
+      stderr: ""
+    traces:
+      - prd070-fmt R3.1
+
+  - name: fmt_paragraph_boundary
+    description: "fmt on text with blank line; paragraphs formatted independently."
+    inputs:
+      args: ["-w", "40"]
+      stdin: "first paragraph text\n\nsecond paragraph text\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "two paragraphs separated by blank line"
+      stderr: ""
+    traces:
+      - prd070-fmt R1.2
+      - prd070-fmt R1.3
+
+  # --- numfmt ---
+  - name: numfmt_to_iec
+    description: "echo 1048576 | numfmt --to=iec; expect '1.0M'."
+    inputs:
+      args: ["--to=iec"]
+      stdin: "1048576\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1.0M\n"
+      stderr: ""
+    traces:
+      - prd071-numfmt R1.1
+      - prd071-numfmt R1.4
+
+  - name: numfmt_from_si
+    description: "echo 1K | numfmt --from=si; expect '1000'."
+    inputs:
+      args: ["--from=si"]
+      stdin: "1K\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1000\n"
+      stderr: ""
+    traces:
+      - prd071-numfmt R1.2
+
+  - name: numfmt_format_padding
+    description: "echo 1500000 | numfmt --to=si --padding=10; expect right-aligned output."
+    inputs:
+      args: ["--to=si", "--padding=10"]
+      stdin: "1500000\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "right-aligned human-readable value"
+      stderr: ""
+    traces:
+      - prd071-numfmt R1.1
+      - prd071-numfmt R2.2
+
+  - name: numfmt_header_field
+    description: "numfmt --to=iec --header --field=2 on tabular input; header unchanged, field 2 converted."
+    inputs:
+      args: ["--to=iec", "--header", "--field=2"]
+      stdin: "name size\nfoo 1048576\nbar 2097152\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "name size\nfoo 1.0M\nbar 2.0M\n"
+      stderr: ""
+    traces:
+      - prd071-numfmt R3.1
+      - prd071-numfmt R3.3
+
+  - name: numfmt_invalid_number
+    description: "echo abc | numfmt --to=iec; expect exit 2 with error."
+    inputs:
+      args: ["--to=iec"]
+      stdin: "abc\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 2
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd071-numfmt R4.2
+
+  # --- od ---
+  - name: od_default_octal
+    description: "printf '\\x01\\x02\\x03\\x04' | od; expect default octal 2-byte dump."
+    inputs:
+      args: []
+      stdin: "\\x01\\x02\\x03\\x04"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "octal dump with offset"
+      stderr: ""
+    traces:
+      - prd072-od R1.1
+      - prd072-od R1.4
+      - prd072-od R2.4
+
+  - name: od_hex_format
+    description: "printf 'hello' | od -A x -t x1; expect hex dump with hex addresses."
+    inputs:
+      args: ["-A", "x", "-t", "x1"]
+      stdin: "hello"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hex dump with hex address prefix"
+      stderr: ""
+    traces:
+      - prd072-od R1.2
+      - prd072-od R2.1
+
+  - name: od_skip_and_limit
+    description: "printf 'hello world' | od -j 6 -N 5 -t c; dump only 'world'."
+    inputs:
+      args: ["-j", "6", "-N", "5", "-t", "c"]
+      stdin: "hello world"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "character dump of 'world'"
+      stderr: ""
+    traces:
+      - prd072-od R1.2
+      - prd072-od R2.2
+      - prd072-od R2.3
+
+  - name: od_multiple_types
+    description: "od -t x1 -t c testfile; two format lines per block."
+    inputs:
+      args: ["-t", "x1", "-t", "c"]
+      stdin: "abcd"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hex line and char line per block"
+      stderr: ""
+    traces:
+      - prd072-od R1.3
+
+  - name: od_traditional_options
+    description: "printf 'AB' | od -x; expect hex 2-byte dump (traditional)."
+    inputs:
+      args: ["-x"]
+      stdin: "AB"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "hex 2-byte dump"
+      stderr: ""
+    traces:
+      - prd072-od R3.2
+
+  # --- printf ---
+  - name: printf_string_int
+    description: "printf '%d %s\\n' 42 hello; expect '42 hello'."
+    inputs:
+      args: ["%d %s\\n", "42", "hello"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "42 hello\n"
+      stderr: ""
+    traces:
+      - prd073-printf R1.1
+      - prd073-printf R1.2
+      - prd073-printf R1.4
+
+  - name: printf_float_format
+    description: "printf '%010.2f\\n' 3.14159; expect '0000003.14'."
+    inputs:
+      args: ["%010.2f\\n", "3.14159"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "0000003.14\n"
+      stderr: ""
+    traces:
+      - prd073-printf R1.3
+      - prd073-printf R2.1
+      - prd073-printf R2.2
+
+  - name: printf_argument_recycling
+    description: "printf '%s\\n' a b c; expect three lines by recycling format."
+    inputs:
+      args: ["%s\\n", "a", "b", "c"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\nb\nc\n"
+      stderr: ""
+    traces:
+      - prd073-printf R1.4
+      - prd073-printf R3.2
+
+  - name: printf_char_value
+    description: "printf '%d\\n' '\"A'; expect '65' (ASCII value of A)."
+    inputs:
+      args: ["%d\\n", "\"A"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "65\n"
+      stderr: ""
+    traces:
+      - prd073-printf R1.2
+      - prd073-printf R3.4
+
+  - name: printf_hex_octal
+    description: "printf '%x %o\\n' 255 255; expect 'ff 377'."
+    inputs:
+      args: ["%x %o\\n", "255", "255"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "ff 377\n"
+      stderr: ""
+    traces:
+      - prd073-printf R1.2
+
+  - name: printf_escape_sequences
+    description: "printf 'a\\tb\\n'; expect 'a<TAB>b<NEWLINE>'."
+    inputs:
+      args: ["a\\tb\\n"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "a\tb\n"
+      stderr: ""
+    traces:
+      - prd073-printf R3.1
