@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cat against gcat (GNU coreutils).
-// Implements prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3 test coverage.
+// Implements prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9 test coverage.
 package main
 
 import (
@@ -191,6 +191,104 @@ func TestDiff(t *testing.T) {
 			Name:  "R3.3_squeeze_with_number_nonblank",
 			Args:  []string{"-sb"},
 			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+
+		// R4.1: -v displays control characters with caret notation.
+		{
+			Name:  "R4.1_v_control_chars",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x01, 0x02, 0x03, 0x1B, '\n'},
+		},
+		// R4.1: -v displays DEL as ^?.
+		{
+			Name:  "R4.1_v_del",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x7F, '\n'},
+		},
+		// R4.1: -v displays high bytes with M- prefix.
+		{
+			Name:  "R4.1_v_high_bytes",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x80, 0x9F, 0xA0, 0xFE, 0xFF, '\n'},
+		},
+		// R4.1: -v mixed printable and non-printing.
+		{
+			Name:  "R4.1_v_mixed",
+			Args:  []string{"-v"},
+			Stdin: []byte("hello\x01world\x7f\n"),
+		},
+
+		// R4.2: -v does not alter tab or newline.
+		{
+			Name:  "R4.2_v_preserves_tab_newline",
+			Args:  []string{"-v"},
+			Stdin: []byte("a\tb\n"),
+		},
+
+		// R4.3: -E appends "$" before newlines.
+		{
+			Name:  "R4.3_E_show_ends",
+			Args:  []string{"-E"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		// R4.3: -E with blank lines.
+		{
+			Name:  "R4.3_E_blank_lines",
+			Args:  []string{"-E"},
+			Stdin: []byte("a\n\n\nb\n"),
+		},
+		// R4.3: -E no trailing newline.
+		{
+			Name:  "R4.3_E_no_trailing_newline",
+			Args:  []string{"-E"},
+			Stdin: []byte("abc"),
+		},
+
+		// R4.4: -T displays tabs as ^I.
+		{
+			Name:  "R4.4_T_show_tabs",
+			Args:  []string{"-T"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		// R4.4: -T with multiple tabs.
+		{
+			Name:  "R4.4_T_multiple_tabs",
+			Args:  []string{"-T"},
+			Stdin: []byte("\t\thello\t\n"),
+		},
+
+		// R4.5: -A combines -v -E -T.
+		{
+			Name:  "R4.5_A_all",
+			Args:  []string{"-A"},
+			Stdin: []byte("a\tb\x01\n"),
+		},
+
+		// R4.6: -e combines -v -E.
+		{
+			Name:  "R4.6_e_nonprinting_ends",
+			Args:  []string{"-e"},
+			Stdin: []byte("a\tb\x01\n"),
+		},
+
+		// R4.7: -t combines -v -T.
+		{
+			Name:  "R4.7_t_nonprinting_tabs",
+			Args:  []string{"-t"},
+			Stdin: []byte("a\tb\x01\n"),
+		},
+
+		// R4.9: transformation order with -n and -A combined.
+		{
+			Name:  "R4.9_nA_combined",
+			Args:  []string{"-nA"},
+			Stdin: []byte("a\tb\x01\n\nc\n"),
+		},
+		// R4.9: -sbA combined (squeeze + nonprinting + ends + tabs + number nonblank).
+		{
+			Name:  "R4.9_sbA_combined",
+			Args:  []string{"-sbA"},
+			Stdin: []byte("a\n\n\n\nb\t\x01\n"),
 		},
 	}
 
