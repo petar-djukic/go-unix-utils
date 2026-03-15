@@ -1,0 +1,51 @@
+id: rel08.0-uc004-timeout
+title: "Run command with time limit via timeout"
+
+summary: |
+  The operator invokes the Go timeout binary to run a command with a time limit. The
+  differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gtimeout from coreutils) with the same arguments and compares exit codes. Tests use
+  fast commands (true, false, sleep) and short durations.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd063-timeout.yaml) and invokes do-work to produce
+  a passing differential test for cmd/timeout.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises timeout with a command completing before the deadline, a
+      command exceeding the deadline (exit 124), duration 0 (no limit), -s with named
+      and numeric signals, -k kill-after escalation, --preserve-status, and error cases
+      (no args, invalid duration, command not found).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/timeout and
+      gtimeout with the same arguments. Requires F1 (binary must be built). The harness
+      compares exit codes and verifies the timed-out child process is terminated.
+
+touchpoints:
+  - T1: "cmd/timeout — deadline enforcement, signal selection, kill-after, foreground, preserve-status (prd063-timeout R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, exit code comparison"
+  - T3: "pkg/sys — process group management (setpgid, killpg) for child process cleanup"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for command completing before timeout, command
+      exceeding timeout, duration 0, signal selection, kill-after escalation,
+      preserve-status, and error cases, confirming exit code parity with gtimeout.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Interactive terminal behavior with --foreground is not tested in the differential harness.
+  - Long-running timeout tests are excluded to keep test execution fast.
+
+test_suite: test-rel08.0

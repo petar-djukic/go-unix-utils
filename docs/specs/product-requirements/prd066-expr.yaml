@@ -1,0 +1,101 @@
+id: prd066-expr
+title: "cmd/expr: Evaluate Expressions"
+
+problem: |
+  Shell scripts use expr to evaluate integer arithmetic, string comparisons, string matching,
+  and logical expressions from the command line. The macOS BSD expr differs from GNU expr in
+  regex syntax and the + operator for string protection. The Go implementation must match the
+  Homebrew GNU reference binary (gexpr, installed by coreutils) in output and exit codes for
+  all supported operations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Evaluate arithmetic, comparison, and logical expressions given as arguments.
+  - G2: Support string matching and substring operations.
+  - G3: Match GNU expr precedence, associativity, and output format.
+
+requirements:
+  R1:
+    title: Arithmetic and comparison operators
+    items:
+      - R1.1: "Must support integer arithmetic operators: + (add), - (subtract), * (multiply), / (integer divide), % (modulo). Each operator and operand is a separate argument."
+      - R1.2: "Must support comparison operators: < (less), <= (less-equal), = (equal), != (not-equal), >= (greater-equal), > (greater). Comparisons on two integers use numeric comparison; otherwise use lexicographic comparison. Must return 1 for true and 0 for false."
+      - R1.3: "Must support logical operators: | (or) returns the first argument if it is nonzero/non-empty, else the second; & (and) returns the first argument if both are nonzero/non-empty, else 0."
+      - R1.4: "Must support parentheses for grouping: ( and ) override default precedence. Parentheses are separate arguments."
+
+  R2:
+    title: String operations
+    items:
+      - R2.1: "match STRING REGEXP or STRING : REGEXP must anchor the pattern at the beginning of STRING and return the matched substring if the pattern contains \\( \\), or the number of matched characters otherwise."
+      - R2.2: "substr STRING POS LENGTH must return a substring of STRING starting at position POS (1-based) with length LENGTH."
+      - R2.3: "index STRING CHARS must return the position (1-based) of the first character in STRING that is also in CHARS, or 0 if none."
+      - R2.4: "length STRING must return the number of characters in STRING."
+
+  R3:
+    title: Special tokens and precedence
+    items:
+      - R3.1: "+ TOKEN must interpret TOKEN as a string even if it is a keyword (match, substr, index, length) or operator. The + is consumed and not part of the value."
+      - R3.2: "Operator precedence from lowest to highest: | , & , comparisons (< <= = != >= >), + - (arithmetic), * / %."
+      - R3.3: "All binary operators are left-associative."
+      - R3.4: "Division by zero must print an error to stderr and exit 2."
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: "Must exit 0 when the expression evaluates to a non-null, non-zero value."
+      - R4.2: "Must exit 1 when the expression evaluates to null or 0."
+      - R4.3: "Must exit 2 on syntax error (invalid expression, missing operand, division by zero). Must exit 3 on internal error."
+      - R4.4: "Differential tests must compare stdout, stderr emptiness, and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must cover: integer arithmetic (all operators), comparisons (numeric and string), logical operators, string operations (match, substr, index, length), parentheses, + escaping, division by zero, and missing operand errors."
+
+non_goals:
+  - cmd/expr does not implement GNU expr's --help and --version when they appear as the sole argument and could be confused with an expression operand.
+  - cmd/expr does not implement arbitrary-precision arithmetic. Integer overflow behavior matches the host platform's int64 semantics.
+  - cmd/expr does not implement extended regex. Only basic regular expressions (BRE) with \\( \\) grouping are supported.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/expr 2 + 3 prints '5' and exits 0, matching gexpr."
+    traces:
+      - R1.1
+      - R4.1
+  - id: AC2
+    criterion: "go run ./cmd/expr 5 '<' 10 prints '1' and exits 0, matching gexpr."
+    traces:
+      - R1.2
+      - R4.1
+  - id: AC3
+    criterion: "go run ./cmd/expr match abcdef 'abc\\(.*\\)' prints 'def', matching gexpr."
+    traces:
+      - R2.1
+  - id: AC4
+    criterion: "go run ./cmd/expr length hello prints '5', matching gexpr."
+    traces:
+      - R2.4
+      - R4.1
+  - id: AC5
+    criterion: "go run ./cmd/expr 1 / 0 exits 2 with error on stderr, matching gexpr."
+    traces:
+      - R3.4
+      - R4.3
+  - id: AC6
+    criterion: "Differential test against gexpr passes for all cases listed in R4.4."
+    traces:
+      - R4.4
+  - id: AC7
+    criterion: "cmd/expr compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

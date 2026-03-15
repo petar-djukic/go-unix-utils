@@ -1,0 +1,99 @@
+id: prd062-touch
+title: "cmd/touch: Create Files and Update Timestamps"
+
+problem: |
+  Shell scripts and build systems use touch to create empty files and update file timestamps.
+  The macOS BSD touch differs from GNU touch in -d date string parsing and --time flag
+  behavior. The Go implementation must match the Homebrew GNU reference binary (gtouch,
+  installed by coreutils) in file creation, timestamp modification, and exit codes for all
+  supported flag combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Create empty files that do not exist.
+  - G2: Update access and modification timestamps of existing files.
+  - G3: Support explicit timestamp specification via -t, -d, and -r.
+
+requirements:
+  R1:
+    title: Default behavior and file creation
+    items:
+      - R1.1: When given one or more FILE arguments, must update the access and modification times of each file to the current time.
+      - R1.2: When a named file does not exist, must create it as an empty file with default permissions.
+      - R1.3: "-c or --no-create must suppress file creation. If the file does not exist, must not create it and must not report an error."
+      - R1.4: Must support multiple file arguments, processing each in order.
+
+  R2:
+    title: Timestamp selection and explicit times
+    items:
+      - R2.1: "-a must change only the access time."
+      - R2.2: "-m must change only the modification time."
+      - R2.3: "When neither -a nor -m is given, must change both access and modification times."
+      - R2.4: "-t STAMP must use the timestamp [[CC]YY]MMDDhhmm[.ss] instead of the current time."
+
+  R3:
+    title: Reference file and date string
+    items:
+      - R3.1: "-r FILE or --reference=FILE must use the timestamps of FILE instead of the current time."
+      - R3.2: "-d STRING or --date=STRING must parse the date string and use it instead of the current time."
+      - R3.3: "When a reference file does not exist, must print an error to stderr and exit 1."
+      - R3.4: "-h or --no-dereference must affect the symbolic link itself rather than the file it points to."
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 when all files are processed successfully.
+      - R4.2: Must exit 1 when an error occurs (invalid timestamp, missing reference file, permission denied). Must continue processing remaining files after an error.
+      - R4.3: "Differential tests must compare exit codes and resulting file timestamps between the Go binary and the reference binary via pkg/testutils."
+      - R4.4: "Tests must cover: create new file, update existing file, -c no-create, -a access only, -m modification only, -t explicit timestamp, -d date string, -r reference file, multiple files, and error cases (invalid timestamp, missing reference file)."
+
+non_goals:
+  - cmd/touch does not implement the obsolescent -t format with two-digit years outside the [[CC]YY]MMDDhhmm[.ss] specification.
+  - cmd/touch does not implement --time=WORD as a standalone flag (it is an alias for -a/-m in GNU touch but rarely used).
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/touch /tmp/newfile creates the file if absent, matching gtouch."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/touch -c /tmp/nonexistent does not create the file and exits 0, matching gtouch."
+    traces:
+      - R1.3
+      - R4.1
+  - id: AC3
+    criterion: "go run ./cmd/touch -t 202401151030.00 /tmp/testfile sets the timestamp, matching gtouch."
+    traces:
+      - R2.3
+      - R2.4
+      - R4.1
+  - id: AC4
+    criterion: "go run ./cmd/touch -r /tmp/reffile /tmp/testfile copies timestamps, matching gtouch."
+    traces:
+      - R3.1
+      - R3.3
+  - id: AC5
+    criterion: "Differential test against gtouch passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/touch compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

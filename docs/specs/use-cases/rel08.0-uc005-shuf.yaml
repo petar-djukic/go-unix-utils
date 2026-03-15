@@ -1,0 +1,52 @@
+id: rel08.0-uc005-shuf
+title: "Shuffle lines randomly via shuf"
+
+summary: |
+  The operator invokes the Go shuf binary to randomly permute input lines or generate
+  random samples. The differential testing harness runs both the Go binary and the Homebrew
+  reference binary (gshuf from coreutils) with the same arguments and compares structural
+  properties of the output (line count, value ranges, uniqueness) rather than exact bytes,
+  because shuf output is non-deterministic.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd064-shuf.yaml) and invokes do-work to produce
+  a passing differential test for cmd/shuf.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises shuf with stdin line shuffle, file line shuffle, -i range
+      mode, -n head count, -r repeat mode, -e echo mode, -z zero-terminated, empty
+      input, and error cases (invalid range, -i with files).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/shuf and gshuf
+      with the same arguments. Requires F1 (binary must be built). The harness verifies
+      structural properties: line count matches, values fall within expected range, no
+      duplicates appear without -r.
+
+touchpoints:
+  - T1: "cmd/shuf — line shuffle, range mode, head count, repeat, echo, zero-terminated (prd064-shuf R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, structural property comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for stdin shuffle, file shuffle, -i range mode,
+      -n head count, -r repeat mode, -e echo mode, -z zero-terminated, empty input,
+      and error cases, confirming structural output parity with gshuf.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Exact byte-for-byte output comparison is not possible because shuf output is random.
+  - --random-source testing is excluded because it changes the output deterministically
+    but depends on the random file content.
+
+test_suite: test-rel08.0

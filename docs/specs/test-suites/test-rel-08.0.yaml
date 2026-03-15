@@ -1,0 +1,571 @@
+id: test-rel08.0
+title: "Test Suite: rel08.0 — date, sleep, touch, timeout, shuf, factor, expr"
+release: rel08.0
+
+traces:
+  - rel08.0-uc001-date
+  - rel08.0-uc002-sleep
+  - rel08.0-uc003-touch
+  - rel08.0-uc004-timeout
+  - rel08.0-uc005-shuf
+  - rel08.0-uc006-factor
+  - rel08.0-uc007-expr
+  - prd060-date R1
+  - prd060-date R2
+  - prd060-date R3
+  - prd060-date R4
+  - prd061-sleep R1
+  - prd061-sleep R2
+  - prd061-sleep R3
+  - prd061-sleep R4
+  - prd062-touch R1
+  - prd062-touch R2
+  - prd062-touch R3
+  - prd062-touch R4
+  - prd063-timeout R1
+  - prd063-timeout R2
+  - prd063-timeout R3
+  - prd063-timeout R4
+  - prd064-shuf R1
+  - prd064-shuf R2
+  - prd064-shuf R3
+  - prd064-shuf R4
+  - prd065-factor R1
+  - prd065-factor R2
+  - prd065-factor R3
+  - prd065-factor R4
+  - prd066-expr R1
+  - prd066-expr R2
+  - prd066-expr R3
+  - prd066-expr R4
+
+preconditions:
+  - ./bin/date, ./bin/sleep, ./bin/touch, ./bin/timeout, ./bin/shuf, ./bin/factor, and ./bin/expr exist (built via mage build).
+  - Reference binaries gdate, gsleep, gtouch, gtimeout, gshuf, gfactor, and gexpr are installed via Homebrew (coreutils) and on PATH.
+  - Tests are run via go test ./cmd/<utility>/... which invokes RunDiffTests from pkg/testutils.
+  - All tests use LC_ALL=C to eliminate locale-dependent divergence.
+  - "date tests use -d @EPOCH with TZ=UTC for deterministic output comparison."
+  - "sleep tests use 0 or very short durations (0.01s) to avoid slow test execution."
+  - "touch tests use explicit timestamps (-t) for deterministic comparison."
+  - "timeout tests use fast commands (true, false, sleep 0) with short deadlines."
+  - "shuf tests verify structural properties (line count, ranges, uniqueness) not exact bytes."
+  - "factor and expr output is deterministic; exact byte comparison is used."
+
+test_cases:
+  # --- date ---
+  - name: date_epoch_format
+    description: "date -d @0 '+%Y-%m-%d %H:%M:%S' under TZ=UTC; expect '1970-01-01 00:00:00'."
+    inputs:
+      args: ["-d", "@0", "+%Y-%m-%d %H:%M:%S"]
+      stdin: ""
+      env: ["LC_ALL=C", "TZ=UTC"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1970-01-01 00:00:00\n"
+      stderr: ""
+    traces:
+      - prd060-date R1.2
+      - prd060-date R1.3
+      - prd060-date R2.2
+
+  - name: date_epoch_seconds
+    description: "date -u -d @1700000000 '+%s'; expect '1700000000'."
+    inputs:
+      args: ["-u", "-d", "@1700000000", "+%s"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1700000000\n"
+      stderr: ""
+    traces:
+      - prd060-date R1.3
+      - prd060-date R2.2
+      - prd060-date R3.1
+
+  - name: date_invalid_string
+    description: "date -d 'invalid'; expect exit 1 with error on stderr."
+    inputs:
+      args: ["-d", "invalid"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd060-date R2.4
+      - prd060-date R4.2
+
+  - name: date_weekday_format
+    description: "date -d @0 '+%A' under TZ=UTC; expect 'Thursday'."
+    inputs:
+      args: ["-d", "@0", "+%A"]
+      stdin: ""
+      env: ["LC_ALL=C", "TZ=UTC"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "Thursday\n"
+      stderr: ""
+    traces:
+      - prd060-date R1.3
+
+  # --- sleep ---
+  - name: sleep_zero
+    description: "sleep 0; expect immediate exit 0."
+    inputs:
+      args: ["0"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd061-sleep R1.1
+      - prd061-sleep R2.1
+
+  - name: sleep_no_args
+    description: "sleep with no arguments; expect exit 1 with error."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd061-sleep R2.2
+      - prd061-sleep R4.2
+
+  - name: sleep_invalid_arg
+    description: "sleep abc; expect exit 1 with error on stderr."
+    inputs:
+      args: ["abc"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd061-sleep R2.3
+      - prd061-sleep R4.2
+
+  - name: sleep_negative_arg
+    description: "sleep -1; expect exit 1 with error on stderr."
+    inputs:
+      args: ["-1"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd061-sleep R2.3
+      - prd061-sleep R4.2
+
+  # --- touch ---
+  - name: touch_create_file
+    description: "touch newfile creates the file if absent."
+    inputs:
+      args: ["$TMPDIR/touch_test_new"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd062-touch R1.1
+      - prd062-touch R1.2
+
+  - name: touch_no_create
+    description: "touch -c nonexistent does not create file, exits 0."
+    inputs:
+      args: ["-c", "$TMPDIR/touch_test_nocreate"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd062-touch R1.3
+      - prd062-touch R4.1
+
+  - name: touch_explicit_timestamp
+    description: "touch -t 202401151030.00 file sets explicit timestamp."
+    inputs:
+      args: ["-t", "202401151030.00", "$TMPDIR/touch_test_ts"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd062-touch R2.4
+
+  - name: touch_reference_missing
+    description: "touch -r /nonexistent /tmp/f; expect exit 1 with error."
+    inputs:
+      args: ["-r", "/nonexistent", "$TMPDIR/touch_test_ref"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd062-touch R3.3
+      - prd062-touch R4.2
+
+  # --- timeout ---
+  - name: timeout_command_succeeds
+    description: "timeout 10 true; expect exit 0."
+    inputs:
+      args: ["10", "true"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd063-timeout R1.1
+      - prd063-timeout R3.1
+
+  - name: timeout_command_fails
+    description: "timeout 10 false; expect exit 1 (command status)."
+    inputs:
+      args: ["10", "false"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd063-timeout R3.1
+
+  - name: timeout_zero_duration
+    description: "timeout 0 sleep 0; expect exit 0 (no time limit)."
+    inputs:
+      args: ["0", "sleep", "0"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd063-timeout R1.4
+      - prd063-timeout R3.1
+
+  - name: timeout_no_args
+    description: "timeout with no arguments; expect exit 125 with error."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 125
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd063-timeout R3.4
+
+  # --- shuf ---
+  - name: shuf_stdin_three_lines
+    description: "shuf on three-line stdin; expect exactly 3 lines containing a, b, c."
+    inputs:
+      args: []
+      stdin: "a\nb\nc\n"
+      env: ["LC_ALL=C"]
+    normalization: "structural: 3 lines, set {a, b, c}"
+    expected:
+      exit_code: 0
+      stdout: "3 lines containing a, b, c in any order"
+      stderr: ""
+    traces:
+      - prd064-shuf R1.1
+      - prd064-shuf R1.2
+      - prd064-shuf R1.3
+
+  - name: shuf_range_mode
+    description: "shuf -i 1-5; expect exactly 5 lines, distinct integers 1-5."
+    inputs:
+      args: ["-i", "1-5"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: "structural: 5 lines, distinct integers in [1,5]"
+    expected:
+      exit_code: 0
+      stdout: "5 lines, each a distinct integer from 1 to 5"
+      stderr: ""
+    traces:
+      - prd064-shuf R2.1
+
+  - name: shuf_head_count
+    description: "shuf -i 1-100 -n 3; expect exactly 3 lines, distinct integers 1-100."
+    inputs:
+      args: ["-i", "1-100", "-n", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: "structural: 3 lines, distinct integers in [1,100]"
+    expected:
+      exit_code: 0
+      stdout: "3 lines, each a distinct integer from 1 to 100"
+      stderr: ""
+    traces:
+      - prd064-shuf R2.1
+      - prd064-shuf R2.2
+
+  - name: shuf_echo_mode
+    description: "shuf -e alpha beta gamma; expect 3 lines containing alpha, beta, gamma."
+    inputs:
+      args: ["-e", "alpha", "beta", "gamma"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: "structural: 3 lines, set {alpha, beta, gamma}"
+    expected:
+      exit_code: 0
+      stdout: "3 lines containing alpha, beta, gamma in any order"
+      stderr: ""
+    traces:
+      - prd064-shuf R3.3
+
+  - name: shuf_empty_input
+    description: "shuf on empty stdin; expect no output."
+    inputs:
+      args: []
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd064-shuf R3.4
+
+  # --- factor ---
+  - name: factor_composite
+    description: "factor 12; expect '12: 2 2 3'."
+    inputs:
+      args: ["12"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "12: 2 2 3\n"
+      stderr: ""
+    traces:
+      - prd065-factor R1.1
+
+  - name: factor_one
+    description: "factor 1; expect '1:'."
+    inputs:
+      args: ["1"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1:\n"
+      stderr: ""
+    traces:
+      - prd065-factor R1.2
+
+  - name: factor_prime
+    description: "factor 97; expect '97: 97'."
+    inputs:
+      args: ["97"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "97: 97\n"
+      stderr: ""
+    traces:
+      - prd065-factor R1.3
+
+  - name: factor_multiple_args
+    description: "factor 6 15; expect '6: 2 3' and '15: 3 5'."
+    inputs:
+      args: ["6", "15"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "6: 2 3\n15: 3 5\n"
+      stderr: ""
+    traces:
+      - prd065-factor R1.4
+
+  - name: factor_stdin_mode
+    description: "echo 15 | factor; expect '15: 3 5'."
+    inputs:
+      args: []
+      stdin: "15\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "15: 3 5\n"
+      stderr: ""
+    traces:
+      - prd065-factor R2.1
+
+  - name: factor_large_number
+    description: "factor 999999937 (large prime); expect '999999937: 999999937'."
+    inputs:
+      args: ["999999937"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "999999937: 999999937\n"
+      stderr: ""
+    traces:
+      - prd065-factor R1.3
+      - prd065-factor R2.2
+
+  # --- expr ---
+  - name: expr_addition
+    description: "expr 2 + 3; expect '5'."
+    inputs:
+      args: ["2", "+", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "5\n"
+      stderr: ""
+    traces:
+      - prd066-expr R1.1
+
+  - name: expr_multiplication
+    description: "expr 4 '*' 5; expect '20'."
+    inputs:
+      args: ["4", "*", "5"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "20\n"
+      stderr: ""
+    traces:
+      - prd066-expr R1.1
+
+  - name: expr_comparison_less
+    description: "expr 5 '<' 10; expect '1' (true)."
+    inputs:
+      args: ["5", "<", "10"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "1\n"
+      stderr: ""
+    traces:
+      - prd066-expr R1.2
+
+  - name: expr_string_length
+    description: "expr length hello; expect '5'."
+    inputs:
+      args: ["length", "hello"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "5\n"
+      stderr: ""
+    traces:
+      - prd066-expr R2.4
+
+  - name: expr_substr
+    description: "expr substr hello 2 3; expect 'ell'."
+    inputs:
+      args: ["substr", "hello", "2", "3"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "ell\n"
+      stderr: ""
+    traces:
+      - prd066-expr R2.2
+
+  - name: expr_division_by_zero
+    description: "expr 1 / 0; expect exit 2 with error on stderr."
+    inputs:
+      args: ["1", "/", "0"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 2
+      stdout: ""
+      stderr: "non-empty error message"
+    traces:
+      - prd066-expr R3.4
+      - prd066-expr R4.3
+
+  - name: expr_zero_result_exit_code
+    description: "expr 0 + 0; expect '0' and exit 1 (result is zero)."
+    inputs:
+      args: ["0", "+", "0"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: "0\n"
+      stderr: ""
+    traces:
+      - prd066-expr R1.1
+      - prd066-expr R4.2
+
+  - name: expr_parentheses
+    description: "expr '(' 2 + 3 ')' '*' 4; expect '20'."
+    inputs:
+      args: ["(", "2", "+", "3", ")", "*", "4"]
+      stdin: ""
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: "20\n"
+      stderr: ""
+    traces:
+      - prd066-expr R1.4
+      - prd066-expr R3.2
