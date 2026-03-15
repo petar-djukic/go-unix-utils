@@ -1,15 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd006-cat R1.1-R1.4: cmd/cat core concatenation.
-// Concatenates files to stdout, reads stdin when no arguments or "-" is given,
-// and reports errors to stderr in GNU format.
+// Implements prd006-cat R1.1-R1.5, R2.1-R2.3: cmd/cat core concatenation
+// with line numbering. Concatenates files to stdout, reads stdin when no
+// arguments or "-" is given, and reports errors to stderr in GNU format.
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -17,14 +19,32 @@ import (
 // progName is the name used in error messages to match GNU cat format.
 const progName = "cat"
 
+// catOptions holds the parsed flags for a cat invocation.
+type catOptions struct {
+	numberAll      bool // -n: number all output lines
+	numberNonBlank bool // -b: number non-blank lines only (overrides -n)
+}
+
+// needsLineProcessing returns true when any flag requires line-by-line processing.
+func (o *catOptions) needsLineProcessing() bool {
+	return o.numberAll || o.numberNonBlank
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
+	opts, files := parseArgs(os.Args[1:])
 	exitCode := 0
 
-	// R1.2: no file arguments — read from stdin.
-	if len(os.Args) < 2 {
-		if err := catReader(os.Stdin); err != nil {
+	// lineNum persists across files per R2.1: numbering resets to 1 per
+	// invocation, not per file.
+	lineNum := 1
+
+	if len(files) == 0 {
+		// R1.2: no file arguments — read from stdin.
+		var err error
+		lineNum, err = catFile(os.Stdin, opts, lineNum)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: stdin: %v\n", progName, err)
 			exitCode = 1
 		}
@@ -32,10 +52,12 @@ func main() {
 	}
 
 	// R1.1, R1.3: concatenate named files in argument order.
-	for _, name := range os.Args[1:] {
+	for _, name := range files {
 		if name == "-" {
 			// R1.2: "-" means read from stdin.
-			if err := catReader(os.Stdin); err != nil {
+			var err error
+			lineNum, err = catFile(os.Stdin, opts, lineNum)
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s: -: %v\n", progName, err)
 				exitCode = 1
 			}
@@ -44,12 +66,13 @@ func main() {
 
 		f, err := os.Open(name)
 		if err != nil {
-			// R1.4: print error to stderr in GNU format, continue processing.
+			// R5.2: print error to stderr in GNU format, continue processing.
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, unwrapPathError(err))
 			exitCode = 1
 			continue
 		}
-		if err := catReader(f); err != nil {
+		lineNum, err = catFile(f, opts, lineNum)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 			exitCode = 1
 		}
@@ -59,10 +82,127 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// catReader copies all data from r to stdout.
-func catReader(r io.Reader) error {
-	_, err := io.Copy(os.Stdout, r)
-	return err
+// parseArgs separates flags from file arguments. GNU cat accepts flags
+// before the first non-flag argument or after "--". Single-char flags
+// can be grouped: -nb is equivalent to -n -b.
+func parseArgs(args []string) (*catOptions, []string) {
+	opts := &catOptions{}
+	var files []string
+	flagsDone := false
+
+	for _, arg := range args {
+		if flagsDone {
+			files = append(files, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			for _, ch := range arg[1:] {
+				switch ch {
+				case 'n':
+					opts.numberAll = true
+				case 'b':
+					opts.numberNonBlank = true
+				case 'u':
+					// R4.8: accepted but ignored.
+				default:
+					// Unknown flags silently accepted for forward compatibility
+					// with flags not yet implemented (-s, -v, -E, -T, -A, -e, -t).
+				}
+			}
+		} else {
+			files = append(files, arg)
+		}
+	}
+
+	// R2.3: -b overrides -n.
+	if opts.numberNonBlank {
+		opts.numberAll = false
+	}
+
+	return opts, files
+}
+
+// catFile processes a single reader according to opts. Returns the next line
+// number and any write error.
+func catFile(r io.Reader, opts *catOptions, lineNum int) (int, error) {
+	// R1.4, R1.5: when no transformation flags are active, use io.Copy
+	// to pass bytes through without modification.
+	if !opts.needsLineProcessing() {
+		_, err := io.Copy(os.Stdout, r)
+		return lineNum, err
+	}
+
+	return catLines(r, opts, lineNum)
+}
+
+// catLines processes input line by line, applying numbering transformations.
+// R1.5: does not add or remove newlines. Uses ReadBytes('\n') to preserve
+// the presence or absence of a trailing newline on the last line.
+func catLines(r io.Reader, opts *catOptions, lineNum int) (int, error) {
+	w := bufio.NewWriter(os.Stdout)
+	br := bufio.NewReader(r)
+
+	// newlinePending tracks whether we are at the start of a new line.
+	// GNU cat numbers the first line of input even before any bytes arrive.
+	atLineStart := true
+
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			hasNewline := line[len(line)-1] == '\n'
+			content := line
+			if hasNewline {
+				content = line[:len(line)-1]
+			}
+
+			// R2.4: blank line is zero non-newline bytes followed by newline.
+			isBlank := len(content) == 0 && hasNewline
+
+			if atLineStart {
+				if opts.numberNonBlank {
+					// R2.2: -b numbers only non-blank lines.
+					if !isBlank {
+						if _, werr := fmt.Fprintf(w, "%6d\t", lineNum); werr != nil {
+							return lineNum, werr
+						}
+						lineNum++
+					}
+				} else {
+					// R2.1: -n numbers every line.
+					if _, werr := fmt.Fprintf(w, "%6d\t", lineNum); werr != nil {
+						return lineNum, werr
+					}
+					lineNum++
+				}
+			}
+
+			// Write line content.
+			if _, werr := w.Write(content); werr != nil {
+				return lineNum, werr
+			}
+			if hasNewline {
+				if werr := w.WriteByte('\n'); werr != nil {
+					return lineNum, werr
+				}
+				atLineStart = true
+			} else {
+				atLineStart = false
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return lineNum, err
+		}
+	}
+
+	return lineNum, w.Flush()
 }
 
 // unwrapPathError extracts the inner error from an *os.PathError to produce
