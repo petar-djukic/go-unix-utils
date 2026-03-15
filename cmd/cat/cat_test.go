@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/cat (prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3).
+// Differential tests for cmd/cat (prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3,
+// R4.1-R4.4).
 
 package main_test
 
@@ -21,7 +22,8 @@ import (
 // Tests cover R1.5 (newline preservation), R2.1 (-n line numbering),
 // R2.2 (-b non-blank numbering), R2.3 (-b overrides -n), R2.4 (blank
 // line definition), R3.1 (-s squeeze), R3.2 (squeeze across files),
-// and R3.3 (-s combined with -n/-b).
+// R3.3 (-s combined with -n/-b), R4.1 (-v show-nonprinting), R4.2 (-v
+// tab/newline exemption), R4.3 (-E show-ends), and R4.4 (-T show-tabs).
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -252,6 +254,161 @@ func TestDiff(t *testing.T) {
 			Name:     "r3.3_squeeze_n_spaces_not_blank",
 			Args:     []string{"-sn"},
 			Stdin:    []byte("a\n \n\n\nb\n"),
+			ExitCode: 0,
+		},
+		// --- R4.1: -v shows non-printing characters ---
+		{
+			// R4.1: control characters displayed as ^X.
+			Name:     "r4.1_v_control_chars",
+			Args:     []string{"-v"},
+			Stdin:    []byte{0x01, 0x02, 0x03, 0x1B, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.1: DEL (0x7F) displayed as ^?.
+			Name:     "r4.1_v_del",
+			Args:     []string{"-v"},
+			Stdin:    []byte{0x7F, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.1: high bytes 0x80-0x9F displayed as M-^X.
+			Name:     "r4.1_v_high_control",
+			Args:     []string{"-v"},
+			Stdin:    []byte{0x80, 0x81, 0x9F, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.1: high bytes 0xA0-0xFE displayed as M-X.
+			Name:     "r4.1_v_high_printable",
+			Args:     []string{"-v"},
+			Stdin:    []byte{0xA0, 0xA1, 0xFE, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.1: 0xFF displayed as M-^?.
+			Name:     "r4.1_v_0xff",
+			Args:     []string{"-v"},
+			Stdin:    []byte{0xFF, '\n'},
+			ExitCode: 0,
+		},
+		{
+			// R4.1: mixed printable and non-printing.
+			Name:     "r4.1_v_mixed",
+			Args:     []string{"-v"},
+			Stdin:    []byte("hello\x01world\x7f\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.1: all control characters 0x00-0x1F exercised.
+			Name:  "r4.1_v_all_control",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, '\n'},
+			ExitCode: 0,
+		},
+		// --- R4.2: -v does not alter tab or newline ---
+		{
+			// R4.2: tabs and newlines pass through with -v.
+			Name:     "r4.2_v_tab_newline_exempt",
+			Args:     []string{"-v"},
+			Stdin:    []byte("a\tb\n\tc\n"),
+			ExitCode: 0,
+		},
+		// --- R4.3: -E shows $ at end of lines ---
+		{
+			// R4.3: $ appended before each newline.
+			Name:     "r4.3_E_show_ends",
+			Args:     []string{"-E"},
+			Stdin:    []byte("hello\nworld\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.3: -E with blank lines shows $ on blank lines.
+			Name:     "r4.3_E_blank_lines",
+			Args:     []string{"-E"},
+			Stdin:    []byte("a\n\n\nb\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.3: -E with no trailing newline.
+			Name:     "r4.3_E_no_trailing_newline",
+			Args:     []string{"-E"},
+			Stdin:    []byte("hello\nworld"),
+			ExitCode: 0,
+		},
+		// --- R4.4: -T shows tabs as ^I ---
+		{
+			// R4.4: tabs displayed as ^I.
+			Name:     "r4.4_T_show_tabs",
+			Args:     []string{"-T"},
+			Stdin:    []byte("hello\tworld\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.4: multiple tabs.
+			Name:     "r4.4_T_multiple_tabs",
+			Args:     []string{"-T"},
+			Stdin:    []byte("\ta\t\tb\t\n"),
+			ExitCode: 0,
+		},
+		// --- R4.5: -A equivalent to -vET ---
+		{
+			// R4.5: -A shows non-printing, ends, and tabs.
+			Name:     "r4.5_A_combined",
+			Args:     []string{"-A"},
+			Stdin:    []byte("hi\t\x01\n\n"),
+			ExitCode: 0,
+		},
+		// --- R4.6: -e equivalent to -vE ---
+		{
+			// R4.6: -e shows non-printing and ends but not tabs.
+			Name:     "r4.6_e_combined",
+			Args:     []string{"-e"},
+			Stdin:    []byte("hi\t\x01\n\n"),
+			ExitCode: 0,
+		},
+		// --- R4.7: -t equivalent to -vT ---
+		{
+			// R4.7: -t shows non-printing and tabs but not ends.
+			Name:     "r4.7_t_combined",
+			Args:     []string{"-t"},
+			Stdin:    []byte("hi\t\x01\n\n"),
+			ExitCode: 0,
+		},
+		// --- R4.9: transformation order with other flags ---
+		{
+			// R4.9: -v -E -n combined (non-printing, ends, numbering).
+			Name:     "r4.9_vEn_combined",
+			Args:     []string{"-vEn"},
+			Stdin:    []byte("a\x01\n\nb\x7f\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.9: -A -s combined (all display + squeeze).
+			Name:     "r4.9_As_combined",
+			Args:     []string{"-As"},
+			Stdin:    []byte("a\x01\n\n\n\nb\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.9: -A -b combined (all display + non-blank numbering).
+			Name:     "r4.9_Ab_combined",
+			Args:     []string{"-Ab"},
+			Stdin:    []byte("a\x01\n\n\nb\x09\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.9: -A -s -n combined (all display + squeeze + numbering).
+			Name:     "r4.9_Asn_combined",
+			Args:     []string{"-Asn"},
+			Stdin:    []byte("a\n\n\n\nb\t\x01\n"),
+			ExitCode: 0,
+		},
+		{
+			// R4.9: binary input with -v.
+			Name:     "r4.9_v_binary",
+			Args:     []string{"-v"},
+			Stdin:    []byte{0x00, 0x01, 0x7F, 0x80, 0x9F, 0xA0, 0xFE, 0xFF, '\n'},
 			ExitCode: 0,
 		},
 	}
