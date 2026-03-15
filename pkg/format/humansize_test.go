@@ -62,3 +62,74 @@ func TestHumanSize(t *testing.T) {
 		})
 	}
 }
+
+// TestHumanSizeLsContext verifies HumanSize works for ls -h use cases (R3.5).
+// ls -h shows file sizes in -l output and block counts in -s output using
+// binary (base-1024) formatting.
+func TestHumanSizeLsContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		bytes int64
+		want  string
+	}{
+		// R3.5: ls -h file sizes in -l output (binary mode).
+		{"small file 100B", 100, "100B"},
+		{"4K block", 4096, "4Ki"},
+		{"typical source file", 15360, "15Ki"},
+		{"medium file 1.5Mi", 1572864, "1.5Mi"},
+		{"large file 2Gi", 2147483648, "2Gi"},
+
+		// R3.5: ls -s block counts (512-byte blocks displayed as human-readable).
+		{"8 blocks (4Ki)", 4096, "4Ki"},
+		{"single block 512B", 512, "512B"},
+		{"many blocks 100Mi", 104857600, "100Mi"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := HumanSize(tc.bytes, HumanSizeOpts{Binary: true})
+			if got != tc.want {
+				t.Errorf("HumanSize(%d, {Binary: true}) = %q, want %q", tc.bytes, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHumanSizeDuContext verifies HumanSize works for du -h use cases (R3.6).
+// du -h outputs directory sizes as human-readable strings using the same
+// binary/SI distinction as ls -h.
+func TestHumanSizeDuContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		bytes  int64
+		binary bool
+		want   string
+	}{
+		// R3.6: du -h directory sizes (binary mode, same as ls -h).
+		{"empty dir", 0, true, "0B"},
+		{"small dir 4Ki", 4096, true, "4Ki"},
+		{"medium dir 256Ki", 262144, true, "256Ki"},
+		{"large dir 1.5Gi", 1610612736, true, "1.5Gi"},
+		{"very large dir 2Ti", 2199023255552, true, "2Ti"},
+
+		// R3.6: du --si directory sizes (SI mode).
+		{"small dir SI", 4000, false, "4K"},
+		{"medium dir SI", 250000, false, "250K"},
+		{"large dir SI", 1500000000, false, "1.5G"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := HumanSize(tc.bytes, HumanSizeOpts{Binary: tc.binary})
+			if got != tc.want {
+				t.Errorf("HumanSize(%d, {Binary: %v}) = %q, want %q", tc.bytes, tc.binary, got, tc.want)
+			}
+		})
+	}
+}
