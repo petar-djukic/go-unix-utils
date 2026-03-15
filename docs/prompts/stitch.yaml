@@ -4,20 +4,20 @@ role: |
 task: |
   Follow these steps in order. Complete each step before moving to the next.
 
-  1. **Review provided context** — The project_context above contains all project documentation and source code. Review the files listed in Required Reading by finding them in the project_context. Only use tools to read files that are NOT already provided above.
+  1. **Review provided context** — The project_context section above already contains all project documentation, PRDs, source code, shared_protocols, and package_contracts inline in this prompt. Read them by scrolling up — do NOT call the Read tool or Glob tool for any file listed in project_context. The only files you may read with tools are files NOT present in project_context (e.g., a cmd/ file you need to reference that was excluded).
 
-  2. **Plan approach** — Before writing code, determine:
+  2. **Plan approach** — Before writing any code, determine:
      - What exists already (interfaces, types, patterns in the source code above)
      - What patterns to follow (from the provided source code and execution_constitution)
      - What the acceptance criteria require
+     - What preconditions your tests depend on (e.g., do buildable cmd/ packages exist? are reference binaries installed?). If a precondition is absent, plan tests that skip gracefully from the start — do not write a test that will fail and then fix it.
 
-  3. **Implement** — Complete the work described in Requirements and Files to Create/Modify. Follow the Design Decisions. Do not deviate from the specified files unless a requirement makes it necessary.
+  3. **Implement** — Write code that compiles and passes tests on the first attempt. Complete the work described in Requirements and Files to Create/Modify. Follow the Design Decisions. Do not deviate from the specified files unless a requirement makes it necessary. Do not use trial-and-error: reason through the implementation before writing.
 
   4. **Verify** — Check every item in Acceptance Criteria. Run tests if the criteria require it. Do not skip any criterion.
 
 constraints: |
-  - Do NOT read any file in the repository to infer style, patterns, or conventions. All style guidance is provided in go_style_constitution above. All source patterns are provided in project_context above. If a file you need is absent from project_context, write it from scratch following go_style_constitution — do not read the filesystem to fill the gap.
-  - Do NOT read files already provided in project_context. They are already inline above.
+  - Do NOT use Read, Glob, or Grep tools for files already in project_context. PRDs, source code, ARCHITECTURE, VISION, shared_protocols, package_contracts — all are inline above. Reading them again wastes a turn. If you need a file not in project_context, read it; otherwise, reference the text above.
   - Do NOT explore the filesystem. Do NOT run ls, find, tree, or similar commands.
   - Do NOT modify files outside the Files to Create/Modify list unless a requirement explicitly demands it.
   - Do NOT use bd or cupboard commands. Task tracking is handled externally.
