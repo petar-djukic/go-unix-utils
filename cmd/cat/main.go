@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd006-cat R1.1-R1.4: cmd/cat binary with basic file
-// concatenation, stdin reading, and error handling with exit codes.
+// Implements prd006-cat R1.1-R1.5, R2.1-R2.3: cmd/cat binary with file
+// concatenation, stdin reading, line numbering flags, and error handling.
 
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,17 +39,27 @@ func main() {
 		}
 	}
 
+	// Parse flags and separate file arguments.
+	numberAll, numberNonBlank, files := parseArgs(os.Args[1:])
+
+	// R2.3: -b takes precedence over -n.
+	if numberNonBlank {
+		numberAll = false
+	}
+
 	// R1.2: read from stdin when no file arguments are given.
-	files := os.Args[1:]
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 
 	exitCode := 0
+	lineNum := 1
 	for _, name := range files {
-		if err := catFile(name); err != nil {
-			// R1.4: print error to stderr and continue with remaining files.
-			fmt.Fprintf(os.Stderr, "cat: %s: %v\n", name, err)
+		var err error
+		lineNum, err = catFile(name, numberAll, numberNonBlank, lineNum)
+		if err != nil {
+			// R5.2: print error to stderr and continue with remaining files.
+			printError(name, err)
 			exitCode = 1
 		}
 	}
@@ -55,9 +67,68 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// parseArgs separates flags from file arguments. Supports -n, -b, and
+// combined short flags (e.g., -nb). Returns numberAll, numberNonBlank,
+// and remaining file arguments.
+func parseArgs(args []string) (numberAll, numberNonBlank bool, files []string) {
+	flagsDone := false
+	for _, arg := range args {
+		if flagsDone {
+			files = append(files, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		if arg == "-" || len(arg) == 0 || arg[0] != '-' {
+			files = append(files, arg)
+			continue
+		}
+		// Process each character in the flag group.
+		for _, ch := range arg[1:] {
+			switch ch {
+			case 'n':
+				numberAll = true
+			case 'b':
+				numberNonBlank = true
+			case 'u':
+				// R4.8: -u is accepted but has no effect.
+			default:
+				fmt.Fprintf(os.Stderr, "cat: invalid option -- '%c'\nTry 'cat --help' for more information.\n", ch)
+				os.Exit(1)
+			}
+		}
+	}
+	return
+}
+
+// printError writes a GNU-compatible error message to stderr.
+// R5.2: error format matches GNU cat: "cat: NAME: REASON".
+func printError(name string, err error) {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		fmt.Fprintf(os.Stderr, "cat: %s: %s\n", name, capitalizeError(pathErr.Err))
+	} else {
+		fmt.Fprintf(os.Stderr, "cat: %s: %s\n", name, capitalizeError(err))
+	}
+}
+
+// capitalizeError capitalizes the first letter of an error message to match
+// GNU coreutils error output (C strerror() returns capitalized strings on
+// macOS, while Go's syscall error table uses lowercase).
+func capitalizeError(err error) string {
+	s := err.Error()
+	if len(s) > 0 && s[0] >= 'a' && s[0] <= 'z' {
+		return string(s[0]-32) + s[1:]
+	}
+	return s
+}
+
 // catFile reads the contents of a single file and writes them to stdout.
 // R1.2: if name is "-", it reads from stdin.
-func catFile(name string) error {
+// Returns the updated line number for cross-file numbering continuity.
+func catFile(name string, numberAll, numberNonBlank bool, lineNum int) (int, error) {
 	var r io.Reader
 	if name == "-" {
 		r = os.Stdin
@@ -65,15 +136,71 @@ func catFile(name string) error {
 		// R1.1: open the named file for reading.
 		f, err := os.Open(name)
 		if err != nil {
-			return err
+			return lineNum, err
 		}
 		defer f.Close()
 		r = f
 	}
 
-	// R1.1, R1.3, R1.4: copy contents verbatim to stdout.
-	_, err := io.Copy(os.Stdout, r)
-	return err
+	// R1.4, R1.5: fast path with no transformation preserves bytes verbatim.
+	if !numberAll && !numberNonBlank {
+		_, err := io.Copy(os.Stdout, r)
+		return lineNum, err
+	}
+
+	// R2.1-R2.3: line numbering path. numberAll encodes both behaviors:
+	// true for -n (number all), false for -b (number non-blank only).
+	return catNumbered(r, numberAll, lineNum)
+}
+
+// catNumbered processes input with line numbering.
+// R2.1: when numberAll is true, numbers every line with "%6d\t" prefix.
+// R2.2: when numberAll is false, numbers only non-blank lines; blank lines
+// get no prefix. The caller ensures numberAll=false when -b is active.
+// R2.4: a blank line contains only a newline character.
+func catNumbered(r io.Reader, numberAll bool, lineNum int) (newLineNum int, err error) {
+	br := bufio.NewReader(r)
+	w := bufio.NewWriter(os.Stdout)
+	defer func() {
+		if flushErr := w.Flush(); flushErr != nil && err == nil {
+			err = flushErr
+		}
+	}()
+
+	atLineStart := true
+	for {
+		b, readErr := br.ReadByte()
+		if readErr != nil {
+			if readErr == io.EOF {
+				return lineNum, nil
+			}
+			return lineNum, readErr
+		}
+
+		if atLineStart {
+			if b == '\n' {
+				// R2.4: blank line (only a newline character).
+				if numberAll {
+					// R2.1: number all lines including blank.
+					fmt.Fprintf(w, "%6d\t", lineNum)
+					lineNum++
+				}
+				// R2.2: -b skips numbering for blank lines, no prefix added.
+			} else {
+				// Non-blank line: always number with -n or -b.
+				fmt.Fprintf(w, "%6d\t", lineNum)
+				lineNum++
+			}
+			atLineStart = false
+		}
+
+		if writeErr := w.WriteByte(b); writeErr != nil {
+			return lineNum, writeErr
+		}
+		if b == '\n' {
+			atLineStart = true
+		}
+	}
 }
 
 // printHelp writes a usage message to w matching GNU cat --help format.
@@ -83,6 +210,9 @@ Concatenate FILE(s) to standard output.
 
 With no FILE, or when FILE is -, read standard input.
 
+  -b                  number nonempty output lines, overrides -n
+  -n                  number all output lines
+  -u                  (ignored)
       --help     display this help and exit
       --version  output version information and exit`)
 	return err
