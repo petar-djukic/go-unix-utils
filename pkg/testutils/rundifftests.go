@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -68,20 +69,20 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 
 			// R5.1-R5.2: check ExpectedFiles if present.
 			if tc.ExpectedFiles != nil {
-				for path, expected := range tc.ExpectedFiles {
-					fullPath := path
-					if !strings.HasPrefix(path, "/") {
-						fullPath = workDir + "/" + path
+				for filePath, expected := range tc.ExpectedFiles {
+					fullPath := filePath
+					if !filepath.IsAbs(filePath) {
+						fullPath = filepath.Join(workDir, filePath)
 					}
 					actual, err := os.ReadFile(fullPath)
 					if err != nil {
 						t.Errorf("expected file %s: %v\n%s",
-							path, err, formatContext(tc.Args, tc.Stdin))
+							filePath, err, formatContext(tc.Args, tc.Stdin))
 						continue
 					}
 					if !bytes.Equal(actual, expected) {
 						t.Errorf("file content mismatch for %s\n%s\nexpected:\n%s\nactual:\n%s",
-							path, formatContext(tc.Args, tc.Stdin), expected, actual)
+							filePath, formatContext(tc.Args, tc.Stdin), expected, actual)
 					}
 				}
 			}
