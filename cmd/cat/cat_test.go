@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cat against gcat (GNU coreutils).
-// Implements prd006-cat R1.5, R2.1-R2.3 test coverage.
+// Implements prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3 test coverage.
 package main
 
 import (
@@ -30,6 +30,8 @@ func TestDiff(t *testing.T) {
 	writeTestFile(t, tmpDir, "blanks.txt", "a\n\n\n\nb\n")
 	writeTestFile(t, tmpDir, "single-line.txt", "one\n")
 	writeTestFile(t, tmpDir, "empty.txt", "")
+	writeTestFile(t, tmpDir, "trailing-blanks.txt", "x\n\n\n")
+	writeTestFile(t, tmpDir, "leading-blanks.txt", "\n\ny\n")
 
 	tests := []testutils.DiffTest{
 		// R1.5: no newlines added or removed — no trailing newline preserved.
@@ -127,6 +129,68 @@ func TestDiff(t *testing.T) {
 			Name:  "R2.3_bn_combined",
 			Args:  []string{"-bn"},
 			Stdin: []byte("a\n\nb\n"),
+		},
+
+		// R2.4: tabs-only line is not blank (contains non-newline bytes).
+		{
+			Name:  "R2.4_tab_not_blank",
+			Args:  []string{"-b"},
+			Stdin: []byte("a\n\t\n\nb\n"),
+		},
+
+		// R3.1: -s suppresses repeated blank lines.
+		{
+			Name:  "R3.1_squeeze_blanks",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		// R3.1: -s single blank line passes through.
+		{
+			Name:  "R3.1_single_blank_passes",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\n\nb\n"),
+		},
+		// R3.1: -s leading blank lines squeezed.
+		{
+			Name:  "R3.1_leading_blanks",
+			Args:  []string{"-s"},
+			Stdin: []byte("\n\n\na\n"),
+		},
+		// R3.1: -s trailing blank lines squeezed.
+		{
+			Name:  "R3.1_trailing_blanks",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\n\n\n"),
+		},
+		// R3.1: -s spaces-only line is not blank.
+		{
+			Name:  "R3.1_spaces_not_blank",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\n\n \n\nb\n"),
+		},
+
+		// R3.2: -s applies across file boundaries.
+		{
+			Name: "R3.2_squeeze_across_files",
+			Args: []string{
+				"-s",
+				filepath.Join(tmpDir, "trailing-blanks.txt"),
+				filepath.Join(tmpDir, "leading-blanks.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+
+		// R3.3: -s combined with -n — suppressed lines don't consume numbers.
+		{
+			Name:  "R3.3_squeeze_with_number",
+			Args:  []string{"-sn"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		// R3.3: -s combined with -b — squeeze before numbering.
+		{
+			Name:  "R3.3_squeeze_with_number_nonblank",
+			Args:  []string{"-sb"},
+			Stdin: []byte("a\n\n\n\nb\n"),
 		},
 	}
 

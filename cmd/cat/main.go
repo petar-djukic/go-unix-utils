@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd006-cat R1.1-R1.5, R2.1-R2.3: cmd/cat core concatenation
-// with line numbering. Concatenates files to stdout, reads stdin when no
-// arguments or "-" is given, and reports errors to stderr in GNU format.
+// Implements prd006-cat R1.1-R1.5, R2.1-R2.4, R3.1-R3.3: cmd/cat core
+// concatenation with line numbering and blank-line squeezing. Concatenates
+// files to stdout, reads stdin when no arguments or "-" is given, and
+// reports errors to stderr in GNU format.
 package main
 
 import (
@@ -23,11 +24,12 @@ const progName = "cat"
 type catOptions struct {
 	numberAll      bool // -n: number all output lines
 	numberNonBlank bool // -b: number non-blank lines only (overrides -n)
+	squeezeBlanks  bool // -s: suppress repeated blank lines
 }
 
 // needsLineProcessing returns true when any flag requires line-by-line processing.
 func (o *catOptions) needsLineProcessing() bool {
-	return o.numberAll || o.numberNonBlank
+	return o.numberAll || o.numberNonBlank || o.squeezeBlanks
 }
 
 func main() {
@@ -39,15 +41,19 @@ func main() {
 	// lineNum persists across files per R2.1: numbering resets to 1 per
 	// invocation, not per file.
 	lineNum := 1
+	// R3.2: prevBlank persists across file boundaries so consecutive blank
+	// lines spanning two files are still squeezed.
+	prevBlank := false
 
 	if len(files) == 0 {
 		// R1.2: no file arguments — read from stdin.
 		var err error
-		lineNum, err = catFile(os.Stdin, opts, lineNum)
+		lineNum, prevBlank, err = catFile(os.Stdin, opts, lineNum, prevBlank)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: stdin: %v\n", progName, err)
 			exitCode = 1
 		}
+		_, _ = lineNum, prevBlank // suppress unused warnings at end of invocation
 		os.Exit(exitCode)
 	}
 
@@ -56,7 +62,7 @@ func main() {
 		if name == "-" {
 			// R1.2: "-" means read from stdin.
 			var err error
-			lineNum, err = catFile(os.Stdin, opts, lineNum)
+			lineNum, prevBlank, err = catFile(os.Stdin, opts, lineNum, prevBlank)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s: -: %v\n", progName, err)
 				exitCode = 1
@@ -71,7 +77,7 @@ func main() {
 			exitCode = 1
 			continue
 		}
-		lineNum, err = catFile(f, opts, lineNum)
+		lineNum, prevBlank, err = catFile(f, opts, lineNum, prevBlank)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 			exitCode = 1
@@ -106,11 +112,14 @@ func parseArgs(args []string) (*catOptions, []string) {
 					opts.numberAll = true
 				case 'b':
 					opts.numberNonBlank = true
+				case 's':
+					// R3.1: suppress repeated blank lines.
+					opts.squeezeBlanks = true
 				case 'u':
 					// R4.8: accepted but ignored.
 				default:
 					// Unknown flags silently accepted for forward compatibility
-					// with flags not yet implemented (-s, -v, -E, -T, -A, -e, -t).
+					// with flags not yet implemented (-v, -E, -T, -A, -e, -t).
 				}
 			}
 		} else {
@@ -127,26 +136,28 @@ func parseArgs(args []string) (*catOptions, []string) {
 }
 
 // catFile processes a single reader according to opts. Returns the next line
-// number and any write error.
-func catFile(r io.Reader, opts *catOptions, lineNum int) (int, error) {
+// number, the prevBlank state for squeeze continuity, and any write error.
+func catFile(r io.Reader, opts *catOptions, lineNum int, prevBlank bool) (int, bool, error) {
 	// R1.4, R1.5: when no transformation flags are active, use io.Copy
 	// to pass bytes through without modification.
 	if !opts.needsLineProcessing() {
 		_, err := io.Copy(os.Stdout, r)
-		return lineNum, err
+		return lineNum, false, err
 	}
 
-	return catLines(r, opts, lineNum)
+	return catLines(r, opts, lineNum, prevBlank)
 }
 
-// catLines processes input line by line, applying numbering transformations.
-// R1.5: does not add or remove newlines. Uses ReadBytes('\n') to preserve
-// the presence or absence of a trailing newline on the last line.
-func catLines(r io.Reader, opts *catOptions, lineNum int) (int, error) {
+// catLines processes input line by line, applying squeeze and numbering
+// transformations. R3.3: squeezing is applied before numbering so suppressed
+// blank lines do not consume line numbers. R1.5: does not add or remove
+// newlines. Uses ReadBytes('\n') to preserve the presence or absence of a
+// trailing newline on the last line.
+func catLines(r io.Reader, opts *catOptions, lineNum int, prevBlank bool) (int, bool, error) {
 	w := bufio.NewWriter(os.Stdout)
 	br := bufio.NewReader(r)
 
-	// newlinePending tracks whether we are at the start of a new line.
+	// atLineStart tracks whether we are at the start of a new line.
 	// GNU cat numbers the first line of input even before any bytes arrive.
 	atLineStart := true
 
@@ -162,19 +173,26 @@ func catLines(r io.Reader, opts *catOptions, lineNum int) (int, error) {
 			// R2.4: blank line is zero non-newline bytes followed by newline.
 			isBlank := len(content) == 0 && hasNewline
 
+			// R3.1: suppress repeated blank lines. The first blank line is
+			// written; subsequent consecutive blank lines are discarded.
+			if opts.squeezeBlanks && isBlank && prevBlank {
+				continue
+			}
+			prevBlank = isBlank
+
 			if atLineStart {
 				if opts.numberNonBlank {
 					// R2.2: -b numbers only non-blank lines.
 					if !isBlank {
 						if _, werr := fmt.Fprintf(w, "%6d\t", lineNum); werr != nil {
-							return lineNum, werr
+							return lineNum, prevBlank, werr
 						}
 						lineNum++
 					}
-				} else {
+				} else if opts.numberAll {
 					// R2.1: -n numbers every line.
 					if _, werr := fmt.Fprintf(w, "%6d\t", lineNum); werr != nil {
-						return lineNum, werr
+						return lineNum, prevBlank, werr
 					}
 					lineNum++
 				}
@@ -182,11 +200,11 @@ func catLines(r io.Reader, opts *catOptions, lineNum int) (int, error) {
 
 			// Write line content.
 			if _, werr := w.Write(content); werr != nil {
-				return lineNum, werr
+				return lineNum, prevBlank, werr
 			}
 			if hasNewline {
 				if werr := w.WriteByte('\n'); werr != nil {
-					return lineNum, werr
+					return lineNum, prevBlank, werr
 				}
 				atLineStart = true
 			} else {
@@ -198,11 +216,11 @@ func catLines(r io.Reader, opts *catOptions, lineNum int) (int, error) {
 			if err == io.EOF {
 				break
 			}
-			return lineNum, err
+			return lineNum, prevBlank, err
 		}
 	}
 
-	return lineNum, w.Flush()
+	return lineNum, prevBlank, w.Flush()
 }
 
 // unwrapPathError extracts the inner error from an *os.PathError to produce
