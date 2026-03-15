@@ -1,0 +1,101 @@
+id: prd069-join
+title: "cmd/join: Join Lines of Two Files on a Common Field"
+
+problem: |
+  Shell scripts and data pipelines use join to perform relational join operations on two
+  sorted files based on a common field. The macOS BSD join differs from GNU join in field
+  separator handling, output format options, and header support. The Go implementation must
+  match the Homebrew GNU reference binary (gjoin, installed by coreutils) in output and exit
+  codes for all supported flag combinations, verified by differential testing via
+  pkg/testutils. All tests run under LC_ALL=C to avoid locale-dependent collation
+  differences.
+
+goals:
+  - G1: Join two sorted files on a common join field.
+  - G2: Support configurable field separators, output field selection, and unpairable line handling.
+  - G3: Support header lines and input validation.
+  - G4: Verify functional parity against gjoin via differential testing.
+
+requirements:
+  R1:
+    title: Default join behavior
+    items:
+      - R1.1: "Must read two sorted files and join lines where the join field (default: first field) matches. Must print one output line per matching pair."
+      - R1.2: "Fields in each line are separated by whitespace (runs of blanks and tabs) by default. The output separator is a single space by default."
+      - R1.3: "Lines that do not pair (present in one file but not the other) are suppressed by default."
+      - R1.4: "When one of the file arguments is '-', must read that file from stdin."
+
+  R2:
+    title: Field selection and output format
+    items:
+      - R2.1: "-1 FIELD must join on field FIELD of file 1 (fields are numbered from 1). -2 FIELD must join on field FIELD of file 2."
+      - R2.2: "-j FIELD must set the join field for both files simultaneously."
+      - R2.3: "-o FORMAT must select and order output fields. FORMAT is a comma-separated or space-separated list of FILENUM.FIELDNUM specifiers (e.g., 1.2,2.1) or '0' for the join field."
+      - R2.4: "-t CHAR must use CHAR as both the input and output field separator."
+
+  R3:
+    title: Unpairable lines and header mode
+    items:
+      - R3.1: "-a FILENUM must also print unpairable lines from file FILENUM (1 or 2). May be specified twice (-a 1 -a 2) to print unpairable lines from both files."
+      - R3.2: "-v FILENUM must print only unpairable lines from file FILENUM, suppressing paired lines."
+      - R3.3: "-e STRING must replace missing input fields with STRING in the output."
+      - R3.4: "--header must treat the first line of each input file as a header line, joining them regardless of sort order and printing the result before data lines."
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 when the join completes successfully.
+      - R4.2: Must exit 1 when an invalid option is given or a file cannot be opened.
+      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must use LC_ALL=C for deterministic collation."
+      - R4.4: "Tests must cover: default join on first field, -1/-2 field selection, -j combined field, -t custom separator, -o output format, -a unpairable lines, -v unpairable only, -e empty replacement, --header, stdin as one input, and error cases (unsorted input with --check-order, missing file)."
+
+non_goals:
+  - cmd/join does not implement locale-aware collation beyond LC_ALL=C behavior.
+  - cmd/join does not implement --nocheck-order to suppress unsorted-input warnings.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/join <(printf 'a 1\\nb 2\\n') <(printf 'a X\\nb Y\\n') produces 'a 1 X' and 'b 2 Y', matching gjoin."
+    traces:
+      - R1.1
+      - R1.2
+      - R4.1
+  - id: AC2
+    criterion: "go run ./cmd/join -t ',' -1 2 -2 1 file1 file2 joins on the specified fields with comma separator, matching gjoin."
+    traces:
+      - R2.1
+      - R2.4
+  - id: AC3
+    criterion: "go run ./cmd/join -a 1 -e EMPTY -o 0,1.2,2.2 file1 file2 prints unpairable lines from file 1 with EMPTY for missing fields, matching gjoin."
+    traces:
+      - R2.3
+      - R3.1
+      - R3.3
+  - id: AC4
+    criterion: "go run ./cmd/join missing_file file2 exits 1 with error on stderr, matching gjoin."
+    traces:
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gjoin passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/join compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

@@ -1,0 +1,96 @@
+id: prd070-fmt
+title: "cmd/fmt: Simple Text Formatter"
+
+problem: |
+  Shell scripts and text processing pipelines use fmt to reformat paragraphs of text to a
+  specified width. The macOS BSD fmt differs from GNU fmt in default width, paragraph
+  handling, and option names. The Go implementation must match the Homebrew GNU reference
+  binary (gfmt, installed by coreutils) in output and exit codes for all supported flag
+  combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Reformat text paragraphs to fit within a specified line width.
+  - G2: Support configurable width, goal width, and formatting options.
+  - G3: Preserve paragraph boundaries and indentation.
+  - G4: Verify functional parity against gfmt via differential testing.
+
+requirements:
+  R1:
+    title: Default formatting behavior
+    items:
+      - R1.1: When invoked with no options, must reformat each paragraph of input text to fit within 75 characters (the GNU default width).
+      - R1.2: Must treat blank lines as paragraph separators. Must not merge text across blank lines.
+      - R1.3: Must preserve the indentation of the first line of each paragraph. Subsequent lines in the same paragraph are filled to match the second line's indentation (or the first if only one line).
+      - R1.4: When given one or more FILE arguments, must read and format each file in order. When no file is given or "-" is given, must read from stdin.
+
+  R2:
+    title: Width control and goal width
+    items:
+      - R2.1: "-w WIDTH or --width=WIDTH must set the maximum line width (default 75)."
+      - R2.2: "-g GOAL or --goal=GOAL must set the goal line width. Lines are filled to approximately GOAL characters. Default goal is 93% of width."
+      - R2.3: Must break lines at word boundaries (spaces). Must not break in the middle of a word unless the word exceeds the maximum width.
+      - R2.4: Must collapse multiple spaces between words to a single space, except after sentence-ending punctuation (. ! ?) where two spaces are preserved.
+
+  R3:
+    title: Formatting options
+    items:
+      - R3.1: "-s or --split-only must split long lines but not join short lines. Lines shorter than the goal width are left as-is."
+      - R3.2: "-u or --uniform-spacing must use one space between words and two spaces after sentence-ending punctuation uniformly."
+      - R3.3: "-p PREFIX or --prefix=PREFIX must only reformat lines beginning with PREFIX (after optional whitespace). Must remove the prefix before formatting and re-add it afterward."
+      - R3.4: "-t or --tagged-paragraph must treat the first line of each paragraph as having a different indentation from subsequent lines, preserving the tagged-paragraph format."
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1: Must exit 0 when formatting completes successfully.
+      - R4.2: Must exit 1 when an invalid option is given or a file cannot be opened.
+      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
+      - R4.4: "Tests must cover: default 75-char formatting, -w custom width, -g goal width, -s split-only, -u uniform spacing, -p prefix mode, -t tagged paragraph, multi-file input, stdin input, blank line paragraph boundaries, indentation preservation, and error cases (invalid width, missing file)."
+
+non_goals:
+  - cmd/fmt does not implement crown margin mode (-c) beyond the default indentation behavior.
+  - cmd/fmt does not implement locale-aware line breaking.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "echo 'short line' | go run ./cmd/fmt produces 'short line' unchanged, matching gfmt."
+    traces:
+      - R1.1
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/fmt -w 20 on a paragraph of text wraps lines at 20 characters, matching gfmt."
+    traces:
+      - R2.1
+      - R2.3
+  - id: AC3
+    criterion: "go run ./cmd/fmt -s on text with long and short lines splits long lines without joining short ones, matching gfmt."
+    traces:
+      - R3.1
+  - id: AC4
+    criterion: "go run ./cmd/fmt -u on text with inconsistent spacing normalizes to uniform spacing, matching gfmt."
+    traces:
+      - R3.2
+  - id: AC5
+    criterion: "Differential test against gfmt passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/fmt compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

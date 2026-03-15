@@ -1,0 +1,52 @@
+id: rel08.1-uc007-printf
+title: "Format and print data via printf"
+
+summary: |
+  The operator invokes the Go printf binary to produce formatted output using printf-style
+  format strings with conversion specifiers and escape sequences. The differential testing
+  harness runs both the Go binary and the Homebrew reference binary (gprintf from coreutils)
+  with the same arguments and environment, then compares stdout and exit codes.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd073-printf.yaml) and invokes do-work to produce
+  a passing differential test for cmd/printf.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises printf with %d/%i/%o/%u/%x/%X integer formats, %f/%e/%g float
+      formats, %s string, %c character, %b backslash-interpreted string, width and precision,
+      all flag characters (-, +, space, 0, #), '*' width/precision, argument recycling,
+      escape sequences (\\n, \\t, \\NNN, \\xHH), character value arguments (quote prefix),
+      missing arguments, and error cases (invalid format, non-numeric argument for %d).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/printf and gprintf
+      with the same arguments and environment. Requires F1 (binary must be built). Tests
+      compare stdout and exit codes under LC_ALL=C.
+
+touchpoints:
+  - T1: "cmd/printf — format directives, escape sequences, argument recycling (prd073-printf R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all integer and float formats, string and character
+      specifiers, width and precision, flag characters, argument recycling, escape sequences,
+      character value arguments, missing arguments, and error cases, confirming output and
+      exit code parity with gprintf.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - "%q shell-escaped string is a bash extension excluded per the PRD."
+  - "--help and --version as flags are excluded per the PRD."
+
+test_suite: test-rel08.1

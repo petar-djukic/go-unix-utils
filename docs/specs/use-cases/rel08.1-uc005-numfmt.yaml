@@ -1,0 +1,51 @@
+id: rel08.1-uc005-numfmt
+title: "Convert numbers to/from human-readable format via numfmt"
+
+summary: |
+  The operator invokes the Go numfmt binary to convert numbers between raw numeric values
+  and human-readable formats with SI or IEC suffixes. The differential testing harness runs
+  both the Go binary and the Homebrew reference binary (gnumfmt from coreutils) with the
+  same arguments and environment, then compares stdout and exit codes.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd071-numfmt.yaml) and invokes do-work to produce
+  a passing differential test for cmd/numfmt.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises numfmt with --to si/iec/iec-i, --from si/iec, --format with
+      width and precision, --padding, --round modes (up, down, from-zero, towards-zero,
+      nearest), --suffix, --field selection, --delimiter, --header, --to-unit/--from-unit,
+      stdin and operand input, and error cases (invalid number, unknown suffix).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/numfmt and
+      gnumfmt with the same arguments and environment. Requires F1 (binary must be built).
+      Tests compare stdout and exit codes under LC_ALL=C.
+
+touchpoints:
+  - T1: "cmd/numfmt — unit conversion, format control, field selection, header mode (prd071-numfmt R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for --to and --from conversions, format control,
+      padding, rounding modes, suffix, field selection, delimiter, header mode,
+      unit scaling, stdin and operand input, and error cases, confirming output and
+      exit code parity with gnumfmt.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Locale-aware digit grouping is excluded per the PRD.
+  - "--grouping is excluded per the PRD."
+
+test_suite: test-rel08.1
