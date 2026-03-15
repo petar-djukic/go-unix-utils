@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for prd059-version R1.1-R1.4.
+// Tests for prd059-version R1.1-R1.5.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 func TestVersion(t *testing.T) {
@@ -95,13 +96,13 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-// TestVersionExported verifies R1.5: the Version() function is exported
-// and returns the expected default value.
+// TestVersionExported verifies R1.5: the pkg/version.Version variable is
+// importable from another package and returns the expected default value.
 func TestVersionExported(t *testing.T) {
 	t.Parallel()
 
-	got := Version()
+	got := version.Version
 	if got != "dev" {
-		t.Errorf("Version() = %q, want %q", got, "dev")
+		t.Errorf("version.Version = %q, want %q", got, "dev")
 	}
 }
