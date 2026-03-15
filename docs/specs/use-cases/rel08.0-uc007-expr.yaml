@@ -1,0 +1,52 @@
+id: rel08.0-uc007-expr
+title: "Evaluate expressions via expr"
+
+summary: |
+  The operator invokes the Go expr binary to evaluate arithmetic, comparison, and string
+  expressions. The differential testing harness runs both the Go binary and the Homebrew
+  reference binary (gexpr from coreutils) with the same arguments, then compares stdout
+  and exit codes byte-for-byte. expr output is deterministic so exact comparison is used.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd066-expr.yaml) and invokes do-work to produce
+  a passing differential test for cmd/expr.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises expr with integer arithmetic (all operators), numeric and
+      string comparisons, logical operators (| and &), string operations (match, substr,
+      index, length), parentheses grouping, + token escaping, division by zero, and
+      missing operand errors.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/expr and gexpr
+      with the same arguments. Requires F1 (binary must be built). The harness compares
+      stdout byte-for-byte and exit codes.
+
+touchpoints:
+  - T1: "cmd/expr — arithmetic, comparisons, logical ops, string ops, precedence (prd066-expr R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for integer arithmetic, comparisons, logical operators,
+      string operations, parentheses, + escaping, division by zero, and missing operand
+      errors, confirming byte-for-byte stdout and exit code parity with gexpr.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+
+out_of_scope:
+  - Extended regular expressions are not tested; only BRE with \\( \\) grouping is supported.
+  - Integer overflow behavior at the int64 boundary is not tested differentially because
+    GNU expr uses GMP for arbitrary precision.
+
+test_suite: test-rel08.0

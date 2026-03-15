@@ -1,0 +1,52 @@
+id: rel08.0-uc001-date
+title: "Display and format date/time via date"
+
+summary: |
+  The operator invokes the Go date binary to print formatted date and time output. The
+  differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gdate from coreutils) with the same arguments and environment, then compares stdout
+  and exit codes. Tests use fixed epoch timestamps via -d @EPOCH to produce deterministic
+  output.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd060-date.yaml) and invokes do-work to produce
+  a passing differential test for cmd/date.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises date with default output (using fixed epoch), +FORMAT with
+      various conversion specifications (%Y, %m, %d, %H, %M, %S, %s, %N, %Z), -d with
+      epoch and ISO strings, -u UTC mode, -r reference file, padding modifiers (%-d, %_d,
+      %0d), and error cases (invalid date string, missing reference file).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/date and gdate
+      with the same arguments and environment. Requires F1 (binary must be built). All
+      tests set TZ=UTC and use -d @EPOCH for deterministic comparison.
+
+touchpoints:
+  - T1: "cmd/date — format output, date parsing, UTC mode, reference file (prd060-date R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for fixed-epoch formatting, all conversion specs,
+      -d date parsing, -u UTC mode, -r reference file, padding modifiers, and error
+      cases, confirming output and exit code parity with gdate.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Default (current time) output is not tested via differential comparison because the
+    two binaries execute at slightly different times. Tests use -d @EPOCH exclusively.
+  - Relative date strings (yesterday, 2 days ago) are excluded per the PRD.
+
+test_suite: test-rel08.0

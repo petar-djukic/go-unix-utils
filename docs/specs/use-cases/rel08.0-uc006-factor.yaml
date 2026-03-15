@@ -1,0 +1,49 @@
+id: rel08.0-uc006-factor
+title: "Prime factorization via factor"
+
+summary: |
+  The operator invokes the Go factor binary to print the prime factorization of integers.
+  The differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gfactor from coreutils) with the same arguments and stdin, then compares stdout and exit
+  codes byte-for-byte. factor output is deterministic so exact comparison is used.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd065-factor.yaml) and invokes do-work to produce
+  a passing differential test for cmd/factor.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises factor with single numbers, multiple numbers, primes,
+      composites, the number 1, large numbers near int64 max, stdin mode, and error
+      cases (non-integer input, negative number).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/factor and
+      gfactor with the same arguments and stdin. Requires F1 (binary must be built).
+      The harness compares stdout byte-for-byte and exit codes.
+
+touchpoints:
+  - T1: "cmd/factor — factorization, stdin mode, output formatting (prd065-factor R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for single numbers, multiple numbers, primes,
+      composites, 1, large numbers, stdin mode, and error cases, confirming byte-for-byte
+      stdout and exit code parity with gfactor.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Numbers exceeding int64 range are not tested because Go's int64 and GNU factor's
+    unsigned long long have different overflow behavior.
+
+test_suite: test-rel08.0
