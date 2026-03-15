@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd003-format R2.1-R2.4: ANSI color output and terminal detection.
+// Implements prd003-format R2.1-R2.7: ANSI color output, terminal detection,
+// color override control (R2.6-R2.7), and utility context for ls colorized
+// output (R2.5).
 
 package format
 
@@ -137,7 +139,8 @@ func ColorEnabled(w io.Writer) bool {
 // When enabled is true, ColorEnabled returns true regardless of terminal status.
 // When enabled is false, ColorEnabled returns false regardless.
 //
-// R2.4, R2.6: process-global override for --color=always and --color=never.
+// R2.5, R2.6: process-global override for --color=always and --color=never.
+// R2.5: ls suppresses color when stdout is not a TTY or --color=never is set.
 func SetColorEnabled(enabled bool) {
 	colorOverrideMu.Lock()
 	colorOverride = &enabled
@@ -147,7 +150,8 @@ func SetColorEnabled(enabled bool) {
 // ResetColorEnabled clears any override set by SetColorEnabled, reverting
 // ColorEnabled to automatic TTY detection.
 //
-// R2.4, R2.7: clears the override so auto-detection resumes.
+// R2.5, R2.7: clears the override so auto-detection resumes.
+// R2.5: utilities call ResetColorEnabled in cleanup to avoid leaking overrides.
 func ResetColorEnabled() {
 	colorOverrideMu.Lock()
 	colorOverride = nil
