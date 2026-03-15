@@ -54,22 +54,16 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 			goStdout = applyNormalizers(goStdout, tc.Normalize)
 			goStderr = applyNormalizers(goStderr, tc.Normalize)
 
-			// R3.4: compare exit codes.
-			if goExit != refExit {
-				t.Errorf("exit code mismatch\n%s\nreference exit code: %d\ngo binary exit code: %d",
-					formatContext(tc.Args, tc.Stdin), refExit, goExit)
-			}
+			// R3.2, R3.3, R3.4: compare stdout, stderr, and exit code.
+			// R3.5: report all divergence information in each failure message.
+			exitMismatch := goExit != refExit
+			stdoutMismatch := !bytes.Equal(goStdout, refStdout)
+			stderrMismatch := !bytes.Equal(goStderr, refStderr)
 
-			// R3.2: compare stdout byte-for-byte.
-			if !bytes.Equal(goStdout, refStdout) {
-				t.Errorf("stdout mismatch\n%s\nreference stdout:\n%s\ngo binary stdout:\n%s",
-					formatContext(tc.Args, tc.Stdin), refStdout, goStdout)
-			}
-
-			// R3.3: compare stderr byte-for-byte.
-			if !bytes.Equal(goStderr, refStderr) {
-				t.Errorf("stderr mismatch\n%s\nreference stderr:\n%s\ngo binary stderr:\n%s",
-					formatContext(tc.Args, tc.Stdin), refStderr, goStderr)
+			if exitMismatch || stdoutMismatch || stderrMismatch {
+				t.Errorf("%s\n%s",
+					divergenceLabel(exitMismatch, stdoutMismatch, stderrMismatch),
+					formatDivergence(tc.Args, tc.Stdin, refStdout, goStdout, refStderr, goStderr, refExit, goExit))
 			}
 
 			// R5.1-R5.2: check ExpectedFiles if present.
@@ -188,6 +182,45 @@ func applyNormalizers(data []byte, fns []NormalizeFunc) []byte {
 		data = fn(data)
 	}
 	return data
+}
+
+// divergenceLabel returns a human-readable label indicating which outputs diverged.
+func divergenceLabel(exit, stdout, stderr bool) string {
+	var parts []string
+	if exit {
+		parts = append(parts, "exit code")
+	}
+	if stdout {
+		parts = append(parts, "stdout")
+	}
+	if stderr {
+		parts = append(parts, "stderr")
+	}
+	return strings.Join(parts, ", ") + " mismatch"
+}
+
+// formatDivergence builds the full failure message with all divergence information.
+//
+// R3.5: includes args, stdin (truncated to 256 bytes), reference stdout,
+// Go stdout, reference stderr, Go stderr, and both exit codes.
+func formatDivergence(args []string, stdin, refStdout, goStdout, refStderr, goStderr []byte, refExit, goExit int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "args: %v", args)
+	if len(stdin) > 0 {
+		display := stdin
+		if len(display) > maxStdinDisplay {
+			display = display[:maxStdinDisplay]
+			fmt.Fprintf(&b, "\nstdin (%d bytes, truncated): %q", len(stdin), display)
+		} else {
+			fmt.Fprintf(&b, "\nstdin: %q", display)
+		}
+	}
+	fmt.Fprintf(&b, "\nreference exit code: %d\ngo binary exit code: %d", refExit, goExit)
+	fmt.Fprintf(&b, "\nreference stdout:\n%s", refStdout)
+	fmt.Fprintf(&b, "\ngo binary stdout:\n%s", goStdout)
+	fmt.Fprintf(&b, "\nreference stderr:\n%s", refStderr)
+	fmt.Fprintf(&b, "\ngo binary stderr:\n%s", goStderr)
+	return b.String()
 }
 
 // formatContext builds a context string for failure messages showing args and stdin.
