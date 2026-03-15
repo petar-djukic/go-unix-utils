@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd001-testutils R2.1-R2.4: RunDiffTests binary execution and comparison.
+// Implements prd001-testutils R2.1-R2.6: RunDiffTests binary execution, comparison,
+// working directory support, and LC_ALL=C default environment.
 
 package testutils
 
