@@ -9,7 +9,11 @@ project:
         docs/VISION.yaml
         docs/ARCHITECTURE.yaml
     context_exclude: |
-        docs/
+        docs/SPECIFICATIONS.yaml
+        docs/road-map.yaml
+        docs/reports/
+        docs/engineering/
+        docs/prompts/
         cmd/
     releases:
         - "00.0"
