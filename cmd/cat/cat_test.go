@@ -278,6 +278,19 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a\tb\x01\n"),
 		},
 
+		// R4.8: -u is accepted but has no effect.
+		{
+			Name:  "R4.8_u_accepted_no_effect",
+			Args:  []string{"-u"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		// R4.8: -u combined with other flags.
+		{
+			Name:  "R4.8_u_combined_with_n",
+			Args:  []string{"-un"},
+			Stdin: []byte("a\nb\n"),
+		},
+
 		// R4.9: transformation order with -n and -A combined.
 		{
 			Name:  "R4.9_nA_combined",
