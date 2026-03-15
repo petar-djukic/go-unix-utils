@@ -1,19 +1,21 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd006-cat R1.1-R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9:
+// Implements prd006-cat R1.1-R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9, R5.1-R5.4:
 // cmd/cat core concatenation with line numbering, blank-line squeezing,
 // and non-printing display. Concatenates files to stdout, reads stdin
 // when no arguments or "-" is given, and reports errors to stderr in
-// GNU format.
+// GNU format. Installs SIGPIPE handler for clean exit on broken pipe (R5.4).
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -55,6 +57,10 @@ func main() {
 		var err error
 		lineNum, prevBlank, err = catFile(os.Stdin, opts, lineNum, prevBlank)
 		if err != nil {
+			// R5.4: EPIPE on stdout means downstream closed — exit 0.
+			if isEPIPE(err) {
+				os.Exit(0)
+			}
 			fmt.Fprintf(os.Stderr, "%s: stdin: %v\n", progName, err)
 			exitCode = 1
 		}
@@ -69,6 +75,9 @@ func main() {
 			var err error
 			lineNum, prevBlank, err = catFile(os.Stdin, opts, lineNum, prevBlank)
 			if err != nil {
+				if isEPIPE(err) {
+					os.Exit(0)
+				}
 				fmt.Fprintf(os.Stderr, "%s: -: %v\n", progName, err)
 				exitCode = 1
 			}
@@ -84,6 +93,12 @@ func main() {
 		}
 		lineNum, prevBlank, err = catFile(f, opts, lineNum, prevBlank)
 		if err != nil {
+			// R5.4: EPIPE on stdout means downstream closed — exit 0.
+			if isEPIPE(err) {
+				f.Close() // best-effort close before exit
+				os.Exit(0)
+			}
+			// R5.3: other write errors — report to stderr, exit 1.
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 			exitCode = 1
 		}
@@ -305,6 +320,19 @@ func transformContent(content []byte, showNonPrinting, showTabs bool) []byte {
 		}
 	}
 	return buf
+}
+
+// isEPIPE returns true if err wraps a syscall.EPIPE error, indicating a
+// broken pipe (downstream consumer closed stdout). R5.4: EPIPE accompanies
+// SIGPIPE; Go delivers signals asynchronously so we must also check the
+// error to ensure exit 0 before the main goroutine processes it as a
+// write failure.
+func isEPIPE(err error) bool {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EPIPE
+	}
+	return false
 }
 
 // unwrapPathError extracts the inner error from an *os.PathError to produce

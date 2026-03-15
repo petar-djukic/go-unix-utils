@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cat against gcat (GNU coreutils).
-// Implements prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9 test coverage.
+// Implements prd006-cat R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9, R5.1-R5.4 test coverage.
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -303,9 +305,69 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-sbA"},
 			Stdin: []byte("a\n\n\n\nb\t\x01\n"),
 		},
+		// R4.9: all transformation flags combined with squeeze and numbering.
+		{
+			Name:  "R4.9_all_flags_snvET",
+			Args:  []string{"-snvET"},
+			Stdin: []byte("a\x01\tb\n\n\n\nc\x7f\n"),
+		},
+
+		// R5.1: successful processing exits 0.
+		{
+			Name:     "R5.1_success_exit_0",
+			Args:     []string{filepath.Join(tmpDir, "hello.txt")},
+			WorkDir:  tmpDir,
+			ExitCode: 0,
+		},
+
+		// R5.2: non-existent file exits 1.
+		{
+			Name:      "R5.2_nonexistent_file",
+			Args:      []string{filepath.Join(tmpDir, "does-not-exist.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R5.2: non-existent file mixed with existing — exit 1, still outputs
+		// the content of existing files.
+		{
+			Name: "R5.2_nonexistent_mixed",
+			Args: []string{
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "does-not-exist.txt"),
+				filepath.Join(tmpDir, "single-line.txt"),
+			},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestSIGPIPEExit verifies that cat exits 0 when stdout is closed by a
+// downstream consumer (SIGPIPE), per R5.3 and R5.4. R5.4 requires exit 0
+// on SIGPIPE; R5.3 requires detection of stdout write errors (SIGPIPE is
+// the primary stdout write error on Unix).
+func TestSIGPIPEExit(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	bashBin, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not found in PATH")
+	}
+
+	// R5.4: cat must exit 0 when downstream consumer closes stdout.
+	// Feed cat input from /dev/zero; pipe to head -c 1 which reads one byte
+	// then closes, triggering SIGPIPE in cat. Use bash PIPESTATUS to capture
+	// cat's exit code specifically.
+	cmd := exec.Command(bashBin, "-c",
+		fmt.Sprintf("'%s' /dev/zero | head -c 1 > /dev/null; exit ${PIPESTATUS[0]}", goBin))
+	if err := cmd.Run(); err != nil {
+		t.Errorf("R5.4: expected cat to exit 0 on SIGPIPE, got: %v", err)
+	}
 }
 
 // writeTestFile creates a file with the given content in dir.
@@ -314,4 +376,13 @@ func writeTestFile(t *testing.T, dir, name, content string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write test file %s: %v", name, err)
 	}
+}
+
+// normalizeProgramName normalizes error messages for differential comparison.
+// R5.2: GNU cat reports errors as "gcat: file: Error" while our binary uses
+// "cat: file: error". This normalizer replaces the program name and lowercases
+// the output to eliminate both differences.
+func normalizeProgramName(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte("gcat: "), []byte("cat: "))
+	return bytes.ToLower(b)
 }
