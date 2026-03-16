@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd032-sha256sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: core SHA-256
-// digest computation, standard GNU output format, --check verification mode
-// with status output, --tag BSD-style output format, and --binary/--text mode
-// flags. Computes SHA-256 digests for files or stdin, printing one line per
-// input in text, binary, or BSD tag format. In check mode, reads a checksum
-// file and verifies each listed file. Installs SIGPIPE handler for clean exit
-// on broken pipe.
+// Implements prd032-sha256sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2, R4.1-R4.3:
+// core SHA-256 digest computation, standard GNU output format, --check
+// verification mode with --strict and --warn modifiers, and --tag BSD-style
+// output format with --binary/--text mode flags. Computes SHA-256 digests for
+// files or stdin, printing one line per input in text, binary, or BSD tag
+// format. In check mode, reads a checksum file and verifies each listed file.
+// --strict exits non-zero on improperly formatted lines; --warn emits
+// per-line warnings. Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -51,7 +52,7 @@ func main() {
 
 	var exitCode int
 	if opts.check {
-		exitCode = runCheck(opts.warn, files)
+		exitCode = runCheck(opts.strict, opts.warn, files)
 	} else {
 		exitCode = run(opts.binaryMode, opts.tagMode, files)
 	}
@@ -64,7 +65,8 @@ type options struct {
 	textSet    bool // true when -t/--text was explicitly given
 	check      bool
 	tagMode    bool
-	warn       bool // R2.3: emit stderr warning for each improperly formatted check line
+	strict     bool // R4.1: exit non-zero on improperly formatted check lines
+	warn       bool // R4.2: emit stderr warning for each improperly formatted check line
 }
 
 // run processes files and returns the exit code.
@@ -155,7 +157,8 @@ type checkResult struct {
 // runCheck reads one or more checksum files and verifies each listed file.
 // R2.1: parses GNU and BSD format lines. R2.2: prints OK/FAILED.
 // R2.3: summary warning on stderr. Exit 0 on all-pass, 1 on any failure.
-func runCheck(warn bool, files []string) int {
+// R4.1: --strict exits non-zero on malformed lines. R4.2: --warn emits per-line warnings.
+func runCheck(strict, warn bool, files []string) int {
 	if len(files) == 0 {
 		// --check with no file argument reads from stdin.
 		files = []string{"-"}
@@ -185,7 +188,11 @@ func runCheck(warn bool, files []string) int {
 		fmt.Fprintf(os.Stderr, "%s: WARNING: %d computed checksum did NOT match\n", progName, total.mismatched)
 		exitCode = 1
 	}
+	// R4.1: --strict causes non-zero exit when malformed lines are present.
 	if total.malformed > 0 {
+		if strict {
+			exitCode = 1
+		}
 		fmt.Fprintf(os.Stderr, "%s: WARNING: %d line is improperly formatted\n", progName, total.malformed)
 	}
 
@@ -195,6 +202,7 @@ func runCheck(warn bool, files []string) int {
 // checkFile opens a checksum file (or stdin for "-"), parses each line, verifies
 // the digest, and prints OK/FAILED. Returns counts of mismatches, unreadable files,
 // and malformed lines.
+// R4.2: when warn is true, emits a stderr warning for each improperly formatted line.
 func checkFile(name string, warn bool) (checkResult, error) {
 	var r io.Reader
 	if name == "-" {
@@ -216,6 +224,7 @@ func checkFile(name string, warn bool) (checkResult, error) {
 		lineNum++
 		hash, filename, ok := parseCheckLine(line)
 		if !ok {
+			// R4.1/R4.2: track malformed lines; warn if requested.
 			if line != "" {
 				result.malformed++
 				if warn {
@@ -366,6 +375,10 @@ func parseArgs(args []string) (opts options, files []string) {
 		}
 		if arg == "--tag" {
 			opts.tagMode = true
+			continue
+		}
+		if arg == "--strict" {
+			opts.strict = true
 			continue
 		}
 		if arg == "--warn" {

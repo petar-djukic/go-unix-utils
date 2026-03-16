@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd032-sha256sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2:
-// core SHA-256 digest computation, standard GNU output format, stdin reading,
-// multiple file processing with error handling, --check verification mode with
-// status output, --tag BSD-style output format, and --binary/--text mode flags.
+// Differential tests for prd032-sha256sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2,
+// R4.1-R4.3: core SHA-256 digest computation, standard GNU output format, stdin
+// reading, multiple file processing with error handling, --check verification
+// mode with --strict and --warn modifiers, --tag BSD-style output format, and
+// --binary/--text mode flags.
 package main
 
 import (
@@ -202,16 +203,37 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--check", "-"},
 			Stdin: []byte(checksumContent),
 		},
-		// R2.3: --warn emits per-line warning for malformed lines.
+	}
+
+	tests = append(tests, checkTests...)
+
+	// --- R4.1-R4.3: --strict and --warn check mode modifiers ---
+
+	strictWarnTests := []testutils.DiffTest{
+		// R4.1: --strict exits non-zero when malformed lines are present.
+		{
+			Name:      "check strict with malformed line",
+			Args:      []string{"--check", "--strict", malformedChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: --warn emits per-line warning, exit 0 when all checksums pass.
 		{
 			Name:      "check warn with malformed line",
 			Args:      []string{"--check", "--warn", malformedChecksumFile},
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R2.3: -w short flag for --warn.
+		// R4.2: -w short flag for --warn.
 		{
 			Name:      "check warn short flag",
 			Args:      []string{"-cw", malformedChecksumFile},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3: --strict and --warn combined — both effects apply.
+		{
+			Name:      "check strict and warn combined",
+			Args:      []string{"--check", "--strict", "--warn", malformedChecksumFile},
+			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 		// Default --check with malformed line: summary warning printed, exit 0.
@@ -220,9 +242,14 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--check", malformedChecksumFile},
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
+		// --strict with no malformed lines: exit 0.
+		{
+			Name: "check strict no malformed lines",
+			Args: []string{"--check", "--strict", checksumFile},
+		},
 	}
 
-	tests = append(tests, checkTests...)
+	tests = append(tests, strictWarnTests...)
 
 	// --- R3.1-R3.2: --tag, --binary, --text tests ---
 
