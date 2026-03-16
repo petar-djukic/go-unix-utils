@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd037-ln R1.1-R1.4, R2.1-R2.4:
+// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1-R3.6:
 // cmd/ln creates hard or symbolic links between files. Supports two-argument form
 // (ln TARGET LINK_NAME), single-argument form (ln TARGET), and
 // multi-target form (ln TARGET... DIRECTORY). Supports -s (symbolic), -f (force),
-// -n (no-dereference), and -r (relative) flags. Installs SIGPIPE handler for
-// clean exit on broken pipe.
+// -n (no-dereference), -r (relative), -b/--backup (backup), -S/--suffix (backup suffix),
+// -t/--target-directory, -T/--no-target-directory, and -v (verbose) flags.
+// Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -72,6 +73,21 @@ func main() {
 				exitCode = 1
 			}
 		}
+	} else if opts.noTargetDir {
+		// -T: treat last operand as a normal file name, never as a directory.
+		if len(operands) != 2 {
+			if len(operands) < 2 {
+				fmt.Fprintf(os.Stderr, "%s: missing file operand\n", progName)
+			} else {
+				fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", progName, operands[2])
+			}
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+			os.Exit(1)
+		}
+		if err := createLink(opts, operands[0], operands[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+			exitCode = 1
+		}
 	} else if len(operands) == 1 {
 		// R1.2: single-argument form — create link in current directory.
 		target := operands[0]
@@ -80,7 +96,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 			exitCode = 1
 		}
-	} else if len(operands) == 2 && !opts.noTargetDir {
+	} else if len(operands) == 2 {
 		// Check if last operand is a directory.
 		// R2.3: with -n (no-dereference), use Lstat so a symlink to a directory
 		// is treated as a regular file rather than followed.
@@ -129,20 +145,37 @@ func main() {
 
 // createLink creates a hard or symbolic link from target to linkName.
 // R1.1: hard link via os.Link. R1.4: error if destination exists without -f.
+// R3.5: backup existing destination when -b/--backup is set.
 func createLink(opts *lnOptions, target, linkName string) error {
 	// Check if destination exists.
-	_, err := os.Lstat(linkName)
-	if err == nil {
-		if !opts.force {
+	fi, err := os.Lstat(linkName)
+	destExists := err == nil
+	backupPath := ""
+	if destExists {
+		// Cannot overwrite a directory.
+		if fi.IsDir() {
+			return fmt.Errorf("%s: cannot overwrite directory", linkName)
+		}
+		if !opts.force && !opts.backup {
 			linkType := "hard link"
 			if opts.symbolic {
 				linkType = "symbolic link"
 			}
 			return fmt.Errorf("failed to create %s '%s': File exists", linkType, linkName)
 		}
-		// -f: remove existing destination before creating link.
-		if err := os.Remove(linkName); err != nil {
-			return fmt.Errorf("cannot remove '%s': %v", linkName, unwrapPathError(err))
+		// R3.5: create backup before removal when -b/--backup is set.
+		if opts.backup {
+			backupPath = computeBackupPath(linkName, opts.backupMethod, opts.suffix)
+		}
+		if backupPath != "" {
+			if err := os.Rename(linkName, backupPath); err != nil {
+				return fmt.Errorf("cannot backup '%s': %v", linkName, unwrapPathError(err))
+			}
+		} else {
+			// -f or --backup=none: remove existing destination before creating link.
+			if err := os.Remove(linkName); err != nil {
+				return fmt.Errorf("cannot remove '%s': %v", linkName, unwrapPathError(err))
+			}
 		}
 	}
 
@@ -186,14 +219,60 @@ func createLink(opts *lnOptions, target, linkName string) error {
 	}
 
 	if opts.verbose {
+		arrow := "=>"
 		if opts.symbolic {
-			fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", linkName, target)
+			arrow = "->"
+		}
+		if backupPath != "" {
+			fmt.Fprintf(os.Stdout, "'%s' ~ '%s' %s '%s'\n", backupPath, linkName, arrow, target)
 		} else {
-			fmt.Fprintf(os.Stdout, "'%s' => '%s'\n", linkName, target)
+			fmt.Fprintf(os.Stdout, "'%s' %s '%s'\n", linkName, arrow, target)
 		}
 	}
 
 	return nil
+}
+
+// computeBackupPath returns the backup file path based on the backup method.
+// R3.5: simple appends suffix, numbered uses .~N~ format, existing checks for
+// existing numbered backups and uses numbered if found, simple otherwise.
+func computeBackupPath(linkName, method, suffix string) string {
+	switch method {
+	case "numbered", "t":
+		return nextNumberedBackup(linkName)
+	case "simple", "never":
+		return linkName + suffix
+	case "none", "off":
+		return ""
+	default:
+		// "existing" or "nil": check if numbered backups already exist.
+		if hasNumberedBackups(linkName) {
+			return nextNumberedBackup(linkName)
+		}
+		return linkName + suffix
+	}
+}
+
+// nextNumberedBackup finds the next available .~N~ backup path.
+func nextNumberedBackup(linkName string) string {
+	for n := 1; ; n++ {
+		candidate := fmt.Sprintf("%s.~%d~", linkName, n)
+		if _, err := os.Lstat(candidate); err != nil {
+			return candidate
+		}
+	}
+}
+
+// hasNumberedBackups checks if any .~N~ numbered backup files exist.
+func hasNumberedBackups(linkName string) bool {
+	// Check for .~1~ through a reasonable range.
+	for n := 1; n <= 99; n++ {
+		candidate := fmt.Sprintf("%s.~%d~", linkName, n)
+		if _, err := os.Lstat(candidate); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // parseArgs separates flags from operand arguments.
