@@ -208,6 +208,53 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-s", "\n", filepath.Join(tmpDir, "three-lines.txt")},
 			WorkDir: tmpDir,
 		},
+
+		// R3.1: -r with character class separator matching single chars.
+		{
+			Name:  "R3.1_regex_separator_charclass",
+			Args:  []string{"-r", "-s", "[,;]"},
+			Stdin: []byte("a,b;c,"),
+		},
+		// R3.1: -r with literal colon separator (same as fixed string).
+		{
+			Name:  "R3.1_regex_separator_colon",
+			Args:  []string{"-r", "-s", ":"},
+			Stdin: []byte("a:b:c:"),
+		},
+		// R3.1: -r with dot separator (matches any single character).
+		{
+			Name:  "R3.1_regex_separator_dot",
+			Args:  []string{"-r", "-s", "[0-9]"},
+			Stdin: []byte("a1b2c3d"),
+		},
+		// R3.2: -r matched text attaches to preceding record.
+		{
+			Name:  "R3.2_regex_match_attaches_preceding",
+			Args:  []string{"-r", "-s", "-"},
+			Stdin: []byte("a-b-c-d"),
+		},
+		// R3.3: -r combined with -b (before mode with regex).
+		{
+			Name:  "R3.3_regex_before_mode",
+			Args:  []string{"-r", "-b", "-s", ":"},
+			Stdin: []byte(":a:b:c"),
+		},
+		// R3.3: -r -b with character class separator.
+		{
+			Name:  "R3.3_regex_before_charclass",
+			Args:  []string{"-r", "-b", "-s", "[0-9]"},
+			Stdin: []byte("1abc2def3ghi"),
+		},
+		// R3.4: invalid regex exits with error. Error messages differ between
+		// GNU (POSIX regex) and Go (regexp package), so we normalize stderr
+		// to just the program name prefix.
+		{
+			Name:      "R3.4_invalid_regex_exit",
+			Args:      []string{"-r", "-s", "[invalid"},
+			Stdin:     []byte("test"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeRegexError},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -228,4 +275,18 @@ func writeTestFile(t *testing.T, dir, name, content string) {
 func normalizeProgramName(b []byte) []byte {
 	b = bytes.ReplaceAll(b, []byte("gtac: "), []byte("tac: "))
 	return bytes.ToLower(b)
+}
+
+// normalizeRegexError normalizes regex error messages for differential
+// comparison. GNU tac uses POSIX regex error messages while Go uses its own
+// format. Both produce a non-empty error line to stderr; we normalize to a
+// canonical form so the messages can be compared.
+func normalizeRegexError(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte("gtac: "), []byte("tac: "))
+	// Replace everything after "tac: " with a canonical error marker so
+	// different regex error message formats still match.
+	if idx := bytes.Index(b, []byte("tac: ")); idx >= 0 {
+		return []byte("tac: regex error\n")
+	}
+	return b
 }

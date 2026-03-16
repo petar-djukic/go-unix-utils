@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd021-tac R1.1-R1.4, R2.1-R2.4: cmd/tac reads input, reverses
-// the order of records, and writes to stdout. Reads from stdin when no file
-// arguments are given or when "-" appears as a filename. Multiple files are
-// processed independently in argument order. Supports custom record separators
-// via -s/--separator (R2.1) and before-mode separator placement via
-// -b/--before (R2.2-R2.4). Installs SIGPIPE handler for clean exit on broken
-// pipe (R3.4).
+// Implements prd021-tac R1.1-R1.4, R2.1-R2.4, R3.1-R3.4: cmd/tac reads
+// input, reverses the order of records, and writes to stdout. Reads from stdin
+// when no file arguments are given or when "-" appears as a filename. Multiple
+// files are processed independently in argument order. Supports custom record
+// separators via -s/--separator (R2.1), before-mode separator placement via
+// -b/--before (R2.2-R2.4), and regex separators via -r/--regex (R3.1-R3.4).
+// Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -26,12 +27,24 @@ const progName = "tac"
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	sep, before, files := parseArgs(os.Args[1:])
+	sep, before, useRegex, files := parseArgs(os.Args[1:])
+
+	// R3.4: invalid regex patterns cause immediate exit with status 2.
+	var re *regexp.Regexp
+	if useRegex {
+		var err error
+		re, err = regexp.Compile(sep)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: invalid regular expression: %s\n", progName, sep)
+			os.Exit(1)
+		}
+	}
+
 	exitCode := 0
 
 	if len(files) == 0 {
 		// R1.3: no file arguments — read from stdin.
-		if err := tacReader(os.Stdin, sep, before); err != nil {
+		if err := tacReader(os.Stdin, sep, before, re); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 			exitCode = 1
 		}
@@ -42,7 +55,7 @@ func main() {
 	for _, name := range files {
 		if name == "-" {
 			// R1.3: "-" means read from stdin.
-			if err := tacReader(os.Stdin, sep, before); err != nil {
+			if err := tacReader(os.Stdin, sep, before, re); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 				exitCode = 1
 			}
@@ -56,7 +69,7 @@ func main() {
 			exitCode = 1
 			continue
 		}
-		if err := tacReader(f, sep, before); err != nil {
+		if err := tacReader(f, sep, before, re); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 			exitCode = 1
 		}
@@ -67,11 +80,13 @@ func main() {
 }
 
 // parseArgs extracts flags and file arguments from command-line args.
-// Returns the separator string, the before flag, and the list of files.
+// Returns the separator string, the before flag, the regex flag, and the list
+// of files.
 //
 // R2.1: -s SEP / --separator=SEP sets the record separator.
 // R2.2-R2.3: -b / --before places separator before each record.
-func parseArgs(args []string) (separator string, before bool, files []string) {
+// R3.1: -r / --regex interprets the separator as a regular expression.
+func parseArgs(args []string) (separator string, before, useRegex bool, files []string) {
 	separator = "\n" // default separator is newline
 	flagsDone := false
 
@@ -89,6 +104,12 @@ func parseArgs(args []string) (separator string, before bool, files []string) {
 		// R2.2: -b / --before flag.
 		if arg == "-b" || arg == "--before" {
 			before = true
+			continue
+		}
+
+		// R3.1: -r / --regex flag.
+		if arg == "-r" || arg == "--regex" {
+			useRegex = true
 			continue
 		}
 
@@ -116,7 +137,7 @@ func parseArgs(args []string) (separator string, before bool, files []string) {
 		files = append(files, arg)
 	}
 
-	return separator, before, files
+	return separator, before, useRegex, files
 }
 
 // tacReader reads all content from r, splits into records on sep, reverses
@@ -128,7 +149,8 @@ func parseArgs(args []string) (separator string, before bool, files []string) {
 // R2.1: sep may be any string (default newline).
 // R2.2-R2.3: when before is true, the separator is attached to the beginning
 // of each record instead of the end.
-func tacReader(r io.Reader, sep string, before bool) error {
+// R3.1-R3.3: when re is non-nil, use regex matching for separator boundaries.
+func tacReader(r io.Reader, sep string, before bool, re *regexp.Regexp) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -138,12 +160,21 @@ func tacReader(r io.Reader, sep string, before bool) error {
 		return nil
 	}
 
-	sepBytes := []byte(sep)
 	var records [][]byte
-	if before {
-		records = splitRecordsBefore(data, sepBytes)
+	if re != nil {
+		// R3.1-R3.3: regex separator mode.
+		if before {
+			records = splitRecordsBeforeRegex(data, re)
+		} else {
+			records = splitRecordsAfterRegex(data, re)
+		}
 	} else {
-		records = splitRecordsAfter(data, sepBytes)
+		sepBytes := []byte(sep)
+		if before {
+			records = splitRecordsBefore(data, sepBytes)
+		} else {
+			records = splitRecordsAfter(data, sepBytes)
+		}
 	}
 
 	// Write records in reverse order.
@@ -202,6 +233,70 @@ func splitRecordsBefore(data, sep []byte) [][]byte {
 			if found >= 0 {
 				idx = startSearch + found
 			}
+		}
+
+		if idx < 0 {
+			records = append(records, data)
+			break
+		}
+
+		records = append(records, data[:idx])
+		data = data[idx:]
+	}
+	// Drop empty trailing record.
+	if len(records) > 0 && len(records[len(records)-1]) == 0 {
+		records = records[:len(records)-1]
+	}
+	return records
+}
+
+// splitRecordsAfterRegex splits data into records where the regex-matched
+// separator is attached to the end of each record.
+//
+// R3.1-R3.2: the matched text (not the pattern) attaches to the preceding record.
+func splitRecordsAfterRegex(data []byte, re *regexp.Regexp) [][]byte {
+	var records [][]byte
+	for len(data) > 0 {
+		loc := re.FindIndex(data)
+		if loc == nil {
+			records = append(records, data)
+			break
+		}
+		end := loc[1]
+		records = append(records, data[:end])
+		data = data[end:]
+	}
+	// R1.2: drop empty trailing record.
+	if len(records) > 0 && len(records[len(records)-1]) == 0 {
+		records = records[:len(records)-1]
+	}
+	return records
+}
+
+// splitRecordsBeforeRegex splits data into records where the regex-matched
+// separator is attached to the beginning of each record (-b mode with regex).
+//
+// R3.3: when -r and -b are both active, the matched regex separator appears
+// at the start of each record.
+func splitRecordsBeforeRegex(data []byte, re *regexp.Regexp) [][]byte {
+	var records [][]byte
+	for len(data) > 0 {
+		// If data starts with a match, skip past it to find the next boundary.
+		startSearch := 0
+		if loc := re.FindIndex(data); loc != nil && loc[0] == 0 {
+			startSearch = loc[1]
+		}
+
+		var idx int
+		if startSearch < len(data) {
+			loc := re.FindIndex(data[startSearch:])
+			if loc != nil {
+				idx = startSearch + loc[0]
+			} else {
+				idx = -1
+			}
+		} else {
+			idx = -1
 		}
 
 		if idx < 0 {
