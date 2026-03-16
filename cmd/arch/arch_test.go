@@ -29,30 +29,37 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary garch not in PATH: %v", err)
 	}
 
+	// R3.3: all differential tests set LC_ALL=C.
+	lcEnv := []string{"LC_ALL=C"}
+
 	tests := []testutils.DiffTest{
-		// R1.1, R3.2: no arguments — prints machine hardware name.
+		// R1.1, R3.1, R3.2: no arguments — prints machine hardware name.
 		{
 			Name:     "R1.1_no_args_machine_name",
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
-		// R2.1, R3.2: extra positional operand produces error and exits 1.
+		// R2.1, R3.1, R3.2: extra positional operand produces error and exits 1.
 		{
 			Name:      "R2.1_extra_operand",
 			Args:      []string{"foo"},
+			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
-		// R2.2, R3.2: unknown long option produces error and exits 1.
+		// R2.2, R3.1, R3.2: unknown long option produces error and exits 1.
 		{
 			Name:      "R2.2_invalid_long_option",
 			Args:      []string{"--invalid"},
+			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
-		// R2.2, R3.2: unknown short flag produces error and exits 1.
+		// R2.2, R3.1, R3.2: unknown short flag produces error and exits 1.
 		{
 			Name:      "R2.2_invalid_short_flag",
 			Args:      []string{"-z"},
+			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
