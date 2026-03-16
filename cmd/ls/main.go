@@ -1,19 +1,19 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15: basic directory
-// listing with single-column output (non-TTY default), dotfile filtering,
-// multi-directory headers, mixed file/directory argument handling, error
-// diagnostics, -1 single-column flag, -l long format with permissions/nlink/
-// owner/group/size/mtime, file metadata via pkg/sys.Lstat, owner/group name
-// resolution, -a (all entries including dotfiles), -A (almost all, excludes
-// . and ..), -r (reverse sort), -R (recursive listing), -p (directory
-// indicator), -C (multi-column vertical fill), -x (multi-column horizontal
-// fill), format flag mutual exclusivity (last flag wins), -t (time sort),
-// -S (size sort), -U (unsorted/directory order), -v (version sort),
-// -i (inode display), -s (block count display), -n (numeric UID/GID,
-// implies -l), -i and -s combined ordering, --color=always/auto/never with
-// ANSI color output via pkg/format.
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4:
+// basic directory listing with single-column output (non-TTY default),
+// dotfile filtering, multi-directory headers, mixed file/directory argument
+// handling, error diagnostics, -1 single-column flag, -l long format with
+// permissions/nlink/owner/group/size/mtime, file metadata via pkg/sys.Lstat,
+// owner/group name resolution, -a (all entries including dotfiles), -A
+// (almost all, excludes . and ..), -r (reverse sort), -R (recursive listing),
+// -p (directory indicator), -C (multi-column vertical fill), -x (multi-column
+// horizontal fill), format flag mutual exclusivity (last flag wins), -t (time
+// sort), -S (size sort), -U (unsorted/directory order), -v (version sort),
+// -i (inode display), -s (block count display), -n (numeric UID/GID, implies
+// -l), -i and -s combined ordering, --color=always/auto/never with ANSI
+// color output via pkg/format.
 // R2.10: last sort flag wins. R3.1-R3.4: --color support.
 // R3.5-R3.6: -h human-readable sizes in long format and total line.
 // R3.7: -h with -s for human-readable block counts.
@@ -25,7 +25,9 @@
 // R3.13: -R does not follow symbolic links to directories.
 // R3.14: -R applies -a/-A filter flags to each subdirectory.
 // R3.15: -R recurses subdirectories in the active sort order.
-// Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
+// R4.1: Exit 0 on success. R4.2: Exit 1 on minor problems.
+// R4.3: Exit 2 on serious problems (invalid options).
+// R4.4: SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler.
 package main
 
 import (
@@ -91,6 +93,20 @@ const (
 	colorNever                   // --color=never
 )
 
+// exitStatus is the process exit status, shared between main and listDir.
+// R4.1: 0 for success. R4.2: 1 for minor problems (in-directory access
+// failures). R4.3: 2 for serious problems (invalid options, argument
+// access failures).
+var exitStatus int
+
+// setExitStatus sets the exit status to code if it is higher than the
+// current value. Higher codes take precedence: 2 (serious) > 1 (minor) > 0.
+func setExitStatus(code int) {
+	if code > exitStatus {
+		exitStatus = code
+	}
+}
+
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
 	format    outputFormat
@@ -137,19 +153,19 @@ func main() {
 		paths = []string{"."}
 	}
 
-	exitCode := 0
-
 	// R1.3: Separate file arguments from directory arguments. Files are
 	// listed first, then directories, matching GNU ls argument ordering.
 	var files []string
 	var dirs []string
+	failedArgs := 0
 
 	for _, path := range paths {
 		fi, err := os.Lstat(path)
 		if err != nil {
-			// R1.4: Print diagnostic to stderr for inaccessible arguments.
+			// R4.2: Print diagnostic to stderr for inaccessible arguments.
 			fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, path, unwrapPathError(err))
-			exitCode = 2
+			setExitStatus(2)
+			failedArgs++
 			continue
 		}
 		if fi.IsDir() {
@@ -166,7 +182,7 @@ func main() {
 			fi, err := sys.Lstat(f)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, f, unwrapPathError(err))
-				exitCode = 2
+				setExitStatus(2)
 				continue
 			}
 			displayName := f
@@ -232,9 +248,12 @@ func main() {
 		}
 	}
 
-	// R1.2/R3.11: When multiple directories, mix of files and directories,
-	// or recursive mode, print each directory name as a header before its contents.
-	needHeader := len(dirs) > 1 || (len(files) > 0 && len(dirs) > 0) || opts.recursive
+	// R1.2/R3.11/R4.2: When multiple directories, mix of files and directories,
+	// failed arguments, or recursive mode, print each directory name as a header.
+	// R4.2: Failed arguments count toward the total for header decisions, matching
+	// GNU ls behavior where n_files > 1 triggers directory headers.
+	totalArgs := len(files) + len(dirs) + failedArgs
+	needHeader := (len(dirs) > 0 && totalArgs > 1) || opts.recursive
 
 	// R1.3: Blank line between file list and first directory when both present.
 	needBlankBefore := len(files) > 0 && len(dirs) > 0
@@ -251,11 +270,11 @@ func main() {
 
 		if err := listDir(dir, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: cannot open directory '%s': %v\n", progName, dir, unwrapPathError(err))
-			exitCode = 2
+			setExitStatus(2)
 		}
 	}
 
-	os.Exit(exitCode)
+	os.Exit(exitStatus)
 }
 
 // parseArgs parses command-line arguments into options and path operands.
@@ -303,7 +322,9 @@ func parseArgs(args []string) (lsOptions, []string) {
 					os.Exit(2)
 				}
 			} else {
+				// R4.3: Serious problem — invalid command-line option.
 				fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
+				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 				os.Exit(2)
 			}
 			continue
@@ -724,8 +745,10 @@ func listDir(path string, opts lsOptions) error {
 			}
 			if fi == nil {
 				if err != nil {
+					// R4.2: Minor problem — entry within directory cannot be accessed.
 					fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, fullPath, unwrapPathError(err))
 				}
+					setExitStatus(1)
 				continue
 			}
 			displayName := name
@@ -832,6 +855,8 @@ func listDir(path string, opts lsOptions) error {
 				if err := listDir(fullPath, opts); err != nil {
 					fmt.Fprintf(os.Stderr, "%s: cannot open directory '%s': %v\n",
 						progName, fullPath, unwrapPathError(err))
+					// R4.2: Minor problem — subdirectory cannot be opened.
+					setExitStatus(1)
 				}
 			}
 		}
