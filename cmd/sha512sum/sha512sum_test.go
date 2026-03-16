@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd033-sha512sum R1.1-R1.4, R2.1-R2.3: core SHA-512
-// digest computation, standard GNU output format, stdin reading, multiple file
-// processing with error handling, --check verification mode with OK/FAILED
-// status output and summary warnings, and --help/--version flags.
+// Differential tests for prd033-sha512sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2:
+// core SHA-512 digest computation, standard GNU output format, stdin reading,
+// multiple file processing with error handling, --check verification mode with
+// OK/FAILED status output and summary warnings, --tag BSD-style output format,
+// and --binary/--text mode flags.
 package main
 
 import (
@@ -196,6 +197,71 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests = append(tests, checkTests...)
+
+	// --- R3.1-R3.2: --tag, --binary, --text tests ---
+
+	// Create a BSD tag format checksum file for check mode parsing.
+	bsdTagChecksumFile := filepath.Join(tmpDir, "bsd_tag_checksums.txt")
+	bsdTagContent := fmt.Sprintf("SHA512 (%s) = %s\n", fileA, hashA)
+	if err := os.WriteFile(bsdTagChecksumFile, []byte(bsdTagContent), 0o644); err != nil {
+		t.Fatalf("writing bsd_tag_checksums.txt: %v", err)
+	}
+
+	tagTests := []testutils.DiffTest{
+		// R3.1: --tag produces BSD-style output.
+		{
+			Name: "tag single file",
+			Args: []string{"--tag", fileA},
+		},
+		// R3.1: --tag with multiple files.
+		{
+			Name: "tag multiple files",
+			Args: []string{"--tag", fileA, fileB},
+		},
+		// R3.1: --tag with stdin.
+		{
+			Name:  "tag stdin",
+			Args:  []string{"--tag", "-"},
+			Stdin: []byte("abc"),
+		},
+		// R3.2: --binary produces asterisk indicator.
+		{
+			Name: "binary mode single file",
+			Args: []string{"--binary", fileA},
+		},
+		// R3.2: -b short flag for --binary.
+		{
+			Name: "binary mode short flag",
+			Args: []string{"-b", fileA},
+		},
+		// R3.2: --text produces space indicator (default behavior).
+		{
+			Name: "text mode single file",
+			Args: []string{"--text", fileA},
+		},
+		// R3.2: -t short flag for --text.
+		{
+			Name: "text mode short flag",
+			Args: []string{"-t", fileA},
+		},
+		// R3.2: --binary with multiple files.
+		{
+			Name: "binary mode multiple files",
+			Args: []string{"--binary", fileA, fileB},
+		},
+		// R3.1: --tag with --binary — tag format ignores mode indicator.
+		{
+			Name: "tag with binary flag",
+			Args: []string{"--tag", "--binary", fileA},
+		},
+		// R3.2: --check verifies BSD tag format checksums.
+		{
+			Name: "check bsd tag format",
+			Args: []string{"--check", bsdTagChecksumFile},
+		},
+	}
+
+	tests = append(tests, tagTests...)
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
