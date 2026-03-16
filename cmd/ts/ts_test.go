@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"regexp"
 	"testing"
@@ -18,6 +19,14 @@ import (
 var epochSubsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	re := regexp.MustCompile(`\d{9,}\.\d{6}`)
 	return re.ReplaceAll(b, []byte("<EPOCH_USEC>"))
+}
+
+// deltaSubsecNormalizer replaces any number with microsecond suffix (e.g.,
+// "0.000005") with a fixed placeholder. Used for %.s tests in -i/-s modes
+// where the epoch value is a small delta rather than a wall-clock epoch.
+var deltaSubsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d+\.\d{6}`)
+	return re.ReplaceAll(b, []byte("<DELTA_USEC>"))
 }
 
 // secSubsecNormalizer replaces seconds with microsecond suffix (e.g.,
@@ -215,13 +224,14 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{secSubsecNormalizer},
 		},
-		// R2.3: subsecond extension %.s with -i mode.
+		// R2.3: subsecond extension %.s with -i mode. Uses deltaSubsecNormalizer
+		// because -i mode produces small delta epoch values (e.g., "0.000005").
 		{
 			Name:      "R2.3_subsecond_dots_incremental",
 			Args:      []string{"-i", "%.s"},
 			Stdin:     []byte("hello\n"),
 			Env:       []string{"LC_ALL=C"},
-			Normalize: []testutils.NormalizeFunc{epochSubsecNormalizer},
+			Normalize: []testutils.NormalizeFunc{deltaSubsecNormalizer},
 		},
 		// R2.3: mixed format with subsecond extensions.
 		{
@@ -234,4 +244,36 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestR3_4_MutualExclusion verifies that passing both -i and -s prints a usage
+// error to stderr and exits non-zero. R3.4: -i and -s are mutually exclusive.
+// This cannot be a differential test because the reference ts binary accepts
+// both flags without error; the PRD mandates stricter behavior.
+func TestR3_4_MutualExclusion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-i", "-s")
+	cmd.Stdin = bytes.NewReader([]byte("test\n"))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit code when -i and -s are both given")
+	}
+
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() == 0 {
+		t.Fatal("expected non-zero exit code when -i and -s are both given")
+	}
+
+	if !bytes.Contains(stderr.Bytes(), []byte("mutually exclusive")) {
+		t.Errorf("expected stderr to mention 'mutually exclusive', got: %q", stderr.String())
+	}
 }
