@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.12 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.15 test coverage.
 package main
 
 import (
@@ -172,6 +172,37 @@ func TestDiff(t *testing.T) {
 	if err := os.Symlink("regular.txt", filepath.Join(classifyDir, "alink")); err != nil {
 		t.Fatalf("creating classify symlink: %v", err)
 	}
+
+	// R3.13/R3.14/R3.15: Create a recursive fixture with symlink-to-directory,
+	// dotfiles in subdirectories, and distinct mtimes for sort-order testing.
+	recurDir := filepath.Join(tmpDir, "recurfix")
+	if err := os.Mkdir(recurDir, 0o755); err != nil {
+		t.Fatalf("creating recurfix dir: %v", err)
+	}
+	// Create subdirectories with distinct mtimes for R3.15.
+	recurSubA := filepath.Join(recurDir, "aaa")
+	recurSubB := filepath.Join(recurDir, "bbb")
+	if err := os.Mkdir(recurSubA, 0o755); err != nil {
+		t.Fatalf("creating recurfix/aaa: %v", err)
+	}
+	if err := os.Mkdir(recurSubB, 0o755); err != nil {
+		t.Fatalf("creating recurfix/bbb: %v", err)
+	}
+	writeFile(t, filepath.Join(recurDir, "top.txt"), "top\n")
+	writeFile(t, filepath.Join(recurSubA, "a-file.txt"), "aaa content\n")
+	writeFile(t, filepath.Join(recurSubB, "b-file.txt"), "bbb content\n")
+	// R3.14: Dotfiles in subdirectories for -A filter testing.
+	writeFile(t, filepath.Join(recurSubA, ".a-hidden"), "hidden a\n")
+	writeFile(t, filepath.Join(recurSubB, ".b-hidden"), "hidden b\n")
+	// R3.13: Symlink to directory — must NOT be followed by -R.
+	if err := os.Symlink("aaa", filepath.Join(recurDir, "link-to-aaa")); err != nil {
+		t.Fatalf("creating symlink to dir: %v", err)
+	}
+	// R3.15: Set distinct mtimes so -t ordering is deterministic.
+	// bbb is newer than aaa; top.txt is oldest.
+	setMtime(t, filepath.Join(recurDir, "top.txt"), now.Add(-3*time.Hour))
+	setMtime(t, recurSubA, now.Add(-2*time.Hour))
+	setMtime(t, recurSubB, now.Add(-1*time.Hour))
 
 	longNorm := []testutils.NormalizeFunc{
 		normalizeLongFormat,
@@ -945,6 +976,86 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "R3.12_recursive_long_color",
 			Args:      []string{"-lR", "--color=always", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R3.13: -R must not follow symbolic links to directories ===
+		// recurfix/link-to-aaa is a symlink to directory aaa; -R must NOT
+		// descend into it, only into real subdirectories aaa and bbb.
+		{
+			Name:    "R3.13_recursive_no_follow_symlink_dir",
+			Args:    []string{"-1R", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.13: -R with -l verifies symlink-to-dir shown as symlink, not recursed.
+		{
+			Name:      "R3.13_recursive_long_no_follow_symlink",
+			Args:      []string{"-lR", recurDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R3.14: -R applies filter flags (-a, -A) to subdirectories ===
+		// R3.14: -R without filter hides dotfiles in subdirectories.
+		{
+			Name:    "R3.14_recursive_default_filter",
+			Args:    []string{"-1R", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.14: -R with -a shows dotfiles (including . and ..) in subdirectories.
+		{
+			Name:    "R3.14_recursive_show_all",
+			Args:    []string{"-1aR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.14: -R with -A shows dotfiles (except . and ..) in subdirectories.
+		{
+			Name:    "R3.14_recursive_almost_all",
+			Args:    []string{"-1AR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.14: -R with -A and -l (long format with almost-all filter).
+		{
+			Name:      "R3.14_recursive_almost_all_long",
+			Args:      []string{"-lAR", recurDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R3.15: -R recurses subdirectories in active sort order ===
+		// R3.15: -R with -t lists subdirectories in mtime order (newest first).
+		{
+			Name:    "R3.15_recursive_time_sort",
+			Args:    []string{"-1tR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.15: -R with -t -r (oldest first).
+		{
+			Name:    "R3.15_recursive_time_sort_reverse",
+			Args:    []string{"-1trR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.15: -R with -S (size sort) — subdirectories recursed in size order.
+		{
+			Name:    "R3.15_recursive_size_sort",
+			Args:    []string{"-1SR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.15: -R with -t and -l (long format, time-sorted recursive).
+		{
+			Name:      "R3.15_recursive_time_sort_long",
+			Args:      []string{"-ltR", recurDir},
 			Env:       []string{"LC_ALL=C"},
 			WorkDir:   tmpDir,
 			Normalize: longNorm,

@@ -1,18 +1,19 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.12: basic directory
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15: basic directory
 // listing with single-column output (non-TTY default), dotfile filtering,
 // multi-directory headers, mixed file/directory argument handling, error
 // diagnostics, -1 single-column flag, -l long format with permissions/nlink/
 // owner/group/size/mtime, file metadata via pkg/sys.Lstat, owner/group name
-// resolution, -a (all entries including dotfiles), -r (reverse sort),
-// -R (recursive listing), -p (directory indicator), -C (multi-column vertical
-// fill), -x (multi-column horizontal fill), format flag mutual exclusivity
-// (last flag wins), -t (time sort), -S (size sort), -U (unsorted/directory
-// order), -v (version sort), -i (inode display), -s (block count display),
-// -n (numeric UID/GID, implies -l), -i and -s combined ordering,
-// --color=always/auto/never with ANSI color output via pkg/format.
+// resolution, -a (all entries including dotfiles), -A (almost all, excludes
+// . and ..), -r (reverse sort), -R (recursive listing), -p (directory
+// indicator), -C (multi-column vertical fill), -x (multi-column horizontal
+// fill), format flag mutual exclusivity (last flag wins), -t (time sort),
+// -S (size sort), -U (unsorted/directory order), -v (version sort),
+// -i (inode display), -s (block count display), -n (numeric UID/GID,
+// implies -l), -i and -s combined ordering, --color=always/auto/never with
+// ANSI color output via pkg/format.
 // R2.10: last sort flag wins. R3.1-R3.4: --color support.
 // R3.5-R3.6: -h human-readable sizes in long format and total line.
 // R3.7: -h with -s for human-readable block counts.
@@ -21,6 +22,9 @@
 // R3.10: -F works with -l, -1, -C, -x and color; indicator after reset sequence.
 // R3.11: -R recursive listing with "PATH:" headers and blank-line separation.
 // R3.12: -R respects current format mode (-l, -C, -x, default).
+// R3.13: -R does not follow symbolic links to directories.
+// R3.14: -R applies -a/-A filter flags to each subdirectory.
+// R3.15: -R recurses subdirectories in the active sort order.
 // Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
@@ -66,6 +70,16 @@ const (
 	sortByVersion                 // -v: version sort (R2.9)
 )
 
+// filterMode controls which entries are shown.
+// R2.1/R2.2/R2.4: -a shows all, -A shows almost all, last flag wins.
+type filterMode int
+
+const (
+	filterDefault   filterMode = iota // hide dotfiles
+	filterAll                         // -a: show all including "." and ".."
+	filterAlmostAll                   // -A: show dotfiles except "." and ".."
+)
+
 // colorMode controls colorized output.
 // R3.1: --color=always/auto/never.
 type colorMode int
@@ -80,11 +94,11 @@ const (
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
 	format    outputFormat
-	sortBy    sortMode // R2.5/R2.6/R2.8/R2.9/R2.10: sort mode
-	showAll   bool     // -a: include dotfiles including "." and ".."
-	reverse   bool     // -r: reverse sort order
-	recursive bool     // -R: list subdirectories recursively
-	indicator bool     // -p: append '/' to directory names
+	sortBy    sortMode   // R2.5/R2.6/R2.8/R2.9/R2.10: sort mode
+	filter    filterMode // R2.1/R2.2/R2.4: dotfile filter mode
+	reverse   bool       // -r: reverse sort order
+	recursive bool       // -R: list subdirectories recursively
+	indicator bool       // -p: append '/' to directory names
 	showInode  bool      // -i: prepend inode number (R2.11)
 	showBlocks bool      // -s: prepend block count (R2.12)
 	numericIDs    bool      // -n: display numeric UID/GID (R2.14)
@@ -251,7 +265,8 @@ func main() {
 // R1.13: -x sets horizontal multi-column mode.
 // R1.14: -C, -x, -l, -1 are format flags; last flag wins (except -1 does
 // not override -l, matching GNU ls behavior).
-// R2.1: -a includes dotfiles. R2.5: -t sorts by time. R2.6: -S sorts by size.
+// R2.1: -a includes dotfiles. R2.2: -A almost all. R2.4: last -a/-A wins.
+// R2.5: -t sorts by time. R2.6: -S sorts by size.
 // R2.7: -r reverses sort. R2.8: -U unsorted. R2.10: last sort flag wins.
 // R2.14: -n implies -l with numeric UID/GID.
 // R3.11: -R lists recursively. R3.8 (partial): -p appends '/' to directories.
@@ -313,7 +328,11 @@ func parseArgs(args []string) (lsOptions, []string) {
 					opts.format = formatHorizontal
 				case 'a':
 					// R2.1: -a includes all entries including "." and "..".
-					opts.showAll = true
+					opts.filter = filterAll
+				case 'A':
+					// R2.2: -A includes dotfiles except "." and "..".
+					// R2.4: Last of -a/-A wins.
+					opts.filter = filterAlmostAll
 				case 't':
 					// R2.5: -t sorts by modification time, newest first.
 					opts.sortBy = sortByTime
@@ -589,15 +608,15 @@ func listDir(path string, opts lsOptions) error {
 		}
 	}
 
-	// R1.4/R2.1: Filter dotfiles unless -a is given.
+	// R1.4/R2.1/R2.2/R2.4/R3.14: Filter dotfiles based on -a/-A mode.
 	var names []string
-	if opts.showAll {
+	if opts.filter == filterAll {
 		// R2.1: -a includes "." and ".." as special entries.
 		names = append(names, ".", "..")
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if !opts.showAll && len(name) > 0 && name[0] == '.' {
+		if opts.filter == filterDefault && len(name) > 0 && name[0] == '.' {
 			continue
 		}
 		names = append(names, name)
