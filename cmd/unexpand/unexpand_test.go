@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/unexpand against the GNU reference binary (gunexpand).
-// Implements prd025-unexpand R1.1-R1.4 test coverage.
+// Implements prd025-unexpand R1.1-R1.4, R2.1-R2.3 test coverage.
 package main
 
 import (
@@ -272,6 +272,114 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("        hello        world\n"),
 		},
 
+		// --- R2.1: Custom single tab stop interval ---
+		{
+			// R2.1: -t 4 converts runs of 4 spaces to tabs.
+			Name:  "custom_tab_4",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    hello\n"),
+		},
+		{
+			// R2.1: -t 4 with 8 spaces = two tabs.
+			Name:  "custom_tab_4_eight_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("        hello\n"),
+		},
+		{
+			// R2.1: -t 4 with 3 spaces (not a full stop) stays as spaces.
+			Name:  "custom_tab_4_partial",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("   hello\n"),
+		},
+		{
+			// R2.1: -t 2 with 6 spaces = three tabs.
+			Name:  "custom_tab_2_six_spaces",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("      hello\n"),
+		},
+		{
+			// R2.1: -t4 short form (no space).
+			Name:  "custom_tab_short_form",
+			Args:  []string{"-t4"},
+			Stdin: []byte("    hello\n"),
+		},
+		{
+			// R2.1: --tabs=4 long form.
+			Name:  "custom_tab_long_form",
+			Args:  []string{"--tabs=4"},
+			Stdin: []byte("    hello\n"),
+		},
+		{
+			// R2.1: -t 1 converts every space to a tab.
+			Name:  "custom_tab_1",
+			Args:  []string{"-t", "1"},
+			Stdin: []byte("   hello\n"),
+		},
+
+		// --- R2.2: Custom tab stop list ---
+		{
+			// R2.2: -t 4,8,12 converts at explicit positions.
+			Name:  "custom_tab_list_4_8_12",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("            hello\n"),
+		},
+		{
+			// R2.2: -t 4,8 with spaces only reaching first stop.
+			Name:  "custom_tab_list_first_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("    hello\n"),
+		},
+		{
+			// R2.2: -t 4,8 with spaces at both stops.
+			Name:  "custom_tab_list_both_stops",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("        hello\n"),
+		},
+		{
+			// R3.2: past last explicit stop, spaces are kept as-is.
+			Name:  "custom_tab_list_past_last",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("            hello\n"),
+		},
+		{
+			// R2.2: -t 3,6,9 non-default positions.
+			Name:  "custom_tab_list_3_6_9",
+			Args:  []string{"-t", "3,6,9"},
+			Stdin: []byte("         hello\n"),
+		},
+
+		// --- R3.3: -t implies -a (converts all whitespace) ---
+		{
+			// R3.3: -t 4 implicitly enables -a, converts embedded spaces.
+			Name:  "t_implies_all_embedded",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b\n"),
+		},
+		{
+			// R3.3: -t 8 implicitly enables -a.
+			Name:  "t_implies_all_default_interval",
+			Args:  []string{"-t", "8"},
+			Stdin: []byte("hello        world\n"),
+		},
+		{
+			// R3.3: -t with list also implies -a.
+			Name:  "t_list_implies_all",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a   b       c\n"),
+		},
+		{
+			// R3.3: -t implies -a with mixed leading and embedded.
+			Name:  "t_implies_all_mixed",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    hello    world\n"),
+		},
+		{
+			// R3.3: -t combined with --first-only — --first-only wins.
+			Name:  "t_with_first_only",
+			Args:  []string{"-t", "4", "--first-only"},
+			Stdin: []byte("    hello    world\n"),
+		},
+
 		// --- Edge cases ---
 		{
 			// Edge: single newline.
@@ -328,6 +436,18 @@ func TestDiff(t *testing.T) {
 			Name:  "all_mode_long_spaces",
 			Args:  []string{"-a"},
 			Stdin: []byte("a" + strings.Repeat(" ", 40) + "b\n"),
+		},
+		{
+			// Edge: -t 4 with long spaces.
+			Name:  "custom_tab_4_long_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte(strings.Repeat(" ", 20) + "text\n"),
+		},
+		{
+			// Edge: -t with tab stop list and multiple lines.
+			Name:  "custom_tab_list_multiline",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("    first\n        second\n"),
 		},
 
 		// --- Error handling ---
