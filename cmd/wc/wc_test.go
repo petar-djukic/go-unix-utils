@@ -240,6 +240,81 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-w", filepath.Join(tmpDir, "three-words.txt")},
 			WorkDir: tmpDir,
 		},
+
+		// R2.3: -c with file argument.
+		{
+			Name:    "R2.3_bytes_file",
+			Args:    []string{"-c", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+		// R2.4: -m counts characters (under LC_ALL=C, same as bytes).
+		{
+			Name:    "R2.4_chars_file",
+			Args:    []string{"-m", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+
+		// R2.6: -lw combined flags (lines and words only).
+		{
+			Name:  "R2.6_combined_lw",
+			Args:  []string{"-lw"},
+			Stdin: []byte("hello world\nfoo bar\n"),
+		},
+		// R2.6: -lw combined with file argument.
+		{
+			Name:    "R2.6_combined_lw_file",
+			Args:    []string{"-lw", filepath.Join(tmpDir, "multiword.txt")},
+			WorkDir: tmpDir,
+		},
+
+		// R2.6: default (no flags) with file — prints lines, words, bytes.
+		{
+			Name:    "R2.6_default_no_flags_file",
+			Args:    []string{filepath.Join(tmpDir, "three-words.txt")},
+			WorkDir: tmpDir,
+		},
+
+		// AC3: two files with totals.
+		{
+			Name: "AC3_two_files_totals",
+			Args: []string{
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "single-line.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+
+		// AC4: multi-file with varying count magnitudes (column width alignment).
+		{
+			Name: "AC4_varying_magnitudes",
+			Args: []string{
+				filepath.Join(tmpDir, "empty.txt"),
+				filepath.Join(tmpDir, "multiword.txt"),
+				filepath.Join(tmpDir, "hello.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+
+		// Multi-file with -l flag only.
+		{
+			Name: "multi_file_lines_only",
+			Args: []string{
+				"-l",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// Multi-file with -w flag only.
+		{
+			Name: "multi_file_words_only",
+			Args: []string{
+				"-w",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

@@ -146,10 +146,10 @@ func main() {
 		}
 	}
 
-	// R3.1: determine column width. GNU wc uses a minimum of 7 when more
-	// than one counter is active, and 1 when exactly one counter is active.
-	// For regular files, it increases the width based on file sizes.
-	width := computeWidth(maxFileSize, activeCounters(opts), hasUnstatable)
+	// R3.1: determine column width. GNU wc uses file-size-based width for
+	// multi-file output regardless of counter count. For single file with
+	// single counter, width is 1.
+	width := computeWidth(maxFileSize, activeCounters(opts), hasUnstatable, len(files))
 
 	// Print per-file results (skip files that could not be opened).
 	w := bufio.NewWriter(os.Stdout)
@@ -275,15 +275,16 @@ func activeCounters(opts *wcOptions) int {
 }
 
 // computeWidth returns the column width for formatting counts. GNU wc
-// behavior: when only one counter is active, width is always 1. When
-// multiple counters are active, width is the digit count of the max file
-// size (from fstat), with a minimum of 7 if any input is stdin/pipe.
-func computeWidth(maxFileSize int64, numCounters int, hasUnstatable bool) int {
-	if numCounters <= 1 {
+// behavior: when only one counter is active AND there is at most one file,
+// width is 1. When multiple counters are active or multiple files are given,
+// width is based on the digit count of the max file size (from fstat), with
+// a minimum of 7 if any input is stdin/pipe and multiple counters are active.
+func computeWidth(maxFileSize int64, numCounters int, hasUnstatable bool, numFiles int) int {
+	if numCounters <= 1 && numFiles <= 1 {
 		return 1
 	}
 	minWidth := 1
-	if hasUnstatable {
+	if hasUnstatable && numCounters > 1 {
 		minWidth = multiCounterMinWidth
 	}
 	w := digitCount(maxFileSize)
