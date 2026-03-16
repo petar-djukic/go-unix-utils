@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/unexpand against the GNU reference binary (gunexpand).
-// Implements prd025-unexpand R1.1-R1.4, R2.1-R2.3 test coverage.
+// Implements prd025-unexpand R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.4 test coverage.
 package main
 
 import (

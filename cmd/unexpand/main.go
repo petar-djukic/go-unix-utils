@@ -1,15 +1,18 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd025-unexpand R1.1-R1.4, R2.1-R2.3: cmd/unexpand converts
-// sequences of spaces to tabs at tab stop boundaries. By default, only leading
-// whitespace is converted. The -a/--all flag converts all whitespace in the line.
-// The --first-only flag restores default behavior; when both -a and --first-only
-// are given, the last one on the command line wins.
+// Implements prd025-unexpand R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.4:
+// cmd/unexpand converts sequences of spaces to tabs at tab stop boundaries.
+// By default, only leading whitespace is converted. The -a/--all flag converts
+// all whitespace in the line. The --first-only flag restores default behavior;
+// when both -a and --first-only are given, the last one on the command line wins.
 // R2.1-R2.3: -t/--tabs supports a single interval or comma-separated list of
 // tab stop positions. Specifying -t implies -a (R3.3).
-// Reads from files listed as arguments or stdin when no files are given.
-// Treats '-' as stdin. Installs SIGPIPE handler for clean exit on broken pipe.
+// R4.1-R4.2: reads from files listed as arguments or stdin when no files are
+// given. Treats '-' as stdin. On file open error, prints diagnostic to stderr
+// and continues processing remaining files, exiting 1.
+// R4.3-R4.4: exits 1 on write error. Installs SIGPIPE handler for clean exit
+// on broken pipe.
 package main
 
 import (
