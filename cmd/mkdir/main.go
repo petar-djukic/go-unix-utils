@@ -3,7 +3,8 @@
 
 // Implements prd034-mkdir R1.1-R1.4, R2.1-R2.3, R3.1-R3.4:
 // cmd/mkdir creates directories with optional parent creation (-p),
-// explicit permission mode setting (-m), and verbose output (-v).
+// explicit permission mode setting (-m), verbose output (-v),
+// and SELinux context flag (-Z/--context, silently accepted on non-SELinux).
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
@@ -34,6 +35,7 @@ type mkdirOptions struct {
 	parents     bool   // -p: create parent directories as needed
 	mode        string // -m: permission mode (octal or symbolic)
 	verbose     bool   // -v: print message for each directory created
+	context     bool   // -Z/--context: SELinux context (silently accepted on non-SELinux)
 	showVersion bool
 	showHelp    bool
 }
@@ -112,6 +114,12 @@ func parseArgs(args []string) (*mkdirOptions, []string) {
 				opts.parents = true
 			case arg == "--verbose":
 				opts.verbose = true
+			case arg == "--context":
+				// R3.3: silently accepted on non-SELinux systems.
+				opts.context = true
+			case strings.HasPrefix(arg, "--context="):
+				// R3.3: --context=CTX form silently accepted.
+				opts.context = true
 			case arg == "--version":
 				opts.showVersion = true
 			case arg == "--help":
@@ -134,6 +142,9 @@ func parseArgs(args []string) (*mkdirOptions, []string) {
 					opts.parents = true
 				case 'v':
 					opts.verbose = true
+				case 'Z':
+					// R3.3: silently accepted on non-SELinux systems.
+					opts.context = true
 				case 'm':
 					// -m consumes the rest of the arg or the next arg.
 					rest := arg[j+1:]
@@ -166,8 +177,8 @@ func makeDir(dir string, mode os.FileMode, modeSpecified, verbose bool) error {
 		}
 	}
 	if verbose {
-		// R3.4: GNU mkdir verbose output goes to stderr via error().
-		fmt.Fprintf(os.Stderr, "%s: created directory '%s'\n", progName, dir)
+		// R3.4: GNU mkdir verbose output goes to stdout.
+		fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", progName, dir)
 	}
 	return nil
 }
@@ -209,7 +220,8 @@ func makeDirParents(dir string, mode os.FileMode, modeSpecified, verbose bool) e
 			return fmt.Errorf("cannot create directory '%s': %v", d, unwrapPathError(err))
 		}
 		if verbose {
-			fmt.Fprintf(os.Stderr, "%s: created directory '%s'\n", progName, d)
+			// R3.4: GNU mkdir verbose output goes to stdout.
+			fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", progName, d)
 		}
 	}
 
@@ -372,6 +384,10 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  -m, --mode=MODE   set file mode (as in chmod), not a=rwx - umask")
 	fmt.Fprintln(w, "  -p, --parents     no error if existing, make parent directories as needed")
 	fmt.Fprintln(w, "  -v, --verbose     print a message for each created directory")
+	fmt.Fprintln(w, "  -Z                set SELinux security context of each created directory")
+	fmt.Fprintln(w, "                      to the default type")
+	fmt.Fprintln(w, "      --context[=CTX]  like -Z, or if CTX is specified then set the SELinux")
+	fmt.Fprintln(w, "                         or SMACK security context to CTX")
 	fmt.Fprintln(w, "      --help        display this help and exit")
 	fmt.Fprintln(w, "      --version     output version information and exit")
 }

@@ -122,6 +122,36 @@ func TestDiffCreation(t *testing.T) {
 			name: "p_m_mode_nested",
 			args: []string{"-p", "-m", "0700", "pm/child/target"},
 		},
+		// R3.4: -v prints verbose message for each created directory.
+		{
+			name: "v_single_dir",
+			args: []string{"-v", "verbosedir"},
+		},
+		// R3.2, R3.4: -pv prints message for each directory in chain.
+		{
+			name: "pv_nested",
+			args: []string{"-pv", "va/vb/vc"},
+		},
+		// R3.3: -Z silently accepted on non-SELinux (Darwin).
+		{
+			name: "Z_single_dir",
+			args: []string{"-Z", "zdir"},
+		},
+		// R3.3: --context silently accepted on non-SELinux (Darwin).
+		{
+			name: "context_long_form",
+			args: []string{"--context", "ctxdir"},
+		},
+		// R3.3: -Z combined with -p.
+		{
+			name: "Z_with_parents",
+			args: []string{"-Zp", "za/zb/zc"},
+		},
+		// R3.4: -v combined with -Z.
+		{
+			name: "Zv_single_dir",
+			args: []string{"-Zv", "zvdir"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -335,11 +365,14 @@ func buildTestEnv() []string {
 // differences (Go lowercase vs C strerror capitalized) do not cause
 // false divergence.
 func normalizeProgramName(b []byte) []byte {
-	// GNU binary may report its full path in "Try '...' messages.
-	// Replace any path ending in /mkdir or /gmkdir with just "mkdir".
+	// GNU binary may report its full argv[0] path in verbose and error messages.
+	// Replace any path ending in /gmkdir or /mkdir with just "mkdir".
 	lines := bytes.Split(b, []byte("\n"))
 	for i, line := range lines {
-		// Replace the reference binary name.
+		// Replace full path prefix before the binary name at line start.
+		// E.g. "/opt/homebrew/bin/gmkdir: " → "mkdir: "
+		// or "/opt/homebrew/bin/mkdir: " → "mkdir: "
+		line = normalizePathPrefix(line)
 		lines[i] = bytes.ReplaceAll(line, []byte("gmkdir"), []byte("mkdir"))
 	}
 	b = bytes.Join(lines, []byte("\n"))
@@ -373,6 +406,24 @@ func normalizeProgramName(b []byte) []byte {
 		break
 	}
 	return bytes.ToLower(b)
+}
+
+// normalizePathPrefix replaces a leading "/path/to/gmkdir: " or
+// "/path/to/mkdir: " with "mkdir: " so verbose and error output from
+// the reference binary (which uses argv[0]) matches our output.
+func normalizePathPrefix(line []byte) []byte {
+	colonIdx := bytes.Index(line, []byte(": "))
+	if colonIdx == -1 {
+		return line
+	}
+	prog := line[:colonIdx]
+	if slashIdx := bytes.LastIndexByte(prog, '/'); slashIdx >= 0 {
+		base := prog[slashIdx+1:]
+		if bytes.Equal(base, []byte("gmkdir")) || bytes.Equal(base, []byte("mkdir")) {
+			return append([]byte("mkdir"), line[colonIdx:]...)
+		}
+	}
+	return line
 }
 
 // clearOutput returns nil, used for tests where output content differs
