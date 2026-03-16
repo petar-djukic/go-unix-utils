@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd020-echo R1.1-R1.4, R2.1-R2.4:
+// Implements prd020-echo R1.1-R1.4, R2.1-R2.4, R3.1-R3.3:
 // cmd/echo prints its arguments to stdout separated by spaces, followed by
 // a newline. The -n flag suppresses the trailing newline. The -e flag enables
 // backslash escape sequence interpretation. The -E flag disables it (default).
-// Unrecognized flags are passed through as literal text. Installs SIGPIPE
-// handler for clean exit on broken pipe.
+// Unrecognized flags are passed through as literal text. Exits 0 on success,
+// 1 on write error (R3.1, R3.2). Installs SIGPIPE handler for clean exit on
+// broken pipe (R3.3).
 package main
 
 import (
