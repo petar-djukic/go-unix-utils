@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.4 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.8 test coverage.
 package main
 
 import (
@@ -25,9 +25,10 @@ func normalizeLongFormat(data []byte) []byte {
 }
 
 // normalizeTotalLine normalizes the "total N" line since block counts can
-// differ across filesystems.
+// differ across filesystems. Handles both plain integers and human-readable
+// values with suffixes (e.g., "total 24K", "total 1.5M").
 func normalizeTotalLine(data []byte) []byte {
-	re := regexp.MustCompile(`total \d+`)
+	re := regexp.MustCompile(`total [\d.]+[KMGTPE]?`)
 	data = re.ReplaceAll(data, []byte("total BLOCKS"))
 	return data
 }
@@ -142,6 +143,34 @@ func TestDiff(t *testing.T) {
 	}
 	if err := os.Symlink("plain.txt", filepath.Join(colorDir, "mylink")); err != nil {
 		t.Fatalf("creating color symlink: %v", err)
+	}
+
+	// R3.5-R3.7: Create a fixture with files of known sizes for -h testing.
+	humanDir := filepath.Join(tmpDir, "humanfix")
+	if err := os.Mkdir(humanDir, 0o755); err != nil {
+		t.Fatalf("creating human fixture dir: %v", err)
+	}
+	writeFile(t, filepath.Join(humanDir, "tiny.txt"), "x")
+	writeFile(t, filepath.Join(humanDir, "small.txt"), string(make([]byte, 1023)))
+	writeFile(t, filepath.Join(humanDir, "onek.txt"), string(make([]byte, 1024)))
+	writeFile(t, filepath.Join(humanDir, "big.txt"), string(make([]byte, 10240)))
+
+	// R3.8: Create a classify fixture with diverse file types.
+	classifyDir := filepath.Join(tmpDir, "classifyfix")
+	if err := os.Mkdir(classifyDir, 0o755); err != nil {
+		t.Fatalf("creating classify fixture dir: %v", err)
+	}
+	writeFile(t, filepath.Join(classifyDir, "regular.txt"), "plain\n")
+	writeFile(t, filepath.Join(classifyDir, "script.sh"), "#!/bin/sh\n")
+	if err := os.Chmod(filepath.Join(classifyDir, "script.sh"), 0o755); err != nil {
+		t.Fatalf("chmod executable: %v", err)
+	}
+	classifySubDir := filepath.Join(classifyDir, "adir")
+	if err := os.Mkdir(classifySubDir, 0o755); err != nil {
+		t.Fatalf("creating classify subdir: %v", err)
+	}
+	if err := os.Symlink("regular.txt", filepath.Join(classifyDir, "alink")); err != nil {
+		t.Fatalf("creating classify symlink: %v", err)
 	}
 
 	longNorm := []testutils.NormalizeFunc{
@@ -714,6 +743,107 @@ func TestDiff(t *testing.T) {
 		{
 			Name:    "R3.3_color_always_all",
 			Args:    []string{"--color=always", "-a", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R3.5: -h human-readable sizes with -l ===
+		{
+			Name:      "R3.5_human_readable_long",
+			Args:      []string{"-lh", humanDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R3.5: -h without -l has no visible effect.
+		{
+			Name:    "R3.5_human_readable_no_long",
+			Args:    []string{"-1h", humanDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.5: -h with -l on fixture directory.
+		{
+			Name:      "R3.5_human_readable_fixture",
+			Args:      []string{"-lh", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R3.6: -h applies to total line in long format ===
+		{
+			Name:      "R3.6_human_total_line",
+			Args:      []string{"-lh", humanDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: []testutils.NormalizeFunc{normalizeLongFormat},
+		},
+
+		// === R3.7: -h with -s block counts ===
+		{
+			Name:    "R3.7_human_blocks",
+			Args:    []string{"-1sh", humanDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.7: -h with -s and -l (long format with human blocks).
+		{
+			Name:      "R3.7_human_blocks_long",
+			Args:      []string{"-lsh", humanDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: []testutils.NormalizeFunc{normalizeLongFormat},
+		},
+
+		// === R3.8: -F classify indicator ===
+		{
+			Name:    "R3.8_classify_single_col",
+			Args:    []string{"-1F", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.8: -F with -l (long format with indicators).
+		{
+			Name:      "R3.8_classify_long",
+			Args:      []string{"-lF", classifyDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R3.8: -F with -a (all entries with indicators).
+		{
+			Name:    "R3.8_classify_all",
+			Args:    []string{"-1aF", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.10: -F with --color=always.
+		{
+			Name:    "R3.10_classify_color",
+			Args:    []string{"-1F", "--color=always", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.10: -F with --color=always and -l.
+		{
+			Name:      "R3.10_classify_color_long",
+			Args:      []string{"-lF", "--color=always", classifyDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R3.8: -F on fixture with subdirectories and symlinks.
+		{
+			Name:    "R3.8_classify_fixture",
+			Args:    []string{"-1F", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.8: -F with -R (recursive with indicators).
+		{
+			Name:    "R3.8_classify_recursive",
+			Args:    []string{"-1RF", classifyDir},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
 		},

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.4: basic directory
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.8: basic directory
 // listing with single-column output (non-TTY default), dotfile filtering,
 // multi-directory headers, mixed file/directory argument handling, error
 // diagnostics, -1 single-column flag, -l long format with permissions/nlink/
@@ -14,6 +14,9 @@
 // -n (numeric UID/GID, implies -l), -i and -s combined ordering,
 // --color=always/auto/never with ANSI color output via pkg/format.
 // R2.10: last sort flag wins. R3.1-R3.4: --color support.
+// R3.5-R3.6: -h human-readable sizes in long format and total line.
+// R3.7: -h with -s for human-readable block counts.
+// R3.8-R3.10: -F classify indicator (/ * @ | =).
 // Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
@@ -80,9 +83,11 @@ type lsOptions struct {
 	indicator bool     // -p: append '/' to directory names
 	showInode  bool      // -i: prepend inode number (R2.11)
 	showBlocks bool      // -s: prepend block count (R2.12)
-	numericIDs bool      // -n: display numeric UID/GID (R2.14)
-	color      colorMode // R3.1: --color mode
-	useColor   bool      // resolved: whether to colorize output (R3.1-R3.4)
+	numericIDs    bool      // -n: display numeric UID/GID (R2.14)
+	humanReadable bool      // -h: human-readable sizes (R3.5)
+	classify      bool      // -F: append type indicator (R3.8)
+	color         colorMode // R3.1: --color mode
+	useColor      bool      // resolved: whether to colorize output (R3.1-R3.4)
 }
 
 func main() {
@@ -148,10 +153,11 @@ func main() {
 			}
 			displayName := f
 			// R1.12: -p appends '/' to directory names.
-			if opts.indicator && fi.Mode&os.ModeDir != 0 {
+			// R3.8: Skip -p when -F is active; -F handles indicators after color wrapping.
+			if opts.indicator && !opts.classify && fi.Mode&os.ModeDir != 0 {
 				displayName = f + "/"
 			}
-			// Note: color wrapping is handled by printLongEntries (R3.3).
+			// Note: color wrapping and -F indicator handled by printLongEntries.
 			entries = append(entries, longEntry{name: displayName, path: f, fi: fi})
 		}
 		printLongEntries(entries, opts)
@@ -160,15 +166,19 @@ func main() {
 		var displayNames []string
 		for _, f := range files {
 			displayName := f
-			if opts.indicator || opts.useColor {
+			if opts.indicator || opts.useColor || opts.classify {
 				fi, err := sys.Lstat(f)
 				if err == nil {
-					if opts.indicator && fi.Mode&os.ModeDir != 0 {
+					if opts.indicator && !opts.classify && fi.Mode&os.ModeDir != 0 {
 						displayName = f + "/"
 					}
 					// R3.3: Colorize entry name.
 					if opts.useColor {
 						displayName = colorizeEntry(displayName, fi.Mode)
+					}
+					// R3.8/R3.10: Append classify indicator after color reset.
+					if opts.classify {
+						displayName += classifyIndicator(fi.Mode)
 					}
 				}
 			}
@@ -184,15 +194,19 @@ func main() {
 		// R1.3: Print file arguments first, one per line.
 		for _, f := range files {
 			displayName := f
-			if opts.indicator || opts.useColor {
+			if opts.indicator || opts.useColor || opts.classify {
 				fi, err := sys.Lstat(f)
 				if err == nil {
-					if opts.indicator && fi.Mode&os.ModeDir != 0 {
+					if opts.indicator && !opts.classify && fi.Mode&os.ModeDir != 0 {
 						displayName = f + "/"
 					}
 					// R3.3: Colorize entry name.
 					if opts.useColor {
 						displayName = colorizeEntry(displayName, fi.Mode)
+					}
+					// R3.8/R3.10: Append classify indicator after color reset.
+					if opts.classify {
+						displayName += classifyIndicator(fi.Mode)
 					}
 				}
 			}
@@ -318,6 +332,12 @@ func parseArgs(args []string) (lsOptions, []string) {
 				case 's':
 					// R2.12: -s prepends allocated block count.
 					opts.showBlocks = true
+				case 'h':
+					// R3.5: -h enables human-readable sizes.
+					opts.humanReadable = true
+				case 'F':
+					// R3.8: -F appends type indicator character.
+					opts.classify = true
 				case 'r':
 					// R2.7: -r reverses sort order.
 					opts.reverse = true
@@ -637,7 +657,7 @@ func listDir(path string, opts lsOptions) error {
 	// R2.11/R2.12: When -i or -s is given, we need metadata for every entry
 	// even in non-long formats. R3.3: Also needed when color is enabled.
 	var metaMap map[string]*sys.FileInfo
-	if opts.showInode || opts.showBlocks || opts.useColor {
+	if opts.showInode || opts.showBlocks || opts.useColor || opts.classify {
 		metaMap = make(map[string]*sys.FileInfo, len(names))
 		for _, name := range names {
 			fullPath := filepath.Join(path, name)
@@ -657,7 +677,11 @@ func listDir(path string, opts lsOptions) error {
 				totalBlocks += fi.Blocks
 			}
 		}
-		fmt.Printf("total %d\n", totalBlocks/2)
+		if opts.humanReadable {
+			fmt.Printf("total %s\n", humanBlockSize(totalBlocks/2))
+		} else {
+			fmt.Printf("total %d\n", totalBlocks/2)
+		}
 	}
 
 	// R1.6/R1.7: Long format requires metadata for each entry.
@@ -683,10 +707,11 @@ func listDir(path string, opts lsOptions) error {
 			}
 			displayName := name
 			// R1.12: -p appends '/' to directory names.
-			if opts.indicator && fi.Mode&os.ModeDir != 0 {
+			// R3.8: Skip -p when -F is active; classify handles indicators.
+			if opts.indicator && !opts.classify && fi.Mode&os.ModeDir != 0 {
 				displayName = name + "/"
 			}
-			// Note: color wrapping is handled by printLongEntries (R3.3).
+			// Note: color wrapping and -F handled by printLongEntries.
 			longEntries = append(longEntries, longEntry{name: displayName, path: fullPath, fi: fi})
 		}
 		// R1.10: Print "total N" block count line.
@@ -694,7 +719,11 @@ func listDir(path string, opts lsOptions) error {
 		for _, le := range longEntries {
 			totalBlocks += le.fi.Blocks
 		}
-		fmt.Printf("total %d\n", totalBlocks/2)
+		if opts.humanReadable {
+			fmt.Printf("total %s\n", humanBlockSize(totalBlocks/2))
+		} else {
+			fmt.Printf("total %d\n", totalBlocks/2)
+		}
 		printLongEntries(longEntries, opts)
 	} else if opts.format == formatMultiCol || opts.format == formatHorizontal {
 		// R1.13/R1.14: Multi-column output.
@@ -702,7 +731,7 @@ func listDir(path string, opts lsOptions) error {
 		var displayNames []string
 		for _, name := range names {
 			displayName := name
-			if opts.indicator {
+			if opts.indicator && !opts.classify {
 				fullPath := filepath.Join(path, name)
 				fi, err := os.Lstat(fullPath)
 				if err == nil && fi.IsDir() {
@@ -713,6 +742,12 @@ func listDir(path string, opts lsOptions) error {
 			if opts.useColor && metaMap != nil {
 				if fi := metaMap[name]; fi != nil {
 					displayName = colorizeEntry(displayName, fi.Mode)
+				}
+			}
+			// R3.8/R3.10: Append classify indicator after color reset.
+			if opts.classify && metaMap != nil {
+				if fi := metaMap[name]; fi != nil {
+					displayName += classifyIndicator(fi.Mode)
 				}
 			}
 			displayName = prependMeta(displayName, name, metaMap, opts)
@@ -731,7 +766,8 @@ func listDir(path string, opts lsOptions) error {
 		for _, name := range names {
 			displayName := name
 			// R1.12: -p appends '/' to directory names.
-			if opts.indicator {
+			// R3.8: Skip -p when -F is active.
+			if opts.indicator && !opts.classify {
 				fullPath := filepath.Join(path, name)
 				fi, err := os.Lstat(fullPath)
 				if err == nil && fi.IsDir() {
@@ -742,6 +778,12 @@ func listDir(path string, opts lsOptions) error {
 			if opts.useColor && metaMap != nil {
 				if fi := metaMap[name]; fi != nil {
 					displayName = colorizeEntry(displayName, fi.Mode)
+				}
+			}
+			// R3.8/R3.10: Append classify indicator after color reset.
+			if opts.classify && metaMap != nil {
+				if fi := metaMap[name]; fi != nil {
+					displayName += classifyIndicator(fi.Mode)
 				}
 			}
 			prefix := metaPrefix(name, metaMap, opts, maxIno, maxBlk)
@@ -829,7 +871,7 @@ func printLongEntries(entries []longEntry, opts lsOptions) {
 			nlink: strconv.FormatUint(fi.Nlink, 10),
 			owner: owner,
 			group: group,
-			size:  strconv.FormatInt(fi.Size, 10),
+			size:  formatSize(fi.Size, opts.humanReadable),
 			mtime: formatMtime(fi.ModTime),
 			name:  le.name,
 		}
@@ -844,14 +886,19 @@ func printLongEntries(entries []longEntry, opts lsOptions) {
 
 		// R2.12: Format block count in 1024-byte units.
 		if opts.showBlocks {
-			re.blk = strconv.FormatInt(fi.Blocks/2, 10)
+			if opts.humanReadable {
+				re.blk = humanBlockSize(fi.Blocks / 2)
+			} else {
+				re.blk = strconv.FormatInt(fi.Blocks/2, 10)
+			}
 			if len(re.blk) > maxBlk {
 				maxBlk = len(re.blk)
 			}
 		}
 
 		// R3.3: Colorize entry name based on file type.
-		// R1.10: Symlink display — append " -> target".
+		// R1.10: Symlink display â append " -> target".
+		// R3.8/R3.10: Append classify indicator after color reset.
 		if fi.Mode&os.ModeSymlink != 0 {
 			target, err := os.Readlink(le.path)
 			if err == nil {
@@ -859,10 +906,19 @@ func printLongEntries(entries []longEntry, opts lsOptions) {
 				if opts.useColor {
 					colorizedName = colorizeEntry(le.name, fi.Mode)
 				}
+					// R3.8: In long format, symlinks don't get '@' indicator
+				// because " -> target" already indicates the symlink.
 				re.name = colorizedName + " -> " + target
 			}
-		} else if opts.useColor {
-			re.name = colorizeEntry(le.name, fi.Mode)
+		} else {
+			displayName := le.name
+			if opts.useColor {
+				displayName = colorizeEntry(le.name, fi.Mode)
+			}
+			if opts.classify {
+				displayName += classifyIndicator(fi.Mode)
+			}
+			re.name = displayName
 		}
 
 		if len(re.nlink) > maxNlink {
@@ -1083,7 +1139,12 @@ func metaColumnWidths(names []string, metaMap map[string]*sys.FileInfo, opts lsO
 			}
 		}
 		if opts.showBlocks {
-			s := strconv.FormatInt(fi.Blocks/2, 10)
+			var s string
+			if opts.humanReadable {
+				s = humanBlockSize(fi.Blocks / 2)
+			} else {
+				s = strconv.FormatInt(fi.Blocks/2, 10)
+			}
 			if len(s) > maxBlk {
 				maxBlk = len(s)
 			}
@@ -1111,7 +1172,11 @@ func metaPrefix(name string, metaMap map[string]*sys.FileInfo, opts lsOptions, m
 	if opts.showBlocks {
 		blk := "?"
 		if fi != nil {
-			blk = strconv.FormatInt(fi.Blocks/2, 10)
+			if opts.humanReadable {
+				blk = humanBlockSize(fi.Blocks / 2)
+			} else {
+				blk = strconv.FormatInt(fi.Blocks/2, 10)
+			}
 		}
 		prefix += fmt.Sprintf("%*s ", maxBlk, blk)
 	}
@@ -1137,11 +1202,77 @@ func prependMeta(displayName, origName string, metaMap map[string]*sys.FileInfo,
 	if opts.showBlocks {
 		blk := "?"
 		if fi != nil {
-			blk = strconv.FormatInt(fi.Blocks/2, 10)
+			if opts.humanReadable {
+				blk = humanBlockSize(fi.Blocks / 2)
+			} else {
+				blk = strconv.FormatInt(fi.Blocks/2, 10)
+			}
 		}
 		prefix += blk + " "
 	}
 	return prefix + displayName
+}
+
+// formatSize formats a file size for long format display.
+// R3.5: When humanReadable is true, use humanFileSize for GNU ls compatible output.
+func formatSize(size int64, humanReadable bool) string {
+	if humanReadable {
+		return humanFileSize(size)
+	}
+	return strconv.FormatInt(size, 10)
+}
+
+// humanFileSize converts a byte count to a human-readable string matching
+// GNU ls -h output format. Values < 1024 are shown as plain integers.
+// Values >= 1024 use K/M/G/T/P/E suffixes with one decimal for values < 10.
+// R3.5/R3.6: Used for file sizes and total line in long format.
+func humanFileSize(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d", n)
+	}
+	suffixes := []string{"K", "M", "G", "T", "P", "E"}
+	f := float64(n) / 1024
+	i := 0
+	for f >= 1024 && i < len(suffixes)-1 {
+		f /= 1024
+		i++
+	}
+	if f >= 10 {
+		return fmt.Sprintf("%.0f%s", f, suffixes[i])
+	}
+	return fmt.Sprintf("%.1f%s", f, suffixes[i])
+}
+
+// humanBlockSize converts a block count (in 1024-byte units) to a
+// human-readable string matching GNU ls -sh output format. Block counts
+// are converted to bytes first, then formatted with humanFileSize.
+// R3.7: Used for -s block counts and -l total line when -h is active.
+func humanBlockSize(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	return humanFileSize(n * 1024)
+}
+
+// classifyIndicator returns the -F type indicator character for a file mode.
+// R3.8: "/" for directories, "*" for executables, "@" for symlinks,
+// "|" for FIFOs, "=" for sockets. Empty string for regular non-executable files.
+// R3.9: Executable = any execute bit set (mode&0o111 != 0).
+func classifyIndicator(mode os.FileMode) string {
+	switch {
+	case mode&os.ModeDir != 0:
+		return "/"
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.IsRegular() && mode&0o111 != 0:
+		return "*"
+	default:
+		return ""
+	}
 }
 
 // strverscmp implements GNU strverscmp semantics for version sorting (R2.9).
