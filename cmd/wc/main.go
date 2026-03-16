@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd005-wc R1.1-R1.4, R2.1-R2.6, R3.1-R3.2, R4.1-R4.3, R5.1-R5.2, R6.1-R6.3:
+// Implements prd005-wc R1.1-R1.4, R2.1-R2.6, R3.1-R3.3, R4.1-R4.3, R5.1-R5.2, R6.1-R6.3:
 // cmd/wc counts lines, words, bytes, characters, and max line length from files
 // or stdin. Default mode prints line, word, and byte counts. Supports -l, -w,
 // -c, -m, -L flags and their combinations. Multi-file output includes a totals
@@ -25,13 +25,25 @@ import (
 // progName is the name used in error messages to match GNU wc format.
 const progName = "wc"
 
+// totalMode controls when the total line is printed.
+// R3.3: --total=auto|always|only|never.
+type totalMode int
+
+const (
+	totalAuto   totalMode = iota // print total when more than one file
+	totalAlways                  // always print total, even for one file
+	totalOnly                    // print only the total, not per-file lines
+	totalNever                   // never print total
+)
+
 // wcOptions holds the parsed flags for a wc invocation.
 type wcOptions struct {
-	lines   bool // -l: count newlines
-	words   bool // -w: count words
-	bytes   bool // -c: count bytes
-	chars   bool // -m: count characters
-	maxLine bool // -L: max line length
+	lines   bool      // -l: count newlines
+	words   bool      // -w: count words
+	bytes   bool      // -c: count bytes
+	chars   bool      // -m: count characters
+	maxLine bool      // -L: max line length
+	total   totalMode // R3.3: --total mode
 }
 
 // isDefault returns true when no flags were explicitly set.
@@ -149,26 +161,53 @@ func main() {
 	// R3.1: determine column width. GNU wc uses file-size-based width for
 	// multi-file output regardless of counter count. For single file with
 	// single counter, width is 1.
-	width := computeWidth(maxFileSize, activeCounters(opts), hasUnstatable, len(files))
+	// R3.3: --total=only outputs a single line, GNU wc uses width 1.
+	var width int
+	if opts.total == totalOnly {
+		width = 1
+	} else {
+		width = computeWidth(maxFileSize, activeCounters(opts), hasUnstatable, len(files))
+	}
+
+	// R3.3: determine whether to print per-file lines and totals.
+	showPerFile := opts.total != totalOnly
+	showTotal := false
+	switch opts.total {
+	case totalAuto:
+		showTotal = len(files) > 1
+	case totalAlways:
+		showTotal = true
+	case totalOnly:
+		showTotal = true
+	case totalNever:
+		showTotal = false
+	}
 
 	// Print per-file results (skip files that could not be opened).
 	w := bufio.NewWriter(os.Stdout)
-	for _, r := range results {
-		if !r.ok {
-			continue
-		}
-		if werr := printCounts(w, r.c, r.name, opts, width); werr != nil {
-			if isEPIPE(werr) {
-				os.Exit(0)
+	if showPerFile {
+		for _, r := range results {
+			if !r.ok {
+				continue
 			}
-			fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, werr)
-			os.Exit(1)
+			if werr := printCounts(w, r.c, r.name, opts, width); werr != nil {
+				if isEPIPE(werr) {
+					os.Exit(0)
+				}
+				fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, werr)
+				os.Exit(1)
+			}
 		}
 	}
 
-	// R1.3, R3.2: print total line when more than one file is given.
-	if len(files) > 1 {
-		if werr := printCounts(w, total, "total", opts, width); werr != nil {
+	// R1.3, R3.2, R3.3: print total line based on totalMode.
+	// R3.3: --total=only omits the "total" label.
+	totalLabel := "total"
+	if opts.total == totalOnly {
+		totalLabel = ""
+	}
+	if showTotal {
+		if werr := printCounts(w, total, totalLabel, opts, width); werr != nil {
 			if isEPIPE(werr) {
 				os.Exit(0)
 			}
@@ -396,6 +435,8 @@ func parseArgs(args []string) (*wcOptions, []string) {
 					"  -l, --lines            print the newline counts\n"+
 					"  -L, --max-line-length  print the maximum display width\n"+
 					"  -w, --words            print the word counts\n"+
+					"      --total=WHEN       when to print a line with total counts;\n"+
+					"                           WHEN can be: auto, always, only, never\n"+
 					"      --help     display this help and exit\n"+
 					"      --version  output version information and exit\n",
 				progName,
@@ -407,6 +448,31 @@ func parseArgs(args []string) (*wcOptions, []string) {
 				progName, "go-unix-utils", version.Version,
 			)
 			os.Exit(0)
+		}
+
+		// R3.3: --total=MODE flag.
+		if arg == "--total" || strings.HasPrefix(arg, "--total=") {
+			val := "auto"
+			if strings.HasPrefix(arg, "--total=") {
+				val = arg[len("--total="):]
+			} else if i+1 < len(args) {
+				i++
+				val = args[i]
+			}
+			switch val {
+			case "auto":
+				opts.total = totalAuto
+			case "always":
+				opts.total = totalAlways
+			case "only":
+				opts.total = totalOnly
+			case "never":
+				opts.total = totalNever
+			default:
+				fmt.Fprintf(os.Stderr, "%s: invalid argument '%s' for '--total'\n", progName, val)
+				os.Exit(1)
+			}
+			continue
 		}
 
 		// Long options.

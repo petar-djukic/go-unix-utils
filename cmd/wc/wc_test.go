@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc against gwc (GNU coreutils).
-// Implements prd005-wc R1.1-R1.4, R2.1-R2.6, R3.1-R3.2, R4.1-R4.3,
+// Implements prd005-wc R1.1-R1.4, R2.1-R2.6, R3.1-R3.3, R4.1-R4.3,
 // R5.1-R5.2, R6.1-R6.2 test coverage.
 // R5.1: all tests set LC_ALL=C via the testutils harness default.
 package main
@@ -410,6 +410,101 @@ func TestDiff(t *testing.T) {
 				filepath.Join(tmpDir, "multiword.txt"),
 			},
 			WorkDir: tmpDir,
+		},
+
+		// R3.3: --total=always prints total even for one file.
+		{
+			Name: "R3.3_total_always_one_file",
+			Args: []string{
+				"--total=always",
+				filepath.Join(tmpDir, "hello.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=always with multiple files.
+		{
+			Name: "R3.3_total_always_multi",
+			Args: []string{
+				"--total=always",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=never suppresses total even for multiple files.
+		{
+			Name: "R3.3_total_never_multi",
+			Args: []string{
+				"--total=never",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=never with one file (no total, same as default).
+		{
+			Name: "R3.3_total_never_one_file",
+			Args: []string{
+				"--total=never",
+				filepath.Join(tmpDir, "hello.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=only prints only the total, not per-file lines.
+		{
+			Name: "R3.3_total_only_multi",
+			Args: []string{
+				"--total=only",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=only with one file.
+		{
+			Name: "R3.3_total_only_one_file",
+			Args: []string{
+				"--total=only",
+				filepath.Join(tmpDir, "hello.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=auto (explicit) matches default behavior for multi-file.
+		{
+			Name: "R3.3_total_auto_multi",
+			Args: []string{
+				"--total=auto",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --total=auto (explicit) with one file — no total.
+		{
+			Name: "R3.3_total_auto_one_file",
+			Args: []string{
+				"--total=auto",
+				filepath.Join(tmpDir, "hello.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+
+		// R4.1: "-" as stdin with no other files.
+		{
+			Name:  "R4.1_dash_only",
+			Args:  []string{"-"},
+			Stdin: []byte("one two three\n"),
+		},
+		// R4.2: binary input with null bytes and high bytes.
+		{
+			Name:  "R4.2_binary_stdin",
+			Stdin: []byte{0x00, 0x01, 0x80, 0xff, 0x0a},
+		},
+		// R4.3: empty stdin with explicit flags.
+		{
+			Name:  "R4.3_empty_stdin_flags",
+			Args:  []string{"-lwc"},
+			Stdin: []byte{},
 		},
 	}
 
