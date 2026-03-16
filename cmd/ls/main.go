@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.8: basic directory listing with single-column
+// Implements prd008-ls R1.1-R1.12: basic directory listing with single-column
 // output (non-TTY default), dotfile filtering, multi-directory headers, mixed
 // file/directory argument handling, error diagnostics, -1 single-column flag,
 // -l long format with permissions/nlink/owner/group/size/mtime, file metadata
-// via pkg/sys.Lstat, and owner/group name resolution. Installs SIGPIPE handler
-// per ARCHITECTURE.yaml shared protocol.
+// via pkg/sys.Lstat, owner/group name resolution, -a (all entries including
+// dotfiles), -r (reverse sort), -R (recursive listing), and -p (directory
+// indicator). Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
 import (
@@ -35,7 +36,11 @@ const (
 
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
-	format outputFormat
+	format    outputFormat
+	showAll   bool // -a: include dotfiles including "." and ".."
+	reverse   bool // -r: reverse sort order
+	recursive bool // -R: list subdirectories recursively
+	indicator bool // -p: append '/' to directory names
 }
 
 func main() {
@@ -81,19 +86,31 @@ func main() {
 				exitCode = 2
 				continue
 			}
-			entries = append(entries, longEntry{name: f, path: f, fi: fi})
+			displayName := f
+			// R1.12: -p appends '/' to directory names.
+			if opts.indicator && fi.Mode&os.ModeDir != 0 {
+				displayName = f + "/"
+			}
+			entries = append(entries, longEntry{name: displayName, path: f, fi: fi})
 		}
 		printLongEntries(entries)
 	} else {
 		// R1.3: Print file arguments first, one per line.
 		for _, f := range files {
-			fmt.Println(f)
+			displayName := f
+			if opts.indicator {
+				fi, err := os.Lstat(f)
+				if err == nil && fi.IsDir() {
+					displayName = f + "/"
+				}
+			}
+			fmt.Println(displayName)
 		}
 	}
 
-	// R1.2: When multiple directories (or mix of files and directories),
-	// print each directory name as a header before its contents.
-	needHeader := len(dirs) > 1 || (len(files) > 0 && len(dirs) > 0)
+	// R1.2/R3.11: When multiple directories, mix of files and directories,
+	// or recursive mode, print each directory name as a header before its contents.
+	needHeader := len(dirs) > 1 || (len(files) > 0 && len(dirs) > 0) || opts.recursive
 
 	// R1.3: Blank line between file list and first directory when both present.
 	needBlankBefore := len(files) > 0 && len(dirs) > 0
@@ -120,9 +137,9 @@ func main() {
 // parseArgs parses command-line arguments into options and path operands.
 // Flags are single-character and may be combined (e.g., -la). "--" ends flag
 // parsing. Unknown flags cause exit 2 matching GNU ls.
-// R1.5/R1.6: -1 sets single-column mode; -l sets long format. In GNU ls,
-// -l implies one-per-line, so -1 never overrides -l. -1 only overrides
-// multi-column formats (-C, -x) in future tasks.
+// R1.5/R1.6: -1 sets single-column mode; -l sets long format.
+// R2.1: -a includes dotfiles. R2.7: -r reverses sort.
+// R3.11: -R lists recursively. R3.8 (partial): -p appends '/' to directories.
 func parseArgs(args []string) (lsOptions, []string) {
 	opts := lsOptions{format: formatDefault}
 	var paths []string
@@ -150,6 +167,18 @@ func parseArgs(args []string) (lsOptions, []string) {
 					// R1.6: -l forces long format output. Overrides -1.
 					opts.format = formatLong
 					longFlag = true
+				case 'a':
+					// R2.1: -a includes all entries including "." and "..".
+					opts.showAll = true
+				case 'r':
+					// R2.7: -r reverses sort order.
+					opts.reverse = true
+				case 'R':
+					// R3.11: -R lists subdirectories recursively.
+					opts.recursive = true
+				case 'p':
+					// R1.12: -p appends '/' to directory names.
+					opts.indicator = true
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, ch)
 					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
@@ -174,6 +203,10 @@ type longEntry struct {
 // listDir reads and prints the contents of a single directory.
 // R1.1/R1.2: One entry per line (non-TTY default), sorted alphabetically.
 // R1.4: Entries whose names start with "." are excluded by default.
+// R2.1: -a includes dotfiles including "." and "..".
+// R2.7: -r reverses the current sort order.
+// R3.11-R3.15: -R recursively lists subdirectories.
+// R1.12: -p appends '/' to directory names.
 func listDir(path string, opts lsOptions) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -185,14 +218,23 @@ func listDir(path string, opts lsOptions) error {
 		return entries[i].Name() < entries[j].Name()
 	})
 
-	// R1.4: Filter dotfiles.
+	// R1.4/R2.1: Filter dotfiles unless -a is given.
 	var names []string
+	if opts.showAll {
+		// R2.1: -a includes "." and ".." as special entries.
+		names = append(names, ".", "..")
+	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if len(name) > 0 && name[0] == '.' {
+		if !opts.showAll && len(name) > 0 && name[0] == '.' {
 			continue
 		}
 		names = append(names, name)
+	}
+
+	// R2.7: Reverse sort order if -r is given.
+	if opts.reverse {
+		reverseStrings(names)
 	}
 
 	// R1.6/R1.7: Long format requires metadata for each entry.
@@ -205,7 +247,12 @@ func listDir(path string, opts lsOptions) error {
 				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, fullPath, unwrapPathError(err))
 				continue
 			}
-			longEntries = append(longEntries, longEntry{name: name, path: fullPath, fi: fi})
+			displayName := name
+			// R1.12: -p appends '/' to directory names.
+			if opts.indicator && fi.Mode&os.ModeDir != 0 {
+				displayName = name + "/"
+			}
+			longEntries = append(longEntries, longEntry{name: displayName, path: fullPath, fi: fi})
 		}
 		// R1.10: Print "total N" block count line.
 		var totalBlocks int64
@@ -214,15 +261,53 @@ func listDir(path string, opts lsOptions) error {
 		}
 		fmt.Printf("total %d\n", totalBlocks/2)
 		printLongEntries(longEntries)
-		return nil
+	} else {
+		// R1.1/R1.2/R1.5: Single-column output.
+		for _, name := range names {
+			displayName := name
+			// R1.12: -p appends '/' to directory names.
+			if opts.indicator {
+				fullPath := filepath.Join(path, name)
+				fi, err := os.Lstat(fullPath)
+				if err == nil && fi.IsDir() {
+					displayName = name + "/"
+				}
+			}
+			fmt.Println(displayName)
+		}
 	}
 
-	// R1.1/R1.2/R1.5: Single-column output.
-	for _, name := range names {
-		fmt.Println(name)
+	// R3.11-R3.15: Recursive listing of subdirectories.
+	if opts.recursive {
+		for _, name := range names {
+			// R3.13: Do not recurse into "." or ".." to avoid infinite loops.
+			if name == "." || name == ".." {
+				continue
+			}
+			fullPath := filepath.Join(path, name)
+			fi, err := os.Lstat(fullPath)
+			if err != nil {
+				continue
+			}
+			// R3.13: Only recurse into real directories, not symlinks.
+			if fi.IsDir() {
+				fmt.Printf("\n%s:\n", fullPath)
+				if err := listDir(fullPath, opts); err != nil {
+					fmt.Fprintf(os.Stderr, "%s: cannot open directory '%s': %v\n",
+						progName, fullPath, unwrapPathError(err))
+				}
+			}
+		}
 	}
 
 	return nil
+}
+
+// reverseStrings reverses a slice of strings in place.
+func reverseStrings(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
 
 // printLongEntries prints entries in long format with aligned columns.

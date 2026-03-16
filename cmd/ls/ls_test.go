@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.8 test coverage.
+// Implements prd008-ls R1.1-R1.12 test coverage.
 package main
 
 import (
@@ -87,6 +87,14 @@ func TestDiff(t *testing.T) {
 	if err := os.Mkdir(emptyDir, 0o755); err != nil {
 		t.Fatalf("creating empty dir: %v", err)
 	}
+
+	// Create a nested subdirectory for -R recursive tests.
+	nestedDir := filepath.Join(subDir, "nested")
+	if err := os.Mkdir(nestedDir, 0o755); err != nil {
+		t.Fatalf("creating nested dir: %v", err)
+	}
+	writeFile(t, filepath.Join(subDir, "sub-file.txt"), "sub content\n")
+	writeFile(t, filepath.Join(nestedDir, "deep-file.txt"), "deep content\n")
 
 	longNorm := []testutils.NormalizeFunc{
 		normalizeLongFormat,
@@ -199,6 +207,101 @@ func TestDiff(t *testing.T) {
 			WorkDir:   tmpDir,
 			ExitCode:  2,
 			Normalize: stderrNorm,
+		},
+		// R2.1: -a includes dotfiles including "." and "..".
+		{
+			Name:    "R2.1_show_all",
+			Args:    []string{"-a", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.1: -a with -l (long format with dotfiles).
+		{
+			Name:      "R2.1_show_all_long",
+			Args:      []string{"-la", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R2.7: -r reverses alphabetical sort.
+		{
+			Name:    "R2.7_reverse_sort",
+			Args:    []string{"-r", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.7: -r with -l (long format reversed).
+		{
+			Name:      "R2.7_reverse_long",
+			Args:      []string{"-lr", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R2.1/R2.7: -a and -r combined.
+		{
+			Name:    "R2.1_R2.7_all_reverse",
+			Args:    []string{"-ar", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.11: -R recursive listing.
+		{
+			Name:    "R3.11_recursive",
+			Args:    []string{"-R", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.11/R3.12: -R with -l (recursive long format).
+		{
+			Name:      "R3.11_R3.12_recursive_long",
+			Args:      []string{"-lR", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R3.14: -R with -a (recursive including dotfiles).
+		{
+			Name:    "R3.14_recursive_all",
+			Args:    []string{"-aR", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.11/R2.7: -R with -r (recursive reversed).
+		{
+			Name:    "R3.11_R2.7_recursive_reverse",
+			Args:    []string{"-Rr", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.12: -p appends '/' to directories.
+		{
+			Name:    "R1.12_indicator_slash",
+			Args:    []string{"-p", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.12: -p with -l (long format with indicator).
+		{
+			Name:      "R1.12_indicator_long",
+			Args:      []string{"-lp", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R1.12/R2.1: -p with -a (all entries with indicator).
+		{
+			Name:    "R1.12_R2.1_indicator_all",
+			Args:    []string{"-ap", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.12: -p on empty directory.
+		{
+			Name:    "R1.12_indicator_empty_dir",
+			Args:    []string{"-p", emptyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
 		},
 	}
 
