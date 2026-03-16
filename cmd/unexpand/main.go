@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in error messages to match GNU unexpand format.
@@ -107,6 +108,22 @@ func parseTabStops(s string) (*tabStops, error) {
 	return &tabStops{positions: positions}, nil
 }
 
+// printHelp prints usage information to stdout (R4.2).
+func printHelp() {
+	fmt.Print(`Usage: unexpand [OPTION]... [FILE]...
+Convert blanks in each FILE (or standard input), writing to standard output.
+With no FILE, or when FILE is -, read standard input.
+
+Mandatory arguments to long options are mandatory for short options too.
+  -a, --all        convert all blanks, instead of just initial blanks
+      --first-only  convert only leading sequences of blanks (overrides -a)
+  -t, --tabs=N     have tabs N characters apart instead of 8 (enables -a)
+  -t, --tabs=LIST  use comma separated list of tab positions (enables -a)
+      --help       display this help and exit
+      --version    output version information and exit
+`)
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
@@ -117,12 +134,22 @@ func main() {
 	args := os.Args[1:]
 	var files []string
 
-	// R1.3, R1.4, R2.1-R2.3: parse flags.
+	// R1.3, R1.4, R2.1-R2.3, R4.1-R4.3: parse flags.
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			files = append(files, args[i+1:]...)
 			break
+		}
+		// R4.1: --version prints version string to stdout and exits 0.
+		if arg == "--version" {
+			fmt.Printf("%s (go-unix-utils) %s\n", progName, version.Version)
+			os.Exit(0)
+		}
+		// R4.2: --help prints usage to stdout and exits 0.
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
 		}
 		if arg == "-a" || arg == "--all" {
 			convertAll = true
@@ -146,6 +173,15 @@ func main() {
 			tabVal = arg[2:]
 		} else if strings.HasPrefix(arg, "--tabs=") {
 			tabVal = arg[7:]
+		} else if strings.HasPrefix(arg, "--") {
+			// R4.3: unrecognized long option prints error to stderr and exits 1.
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\nTry '%s --help' for more information.\n", progName, arg, progName)
+			os.Exit(1)
+		} else if strings.HasPrefix(arg, "-") && arg != "-" {
+			// R4.3: invalid short option prints error to stderr and exits 1.
+			// GNU format: "invalid option -- 'X'"
+			fmt.Fprintf(os.Stderr, "%s: invalid option -- '%s'\nTry '%s --help' for more information.\n", progName, arg[1:], progName)
+			os.Exit(1)
 		} else {
 			files = append(files, arg)
 			continue

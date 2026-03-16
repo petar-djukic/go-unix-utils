@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -20,6 +21,25 @@ import (
 // the Go binary name (unexpand) in stderr so error message comparisons match.
 func stderrProgNameNormalizer(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gunexpand:"), []byte("unexpand:"))
+}
+
+// progPathRe matches binary name references with optional path prefixes,
+// handling both "gunexpand" and "/opt/homebrew/bin/unexpand" formats.
+var progPathRe = regexp.MustCompile(`[^\s']*(?:gun)?unexpand`)
+
+// fullProgNameNormalizer replaces all occurrences of the binary name (with
+// possible path prefixes) with just "unexpand" so error messages match.
+func fullProgNameNormalizer(data []byte) []byte {
+	return progPathRe.ReplaceAll(data, []byte("unexpand"))
+}
+
+// outputBlanker replaces any non-empty output with a constant, used for
+// --version and --help tests where output content differs between Go and GNU.
+func outputBlanker(data []byte) []byte {
+	if len(data) > 0 {
+		return []byte("(stripped)\n")
+	}
+	return data
 }
 
 // stderrCaseNormalizer lowercases stderr so platform-specific error message
@@ -462,6 +482,54 @@ func TestDiff(t *testing.T) {
 			// Error: nonexistent file among valid files — processing continues.
 			Name:      "error_nonexistent_with_valid",
 			Args:      []string{leadingSpacesFile, nonexistentFile, noSpaceFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+
+		// --- R4.1: --version flag ---
+		{
+			// R4.1: --version prints version string to stdout and exits 0.
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{outputBlanker},
+		},
+
+		// --- R4.2: --help flag ---
+		{
+			// R4.2: --help prints usage to stdout and exits 0.
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{outputBlanker},
+		},
+
+		// --- R4.3: invalid option ---
+		{
+			// R4.3: unrecognized long option prints error to stderr and exits 1.
+			Name:      "error_invalid_long_option",
+			Args:      []string{"--invalid-option"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{fullProgNameNormalizer, stderrCaseNormalizer},
+		},
+		{
+			// R4.3: unrecognized short option prints error to stderr and exits 1.
+			Name:      "error_invalid_short_option",
+			Args:      []string{"-z"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{fullProgNameNormalizer, stderrCaseNormalizer},
+		},
+
+		// --- R4.4: nonexistent file per-file error ---
+		{
+			// R4.4: multiple nonexistent files each produce per-file stderr error.
+			Name:      "error_multiple_nonexistent",
+			Args:      []string{nonexistentFile, filepath.Join(tmpDir, "also_missing.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+		{
+			// R4.4: nonexistent file after valid file — valid file processed, error printed.
+			Name:      "error_valid_then_nonexistent",
+			Args:      []string{noSpaceFile, nonexistentFile},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
 		},
