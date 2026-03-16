@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd037-ln R1.1-R1.4:
-// cmd/ln creates hard links between files. Supports two-argument form
+// Implements prd037-ln R1.1-R1.4, R2.1-R2.4:
+// cmd/ln creates hard or symbolic links between files. Supports two-argument form
 // (ln TARGET LINK_NAME), single-argument form (ln TARGET), and
-// multi-target form (ln TARGET... DIRECTORY). Parses all GNU ln flags.
-// Installs SIGPIPE handler for clean exit on broken pipe.
+// multi-target form (ln TARGET... DIRECTORY). Supports -s (symbolic), -f (force),
+// -n (no-dereference), and -r (relative) flags. Installs SIGPIPE handler for
+// clean exit on broken pipe.
 package main
 
 import (
@@ -81,9 +82,17 @@ func main() {
 		}
 	} else if len(operands) == 2 && !opts.noTargetDir {
 		// Check if last operand is a directory.
+		// R2.3: with -n (no-dereference), use Lstat so a symlink to a directory
+		// is treated as a regular file rather than followed.
 		last := operands[1]
-		fi, err := os.Stat(last)
-		if err == nil && fi.IsDir() {
+		var fi os.FileInfo
+		var statErr error
+		if opts.noDereference {
+			fi, statErr = os.Lstat(last)
+		} else {
+			fi, statErr = os.Stat(last)
+		}
+		if statErr == nil && fi.IsDir() {
 			// Multi-target into directory form with single target.
 			target := operands[0]
 			linkName := filepath.Join(last, filepath.Base(target))
@@ -125,7 +134,11 @@ func createLink(opts *lnOptions, target, linkName string) error {
 	_, err := os.Lstat(linkName)
 	if err == nil {
 		if !opts.force {
-			return fmt.Errorf("failed to create hard link '%s': File exists", linkName)
+			linkType := "hard link"
+			if opts.symbolic {
+				linkType = "symbolic link"
+			}
+			return fmt.Errorf("failed to create %s '%s': File exists", linkType, linkName)
 		}
 		// -f: remove existing destination before creating link.
 		if err := os.Remove(linkName); err != nil {
@@ -145,7 +158,25 @@ func createLink(opts *lnOptions, target, linkName string) error {
 	}
 
 	if opts.symbolic {
-		if err := os.Symlink(target, linkName); err != nil {
+		// R2.4: compute relative path from link location to target when -r is set.
+		symTarget := target
+		if opts.relative {
+			linkDir := filepath.Dir(linkName)
+			absTarget, absErr := filepath.Abs(target)
+			if absErr != nil {
+				return fmt.Errorf("failed to resolve '%s': %v", target, absErr)
+			}
+			absLinkDir, absErr := filepath.Abs(linkDir)
+			if absErr != nil {
+				return fmt.Errorf("failed to resolve '%s': %v", linkDir, absErr)
+			}
+			rel, relErr := filepath.Rel(absLinkDir, absTarget)
+			if relErr != nil {
+				return fmt.Errorf("failed to compute relative path: %v", relErr)
+			}
+			symTarget = rel
+		}
+		if err := os.Symlink(symTarget, linkName); err != nil {
 			return fmt.Errorf("failed to create symbolic link '%s': %v", linkName, unwrapPathError(err))
 		}
 	} else {

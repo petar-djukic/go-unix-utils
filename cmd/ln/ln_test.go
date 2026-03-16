@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ln against gln (GNU coreutils).
-// Implements prd037-ln R4.1-R4.3 test coverage for R1.1-R1.4.
+// Implements prd037-ln R4.1-R4.3 test coverage for R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -257,6 +257,255 @@ func TestDiffHardLink(t *testing.T) {
 		// Verify link was created successfully.
 		verifyHardLink(t, filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "existing.txt"))
 	})
+}
+
+// TestDiffSymLink runs differential tests for symbolic link creation (R2.1-R2.4).
+func TestDiffSymLink(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	// R2.1: ln -s TARGET LINK_NAME creates a symbolic link.
+	t.Run("symbolic_link_basic", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "target.txt", "hello\n")
+		setupFile(t, goDir, "target.txt", "hello\n")
+
+		args := []string{"-s", "target.txt", "link.txt"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+
+		// Verify symbolic link was created.
+		verifySymlink(t, filepath.Join(goDir, "link.txt"), "target.txt")
+	})
+
+	// R2.2: symbolic links to directories are allowed.
+	t.Run("symbolic_link_to_directory", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		if err := os.Mkdir(filepath.Join(refDir, "somedir"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		if err := os.Mkdir(filepath.Join(goDir, "somedir"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+
+		args := []string{"-s", "somedir", "dirlink"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+
+		// Verify symlink was created.
+		verifySymlink(t, filepath.Join(goDir, "dirlink"), "somedir")
+	})
+
+	// R2.3: target string stored as-is in symlink.
+	t.Run("symbolic_link_preserves_target", func(t *testing.T) {
+		t.Parallel()
+
+		goDir := t.TempDir()
+
+		setupFile(t, goDir, "target.txt", "data\n")
+
+		cmd := exec.Command(goBin, "-s", "target.txt", "mylink")
+		cmd.Dir = goDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("ln -s failed: %v\noutput: %s", err, out)
+		}
+
+		got, err := os.Readlink(filepath.Join(goDir, "mylink"))
+		if err != nil {
+			t.Fatalf("readlink: %v", err)
+		}
+		if got != "target.txt" {
+			t.Errorf("symlink target: got %q, want %q", got, "target.txt")
+		}
+	})
+
+	// R3.1 + R2.1: ln -sf TARGET EXISTING replaces existing file with symlink.
+	t.Run("force_symbolic_overwrite", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "target.txt", "hello\n")
+		setupFile(t, refDir, "existing.txt", "old\n")
+		setupFile(t, goDir, "target.txt", "hello\n")
+		setupFile(t, goDir, "existing.txt", "old\n")
+
+		args := []string{"-sf", "target.txt", "existing.txt"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+
+		// Verify symlink was created.
+		verifySymlink(t, filepath.Join(goDir, "existing.txt"), "target.txt")
+	})
+
+	// R3.2: ln -n treats symlink-to-directory as a file.
+	t.Run("no_dereference_symlink_to_dir", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		// Setup: create a directory and a symlink pointing to it.
+		if err := os.Mkdir(filepath.Join(refDir, "realdir"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		if err := os.Symlink("realdir", filepath.Join(refDir, "dirlink")); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		setupFile(t, refDir, "target.txt", "data\n")
+
+		if err := os.Mkdir(filepath.Join(goDir, "realdir"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		if err := os.Symlink("realdir", filepath.Join(goDir, "dirlink")); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		setupFile(t, goDir, "target.txt", "data\n")
+
+		// Without -n, ln would follow "dirlink" -> "realdir" and create link inside it.
+		// With -sfn, ln treats dirlink as a regular file and replaces it.
+		args := []string{"-sfn", "target.txt", "dirlink"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+
+		// Verify dirlink now points to target.txt, not realdir.
+		verifySymlink(t, filepath.Join(goDir, "dirlink"), "target.txt")
+	})
+
+	// R2.4: ln -sr creates relative symbolic link.
+	t.Run("relative_symbolic_link", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		// Setup: create a subdirectory with a target file.
+		if err := os.Mkdir(filepath.Join(refDir, "sub"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		setupFile(t, refDir, "sub/target.txt", "data\n")
+
+		if err := os.Mkdir(filepath.Join(goDir, "sub"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		setupFile(t, goDir, "sub/target.txt", "data\n")
+
+		args := []string{"-sr", "sub/target.txt", "rellink"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+
+		// Verify the created symlink uses a relative path.
+		goLink, err := os.Readlink(filepath.Join(goDir, "rellink"))
+		if err != nil {
+			t.Fatalf("readlink go: %v", err)
+		}
+		refLink, err := os.Readlink(filepath.Join(refDir, "rellink"))
+		if err != nil {
+			t.Fatalf("readlink ref: %v", err)
+		}
+		if goLink != refLink {
+			t.Errorf("symlink target mismatch: go=%q ref=%q", goLink, refLink)
+		}
+	})
+
+	// Symlink without -f fails when destination exists.
+	t.Run("symbolic_link_existing_no_force", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "target.txt", "hello\n")
+		setupFile(t, refDir, "existing.txt", "old\n")
+		setupFile(t, goDir, "target.txt", "hello\n")
+		setupFile(t, goDir, "existing.txt", "old\n")
+
+		args := []string{"-s", "target.txt", "existing.txt"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+	})
+}
+
+// verifySymlink checks that path is a symbolic link pointing to expectedTarget.
+func verifySymlink(t *testing.T, path, expectedTarget string) {
+	t.Helper()
+
+	fi, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected %s to be a symlink, got mode %v", path, fi.Mode())
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		t.Fatalf("readlink %s: %v", path, err)
+	}
+	if target != expectedTarget {
+		t.Errorf("symlink %s: got target %q, want %q", path, target, expectedTarget)
+	}
 }
 
 // TestDiffVerbose verifies -v flag output matches gln.
