@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd050-readlink R1.1-R1.6, R2.1-R2.2, R3.1-R3.2:
+// Implements prd050-readlink R1.1-R1.6, R2.1-R2.2, R3.1-R3.2, R4.1-R4.3:
 // cmd/readlink prints the target of a symbolic link or resolves a path to its
 // canonical form via -f, -e, -m canonicalization modes. Supports -n to suppress
 // the trailing newline for single operands, -v/--verbose for error reporting,
-// and -z/--zero for NUL-delimited output.
+// -z/--zero for NUL-delimited output, --version, and --help.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in diagnostic output.
@@ -48,6 +49,36 @@ func main() {
 		}
 		if strings.HasPrefix(arg, "--") {
 			switch arg {
+			case "--help":
+				// R4.2: print usage to stdout and exit 0.
+				fmt.Fprintf(os.Stdout, //nolint:errcheck // best-effort output
+					"Usage: %s [OPTION]... FILE...\n"+
+						"Print value of a symbolic link or canonical file name\n\n"+
+						"  -f, --canonicalize            canonicalize by following every symlink in\n"+
+						"                                every component of the given name recursively;\n"+
+						"                                all but the last component must exist\n"+
+						"  -e, --canonicalize-existing    canonicalize by following every symlink in\n"+
+						"                                every component of the given name recursively,\n"+
+						"                                all components must exist\n"+
+						"  -m, --canonicalize-missing     canonicalize by following every symlink in\n"+
+						"                                every component of the given name recursively,\n"+
+						"                                without requirements on components existence\n"+
+						"  -n, --no-newline               do not output the trailing delimiter\n"+
+						"  -q, --quiet\n"+
+						"  -s, --silent                   suppress most error messages (on by default)\n"+
+						"  -v, --verbose                  report error messages\n"+
+						"  -z, --zero                     end each output line with NUL, not newline\n"+
+						"      --help     display this help and exit\n"+
+						"      --version  output version information and exit\n",
+					progName,
+				)
+				os.Exit(0)
+			case "--version":
+				// R4.1: print version to stdout and exit 0.
+				fmt.Fprintf(os.Stdout, "%s (%s) %s\n", //nolint:errcheck // best-effort output
+					progName, "go-unix-utils", version.Version,
+				)
+				os.Exit(0)
 			case "--canonicalize":
 				// R1.3: resolve full canonical path, dir must exist.
 				canonicalize = true
