@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cut against the GNU reference binary (gcut).
-// Implements prd026-cut R1.1-R1.4 test coverage: byte selection, character
-// selection, range list parsing, and mode exclusivity error handling.
+// Implements prd026-cut R1.1-R1.4 and R2.1-R2.4 test coverage: byte selection,
+// character selection, field selection with delimiter support, range list
+// parsing, and mode exclusivity error handling.
 package main
 
 import (
@@ -311,6 +312,158 @@ func TestDiff(t *testing.T) {
 			Name:  "b_complement",
 			Args:  []string{"-b", "2-4", "--complement"},
 			Stdin: []byte("abcdef\n"),
+		},
+
+		// --- R2.1: field selection with ranges ---
+		{
+			// R2.1: field range N-M.
+			Name:  "f_field_range",
+			Args:  []string{"-d:", "-f", "2-3"},
+			Stdin: []byte("a:b:c:d:e\n"),
+		},
+		{
+			// R2.1: field open-end range N-.
+			Name:  "f_field_open_end",
+			Args:  []string{"-d:", "-f", "3-"},
+			Stdin: []byte("a:b:c:d:e\n"),
+		},
+		{
+			// R2.1: field open-start range -M.
+			Name:  "f_field_open_start",
+			Args:  []string{"-d:", "-f", "-2"},
+			Stdin: []byte("a:b:c:d:e\n"),
+		},
+		{
+			// R2.1: field range beyond available fields — out-of-range produces nothing.
+			Name:  "f_field_beyond_range",
+			Args:  []string{"-d:", "-f", "10"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			// R2.1: comma-separated combination of ranges.
+			Name:  "f_field_combo_ranges",
+			Args:  []string{"-d:", "-f", "1,3-4"},
+			Stdin: []byte("a:b:c:d:e\n"),
+		},
+
+		// --- R2.2: default TAB delimiter ---
+		{
+			// R2.2: default tab delimiter when -d is not specified.
+			Name:  "f_default_tab_delimiter",
+			Args:  []string{"-f", "2"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			// R2.2: default tab delimiter with multiple fields.
+			Name:  "f_default_tab_multiple",
+			Args:  []string{"-f", "1,3"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			// R2.2: file input with default tab delimiter.
+			Name: "f_tab_file_input",
+			Args: []string{"-f", "2", tabFile},
+		},
+		{
+			// R2.2: space delimiter.
+			Name:  "f_space_delimiter",
+			Args:  []string{"-d", " ", "-f", "2"},
+			Stdin: []byte("hello world test\n"),
+		},
+
+		// --- R2.3: suppress lines without delimiter ---
+		{
+			// R2.3: -s with mix of lines with and without delimiter.
+			Name:  "f_suppress_mixed_lines",
+			Args:  []string{"-d:", "-f", "2", "-s"},
+			Stdin: []byte("a:b:c\nno-delim\nx:y:z\n"),
+		},
+		{
+			// R2.3: without -s, lines without delimiter pass through unchanged.
+			Name:  "f_no_suppress_mixed_lines",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("a:b:c\nno-delim\nx:y:z\n"),
+		},
+		{
+			// R2.3: --only-delimited long form.
+			Name:  "f_only_delimited_long",
+			Args:  []string{"-d:", "-f", "1", "--only-delimited"},
+			Stdin: []byte("has:delim\nnope\n"),
+		},
+
+		// --- R2.4: output delimiter ---
+		{
+			// R2.4: --output-delimiter with multi-char string.
+			Name:  "f_output_delimiter_multichar",
+			Args:  []string{"-d:", "-f", "1,2,3", "--output-delimiter=, "},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			// R2.4: --output-delimiter with range.
+			Name:  "f_output_delimiter_range",
+			Args:  []string{"-d:", "-f", "1-3", "--output-delimiter=-"},
+			Stdin: []byte("a:b:c:d:e\n"),
+		},
+		{
+			// R2.4: --output-delimiter default is input delimiter.
+			Name:  "f_output_delimiter_default_is_input",
+			Args:  []string{"-d,", "-f", "1,3"},
+			Stdin: []byte("a,b,c\n"),
+		},
+		{
+			// R2.4: --output-delimiter with complement.
+			Name:  "f_output_delimiter_complement",
+			Args:  []string{"-d:", "-f", "2", "--complement", "--output-delimiter=|"},
+			Stdin: []byte("a:b:c:d\n"),
+		},
+
+		// --- Field mode edge cases ---
+		{
+			// Consecutive delimiters produce empty fields.
+			Name:  "f_consecutive_delimiters",
+			Args:  []string{"-d:", "-f", "1,2,3"},
+			Stdin: []byte("a::c\n"),
+		},
+		{
+			// Single field (no delimiter in line with -f1).
+			Name:  "f_single_field_no_delim",
+			Args:  []string{"-d:", "-f", "1"},
+			Stdin: []byte("no-delimiter\n"),
+		},
+		{
+			// -f with multiline input.
+			Name:  "f_multiline",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("a:b:c\nd:e:f\ng:h:i\n"),
+		},
+		{
+			// -f with file input (colon-delimited).
+			Name: "f_file_input_colon",
+			Args: []string{"-d:", "-f", "1,3", colonFile},
+		},
+		{
+			// -f with short form attached.
+			Name:  "f_short_form_attached",
+			Args:  []string{"-d:", "-f2"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			// -f with no trailing newline.
+			Name:  "f_no_trailing_newline",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("a:b:c"),
+		},
+		{
+			// -f complement with range.
+			Name:  "f_complement_range",
+			Args:  []string{"-d:", "-f", "2-3", "--complement"},
+			Stdin: []byte("a:b:c:d:e\n"),
+		},
+		{
+			// Empty input with field mode.
+			Name:  "f_empty_input",
+			Args:  []string{"-d:", "-f", "1"},
+			Stdin: []byte{},
 		},
 	}
 

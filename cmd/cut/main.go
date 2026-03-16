@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd026-cut R1.1-R1.4: cmd/cut removes sections from each line of
-// input. This file covers byte selection (-b), character selection (-c), field
-// selection (-f) with delimiter (-d), suppress (-s), complement, and
-// output-delimiter support. Reads from files or stdin. Installs SIGPIPE handler.
+// Implements prd026-cut R1.1-R1.4, R2.1-R2.4: cmd/cut removes sections from
+// each line of input. This file covers byte selection (-b), character selection
+// (-c), field selection (-f) with delimiter (-d), suppress (-s), complement,
+// and output-delimiter support. Reads from files or stdin. Installs SIGPIPE
+// handler.
 package main
 
 import (
