@@ -20,6 +20,7 @@ import (
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in error messages to match GNU head format.
@@ -251,6 +252,35 @@ func parseArgs(args []string) (*headOptions, []string) {
 		if arg == "-" {
 			files = append(files, arg)
 			continue
+		}
+
+		// R4.1: --help prints usage to stdout and exits 0.
+		if arg == "--help" {
+			fmt.Fprintf(os.Stdout, //nolint:errcheck // best-effort output
+				"Usage: %s [OPTION]... [FILE]...\n"+
+					"Print the first 10 lines of each FILE to standard output.\n"+
+					"With more than one FILE, precede each with a header giving the file name.\n\n"+
+					"With no FILE, or when FILE is -, read standard input.\n\n"+
+					"  -c, --bytes=[-]NUM       print the first NUM bytes of each file;\n"+
+					"                             with the leading '-', print all but the last\n"+
+					"                             NUM bytes of each file\n"+
+					"  -n, --lines=[-]NUM       print the first NUM lines instead of the first 10;\n"+
+					"                             with the leading '-', print all but the last\n"+
+					"                             NUM lines of each file\n"+
+					"  -q, --quiet, --silent    never print headers giving file names\n"+
+					"  -v, --verbose            always print headers giving file names\n"+
+					"      --help     display this help and exit\n"+
+					"      --version  output version information and exit\n",
+				progName,
+			)
+			os.Exit(0)
+		}
+		// R4.1: --version prints version to stdout and exits 0.
+		if arg == "--version" {
+			fmt.Fprintf(os.Stdout, "%s (%s) %s\n", //nolint:errcheck // best-effort output
+				progName, "go-unix-utils", version.Version,
+			)
+			os.Exit(0)
 		}
 
 		// Long options.
