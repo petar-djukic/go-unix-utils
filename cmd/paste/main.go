@@ -1,14 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd027-paste R1.1-R1.4, R2.1-R2.3, R3.1-R3.3: cmd/paste merges
-// corresponding lines from multiple input files, separating fields with a delimiter
-// and writing the result to stdout. Supports custom delimiter lists via -d with
-// cycling across columns, including escape sequences (\n, \t, \\, \0). When one
+// Implements prd027-paste R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.4: cmd/paste
+// merges corresponding lines from multiple input files, separating fields with a
+// delimiter and writing the result to stdout. Supports custom delimiter lists via -d
+// with cycling across columns, including escape sequences (\n, \t, \\, \0). When one
 // file is exhausted before others, empty strings are substituted. '-' reads from
 // stdin with round-robin consumption across multiple '-' operands. Serial mode (-s)
 // processes files one at a time, joining all lines of each file into a single
-// output line separated by the delimiter. Installs SIGPIPE handler.
+// output line separated by the delimiter. R4.1-R4.4: --version prints version info
+// and exits 0, --help prints usage and exits 0, invalid options print error to
+// stderr and exit 1, file-not-found errors print per-file error to stderr and
+// continue processing remaining files. Installs SIGPIPE handler.
 package main
 
 import (
@@ -90,6 +93,13 @@ func main() {
 		if len(arg) > 2 && arg[0] == '-' && arg[1] == 'd' {
 			delims = parseDelimiterList(arg[2:])
 			continue
+		}
+
+		// R4.3: unrecognized long options.
+		if strings.HasPrefix(arg, "--") {
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+			os.Exit(1)
 		}
 
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
@@ -195,29 +205,24 @@ func pasteParallel(w *bufio.Writer, files []string, delims []string) int {
 	eof := make([]bool, len(files))
 	exitCode := 0
 
+	// Track a single shared stdin reader for all '-' operands.
+	var stdinReader *bufio.Reader
+
 	for i, name := range files {
 		if name == "-" {
-			readers[i] = bufio.NewReader(os.Stdin)
+			if stdinReader == nil {
+				stdinReader = bufio.NewReader(os.Stdin)
+			}
+			readers[i] = stdinReader
 		} else {
 			f, err := os.Open(name)
 			if err != nil {
+				// R4.4: in parallel mode, file open error halts processing (matches GNU paste).
 				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, unwrapPathError(err))
 				os.Exit(1)
 			}
 			readers[i] = bufio.NewReader(f)
 			closers[i] = f
-		}
-	}
-
-	// Track a single shared stdin reader for all '-' operands.
-	var stdinReader *bufio.Reader
-	for i, name := range files {
-		if name == "-" {
-			if stdinReader == nil {
-				stdinReader = readers[i]
-			} else {
-				readers[i] = stdinReader
-			}
 		}
 	}
 
@@ -292,8 +297,10 @@ func pasteSerial(w *bufio.Writer, files []string, delims []string) int {
 		} else {
 			f, err := os.Open(name)
 			if err != nil {
+				// R4.4: print per-file error and continue processing remaining files.
 				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, unwrapPathError(err))
-				os.Exit(1)
+				exitCode = 1
+				continue
 			}
 			r = bufio.NewReader(f)
 			closer = f

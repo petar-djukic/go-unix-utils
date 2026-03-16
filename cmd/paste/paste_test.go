@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/paste against the GNU reference binary (gpaste).
-// Implements prd027-paste R1.1-R1.4, R2.1-R2.3, R3.1-R3.3 test coverage:
-// multi-file parallel merge with default tab delimiter, custom delimiter lists with
-// cycling, escape sequences (\n, \t, \\, \0), stdin via '-' operand with
-// round-robin consumption, unequal-length file handling, single-file passthrough,
-// and serial mode (-s) with default and custom delimiters.
+// Implements prd027-paste R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.4 test
+// coverage: multi-file parallel merge with default tab delimiter, custom delimiter
+// lists with cycling, escape sequences (\n, \t, \\, \0), stdin via '-' operand
+// with round-robin consumption, unequal-length file handling, single-file
+// passthrough, serial mode (-s) with default and custom delimiters, --version and
+// --help output, invalid option error handling, and file-not-found error handling.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,41 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrProgNameNormalizer replaces the reference binary name (gpaste or its
+// full path) with the Go binary name (paste) in stderr so error message
+// comparisons match.
+func stderrProgNameNormalizer(data []byte) []byte {
+	// Replace full-path occurrences first (e.g., "/opt/homebrew/bin/gpaste:" → "paste:").
+	for {
+		idx := bytes.Index(data, []byte("/"))
+		if idx < 0 {
+			break
+		}
+		end := bytes.Index(data[idx:], []byte("gpaste:"))
+		if end < 0 {
+			break
+		}
+		data = append(data[:idx], append([]byte("paste:"), data[idx+end+len("gpaste:"):]...)...)
+	}
+	// Replace bare gpaste: occurrences.
+	data = bytes.ReplaceAll(data, []byte("gpaste:"), []byte("paste:"))
+	// Normalize "Try '/path/to/gpaste --help'" to "Try 'paste --help'".
+	if idx := bytes.Index(data, []byte("Try '")); idx >= 0 {
+		if end := bytes.Index(data[idx:], []byte("--help'")); end >= 0 {
+			prefix := data[:idx]
+			suffix := data[idx+end:]
+			data = append(append(prefix, []byte("Try 'paste ")...), suffix...)
+		}
+	}
+	return data
+}
+
+// stderrCaseNormalizer lowercases stderr so platform-specific error message
+// casing differences do not cause false divergence.
+func stderrCaseNormalizer(data []byte) []byte {
+	return bytes.ToLower(data)
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -334,6 +371,116 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "single_line_file",
 			Args: []string{singleLine, fileA},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelpVersion tests --help and --version output.
+// These are not compared against the reference binary since output text differs.
+// Instead we verify the exit code is 0 and output goes to stdout.
+// R4.1, R4.2.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R4.1: --version exits 0 and prints version info to stdout.
+	t.Run("version_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--version")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--version failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--version produced no output")
+		}
+		if !bytes.Contains(out, []byte("paste")) {
+			t.Fatalf("--version output missing 'paste': %s", out)
+		}
+	})
+
+	// R4.2: --help exits 0 and prints usage to stdout.
+	t.Run("help_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--help")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--help failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--help produced no output")
+		}
+		if !bytes.Contains(out, []byte("Usage:")) {
+			t.Fatalf("--help output missing 'Usage:': %s", out)
+		}
+	})
+}
+
+// TestDiffErrors tests error handling via differential testing.
+// R4.3: invalid options. R4.4: file-not-found errors.
+func TestDiffErrors(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gpaste")
+	if err != nil {
+		t.Skipf("reference binary gpaste not in PATH: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+
+	fileA := filepath.Join(tmpDir, "a.txt")
+	if err := os.WriteFile(fileA, []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	nonexistentFile := filepath.Join(tmpDir, "nonexistent.txt")
+
+	tests := []testutils.DiffTest{
+		// R4.3: invalid option -x.
+		{
+			Name:      "error_invalid_option",
+			Args:      []string{"-x"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: invalid long option.
+		{
+			Name:      "error_invalid_long_option",
+			Args:      []string{"--invalid"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.4: nonexistent file only.
+		{
+			Name:      "error_nonexistent_file",
+			Args:      []string{nonexistentFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+		// R4.4: nonexistent file among valid files — parallel mode halts.
+		{
+			Name:      "error_nonexistent_with_valid_parallel",
+			Args:      []string{fileA, nonexistentFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+		// R4.4: nonexistent file in serial mode.
+		{
+			Name:      "error_nonexistent_serial",
+			Args:      []string{"-s", nonexistentFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+		// R4.4: nonexistent among valid in serial mode — processing continues.
+		{
+			Name:      "error_nonexistent_serial_with_valid",
+			Args:      []string{"-s", fileA, nonexistentFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
 		},
 	}
 
