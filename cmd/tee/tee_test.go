@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/tee against gtee (GNU coreutils).
-// Implements prd017-tee R1.1-R1.5, R4.1-R4.3 test coverage.
+// Implements prd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -57,6 +57,99 @@ func TestDiff(t *testing.T) {
 			Name:  "R1.4_dash_as_file",
 			Args:  []string{"-"},
 			Stdin: []byte("dash test\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffAppend runs differential tests for -a (append) mode.
+func TestDiffAppend(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	input := []byte("appended line\n")
+
+	for _, label := range []string{"go", "ref"} {
+		t.Run(label, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			outFile := filepath.Join(dir, "out.txt")
+
+			// Pre-populate the file with existing content.
+			writeFile(t, outFile, "existing content\n")
+
+			bin := goBin
+			if label == "ref" {
+				bin = refBin
+			}
+
+			cmd := exec.Command(bin, "-a", outFile)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			stdout, runErr := cmd.Output()
+			if runErr != nil {
+				t.Fatalf("tee -a failed: %v", runErr)
+			}
+
+			// R2.1: stdout must match stdin.
+			if !bytes.Equal(stdout, input) {
+				t.Errorf("stdout: expected %q, got %q", input, stdout)
+			}
+
+			// R2.1: file must contain existing content + appended data.
+			want := []byte("existing content\nappended line\n")
+			got := readFile(t, outFile)
+			if !bytes.Equal(got, want) {
+				t.Errorf("file: expected %q, got %q", want, got)
+			}
+		})
+	}
+}
+
+// TestDiffIgnoreInterrupts runs differential tests for -i (ignore-interrupts).
+func TestDiffIgnoreInterrupts(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// R2.2: -i flag — tee should still pass through data normally.
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R2.2_ignore_interrupts_passthrough",
+			Args:  []string{"-i"},
+			Stdin: []byte("sigint test\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCombinedFlags runs differential tests with -a and -i combined.
+func TestDiffCombinedFlags(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// R2.3: -a and -i combined — stdout should match.
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R2.3_append_and_ignore_combined",
+			Args:  []string{"-a", "-i"},
+			Stdin: []byte("combined flags\n"),
 		},
 	}
 
@@ -225,6 +318,113 @@ func TestFileOutput(t *testing.T) {
 		// Stdout should still have the data.
 		if !bytes.Equal(stdoutBuf.Bytes(), input) {
 			t.Errorf("stdout: expected %q, got %q", input, stdoutBuf.Bytes())
+		}
+	})
+
+	// R2.1: append mode preserves existing content.
+	t.Run("R2.1_append_mode", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "append.txt")
+		writeFile(t, outFile, "old\n")
+		input := []byte("new\n")
+
+		cmd := exec.Command(goBin, "-a", outFile)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Dir = dir
+		stdout, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("tee -a failed: %v", err)
+		}
+
+		// Stdout gets only the new data.
+		if !bytes.Equal(stdout, input) {
+			t.Errorf("stdout: expected %q, got %q", input, stdout)
+		}
+
+		// File has old + new.
+		want := []byte("old\nnew\n")
+		got := readFile(t, outFile)
+		if !bytes.Equal(got, want) {
+			t.Errorf("file: expected %q, got %q", want, got)
+		}
+	})
+
+	// R2.1: append to multiple files.
+	t.Run("R2.1_append_multiple_files", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f1 := filepath.Join(dir, "f1.txt")
+		f2 := filepath.Join(dir, "f2.txt")
+		writeFile(t, f1, "a\n")
+		writeFile(t, f2, "b\n")
+		input := []byte("c\n")
+
+		cmd := exec.Command(goBin, "-a", f1, f2)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Dir = dir
+		if _, err := cmd.Output(); err != nil {
+			t.Fatalf("tee -a failed: %v", err)
+		}
+
+		got1 := readFile(t, f1)
+		if !bytes.Equal(got1, []byte("a\nc\n")) {
+			t.Errorf("f1: expected %q, got %q", "a\nc\n", got1)
+		}
+		got2 := readFile(t, f2)
+		if !bytes.Equal(got2, []byte("b\nc\n")) {
+			t.Errorf("f2: expected %q, got %q", "b\nc\n", got2)
+		}
+	})
+
+	// R2.2: -i flag still copies data correctly.
+	t.Run("R2.2_ignore_interrupts_file_output", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "sigint.txt")
+		input := []byte("data with -i\n")
+
+		cmd := exec.Command(goBin, "-i", outFile)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Dir = dir
+		stdout, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("tee -i failed: %v", err)
+		}
+
+		if !bytes.Equal(stdout, input) {
+			t.Errorf("stdout: expected %q, got %q", input, stdout)
+		}
+		got := readFile(t, outFile)
+		if !bytes.Equal(got, input) {
+			t.Errorf("file: expected %q, got %q", input, got)
+		}
+	})
+
+	// R3.2: error message on stderr when file cannot be opened.
+	t.Run("R3.2_error_message_on_stderr", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		roDir := filepath.Join(dir, "readonly")
+		if err := os.Mkdir(roDir, 0o555); err != nil {
+			t.Fatalf("creating read-only dir: %v", err)
+		}
+		badFile := filepath.Join(roDir, "bad.txt")
+		input := []byte("data\n")
+
+		cmd := exec.Command(goBin, badFile)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Dir = dir
+		var stderrBuf bytes.Buffer
+		cmd.Stderr = &stderrBuf
+		_ = cmd.Run() // expect exit 1
+
+		stderr := stderrBuf.String()
+		if !bytes.Contains([]byte(stderr), []byte("tee:")) {
+			t.Errorf("expected stderr to contain 'tee:', got %q", stderr)
+		}
+		if !bytes.Contains([]byte(stderr), []byte(badFile)) {
+			t.Errorf("expected stderr to contain file path %q, got %q", badFile, stderr)
 		}
 	})
 

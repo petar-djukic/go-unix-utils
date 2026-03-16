@@ -1,16 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd017-tee R1.1-R1.5: cmd/tee core stdin-to-stdout passthrough
-// with simultaneous file output. Reads all bytes from stdin and writes them
-// to stdout and each named output file. Installs SIGPIPE handler for clean
-// exit on broken pipe.
+// Implements prd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4: cmd/tee reads
+// stdin and writes to stdout and named output files simultaneously. Supports
+// append mode (-a), SIGINT suppression (-i), and per-file error reporting.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -28,7 +28,27 @@ type destination struct {
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	files := os.Args[1:]
+	appendMode := false
+	ignoreInterrupts := false
+
+	// Parse flags manually to match GNU tee flag handling.
+	var files []string
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "-a", "--append":
+			appendMode = true
+		case "-i", "--ignore-interrupts":
+			ignoreInterrupts = true
+		default:
+			files = append(files, arg)
+		}
+	}
+
+	// R2.2: ignore SIGINT when -i is specified.
+	if ignoreInterrupts {
+		signal.Ignore(os.Interrupt)
+	}
+
 	exitCode := 0
 
 	// Build destination list: stdout first, then each file operand.
@@ -41,9 +61,16 @@ func main() {
 			continue
 		}
 
-		// R1.3: create or truncate output files.
-		f, err := os.Create(name)
+		// R1.3, R2.1: create/truncate or append depending on -a flag.
+		flag := os.O_WRONLY | os.O_CREATE
+		if appendMode {
+			flag |= os.O_APPEND
+		} else {
+			flag |= os.O_TRUNC
+		}
+		f, err := os.OpenFile(name, flag, 0o666)
 		if err != nil {
+			// R3.2: report failed file and continue.
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, unwrapPathError(err))
 			exitCode = 1
 			continue
