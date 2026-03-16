@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd030-md5sum R1.1-R1.4 and R2.1-R2.4: core MD5 digest
-// computation, standard GNU output format, and --check verification mode.
+// Differential tests for prd030-md5sum R1.1-R1.4, R2.1-R2.4, and R3.1-R3.3:
+// core MD5 digest computation, standard GNU output format, --check verification
+// mode, and --tag BSD-style output format with --binary/--text mode flags.
 package main
 
 import (
@@ -17,7 +18,8 @@ import (
 
 // stderrNormalizer normalizes stderr differences between our binary ("md5sum:")
 // and the reference binary ("gmd5sum:"), and lowercases the error message so
-// platform casing differences do not cause false failures.
+// platform casing differences do not cause false failures. Also normalizes
+// the "Try" help line that references the binary path.
 func stderrNormalizer(b []byte) []byte {
 	s := string(b)
 	s = strings.ReplaceAll(s, "gmd5sum:", "md5sum:")
@@ -25,6 +27,10 @@ func stderrNormalizer(b []byte) []byte {
 	// platform differences like "No such file" vs "no such file".
 	var lines []string
 	for _, line := range strings.Split(s, "\n") {
+		// Normalize "Try '...' for more information." lines — strip the binary path.
+		if strings.HasPrefix(line, "Try '") && strings.HasSuffix(line, "' for more information.") {
+			line = "Try 'md5sum --help' for more information."
+		}
 		if idx := strings.LastIndex(line, ": "); idx != -1 {
 			line = line[:idx+2] + strings.ToLower(line[idx+2:])
 		}
@@ -137,6 +143,55 @@ func TestDiff(t *testing.T) {
 		},
 	}
 
+	// --- R3.1-R3.3: --tag output format and --binary/--text mode flags ---
+
+	// R3.3/R1.3: --tag produces BSD-style output "MD5 (FILENAME) = HASH".
+	tagTests := []testutils.DiffTest{
+		{
+			Name: "tag single file",
+			Args: []string{"--tag", fileA},
+		},
+		{
+			Name: "tag multiple files",
+			Args: []string{"--tag", fileA, fileB},
+		},
+		{
+			Name:  "tag stdin",
+			Args:  []string{"--tag"},
+			Stdin: []byte("abc"),
+		},
+		{
+			Name:  "tag stdin dash",
+			Args:  []string{"--tag", "-"},
+			Stdin: []byte("abc"),
+		},
+		// R3.3: --tag with -b — mode flag has no effect on tag format.
+		{
+			Name: "tag with binary flag",
+			Args: []string{"--tag", "-b", fileA},
+		},
+		// R3.3: --tag with -t — GNU rejects this combination.
+		{
+			Name:      "tag with text flag rejected",
+			Args:      []string{"--tag", "-t", fileA},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		{
+			Name: "tag empty file",
+			Args: []string{"--tag", emptyFile},
+		},
+		// R3.3: --tag with nonexistent file — error to stderr, exit 1.
+		{
+			Name:      "tag nonexistent file",
+			Args:      []string{"--tag", filepath.Join(tmpDir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+	}
+
+	tests = append(tests, tagTests...)
+
 	// --- R2.1-R2.4: check mode tests ---
 
 	// Create a valid checksum file for a.txt and b.txt.
@@ -169,6 +224,14 @@ func TestDiff(t *testing.T) {
 	missingContent := "d41d8cd98f00b204e9800998ecf8427e  " + filepath.Join(tmpDir, "nonexistent.txt") + "\n"
 	if err := os.WriteFile(missingFileChecksumFile, []byte(missingContent), 0o644); err != nil {
 		t.Fatalf("writing missing_checksums.txt: %v", err)
+	}
+
+	// Create a BSD tag format checksum file for verifying --check parses tag format.
+	tagChecksumFile := filepath.Join(tmpDir, "tag_checksums.txt")
+	tagChecksumContent := "MD5 (" + fileA + ") = b1946ac92492d2347c6235b4d2611184\n" +
+		"MD5 (" + fileB + ") = 591785b794601e212b260e25925636fd\n"
+	if err := os.WriteFile(tagChecksumFile, []byte(tagChecksumContent), 0o644); err != nil {
+		t.Fatalf("writing tag_checksums.txt: %v", err)
 	}
 
 	checkTests := []testutils.DiffTest{
@@ -206,6 +269,11 @@ func TestDiff(t *testing.T) {
 			Name:  "check from stdin dash",
 			Args:  []string{"--check", "-"},
 			Stdin: []byte(checksumContent),
+		},
+		// R2.1/R3.3: --check with BSD tag format checksum file.
+		{
+			Name: "check tag format",
+			Args: []string{"--check", tagChecksumFile},
 		},
 	}
 

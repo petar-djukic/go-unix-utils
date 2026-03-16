@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd030-md5sum R1.1-R1.4, R2.1-R2.4: core MD5 digest computation,
-// standard GNU output format, and --check verification mode. Computes MD5
-// digests for files or stdin, printing one line per input in text or binary mode
-// format. In check mode, reads a checksum file and verifies each listed file.
-// Installs SIGPIPE handler for clean exit on broken pipe (R4.3).
+// Implements prd030-md5sum R1.1-R1.4, R2.1-R2.4, R3.1-R3.3: core MD5 digest
+// computation, standard GNU output format, --check verification mode, and
+// --tag BSD-style output format with --binary/--text mode flags. Computes MD5
+// digests for files or stdin, printing one line per input in text, binary, or
+// BSD tag format. In check mode, reads a checksum file and verifies each listed
+// file. Installs SIGPIPE handler for clean exit on broken pipe (R4.3).
 package main
 
 import (
@@ -28,11 +29,19 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 
 	opts, files := parseArgs(os.Args[1:])
+
+	// GNU md5sum rejects --tag combined with --text.
+	if opts.tagMode && opts.textSet {
+		fmt.Fprintf(os.Stderr, "%s: --tag does not support --text mode\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
 	var exitCode int
 	if opts.check {
 		exitCode = runCheck(files)
 	} else {
-		exitCode = run(opts.binaryMode, files)
+		exitCode = run(opts.binaryMode, opts.tagMode, files)
 	}
 	os.Exit(exitCode)
 }
@@ -40,16 +49,18 @@ func main() {
 // options holds parsed command-line flag state.
 type options struct {
 	binaryMode bool
+	textSet    bool // true when -t/--text was explicitly given
 	check      bool
+	tagMode    bool
 }
 
 // run processes files and returns the exit code.
-func run(binaryMode bool, files []string) int {
+func run(binaryMode, tagMode bool, files []string) int {
 	exitCode := 0
 
 	if len(files) == 0 {
 		// R1.2: no file arguments — read from stdin.
-		if err := hashReader(os.Stdin, "-", binaryMode); err != nil {
+		if err := hashReader(os.Stdin, "-", binaryMode, tagMode); err != nil {
 			if isEPIPE(err) {
 				os.Exit(0)
 			}
@@ -63,7 +74,7 @@ func run(binaryMode bool, files []string) int {
 	for _, name := range files {
 		if name == "-" {
 			// R1.2: "-" means read from stdin.
-			if err := hashReader(os.Stdin, "-", binaryMode); err != nil {
+			if err := hashReader(os.Stdin, "-", binaryMode, tagMode); err != nil {
 				if isEPIPE(err) {
 					os.Exit(0)
 				}
@@ -80,7 +91,7 @@ func run(binaryMode bool, files []string) int {
 			exitCode = 1
 			continue
 		}
-		if err := hashReader(f, name, binaryMode); err != nil {
+		if err := hashReader(f, name, binaryMode, tagMode); err != nil {
 			f.Close() // best-effort close
 			if isEPIPE(err) {
 				os.Exit(0)
@@ -97,7 +108,8 @@ func run(binaryMode bool, files []string) int {
 
 // hashReader computes the MD5 digest of r and writes one output line.
 // R1.1: format is "HASH  FILENAME" (text mode) or "HASH *FILENAME" (binary mode).
-func hashReader(r io.Reader, name string, binaryMode bool) error {
+// R1.3/R3.3: --tag uses BSD-style "MD5 (FILENAME) = HASH"; mode flag has no effect.
+func hashReader(r io.Reader, name string, binaryMode, tagMode bool) error {
 	h := md5.New()
 	if _, err := io.Copy(h, r); err != nil {
 		return err
@@ -105,13 +117,18 @@ func hashReader(r io.Reader, name string, binaryMode bool) error {
 
 	digest := fmt.Sprintf("%x", h.Sum(nil))
 
-	// R1.4/R3.1-R3.2: text mode uses two spaces; binary mode uses space+asterisk.
-	sep := "  "
-	if binaryMode {
-		sep = " *"
+	var err error
+	if tagMode {
+		// R1.3/R3.3: BSD tag format — mode flag has no effect on output format.
+		_, err = fmt.Fprintf(os.Stdout, "MD5 (%s) = %s\n", name, digest)
+	} else {
+		// R3.1-R3.2: text mode uses two spaces; binary mode uses space+asterisk.
+		sep := "  "
+		if binaryMode {
+			sep = " *"
+		}
+		_, err = fmt.Fprintf(os.Stdout, "%s%s%s\n", digest, sep, name)
 	}
-
-	_, err := fmt.Fprintf(os.Stdout, "%s%s%s\n", digest, sep, name)
 	return err
 }
 
@@ -207,9 +224,15 @@ func checkFile(name string) (checkResult, error) {
 }
 
 // parseCheckLine parses a single line from a checksum file.
-// D1: expects GNU format "HASH  FILENAME" or "HASH *FILENAME".
+// Supports GNU format "HASH  FILENAME" or "HASH *FILENAME", and BSD tag format
+// "MD5 (FILENAME) = HASH".
 // Returns the lowercase hex hash, the filename, and whether the line was valid.
 func parseCheckLine(line string) (hash, filename string, ok bool) {
+	// R2.1: Try BSD tag format first: "MD5 (FILENAME) = HASH"
+	if strings.HasPrefix(line, "MD5 (") {
+		return parseBSDTagLine(line)
+	}
+
 	// GNU text mode: "d41d8cd98f00b204e9800998ecf8427e  filename"
 	// GNU binary mode: "d41d8cd98f00b204e9800998ecf8427e *filename"
 	if len(line) < 34 {
@@ -217,11 +240,8 @@ func parseCheckLine(line string) (hash, filename string, ok bool) {
 	}
 
 	hash = line[:32]
-	// Validate that hash is 32 hex characters.
-	for _, ch := range hash {
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-			return "", "", false
-		}
+	if !isValidHex(hash) {
+		return "", "", false
 	}
 
 	sep := line[32:34]
@@ -235,6 +255,37 @@ func parseCheckLine(line string) (hash, filename string, ok bool) {
 	}
 
 	return strings.ToLower(hash), filename, true
+}
+
+// parseBSDTagLine parses a BSD tag format line: "MD5 (FILENAME) = HASH".
+func parseBSDTagLine(line string) (hash, filename string, ok bool) {
+	// Find the closing paren.
+	closeIdx := strings.LastIndex(line, ") = ")
+	if closeIdx < 5 {
+		return "", "", false
+	}
+
+	filename = line[5:closeIdx]
+	if filename == "" {
+		return "", "", false
+	}
+
+	hash = line[closeIdx+4:]
+	if len(hash) != 32 || !isValidHex(hash) {
+		return "", "", false
+	}
+
+	return strings.ToLower(hash), filename, true
+}
+
+// isValidHex returns true if s contains only hexadecimal characters.
+func isValidHex(s string) bool {
+	for _, ch := range s {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // computeFileHash computes the MD5 hex digest of the named file.
@@ -261,8 +312,8 @@ func computeFileHash(name string) (string, error) {
 }
 
 // parseArgs separates flags from file arguments. Supports -b/--binary,
-// -t/--text, -c/--check, and -- to end flag parsing. Single-char flags can be
-// grouped.
+// -t/--text, -c/--check, --tag, and -- to end flag parsing. Single-char flags
+// can be grouped.
 func parseArgs(args []string) (opts options, files []string) {
 	flagsDone := false
 
@@ -281,10 +332,15 @@ func parseArgs(args []string) (opts options, files []string) {
 		}
 		if arg == "--text" {
 			opts.binaryMode = false
+			opts.textSet = true
 			continue
 		}
 		if arg == "--check" {
 			opts.check = true
+			continue
+		}
+		if arg == "--tag" {
+			opts.tagMode = true
 			continue
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-' {
@@ -295,6 +351,7 @@ func parseArgs(args []string) (opts options, files []string) {
 					opts.binaryMode = true
 				case 't':
 					opts.binaryMode = false
+					opts.textSet = true
 				case 'c':
 					opts.check = true
 				}
