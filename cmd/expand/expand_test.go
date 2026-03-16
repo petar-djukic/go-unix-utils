@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/expand against the GNU reference binary (gexpand).
-// Implements prd024-expand R1.1-R1.4, R2.1-R2.4, R3.1-R3.4 test coverage.
+// Implements prd024-expand R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -20,6 +20,13 @@ import (
 // the Go binary name (expand) in stderr so error message comparisons match.
 func stderrProgNameNormalizer(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gexpand:"), []byte("expand:"))
+}
+
+// stderrCaseNormalizer lowercases stderr so platform-specific error message
+// casing differences (e.g., "No such file" vs "no such file") do not cause
+// false divergence.
+func stderrCaseNormalizer(data []byte) []byte {
+	return bytes.ToLower(data)
 }
 
 func TestDiff(t *testing.T) {
@@ -58,6 +65,34 @@ func TestDiff(t *testing.T) {
 	if err := os.WriteFile(initialFile, []byte("\t\thello\tworld\n"), 0o644); err != nil {
 		t.Fatalf("write test file: %v", err)
 	}
+
+	// R4.2: empty file for edge case tests.
+	emptyFile := filepath.Join(tmpDir, "empty.txt")
+	if err := os.WriteFile(emptyFile, []byte{}, 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	// R4.2: file containing only tabs.
+	tabOnlyFile := filepath.Join(tmpDir, "tabonly.txt")
+	if err := os.WriteFile(tabOnlyFile, []byte("\t\t\t\n"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	// R4.2: file with very long line.
+	longLineFile := filepath.Join(tmpDir, "longline.txt")
+	longLine := strings.Repeat("abcdefg\t", 100) + "\n"
+	if err := os.WriteFile(longLineFile, []byte(longLine), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	// R4.2: file with binary content (null bytes).
+	binaryFile := filepath.Join(tmpDir, "binary.txt")
+	if err := os.WriteFile(binaryFile, []byte("abc\x00\tdef\x00\n"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	// R4.1: nonexistent file path for error handling tests.
+	nonexistentFile := filepath.Join(tmpDir, "nonexistent.txt")
 
 	tests := []testutils.DiffTest{
 		{
@@ -411,6 +446,184 @@ func TestDiff(t *testing.T) {
 			// R3.1: -i with file input.
 			Name: "initial_with_file",
 			Args: []string{"-i", initialFile},
+		},
+
+		// --- R4.1: Error handling differential tests ---
+		{
+			// R4.1: unreadable file produces stderr and exit code 1.
+			Name:      "error_nonexistent_file",
+			Args:      []string{nonexistentFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+		{
+			// R4.1: nonexistent file among valid files — processing continues,
+			// stdout from valid files still produced.
+			Name:      "error_nonexistent_with_valid",
+			Args:      []string{tabFile, nonexistentFile, noTabFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer, stderrCaseNormalizer},
+		},
+		{
+			// R4.1: -t with non-increasing tab stop list.
+			Name:      "error_t_non_increasing_list",
+			Args:      []string{"-t", "8,4"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		{
+			// R4.1: -t with non-numeric value.
+			Name:      "error_t_non_numeric_value",
+			Args:      []string{"-t", "foo"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		{
+			// R4.1: -t with zero tab stop.
+			Name:      "error_t_zero_value",
+			Args:      []string{"-t", "0"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+
+		// --- R4.2: Edge case differential tests ---
+		{
+			// R4.2: empty file produces no output.
+			Name: "edge_empty_file",
+			Args: []string{emptyFile},
+		},
+		{
+			// R4.2: file containing only tabs.
+			Name: "edge_tab_only_file",
+			Args: []string{tabOnlyFile},
+		},
+		{
+			// R4.2: file with no tabs passes through unchanged.
+			Name: "edge_no_tab_file",
+			Args: []string{noTabFile},
+		},
+		{
+			// R4.2: very long line with interleaved tabs.
+			Name: "edge_very_long_line_file",
+			Args: []string{longLineFile},
+		},
+		{
+			// R4.2: very long line via stdin.
+			Name:  "edge_very_long_line_stdin",
+			Stdin: []byte(strings.Repeat("x\t", 500) + "\n"),
+		},
+		{
+			// R4.2: mixed line endings (CRLF) — \r is a non-tab byte, passed through.
+			Name:  "edge_mixed_crlf",
+			Stdin: []byte("a\tb\r\nc\td\r\n"),
+		},
+		{
+			// R4.2: carriage return without newline.
+			Name:  "edge_cr_only",
+			Stdin: []byte("a\tb\rc\td\r"),
+		},
+		{
+			// R4.2: binary content with null bytes.
+			Name: "edge_binary_file",
+			Args: []string{binaryFile},
+		},
+		{
+			// R4.2: binary content via stdin with null bytes and tabs.
+			Name:  "edge_binary_stdin",
+			Stdin: []byte("\x00\t\x01\t\x02\n"),
+		},
+		{
+			// R4.2: input with only newlines (no tabs).
+			Name:  "edge_only_newlines",
+			Stdin: []byte("\n\n\n\n\n"),
+		},
+		{
+			// R4.2: single tab with no newline.
+			Name:  "edge_single_tab_no_newline",
+			Stdin: []byte("\t"),
+		},
+		{
+			// R4.2: tab-only input with no newline.
+			Name:  "edge_tabs_no_newline",
+			Stdin: []byte("\t\t\t"),
+		},
+		{
+			// R4.2: alternating tabs and spaces.
+			Name:  "edge_alternating_tab_space",
+			Stdin: []byte("\t \t \t \n"),
+		},
+
+		// --- R4.3: Flag combination differential tests ---
+		{
+			// R4.3: -i with -t N (custom uniform interval).
+			Name:  "combo_i_t_uniform",
+			Args:  []string{"-i", "-t", "4"},
+			Stdin: []byte("\t\thello\tworld\n"),
+		},
+		{
+			// R4.3: -i with -t LIST (custom explicit positions).
+			Name:  "combo_i_t_list",
+			Args:  []string{"-i", "-t", "4,8,12"},
+			Stdin: []byte("\t\thello\tworld\n"),
+		},
+		{
+			// R4.3: -t with multiple file arguments.
+			Name: "combo_t_multiple_files",
+			Args: []string{"-t", "4", fileA, fileB},
+		},
+		{
+			// R4.3: -t LIST with multiple file arguments.
+			Name: "combo_t_list_multiple_files",
+			Args: []string{"-t", "4,8", tabFile, fileA, fileB},
+		},
+		{
+			// R4.3: -i with -t and multiple files.
+			Name: "combo_i_t_multiple_files",
+			Args: []string{"-i", "-t", "4", initialFile, tabFile},
+		},
+		{
+			// R4.3: -t with file and stdin interleaved.
+			Name:  "combo_t_file_and_stdin",
+			Args:  []string{"-t", "4", fileA, "-", fileB},
+			Stdin: []byte("\tstdin\tline\n"),
+		},
+		{
+			// R4.3: -i with -t and file and stdin interleaved.
+			Name:  "combo_i_t_file_and_stdin",
+			Args:  []string{"-i", "-t", "4", fileA, "-"},
+			Stdin: []byte("\thello\tworld\n"),
+		},
+		{
+			// R4.3: -i combined with -t LIST and multiline input.
+			Name:  "combo_i_t_list_multiline",
+			Args:  []string{"-i", "-t", "4,8"},
+			Stdin: []byte("\thello\tworld\n\t\tfoo\tbar\n"),
+		},
+		{
+			// R4.3: -i with -t 1 (minimum interval).
+			Name:  "combo_i_t1_minimum",
+			Args:  []string{"-i", "-t", "1"},
+			Stdin: []byte("\t\thello\tworld\n"),
+		},
+		{
+			// R4.3: --initial --tabs=N long form combination.
+			Name:  "combo_initial_tabs_long_form",
+			Args:  []string{"--initial", "--tabs=4"},
+			Stdin: []byte("\thello\tworld\n"),
+		},
+		{
+			// R4.3: -i with -t large value.
+			Name:  "combo_i_t_large",
+			Args:  []string{"-i", "-t", "20"},
+			Stdin: []byte("\thello\tworld\n"),
+		},
+		{
+			// R4.3: -t with empty file among other files.
+			Name: "combo_t_with_empty_file",
+			Args: []string{"-t", "4", emptyFile, tabFile},
 		},
 	}
 
