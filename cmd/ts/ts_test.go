@@ -2,15 +2,30 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts against ts (moreutils).
-// Implements prd004-ts R1.1-R1.6, R3.1-R3.4, R4.1-R4.3, R9.1-R9.2 test coverage.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R9.1-R9.2 test coverage.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// epochSubsecNormalizer replaces Unix epoch timestamps with microsecond suffix
+// (e.g., "1708358732.001234") with a fixed placeholder. Used for %.s tests.
+var epochSubsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d{9,}\.\d{6}`)
+	return re.ReplaceAll(b, []byte("<EPOCH_USEC>"))
+}
+
+// secSubsecNormalizer replaces seconds with microsecond suffix (e.g.,
+// "32.001234") with a fixed placeholder. Used for %.S tests.
+var secSubsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d{2}\.\d{6}`)
+	return re.ReplaceAll(b, []byte("<SEC_USEC>"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -141,6 +156,78 @@ func TestDiff(t *testing.T) {
 			Name:      "R9.2_elapsed_empty_stdin",
 			Args:      []string{"-s"},
 			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.1: custom format with time-only format.
+		{
+			Name:      "R2.1_custom_format_time_only",
+			Args:      []string{"%H:%M:%S"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.2: custom format with full datetime.
+		{
+			Name:      "R2.2_custom_format_full_datetime",
+			Args:      []string{"%a %b %e %T %Z %Y"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.3: subsecond extension %.S (seconds with microsecond suffix).
+		{
+			Name:      "R2.3_subsecond_dotS",
+			Args:      []string{"%.S"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{secSubsecNormalizer},
+		},
+		// R2.3: subsecond extension %.s (Unix epoch with microsecond suffix).
+		{
+			Name:      "R2.3_subsecond_dots",
+			Args:      []string{"%.s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{epochSubsecNormalizer},
+		},
+		// R2.3: subsecond extension %.T (HH:MM:SS with microsecond suffix).
+		{
+			Name:      "R2.3_subsecond_dotT",
+			Args:      []string{"%.T"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.3: subsecond extension %.T with multi-line input.
+		{
+			Name:      "R2.3_subsecond_dotT_multi_line",
+			Args:      []string{"%.T"},
+			Stdin:     []byte("line one\nline two\nline three\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.3: subsecond extension %.S with -s mode.
+		{
+			Name:      "R2.3_subsecond_dotS_elapsed",
+			Args:      []string{"-s", "%.S"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{secSubsecNormalizer},
+		},
+		// R2.3: subsecond extension %.s with -i mode.
+		{
+			Name:      "R2.3_subsecond_dots_incremental",
+			Args:      []string{"-i", "%.s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{epochSubsecNormalizer},
+		},
+		// R2.3: mixed format with subsecond extensions.
+		{
+			Name:      "R2.3_mixed_format_with_subsecond",
+			Args:      []string{"%Y-%m-%d %.T"},
+			Stdin:     []byte("test\n"),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},

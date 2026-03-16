@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1-R1.6, R3.1-R3.4, R4.1-R4.3: cmd/ts reads stdin
-// line by line and prepends a strftime-formatted timestamp to each line, writing
-// to stdout. Supports a default format ("%b %d %H:%M:%S"), an optional positional
-// format argument, incremental mode (-i), and elapsed-since-start mode (-s).
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3: cmd/ts
+// reads stdin line by line and prepends a strftime-formatted timestamp to each
+// line, writing to stdout. Supports a default format ("%b %d %H:%M:%S"), an
+// optional positional format argument with ts-specific subsecond extensions
+// (%.S, %.s, %.T), incremental mode (-i), and elapsed-since-start mode (-s).
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
@@ -135,6 +136,26 @@ func strftime(format string, t time.Time) string {
 		i++ // skip '%'
 		spec := format[i]
 		i++
+
+		// R2.3: ts-specific subsecond extensions: %.S, %.s, %.T.
+		if spec == '.' && i < len(format) {
+			subSpec := format[i]
+			i++
+			switch subSpec {
+			case 'S': // seconds with microsecond suffix (e.g., "32.001234")
+				fmt.Fprintf(&b, "%02d.%06d", t.Second(), t.Nanosecond()/1000)
+			case 's': // Unix epoch with microsecond suffix (e.g., "1708358732.001234")
+				fmt.Fprintf(&b, "%d.%06d", t.Unix(), t.Nanosecond()/1000)
+			case 'T': // HH:MM:SS with microsecond suffix (e.g., "14:05:32.001234")
+				fmt.Fprintf(&b, "%02d:%02d:%02d.%06d", t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000)
+			default:
+				// Unknown %.X — pass through as-is.
+				b.WriteByte('%')
+				b.WriteByte('.')
+				b.WriteByte(subSpec)
+			}
+			continue
+		}
 
 		switch spec {
 		case 'Y': // 4-digit year
