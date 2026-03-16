@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
-// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.4 test coverage.
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.6 test coverage.
 package main
 
 import (
@@ -517,6 +517,324 @@ func TestInvalidTemplate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDryRun verifies R3.5: -u/--dry-run prints the name without creating
+// the file or directory, and emits a warning on stderr.
+func TestDryRun(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("dry_run_no_file_created", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		env := buildTestEnvWithTMPDIR(tmpDir)
+		cmd := exec.Command(goBin, "-u")
+		cmd.Env = env
+		cmd.Dir = tmpDir
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(runErr, &exitErr) {
+				t.Fatalf("expected exit 0, got %d; stderr: %s", exitErr.ExitCode(), errBuf.String())
+			}
+			t.Fatalf("failed to execute: %v", runErr)
+		}
+
+		path := strings.TrimSpace(outBuf.String())
+		if path == "" {
+			t.Fatal("expected non-empty path output")
+		}
+
+		// R3.5: file must NOT exist (dry-run).
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("dry-run should not create file, but %s exists", path)
+			os.Remove(path) // best-effort cleanup
+		}
+
+		// R3.5: must print a warning on stderr about dry-run being discouraged.
+		stderrStr := errBuf.String()
+		if !strings.Contains(stderrStr, "discouraged") {
+			t.Errorf("expected dry-run warning on stderr containing 'discouraged', got: %s", stderrStr)
+		}
+	})
+
+	t.Run("dry_run_long_flag", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		env := buildTestEnvWithTMPDIR(tmpDir)
+		cmd := exec.Command(goBin, "--dry-run")
+		cmd.Env = env
+		cmd.Dir = tmpDir
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(runErr, &exitErr) {
+				t.Fatalf("expected exit 0, got %d; stderr: %s", exitErr.ExitCode(), errBuf.String())
+			}
+			t.Fatalf("failed to execute: %v", runErr)
+		}
+
+		path := strings.TrimSpace(outBuf.String())
+		if path == "" {
+			t.Fatal("expected non-empty path output")
+		}
+
+		// File must NOT exist.
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("dry-run should not create file, but %s exists", path)
+			os.Remove(path) // best-effort cleanup
+		}
+	})
+
+	t.Run("dry_run_with_directory_flag", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		env := buildTestEnvWithTMPDIR(tmpDir)
+		cmd := exec.Command(goBin, "-u", "-d")
+		cmd.Env = env
+		cmd.Dir = tmpDir
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(runErr, &exitErr) {
+				t.Fatalf("expected exit 0, got %d; stderr: %s", exitErr.ExitCode(), errBuf.String())
+			}
+			t.Fatalf("failed to execute: %v", runErr)
+		}
+
+		path := strings.TrimSpace(outBuf.String())
+		if path == "" {
+			t.Fatal("expected non-empty path output")
+		}
+
+		// Directory must NOT exist.
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("dry-run should not create directory, but %s exists", path)
+			os.Remove(path) // best-effort cleanup
+		}
+	})
+
+	t.Run("dry_run_with_custom_template", func(t *testing.T) {
+		t.Parallel()
+		workDir := t.TempDir()
+
+		env := buildTestEnv()
+		cmd := exec.Command(goBin, "-u", "myapp.XXXXXX")
+		cmd.Env = env
+		cmd.Dir = workDir
+
+		var outBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &bytes.Buffer{}
+
+		runErr := cmd.Run()
+		if runErr != nil {
+			t.Fatalf("failed to execute: %v", runErr)
+		}
+
+		path := strings.TrimSpace(outBuf.String())
+		matched, _ := regexp.MatchString(`myapp\.[A-Za-z0-9]{6}$`, path)
+		if !matched {
+			t.Errorf("dry-run output %q does not match expected template pattern", path)
+		}
+
+		// File must NOT exist.
+		resolved := resolvePath(workDir, path)
+		if _, err := os.Stat(resolved); err == nil {
+			t.Errorf("dry-run should not create file, but %s exists", resolved)
+			os.Remove(resolved) // best-effort cleanup
+		}
+	})
+}
+
+// TestDryRunDiff runs differential tests for -u/--dry-run against gmktemp.
+// R3.5, R4.1: both binaries must exit 0 and produce structurally matching output.
+func TestDryRunDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skipf("reference binary gmktemp not in PATH: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	env := buildTestEnvWithTMPDIR(tmpDir)
+
+	// Run both binaries with -u.
+	refOut, refExit := runMktempInDir(t, refBin, []string{"-u"}, env, tmpDir)
+	goOut, goExit := runMktempInDir(t, goBin, []string{"-u"}, env, tmpDir)
+
+	// Exit codes must match (both 0).
+	if refExit != goExit {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refExit, goExit)
+	}
+	if goExit != 0 {
+		t.Fatalf("expected exit 0, got %d; output: %s", goExit, goOut)
+	}
+
+	// Both outputs must be in TMPDIR with the default pattern.
+	refPath := strings.TrimSpace(string(refOut))
+	goPath := strings.TrimSpace(string(goOut))
+
+	pattern := regexp.MustCompile(`/tmp\.[A-Za-z0-9]{10}$`)
+	if !pattern.MatchString(refPath) {
+		t.Errorf("ref dry-run output %q does not match expected pattern", refPath)
+	}
+	if !pattern.MatchString(goPath) {
+		t.Errorf("go dry-run output %q does not match expected pattern", goPath)
+	}
+
+	// Neither file should exist (dry-run).
+	if _, err := os.Stat(refPath); err == nil {
+		t.Errorf("ref dry-run should not create file, but %s exists", refPath)
+	}
+	if _, err := os.Stat(goPath); err == nil {
+		t.Errorf("go dry-run should not create file, but %s exists", goPath)
+	}
+}
+
+// TestQuiet verifies R3.6: -q/--quiet suppresses error diagnostics on stderr.
+func TestQuiet(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("quiet_suppresses_stderr_on_error", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a non-existent TMPDIR to trigger an error.
+		env := buildTestEnvWithTMPDIR("/nonexistent/path/for/mktemp/quiet/test")
+		cmd := exec.Command(goBin, "-q")
+		cmd.Env = env
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr == nil {
+			t.Fatal("expected non-zero exit with non-existent TMPDIR")
+		}
+
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("unexpected error type: %v", runErr)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+
+		// R3.6: stderr must be empty when -q is used.
+		if errBuf.Len() != 0 {
+			t.Errorf("expected empty stderr with -q, got: %s", errBuf.String())
+		}
+	})
+
+	t.Run("quiet_long_flag", func(t *testing.T) {
+		t.Parallel()
+
+		env := buildTestEnvWithTMPDIR("/nonexistent/path/for/mktemp/quiet/test2")
+		cmd := exec.Command(goBin, "--quiet")
+		cmd.Env = env
+
+		var errBuf bytes.Buffer
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr == nil {
+			t.Fatal("expected non-zero exit with non-existent TMPDIR")
+		}
+
+		// R3.6: stderr must be empty.
+		if errBuf.Len() != 0 {
+			t.Errorf("expected empty stderr with --quiet, got: %s", errBuf.String())
+		}
+	})
+
+	t.Run("quiet_success_still_prints_path", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		// R3.6: -q suppresses creation failure, but successful run still prints.
+		env := buildTestEnvWithTMPDIR(tmpDir)
+		cmd := exec.Command(goBin, "-q")
+		cmd.Env = env
+		cmd.Dir = tmpDir
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr != nil {
+			t.Fatalf("expected exit 0, got error: %v", runErr)
+		}
+
+		path := strings.TrimSpace(outBuf.String())
+		if path == "" {
+			t.Fatal("expected non-empty path output with -q on success")
+		}
+
+		// File must exist.
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("created file does not exist: %v", err)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
+}
+
+// TestQuietDiff runs differential tests for -q/--quiet against gmktemp.
+// R3.6, R4.1: both binaries must exit 1 with empty stderr when -q is used.
+func TestQuietDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skipf("reference binary gmktemp not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.6: -q with non-existent TMPDIR suppresses creation failure stderr.
+		{
+			Name:     "quiet_nonexistent_tmpdir",
+			Args:     []string{"-q"},
+			Env:      []string{"TMPDIR=/nonexistent/path/for/mktemp/qdiff"},
+			ExitCode: 1,
+		},
+		// R3.6: --quiet with bad template still prints template validation error
+		// (quiet only suppresses creation failures, matching GNU behavior).
+		{
+			Name:      "quiet_bad_template_still_prints",
+			Args:      []string{"--quiet", "foo.XX"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 // runMktemp executes the binary and returns stdout and exit code.

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.4:
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.6:
 // cmd/mktemp creates temporary files or directories with unique names and
 // prints the path to stdout. Supports custom templates, -d for directory
 // creation, --tmpdir/-p for parent directory control, --suffix for appending
 // a suffix after the random characters, -t for legacy BSD compatibility mode,
+// -u/--dry-run for name-only output, -q/--quiet for error suppression,
 // --version, and --help.
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
@@ -44,6 +45,8 @@ type mktempOptions struct {
 	tmpdirSet   bool   // True when --tmpdir or -p was explicitly provided.
 	suffix      string // R3.3: --suffix=SUFF appended after random characters.
 	legacyT     bool   // R3.4: -t treats template as filename prefix in TMPDIR.
+	dryRun      bool   // R3.5: -u/--dry-run prints name without creating.
+	quiet       bool   // R3.6: -q/--quiet suppresses error diagnostics.
 }
 
 func main() {
@@ -62,6 +65,7 @@ func main() {
 	}
 
 	// R3.3: suffix must not contain a directory separator.
+	// Note: suffix validation errors are always printed, even with -q.
 	if strings.Contains(opts.suffix, "/") {
 		fmt.Fprintf(os.Stderr, "%s: invalid suffix '%s', contains directory separator\n", progName, opts.suffix)
 		os.Exit(1)
@@ -75,6 +79,7 @@ func main() {
 	}
 
 	// R1.5: validate template has at least 3 trailing Xs (before suffix is appended).
+	// Note: template validation errors are always printed, even with -q.
 	trailingXs := countTrailingXs(template)
 	if trailingXs < minTrailingXs {
 		fmt.Fprintf(os.Stderr, "%s: too few X's in template '%s'\n", progName, template)
@@ -86,6 +91,7 @@ func main() {
 	if opts.legacyT {
 		// R3.4: -t treats template as a single filename component in
 		// $TMPDIR (if set), else -p directory, else /tmp.
+		// Note: template validation errors are always printed, even with -q.
 		if strings.Contains(template, "/") {
 			fmt.Fprintf(os.Stderr, "%s: invalid template, '%s', contains directory separator\n", progName, template)
 			os.Exit(1)
@@ -128,11 +134,28 @@ func main() {
 
 	// Generate the temporary name and create the file or directory.
 	trailingXs = countTrailingXs(fileTemplate)
+
+	// R3.5: -u/--dry-run prints the name without creating anything.
+	if opts.dryRun {
+		fmt.Fprintf(os.Stderr, "%s: warning: remember that the name returned may already be in use,\nand another program may be able to create and use the name;\nuse of -u/--dry-run is discouraged\n", progName)
+		path, err := generateTempName(dir, fileTemplate, trailingXs, opts.suffix)
+		if err != nil {
+			if !opts.quiet {
+				fmt.Fprintf(os.Stderr, "%s: failed to create name via template '%s': %v\n", progName, template, err)
+			}
+			os.Exit(1)
+		}
+		fmt.Println(path)
+		return
+	}
+
 	if opts.directory {
 		// R2.1-R2.3: create a directory with mode 0700.
 		path, err := createTempDir(dir, fileTemplate, trailingXs, opts.suffix)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: failed to create directory via template '%s': %v\n", progName, template, err)
+			if !opts.quiet {
+				fmt.Fprintf(os.Stderr, "%s: failed to create directory via template '%s': %v\n", progName, template, err)
+			}
 			os.Exit(1)
 		}
 		fmt.Println(path)
@@ -140,7 +163,9 @@ func main() {
 		// R1.1-R1.5: create a file with mode 0600.
 		path, err := createTempFile(dir, fileTemplate, trailingXs, opts.suffix)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", progName, template, err)
+			if !opts.quiet {
+				fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", progName, template, err)
+			}
 			os.Exit(1)
 		}
 		fmt.Println(path)
@@ -172,6 +197,12 @@ func parseArgs(args []string) (*mktempOptions, string) {
 				opts.showHelp = true
 			case arg == "--directory":
 				opts.directory = true
+			case arg == "--dry-run":
+				// R3.5: print name without creating.
+				opts.dryRun = true
+			case arg == "--quiet":
+				// R3.6: suppress error diagnostics.
+				opts.quiet = true
 			case arg == "--tmpdir":
 				// R3.2: --tmpdir without =DIR uses TMPDIR or /tmp.
 				opts.tmpdirSet = true
@@ -192,6 +223,12 @@ func parseArgs(args []string) (*mktempOptions, string) {
 				switch arg[j] {
 				case 'd':
 					opts.directory = true
+				case 'u':
+					// R3.5: -u dry-run mode.
+					opts.dryRun = true
+				case 'q':
+					// R3.6: -q quiet mode.
+					opts.quiet = true
 				case 't':
 					// R3.4: -t treats template as filename prefix in TMPDIR.
 					opts.legacyT = true
@@ -231,6 +268,20 @@ func countTrailingXs(template string) int {
 		count++
 	}
 	return count
+}
+
+// generateTempName generates a temporary name from the template without creating
+// anything. Used by -u/--dry-run mode.
+// R3.5: returns the path that would be created.
+func generateTempName(dir, template string, trailingXs int, suffix string) (string, error) {
+	prefix := template[:len(template)-trailingXs]
+	randStr, err := randomString(trailingXs)
+	if err != nil {
+		return "", fmt.Errorf("generating random characters: %w", err)
+	}
+	name := prefix + randStr + suffix
+	path := dir + "/" + name
+	return path, nil
 }
 
 // createTempFile generates a unique filename from the template and creates the
