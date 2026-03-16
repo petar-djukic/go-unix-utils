@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/seq against gseq (GNU coreutils).
-// Implements prd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4 test coverage.
+// Implements prd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4 test coverage.
 package main
 
 import (
@@ -276,6 +276,54 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.4: exact two-argument form (seq 2 5).
+		{
+			Name: "R4.4_two_args_seq_2_5",
+			Args: []string{"2", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: exact custom separator (seq -s ', ' 1 5).
+		{
+			Name: "R4.4_separator_comma_space_1_5",
+			Args: []string{"-s", ", ", "1", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: exact format string (seq -f '%.2f' 1 3).
+		{
+			Name: "R4.4_format_percent_2f_1_3",
+			Args: []string{"-f", "%.2f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: boundary — step exactly spans range (two numbers).
+		{
+			Name: "R4.4_boundary_step_equals_range",
+			Args: []string{"1", "4", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: boundary — negative to positive range.
+		{
+			Name: "R4.4_boundary_negative_to_positive",
+			Args: []string{"--", "-3", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: boundary — descending single step.
+		{
+			Name: "R4.4_boundary_descending_single_step",
+			Args: []string{"5", "-5", "1"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: boundary — float sequence last barely reachable.
+		{
+			Name: "R4.4_boundary_float_last_exact",
+			Args: []string{"0.0", "0.1", "0.3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: boundary — equal-width with negative start.
+		{
+			Name: "R4.4_boundary_equal_width_negative",
+			Args: []string{"-w", "--", "-1", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
