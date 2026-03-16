@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.8 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.12 test coverage.
 package main
 
 import (
@@ -846,6 +846,108 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-1RF", classifyDir},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
+		},
+
+		// === R3.9: Executable defined as any execute bit set ===
+		// R3.9: -F on classify fixture shows * for executable files.
+		// The executable fixture file (script.sh) has mode 0o755.
+		{
+			Name:    "R3.9_classify_executable",
+			Args:    []string{"-1F", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R3.10: -F with all output formats and color ===
+		// R3.10: -F with -C (multi-column vertical fill).
+		{
+			Name:    "R3.10_classify_multi_col",
+			Args:    []string{"-CF", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.10: -F with -x (multi-column horizontal fill).
+		{
+			Name:    "R3.10_classify_horizontal",
+			Args:    []string{"-xF", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.10: -F with -C and --color=always.
+		{
+			Name:    "R3.10_classify_multi_col_color",
+			Args:    []string{"-CF", "--color=always", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.10: -F with -x and --color=always.
+		{
+			Name:    "R3.10_classify_horizontal_color",
+			Args:    []string{"-xF", "--color=always", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.10: -F with -1 and --color=always (indicator after reset sequence).
+		{
+			Name:    "R3.10_classify_single_col_color",
+			Args:    []string{"-1F", "--color=always", classifyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R3.11: -R recursive listing with headers ===
+		// R3.11: -R on fixture with nested subdirectories.
+		{
+			Name:    "R3.11_recursive_nested",
+			Args:    []string{"-1R", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.11: -R with -a (recursive with dotfiles).
+		{
+			Name:    "R3.11_recursive_all_single_col",
+			Args:    []string{"-1aR", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.11: -R with -F (recursive with classify indicators).
+		{
+			Name:    "R3.11_recursive_classify",
+			Args:    []string{"-1RF", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R3.12: -R respects current format mode ===
+		// R3.12: -R with -C (multi-column recursive).
+		{
+			Name:    "R3.12_recursive_multi_col",
+			Args:    []string{"-CR", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.12: -R with -x (horizontal recursive).
+		{
+			Name:    "R3.12_recursive_horizontal",
+			Args:    []string{"-xR", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.12: -R with -l and -F (long format recursive with classify).
+		{
+			Name:      "R3.12_recursive_long_classify",
+			Args:      []string{"-lRF", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R3.12: -R with -l and --color=always (long format recursive colored).
+		{
+			Name:      "R3.12_recursive_long_color",
+			Args:      []string{"-lR", "--color=always", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
 		},
 	}
 

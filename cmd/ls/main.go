@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.8: basic directory
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.12: basic directory
 // listing with single-column output (non-TTY default), dotfile filtering,
 // multi-directory headers, mixed file/directory argument handling, error
 // diagnostics, -1 single-column flag, -l long format with permissions/nlink/
@@ -16,7 +16,11 @@
 // R2.10: last sort flag wins. R3.1-R3.4: --color support.
 // R3.5-R3.6: -h human-readable sizes in long format and total line.
 // R3.7: -h with -s for human-readable block counts.
-// R3.8-R3.10: -F classify indicator (/ * @ | =).
+// R3.8-R3.10: -F classify indicator (/ * @ | =) with all output formats and color.
+// R3.9: Executable defined as any execute bit set (mode&0o111 != 0).
+// R3.10: -F works with -l, -1, -C, -x and color; indicator after reset sequence.
+// R3.11: -R recursive listing with "PATH:" headers and blank-line separation.
+// R3.12: -R respects current format mode (-l, -C, -x, default).
 // Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
@@ -1334,7 +1338,7 @@ func strverscmp(a, b string) int {
 			}
 
 			// Same number of significant digits: compare lexicographically.
-			for k := 0; k < aLen; k++ {
+			for k := range aLen {
 				if a[aNumStart+k] != b[bNumStart+k] {
 					if a[aNumStart+k] < b[bNumStart+k] {
 						return -1
