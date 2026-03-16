@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3:
+// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3, R3.1-R3.4:
 // cmd/rmdir removes empty directories. Supports --ignore-fail-on-non-empty
-// to suppress errors for non-empty directories and -p/--parents to remove
-// each directory component in the path. R2.1: -p removes the target then
-// each successive empty parent. R2.2: stops ascending on non-empty parent
+// to suppress errors for non-empty directories (R3.1-R3.2) and -p/--parents
+// to remove each directory component in the path. R2.1: -p removes the target
+// then each successive empty parent. R2.2: stops ascending on non-empty parent
 // and reports the error. R2.3: each argument is processed independently.
+// R3.3: -v/--verbose prints a message for each directory successfully removed.
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
@@ -32,6 +33,7 @@ func main() {
 
 	var parents bool
 	var ignoreNonEmpty bool
+	var verbose bool
 
 	// Parse flags manually to match GNU rmdir behavior.
 	var operands []string
@@ -71,6 +73,10 @@ func main() {
 			ignoreNonEmpty = true
 			continue
 		}
+		if arg == "--verbose" {
+			verbose = true
+			continue
+		}
 		// Reject unrecognized long options.
 		if strings.HasPrefix(arg, "--") {
 			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)     //nolint:errcheck // best-effort diagnostic
@@ -84,6 +90,9 @@ func main() {
 				switch arg[j] {
 				case 'p':
 					parents = true
+					j++
+				case 'v':
+					verbose = true
 					j++
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, arg[j])    //nolint:errcheck // best-effort diagnostic
@@ -105,7 +114,7 @@ func main() {
 
 	exitCode := 0
 	for _, dir := range operands {
-		if err := removeDir(dir, parents, ignoreNonEmpty); err != nil {
+		if err := removeDir(dir, parents, ignoreNonEmpty, verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err) //nolint:errcheck // best-effort diagnostic
 			exitCode = 1
 		}
@@ -117,22 +126,23 @@ func main() {
 // removeDir removes the directory and optionally its parent components.
 // R1.1: remove a single empty directory.
 // R1.2: report errors for non-empty, non-existent, or non-directory targets.
-// R1.3: --ignore-fail-on-non-empty suppresses ENOTEMPTY errors.
-// R1.4: -p removes parent directory components in sequence.
-func removeDir(dir string, parents, ignoreNonEmpty bool) error {
-	if err := tryRemove(dir, ignoreNonEmpty); err != nil {
+// R3.1: --ignore-fail-on-non-empty suppresses ENOTEMPTY errors.
+// R3.3: -v prints verbose message for each removal.
+// R2.1: -p removes parent directory components in sequence.
+func removeDir(dir string, parents, ignoreNonEmpty, verbose bool) error {
+	if err := tryRemove(dir, ignoreNonEmpty, verbose); err != nil {
 		return err
 	}
 
 	if parents {
-		// R1.4: remove each parent component.
+		// R2.1: remove each parent component.
 		current := dir
 		for {
 			current = filepath.Dir(current)
 			if current == "." || current == "/" {
 				break
 			}
-			if err := tryRemove(current, ignoreNonEmpty); err != nil {
+			if err := tryRemove(current, ignoreNonEmpty, verbose); err != nil {
 				return err
 			}
 		}
@@ -142,14 +152,22 @@ func removeDir(dir string, parents, ignoreNonEmpty bool) error {
 }
 
 // tryRemove attempts to remove a single directory. If ignoreNonEmpty is true,
-// errors caused by a non-empty directory are suppressed.
-func tryRemove(dir string, ignoreNonEmpty bool) error {
+// errors caused by a non-empty directory are suppressed (R3.1). Other errors
+// are not suppressed (R3.2). If verbose is true, a message is printed to
+// stdout for each successful removal (R3.3, R3.4).
+func tryRemove(dir string, ignoreNonEmpty, verbose bool) error {
+	// R3.3: print verbose message before removal, matching GNU rmdir behavior (R3.4).
+	if verbose {
+		fmt.Fprintf(os.Stdout, "%s: removing directory, '%s'\n", progName, dir) //nolint:errcheck // best-effort output
+	}
+
 	err := syscall.Rmdir(dir)
 	if err == nil {
 		return nil
 	}
 
-	// R1.3: suppress ENOTEMPTY when --ignore-fail-on-non-empty is set.
+	// R3.1: suppress ENOTEMPTY when --ignore-fail-on-non-empty is set.
+	// R3.2: do not suppress other errors (permission denied, non-existent, etc.).
 	if ignoreNonEmpty && isDirNotEmpty(err) {
 		return nil
 	}

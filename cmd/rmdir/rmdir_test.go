@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rmdir against grmdir (GNU coreutils).
-// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3 test coverage.
+// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3, R3.1-R3.4 test coverage.
 package main
 
 import (
@@ -11,10 +11,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// binaryNameRe matches the program name prefix at the start of each line in
+// verbose/error output (e.g., "/opt/homebrew/bin/grmdir:" or "rmdir:").
+var binaryNameRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -161,6 +166,66 @@ func TestDiff(t *testing.T) {
 			os.WriteFile(filepath.Join(dir, "bad", "file.txt"), []byte("x"), 0o644)  //nolint:errcheck // test setup
 		})
 	})
+
+	// R3.1: --ignore-fail-on-non-empty suppresses non-empty error and exits 0 with no stderr.
+	t.Run("R3.1_ignore_nonempty_no_stderr", func(t *testing.T) {
+		t.Parallel()
+		assertBothOutputMatch(t, goBin, refBin, []string{"--ignore-fail-on-non-empty", "nonemptydir"}, 0, func(dir string) {
+			p := filepath.Join(dir, "nonemptydir")
+			os.Mkdir(p, 0o755)                                               //nolint:errcheck // test setup
+			os.WriteFile(filepath.Join(p, "file.txt"), []byte("x"), 0o644)   //nolint:errcheck // test setup
+		})
+	})
+
+	// R3.2: --ignore-fail-on-non-empty does NOT suppress non-existent dir error.
+	t.Run("R3.2_ignore_does_not_suppress_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		assertBothExitCode(t, goBin, refBin, []string{"--ignore-fail-on-non-empty", "nosuchdir"}, 1, func(dir string) {
+			// no setup — path does not exist
+		})
+	})
+
+	// R3.3: -v verbose output for single empty directory removal.
+	t.Run("R3.3_verbose_single", func(t *testing.T) {
+		t.Parallel()
+		assertBothOutputMatch(t, goBin, refBin, []string{"-v", "emptydir"}, 0, func(dir string) {
+			os.Mkdir(filepath.Join(dir, "emptydir"), 0o755) //nolint:errcheck // test setup
+		})
+	})
+
+	// R3.3: --verbose long form.
+	t.Run("R3.3_verbose_long", func(t *testing.T) {
+		t.Parallel()
+		assertBothOutputMatch(t, goBin, refBin, []string{"--verbose", "emptydir"}, 0, func(dir string) {
+			os.Mkdir(filepath.Join(dir, "emptydir"), 0o755) //nolint:errcheck // test setup
+		})
+	})
+
+	// R3.3 + R3.4: -v with -p shows verbose for each parent removed.
+	t.Run("R3.3_verbose_parents", func(t *testing.T) {
+		t.Parallel()
+		assertBothOutputMatch(t, goBin, refBin, []string{"-pv", "a/b/c"}, 0, func(dir string) {
+			os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755) //nolint:errcheck // test setup
+		})
+	})
+
+	// R3.3: --ignore-fail-on-non-empty with -p and -v — suppresses non-empty at parent level.
+	t.Run("R3.3_ignore_parents_verbose", func(t *testing.T) {
+		t.Parallel()
+		assertBothOutputMatch(t, goBin, refBin, []string{"-pv", "--ignore-fail-on-non-empty", "a/b/c"}, 0, func(dir string) {
+			os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755)                   //nolint:errcheck // test setup
+			os.WriteFile(filepath.Join(dir, "a", "blocker.txt"), []byte("x"), 0o644) //nolint:errcheck // test setup
+		})
+	})
+
+	// R3.4: verbose output for multiple directories.
+	t.Run("R3.4_verbose_multiple", func(t *testing.T) {
+		t.Parallel()
+		assertBothOutputMatch(t, goBin, refBin, []string{"-v", "dir1", "dir2"}, 0, func(dir string) {
+			os.Mkdir(filepath.Join(dir, "dir1"), 0o755) //nolint:errcheck // test setup
+			os.Mkdir(filepath.Join(dir, "dir2"), 0o755) //nolint:errcheck // test setup
+		})
+	})
 }
 
 // assertBothRemoveDir runs both binaries with fresh setup and verifies both
@@ -195,9 +260,24 @@ func assertBothExitCode(t *testing.T, goBin, refBin string, args []string, wantE
 	}
 }
 
+// runResult holds the output and exit code of a binary execution.
+type runResult struct {
+	exitCode int
+	stdout   string
+	stderr   string
+}
+
 // runWithSetup creates a fresh temp directory, runs setup, then executes the
 // binary. Returns the exit code.
 func runWithSetup(t *testing.T, binary string, args []string, setup func(dir string)) int {
+	t.Helper()
+	r := runWithSetupFull(t, binary, args, setup)
+	return r.exitCode
+}
+
+// runWithSetupFull creates a fresh temp directory, runs setup, then executes
+// the binary. Returns exit code, stdout, and stderr.
+func runWithSetupFull(t *testing.T, binary string, args []string, setup func(dir string)) runResult {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -207,21 +287,43 @@ func runWithSetup(t *testing.T, binary string, args []string, setup func(dir str
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 	if err == nil {
-		return 0
+		return runResult{exitCode: 0, stdout: stdout.String(), stderr: stderr.String()}
 	}
 
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode()
+		return runResult{exitCode: exitErr.ExitCode(), stdout: stdout.String(), stderr: stderr.String()}
 	}
 
 	t.Fatalf("failed to execute %s: %v", binary, err)
-	return -1
+	return runResult{exitCode: -1}
+}
+
+// assertBothOutputMatch runs both binaries with fresh setup and verifies both
+// produce the same exit code and stdout output.
+func assertBothOutputMatch(t *testing.T, goBin, refBin string, args []string, wantExit int, setup func(dir string)) {
+	t.Helper()
+
+	refResult := runWithSetupFull(t, refBin, args, setup)
+	goResult := runWithSetupFull(t, goBin, args, setup)
+
+	if refResult.exitCode != goResult.exitCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d, args=%v", refResult.exitCode, goResult.exitCode, args)
+	}
+	if goResult.exitCode != wantExit {
+		t.Errorf("expected exit %d, got %d, args=%v", wantExit, goResult.exitCode, args)
+	}
+	refNorm := binaryNameRe.ReplaceAllString(refResult.stdout, "PROG:")
+	goNorm := binaryNameRe.ReplaceAllString(goResult.stdout, "PROG:")
+	if refNorm != goNorm {
+		t.Errorf("stdout mismatch, args=%v\nref: %q\ngo:  %q", args, refResult.stdout, goResult.stdout)
+	}
 }
 
 // normalizeAllOutput replaces all output with empty bytes so that only
