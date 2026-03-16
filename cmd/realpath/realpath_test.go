@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/realpath against grealpath (GNU coreutils).
-// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1, R3.3, R4.1-R4.3 test coverage.
+// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1-R3.3, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -88,6 +88,20 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "R3.1_no_operands",
 			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: unknown short flag produces error, exit 1.
+		{
+			Name:      "R3.2_unknown_short_flag",
+			Args:      []string{"-x", "/tmp"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: unknown long flag produces error, exit 1.
+		{
+			Name:      "R3.2_unknown_long_flag",
+			Args:      []string{"--foobar", "/tmp"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},

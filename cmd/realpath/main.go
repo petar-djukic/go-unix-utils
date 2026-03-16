@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1, R3.3:
+// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1-R3.3:
 // cmd/realpath resolves each command-line path argument to its canonical
 // absolute pathname, prints one per line, and reports errors for nonexistent
-// paths. Supports -s (no symlink resolution), --relative-to, and
-// --relative-base flags. Installs SIGPIPE handler for clean exit on broken pipe.
+// paths. Supports -e (all must exist), -m (none must exist), -s (no symlink
+// resolution), --relative-to, and --relative-base flags. Installs SIGPIPE
+// handler for clean exit on broken pipe.
 package main
 
 import (
@@ -28,41 +29,101 @@ func main() {
 
 	var (
 		strip        bool
+		modeExisting bool
+		modeMissing  bool
 		relativeTo   string
 		relativeBase string
 		paths        []string
 	)
 
-	// D2: parse flags following the pattern established in R1.1-R1.4.
+	// Parse flags following the pattern established in R1.1-R1.5.
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			paths = append(paths, args[i+1:]...)
 			break
 		}
-		switch {
-		case arg == "-s" || arg == "--strip" || arg == "--no-symlinks":
-			// R1.5: do not resolve symlinks.
-			strip = true
-		case arg == "--relative-to":
-			// R2.1: next argument is the directory.
-			i++
-			if i < len(args) {
-				relativeTo = args[i]
+		if arg == "-" {
+			paths = append(paths, arg)
+			continue
+		}
+		if strings.HasPrefix(arg, "--") {
+			// Long flags.
+			switch {
+			case arg == "--canonicalize-existing":
+				// R1.3: all components must exist.
+				modeExisting = true
+			case arg == "--canonicalize-missing":
+				// R1.4: no components need to exist.
+				modeMissing = true
+			case arg == "--canonicalize":
+				// Default mode: all but last component must exist (no-op).
+			case arg == "--strip" || arg == "--no-symlinks":
+				// R1.5: do not resolve symlinks.
+				strip = true
+			case arg == "--logical":
+				// Logical mode: accepted for compatibility.
+			case arg == "--physical":
+				// Physical mode: accepted for compatibility.
+			case arg == "--quiet":
+				// Quiet mode: accepted for compatibility.
+			case arg == "--zero":
+				// NUL-terminated output: accepted for compatibility.
+			case arg == "--relative-to":
+				// R2.1: next argument is the directory.
+				i++
+				if i < len(args) {
+					relativeTo = args[i]
+				}
+			case strings.HasPrefix(arg, "--relative-to="):
+				// R2.1: value after '='.
+				relativeTo = arg[len("--relative-to="):]
+			case arg == "--relative-base":
+				// R2.2: next argument is the directory.
+				i++
+				if i < len(args) {
+					relativeBase = args[i]
+				}
+			case strings.HasPrefix(arg, "--relative-base="):
+				// R2.2: value after '='.
+				relativeBase = arg[len("--relative-base="):]
+			default:
+				// R3.2: unknown long flag.
+				fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)                   //nolint:errcheck // best-effort diagnostic
+				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)               //nolint:errcheck // best-effort diagnostic
+				os.Exit(1)
 			}
-		case strings.HasPrefix(arg, "--relative-to="):
-			// R2.1: value after '='.
-			relativeTo = arg[len("--relative-to="):]
-		case arg == "--relative-base":
-			// R2.2: next argument is the directory.
-			i++
-			if i < len(args) {
-				relativeBase = args[i]
+		} else if strings.HasPrefix(arg, "-") {
+			// Short flags — process each character.
+			for _, c := range arg[1:] {
+				switch c {
+				case 'e':
+					// R1.3: all components must exist.
+					modeExisting = true
+				case 'm':
+					// R1.4: no components need to exist.
+					modeMissing = true
+				case 's':
+					// R1.5: do not resolve symlinks.
+					strip = true
+				case 'E':
+					// Default mode: all but last component must exist (no-op, already default).
+				case 'L':
+					// Logical mode: resolve .. before symlinks (accepted, not differentiated).
+				case 'P':
+					// Physical mode: resolve symlinks (default, no-op).
+				case 'q':
+					// Quiet mode: suppress error messages (accepted for compatibility).
+				case 'z':
+					// Zero mode: NUL-terminated output (accepted for compatibility).
+				default:
+					// R3.2: unknown short flag.
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, c)                   //nolint:errcheck // best-effort diagnostic
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)            //nolint:errcheck // best-effort diagnostic
+					os.Exit(1)
+				}
 			}
-		case strings.HasPrefix(arg, "--relative-base="):
-			// R2.2: value after '='.
-			relativeBase = arg[len("--relative-base="):]
-		default:
+		} else {
 			paths = append(paths, arg)
 		}
 	}
@@ -76,12 +137,12 @@ func main() {
 
 	// Resolve the --relative-to and --relative-base directories themselves.
 	if relativeTo != "" {
-		if r, err := resolvePath(relativeTo, strip); err == nil {
+		if r, err := resolvePath(relativeTo, strip, modeExisting, modeMissing); err == nil {
 			relativeTo = r
 		}
 	}
 	if relativeBase != "" {
-		if r, err := resolvePath(relativeBase, strip); err == nil {
+		if r, err := resolvePath(relativeBase, strip, modeExisting, modeMissing); err == nil {
 			relativeBase = r
 		}
 	}
@@ -94,7 +155,7 @@ func main() {
 	exitCode := 0
 
 	for _, arg := range paths {
-		resolved, err := resolvePath(arg, strip)
+		resolved, err := resolvePath(arg, strip, modeExisting, modeMissing)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, arg, err) //nolint:errcheck // best-effort diagnostic
 			exitCode = 1
@@ -110,9 +171,17 @@ func main() {
 
 // resolvePath resolves a path using the appropriate mode.
 // When strip is true (R1.5), symlinks are not resolved.
-func resolvePath(path string, strip bool) (string, error) {
+// When modeExisting is true (R1.3: -e), all components must exist.
+// When modeMissing is true (R1.4: -m), no components need to exist.
+func resolvePath(path string, strip, modeExisting, modeMissing bool) (string, error) {
 	if strip {
 		return resolveStrip(path)
+	}
+	if modeMissing {
+		return resolveMissing(path)
+	}
+	if modeExisting {
+		return resolveExisting(path)
 	}
 	return resolve(path)
 }
@@ -146,6 +215,50 @@ func resolve(path string) (string, error) {
 	}
 
 	return filepath.Join(absDir, base), nil
+}
+
+// resolveExisting requires every component of the path to exist (R1.3: -e).
+func resolveExisting(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(resolved)
+}
+
+// resolveMissing resolves symlinks in the existing prefix and constructs the
+// remainder without checking existence (R1.4: -m).
+func resolveMissing(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+
+	// Try full resolution first.
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		return resolved, nil
+	}
+
+	// Walk up to find the longest existing prefix, resolve it, then append
+	// the missing suffix.
+	current := abs
+	var suffix []string
+	for {
+		parent := filepath.Dir(current)
+		suffix = append([]string{filepath.Base(current)}, suffix...)
+		if parent == current {
+			// Reached root — nothing exists, return the cleaned absolute path.
+			return filepath.Clean(abs), nil
+		}
+		current = parent
+		resolved, err = filepath.EvalSymlinks(current)
+		if err == nil {
+			// Existing prefix found — join with the unresolved suffix.
+			parts := append([]string{resolved}, suffix...)
+			return filepath.Clean(filepath.Join(parts...)), nil
+		}
+	}
 }
 
 // resolveStrip cleans . and .. components and makes the path absolute without
