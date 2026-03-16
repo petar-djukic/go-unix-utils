@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts against ts (moreutils).
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R9.1-R9.2 test coverage.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R9.1-R9.2 test coverage.
 package main
 
 import (
@@ -238,6 +238,45 @@ func TestDiff(t *testing.T) {
 			Name:      "R2.3_mixed_format_with_subsecond",
 			Args:      []string{"%Y-%m-%d %.T"},
 			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.1: piped multi-line output with default format confirms line-buffered flush.
+		{
+			Name:      "R5.1_piped_multiline_default",
+			Stdin:     []byte("alpha\nbeta\ngamma\ndelta\nepsilon\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.3: piped output with custom strftime format.
+		{
+			Name:      "R5.3_piped_custom_format",
+			Args:      []string{"%Y-%m-%dT%H:%M:%S"},
+			Stdin:     []byte("one\ntwo\nthree\nfour\nfive\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.3: piped output with incremental mode.
+		{
+			Name:      "R5.3_piped_incremental_multiline",
+			Args:      []string{"-i"},
+			Stdin:     []byte("a\nb\nc\nd\ne\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.3: piped output with elapsed mode.
+		{
+			Name:      "R5.3_piped_elapsed_multiline",
+			Args:      []string{"-s"},
+			Stdin:     []byte("a\nb\nc\nd\ne\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.3: piped output with subsecond extension %.T across multiple lines.
+		{
+			Name:      "R5.3_piped_subsecond_dotT",
+			Args:      []string{"%.T"},
+			Stdin:     []byte("x\ny\nz\n"),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},

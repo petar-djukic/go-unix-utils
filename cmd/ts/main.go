@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3: cmd/ts
-// reads stdin line by line and prepends a strftime-formatted timestamp to each
-// line, writing to stdout. Supports a default format ("%b %d %H:%M:%S"), an
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3:
+// cmd/ts reads stdin line by line and prepends a strftime-formatted timestamp to
+// each line, writing to stdout. Supports a default format ("%b %d %H:%M:%S"), an
 // optional positional format argument with ts-specific subsecond extensions
 // (%.S, %.s, %.T), incremental mode (-i), and elapsed-since-start mode (-s).
+// R5.1-R5.3: uses bufio.Writer with explicit Flush() after each output line for
+// line-buffered output across all modes (default, custom, incremental, elapsed).
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
