@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cut against the GNU reference binary (gcut).
-// Implements prd026-cut R1.1-R1.4 and R2.1-R2.4 test coverage: byte selection,
-// character selection, field selection with delimiter support, range list
-// parsing, and mode exclusivity error handling.
+// Implements prd026-cut R1.1-R1.4, R2.1-R2.4, and R3.1-R3.3 test coverage:
+// byte selection, character selection, field selection with delimiter support,
+// range list parsing, mode exclusivity error handling, stdin input, multi-file
+// sequential processing, and dash-as-stdin.
 package main
 
 import (
@@ -464,6 +465,69 @@ func TestDiff(t *testing.T) {
 			Name:  "f_empty_input",
 			Args:  []string{"-d:", "-f", "1"},
 			Stdin: []byte{},
+		},
+
+		// --- R3.1: read from stdin when no FILE operands given ---
+		{
+			// R3.1: field mode reads stdin when no files specified.
+			Name:  "f_stdin_no_files",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("a:b:c\nd:e:f\n"),
+		},
+		{
+			// R3.1: field mode stdin with suppress.
+			Name:  "f_stdin_suppress",
+			Args:  []string{"-d:", "-f", "1", "-s"},
+			Stdin: []byte("a:b\nno-delim\nc:d\n"),
+		},
+
+		// --- R3.2: multiple FILE operands processed sequentially ---
+		{
+			// R3.2: two colon-delimited files, field mode.
+			Name: "f_multi_file",
+			Args: []string{"-d:", "-f", "2", colonFile, colonFile},
+		},
+		{
+			// R3.2: multi-file with byte mode.
+			Name: "b_multi_file_concat",
+			Args: []string{"-b", "1-2", multiLineFile, colonFile},
+		},
+		{
+			// R3.2: field mode with output delimiter across files.
+			Name: "f_multi_file_output_delim",
+			Args: []string{"-d:", "-f", "1,3", "--output-delimiter=|", colonFile, colonFile},
+		},
+
+		// --- R3.3: dash as stdin ---
+		{
+			// R3.3: dash alone reads stdin in field mode.
+			Name:  "f_dash_stdin",
+			Args:  []string{"-d:", "-f", "2", "-"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			// R3.3: dash before a named file.
+			Name:  "f_dash_then_file",
+			Args:  []string{"-d:", "-f", "1", "-", colonFile},
+			Stdin: []byte("x:y:z\n"),
+		},
+		{
+			// R3.3: named file then dash.
+			Name:  "f_file_then_dash",
+			Args:  []string{"-d:", "-f", "1", colonFile, "-"},
+			Stdin: []byte("x:y:z\n"),
+		},
+		{
+			// R3.3: dash mixed among multiple named files.
+			Name:  "b_file_dash_file",
+			Args:  []string{"-b", "1-2", multiLineFile, "-", colonFile},
+			Stdin: []byte("stdin_data\n"),
+		},
+		{
+			// R3.3: multiple dash occurrences — each reads from current stdin position.
+			Name:  "f_double_dash",
+			Args:  []string{"-d:", "-f", "1", "-", "-"},
+			Stdin: []byte("first:line\nsecond:line\n"),
 		},
 	}
 
