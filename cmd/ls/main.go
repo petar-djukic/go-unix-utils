@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.12: basic directory listing with single-column
+// Implements prd008-ls R1.1-R1.14: basic directory listing with single-column
 // output (non-TTY default), dotfile filtering, multi-directory headers, mixed
 // file/directory argument handling, error diagnostics, -1 single-column flag,
 // -l long format with permissions/nlink/owner/group/size/mtime, file metadata
 // via pkg/sys.Lstat, owner/group name resolution, -a (all entries including
-// dotfiles), -r (reverse sort), -R (recursive listing), and -p (directory
-// indicator). Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
+// dotfiles), -r (reverse sort), -R (recursive listing), -p (directory
+// indicator), -C (multi-column vertical fill), -x (multi-column horizontal
+// fill), and format flag mutual exclusivity (last flag wins).
+// Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
 import (
@@ -18,7 +20,9 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -32,6 +36,8 @@ const (
 	formatDefault    outputFormat = iota // single-column when not TTY
 	formatSingleCol                     // -1: one entry per line
 	formatLong                          // -l: long format
+	formatMultiCol                      // -C: multi-column, vertical fill
+	formatHorizontal                    // -x: multi-column, horizontal fill
 )
 
 // lsOptions holds parsed command-line options.
@@ -94,6 +100,25 @@ func main() {
 			entries = append(entries, longEntry{name: displayName, path: f, fi: fi})
 		}
 		printLongEntries(entries)
+	} else if (opts.format == formatMultiCol || opts.format == formatHorizontal) && len(files) > 0 {
+		// R1.13/R1.14: Multi-column output for file arguments.
+		var displayNames []string
+		for _, f := range files {
+			displayName := f
+			if opts.indicator {
+				fi, err := os.Lstat(f)
+				if err == nil && fi.IsDir() {
+					displayName = f + "/"
+				}
+			}
+			displayNames = append(displayNames, displayName)
+		}
+		tw := getTermWidth()
+		if opts.format == formatMultiCol {
+			printMultiCol(displayNames, tw)
+		} else {
+			printHorizontalCols(displayNames, tw)
+		}
 	} else {
 		// R1.3: Print file arguments first, one per line.
 		for _, f := range files {
@@ -138,13 +163,15 @@ func main() {
 // Flags are single-character and may be combined (e.g., -la). "--" ends flag
 // parsing. Unknown flags cause exit 2 matching GNU ls.
 // R1.5/R1.6: -1 sets single-column mode; -l sets long format.
+// R1.13: -x sets horizontal multi-column mode.
+// R1.14: -C, -x, -l, -1 are format flags; last flag wins (except -1 does
+// not override -l, matching GNU ls behavior).
 // R2.1: -a includes dotfiles. R2.7: -r reverses sort.
 // R3.11: -R lists recursively. R3.8 (partial): -p appends '/' to directories.
 func parseArgs(args []string) (lsOptions, []string) {
 	opts := lsOptions{format: formatDefault}
 	var paths []string
 	flagsDone := false
-	longFlag := false
 
 	for _, arg := range args {
 		if flagsDone {
@@ -160,13 +187,19 @@ func parseArgs(args []string) (lsOptions, []string) {
 				switch ch {
 				case '1':
 					// R1.5: -1 forces single-column output.
-					if !longFlag {
+					// GNU ls: -1 does not override -l.
+					if opts.format != formatLong {
 						opts.format = formatSingleCol
 					}
 				case 'l':
-					// R1.6: -l forces long format output. Overrides -1.
+					// R1.6: -l forces long format output.
 					opts.format = formatLong
-					longFlag = true
+				case 'C':
+					// R1.11/R1.14: -C forces multi-column vertical fill.
+					opts.format = formatMultiCol
+				case 'x':
+					// R1.13/R1.14: -x forces multi-column horizontal fill.
+					opts.format = formatHorizontal
 				case 'a':
 					// R2.1: -a includes all entries including "." and "..".
 					opts.showAll = true
@@ -191,6 +224,177 @@ func parseArgs(args []string) (lsOptions, []string) {
 	}
 
 	return opts, paths
+}
+
+// defaultTermWidth is used when stdout is not a TTY (piped) and -C or -x is
+// given, matching GNU ls behavior.
+const defaultTermWidth = 80
+
+// tabSize is the tab stop interval used by GNU ls for column alignment.
+const tabSize = 8
+
+// getTermWidth returns the terminal width for multi-column layout. Returns
+// defaultTermWidth when stdout is not a TTY.
+func getTermWidth() int {
+	w, err := sys.TerminalWidth()
+	if err != nil {
+		return defaultTermWidth
+	}
+	return w
+}
+
+// writeIndent writes tabs and spaces to advance output from column position
+// 'from' to column position 'to', matching the GNU ls indent algorithm.
+// Returns the final column position.
+func writeIndent(from, to int) int {
+	for from < to {
+		if tabSize > 0 && to/tabSize > from/tabSize {
+			fmt.Print("\t")
+			from += tabSize - from%tabSize
+		} else {
+			fmt.Print(" ")
+			from++
+		}
+	}
+	return from
+}
+
+// printMultiCol prints entries in multi-column vertical-fill layout using
+// format.Columns. Entries fill top-to-bottom, left-to-right.
+// R1.11/R1.12: -C multi-column vertical fill.
+func printMultiCol(names []string, termWidth int) {
+	if len(names) == 0 {
+		return
+	}
+
+	rows := format.Columns(names, termWidth)
+	if len(rows) == 0 {
+		return
+	}
+
+	// Determine number of columns and compute per-column max widths.
+	numCols := len(rows[0])
+	colWidths := make([]int, numCols)
+	for _, row := range rows {
+		for c, entry := range row {
+			w := utf8.RuneCountInString(entry)
+			if w > colWidths[c] {
+				colWidths[c] = w
+			}
+		}
+	}
+
+	// Compute column start positions.
+	const minGap = 2
+	colStart := make([]int, numCols)
+	pos := 0
+	for c := range numCols {
+		colStart[c] = pos
+		pos += colWidths[c] + minGap
+	}
+
+	for _, row := range rows {
+		curPos := 0
+		for c, entry := range row {
+			if c > 0 {
+				curPos = writeIndent(curPos, colStart[c])
+			}
+			fmt.Print(entry)
+			curPos += utf8.RuneCountInString(entry)
+		}
+		fmt.Println()
+	}
+}
+
+// printHorizontalCols prints entries in multi-column horizontal-fill layout.
+// Entries fill left-to-right, top-to-bottom, matching GNU ls -x.
+// R1.13: -x multi-column horizontal fill.
+func printHorizontalCols(names []string, termWidth int) {
+	if len(names) == 0 {
+		return
+	}
+
+	// Precompute display widths.
+	widths := make([]int, len(names))
+	for i, name := range names {
+		widths[i] = utf8.RuneCountInString(name)
+	}
+
+	const minGap = 2
+
+	// Try column counts from max down to 1 to find the widest layout that fits.
+	bestCols := 1
+	for numCols := len(names); numCols > 1; numCols-- {
+		numRows := (len(names) + numCols - 1) / numCols
+
+		totalWidth := 0
+		fits := true
+		for col := range numCols {
+			colMax := 0
+			for row := range numRows {
+				idx := row*numCols + col // horizontal: row-major order
+				if idx >= len(names) {
+					continue
+				}
+				if widths[idx] > colMax {
+					colMax = widths[idx]
+				}
+			}
+			totalWidth += colMax
+			if col < numCols-1 {
+				totalWidth += minGap
+			}
+			if totalWidth > termWidth {
+				fits = false
+				break
+			}
+		}
+		if fits {
+			bestCols = numCols
+			break
+		}
+	}
+
+	numRows := (len(names) + bestCols - 1) / bestCols
+
+	// Compute per-column widths for the chosen layout.
+	colWidths := make([]int, bestCols)
+	for col := range bestCols {
+		for row := range numRows {
+			idx := row*bestCols + col
+			if idx >= len(names) {
+				continue
+			}
+			if widths[idx] > colWidths[col] {
+				colWidths[col] = widths[idx]
+			}
+		}
+	}
+
+	// Compute column start positions.
+	colStart := make([]int, bestCols)
+	pos := 0
+	for c := range bestCols {
+		colStart[c] = pos
+		pos += colWidths[c] + minGap
+	}
+
+	// Print row by row, left to right.
+	for row := range numRows {
+		curPos := 0
+		for col := range bestCols {
+			idx := row*bestCols + col
+			if idx >= len(names) {
+				break
+			}
+			if col > 0 {
+				curPos = writeIndent(curPos, colStart[col])
+			}
+			fmt.Print(names[idx])
+			curPos += widths[idx]
+		}
+		fmt.Println()
+	}
 }
 
 // longEntry holds the name and metadata for a single entry in long format.
@@ -261,6 +465,26 @@ func listDir(path string, opts lsOptions) error {
 		}
 		fmt.Printf("total %d\n", totalBlocks/2)
 		printLongEntries(longEntries)
+	} else if opts.format == formatMultiCol || opts.format == formatHorizontal {
+		// R1.13/R1.14: Multi-column output.
+		var displayNames []string
+		for _, name := range names {
+			displayName := name
+			if opts.indicator {
+				fullPath := filepath.Join(path, name)
+				fi, err := os.Lstat(fullPath)
+				if err == nil && fi.IsDir() {
+					displayName = name + "/"
+				}
+			}
+			displayNames = append(displayNames, displayName)
+		}
+		tw := getTermWidth()
+		if opts.format == formatMultiCol {
+			printMultiCol(displayNames, tw)
+		} else {
+			printHorizontalCols(displayNames, tw)
+		}
 	} else {
 		// R1.1/R1.2/R1.5: Single-column output.
 		for _, name := range names {
