@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3,
+// R5.1-R5.4, R6.1-R6.2.
 // sponge reads all of stdin into a buffer before writing to the output file,
 // enabling safe in-place pipeline rewrites. Supports -a append mode and
 // passthrough to stdout when no filename is given. Installs SIGPIPE handler

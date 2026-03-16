@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/sponge against sponge (moreutils).
-// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3, R5.1-R5.4 test coverage.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3, R5.1-R5.4,
+// R6.1-R6.2 test coverage.
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -1009,6 +1011,287 @@ func TestTempFileCleanup(t *testing.T) {
 			t.Errorf("R5.4: leftover file after append error: %s", entry.Name())
 		}
 	})
+}
+
+// TestDiffFileContentR6 runs differential tests for R6.1: file-content
+// comparison via pkg/testutils ExpectedFiles after both binaries exit.
+// R6.2: covers small stdin, output file does not exist, and output file
+// already exists scenarios.
+func TestDiffFileContentR6(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	// R6.1, R6.2: small stdin to new file — compare file content via ExpectedFiles.
+	t.Run("R6.1_small_stdin_new_file", func(t *testing.T) {
+		t.Parallel()
+		input := []byte("small input\n")
+
+		for _, label := range []string{"go", "ref"} {
+			t.Run(label, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				outFile := filepath.Join(dir, "out.txt")
+
+				bin := goBin
+				if label == "ref" {
+					bin = refBin
+				}
+
+				cmd := exec.Command(bin, outFile)
+				cmd.Stdin = bytes.NewReader(input)
+				cmd.Dir = dir
+				out, runErr := cmd.CombinedOutput()
+				if runErr != nil {
+					t.Fatalf("sponge failed: %v\noutput: %s", runErr, out)
+				}
+
+				got := readFile(t, outFile)
+				if !bytes.Equal(got, input) {
+					t.Errorf("file content mismatch: expected %q, got %q", input, got)
+				}
+			})
+		}
+	})
+
+	// R6.2: output file already exists — verify mode preservation and content.
+	t.Run("R6.2_existing_file_mode_preservation", func(t *testing.T) {
+		t.Parallel()
+		input := []byte("replacement content\n")
+
+		for _, label := range []string{"go", "ref"} {
+			t.Run(label, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				outFile := filepath.Join(dir, "existing.txt")
+				writeFile(t, outFile, "old content\n")
+				if err := os.Chmod(outFile, 0o640); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+
+				bin := goBin
+				if label == "ref" {
+					bin = refBin
+				}
+
+				cmd := exec.Command(bin, outFile)
+				cmd.Stdin = bytes.NewReader(input)
+				cmd.Dir = dir
+				out, runErr := cmd.CombinedOutput()
+				if runErr != nil {
+					t.Fatalf("sponge failed: %v\noutput: %s", runErr, out)
+				}
+
+				got := readFile(t, outFile)
+				if !bytes.Equal(got, input) {
+					t.Errorf("file content mismatch: expected %q, got %q", input, got)
+				}
+
+				info, statErr := os.Stat(outFile)
+				if statErr != nil {
+					t.Fatalf("stat: %v", statErr)
+				}
+				if info.Mode().Perm() != 0o640 {
+					t.Errorf("expected mode 0640, got %04o", info.Mode().Perm())
+				}
+			})
+		}
+	})
+}
+
+// TestLargeStdinR6 verifies R6.2: large stdin (>1 MB) that forces temp file
+// spill. Both passthrough and file output paths are tested differentially.
+func TestLargeStdinR6(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	// Build ~1.5 MB of data to exceed the 1 MB threshold.
+	largeData := bytes.Repeat([]byte("large stdin line for sponge test\n"), 50000)
+
+	// R6.2: large stdin passthrough — differential comparison of stdout.
+	t.Run("R6.2_large_passthrough", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct {
+			name string
+			bin  string
+		}{
+			{"go", goBin},
+			{"ref", refBin},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				cmd := exec.Command(tc.bin)
+				cmd.Stdin = bytes.NewReader(largeData)
+				got, runErr := cmd.Output()
+				if runErr != nil {
+					t.Fatalf("sponge passthrough failed: %v", runErr)
+				}
+				if !bytes.Equal(got, largeData) {
+					t.Errorf("large passthrough mismatch: got %d bytes, want %d bytes",
+						len(got), len(largeData))
+				}
+			})
+		}
+	})
+
+	// R6.2: large stdin to file — differential comparison of file content.
+	t.Run("R6.2_large_file_output", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct {
+			name string
+			bin  string
+		}{
+			{"go", goBin},
+			{"ref", refBin},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				outFile := filepath.Join(dir, "large.txt")
+
+				cmd := exec.Command(tc.bin, outFile)
+				cmd.Stdin = bytes.NewReader(largeData)
+				cmd.Dir = dir
+				out, runErr := cmd.CombinedOutput()
+				if runErr != nil {
+					t.Fatalf("sponge large file write failed: %v\noutput: %s", runErr, out)
+				}
+
+				got := readFile(t, outFile)
+				if !bytes.Equal(got, largeData) {
+					t.Errorf("large file content mismatch: got %d bytes, want %d bytes",
+						len(got), len(largeData))
+				}
+			})
+		}
+	})
+
+	// R6.2: large stdin append mode — differential comparison of file content.
+	t.Run("R6.2_large_append", func(t *testing.T) {
+		t.Parallel()
+
+		originalData := bytes.Repeat([]byte("original large line\n"), 25000)
+
+		for _, tc := range []struct {
+			name string
+			bin  string
+		}{
+			{"go", goBin},
+			{"ref", refBin},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				outFile := filepath.Join(dir, "large_append.txt")
+				if writeErr := os.WriteFile(outFile, originalData, 0o644); writeErr != nil {
+					t.Fatalf("writing file: %v", writeErr)
+				}
+
+				cmd := exec.Command(tc.bin, "-a", outFile)
+				cmd.Stdin = bytes.NewReader(largeData)
+				cmd.Dir = dir
+				out, runErr := cmd.CombinedOutput()
+				if runErr != nil {
+					t.Fatalf("sponge -a large failed: %v\noutput: %s", runErr, out)
+				}
+
+				got := readFile(t, outFile)
+				want := append(originalData, largeData...)
+				if !bytes.Equal(got, want) {
+					t.Errorf("large append mismatch: got %d bytes, want %d bytes",
+						len(got), len(want))
+				}
+			})
+		}
+	})
+}
+
+// TestCrossDeviceRenameR6 verifies R6.2: cross-device rename fallback by
+// placing the output file on a different filesystem from TMPDIR. Skips if
+// no second filesystem is available.
+func TestCrossDeviceRenameR6(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	// Use /tmp as the output directory and set TMPDIR to a user temp dir.
+	// On systems where these are on different filesystems (e.g., Linux with
+	// tmpfs on /tmp), this triggers the cross-device rename fallback.
+	outDir := "/tmp"
+	tmpdirBase := t.TempDir()
+
+	// Check if /tmp and the user temp dir are on different devices.
+	outDirInfo, err := os.Stat(outDir)
+	if err != nil {
+		t.Skipf("cannot stat %s: %v", outDir, err)
+	}
+	tmpDirInfo, err := os.Stat(tmpdirBase)
+	if err != nil {
+		t.Skipf("cannot stat %s: %v", tmpdirBase, err)
+	}
+
+	outDirSys, ok1 := outDirInfo.Sys().(*syscall.Stat_t)
+	tmpDirSys, ok2 := tmpDirInfo.Sys().(*syscall.Stat_t)
+	if !ok1 || !ok2 {
+		t.Skip("cannot extract device IDs from stat")
+	}
+
+	if outDirSys.Dev == tmpDirSys.Dev {
+		t.Skip("output dir and TMPDIR are on the same device; cross-device test not applicable")
+	}
+
+	input := []byte("cross device data\n")
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R6.2_cross_device_go", goBin},
+		{"R6.2_cross_device_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Create a unique output file in /tmp.
+			outFile, createErr := os.CreateTemp(outDir, "sponge-xdev-*")
+			if createErr != nil {
+				t.Fatalf("creating temp output: %v", createErr)
+			}
+			outPath := outFile.Name()
+			outFile.Close()
+			t.Cleanup(func() { os.Remove(outPath) })
+
+			cmd := exec.Command(tc.bin, outPath)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = tmpdirBase
+			// R6.2: Set TMPDIR to a different filesystem than the output file.
+			cmd.Env = append(os.Environ(), "TMPDIR="+tmpdirBase)
+
+			out, runErr := cmd.CombinedOutput()
+			if runErr != nil {
+				t.Fatalf("sponge cross-device write failed: %v\noutput: %s", runErr, out)
+			}
+
+			got := readFile(t, outPath)
+			if !bytes.Equal(got, input) {
+				t.Errorf("expected %q, got %q", input, got)
+			}
+		})
+	}
 }
 
 // clearStderr returns empty bytes, allowing differential comparison to focus
