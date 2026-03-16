@@ -4,6 +4,8 @@
 // Differential tests for cmd/uniq against guniq (GNU coreutils).
 // Covers prd028-uniq R1.1-R1.4: default adjacent-line deduplication,
 // stdin/file input, output file, and exit code behavior.
+// Covers prd028-uniq R2.1-R2.4: counting (-c), duplicate filtering (-d, -u),
+// and all-repeated (-D) output modes.
 package main
 
 import (
@@ -107,6 +109,255 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin_dash",
 			Args:  []string{"-"},
 			Stdin: []byte("x\nx\ny\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCount tests R2.4: -c prefixes lines with occurrence count.
+func TestDiffCount(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.4: count with mixed duplicates.
+		{
+			Name:  "count_mixed",
+			Args:  []string{"-c"},
+			Stdin: []byte("a\na\nb\na\n"),
+		},
+		// R2.4: count with single lines.
+		{
+			Name:  "count_single_lines",
+			Args:  []string{"-c"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R2.4: count with all identical.
+		{
+			Name:  "count_all_identical",
+			Args:  []string{"-c"},
+			Stdin: []byte("x\nx\nx\nx\n"),
+		},
+		// R2.4: count with no trailing newline.
+		{
+			Name:  "count_no_trailing_newline",
+			Args:  []string{"-c"},
+			Stdin: []byte("a\na\nb"),
+		},
+		// R2.4: count with empty input.
+		{
+			Name:  "count_empty",
+			Args:  []string{"-c"},
+			Stdin: []byte(""),
+		},
+		// R2.4: --count long form.
+		{
+			Name:  "count_long_flag",
+			Args:  []string{"--count"},
+			Stdin: []byte("a\na\nb\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRepeated tests R2.1: -d prints only duplicate lines.
+func TestDiffRepeated(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.1: only duplicated lines survive.
+		{
+			Name:  "repeated_mixed",
+			Args:  []string{"-d"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.1: no duplicates — empty output.
+		{
+			Name:  "repeated_no_dups",
+			Args:  []string{"-d"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R2.1: all identical — one output line.
+		{
+			Name:  "repeated_all_identical",
+			Args:  []string{"-d"},
+			Stdin: []byte("x\nx\nx\n"),
+		},
+		// R2.1: --repeated long form.
+		{
+			Name:  "repeated_long_flag",
+			Args:  []string{"--repeated"},
+			Stdin: []byte("a\na\nb\n"),
+		},
+		// R2.1: single line — not repeated, empty output.
+		{
+			Name:  "repeated_single_line",
+			Args:  []string{"-d"},
+			Stdin: []byte("hello\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffUnique tests R2.3: -u prints only unique (non-repeated) lines.
+func TestDiffUnique(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.3: only unique lines survive.
+		{
+			Name:  "unique_mixed",
+			Args:  []string{"-u"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.3: no duplicates — all lines output.
+		{
+			Name:  "unique_all_unique",
+			Args:  []string{"-u"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R2.3: all identical — empty output.
+		{
+			Name:  "unique_all_identical",
+			Args:  []string{"-u"},
+			Stdin: []byte("x\nx\nx\n"),
+		},
+		// R2.3: --unique long form.
+		{
+			Name:  "unique_long_flag",
+			Args:  []string{"--unique"},
+			Stdin: []byte("a\na\nb\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffAllRepeated tests R2.2/R2.4: -D prints all duplicate lines with
+// optional delimiter methods (none, prepend, separate).
+func TestDiffAllRepeated(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.2: -D prints all lines of duplicate groups.
+		{
+			Name:  "all_repeated_default",
+			Args:  []string{"-D"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.4: --all-repeated=none (same as -D).
+		{
+			Name:  "all_repeated_none",
+			Args:  []string{"--all-repeated=none"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.4: --all-repeated=prepend adds blank line before each group.
+		{
+			Name:  "all_repeated_prepend",
+			Args:  []string{"--all-repeated=prepend"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.4: --all-repeated=separate adds blank line between groups.
+		{
+			Name:  "all_repeated_separate",
+			Args:  []string{"--all-repeated=separate"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.2: no duplicates — empty output for -D.
+		{
+			Name:  "all_repeated_no_dups",
+			Args:  []string{"-D"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R2.2: all identical — all lines output.
+		{
+			Name:  "all_repeated_all_identical",
+			Args:  []string{"-D"},
+			Stdin: []byte("x\nx\nx\n"),
+		},
+		// R2.4: --all-repeated bare (no =METHOD) defaults to none.
+		{
+			Name:  "all_repeated_bare_long",
+			Args:  []string{"--all-repeated"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R2.4: prepend with single duplicate group.
+		{
+			Name:  "all_repeated_prepend_single_group",
+			Args:  []string{"--all-repeated=prepend"},
+			Stdin: []byte("a\nb\nb\nc\n"),
+		},
+		// R2.4: separate with multiple groups.
+		{
+			Name:  "all_repeated_separate_multi",
+			Args:  []string{"--all-repeated=separate"},
+			Stdin: []byte("a\na\nb\nc\nc\nd\nd\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCombinedFlags tests AC5: combined flag interactions (-c -d, -c -u).
+func TestDiffCombinedFlags(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// AC5: -c -d counts only repeated groups.
+		{
+			Name:  "count_repeated",
+			Args:  []string{"-c", "-d"},
+			Stdin: []byte("a\na\nb\nc\nc\nc\n"),
+		},
+		// AC5: -c -u counts only unique groups.
+		{
+			Name:  "count_unique",
+			Args:  []string{"-c", "-u"},
+			Stdin: []byte("a\na\nb\nc\nc\nc\n"),
+		},
+		// AC5: -cd combined short form.
+		{
+			Name:  "count_repeated_short",
+			Args:  []string{"-cd"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// AC5: -cu combined short form.
+		{
+			Name:  "count_unique_short",
+			Args:  []string{"-cu"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
 		},
 	}
 
