@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd024-expand R1.1-R1.4, R2.1-R2.4: cmd/expand converts tab
-// characters to the appropriate number of spaces to reach the next tab stop.
+// Implements prd024-expand R1.1-R1.4, R2.1-R2.4, R3.1-R3.4: cmd/expand converts
+// tab characters to the appropriate number of spaces to reach the next tab stop.
 // Supports -t/--tabs for custom tab stop intervals or explicit position lists.
+// Supports -i/--initial to convert only leading tabs on each line.
 // Reads from files listed as arguments or stdin when no files are given.
 // Treats '-' as stdin. Installs SIGPIPE handler for clean exit on broken pipe.
 package main
@@ -56,6 +57,7 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 
 	ts := &tabStops{uniform: defaultTabStop}
+	initialOnly := false
 	args := os.Args[1:]
 	var files []string
 
@@ -64,6 +66,11 @@ func main() {
 		if arg == "--" {
 			files = append(files, args[i+1:]...)
 			break
+		}
+		// R3.1: parse -i/--initial flag.
+		if arg == "-i" || arg == "--initial" {
+			initialOnly = true
+			continue
 		}
 		// R2.1-R2.3: parse -t/--tabs option.
 		var tabVal string
@@ -96,17 +103,17 @@ func main() {
 	exitCode := 0
 
 	if len(files) == 0 {
-		// R1.1: no file arguments — read from stdin.
-		if err := expandReader(os.Stdin, w, ts); err != nil {
+		// R3.3: no file arguments — read from stdin.
+		if err := expandReader(os.Stdin, w, ts, initialOnly); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 			exitCode = 1
 		}
 	} else {
-		// R1.1: process each file in argument order.
+		// R3.4: process each file in argument order as a concatenated stream.
 		for _, name := range files {
 			if name == "-" {
-				// R1.4: '-' means read from stdin.
-				if err := expandReader(os.Stdin, w, ts); err != nil {
+				// R3.3: '-' means read from stdin.
+				if err := expandReader(os.Stdin, w, ts, initialOnly); err != nil {
 					fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 					exitCode = 1
 				}
@@ -119,7 +126,7 @@ func main() {
 				exitCode = 1
 				continue
 			}
-			if err := expandReader(f, w, ts); err != nil {
+			if err := expandReader(f, w, ts, initialOnly); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 				exitCode = 1
 			}
@@ -181,9 +188,13 @@ func parseTabStops(s string) (*tabStops, error) {
 // R1.2: consecutive tabs each advance to the next tab stop independently.
 // R1.3: non-tab characters are written unchanged; each byte counts as one column.
 // R1.4: newline resets the column position to 0 (0-indexed internally).
-func expandReader(r io.Reader, w *bufio.Writer, ts *tabStops) error {
+// R3.1: when initialOnly is true, only leading tabs (before the first non-blank
+// character on each line) are expanded; tabs after non-blank content pass through.
+func expandReader(r io.Reader, w *bufio.Writer, ts *tabStops, initialOnly bool) error {
 	br := bufio.NewReader(r)
 	col := 0
+	// R3.1: track whether we are still in the leading blank region of a line.
+	inInitial := true
 
 	for {
 		b, err := br.ReadByte()
@@ -196,6 +207,15 @@ func expandReader(r io.Reader, w *bufio.Writer, ts *tabStops) error {
 
 		switch b {
 		case '\t':
+			// R3.1, R3.2: when initialOnly is set and we have passed the leading
+			// blank region, output the tab character unchanged.
+			if initialOnly && !inInitial {
+				if err := w.WriteByte('\t'); err != nil {
+					return err
+				}
+				col++
+				continue
+			}
 			// R1.1, R1.2, R2.1-R2.2: replace tab with spaces to next tab stop.
 			spaces := ts.nextStop(col)
 			for range spaces {
@@ -210,12 +230,21 @@ func expandReader(r io.Reader, w *bufio.Writer, ts *tabStops) error {
 				return err
 			}
 			col = 0
+			inInitial = true
+		case ' ':
+			// Space is a blank character; does not end the initial region.
+			if err := w.WriteByte(' '); err != nil {
+				return err
+			}
+			col++
 		default:
-			// R1.3: non-tab characters pass through unchanged.
+			// R1.3: non-tab, non-blank characters pass through unchanged.
+			// R3.1: first non-blank character ends the initial region.
 			if err := w.WriteByte(b); err != nil {
 				return err
 			}
 			col++
+			inInitial = false
 		}
 	}
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/expand against the GNU reference binary (gexpand).
-// Implements prd024-expand R1.1-R1.4, R2.1-R2.4 test coverage.
+// Implements prd024-expand R1.1-R1.4, R2.1-R2.4, R3.1-R3.4 test coverage.
 package main
 
 import (
@@ -40,6 +40,22 @@ func TestDiff(t *testing.T) {
 
 	noTabFile := filepath.Join(tmpDir, "notabs.txt")
 	if err := os.WriteFile(noTabFile, []byte("hello world\n"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	// R3.4: files for multi-file concatenation test.
+	fileA := filepath.Join(tmpDir, "a.txt")
+	if err := os.WriteFile(fileA, []byte("\tline1\n"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+	fileB := filepath.Join(tmpDir, "b.txt")
+	if err := os.WriteFile(fileB, []byte("\tline2\n"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	// R3.1: file with leading and embedded tabs for -i tests.
+	initialFile := filepath.Join(tmpDir, "initial.txt")
+	if err := os.WriteFile(initialFile, []byte("\t\thello\tworld\n"), 0o644); err != nil {
 		t.Fatalf("write test file: %v", err)
 	}
 
@@ -292,6 +308,109 @@ func TestDiff(t *testing.T) {
 			// R2.1: file input with custom tab stop.
 			Name: "t_uniform_with_file",
 			Args: []string{"-t", "4", tabFile},
+		},
+		// R3.1: -i flag converts only leading tabs, leaving embedded tabs unchanged.
+		{
+			Name:  "initial_only_basic",
+			Args:  []string{"-i"},
+			Stdin: []byte("\thello\tworld\n"),
+		},
+		{
+			// R3.1: -i with multiple leading tabs.
+			Name:  "initial_only_multiple_leading",
+			Args:  []string{"-i"},
+			Stdin: []byte("\t\thello\tworld\n"),
+		},
+		{
+			// R3.1: -i with no leading tabs — all tabs are embedded, none expanded.
+			Name:  "initial_only_no_leading_tabs",
+			Args:  []string{"-i"},
+			Stdin: []byte("hello\tworld\n"),
+		},
+		{
+			// R3.1: -i with only leading tabs and no embedded tabs.
+			Name:  "initial_only_leading_only",
+			Args:  []string{"-i"},
+			Stdin: []byte("\t\thello\n"),
+		},
+		{
+			// R3.1: -i with leading spaces and tabs (spaces are blank, don't end initial).
+			Name:  "initial_only_leading_space_tab",
+			Args:  []string{"-i"},
+			Stdin: []byte(" \thello\tworld\n"),
+		},
+		{
+			// R3.1: -i across multiple lines — each line resets initial state.
+			Name:  "initial_only_multiline",
+			Args:  []string{"-i"},
+			Stdin: []byte("\thello\tworld\n\tfoo\tbar\n"),
+		},
+		{
+			// R3.1: -i with --initial long form.
+			Name:  "initial_long_form",
+			Args:  []string{"--initial"},
+			Stdin: []byte("\thello\tworld\n"),
+		},
+		{
+			// R3.1: -i with tab-only line.
+			Name:  "initial_only_tabs_only",
+			Args:  []string{"-i"},
+			Stdin: []byte("\t\t\t\n"),
+		},
+		{
+			// R3.1: -i with empty input.
+			Name:  "initial_only_empty",
+			Args:  []string{"-i"},
+			Stdin: []byte{},
+		},
+		// R3.2: -i combined with custom tab stops.
+		{
+			Name:  "initial_with_t4",
+			Args:  []string{"-i", "-t", "4"},
+			Stdin: []byte("\thello\tworld\n"),
+		},
+		{
+			Name:  "initial_with_t_list",
+			Args:  []string{"-i", "-t", "4,8,12"},
+			Stdin: []byte("\t\thello\tworld\n"),
+		},
+		{
+			// R3.2: -i with custom tab stops, multiple leading tabs.
+			Name:  "initial_with_t2_multiple_leading",
+			Args:  []string{"-i", "-t", "2"},
+			Stdin: []byte("\t\t\thello\tworld\n"),
+		},
+		{
+			// R3.2: -i with custom tab stop list and no embedded tabs.
+			Name:  "initial_with_t_list_no_embedded",
+			Args:  []string{"-i", "-t", "5,10"},
+			Stdin: []byte("\t\thello\n"),
+		},
+		// R3.3: stdin reading when no file arguments or '-' specified.
+		{
+			Name:  "stdin_no_args",
+			Stdin: []byte("from\tstdin\n"),
+		},
+		{
+			Name:  "stdin_dash_explicit",
+			Args:  []string{"-"},
+			Stdin: []byte("dash\tstdin\n"),
+		},
+		// R3.4: multiple file arguments processed as concatenated stream.
+		{
+			Name: "multifile_concatenation",
+			Args: []string{fileA, fileB},
+		},
+		{
+			// R3.4: file and stdin interleaved.
+			Name:  "multifile_with_stdin",
+			Args:  []string{fileA, "-", fileB},
+			Stdin: []byte("stdin\tline\n"),
+		},
+		{
+			// R3.1: -i with file input.
+			Name: "initial_with_file",
+			Args: []string{"-i", initialFile},
 		},
 	}
 
