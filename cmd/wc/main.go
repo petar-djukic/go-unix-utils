@@ -241,10 +241,12 @@ func main() {
 		}
 	}
 
+	// R6.3: exit 1 on stdout write error during flush.
 	if werr := w.Flush(); werr != nil {
 		if isEPIPE(werr) {
 			os.Exit(0)
 		}
+		fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, werr)
 		os.Exit(1)
 	}
 

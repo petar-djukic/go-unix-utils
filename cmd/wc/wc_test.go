@@ -3,8 +3,10 @@
 
 // Differential tests for cmd/wc against gwc (GNU coreutils).
 // Implements prd005-wc R1.1-R1.4, R2.1-R2.6, R3.1-R3.3, R4.1-R4.3,
-// R5.1-R5.2, R6.1-R6.2 test coverage.
+// R5.1-R5.2, R6.1-R6.3 test coverage.
 // R5.1: all tests set LC_ALL=C via the testutils harness default.
+// R6.3: stdout write errors are tested indirectly via SIGPIPE handling;
+// direct stdout failure injection is not possible via differential testing.
 package main
 
 import (
@@ -210,6 +212,52 @@ func TestDiff(t *testing.T) {
 				filepath.Join(tmpDir, "hello.txt"),
 				filepath.Join(tmpDir, "does-not-exist.txt"),
 				filepath.Join(tmpDir, "single-line.txt"),
+			},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R6.2: multiple non-existent files — exit 1 with errors for each.
+		{
+			Name: "R6.2_multiple_nonexistent",
+			Args: []string{
+				filepath.Join(tmpDir, "missing-a.txt"),
+				filepath.Join(tmpDir, "missing-b.txt"),
+			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R6.2: non-existent file at start, valid files follow — still outputs counts.
+		{
+			Name: "R6.2_nonexistent_first",
+			Args: []string{
+				filepath.Join(tmpDir, "does-not-exist.txt"),
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R6.2: non-existent file at end — valid files already printed.
+		{
+			Name: "R6.2_nonexistent_last",
+			Args: []string{
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+				filepath.Join(tmpDir, "does-not-exist.txt"),
+			},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R6.2: non-existent file with -l flag — exit 1, counts for valid files.
+		{
+			Name: "R6.2_nonexistent_with_flag",
+			Args: []string{
+				"-l",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "does-not-exist.txt"),
 			},
 			WorkDir:   tmpDir,
 			ExitCode:  1,
