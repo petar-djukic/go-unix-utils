@@ -95,9 +95,14 @@ func main() {
 	}
 
 	// R1.1: process each operand, printing the directory component.
+	// R3.3: check for stdout write errors and exit 1 if one occurs.
 	for _, name := range operands {
 		result := dirname(name)
-		fmt.Fprintf(os.Stdout, "%s%s", result, terminator) //nolint:errcheck // best-effort output
+		_, err := fmt.Fprintf(os.Stdout, "%s%s", result, terminator)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: write error\n", progName) //nolint:errcheck // best-effort diagnostic
+			os.Exit(1)
+		}
 	}
 }
 
