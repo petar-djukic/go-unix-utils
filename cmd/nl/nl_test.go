@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/nl against gnl (GNU coreutils).
-// Implements prd022-nl R1.1-R1.4, R2.1-R2.4, R4.1-R4.2 test coverage.
+// Implements prd022-nl R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4 test coverage.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -268,7 +269,107 @@ func TestDiffR2(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestDiffR4 covers section delimiter handling (prd022-nl R4.1-R4.2).
+// TestDiffR3 covers numbering format options (prd022-nl R3.1-R3.4).
+func TestDiffR3(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.1: -n ln left-justified numbers.
+		{
+			Name:  "R3.1_format_ln_left_justified",
+			Args:  []string{"-n", "ln"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -n rn right-justified (default, explicit).
+		{
+			Name:  "R3.1_format_rn_right_justified",
+			Args:  []string{"-n", "rn"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -n rz right-justified with leading zeros.
+		{
+			Name:  "R3.1_format_rz_leading_zeros",
+			Args:  []string{"-n", "rz"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -w sets field width.
+		{
+			Name:  "R3.2_width_3",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("x\ny\nz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -w with large width.
+		{
+			Name:  "R3.2_width_10",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: -s custom separator.
+		{
+			Name:  "R3.3_separator_colon_space",
+			Args:  []string{"-s", ": "},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: -s empty separator.
+		{
+			Name:  "R3.3_separator_empty",
+			Args:  []string{"-s", ""},
+			Stdin: []byte("foo\nbar\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: -v start value.
+		{
+			Name:  "R3.4_start_value_10",
+			Args:  []string{"-v", "10"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: -i increment.
+		{
+			Name:  "R3.4_increment_5",
+			Args:  []string{"-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: -v and -i combined.
+		{
+			Name:  "R3.4_start_10_increment_5",
+			Args:  []string{"-v", "10", "-i", "5"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Combined: -b a -n ln -w 3 -s ': '
+		{
+			Name:  "combined_ba_ln_w3_sep",
+			Args:  []string{"-ba", "-n", "ln", "-w", "3", "-s", ": "},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Combined: -n rz -w 4 with empty lines.
+		{
+			Name:  "combined_rz_w4_with_empty",
+			Args:  []string{"-n", "rz", "-w", "4"},
+			Stdin: []byte("x\n\ny\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffR4 covers section delimiter handling (prd022-nl R4.1-R4.4).
 func TestDiffR4(t *testing.T) {
 	t.Parallel()
 
@@ -297,9 +398,9 @@ func TestDiffR4(t *testing.T) {
 			Stdin: []byte("a\nb\n\\:\\:\\:\nheader\n\\:\\:\nc\nd\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
-		// R4.1: body and footer delimiters also reset counter (GNU behavior).
+		// R4.1: body and footer delimiters.
 		{
-			Name:  "R4.1_body_footer_reset",
+			Name:  "R4.1_body_footer_delimiters",
 			Stdin: []byte("a\n\\:\\:\nb\n\\:\nc\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
@@ -348,6 +449,246 @@ func TestDiffR4(t *testing.T) {
 			Stdin: []byte("\\:\\:\\:\n\\:\\:\n\\:\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R4.3: -p suppresses line counter reset on new page.
+		{
+			Name:  "R4.3_no_reset_with_p",
+			Args:  []string{"-p"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\n\\:\\:\nc\nd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.3: -p with multiple pages — numbering continues.
+		{
+			Name:  "R4.3_no_reset_multiple_pages",
+			Args:  []string{"-p", "-ba"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\n\\:\\:\nc\n\\:\\:\\:\n\\:\\:\nd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -l 2 join blank lines.
+		{
+			Name:  "R4.4_join_blank_lines_l2",
+			Args:  []string{"-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -l 2 with fewer consecutive empty lines.
+		{
+			Name:  "R4.4_join_blank_lines_l2_fewer",
+			Args:  []string{"-l", "2"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -l 3 join blank lines.
+		{
+			Name:  "R4.4_join_blank_lines_l3",
+			Args:  []string{"-l", "3"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -l 2 with -ba — -l has no effect with style a (all lines numbered).
+		{
+			Name:  "R4.4_join_blank_with_style_a",
+			Args:  []string{"-ba", "-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffErrorCases covers error handling (prd022-nl R4.1 error diagnostics).
+func TestDiffErrorCases(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1: invalid -w value.
+		{
+			Name:      "error_invalid_w_value",
+			Args:      []string{"-w", "abc"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeErrorMessage},
+		},
+		// R4.1: invalid -i value.
+		{
+			Name:      "error_invalid_i_value",
+			Args:      []string{"-i", "xyz"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeErrorMessage},
+		},
+		// R4.1: invalid -v value.
+		{
+			Name:      "error_invalid_v_value",
+			Args:      []string{"-v", "abc"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeErrorMessage},
+		},
+		// R4.1: invalid -l value.
+		{
+			Name:      "error_invalid_l_value",
+			Args:      []string{"-l", "foo"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeErrorMessage},
+		},
+		// R4.1: invalid -n format value.
+		{
+			Name:      "error_invalid_n_format",
+			Args:      []string{"-n", "xx"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeErrorMessage},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelpVersion tests --help and --version output.
+// These are not compared against the reference binary since output text differs.
+// Instead we verify the exit code is 0 and output goes to stdout.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R4.2: --help exits 0 and produces output on stdout.
+	t.Run("help_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--help")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--help failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--help produced no output")
+		}
+		if !bytes.Contains(out, []byte("Usage:")) {
+			t.Fatalf("--help output missing 'Usage:': %s", out)
+		}
+	})
+
+	// R4.3: --version exits 0 and prints version info.
+	t.Run("version_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--version")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--version failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--version produced no output")
+		}
+		if !bytes.Contains(out, []byte("nl")) {
+			t.Fatalf("--version output missing 'nl': %s", out)
+		}
+	})
+}
+
+// TestDiffEdgeCases covers edge cases including empty input, binary input,
+// and very long lines (prd022-nl R4.4).
+func TestDiffEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	// Generate a long line for testing.
+	longLine := strings.Repeat("x", 4096) + "\n"
+
+	// Binary content with null bytes and control characters.
+	binaryContent := []byte("hello\x00world\x01test\x02line\n")
+
+	tests := []testutils.DiffTest{
+		// Edge: very long line.
+		{
+			Name:  "edge_very_long_line",
+			Stdin: []byte(longLine),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: binary input with null bytes.
+		{
+			Name:  "edge_binary_input",
+			Args:  []string{"-ba"},
+			Stdin: binaryContent,
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: tabs and special characters in input.
+		{
+			Name:  "edge_tabs_in_input",
+			Stdin: []byte("tab\there\nanother\tline\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: only whitespace lines (not truly empty).
+		{
+			Name:  "edge_whitespace_lines",
+			Stdin: []byte("  \n\t\n   \n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: many consecutive empty lines.
+		{
+			Name:  "edge_many_empty_lines",
+			Stdin: []byte("\n\n\n\n\n\n\n\n\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: -w 1 narrow width.
+		{
+			Name:  "edge_narrow_width",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: -v 0 start at zero.
+		{
+			Name:  "edge_start_at_zero",
+			Args:  []string{"-v", "0"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: -v negative start value.
+		{
+			Name:  "edge_negative_start",
+			Args:  []string{"-v", "-5"},
+			Stdin: []byte("a\nb\nc\nd\ne\nf\ng\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: -i 0 increment (numbers stay the same).
+		{
+			Name:  "edge_zero_increment",
+			Args:  []string{"-i", "0"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: concatenated -w value.
+		{
+			Name:  "edge_concatenated_w",
+			Args:  []string{"-w3"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: concatenated -v value.
+		{
+			Name:  "edge_concatenated_v",
+			Args:  []string{"-v10"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -367,4 +708,30 @@ func writeTestFile(t *testing.T, dir, name, content string) {
 func normalizeProgramName(b []byte) []byte {
 	b = bytes.ReplaceAll(b, []byte("gnl: "), []byte("nl: "))
 	return bytes.ToLower(b)
+}
+
+// normalizeErrorMessage normalizes error message wording differences between
+// GNU nl and our implementation. Both exit 1 with stderr output, but the
+// specific wording may differ. GNU also appends a "Try ... --help" line that
+// our implementation does not. This normalizer keeps only the first line and
+// truncates after the first colon-space to compare program name prefix only.
+func normalizeErrorMessage(b []byte) []byte {
+	// Take only the first non-empty line.
+	lines := bytes.Split(b, []byte("\n"))
+	var firstLine []byte
+	for _, line := range lines {
+		if len(line) > 0 {
+			firstLine = line
+			break
+		}
+	}
+	if firstLine == nil {
+		return b
+	}
+	// Truncate after "progname: " to ignore wording differences.
+	idx := bytes.Index(firstLine, []byte(": "))
+	if idx >= 0 {
+		return append(firstLine[:idx+2], []byte("error\n")...)
+	}
+	return append(firstLine, '\n')
 }
