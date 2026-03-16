@@ -32,6 +32,8 @@
 // R4.6: -n implies -l (numeric UID/GID in long format).
 // R4.7: Format flags (-C, -x, -l, -1) are mutually exclusive; last wins.
 // R4.8: -R with -l produces "total N" block line for each subdirectory.
+// R4.9: -i, -s, and -F may all be combined with -R; each subdirectory
+// listing applies the same metadata display and classification options.
 package main
 
 import (
@@ -974,9 +976,19 @@ func printLongEntries(entries []longEntry, opts lsOptions) {
 				if opts.useColor {
 					colorizedName = colorizeEntry(le.name, fi.Mode)
 				}
-					// R3.8: In long format, symlinks don't get '@' indicator
-				// because " -> target" already indicates the symlink.
-				re.name = colorizedName + " -> " + target
+				// R3.8/R4.9: In long format with -F, symlink name does not
+				// get '@' but the target path gets the target's type indicator.
+				displayTarget := target
+				if opts.classify {
+					targetPath := target
+					if !filepath.IsAbs(targetPath) {
+						targetPath = filepath.Join(filepath.Dir(le.path), targetPath)
+					}
+					if tfi, terr := os.Stat(targetPath); terr == nil {
+						displayTarget += classifyIndicator(tfi.Mode())
+					}
+				}
+				re.name = colorizedName + " -> " + displayTarget
 			}
 		} else {
 			displayName := le.name

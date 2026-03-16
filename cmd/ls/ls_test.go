@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.15, R4.1-R4.8 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.15, R4.1-R4.9 test coverage.
 package main
 
 import (
@@ -1241,6 +1241,52 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "R4.8_recursive_long_total_all",
 			Args:      []string{"-laR", recurDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R4.9: -i, -s, and -F combined with -R ===
+		// R4.9: -i with -R (inode display in recursive listing).
+		{
+			Name:    "R4.9_inode_recursive",
+			Args:    []string{"-1iR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.9: -s with -R (block count display in recursive listing).
+		{
+			Name:    "R4.9_blocks_recursive",
+			Args:    []string{"-1sR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.9: -F with -R (classify indicator in recursive listing).
+		{
+			Name:    "R4.9_classify_recursive",
+			Args:    []string{"-1FR", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.9: -i, -s, and -F all combined with -R.
+		{
+			Name:    "R4.9_inode_blocks_classify_recursive",
+			Args:    []string{"-1isRF", recurDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.9: -i and -s with -R and -l (long format recursive with metadata).
+		{
+			Name:      "R4.9_inode_blocks_recursive_long",
+			Args:      []string{"-lisR", recurDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R4.9: -F with -R and -l (long format recursive with classify).
+		{
+			Name:      "R4.9_classify_recursive_long",
+			Args:      []string{"-lFR", recurDir},
 			Env:       []string{"LC_ALL=C"},
 			WorkDir:   tmpDir,
 			Normalize: longNorm,
