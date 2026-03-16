@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd044-uname R1.1-R1.9, R2.2, R3.1-R3.2:
+// Implements prd044-uname R1.1-R1.9, R2.1-R2.2, R3.1-R3.2:
 // cmd/uname prints system information fields. With no arguments, prints the
 // kernel name (equivalent to -s). Supports -s (kernel name), -n (nodename),
 // -r (kernel release), -v (kernel version), -m (machine), -p (processor),
 // -i (hardware platform), -o (operating system) individually or in combination.
-// Multiple flags print selected fields in canonical order separated by spaces.
+// -a prints all fields in canonical order. Multiple flags print selected fields
+// in canonical order separated by spaces.
 // Installs SIGPIPE handler per ARCHITECTURE.yaml.
 package main
 
@@ -21,8 +22,11 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
-// progName is the name used in error messages to match GNU uname format.
-const progName = "uname"
+// progName returns the program name for error messages, matching GNU behavior
+// which uses argv[0].
+func progName() string {
+	return os.Args[0]
+}
 
 // unameFields holds the parsed flag selections for which fields to print.
 type unameFields struct {
@@ -34,6 +38,7 @@ type unameFields struct {
 	processor        bool // -p: processor type
 	hardwarePlatform bool // -i: hardware platform
 	operatingSystem  bool // -o: operating system
+	all              bool // -a: all fields, omitting unknown -p/-i
 }
 
 // anySet returns true if at least one field is selected.
@@ -42,13 +47,27 @@ func (f *unameFields) anySet() bool {
 		f.processor || f.hardwarePlatform || f.operatingSystem
 }
 
+// setAll sets all field flags to true, implementing -a behavior.
+// R2.1: -a prints all fields in canonical order, omitting unknown -p/-i.
+func (f *unameFields) setAll() {
+	f.all = true
+	f.sysname = true
+	f.nodename = true
+	f.release = true
+	f.version = true
+	f.machine = true
+	f.processor = true
+	f.hardwarePlatform = true
+	f.operatingSystem = true
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	fields, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err) //nolint:errcheck // best-effort diagnostic
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName(), err) //nolint:errcheck // best-effort diagnostic
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName()) //nolint:errcheck // best-effort diagnostic
 		os.Exit(1)
 	}
 
@@ -59,7 +78,7 @@ func main() {
 
 	var utsname unix.Utsname
 	if err := unix.Uname(&utsname); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: cannot get system information: %v\n", progName, err) //nolint:errcheck // best-effort diagnostic
+		fmt.Fprintf(os.Stderr, "%s: cannot get system information: %v\n", progName(), err) //nolint:errcheck // best-effort diagnostic
 		os.Exit(1)
 	}
 
@@ -83,12 +102,20 @@ func main() {
 		parts = append(parts, byteArrayToString(utsname.Machine[:]))
 	}
 	// R1.7: -p processor type — platform-specific, matches GNU uname behavior.
+	// R2.1: -a omits processor if "unknown".
 	if fields.processor {
-		parts = append(parts, processorType())
+		p := processorType()
+		if !fields.all || p != "unknown" {
+			parts = append(parts, p)
+		}
 	}
 	// R1.8: -i hardware platform — GNU uname outputs "unknown" on most platforms.
+	// R2.1: -a omits hardware platform if "unknown".
 	if fields.hardwarePlatform {
-		parts = append(parts, "unknown")
+		hp := "unknown"
+		if !fields.all || hp != "unknown" {
+			parts = append(parts, hp)
+		}
 	}
 	// R1.9: -o operating system name.
 	if fields.operatingSystem {
@@ -140,6 +167,8 @@ func parseArgs(args []string) (*unameFields, error) {
 			fmt.Fprintf(os.Stdout, //nolint:errcheck // best-effort output
 				"Usage: %s [OPTION]...\n"+
 					"Print certain system information.  With no OPTION, same as -s.\n\n"+
+					"  -a, --all                print all information, in the following order,\n"+
+					"                             except omit -p and -i if unknown:\n"+
 					"  -s, --kernel-name        print the kernel name\n"+
 					"  -n, --nodename           print the network node hostname\n"+
 					"  -r, --kernel-release     print the kernel release\n"+
@@ -150,19 +179,23 @@ func parseArgs(args []string) (*unameFields, error) {
 					"  -o, --operating-system   print the operating system\n"+
 					"      --help     display this help and exit\n"+
 					"      --version  output version information and exit\n",
-				progName,
+				progName(),
 			)
 			os.Exit(0)
 		}
 		// --version prints version info to stdout and exits 0.
 		if arg == "--version" {
 			fmt.Fprintf(os.Stdout, "%s (%s) %s\n", //nolint:errcheck // best-effort output
-				progName, "go-unix-utils", version.Version,
+				progName(), "go-unix-utils", version.Version,
 			)
 			os.Exit(0)
 		}
 
 		// Long options.
+		if arg == "--all" {
+			fields.setAll()
+			continue
+		}
 		if arg == "--kernel-name" {
 			fields.sysname = true
 			continue
@@ -175,16 +208,39 @@ func parseArgs(args []string) (*unameFields, error) {
 			fields.release = true
 			continue
 		}
+		if arg == "--kernel-version" {
+			fields.version = true
+			continue
+		}
+		if arg == "--machine" {
+			fields.machine = true
+			continue
+		}
+		if arg == "--processor" {
+			fields.processor = true
+			continue
+		}
+		if arg == "--hardware-platform" {
+			fields.hardwarePlatform = true
+			continue
+		}
+		if arg == "--operating-system" {
+			fields.operatingSystem = true
+			continue
+		}
 
 		// Unknown long option.
 		if strings.HasPrefix(arg, "--") {
 			return nil, fmt.Errorf("unrecognized option '%s'", arg)
 		}
 
-		// Short flag groups (e.g., -snr).
+		// Short flag groups (e.g., -snr, -a).
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 			for _, ch := range arg[1:] {
 				switch ch {
+				case 'a':
+					// R2.1: -a sets all fields.
+					fields.setAll()
 				case 's':
 					fields.sysname = true
 				case 'n':
