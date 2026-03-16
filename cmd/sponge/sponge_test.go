@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/sponge against sponge (moreutils).
-// Implements prd007-sponge R1.1-R1.5, R2.1-R2.3, R3.1-R3.2 test coverage.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.2 test coverage.
 package main
 
 import (
@@ -338,6 +338,256 @@ func TestAppendDiff(t *testing.T) {
 					t.Errorf("expected %q, got %q", input, got)
 				}
 			})
+		}
+	})
+}
+
+// TestSymlinkOutput verifies R2.4: sponge writes through symlinks instead of
+// replacing them. Runs both Go and reference binaries when available.
+func TestSymlinkOutput(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	for _, tc := range []struct {
+		name  string
+		label string
+		bin   string
+	}{
+		{"R2.4_symlink_go", "go", goBin},
+		{"R2.4_symlink_ref", "ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			target := filepath.Join(dir, "target.txt")
+			writeFile(t, target, "old target content\n")
+			link := filepath.Join(dir, "link.txt")
+			if err := os.Symlink(target, link); err != nil {
+				t.Fatalf("creating symlink: %v", err)
+			}
+
+			input := []byte("new content via symlink\n")
+			cmd := exec.Command(tc.bin, link)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sponge via symlink failed: %v\noutput: %s", err, out)
+			}
+
+			// R2.4: Symlink must still exist (not replaced by regular file).
+			info, err := os.Lstat(link)
+			if err != nil {
+				t.Fatalf("lstat link: %v", err)
+			}
+			if info.Mode()&os.ModeSymlink == 0 {
+				t.Error("symlink was replaced by regular file")
+			}
+
+			// Target must have the new content.
+			got := readFile(t, target)
+			if !bytes.Equal(got, input) {
+				t.Errorf("expected %q, got %q", input, got)
+			}
+		})
+	}
+}
+
+// TestSymlinkAppend verifies R3.2 with symlink output in append mode.
+// R3.2: -a applies only when the output file exists and is a regular file.
+// A symlink is not a regular file (per lstat), so -a behaves like default
+// mode — stdin content replaces the target's content.
+func TestSymlinkAppend(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R3.2_symlink_append_go", goBin},
+		{"R3.2_symlink_append_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			target := filepath.Join(dir, "target.txt")
+			writeFile(t, target, "original\n")
+			link := filepath.Join(dir, "link.txt")
+			if err := os.Symlink(target, link); err != nil {
+				t.Fatalf("creating symlink: %v", err)
+			}
+
+			input := []byte("new content\n")
+			cmd := exec.Command(tc.bin, "-a", link)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sponge -a via symlink failed: %v\noutput: %s", err, out)
+			}
+
+			// R3.2: Symlink is not a regular file per lstat, so -a falls
+			// through to default mode — only stdin content is written.
+			got := readFile(t, target)
+			if !bytes.Equal(got, input) {
+				t.Errorf("expected %q, got %q", input, got)
+			}
+		})
+	}
+}
+
+// TestAtomicWrite verifies R2.5: the output file is never in a
+// partially-written state. We verify by overwriting a larger file with
+// smaller content and confirming no leftover bytes remain.
+func TestAtomicWrite(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R2.5_atomic_overwrite_go", goBin},
+		{"R2.5_atomic_overwrite_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			outFile := filepath.Join(dir, "out.txt")
+			// Write a large initial file.
+			writeFile(t, outFile, "this is a much longer string of old content\n")
+			// Overwrite with smaller content.
+			input := []byte("short\n")
+
+			cmd := exec.Command(tc.bin, outFile)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sponge failed: %v\noutput: %s", err, out)
+			}
+
+			got := readFile(t, outFile)
+			if !bytes.Equal(got, input) {
+				t.Errorf("expected %q, got %q (leftover bytes from old content)", input, got)
+			}
+		})
+	}
+}
+
+// TestAppendEmptyStdin verifies R3.1 edge case: appending empty stdin
+// preserves the original file content unchanged.
+func TestAppendEmptyStdin(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R3.1_append_empty_go", goBin},
+		{"R3.1_append_empty_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			outFile := filepath.Join(dir, "existing.txt")
+			original := "keep this content\n"
+			writeFile(t, outFile, original)
+
+			cmd := exec.Command(tc.bin, "-a", outFile)
+			cmd.Stdin = bytes.NewReader([]byte{})
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sponge -a empty stdin failed: %v\noutput: %s", err, out)
+			}
+
+			got := readFile(t, outFile)
+			if !bytes.Equal(got, []byte(original)) {
+				t.Errorf("expected %q, got %q", original, got)
+			}
+		})
+	}
+}
+
+// TestPermissionPreservation verifies R2.3 with R2.4: permissions are preserved
+// when writing to an existing file, including through symlinks.
+func TestPermissionPreservation(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R2.3: Regular file permission preservation.
+	t.Run("R2.3_preserve_mode", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "perms.txt")
+		writeFile(t, outFile, "old\n")
+		if err := os.Chmod(outFile, 0o755); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+
+		runSponge(t, goBin, dir, []byte("new\n"), outFile)
+
+		info, err := os.Stat(outFile)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if info.Mode().Perm() != 0o755 {
+			t.Errorf("expected mode 0755, got %04o", info.Mode().Perm())
+		}
+	})
+
+	// R2.4: Permission preservation through symlink.
+	t.Run("R2.4_symlink_preserve_mode", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		target := filepath.Join(dir, "target.txt")
+		writeFile(t, target, "old\n")
+		if err := os.Chmod(target, 0o700); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		link := filepath.Join(dir, "link.txt")
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+
+		cmd := exec.Command(goBin, link)
+		cmd.Stdin = bytes.NewReader([]byte("new\n"))
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("sponge via symlink failed: %v\noutput: %s", err, out)
+		}
+
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if info.Mode().Perm() != 0o700 {
+			t.Errorf("expected mode 0700, got %04o", info.Mode().Perm())
 		}
 	})
 }

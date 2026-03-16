@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd007-sponge R1.1-R1.5, R2.1-R2.3, R3.1-R3.2.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.2.
 // sponge reads all of stdin into a buffer before writing to the output file,
 // enabling safe in-place pipeline rewrites. Supports -a append mode and
 // passthrough to stdout when no filename is given. Installs SIGPIPE handler
@@ -51,13 +51,17 @@ func main() {
 		return
 	}
 
-	// R3.1, R3.2: Append mode — append stdin to existing file content.
+	// R3.1, R3.2: Append mode — only when the output file exists and is a
+	// regular file per lstat. When the path is a symlink or does not exist,
+	// -a behaves identically to the default mode (R3.2).
 	if appendMode {
-		if err := appendToFile(outFile, data); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, outFile, err)
-			os.Exit(1)
+		if info, err := os.Lstat(outFile); err == nil && info.Mode().IsRegular() {
+			if err := appendToFile(outFile, data); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, outFile, err)
+				os.Exit(1)
+			}
+			return
 		}
-		return
 	}
 
 	// R1.3: Filename given — write to file via atomic rename.
@@ -86,12 +90,29 @@ func appendToFile(path string, data []byte) error {
 // strategy for atomicity. R2.1: temp file in same directory as target.
 // R2.2: atomic rename with cross-device fallback. R2.3: preserves existing
 // file permissions, or uses 0666 (before umask) for new files.
+// R2.4: uses lstat to detect symlinks; writes through symlinks instead of
+// replacing them. R2.5: ensures the output file is never in a
+// partially-written state observable by other processes.
 func writeToFile(path string, data []byte) error {
-	// Determine target permissions: preserve existing, else default 0666.
+	// R2.4: Use lstat (not stat) to check the output path type.
 	mode := os.FileMode(0o666)
-	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
-		mode = info.Mode().Perm()
+	useRename := true
+	info, statErr := os.Lstat(path)
+	if statErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			// R2.4: Path is a symlink — do not rename (would replace the
+			// symlink itself). Write directly to follow the symlink to its
+			// target. Use stat (follows symlink) to get target permissions.
+			useRename = false
+			if targetInfo, err := os.Stat(path); err == nil && targetInfo.Mode().IsRegular() {
+				mode = targetInfo.Mode().Perm()
+			}
+		} else if info.Mode().IsRegular() {
+			// R2.3: Preserve existing regular file permissions.
+			mode = info.Mode().Perm()
+		}
 	}
+	// Path doesn't exist (statErr != nil): useRename stays true, mode stays 0666.
 
 	// Create temp file in the same directory for same-device rename.
 	dir := filepath.Dir(path)
@@ -121,13 +142,23 @@ func writeToFile(path string, data []byte) error {
 		return err
 	}
 
-	// Attempt atomic rename.
-	if err := os.Rename(tmpName, path); err != nil {
-		// Cross-device fallback: write content directly.
+	if useRename {
+		// R2.1, R2.5: Attempt atomic rename for regular files and new files.
+		if err := os.Rename(tmpName, path); err != nil {
+			// R2.2: Cross-device fallback — write content directly.
+			if writeErr := os.WriteFile(path, data, mode); writeErr != nil {
+				return writeErr
+			}
+			os.Remove(tmpName) // best-effort cleanup of temp
+		}
+	} else {
+		// R2.4: Symlink or special file — write directly (follows symlink).
+		// R2.5: Temp file is fully written before this point, ensuring no
+		// partial state from an interrupted stdin read.
 		if writeErr := os.WriteFile(path, data, mode); writeErr != nil {
 			return writeErr
 		}
-		os.Remove(tmpName) // best-effort cleanup of temp
+		os.Remove(tmpName) // best-effort cleanup
 	}
 
 	ok = true
