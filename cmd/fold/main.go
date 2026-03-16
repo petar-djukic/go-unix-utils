@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd023-fold R1.1-R1.4: cmd/fold wraps long lines to a specified
-// width. By default, lines are wrapped at 80 columns, with tab characters
-// counted as the number of columns to the next tab stop (every 8 columns).
-// Reads from stdin when no file arguments are given; treats '-' as stdin.
-// Installs SIGPIPE handler for clean exit on broken pipe.
+// Implements prd023-fold R1.1-R1.4, R2.1-R2.3, R3.1-R3.4: cmd/fold wraps long
+// lines to a specified width. By default, lines are wrapped at 80 columns, with
+// tab characters counted as the number of columns to the next tab stop (every
+// 8 columns). -b counts bytes instead of columns. -s breaks at the last space
+// within the width. Reads from stdin when no file arguments are given; treats
+// '-' as stdin. Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -32,6 +33,8 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 
 	width := defaultWidth
+	byteMode := false
+	spaceBreak := false
 	args := os.Args[1:]
 	var files []string
 
@@ -47,31 +50,46 @@ func main() {
 			continue
 		}
 
-		// -w N or -wN: set width.
-		if arg == "-w" {
-			if i+1 >= len(args) {
-				fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 'w'\n", progName)
-				os.Exit(1)
+		// Handle combined short flags (e.g., -bs, -bsw10).
+		if len(arg) > 1 && arg[1] != '-' {
+			flags := arg[1:]
+			consumed := false
+			for j := 0; j < len(flags); j++ {
+				switch flags[j] {
+				case 'b':
+					byteMode = true
+				case 's':
+					spaceBreak = true
+				case 'w':
+					// Remainder of flags is the width value, or next arg.
+					val := flags[j+1:]
+					if val == "" {
+						if i+1 >= len(args) {
+							fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 'w'\n", progName)
+							os.Exit(1)
+						}
+						i++
+						val = args[i]
+					}
+					n, err := strconv.Atoi(val)
+					if err != nil || n <= 0 {
+						fmt.Fprintf(os.Stderr, "%s: invalid number of columns: '%s'\n", progName, val)
+						os.Exit(1)
+					}
+					width = n
+					consumed = true
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, flags[j])
+					os.Exit(1)
+				}
+				if consumed {
+					break
+				}
 			}
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n <= 0 {
-				fmt.Fprintf(os.Stderr, "%s: invalid number of columns: '%s'\n", progName, args[i])
-				os.Exit(1)
-			}
-			width = n
 			continue
 		}
-		if strings.HasPrefix(arg, "-w") {
-			val := arg[2:]
-			n, err := strconv.Atoi(val)
-			if err != nil || n <= 0 {
-				fmt.Fprintf(os.Stderr, "%s: invalid number of columns: '%s'\n", progName, val)
-				os.Exit(1)
-			}
-			width = n
-			continue
-		}
+
+		// Long options.
 		if strings.HasPrefix(arg, "--width=") {
 			val := arg[len("--width="):]
 			n, err := strconv.Atoi(val)
@@ -96,6 +114,14 @@ func main() {
 			width = n
 			continue
 		}
+		if arg == "--bytes" {
+			byteMode = true
+			continue
+		}
+		if arg == "--spaces" {
+			spaceBreak = true
+			continue
+		}
 
 		fmt.Fprintf(os.Stderr, "%s: invalid option -- '%s'\n", progName, arg[1:])
 		os.Exit(1)
@@ -106,7 +132,7 @@ func main() {
 
 	if len(files) == 0 {
 		// R1.1: no file arguments — read from stdin.
-		if err := foldReader(os.Stdin, w, width); err != nil {
+		if err := foldReader(os.Stdin, w, width, byteMode, spaceBreak); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 			exitCode = 1
 		}
@@ -115,7 +141,7 @@ func main() {
 		for _, name := range files {
 			if name == "-" {
 				// R1.4: '-' means read from stdin.
-				if err := foldReader(os.Stdin, w, width); err != nil {
+				if err := foldReader(os.Stdin, w, width, byteMode, spaceBreak); err != nil {
 					fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 					exitCode = 1
 				}
@@ -128,7 +154,7 @@ func main() {
 				exitCode = 1
 				continue
 			}
-			if err := foldReader(f, w, width); err != nil {
+			if err := foldReader(f, w, width, byteMode, spaceBreak); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 				exitCode = 1
 			}
@@ -146,12 +172,14 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// foldReader reads from r and writes lines wrapped at width columns to w.
-// R1.1: wraps at the specified column width.
+// foldReader reads from r and writes lines wrapped at width to w.
+// R1.1: wraps at the specified width.
 // R1.2: lines shorter than or equal to width pass through unchanged.
 // R1.3: lines longer than width are split by inserting newlines.
 // R1.4: final segment retains original trailing newline.
-func foldReader(r io.Reader, w *bufio.Writer, width int) error {
+// R2.3: byteMode counts bytes instead of columns.
+// R3.1-R3.4: spaceBreak breaks at the last space within the width.
+func foldReader(r io.Reader, w *bufio.Writer, width int, byteMode, spaceBreak bool) error {
 	br := bufio.NewReader(r)
 
 	for {
@@ -163,7 +191,7 @@ func foldReader(r io.Reader, w *bufio.Writer, width int) error {
 				content = line[:len(line)-1]
 			}
 
-			if err := foldLine(w, content, width); err != nil {
+			if err := foldLine(w, content, width, byteMode, spaceBreak); err != nil {
 				return err
 			}
 
@@ -183,21 +211,33 @@ func foldReader(r io.Reader, w *bufio.Writer, width int) error {
 	}
 }
 
-// foldLine writes content to w, inserting newlines every width columns.
-// Tab characters advance the column to the next tab stop (every 8 columns).
+// foldLine writes content to w, inserting newlines every width units.
+// In column mode (default), tab characters advance to the next tab stop.
+// In byte mode (-b), each byte counts as 1 unit (R2.3).
+// In space-break mode (-s), breaks at the last space within the width (R3.1).
 // R1.3: wrapping is applied repeatedly until the remaining portion fits.
-func foldLine(w *bufio.Writer, content string, width int) error {
+func foldLine(w *bufio.Writer, content string, width int, byteMode, spaceBreak bool) error {
+	if !spaceBreak {
+		return foldLineSimple(w, content, width, byteMode)
+	}
+	return foldLineSpace(w, content, width, byteMode)
+}
+
+// foldLineSimple wraps content at exact width boundaries without space-breaking.
+func foldLineSimple(w *bufio.Writer, content string, width int, byteMode bool) error {
 	col := 0
 
 	for i := 0; i < len(content); i++ {
 		ch := content[i]
 
 		var advance int
-		if ch == '\t' {
+		if byteMode {
+			// R2.3: in byte mode, every byte counts as 1 unit.
+			advance = 1
+		} else if ch == '\t' {
 			// R2.2: tab advances to next tab stop.
 			advance = tabStop - (col % tabStop)
 		} else if ch == '\b' {
-			// Backspace decrements column (GNU fold behavior), but not below 0.
 			if col > 0 {
 				col--
 			}
@@ -206,7 +246,6 @@ func foldLine(w *bufio.Writer, content string, width int) error {
 			}
 			continue
 		} else if ch == '\r' {
-			// Carriage return resets column to 0.
 			col = 0
 			if err := w.WriteByte(ch); err != nil {
 				return err
@@ -216,15 +255,13 @@ func foldLine(w *bufio.Writer, content string, width int) error {
 			advance = 1
 		}
 
-		// Check if this character would exceed the width.
 		if col+advance > width {
 			if _, err := w.WriteString("\n"); err != nil {
 				return err
 			}
 			col = 0
-			// Recalculate advance for tab at column 0.
-			if ch == '\t' {
-				advance = tabStop - (col % tabStop)
+			if !byteMode && ch == '\t' {
+				advance = tabStop
 			}
 		}
 
@@ -232,6 +269,88 @@ func foldLine(w *bufio.Writer, content string, width int) error {
 			return err
 		}
 		col += advance
+	}
+
+	return nil
+}
+
+// foldLineSpace wraps content breaking at the last space within the width (R3.1-R3.4).
+// R3.2: falls back to exact column break if no space is found.
+// R3.3: the space is the last char before the newline; next line starts after it.
+// R3.4: uses byte positions when byteMode is active.
+func foldLineSpace(w *bufio.Writer, content string, width int, byteMode bool) error {
+	i := 0
+	for i < len(content) {
+		// Scan one segment of up to width units.
+		col := 0
+		lastSpaceIdx := -1 // index relative to start of content (absolute)
+		breakIdx := -1     // where to hard-break if no space found
+
+		j := i
+		for j < len(content) {
+			ch := content[j]
+
+			var advance int
+			if byteMode {
+				advance = 1
+			} else if ch == '\t' {
+				advance = tabStop - (col % tabStop)
+			} else if ch == '\b' {
+				if col > 0 {
+					col--
+				}
+				j++
+				continue
+			} else if ch == '\r' {
+				col = 0
+				lastSpaceIdx = -1
+				j++
+				continue
+			} else {
+				advance = 1
+			}
+
+			if col+advance > width {
+				breakIdx = j
+				break
+			}
+
+			if ch == ' ' {
+				lastSpaceIdx = j
+			}
+
+			col += advance
+			j++
+		}
+
+		if breakIdx < 0 {
+			// Remaining content fits within width.
+			if _, err := w.WriteString(content[i:]); err != nil {
+				return err
+			}
+			break
+		}
+
+		// R3.1: prefer breaking at the last space.
+		if lastSpaceIdx >= i {
+			// R3.3: write up to and including the space, then newline.
+			if _, err := w.WriteString(content[i : lastSpaceIdx+1]); err != nil {
+				return err
+			}
+			if _, err := w.WriteString("\n"); err != nil {
+				return err
+			}
+			i = lastSpaceIdx + 1
+		} else {
+			// R3.2: no space found, fall back to exact break.
+			if _, err := w.WriteString(content[i:breakIdx]); err != nil {
+				return err
+			}
+			if _, err := w.WriteString("\n"); err != nil {
+				return err
+			}
+			i = breakIdx
+		}
 	}
 
 	return nil

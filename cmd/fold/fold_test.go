@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/fold against the GNU reference binary (gfold).
-// Implements prd023-fold R1.1-R1.4 test coverage.
+// Implements prd023-fold R1.1-R1.4, R2.1-R2.3, R3.1-R3.4 test coverage.
 package main
 
 import (
@@ -137,6 +137,92 @@ func TestDiff(t *testing.T) {
 			Args:    []string{shortFile, "-"},
 			Stdin:   []byte("from stdin\n"),
 			WorkDir: tmpDir,
+		},
+		// R2.3: byte counting mode (-b flag).
+		{
+			// R2.3: -b counts bytes, not columns.
+			Name:  "byte_mode_basic",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("abcdefghij"),
+		},
+		{
+			// R2.3: -b with newline-terminated input.
+			Name:  "byte_mode_with_newline",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("abcdefghij\n"),
+		},
+		{
+			// R2.3: -b disables tab-stop expansion; tab is 1 byte.
+			Name:  "byte_mode_tab_as_one_byte",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("a\tbcd\n"),
+		},
+		{
+			// R2.3: -b with default width (80 bytes).
+			Name:  "byte_mode_default_width",
+			Args:  []string{"-b"},
+			Stdin: []byte(strings.Repeat("x", 100) + "\n"),
+		},
+		{
+			// R2.3: -b with width 1 wraps every byte.
+			Name:  "byte_mode_width_one",
+			Args:  []string{"-b", "-w", "1"},
+			Stdin: []byte("abc\n"),
+		},
+		{
+			// R2.3: -b with multibyte UTF-8 character splits mid-character.
+			Name:  "byte_mode_multibyte_utf8",
+			Args:  []string{"-b", "-w", "2"},
+			Stdin: []byte("a\xc3\xa9b\n"),
+		},
+		{
+			// R2.3: -b combined short flag form -bw4.
+			Name:  "byte_mode_combined_flags",
+			Args:  []string{"-bw4"},
+			Stdin: []byte("abcdefgh\n"),
+		},
+		{
+			// R2.3: -b with long line requiring multiple wraps.
+			Name:  "byte_mode_triple_wrap",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte(strings.Repeat("z", 17) + "\n"),
+		},
+		// R3.1-R3.4: space-break mode (-s flag) and interaction with -b.
+		{
+			// R3.1: -s breaks at last space.
+			Name:  "space_break_basic",
+			Args:  []string{"-s", "-w", "11"},
+			Stdin: []byte("hello world foo bar\n"),
+		},
+		{
+			// R3.2: -s falls back to exact break when no space.
+			Name:  "space_break_no_space",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abcdefghij\n"),
+		},
+		{
+			// R3.4: -b -s combines byte counting with space breaking.
+			Name:  "byte_mode_space_break",
+			Args:  []string{"-b", "-s", "-w", "11"},
+			Stdin: []byte("hello world foo bar\n"),
+		},
+		{
+			// R3.4: -b -s with no space in segment.
+			Name:  "byte_mode_space_break_no_space",
+			Args:  []string{"-b", "-s", "-w", "5"},
+			Stdin: []byte("abcdefghij\n"),
+		},
+		{
+			// R3.3: space is last char on line before newline.
+			Name:  "space_break_space_position",
+			Args:  []string{"-s", "-w", "6"},
+			Stdin: []byte("aa bb cc dd\n"),
+		},
+		{
+			// R3.4: -bs combined short flags.
+			Name:  "byte_space_combined_short",
+			Args:  []string{"-bs", "-w", "11"},
+			Stdin: []byte("hello world foo bar\n"),
 		},
 	}
 
