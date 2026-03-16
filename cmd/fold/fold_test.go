@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/fold against the GNU reference binary (gfold).
-// Implements prd023-fold R1.1-R1.4, R2.1-R2.3, R3.1-R3.4 test coverage.
+// Implements prd023-fold R1.1-R1.4, R2.1-R2.3, R3.1-R3.4, R4.1-R4.4 test coverage.
 package main
 
 import (
@@ -271,6 +271,280 @@ func TestDiff(t *testing.T) {
 			Name:  "space_break_width_one",
 			Args:  []string{"-s", "-w", "1"},
 			Stdin: []byte("a b c\n"),
+		},
+
+		// --- R4.1: Differential tests for all flag combinations ---
+		{
+			// R4.1: -s alone (default width 80) with long input containing spaces.
+			Name:  "flag_s_alone_default_width",
+			Args:  []string{"-s"},
+			Stdin: []byte(strings.Repeat("abcde ", 20) + "\n"),
+		},
+		{
+			// R4.1: -b alone (default width 80).
+			Name:  "flag_b_alone",
+			Args:  []string{"-b"},
+			Stdin: []byte(strings.Repeat("q", 160) + "\n"),
+		},
+		{
+			// R4.1: -w N alone.
+			Name:  "flag_w_alone",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte(strings.Repeat("r", 60) + "\n"),
+		},
+		{
+			// R4.1: -w N -b combined.
+			Name:  "flag_w_b_combined",
+			Args:  []string{"-w", "10", "-b"},
+			Stdin: []byte("a\tb\tc\td\te\tf\n"),
+		},
+		{
+			// R4.1: -w N -s combined.
+			Name:  "flag_w_s_combined",
+			Args:  []string{"-w", "15", "-s"},
+			Stdin: []byte("one two three four five six seven\n"),
+		},
+		{
+			// R4.1: -b -s combined (default width).
+			Name:  "flag_b_s_default_width",
+			Args:  []string{"-b", "-s"},
+			Stdin: []byte(strings.Repeat("word ", 25) + "\n"),
+		},
+		{
+			// R4.1: -w N -b -s all three flags combined.
+			Name:  "flag_w_b_s_all_combined",
+			Args:  []string{"-w", "12", "-b", "-s"},
+			Stdin: []byte("alpha beta gamma delta epsilon\n"),
+		},
+		{
+			// R4.1: all flags combined with short form -bsw.
+			Name:  "flag_bsw_short_form",
+			Args:  []string{"-bsw12"},
+			Stdin: []byte("alpha beta gamma delta epsilon\n"),
+		},
+		{
+			// R4.1: flags in reversed order -s -b -w.
+			Name:  "flag_s_b_w_reversed_order",
+			Args:  []string{"-s", "-b", "-w", "12"},
+			Stdin: []byte("alpha beta gamma delta epsilon\n"),
+		},
+
+		// --- R4.2: Edge cases for boundary widths ---
+		{
+			// R4.2: line one character below fold width (width-1).
+			Name:  "boundary_width_minus_one",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("123456789\n"),
+		},
+		{
+			// R4.2: line exactly at fold width.
+			Name:  "boundary_exact_width",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("1234567890\n"),
+		},
+		{
+			// R4.2: line one character above fold width (width+1).
+			Name:  "boundary_width_plus_one",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("12345678901\n"),
+		},
+		{
+			// R4.2: boundary widths in byte mode (width-1).
+			Name:  "boundary_byte_mode_minus_one",
+			Args:  []string{"-b", "-w", "10"},
+			Stdin: []byte("123456789\n"),
+		},
+		{
+			// R4.2: boundary widths in byte mode (exact).
+			Name:  "boundary_byte_mode_exact",
+			Args:  []string{"-b", "-w", "10"},
+			Stdin: []byte("1234567890\n"),
+		},
+		{
+			// R4.2: boundary widths in byte mode (width+1).
+			Name:  "boundary_byte_mode_plus_one",
+			Args:  []string{"-b", "-w", "10"},
+			Stdin: []byte("12345678901\n"),
+		},
+		{
+			// R4.2: boundary widths with -s, space at exactly the width.
+			Name:  "boundary_space_at_width",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("1234567890 abc\n"),
+		},
+		{
+			// R4.2: boundary widths with -s, space at width-1.
+			Name:  "boundary_space_at_width_minus_one",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("123456789 abcdef\n"),
+		},
+		{
+			// R4.2: boundary widths with -s, space at width+1 (no space within width).
+			Name:  "boundary_space_at_width_plus_one",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("12345678901 ab\n"),
+		},
+		{
+			// R4.2: boundary with -b -s, space exactly at byte width.
+			Name:  "boundary_byte_space_at_width",
+			Args:  []string{"-b", "-s", "-w", "10"},
+			Stdin: []byte("1234567890 abc\n"),
+		},
+		{
+			// R4.2: exact multiple of width (no remainder).
+			Name:  "boundary_exact_multiple",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("1234512345\n"),
+		},
+		{
+			// R4.2: exact multiple of width minus one.
+			Name:  "boundary_exact_multiple_minus_one",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("123451234\n"),
+		},
+
+		// --- R4.3: Edge cases for empty, single-char, no-newline, whitespace ---
+		{
+			// R4.3: empty stdin (already tested above, repeated for clarity).
+			Name:  "edge_empty_stdin",
+			Stdin: []byte{},
+		},
+		{
+			// R4.3: single character with newline.
+			Name:  "edge_single_char_with_newline",
+			Stdin: []byte("x\n"),
+		},
+		{
+			// R4.3: single character without newline.
+			Name:  "edge_single_char_no_newline",
+			Stdin: []byte("x"),
+		},
+		{
+			// R4.3: input with no newlines at all (long).
+			Name:  "edge_no_newline_long",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte(strings.Repeat("a", 25)),
+		},
+		{
+			// R4.3: input consisting entirely of spaces.
+			Name:  "edge_all_spaces",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("          \n"),
+		},
+		{
+			// R4.3: input consisting entirely of tabs.
+			Name:  "edge_all_tabs",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("\t\t\t\n"),
+		},
+		{
+			// R4.3: input of spaces with -s flag.
+			Name:  "edge_all_spaces_with_s",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("          \n"),
+		},
+		{
+			// R4.3: input of tabs with -b flag (tabs count as 1 byte each).
+			Name:  "edge_all_tabs_byte_mode",
+			Args:  []string{"-b", "-w", "3"},
+			Stdin: []byte("\t\t\t\t\t\n"),
+		},
+		{
+			// R4.3: single newline only.
+			Name:  "edge_single_newline",
+			Stdin: []byte("\n"),
+		},
+		{
+			// R4.3: multiple empty lines.
+			Name:  "edge_multiple_empty_lines",
+			Stdin: []byte("\n\n\n\n"),
+		},
+		{
+			// R4.3: empty input with -s flag.
+			Name:  "edge_empty_with_s",
+			Args:  []string{"-s"},
+			Stdin: []byte{},
+		},
+		{
+			// R4.3: empty input with -b flag.
+			Name:  "edge_empty_with_b",
+			Args:  []string{"-b"},
+			Stdin: []byte{},
+		},
+		{
+			// R4.3: spaces with -b -s combined.
+			Name:  "edge_spaces_b_s",
+			Args:  []string{"-b", "-s", "-w", "3"},
+			Stdin: []byte("     \n"),
+		},
+
+		// --- R4.4: Multibyte UTF-8 characters near fold boundaries ---
+		{
+			// R4.4: multibyte UTF-8 (2-byte é) near width boundary in column mode.
+			// In LC_ALL=C, each byte counts as one column.
+			Name:  "utf8_two_byte_near_boundary",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abc\xc3\xa9d\n"),
+		},
+		{
+			// R4.4: multibyte UTF-8 in byte mode splits mid-character.
+			Name:  "utf8_byte_mode_split",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("ab\xc3\xa9cd\n"),
+		},
+		{
+			// R4.4: 3-byte UTF-8 character (€ = 0xe2 0x82 0xac) near boundary.
+			Name:  "utf8_three_byte_near_boundary",
+			Args:  []string{"-w", "4"},
+			Stdin: []byte("ab\xe2\x82\xaccd\n"),
+		},
+		{
+			// R4.4: 3-byte UTF-8 in byte mode with width splitting mid-character.
+			Name:  "utf8_three_byte_byte_mode",
+			Args:  []string{"-b", "-w", "3"},
+			Stdin: []byte("a\xe2\x82\xacb\n"),
+		},
+		{
+			// R4.4: 4-byte UTF-8 character (𝄞 = 0xf0 0x9d 0x84 0x9e) near boundary.
+			Name:  "utf8_four_byte_near_boundary",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abc\xf0\x9d\x84\x9eef\n"),
+		},
+		{
+			// R4.4: 4-byte UTF-8 in byte mode.
+			Name:  "utf8_four_byte_byte_mode",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("abc\xf0\x9d\x84\x9eef\n"),
+		},
+		{
+			// R4.4: mixed ASCII and multibyte, word-break mode.
+			Name:  "utf8_mixed_space_break",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("hello \xc3\xa9\xc3\xa0\xc3\xbc world\n"),
+		},
+		{
+			// R4.4: mixed ASCII and multibyte with -b -s.
+			Name:  "utf8_mixed_byte_space_break",
+			Args:  []string{"-b", "-s", "-w", "10"},
+			Stdin: []byte("hello \xc3\xa9\xc3\xa0\xc3\xbc world\n"),
+		},
+		{
+			// R4.4: multibyte at exact fold boundary in column mode.
+			Name:  "utf8_at_exact_boundary",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abcd\xc3\xa9fgh\n"),
+		},
+		{
+			// R4.4: string of multibyte characters only.
+			Name:  "utf8_all_multibyte",
+			Args:  []string{"-w", "6"},
+			Stdin: []byte("\xc3\xa9\xc3\xa0\xc3\xbc\xc3\xa9\xc3\xa0\xc3\xbc\xc3\xa9\n"),
+		},
+		{
+			// R4.4: multibyte characters in byte mode at width 1.
+			Name:  "utf8_byte_mode_width_one",
+			Args:  []string{"-b", "-w", "1"},
+			Stdin: []byte("\xc3\xa9\n"),
 		},
 	}
 
