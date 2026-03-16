@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4: cmd/tee reads
-// stdin and writes to stdout and named output files simultaneously. Supports
-// append mode (-a), SIGINT suppression (-i), --output-error modes (warn,
-// warn-nopipe, exit, exit-nopipe), and -p shorthand for --output-error=warn.
+// Implements prd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3: cmd/tee
+// reads stdin and writes to stdout and named output files simultaneously.
+// Supports append mode (-a), SIGINT suppression (-i), --output-error modes
+// (warn, warn-nopipe, exit, exit-nopipe), -p shorthand for --output-error=warn,
+// and --help/--version flags.
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in error messages to match GNU tee format.
@@ -49,6 +51,32 @@ func main() {
 	appendMode := false
 	ignoreInterrupts := false
 	mode := outputErrorDefault
+
+	// R4.1: handle --help — print usage to stdout and exit 0.
+	// R4.2: handle --version — print version to stdout and exit 0.
+	// Check for these before entering the main flag/processing loop.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--help":
+			fmt.Fprintf(os.Stdout, //nolint:errcheck // best-effort output
+				"Usage: %s [OPTION]... [FILE]...\n"+
+					"Copy standard input to each FILE, and also to standard output.\n\n"+
+					"  -a, --append              append to the given FILEs, do not overwrite\n"+
+					"  -i, --ignore-interrupts   ignore interrupt signals\n"+
+					"  -p                        operate in a more appropriate MODE with pipes.\n"+
+					"      --output-error[=MODE]   set behavior on write error.  See MODE below\n"+
+					"      --help     display this help and exit\n"+
+					"      --version  output version information and exit\n",
+				progName,
+			)
+			os.Exit(0)
+		case "--version":
+			fmt.Fprintf(os.Stdout, "%s (%s) %s\n", //nolint:errcheck // best-effort output
+				progName, "go-unix-utils", version.Version,
+			)
+			os.Exit(0)
+		}
+	}
 
 	// Parse flags manually to match GNU tee flag handling.
 	var files []string

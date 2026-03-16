@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -57,6 +58,18 @@ func TestDiff(t *testing.T) {
 			Name:  "R1.4_dash_as_file",
 			Args:  []string{"-"},
 			Stdin: []byte("dash test\n"),
+		},
+		// R4.1: --help exits 0 and prints to stdout.
+		{
+			Name:      "R4.1_help_exit_code",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearStdout},
+		},
+		// R4.2: --version exits 0 and prints to stdout.
+		{
+			Name:      "R4.2_version_exit_code",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearStdout},
 		},
 	}
 
@@ -749,4 +762,97 @@ func readFile(t *testing.T, path string) []byte {
 // error message format differs between Go and GNU implementations.
 func clearStderr(b []byte) []byte {
 	return []byte{}
+}
+
+// clearStdout returns empty bytes, allowing differential comparison to focus
+// on exit code only. Used for --help and --version tests where the output
+// content differs between Go and GNU implementations.
+func clearStdout(b []byte) []byte {
+	return []byte{}
+}
+
+// TestHelp verifies that --help prints usage to stdout and exits 0.
+func TestHelp(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+
+	got := string(out)
+	if !strings.Contains(got, "Usage:") {
+		t.Errorf("--help output missing 'Usage:': %s", got)
+	}
+	if !strings.Contains(got, "tee") {
+		t.Errorf("--help output missing program name 'tee': %s", got)
+	}
+}
+
+// TestVersion verifies that --version prints version info to stdout and exits 0.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+
+	got := string(out)
+	if !strings.Contains(got, "tee") {
+		t.Errorf("--version output missing program name 'tee': %s", got)
+	}
+	if !strings.Contains(got, "go-unix-utils") {
+		t.Errorf("--version output missing 'go-unix-utils': %s", got)
+	}
+}
+
+// TestHelpDiff verifies that --help exit code matches gtee --help.
+func TestHelpDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// Both should exit 0 on --help.
+	goCmd := exec.Command(goBin, "--help")
+	goErr := goCmd.Run()
+
+	refCmd := exec.Command(refBin, "--help")
+	refErr := refCmd.Run()
+
+	if (goErr == nil) != (refErr == nil) {
+		t.Errorf("--help exit code mismatch: go=%v ref=%v", goErr, refErr)
+	}
+}
+
+// TestVersionDiff verifies that --version exit code matches gtee --version.
+func TestVersionDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// Both should exit 0 on --version.
+	goCmd := exec.Command(goBin, "--version")
+	goErr := goCmd.Run()
+
+	refCmd := exec.Command(refBin, "--version")
+	refErr := refCmd.Run()
+
+	if (goErr == nil) != (refErr == nil) {
+		t.Errorf("--version exit code mismatch: go=%v ref=%v", goErr, refErr)
+	}
 }
