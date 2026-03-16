@@ -164,7 +164,11 @@ func main() {
 // R1.3 (-f): all but last component must exist.
 // R1.4 (-e): all components must exist.
 // R1.5 (-m): no components need exist.
+// R3.2: empty string operand is always an error.
 func resolveCanon(path string, existing, missing bool) (string, error) {
+	if path == "" {
+		return "", &os.PathError{Op: "readlink", Path: "", Err: fmt.Errorf("No such file or directory")}
+	}
 	if missing {
 		return resolveMissing(path)
 	}
@@ -175,10 +179,21 @@ func resolveCanon(path string, existing, missing bool) (string, error) {
 }
 
 // resolveDefault implements -f: resolve symlinks, last component may be missing.
+// R3.1: follows symlinks at each component; if the path itself is a symlink
+// whose target does not exist, reads the link target and resolves that path.
 func resolveDefault(path string) (string, error) {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err == nil {
 		return filepath.Abs(resolved)
+	}
+
+	// If path is a symlink (e.g. dangling), follow it and resolve the target.
+	target, linkErr := os.Readlink(path)
+	if linkErr == nil {
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		return resolveDefault(target)
 	}
 
 	// Last component may be missing — resolve parent and append base.
@@ -208,6 +223,8 @@ func resolveExisting(path string) (string, error) {
 }
 
 // resolveMissing implements -m: no components need exist.
+// R3.1: follows symlinks; if the path is a dangling symlink, reads the target
+// and resolves that path instead.
 func resolveMissing(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -217,6 +234,15 @@ func resolveMissing(path string) (string, error) {
 	resolved, err := filepath.EvalSymlinks(abs)
 	if err == nil {
 		return resolved, nil
+	}
+
+	// If path is a symlink (e.g. dangling), follow it and resolve the target.
+	target, linkErr := os.Readlink(abs)
+	if linkErr == nil {
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(abs), target)
+		}
+		return resolveMissing(target)
 	}
 
 	// Walk up to find the longest existing prefix.

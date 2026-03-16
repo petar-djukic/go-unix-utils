@@ -80,6 +80,12 @@ func TestDiff(t *testing.T) {
 		t.Fatalf("creating symlink 2: %v", err)
 	}
 
+	// Dangling symlink: points to a nonexistent target.
+	danglingLink := filepath.Join(tmpDir, "dangling.txt")
+	if err := os.Symlink(filepath.Join(tmpDir, "no_such_target"), danglingLink); err != nil {
+		t.Fatalf("creating dangling symlink: %v", err)
+	}
+
 	// D4: normalizer that strips stderr for error message format differences.
 	normalizeStderr := func(b []byte) []byte {
 		return nil
@@ -335,6 +341,83 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "R1.5_R1.6_verbose_zero_mixed",
 			Args:      []string{"-vz", symlinkPath, targetFile, relSymlink},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+
+		// === R3.1-R3.2: error handling and edge cases ===
+
+		// R3.1: nonexistent path in default mode (no flags) exits 1.
+		{
+			Name:      "R3.1_nonexistent_default_mode",
+			Args:      []string{nonexistentPath},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.1: empty string operand exits 1.
+		{
+			Name:      "R3.1_empty_string_operand",
+			Args:      []string{""},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.1: dangling symlink in default mode still prints target.
+		{
+			Name:     "R3.1_dangling_symlink_default",
+			Args:     []string{danglingLink},
+			ExitCode: 0,
+		},
+		// R3.1: dangling symlink with -e fails (target must exist).
+		{
+			Name:      "R3.1_dangling_symlink_existing",
+			Args:      []string{"-e", danglingLink},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.1: dangling symlink with -f succeeds (last component need not exist).
+		{
+			Name:     "R3.1_dangling_symlink_canonicalize",
+			Args:     []string{"-f", danglingLink},
+			ExitCode: 0,
+		},
+		// R3.1: dangling symlink with -m succeeds (nothing need exist).
+		{
+			Name:     "R3.1_dangling_symlink_missing",
+			Args:     []string{"-m", danglingLink},
+			ExitCode: 0,
+		},
+		// R3.2: -f with completely nonexistent parent directory.
+		{
+			Name:      "R3.2_canonicalize_nonexistent_parent",
+			Args:      []string{"-f", filepath.Join(tmpDir, "no_such_dir", "file")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: -e with empty string operand.
+		{
+			Name:      "R3.2_existing_empty_string",
+			Args:      []string{"-e", ""},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: -m with empty string is an error (exit 1).
+		{
+			Name:      "R3.2_missing_empty_string",
+			Args:      []string{"-m", ""},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: multiple operands all nonexistent in default mode.
+		{
+			Name:      "R3.2_multiple_nonexistent_default",
+			Args:      []string{nonexistentPath, filepath.Join(tmpDir, "also_missing")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: operand after -- is treated as path, not flag.
+		{
+			Name:      "R3.2_double_dash_operand",
+			Args:      []string{"--", "--not-a-flag"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},
