@@ -1,19 +1,22 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd031-sha1sum R1.1-R1.4: core SHA-1 digest computation and
-// standard GNU output format. Computes SHA-1 digests for files or stdin,
-// printing one line per input in the format "HASH  FILENAME". Supports
-// --help and --version flags. Installs SIGPIPE handler for clean exit on
-// broken pipe (R4.3 prerequisite).
+// Implements prd031-sha1sum R1.1-R1.4, R2.1-R2.3: core SHA-1 digest
+// computation, standard GNU output format, and --check verification mode.
+// Computes SHA-1 digests for files or stdin, printing one line per input
+// in the format "HASH  FILENAME". In check mode, reads a checksum file
+// and verifies each listed file, printing OK/FAILED. Installs SIGPIPE
+// handler for clean exit on broken pipe (R4.3 prerequisite).
 package main
 
 import (
+	"bufio"
 	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -23,13 +26,26 @@ import (
 // progName is the name used in error messages to match GNU sha1sum format.
 const progName = "sha1sum"
 
+// sha1HexLen is the length of a SHA-1 digest in hexadecimal characters.
+const sha1HexLen = 40
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	files := parseArgs(os.Args[1:])
+	opts, files := parseArgs(os.Args[1:])
 
-	exitCode := run(files)
+	var exitCode int
+	if opts.check {
+		exitCode = runCheck(files)
+	} else {
+		exitCode = run(files)
+	}
 	os.Exit(exitCode)
+}
+
+// options holds parsed command-line flag state.
+type options struct {
+	check bool
 }
 
 // run processes files and returns the exit code.
@@ -98,9 +114,196 @@ func hashReader(r io.Reader, name string) error {
 	return err
 }
 
-// parseArgs separates flags from file arguments. Supports --help, --version,
-// and -- to end flag parsing.
-func parseArgs(args []string) (files []string) {
+// checkResult tracks the outcome of check mode verification.
+type checkResult struct {
+	mismatched int
+	unreadable int
+	malformed  int
+}
+
+// runCheck reads one or more checksum files and verifies each listed file.
+// R2.1: parses GNU and BSD format lines. R2.2: prints OK/FAILED.
+// R2.3: summary warning on stderr. Exit 0 on all-pass, 1 on any failure.
+func runCheck(files []string) int {
+	if len(files) == 0 {
+		// --check with no file argument reads from stdin.
+		files = []string{"-"}
+	}
+
+	var total checkResult
+	exitCode := 0
+
+	for _, name := range files {
+		result, err := checkFile(name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, unwrapPathError(err))
+			exitCode = 1
+			continue
+		}
+		total.mismatched += result.mismatched
+		total.unreadable += result.unreadable
+		total.malformed += result.malformed
+	}
+
+	// R2.3: GNU prints separate summary warnings for unreadable files and mismatches.
+	if total.unreadable > 0 {
+		fmt.Fprintf(os.Stderr, "%s: WARNING: %d listed file could not be read\n", progName, total.unreadable)
+		exitCode = 1
+	}
+	if total.mismatched > 0 {
+		fmt.Fprintf(os.Stderr, "%s: WARNING: %d computed checksum did NOT match\n", progName, total.mismatched)
+		exitCode = 1
+	}
+	if total.malformed > 0 {
+		fmt.Fprintf(os.Stderr, "%s: WARNING: %d line is improperly formatted\n", progName, total.malformed)
+	}
+
+	return exitCode
+}
+
+// checkFile opens a checksum file (or stdin for "-"), parses each line, verifies
+// the digest, and prints OK/FAILED. Returns counts of mismatches, unreadable files,
+// and malformed lines.
+func checkFile(name string) (checkResult, error) {
+	var r io.Reader
+	if name == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(name)
+		if err != nil {
+			return checkResult{}, err
+		}
+		defer f.Close()
+		r = f
+	}
+
+	var result checkResult
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		hash, filename, ok := parseCheckLine(line)
+		if !ok {
+			if line != "" {
+				result.malformed++
+			}
+			continue
+		}
+
+		computed, err := computeFileHash(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, filename, unwrapPathError(err))
+			// GNU prints "FILENAME: FAILED open or read" for unreadable files.
+			fmt.Fprintf(os.Stdout, "%s: FAILED open or read\n", filename)
+			result.unreadable++
+			continue
+		}
+
+		if computed == hash {
+			fmt.Fprintf(os.Stdout, "%s: OK\n", filename)
+		} else {
+			fmt.Fprintf(os.Stdout, "%s: FAILED\n", filename)
+			result.mismatched++
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+// parseCheckLine parses a single line from a checksum file.
+// Supports GNU format "HASH  FILENAME" or "HASH *FILENAME", and BSD tag format
+// "SHA1 (FILENAME) = HASH".
+// Returns the lowercase hex hash, the filename, and whether the line was valid.
+func parseCheckLine(line string) (hash, filename string, ok bool) {
+	// R2.2: Try BSD tag format first: "SHA1 (FILENAME) = HASH"
+	if strings.HasPrefix(line, "SHA1 (") {
+		return parseBSDTagLine(line)
+	}
+
+	// GNU text mode: "da39a3ee5e6b4b0d3255bfef95601890afd80709  filename"
+	// GNU binary mode: "da39a3ee5e6b4b0d3255bfef95601890afd80709 *filename"
+	if len(line) < sha1HexLen+2 {
+		return "", "", false
+	}
+
+	hash = line[:sha1HexLen]
+	if !isValidHex(hash) {
+		return "", "", false
+	}
+
+	sep := line[sha1HexLen : sha1HexLen+2]
+	if sep != "  " && sep != " *" {
+		return "", "", false
+	}
+
+	filename = line[sha1HexLen+2:]
+	if filename == "" {
+		return "", "", false
+	}
+
+	return strings.ToLower(hash), filename, true
+}
+
+// parseBSDTagLine parses a BSD tag format line: "SHA1 (FILENAME) = HASH".
+func parseBSDTagLine(line string) (hash, filename string, ok bool) {
+	// Find the closing paren.
+	closeIdx := strings.LastIndex(line, ") = ")
+	if closeIdx < 6 {
+		return "", "", false
+	}
+
+	filename = line[6:closeIdx]
+	if filename == "" {
+		return "", "", false
+	}
+
+	hash = line[closeIdx+4:]
+	if len(hash) != sha1HexLen || !isValidHex(hash) {
+		return "", "", false
+	}
+
+	return strings.ToLower(hash), filename, true
+}
+
+// isValidHex returns true if s contains only hexadecimal characters.
+func isValidHex(s string) bool {
+	for _, ch := range s {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// computeFileHash computes the SHA-1 hex digest of the named file.
+func computeFileHash(name string) (string, error) {
+	var r io.Reader
+	if name == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(name)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		r = f
+	}
+
+	h := sha1.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// parseArgs separates flags from file arguments. Supports -c/--check,
+// --help, --version, and -- to end flag parsing. Single-char flags
+// can be grouped.
+func parseArgs(args []string) (opts options, files []string) {
 	flagsDone := false
 
 	for _, arg := range args {
@@ -112,6 +315,10 @@ func parseArgs(args []string) (files []string) {
 			flagsDone = true
 			continue
 		}
+		if arg == "--check" {
+			opts.check = true
+			continue
+		}
 		if arg == "--help" {
 			printHelp()
 			os.Exit(0)
@@ -120,11 +327,21 @@ func parseArgs(args []string) (files []string) {
 			printVersion()
 			os.Exit(0)
 		}
-		// Not a recognized flag — treat as file argument.
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-' {
+			// Short flags: -c, or grouped.
+			for _, ch := range arg[1:] {
+				switch ch {
+				case 'c':
+					opts.check = true
+				}
+			}
+			continue
+		}
+		// Not a flag — treat as file argument.
 		files = append(files, arg)
 	}
 
-	return files
+	return opts, files
 }
 
 // printHelp prints usage information to stdout.
@@ -134,6 +351,7 @@ Print or check SHA1 (160-bit) checksums.
 
 With no FILE, or when FILE is -, read standard input.
 
+  -c, --check  read SHA1 sums from the FILEs and check them
       --help     display this help and exit
       --version  output version information and exit
 `)

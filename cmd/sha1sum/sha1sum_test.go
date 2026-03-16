@@ -1,12 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd031-sha1sum R1.1-R1.4: core SHA-1 digest
-// computation, standard GNU output format, stdin reading, multiple file
-// processing with error handling, and --help/--version flags.
+// Differential tests for prd031-sha1sum R1.1-R1.4, R2.1-R2.3: core SHA-1
+// digest computation, standard GNU output format, stdin reading, multiple
+// file processing with error handling, --help/--version flags, and --check
+// verification mode with OK/FAILED output and exit code behavior.
 package main
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +37,12 @@ func stderrNormalizer(b []byte) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
+// sha1Hex computes the SHA-1 hex digest of data.
+func sha1Hex(data []byte) string {
+	h := sha1.Sum(data)
+	return fmt.Sprintf("%x", h)
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -49,15 +58,21 @@ func TestDiff(t *testing.T) {
 	fileB := filepath.Join(tmpDir, "b.txt")
 	emptyFile := filepath.Join(tmpDir, "empty.txt")
 
-	if err := os.WriteFile(fileA, []byte("hello\n"), 0o644); err != nil {
+	contentA := []byte("hello\n")
+	contentB := []byte("world\n")
+
+	if err := os.WriteFile(fileA, contentA, 0o644); err != nil {
 		t.Fatalf("writing a.txt: %v", err)
 	}
-	if err := os.WriteFile(fileB, []byte("world\n"), 0o644); err != nil {
+	if err := os.WriteFile(fileB, contentB, 0o644); err != nil {
 		t.Fatalf("writing b.txt: %v", err)
 	}
 	if err := os.WriteFile(emptyFile, []byte{}, 0o644); err != nil {
 		t.Fatalf("writing empty.txt: %v", err)
 	}
+
+	hashA := sha1Hex(contentA)
+	hashB := sha1Hex(contentB)
 
 	tests := []testutils.DiffTest{
 		// R1.1: single file hash in text mode (default).
@@ -106,6 +121,91 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
+
+	// --- R2.1-R2.3: check mode tests ---
+
+	// Create a valid checksum file for a.txt and b.txt in GNU format.
+	checksumFile := filepath.Join(tmpDir, "checksums.txt")
+	checksumContent := hashA + "  " + fileA + "\n" +
+		hashB + "  " + fileB + "\n"
+	if err := os.WriteFile(checksumFile, []byte(checksumContent), 0o644); err != nil {
+		t.Fatalf("writing checksums.txt: %v", err)
+	}
+
+	// Create a checksum file with a wrong hash for b.txt.
+	badChecksumFile := filepath.Join(tmpDir, "bad_checksums.txt")
+	badChecksumContent := hashA + "  " + fileA + "\n" +
+		"0000000000000000000000000000000000000dead  " + fileB + "\n"
+	if err := os.WriteFile(badChecksumFile, []byte(badChecksumContent), 0o644); err != nil {
+		t.Fatalf("writing bad_checksums.txt: %v", err)
+	}
+
+	// Create a checksum file with binary mode indicator.
+	binaryChecksumFile := filepath.Join(tmpDir, "binary_checksums.txt")
+	binaryChecksumContent := hashA + " *" + fileA + "\n"
+	if err := os.WriteFile(binaryChecksumFile, []byte(binaryChecksumContent), 0o644); err != nil {
+		t.Fatalf("writing binary_checksums.txt: %v", err)
+	}
+
+	// Create a checksum file referencing a nonexistent file.
+	missingFileChecksumFile := filepath.Join(tmpDir, "missing_checksums.txt")
+	missingContent := "da39a3ee5e6b4b0d3255bfef95601890afd80709  " + filepath.Join(tmpDir, "nonexistent.txt") + "\n"
+	if err := os.WriteFile(missingFileChecksumFile, []byte(missingContent), 0o644); err != nil {
+		t.Fatalf("writing missing_checksums.txt: %v", err)
+	}
+
+	// Create a BSD tag format checksum file for verifying --check parses tag format.
+	tagChecksumFile := filepath.Join(tmpDir, "tag_checksums.txt")
+	tagChecksumContent := "SHA1 (" + fileA + ") = " + hashA + "\n" +
+		"SHA1 (" + fileB + ") = " + hashB + "\n"
+	if err := os.WriteFile(tagChecksumFile, []byte(tagChecksumContent), 0o644); err != nil {
+		t.Fatalf("writing tag_checksums.txt: %v", err)
+	}
+
+	checkTests := []testutils.DiffTest{
+		// R2.1/R2.2: --check with all files matching — exit 0, prints OK lines.
+		{
+			Name: "check all pass",
+			Args: []string{"--check", checksumFile},
+		},
+		// R2.1/R2.2: -c short flag.
+		{
+			Name: "check short flag all pass",
+			Args: []string{"-c", checksumFile},
+		},
+		// R2.2/R2.3: --check with one mismatch — exit 1, prints FAILED + warning.
+		{
+			Name:      "check with mismatch",
+			Args:      []string{"--check", badChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.1: --check with binary mode indicator in checksum file.
+		{
+			Name: "check binary mode indicator",
+			Args: []string{"--check", binaryChecksumFile},
+		},
+		// R2.1/R2.2: --check with missing file — exit 1.
+		{
+			Name:      "check missing file",
+			Args:      []string{"--check", missingFileChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.1: --check reads from stdin via "-" argument.
+		{
+			Name:  "check from stdin dash",
+			Args:  []string{"--check", "-"},
+			Stdin: []byte(checksumContent),
+		},
+		// R2.1/R2.2: --check with BSD tag format checksum file.
+		{
+			Name: "check tag format",
+			Args: []string{"--check", tagChecksumFile},
+		},
+	}
+
+	tests = append(tests, checkTests...)
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
