@@ -32,6 +32,8 @@ func TestDiff(t *testing.T) {
 	writeTestFile(t, tmpDir, "empty.txt", "")
 	writeTestFile(t, tmpDir, "file1.txt", "x\ny\n")
 	writeTestFile(t, tmpDir, "file2.txt", "1\n2\n")
+	writeTestFile(t, tmpDir, "comma1.txt", "a,b,c,")
+	writeTestFile(t, tmpDir, "comma2.txt", "x,y,")
 
 	tests := []testutils.DiffTest{
 		// R1.1: reverse lines from stdin with trailing newline.
@@ -255,6 +257,79 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeRegexError},
 		},
+
+		// R4.2: binary data in stdin (bytes outside printable ASCII).
+		{
+			Name:  "R4.2_binary_data",
+			Stdin: []byte{0x00, 0x0A, 0xFF, 0x0A, 0x80, 0x0A},
+		},
+		// R4.2: binary data without trailing newline.
+		{
+			Name:  "R4.2_binary_data_no_trailing_newline",
+			Stdin: []byte{0x01, 0x02, 0x0A, 0xFE, 0xFF},
+		},
+		// R4.2: very long lines (4 KB each).
+		{
+			Name:  "R4.2_very_long_lines",
+			Stdin: buildLongLineInput(4096, 3),
+		},
+		// R4.2: multiple file operands with -s flag.
+		{
+			Name: "R4.2_multiple_files_with_separator",
+			Args: []string{
+				"-s", ",",
+				filepath.Join(tmpDir, "comma1.txt"),
+				filepath.Join(tmpDir, "comma2.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R4.3: -s with separator not present in input.
+		{
+			Name:  "R4.3_separator_not_in_input",
+			Args:  []string{"-s", "|"},
+			Stdin: []byte("no pipe chars here"),
+		},
+		// R4.3: all three flags together (-r -b -s).
+		{
+			Name:  "R4.3_all_flags_regex_before_sep",
+			Args:  []string{"-r", "-b", "-s", "[|]"},
+			Stdin: []byte("|alpha|beta|gamma"),
+		},
+		// R4.3: -r -s with alternation regex pattern.
+		{
+			Name:  "R4.3_regex_alternation",
+			Args:  []string{"-r", "-s", "[,;]"},
+			Stdin: []byte("a,b;c,d;"),
+		},
+		// R4.3: -b with multi-character separator.
+		{
+			Name:  "R4.3_before_multichar_sep",
+			Args:  []string{"-b", "-s", "::"},
+			Stdin: []byte("::x::y::z"),
+		},
+		// R4.3: -s with tab separator.
+		{
+			Name:  "R4.3_tab_separator",
+			Args:  []string{"-s", "\t"},
+			Stdin: []byte("a\tb\tc\t"),
+		},
+		// R4.3: -b -s with tab separator.
+		{
+			Name:  "R4.3_before_tab_separator",
+			Args:  []string{"-b", "-s", "\t"},
+			Stdin: []byte("\ta\tb\tc"),
+		},
+		// R4.2: lines of only separator characters.
+		{
+			Name:  "R4.2_only_separators",
+			Stdin: []byte(",,,"),
+			Args:  []string{"-s", ","},
+		},
+		// R4.2: single-character input (no separator).
+		{
+			Name:  "R4.2_single_char_no_separator",
+			Stdin: []byte("x"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -277,6 +352,18 @@ func normalizeProgramName(b []byte) []byte {
 	return bytes.ToLower(b)
 }
 
+// buildLongLineInput creates input with n lines, each lineLen bytes of 'A',
+// separated by newlines with a trailing newline.
+func buildLongLineInput(lineLen, n int) []byte {
+	line := bytes.Repeat([]byte("A"), lineLen)
+	var buf bytes.Buffer
+	for range n {
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
 // normalizeRegexError normalizes regex error messages for differential
 // comparison. GNU tac uses POSIX regex error messages while Go uses its own
 // format. Both produce a non-empty error line to stderr; we normalize to a
@@ -285,7 +372,7 @@ func normalizeRegexError(b []byte) []byte {
 	b = bytes.ReplaceAll(b, []byte("gtac: "), []byte("tac: "))
 	// Replace everything after "tac: " with a canonical error marker so
 	// different regex error message formats still match.
-	if idx := bytes.Index(b, []byte("tac: ")); idx >= 0 {
+	if bytes.Contains(b, []byte("tac: ")) {
 		return []byte("tac: regex error\n")
 	}
 	return b
