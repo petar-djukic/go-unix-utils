@@ -349,6 +349,13 @@ func TestDiff(t *testing.T) {
 // downstream consumer (SIGPIPE), per R5.3 and R5.4. R5.4 requires exit 0
 // on SIGPIPE; R5.3 requires detection of stdout write errors (SIGPIPE is
 // the primary stdout write error on Unix).
+//
+// Note: This is not a differential test against gcat because GNU cat (C)
+// is killed by SIGPIPE (exit 141 = 128+13) which is the default C signal
+// disposition. Go's runtime changes the default SIGPIPE disposition, so
+// the Go binary must install an explicit handler to exit 0. Both behaviors
+// are correct for their respective runtimes — pipelines work correctly
+// because shells special-case signal-killed processes.
 func TestSIGPIPEExit(t *testing.T) {
 	t.Parallel()
 
@@ -363,11 +370,26 @@ func TestSIGPIPEExit(t *testing.T) {
 	// Feed cat input from /dev/zero; pipe to head -c 1 which reads one byte
 	// then closes, triggering SIGPIPE in cat. Use bash PIPESTATUS to capture
 	// cat's exit code specifically.
-	cmd := exec.Command(bashBin, "-c",
-		fmt.Sprintf("'%s' /dev/zero | head -c 1 > /dev/null; exit ${PIPESTATUS[0]}", goBin))
-	if err := cmd.Run(); err != nil {
-		t.Errorf("R5.4: expected cat to exit 0 on SIGPIPE, got: %v", err)
-	}
+	t.Run("R5.4_sigpipe_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(bashBin, "-c",
+			fmt.Sprintf("'%s' /dev/zero | head -c 1 > /dev/null; exit ${PIPESTATUS[0]}", goBin))
+		if err := cmd.Run(); err != nil {
+			t.Errorf("R5.4: expected cat to exit 0 on SIGPIPE, got: %v", err)
+		}
+	})
+
+	// R5.4: SIGPIPE with transformation flags active — cat must still exit 0
+	// when line-by-line processing is engaged and downstream closes.
+	// Use yes to produce newlines so line-by-line processing generates output.
+	t.Run("R5.4_sigpipe_with_flags", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(bashBin, "-c",
+			fmt.Sprintf("yes | '%s' -n | head -c 1 > /dev/null; exit ${PIPESTATUS[1]}", goBin))
+		if err := cmd.Run(); err != nil {
+			t.Errorf("R5.4: expected cat -n to exit 0 on SIGPIPE, got: %v", err)
+		}
+	})
 }
 
 // writeTestFile creates a file with the given content in dir.
