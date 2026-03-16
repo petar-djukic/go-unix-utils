@@ -130,7 +130,7 @@ func main() {
 // R3.3: -v prints verbose message for each removal.
 // R2.1: -p removes parent directory components in sequence.
 func removeDir(dir string, parents, ignoreNonEmpty, verbose bool) error {
-	if err := tryRemove(dir, ignoreNonEmpty, verbose); err != nil {
+	if err := tryRemove(dir, ignoreNonEmpty, verbose, false); err != nil {
 		return err
 	}
 
@@ -142,7 +142,9 @@ func removeDir(dir string, parents, ignoreNonEmpty, verbose bool) error {
 			if current == "." || current == "/" {
 				break
 			}
-			if err := tryRemove(current, ignoreNonEmpty, verbose); err != nil {
+			// R4.1: parent removal uses "failed to remove directory" format
+			// to match GNU rmdir behavior.
+			if err := tryRemove(current, ignoreNonEmpty, verbose, true); err != nil {
 				return err
 			}
 		}
@@ -154,8 +156,10 @@ func removeDir(dir string, parents, ignoreNonEmpty, verbose bool) error {
 // tryRemove attempts to remove a single directory. If ignoreNonEmpty is true,
 // errors caused by a non-empty directory are suppressed (R3.1). Other errors
 // are not suppressed (R3.2). If verbose is true, a message is printed to
-// stdout for each successful removal (R3.3, R3.4).
-func tryRemove(dir string, ignoreNonEmpty, verbose bool) error {
+// stdout for each successful removal (R3.3, R3.4). The isParent flag controls
+// the error message format: GNU rmdir uses "failed to remove directory" for
+// parent traversal and "failed to remove" for direct removal.
+func tryRemove(dir string, ignoreNonEmpty, verbose, isParent bool) error {
 	// R3.3: print verbose message before removal, matching GNU rmdir behavior (R3.4).
 	if verbose {
 		fmt.Fprintf(os.Stdout, "%s: removing directory, '%s'\n", progName, dir) //nolint:errcheck // best-effort output
@@ -172,6 +176,11 @@ func tryRemove(dir string, ignoreNonEmpty, verbose bool) error {
 		return nil
 	}
 
+	// R4.1: GNU rmdir uses "failed to remove directory" for parent traversal
+	// and "failed to remove" for direct removal.
+	if isParent {
+		return fmt.Errorf("failed to remove directory '%s': %s", dir, err)
+	}
 	return fmt.Errorf("failed to remove '%s': %s", dir, err)
 }
 
