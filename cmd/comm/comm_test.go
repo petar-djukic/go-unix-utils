@@ -8,6 +8,7 @@
 // Covers prd029-comm R2.1-R2.4: --check-order, --nocheck-order,
 // and unsorted input handling.
 // Covers prd029-comm R3.1-R3.4: output delimiter and column suppression options.
+// Covers prd029-comm R4.1-R4.4: --total summary line and --zero-terminated mode.
 package main
 
 import (
@@ -427,6 +428,156 @@ func TestDiffOutputDelimiter(t *testing.T) {
 		{
 			Name:    "output_delimiter_with_suppress3",
 			Args:    []string{"--output-delimiter=,", "-3", file1, file2},
+			WorkDir: dir,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffTotal tests R4.1 and R4.3: --total appends a summary line with
+// column counts, working correctly with column suppression flags.
+func TestDiffTotal(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcomm")
+	if err != nil {
+		t.Skipf("reference binary gcomm not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	file1 := writeTestFile(t, dir, "f1.txt", "a\nb\nc\n")
+	file2 := writeTestFile(t, dir, "f2.txt", "b\nc\nd\n")
+	empty := writeTestFile(t, dir, "empty.txt", "")
+	identical1 := writeTestFile(t, dir, "id1.txt", "a\nb\nc\n")
+	identical2 := writeTestFile(t, dir, "id2.txt", "a\nb\nc\n")
+
+	tests := []testutils.DiffTest{
+		// R4.1: --total with basic three-column output.
+		{
+			Name:    "total_basic",
+			Args:    []string{"--total", file1, file2},
+			WorkDir: dir,
+		},
+		// R4.3: --total with -1 suppression.
+		{
+			Name:    "total_suppress1",
+			Args:    []string{"--total", "-1", file1, file2},
+			WorkDir: dir,
+		},
+		// R4.3: --total with -2 -3 suppression.
+		{
+			Name:    "total_suppress23",
+			Args:    []string{"--total", "-23", file1, file2},
+			WorkDir: dir,
+		},
+		// R4.3: --total with all columns suppressed.
+		{
+			Name:    "total_suppress_all",
+			Args:    []string{"--total", "-123", file1, file2},
+			WorkDir: dir,
+		},
+		// R4.1: --total with identical files (all in column 3).
+		{
+			Name:    "total_identical",
+			Args:    []string{"--total", identical1, identical2},
+			WorkDir: dir,
+		},
+		// R4.1: --total with empty files.
+		{
+			Name:    "total_both_empty",
+			Args:    []string{"--total", empty, empty},
+			WorkDir: dir,
+		},
+		// R4.1: --total combined with --output-delimiter.
+		{
+			Name:    "total_with_output_delimiter",
+			Args:    []string{"--total", "--output-delimiter=|", file1, file2},
+			WorkDir: dir,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffZeroTerminated tests R4.2 and R4.4: -z/--zero-terminated uses NUL
+// as the line delimiter for both input and output, combined with other flags.
+func TestDiffZeroTerminated(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcomm")
+	if err != nil {
+		t.Skipf("reference binary gcomm not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	// NUL-delimited input files.
+	zFile1 := filepath.Join(dir, "z1.txt")
+	if err := os.WriteFile(zFile1, []byte("a\x00b\x00c\x00"), 0o644); err != nil {
+		t.Fatalf("writing z1.txt: %v", err)
+	}
+	zFile2 := filepath.Join(dir, "z2.txt")
+	if err := os.WriteFile(zFile2, []byte("b\x00c\x00d\x00"), 0o644); err != nil {
+		t.Fatalf("writing z2.txt: %v", err)
+	}
+	zEmpty := filepath.Join(dir, "zempty.txt")
+	if err := os.WriteFile(zEmpty, []byte(""), 0o644); err != nil {
+		t.Fatalf("writing zempty.txt: %v", err)
+	}
+	zIdentical := filepath.Join(dir, "zid.txt")
+	if err := os.WriteFile(zIdentical, []byte("a\x00b\x00c\x00"), 0o644); err != nil {
+		t.Fatalf("writing zid.txt: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.2: basic -z three-column output.
+		{
+			Name:    "zero_terminated_basic",
+			Args:    []string{"-z", zFile1, zFile2},
+			WorkDir: dir,
+		},
+		// R4.2: --zero-terminated long form.
+		{
+			Name:    "zero_terminated_long",
+			Args:    []string{"--zero-terminated", zFile1, zFile2},
+			WorkDir: dir,
+		},
+		// R4.4: -z combined with column suppression -12.
+		{
+			Name:    "zero_terminated_suppress12",
+			Args:    []string{"-z", "-12", zFile1, zFile2},
+			WorkDir: dir,
+		},
+		// R4.4: -z combined with --output-delimiter.
+		{
+			Name:    "zero_terminated_output_delimiter",
+			Args:    []string{"-z", "--output-delimiter=|", zFile1, zFile2},
+			WorkDir: dir,
+		},
+		// R4.4: -z combined with --total.
+		{
+			Name:    "zero_terminated_total",
+			Args:    []string{"-z", "--total", zFile1, zFile2},
+			WorkDir: dir,
+		},
+		// R4.4: -z combined with --total and column suppression.
+		{
+			Name:    "zero_terminated_total_suppress1",
+			Args:    []string{"-z", "--total", "-1", zFile1, zFile2},
+			WorkDir: dir,
+		},
+		// R4.2: -z with empty files.
+		{
+			Name:    "zero_terminated_empty",
+			Args:    []string{"-z", zEmpty, zEmpty},
+			WorkDir: dir,
+		},
+		// R4.2: -z with identical files.
+		{
+			Name:    "zero_terminated_identical",
+			Args:    []string{"-z", zFile1, zIdentical},
 			WorkDir: dir,
 		},
 	}

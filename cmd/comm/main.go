@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd029-comm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4: cmd/comm reads
-// two sorted text files line by line and produces three-column output
-// showing lines unique to file 1, unique to file 2, and common to both.
-// Supports -1, -2, -3 flags to suppress individual columns, --check-order
-// and --nocheck-order to control input order validation,
-// --output-delimiter=STRING to replace tab as the column separator, and
+// Implements prd029-comm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4:
+// cmd/comm reads two sorted text files line by line and produces
+// three-column output showing lines unique to file 1, unique to file 2,
+// and common to both. Supports -1, -2, -3 flags to suppress individual
+// columns, --check-order and --nocheck-order to control input order
+// validation, --output-delimiter=STRING to replace tab as the column
+// separator, --total to append a summary line with column counts,
+// -z/--zero-terminated to use NUL as the line delimiter, and
 // --version/--help flags. Installs SIGPIPE handler per shared protocol.
 package main
 
@@ -41,10 +43,12 @@ const (
 )
 
 // options holds the parsed command-line flags for column suppression,
-// order checking, and output delimiter.
+// order checking, output delimiter, total line, and zero-terminated mode.
 // R1.3: -1, -2, -3 suppress columns 1, 2, 3 respectively.
 // R2.1-R2.3: --check-order / --nocheck-order / default.
 // R3.4: --output-delimiter=STRING replaces tab as column separator.
+// R4.1: --total appends a summary line with column counts.
+// R4.2: -z/--zero-terminated uses NUL as line delimiter.
 type options struct {
 	suppress1      bool      // -1: suppress column 1 (lines unique to file1)
 	suppress2      bool      // -2: suppress column 2 (lines unique to file2)
@@ -52,6 +56,8 @@ type options struct {
 	order          orderMode // order-checking mode
 	outputDelim    string    // column separator (default: tab)
 	outputDelimSet bool      // true if --output-delimiter was explicitly given
+	total          bool      // --total: append summary line with counts
+	zeroTerm       bool      // -z/--zero-terminated: use NUL as line delimiter
 }
 
 func main() {
@@ -83,6 +89,8 @@ func main() {
 					"      --check-order     check that the input is correctly sorted\n"+
 					"      --nocheck-order   do not check that the input is correctly sorted\n"+
 					"      --output-delimiter=STR  separate columns with STR\n"+
+					"      --total           output a summary\n"+
+					"  -z, --zero-terminated  line delimiter is NUL, not newline\n"+
 					"      --help            display this help and exit\n"+
 					"      --version         output version information and exit\n",
 				progName,
@@ -105,6 +113,18 @@ func main() {
 		// D2: last flag wins when both are specified.
 		if arg == "--nocheck-order" {
 			opts.order = orderNoCheck
+			continue
+		}
+
+		// R4.1: --total appends a summary line with column counts.
+		if arg == "--total" {
+			opts.total = true
+			continue
+		}
+
+		// R4.2: --zero-terminated uses NUL as line delimiter.
+		if arg == "--zero-terminated" {
+			opts.zeroTerm = true
 			continue
 		}
 
@@ -137,7 +157,7 @@ func main() {
 			continue
 		}
 
-		// Short flags: -1, -2, -3 and combinations like -12, -123.
+		// Short flags: -1, -2, -3, -z and combinations like -12, -123, -12z.
 		flags := arg[1:]
 		for j := 0; j < len(flags); j++ {
 			switch flags[j] {
@@ -147,6 +167,9 @@ func main() {
 				opts.suppress2 = true
 			case '3':
 				opts.suppress3 = true
+			case 'z':
+				// R4.2: -z is short for --zero-terminated.
+				opts.zeroTerm = true
 			default:
 				fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, flags[j])
 				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
@@ -186,7 +209,12 @@ func main() {
 	}
 
 	w := bufio.NewWriter(os.Stdout)
-	exitCode := commLines(bufio.NewReader(r1), bufio.NewReader(r2), w, opts)
+	// R4.2: determine line delimiter based on --zero-terminated flag.
+	delim := byte('\n')
+	if opts.zeroTerm {
+		delim = 0
+	}
+	exitCode := commLines(bufio.NewReader(r1), bufio.NewReader(r2), w, opts, delim)
 
 	if err := w.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, err)
@@ -212,12 +240,14 @@ func openInput(name string) (io.Reader, io.Closer, error) {
 }
 
 // readLine reads the next line from a buffered reader, stripping the trailing
-// newline. Returns the line content, whether a line was read, and any error.
-func readLine(br *bufio.Reader) (string, bool, error) {
-	line, err := br.ReadString('\n')
+// delimiter (newline or NUL). Returns the line content, whether a line was
+// read, and any error.
+// R4.2: when zeroTerm is true, uses NUL (\0) as the delimiter instead of \n.
+func readLine(br *bufio.Reader, delim byte) (string, bool, error) {
+	line, err := br.ReadString(delim)
 	if len(line) > 0 {
-		// Strip trailing newline if present.
-		if line[len(line)-1] == '\n' {
+		// Strip trailing delimiter if present.
+		if line[len(line)-1] == delim {
 			line = line[:len(line)-1]
 		}
 		return line, true, err
@@ -279,21 +309,26 @@ func warnUnsorted(current, prev string, fileNum int, hasPrev, alreadyWarned bool
 // R1.2: comparison is lexicographic byte ordering (LC_ALL=C).
 // R1.3: when one file is exhausted, remaining lines go to the appropriate column.
 // R2.1-R2.3: order checking per opts.order mode.
-func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
+// R4.1: when opts.total is true, appends a summary line with column counts.
+// R4.2: delim controls the line delimiter (\n or \0).
+func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options, delim byte) int {
 	doCheck := opts.order != orderNoCheck
+
+	// R4.1: counters for --total summary line.
+	var count1, count2, count3 int
 
 	// R2.1-R2.3: order tracking state per file.
 	var prev1, prev2 string
 	var hasPrev1, hasPrev2 bool
 	var warned1, warned2 bool
 
-	line1, has1, err1 := readLine(br1)
+	line1, has1, err1 := readLine(br1, delim)
 	if err1 != nil && err1 != io.EOF {
 		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 		return 1
 	}
 
-	line2, has2, err2 := readLine(br2)
+	line2, has2, err2 := readLine(br2, delim)
 	if err2 != nil && err2 != io.EOF {
 		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 		return 1
@@ -302,14 +337,15 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 	for has1 && has2 {
 		if line1 < line2 {
 			// R1.1: line unique to file1 — column 1.
+			count1++
 			if !opts.suppress1 {
-				if werr := writeLine(w, columnPrefix(1, opts), line1); werr != nil {
+				if werr := writeLine(w, columnPrefix(1, opts), line1, delim); werr != nil {
 					return 1
 				}
 			}
 			prev1 = line1
 			hasPrev1 = true
-			line1, has1, err1 = readLine(br1)
+			line1, has1, err1 = readLine(br1, delim)
 			if err1 != nil && err1 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 				return 1
@@ -322,14 +358,15 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 			}
 		} else if line1 > line2 {
 			// R1.1: line unique to file2 — column 2.
+			count2++
 			if !opts.suppress2 {
-				if werr := writeLine(w, columnPrefix(2, opts), line2); werr != nil {
+				if werr := writeLine(w, columnPrefix(2, opts), line2, delim); werr != nil {
 					return 1
 				}
 			}
 			prev2 = line2
 			hasPrev2 = true
-			line2, has2, err2 = readLine(br2)
+			line2, has2, err2 = readLine(br2, delim)
 			if err2 != nil && err2 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 				return 1
@@ -342,14 +379,15 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 			}
 		} else {
 			// R1.1: common line — column 3.
+			count3++
 			if !opts.suppress3 {
-				if werr := writeLine(w, columnPrefix(3, opts), line1); werr != nil {
+				if werr := writeLine(w, columnPrefix(3, opts), line1, delim); werr != nil {
 					return 1
 				}
 			}
 			prev1 = line1
 			hasPrev1 = true
-			line1, has1, err1 = readLine(br1)
+			line1, has1, err1 = readLine(br1, delim)
 			if err1 != nil && err1 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 				return 1
@@ -362,7 +400,7 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 			}
 			prev2 = line2
 			hasPrev2 = true
-			line2, has2, err2 = readLine(br2)
+			line2, has2, err2 = readLine(br2, delim)
 			if err2 != nil && err2 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 				return 1
@@ -383,14 +421,15 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 
 	// R1.3: drain remaining lines from file1.
 	for has1 {
+		count1++
 		if !opts.suppress1 {
-			if werr := writeLine(w, columnPrefix(1, opts), line1); werr != nil {
+			if werr := writeLine(w, columnPrefix(1, opts), line1, delim); werr != nil {
 				return 1
 			}
 		}
 		prev1 = line1
 		hasPrev1 = true
-		line1, has1, err1 = readLine(br1)
+		line1, has1, err1 = readLine(br1, delim)
 		if err1 != nil && err1 != io.EOF {
 			fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 			return 1
@@ -405,14 +444,15 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 
 	// R1.3: drain remaining lines from file2.
 	for has2 {
+		count2++
 		if !opts.suppress2 {
-			if werr := writeLine(w, columnPrefix(2, opts), line2); werr != nil {
+			if werr := writeLine(w, columnPrefix(2, opts), line2, delim); werr != nil {
 				return 1
 			}
 		}
 		prev2 = line2
 		hasPrev2 = true
-		line2, has2, err2 = readLine(br2)
+		line2, has2, err2 = readLine(br2, delim)
 		if err2 != nil && err2 != io.EOF {
 			fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 			return 1
@@ -432,18 +472,48 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 		return 1
 	}
 
+	// R4.1: --total appends a summary line with column counts.
+	// R4.3: suppressed columns show 0 in the total line.
+	if opts.total {
+		if werr := writeTotalLine(w, opts, count1, count2, count3, delim); werr != nil {
+			return 1
+		}
+	}
+
 	return 0
 }
 
-// writeLine writes a single output line with the given prefix and a trailing newline.
-func writeLine(w *bufio.Writer, prefix, line string) error {
+// writeLine writes a single output line with the given prefix and a trailing
+// delimiter (newline or NUL).
+// R4.2: when delim is 0, uses NUL as the line terminator.
+func writeLine(w *bufio.Writer, prefix, line string, delim byte) error {
 	if _, err := w.WriteString(prefix); err != nil {
 		return err
 	}
 	if _, err := w.WriteString(line); err != nil {
 		return err
 	}
-	return w.WriteByte('\n')
+	return w.WriteByte(delim)
+}
+
+// writeTotalLine writes the --total summary line.
+// R4.1: format is "count1<delim>count2<delim>count3<delim>total<newline>"
+// where <delim> is the output delimiter (tab by default).
+// R4.3: suppressed columns show 0 in the total line.
+func writeTotalLine(w *bufio.Writer, opts options, c1, c2, c3 int, lineDelim byte) error {
+	sep := "\t"
+	if opts.outputDelimSet {
+		sep = opts.outputDelim
+	}
+
+	// GNU comm --total always prints all three counts plus the word "total",
+	// regardless of column suppression flags. The counts reflect the actual
+	// number of lines classified into each column.
+	line := fmt.Sprintf("%d%s%d%s%d%s%s", c1, sep, c2, sep, c3, sep, "total")
+	if _, err := w.WriteString(line); err != nil {
+		return err
+	}
+	return w.WriteByte(lineDelim)
 }
 
 // unwrapPathError extracts the inner error from an *os.PathError and
