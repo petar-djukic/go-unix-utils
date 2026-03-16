@@ -102,10 +102,25 @@ func TestDiffCreation(t *testing.T) {
 			name: "p_nested",
 			args: []string{"-p", "a/b/c"},
 		},
+		// R2.1: --parents long form creates nested parent directories.
+		{
+			name: "parents_long_form",
+			args: []string{"--parents", "x/y/z"},
+		},
+		// R2.1: -p creates deeply nested chain.
+		{
+			name: "p_deep_nested",
+			args: []string{"-p", "d1/d2/d3/d4/d5"},
+		},
 		// R3.1: -m sets permission mode (octal).
 		{
 			name: "m_octal",
 			args: []string{"-m", "0700", "restricted"},
+		},
+		// R2.1, R3.3: -p -m applies mode only to final directory.
+		{
+			name: "p_m_mode_nested",
+			args: []string{"-p", "-m", "0700", "pm/child/target"},
 		},
 	}
 
@@ -179,6 +194,104 @@ func TestModePermissions(t *testing.T) {
 		got := info.Mode().Perm()
 		if got != 0o755 {
 			t.Errorf("expected mode 0755, got %04o", got)
+		}
+	})
+}
+
+// TestDiffParentsExisting verifies R2.3: -p does not error when some
+// intermediate directories already exist.
+func TestDiffParentsExisting(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	t.Run("p_partial_existing", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		// Pre-create the first intermediate directory in both work dirs.
+		if err := os.Mkdir(filepath.Join(refDir, "existing"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		if err := os.Mkdir(filepath.Join(goDir, "existing"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+
+		args := []string{"-p", "existing/new/deep"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		if refExit != goExit {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refOut, goOut) {
+			t.Errorf("stdout mismatch\nref: %q\ngo:  %q", refOut, goOut)
+		}
+		if !bytes.Equal(refErr, goErr) {
+			t.Errorf("stderr mismatch\nref: %q\ngo:  %q", refErr, goErr)
+		}
+
+		// Verify the deep directory was actually created.
+		target := filepath.Join(goDir, "existing", "new", "deep")
+		if fi, err := os.Stat(target); err != nil {
+			t.Errorf("target directory not created: %v", err)
+		} else if !fi.IsDir() {
+			t.Errorf("target is not a directory")
+		}
+	})
+}
+
+// TestParentsModePermissions verifies R3.3: -p -m applies the specified mode
+// only to the final target directory, not to intermediate directories.
+func TestParentsModePermissions(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("p_m_final_only", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		target := filepath.Join(dir, "parent", "child", "final")
+		cmd := exec.Command(goBin, "-p", "-m", "0700", target)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("mkdir -p -m 0700 failed: %v\noutput: %s", err, out)
+		}
+
+		// R3.3: final directory must have mode 0700.
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatalf("stat final: %v", err)
+		}
+		got := info.Mode().Perm()
+		if got != 0o700 {
+			t.Errorf("final directory: expected mode 0700, got %04o", got)
+		}
+
+		// R3.3: intermediate directories must have default permissions (umask applied to 0777).
+		// We cannot predict the exact umask, but intermediates must NOT have mode 0700
+		// unless the umask happens to produce it.
+		parentDir := filepath.Join(dir, "parent")
+		pInfo, err := os.Stat(parentDir)
+		if err != nil {
+			t.Fatalf("stat parent: %v", err)
+		}
+		parentMode := pInfo.Mode().Perm()
+		// Default is 0777 & ~umask. Common umask 0022 yields 0755.
+		// The intermediate must not have the restricted 0700 mode.
+		if parentMode == 0o700 {
+			t.Errorf("intermediate 'parent' has mode 0700; expected default permissions (umask applied)")
 		}
 	})
 }
