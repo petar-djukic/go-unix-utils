@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/tac against gtac (GNU coreutils).
-// Implements prd021-tac R1.1-R1.4, R4.1-R4.3 test coverage.
+// Implements prd021-tac R1.1-R1.4, R2.1-R2.4, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -128,6 +128,85 @@ func TestDiff(t *testing.T) {
 			WorkDir:   tmpDir,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+
+		// R2.1: -s with comma separator reverses comma-separated records.
+		{
+			Name:  "R2.1_separator_comma",
+			Args:  []string{"-s", ","},
+			Stdin: []byte("a,b,c,"),
+		},
+		// R2.1: -s with colon separator.
+		{
+			Name:  "R2.1_separator_colon",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c:"),
+		},
+		// R2.1: -s with multi-character separator.
+		{
+			Name:  "R2.1_separator_multichar",
+			Args:  []string{"-s", "::"},
+			Stdin: []byte("a::b::c::"),
+		},
+		// R2.1: -s with no trailing separator.
+		{
+			Name:  "R2.1_separator_no_trailing",
+			Args:  []string{"-s", ","},
+			Stdin: []byte("a,b,c"),
+		},
+		// R2.1: -s with single record (no separator in input).
+		{
+			Name:  "R2.1_separator_single_record",
+			Args:  []string{"-s", ","},
+			Stdin: []byte("hello"),
+		},
+		// R2.2: -b attaches separator before each record.
+		{
+			Name:  "R2.2_before_newline",
+			Args:  []string{"-b"},
+			Stdin: []byte("\na\nb\nc"),
+		},
+		// R2.3-R2.4: -b -s with colon separator.
+		{
+			Name:  "R2.3_before_colon",
+			Args:  []string{"-b", "-s", ":"},
+			Stdin: []byte(":a:b:c"),
+		},
+		// R2.4: -b -s with comma separator.
+		{
+			Name:  "R2.4_before_comma",
+			Args:  []string{"-b", "-s", ","},
+			Stdin: []byte(",x,y,z"),
+		},
+		// R2.4: -b -s with trailing content after last record.
+		{
+			Name:  "R2.4_before_comma_no_leading",
+			Args:  []string{"-b", "-s", ","},
+			Stdin: []byte("x,y,z"),
+		},
+		// R2.1: -s with newline separator is same as default.
+		{
+			Name:  "R2.1_separator_newline_explicit",
+			Args:  []string{"-s", "\n"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R2.2: -b with default newline separator.
+		{
+			Name:  "R2.2_before_default_newline",
+			Args:  []string{"-b", "-s", "\n"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R2.1: empty input with separator flag.
+		{
+			Name:  "R2.1_separator_empty_input",
+			Args:  []string{"-s", ","},
+			Stdin: []byte(""),
+		},
+		// R2.1: -s with file argument.
+		{
+			Name:    "R2.1_separator_file",
+			Args:    []string{"-s", "\n", filepath.Join(tmpDir, "three-lines.txt")},
+			WorkDir: tmpDir,
 		},
 	}
 
