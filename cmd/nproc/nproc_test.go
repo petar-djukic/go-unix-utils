@@ -86,6 +86,27 @@ func TestDiff(t *testing.T) {
 			Env:      append(lcEnv, "OMP_NUM_THREADS=3,5"),
 			ExitCode: 0,
 		},
+		// R2.2: --ignore interacts with OMP_NUM_THREADS — subtraction applies after override.
+		{
+			Name:     "R2.2_omp_with_ignore",
+			Args:     []string{"--ignore=1"},
+			Env:      append(lcEnv, "OMP_NUM_THREADS=4"),
+			ExitCode: 0,
+		},
+		// R2.3: --all --ignore with OMP_NUM_THREADS — subtraction from runtime, OMP ignored.
+		{
+			Name:     "R2.3_all_ignore_omp_combined",
+			Args:     []string{"--all", "--ignore=1"},
+			Env:      append(lcEnv, "OMP_NUM_THREADS=4"),
+			ExitCode: 0,
+		},
+		// R2.2: --ignore floors at 1 even with OMP_NUM_THREADS.
+		{
+			Name:     "R2.2_omp_ignore_large_floors",
+			Args:     []string{"--ignore=9999"},
+			Env:      append(lcEnv, "OMP_NUM_THREADS=4"),
+			ExitCode: 0,
+		},
 		// R2.1: extra operand produces error.
 		{
 			Name:      "R2.1_extra_operand",
