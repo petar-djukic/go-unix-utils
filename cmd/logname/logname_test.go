@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/logname against glogname (GNU coreutils).
-// Implements prd053-logname R1.2, R2.2-R2.3, R3.1 test coverage.
+// Implements prd053-logname R1.1-R1.2, R2.1-R2.3, R3.1-R3.3 test coverage.
 package main
 
 import (
@@ -19,6 +19,24 @@ import (
 var binaryPathNormalizer = func(b []byte) []byte {
 	re := regexp.MustCompile(`[^\s']*[/\\]?[gG]?logname`)
 	return re.ReplaceAll(b, []byte("PROG"))
+}
+
+// normalizeVersion reduces --version output to a fixed token so version
+// strings and binary path differences do not cause false divergence.
+var normalizeVersion = func(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("version\n")
+	}
+	return b
+}
+
+// normalizeHelp reduces --help output to a fixed token so wording
+// differences between implementations do not cause false divergence.
+var normalizeHelp = func(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("help\n")
+	}
+	return b
 }
 
 func TestDiff(t *testing.T) {
@@ -64,7 +82,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
-		// R2.1, R3.1: multiple extra operands — only the first triggers the error.
+		// R2.1, R3.1, R3.2: multiple extra operands — only the first triggers the error.
 		{
 			Name:      "R2.1_multiple_extra_operands",
 			Args:      []string{"foo", "bar"},
@@ -72,7 +90,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
-		// R2.2: another unknown long option variant.
+		// R2.2, R3.2: another unknown long option variant with equals sign.
 		{
 			Name:      "R2.2_invalid_long_option_equals",
 			Args:      []string{"--foo=bar"},
@@ -80,23 +98,25 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
+		// R3.2: --help produces output and exits 0.
+		{
+			Name:      "help",
+			Args:      []string{"--help"},
+			Env:       lcEnv,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeHelp},
+		},
+		// R3.2: --version produces output and exits 0.
+		{
+			Name:      "version",
+			Args:      []string{"--version"},
+			Env:       lcEnv,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeVersion},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-func TestHelpExitsZero(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--help")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("unexpected error running %s --help: %v", goBin, err)
-	}
-	if len(out) == 0 {
-		t.Error("--help produced no output")
-	}
 }
 
 // TestNoLoginName verifies R2.3: when LOGNAME is unset, logname prints an
@@ -106,7 +126,7 @@ func TestNoLoginName(t *testing.T) {
 
 	goBin := testutils.BuildBinary(t, ".")
 	cmd := exec.Command(goBin)
-	// Clear LOGNAME from the environment to trigger the error path.
+	// R3.3: set LC_ALL=C. Clear LOGNAME from the environment to trigger the error path.
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "LC_ALL=C"}
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -118,19 +138,5 @@ func TestNoLoginName(t *testing.T) {
 	}
 	if exitErr.ExitCode() != 1 {
 		t.Errorf("expected exit code 1, got %d; output: %s", exitErr.ExitCode(), out)
-	}
-}
-
-func TestVersionExitsZero(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--version")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("unexpected error running %s --version: %v", goBin, err)
-	}
-	if len(out) == 0 {
-		t.Error("--version produced no output")
 	}
 }
