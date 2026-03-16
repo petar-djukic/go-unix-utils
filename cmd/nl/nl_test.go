@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/nl against gnl (GNU coreutils).
-// Implements prd022-nl R1.1-R1.4, R2.1-R2.4 test coverage.
+// Implements prd022-nl R1.1-R1.4, R2.1-R2.4, R4.1-R4.2 test coverage.
 package main
 
 import (
@@ -261,6 +261,91 @@ func TestDiffR2(t *testing.T) {
 			Name:  "R2.1_R2.2_combined_b_h_flags",
 			Args:  []string{"-ba", "-ha"},
 			Stdin: []byte("data\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffR4 covers section delimiter handling (prd022-nl R4.1-R4.2).
+func TestDiffR4(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1: header delimiter produces empty line and starts header section.
+		{
+			Name:  "R4.1_header_delimiter_to_empty_line",
+			Stdin: []byte("\\:\\:\\:\nheader line\n\\:\\:\nbody line\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: footer delimiter switches to footer section.
+		{
+			Name:  "R4.1_footer_delimiter",
+			Stdin: []byte("body\n\\:\nfooter\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: header delimiter resets line counter.
+		{
+			Name:  "R4.2_header_resets_counter",
+			Stdin: []byte("a\nb\n\\:\\:\\:\nheader\n\\:\\:\nc\nd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: body and footer delimiters also reset counter (GNU behavior).
+		{
+			Name:  "R4.1_body_footer_reset",
+			Stdin: []byte("a\n\\:\\:\nb\n\\:\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -h a numbers header lines with section delimiters.
+		{
+			Name:  "R2.2_header_style_a_with_delimiters",
+			Args:  []string{"-ha"},
+			Stdin: []byte("\\:\\:\\:\nheader1\nheader2\n\\:\\:\nbody1\nbody2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -f a numbers footer lines with section delimiters.
+		{
+			Name:  "R2.3_footer_style_a_with_delimiters",
+			Args:  []string{"-fa"},
+			Stdin: []byte("body1\n\\:\nfooter1\nfooter2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2+R2.3: default header and footer styles are n (no numbering).
+		{
+			Name:  "R2.2_R2.3_default_header_footer_not_numbered",
+			Stdin: []byte("\\:\\:\\:\nheader\n\\:\\:\nbody\n\\:\nfooter\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: multiple logical pages reset counter on each header.
+		{
+			Name:  "R4.2_multiple_pages_reset",
+			Stdin: []byte("a\nb\n\\:\\:\\:\n\\:\\:\nc\nd\n\\:\\:\\:\n\\:\\:\ne\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// All three sections with all-number styles.
+		{
+			Name:  "all_sections_style_a",
+			Args:  []string{"-ha", "-ba", "-fa"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\n\\:\nf1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: delimiter line that is not exact (has trailing content).
+		{
+			Name:  "delimiter_with_trailing_content_not_delimiter",
+			Stdin: []byte("\\:\\:\\:extra\nline\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Edge: consecutive delimiters.
+		{
+			Name:  "consecutive_delimiters",
+			Stdin: []byte("\\:\\:\\:\n\\:\\:\n\\:\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}

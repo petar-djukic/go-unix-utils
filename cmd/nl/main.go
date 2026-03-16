@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd022-nl R1.1-R1.4, R2.1-R2.4: cmd/nl numbers lines from stdin
-// or named files. Supports per-section numbering styles via -b (body), -h
-// (header), and -f (footer) flags with styles a (all), t (non-empty, default
-// for body), n (none), and pRE (regex match). When style is n, lines pass
-// through with no number and no separator. Installs SIGPIPE handler for clean
-// exit on broken pipe.
+// Implements prd022-nl R1.1-R1.4, R2.1-R2.4, R4.1-R4.2: cmd/nl numbers lines
+// from stdin or named files. Supports per-section numbering styles via -b
+// (body), -h (header), and -f (footer) flags with styles a (all), t
+// (non-empty, default for body), n (none), and pRE (regex match). Recognizes
+// logical page section delimiters (\:\:\: header, \:\: body, \: footer) and
+// resets line numbering on header boundaries. Installs SIGPIPE handler for
+// clean exit on broken pipe.
 package main
 
 import (
@@ -29,6 +30,10 @@ const defaultWidth = 6
 // defaultSep is the separator between line number and content (R1.1).
 const defaultSep = "\t"
 
+// defaultDelim is the two-character section delimiter pair.
+// R4.1: default delimiter is \: (backslash-colon).
+const defaultDelim = `\:`
+
 // numberStyle represents a line numbering style for a section.
 type numberStyle int
 
@@ -43,6 +48,19 @@ const (
 	styleP
 )
 
+// sectionType identifies the current logical page section.
+// R4.1: nl processes input in logical pages with header, body, and footer sections.
+type sectionType int
+
+const (
+	// sectionBody is the body section (default at start of input).
+	sectionBody sectionType = iota
+	// sectionHeader is the header section.
+	sectionHeader
+	// sectionFooter is the footer section.
+	sectionFooter
+)
+
 // sectionStyle holds the parsed numbering style and optional regex for pRE.
 type sectionStyle struct {
 	style numberStyle
@@ -54,6 +72,20 @@ type nlConfig struct {
 	bodyStyle   sectionStyle
 	headerStyle sectionStyle
 	footerStyle sectionStyle
+	startNum    int
+}
+
+// styleForSection returns the numbering style for the given section.
+// R2.1-R2.3: -b, -h, -f control per-section numbering style.
+func (c nlConfig) styleForSection(s sectionType) sectionStyle {
+	switch s {
+	case sectionHeader:
+		return c.headerStyle
+	case sectionFooter:
+		return c.footerStyle
+	default:
+		return c.bodyStyle
+	}
 }
 
 // parseStyle parses a style string (a, t, n, pRE) into a sectionStyle.
@@ -101,6 +133,7 @@ func main() {
 		bodyStyle:   sectionStyle{style: styleT}, // R2.1: default body style is t.
 		headerStyle: sectionStyle{style: styleN}, // R2.2: default header style is n.
 		footerStyle: sectionStyle{style: styleN}, // R2.3: default footer style is n.
+		startNum:    1,                            // R4.2: default start value.
 	}
 
 	// Parse flags manually to match GNU nl's flag syntax (e.g., -ba, -b a, -bt, -pRE).
@@ -167,7 +200,8 @@ func main() {
 	}
 
 	exitCode := 0
-	lineNum := 1
+	lineNum := cfg.startNum
+	section := sectionBody
 
 	// Compute padding for unnumbered lines.
 	emptyPadding := strings.Repeat(" ", defaultWidth+len(defaultSep))
@@ -175,7 +209,7 @@ func main() {
 	if len(files) == 0 {
 		// R1.3: no file arguments — read from stdin.
 		var err error
-		lineNum, err = nlReader(os.Stdin, lineNum, cfg.bodyStyle, emptyPadding)
+		lineNum, section, err = nlReader(os.Stdin, lineNum, section, cfg, emptyPadding)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 			exitCode = 1
@@ -188,7 +222,7 @@ func main() {
 		var err error
 		if name == "-" {
 			// R1.3: "-" means read from stdin.
-			lineNum, err = nlReader(os.Stdin, lineNum, cfg.bodyStyle, emptyPadding)
+			lineNum, section, err = nlReader(os.Stdin, lineNum, section, cfg, emptyPadding)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 				exitCode = 1
@@ -202,7 +236,7 @@ func main() {
 			exitCode = 1
 			continue
 		}
-		lineNum, err = nlReader(f, lineNum, cfg.bodyStyle, emptyPadding)
+		lineNum, section, err = nlReader(f, lineNum, section, cfg, emptyPadding)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 			exitCode = 1
@@ -213,41 +247,78 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// nlReader reads lines from r, numbering lines according to the given style
-// starting at lineNum. Returns the next line number to use and any error.
+// nlReader reads lines from r, numbering lines according to the per-section
+// styles in cfg, starting at lineNum in the given section. Returns the next
+// line number, current section, and any error.
 //
 // R1.1: non-empty lines are numbered with right-justified width 6, tab separator.
 // R1.2: empty lines are output with whitespace padding but no number (under style t).
-// R2.1-R2.4: style determines which lines are numbered.
-func nlReader(r io.Reader, lineNum int, style sectionStyle, emptyPadding string) (int, error) {
+// R2.1-R2.4: per-section style determines which lines are numbered.
+// R4.1: section delimiter lines are replaced with empty lines in output.
+// R4.2: header delimiter resets line counter to startNum.
+func nlReader(r io.Reader, lineNum int, section sectionType, cfg nlConfig, emptyPadding string) (int, sectionType, error) {
 	w := bufio.NewWriter(os.Stdout)
 	scanner := bufio.NewScanner(r)
 
+	// R4.1: precompute delimiter strings from the default pair.
+	headerDelim := defaultDelim + defaultDelim + defaultDelim
+	bodyDelim := defaultDelim + defaultDelim
+	footerDelim := defaultDelim
+
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// R4.1: check for section delimiter lines before numbering.
+		// Check longest first to avoid prefix-match ambiguity.
+		if line == headerDelim {
+			section = sectionHeader
+			lineNum = cfg.startNum
+			if _, err := fmt.Fprintln(w); err != nil {
+				return lineNum, section, err
+			}
+			continue
+		}
+		if line == bodyDelim {
+			section = sectionBody
+			lineNum = cfg.startNum
+			if _, err := fmt.Fprintln(w); err != nil {
+				return lineNum, section, err
+			}
+			continue
+		}
+		if line == footerDelim {
+			section = sectionFooter
+			lineNum = cfg.startNum
+			if _, err := fmt.Fprintln(w); err != nil {
+				return lineNum, section, err
+			}
+			continue
+		}
+
+		// R2.1-R2.3: apply the numbering style for the current section.
+		style := cfg.styleForSection(section)
 		if style.shouldNumber(line) {
-			// Number this line.
 			if _, err := fmt.Fprintf(w, "%*d%s%s\n", defaultWidth, lineNum, defaultSep, line); err != nil {
-				return lineNum, err
+				return lineNum, section, err
 			}
 			lineNum++
 		} else {
 			// R2.4: unnumbered line — output with padding, no number or separator.
 			if _, err := fmt.Fprintf(w, "%s%s\n", emptyPadding, line); err != nil {
-				return lineNum, err
+				return lineNum, section, err
 			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return lineNum, err
+		return lineNum, section, err
 	}
 
 	if err := w.Flush(); err != nil {
-		return lineNum, err
+		return lineNum, section, err
 	}
 
-	return lineNum, nil
+	return lineNum, section, nil
 }
 
 // unwrapPathError extracts the inner error from an *os.PathError to produce
