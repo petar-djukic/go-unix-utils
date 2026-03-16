@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/head against ghead (GNU coreutils).
-// Implements prd018-head R1.1-R1.5, R2.1-R2.2 test coverage.
+// Implements prd018-head R1.1-R1.5, R2.1-R2.3 test coverage.
 package main
 
 import (
@@ -200,6 +200,42 @@ func TestDiff(t *testing.T) {
 			Name:  "R2.2_negative_c_larger",
 			Args:  []string{"-c", "-100"},
 			Stdin: []byte("short"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R2.3: multiplier suffix b (512 bytes).
+		{
+			Name:  "R2.3_suffix_b",
+			Args:  []string{"-c", "1b"},
+			Stdin: []byte(strings.Repeat("x", 1024)),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: multiplier suffix K (1024 bytes).
+		{
+			Name:  "R2.3_suffix_K",
+			Args:  []string{"-c", "1K"},
+			Stdin: []byte(strings.Repeat("y", 2048)),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: multiplier suffix KiB (1024 bytes).
+		{
+			Name:  "R2.3_suffix_KiB",
+			Args:  []string{"-c", "1KiB"},
+			Stdin: []byte(strings.Repeat("z", 2048)),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -c and -n mutually exclusive, last one wins.
+		{
+			Name:  "R2.1_last_flag_wins_c_after_n",
+			Args:  []string{"-n", "1", "-c", "5"},
+			Stdin: []byte("abcdefghij\nklmnop\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -n after -c, last one wins.
+		{
+			Name:  "R2.1_last_flag_wins_n_after_c",
+			Args:  []string{"-c", "5", "-n", "1"},
+			Stdin: []byte("abcdefghij\nklmnop\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 

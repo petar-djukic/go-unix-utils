@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd018-head R1.1-R1.5, R2.1-R2.2: cmd/head prints the first N
+// Implements prd018-head R1.1-R1.5, R2.1-R2.3: cmd/head prints the first N
 // lines or bytes of each input file. Defaults to 10 lines. Supports -n
 // (line count), -c (byte count), negative counts (all but last N), multi-file
-// headers, and stdin input. Installs SIGPIPE handler per ARCHITECTURE.yaml.
+// headers, multiplier suffixes (b, K/KiB, M/MiB, G/GiB), and stdin input.
+// Installs SIGPIPE handler per ARCHITECTURE.yaml.
 package main
 
 import (
@@ -341,9 +342,19 @@ func parseCount(s string) (int64, bool) {
 		s = s[1:]
 	}
 
-	// R2.3: multiplier suffixes.
+	// R2.3: multiplier suffixes. Check multi-character suffixes (KiB, MiB,
+	// GiB) before single-character ones (b, K, M, G) to avoid partial matches.
 	multiplier := int64(1)
-	if len(s) > 0 {
+	if strings.HasSuffix(s, "KiB") {
+		multiplier = 1024
+		s = s[:len(s)-3]
+	} else if strings.HasSuffix(s, "MiB") {
+		multiplier = 1048576
+		s = s[:len(s)-3]
+	} else if strings.HasSuffix(s, "GiB") {
+		multiplier = 1073741824
+		s = s[:len(s)-3]
+	} else if len(s) > 0 {
 		last := s[len(s)-1]
 		switch last {
 		case 'b':
@@ -358,17 +369,6 @@ func parseCount(s string) (int64, bool) {
 		case 'G':
 			multiplier = 1073741824
 			s = s[:len(s)-1]
-		}
-		// Handle KiB, MiB, GiB suffixes.
-		if strings.HasSuffix(s, "Ki") {
-			multiplier = 1024
-			s = s[:len(s)-2]
-		} else if strings.HasSuffix(s, "Mi") {
-			multiplier = 1048576
-			s = s[:len(s)-2]
-		} else if strings.HasSuffix(s, "Gi") {
-			multiplier = 1073741824
-			s = s[:len(s)-2]
 		}
 	}
 
