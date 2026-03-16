@@ -1,19 +1,20 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15: basic directory listing with
-// single-column output (non-TTY default), dotfile filtering, multi-directory
-// headers, mixed file/directory argument handling, error diagnostics,
-// -1 single-column flag, -l long format with permissions/nlink/owner/group/
-// size/mtime, file metadata via pkg/sys.Lstat, owner/group name resolution,
-// -a (all entries including dotfiles), -r (reverse sort), -R (recursive
-// listing), -p (directory indicator), -C (multi-column vertical fill),
-// -x (multi-column horizontal fill), format flag mutual exclusivity (last
-// flag wins), -t (time sort), -S (size sort), -U (unsorted/directory order),
-// -v (version sort), -i (inode display), -s (block count display),
-// -n (numeric UID/GID, implies -l), -i and -s combined ordering.
-// R2.10: last sort flag wins. Installs SIGPIPE handler per ARCHITECTURE.yaml
-// shared protocol.
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.4: basic directory
+// listing with single-column output (non-TTY default), dotfile filtering,
+// multi-directory headers, mixed file/directory argument handling, error
+// diagnostics, -1 single-column flag, -l long format with permissions/nlink/
+// owner/group/size/mtime, file metadata via pkg/sys.Lstat, owner/group name
+// resolution, -a (all entries including dotfiles), -r (reverse sort),
+// -R (recursive listing), -p (directory indicator), -C (multi-column vertical
+// fill), -x (multi-column horizontal fill), format flag mutual exclusivity
+// (last flag wins), -t (time sort), -S (size sort), -U (unsorted/directory
+// order), -v (version sort), -i (inode display), -s (block count display),
+// -n (numeric UID/GID, implies -l), -i and -s combined ordering,
+// --color=always/auto/never with ANSI color output via pkg/format.
+// R2.10: last sort flag wins. R3.1-R3.4: --color support.
+// Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
 import (
@@ -23,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -57,6 +59,17 @@ const (
 	sortByVersion                 // -v: version sort (R2.9)
 )
 
+// colorMode controls colorized output.
+// R3.1: --color=always/auto/never.
+type colorMode int
+
+const (
+	colorNone   colorMode = iota // no --color flag given (default: no color)
+	colorAlways                  // --color=always or --color without value
+	colorAuto                    // --color=auto
+	colorNever                   // --color=never
+)
+
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
 	format    outputFormat
@@ -65,9 +78,11 @@ type lsOptions struct {
 	reverse   bool     // -r: reverse sort order
 	recursive bool     // -R: list subdirectories recursively
 	indicator bool     // -p: append '/' to directory names
-	showInode  bool // -i: prepend inode number (R2.11)
-	showBlocks bool // -s: prepend block count (R2.12)
-	numericIDs bool // -n: display numeric UID/GID (R2.14)
+	showInode  bool      // -i: prepend inode number (R2.11)
+	showBlocks bool      // -s: prepend block count (R2.12)
+	numericIDs bool      // -n: display numeric UID/GID (R2.14)
+	color      colorMode // R3.1: --color mode
+	useColor   bool      // resolved: whether to colorize output (R3.1-R3.4)
 }
 
 func main() {
@@ -75,6 +90,24 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 
 	opts, paths := parseArgs(os.Args[1:])
+
+	// R3.1-R3.4: Resolve color mode.
+	switch opts.color {
+	case colorAlways:
+		format.SetColorEnabled(true)
+		opts.useColor = true
+	case colorAuto:
+		// R3.2: Colorize only when stdout is a TTY.
+		isTerminal := sys.IsTerminal(os.Stdout.Fd())
+		format.SetColorEnabled(isTerminal)
+		opts.useColor = isTerminal
+	case colorNever:
+		format.SetColorEnabled(false)
+		opts.useColor = false
+	default:
+		// No --color flag given: no color output.
+		opts.useColor = false
+	}
 
 	// R1.1/R1.2: Default to current directory when no arguments given.
 	if len(paths) == 0 {
@@ -118,6 +151,7 @@ func main() {
 			if opts.indicator && fi.Mode&os.ModeDir != 0 {
 				displayName = f + "/"
 			}
+			// Note: color wrapping is handled by printLongEntries (R3.3).
 			entries = append(entries, longEntry{name: displayName, path: f, fi: fi})
 		}
 		printLongEntries(entries, opts)
@@ -126,10 +160,16 @@ func main() {
 		var displayNames []string
 		for _, f := range files {
 			displayName := f
-			if opts.indicator {
-				fi, err := os.Lstat(f)
-				if err == nil && fi.IsDir() {
-					displayName = f + "/"
+			if opts.indicator || opts.useColor {
+				fi, err := sys.Lstat(f)
+				if err == nil {
+					if opts.indicator && fi.Mode&os.ModeDir != 0 {
+						displayName = f + "/"
+					}
+					// R3.3: Colorize entry name.
+					if opts.useColor {
+						displayName = colorizeEntry(displayName, fi.Mode)
+					}
 				}
 			}
 			displayNames = append(displayNames, displayName)
@@ -144,10 +184,16 @@ func main() {
 		// R1.3: Print file arguments first, one per line.
 		for _, f := range files {
 			displayName := f
-			if opts.indicator {
-				fi, err := os.Lstat(f)
-				if err == nil && fi.IsDir() {
-					displayName = f + "/"
+			if opts.indicator || opts.useColor {
+				fi, err := sys.Lstat(f)
+				if err == nil {
+					if opts.indicator && fi.Mode&os.ModeDir != 0 {
+						displayName = f + "/"
+					}
+					// R3.3: Colorize entry name.
+					if opts.useColor {
+						displayName = colorizeEntry(displayName, fi.Mode)
+					}
 				}
 			}
 			fmt.Println(displayName)
@@ -203,6 +249,30 @@ func parseArgs(args []string) (lsOptions, []string) {
 		}
 		if arg == "--" {
 			flagsDone = true
+			continue
+		}
+		// R3.1: Handle --color long option.
+		if strings.HasPrefix(arg, "--") {
+			if arg == "--color" || strings.HasPrefix(arg, "--color=") {
+				val := "always" // R3.1: --color without value defaults to "always"
+				if strings.HasPrefix(arg, "--color=") {
+					val = arg[len("--color="):]
+				}
+				switch val {
+				case "always":
+					opts.color = colorAlways
+				case "auto":
+					opts.color = colorAuto
+				case "never":
+					opts.color = colorNever
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid argument '%s' for '--color'\n", progName, val)
+					os.Exit(2)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
+				os.Exit(2)
+			}
 			continue
 		}
 		if len(arg) > 1 && arg[0] == '-' {
@@ -318,11 +388,12 @@ func printMultiCol(names []string, termWidth int) {
 	}
 
 	// Determine number of columns and compute per-column max widths.
+	// R3.3: Use visibleWidth to ignore ANSI escape sequences in width calc.
 	numCols := len(rows[0])
 	colWidths := make([]int, numCols)
 	for _, row := range rows {
 		for c, entry := range row {
-			w := utf8.RuneCountInString(entry)
+			w := visibleWidth(entry)
 			if w > colWidths[c] {
 				colWidths[c] = w
 			}
@@ -345,7 +416,7 @@ func printMultiCol(names []string, termWidth int) {
 				curPos = writeIndent(curPos, colStart[c])
 			}
 			fmt.Print(entry)
-			curPos += utf8.RuneCountInString(entry)
+			curPos += visibleWidth(entry)
 		}
 		fmt.Println()
 	}
@@ -360,9 +431,10 @@ func printHorizontalCols(names []string, termWidth int) {
 	}
 
 	// Precompute display widths.
+	// R3.3: Use visibleWidth to ignore ANSI escape sequences.
 	widths := make([]int, len(names))
 	for i, name := range names {
-		widths[i] = utf8.RuneCountInString(name)
+		widths[i] = visibleWidth(name)
 	}
 
 	const minGap = 2
@@ -563,9 +635,9 @@ func listDir(path string, opts lsOptions) error {
 	}
 
 	// R2.11/R2.12: When -i or -s is given, we need metadata for every entry
-	// even in non-long formats. Collect it once and reuse.
+	// even in non-long formats. R3.3: Also needed when color is enabled.
 	var metaMap map[string]*sys.FileInfo
-	if opts.showInode || opts.showBlocks {
+	if opts.showInode || opts.showBlocks || opts.useColor {
 		metaMap = make(map[string]*sys.FileInfo, len(names))
 		for _, name := range names {
 			fullPath := filepath.Join(path, name)
@@ -614,6 +686,7 @@ func listDir(path string, opts lsOptions) error {
 			if opts.indicator && fi.Mode&os.ModeDir != 0 {
 				displayName = name + "/"
 			}
+			// Note: color wrapping is handled by printLongEntries (R3.3).
 			longEntries = append(longEntries, longEntry{name: displayName, path: fullPath, fi: fi})
 		}
 		// R1.10: Print "total N" block count line.
@@ -634,6 +707,12 @@ func listDir(path string, opts lsOptions) error {
 				fi, err := os.Lstat(fullPath)
 				if err == nil && fi.IsDir() {
 					displayName = name + "/"
+				}
+			}
+			// R3.3: Colorize entry name based on file type.
+			if opts.useColor && metaMap != nil {
+				if fi := metaMap[name]; fi != nil {
+					displayName = colorizeEntry(displayName, fi.Mode)
 				}
 			}
 			displayName = prependMeta(displayName, name, metaMap, opts)
@@ -657,6 +736,12 @@ func listDir(path string, opts lsOptions) error {
 				fi, err := os.Lstat(fullPath)
 				if err == nil && fi.IsDir() {
 					displayName = name + "/"
+				}
+			}
+			// R3.3: Colorize entry name based on file type.
+			if opts.useColor && metaMap != nil {
+				if fi := metaMap[name]; fi != nil {
+					displayName = colorizeEntry(displayName, fi.Mode)
 				}
 			}
 			prefix := metaPrefix(name, metaMap, opts, maxIno, maxBlk)
@@ -765,12 +850,19 @@ func printLongEntries(entries []longEntry, opts lsOptions) {
 			}
 		}
 
+		// R3.3: Colorize entry name based on file type.
 		// R1.10: Symlink display — append " -> target".
 		if fi.Mode&os.ModeSymlink != 0 {
 			target, err := os.Readlink(le.path)
 			if err == nil {
-				re.name = le.name + " -> " + target
+				colorizedName := le.name
+				if opts.useColor {
+					colorizedName = colorizeEntry(le.name, fi.Mode)
+				}
+				re.name = colorizedName + " -> " + target
 			}
+		} else if opts.useColor {
+			re.name = colorizeEntry(le.name, fi.Mode)
 		}
 
 		if len(re.nlink) > maxNlink {
@@ -924,6 +1016,52 @@ func unwrapPathError(err error) error {
 		return pe.Err
 	}
 	return err
+}
+
+// colorStarted tracks whether the first colored entry has been output.
+// GNU ls emits a reset code before the very first colored entry to
+// initialize terminal color state.
+var colorStarted bool
+
+// colorizeEntry wraps an entry name with ANSI color codes based on file mode.
+// R3.3: colorCode + name + resetCode. Returns name unchanged when the file
+// type has no assigned color (regular file with no special bits).
+// GNU ls emits a leading reset before the first colored entry.
+func colorizeEntry(name string, mode os.FileMode) string {
+	colorCode := format.FileTypeColor(mode)
+	if colorCode == "" {
+		return name
+	}
+	prefix := ""
+	if !colorStarted {
+		prefix = format.Reset()
+		colorStarted = true
+	}
+	return prefix + colorCode + name + format.Reset()
+}
+
+// visibleWidth returns the visible character width of a string, ignoring
+// ANSI escape sequences. Used for column layout when color is enabled.
+func visibleWidth(s string) int {
+	n := 0
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			// Skip CSI escape sequence: ESC [ ... final_byte
+			i += 2
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			if i < len(s) {
+				i++ // skip 'm'
+			}
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+		n++
+	}
+	return n
 }
 
 // metaColumnWidths computes the maximum column widths for inode and block

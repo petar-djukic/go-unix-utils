@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.15 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.4 test coverage.
 package main
 
 import (
@@ -125,6 +125,24 @@ func TestDiff(t *testing.T) {
 	writeFile(t, filepath.Join(versionDir, "file10"), "")
 	writeFile(t, filepath.Join(versionDir, "file20"), "")
 	writeFile(t, filepath.Join(versionDir, "file3"), "")
+
+	// R3.1-R3.4: Create a color fixture with diverse file types.
+	colorDir := filepath.Join(tmpDir, "colorfix")
+	if err := os.Mkdir(colorDir, 0o755); err != nil {
+		t.Fatalf("creating color fixture dir: %v", err)
+	}
+	writeFile(t, filepath.Join(colorDir, "plain.txt"), "regular file\n")
+	writeFile(t, filepath.Join(colorDir, "run.sh"), "#!/bin/sh\n")
+	if err := os.Chmod(filepath.Join(colorDir, "run.sh"), 0o755); err != nil {
+		t.Fatalf("chmod executable: %v", err)
+	}
+	colorSubDir := filepath.Join(colorDir, "mydir")
+	if err := os.Mkdir(colorSubDir, 0o755); err != nil {
+		t.Fatalf("creating color subdir: %v", err)
+	}
+	if err := os.Symlink("plain.txt", filepath.Join(colorDir, "mylink")); err != nil {
+		t.Fatalf("creating color symlink: %v", err)
+	}
 
 	longNorm := []testutils.NormalizeFunc{
 		normalizeLongFormat,
@@ -646,6 +664,58 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			WorkDir:   tmpDir,
 			Normalize: longNorm,
+		},
+
+		// === R3.1: --color flag support ===
+		// R3.1/R3.4: --color=never produces no ANSI escapes.
+		{
+			Name:    "R3.1_R3.4_color_never",
+			Args:    []string{"--color=never", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.1: --color=always produces ANSI color codes.
+		{
+			Name:    "R3.1_color_always",
+			Args:    []string{"--color=always", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.1: --color (no value) defaults to "always".
+		{
+			Name:    "R3.1_color_no_value",
+			Args:    []string{"--color", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.2/R3.4: --color=auto in pipe (non-TTY) produces no ANSI escapes.
+		{
+			Name:    "R3.2_R3.4_color_auto_pipe",
+			Args:    []string{"--color=auto", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --color=always with -l (long format colorized).
+		{
+			Name:      "R3.3_color_always_long",
+			Args:      []string{"--color=always", "-l", colorDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R3.3: --color=always with -1 (single-column colorized).
+		{
+			Name:    "R3.3_color_always_single_col",
+			Args:    []string{"--color=always", "-1", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R3.3: --color=always with -a (all entries colorized).
+		{
+			Name:    "R3.3_color_always_all",
+			Args:    []string{"--color=always", "-a", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
 		},
 	}
 
