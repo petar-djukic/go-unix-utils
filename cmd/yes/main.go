@@ -9,9 +9,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 	"github.com/petar-djukic/go-unix-utils/pkg/version"
@@ -68,7 +70,12 @@ func main() {
 		if _, err := w.Write(lineBytes); err != nil {
 			// R2.2: flush partial buffer before exit.
 			w.Flush() // best-effort flush, error ignored
-			// R3.2: exit 1 on write error.
+			// R3.3: if the error is EPIPE, exit 0 silently (matches SIGPIPE handler).
+			// This handles the race where write returns EPIPE before the signal is delivered.
+			if errors.Is(err, syscall.EPIPE) {
+				os.Exit(0)
+			}
+			// R3.2: exit 1 on write error other than EPIPE.
 			os.Exit(1)
 		}
 	}
