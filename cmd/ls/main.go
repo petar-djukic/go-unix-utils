@@ -1,16 +1,22 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.4: basic directory listing with single-column
+// Implements prd008-ls R1.1-R1.8: basic directory listing with single-column
 // output (non-TTY default), dotfile filtering, multi-directory headers, mixed
-// file/directory argument handling, and error diagnostics. Installs SIGPIPE
-// handler per ARCHITECTURE.yaml shared protocol.
+// file/directory argument handling, error diagnostics, -1 single-column flag,
+// -l long format with permissions/nlink/owner/group/size/mtime, file metadata
+// via pkg/sys.Lstat, and owner/group name resolution. Installs SIGPIPE handler
+// per ARCHITECTURE.yaml shared protocol.
 package main
 
 import (
 	"fmt"
 	"os"
+	"os/user"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -18,21 +24,25 @@ import (
 // progName is the name used in error messages to match GNU ls format.
 const progName = "ls"
 
+// outputFormat controls the listing output mode.
+type outputFormat int
+
+const (
+	formatDefault    outputFormat = iota // single-column when not TTY
+	formatSingleCol                     // -1: one entry per line
+	formatLong                          // -l: long format
+)
+
+// lsOptions holds parsed command-line options.
+type lsOptions struct {
+	format outputFormat
+}
+
 func main() {
 	// D1: Install SIGPIPE handler for clean pipe exit.
 	sys.InstallSIGPIPEHandler()
 
-	args := os.Args[1:]
-
-	// D4: No flag parsing in this task; flags are deferred to R1.5+ tasks.
-	// Filter out "--" separator; treat all non-"--" args as paths.
-	var paths []string
-	for _, arg := range args {
-		if arg == "--" {
-			continue
-		}
-		paths = append(paths, arg)
-	}
+	opts, paths := parseArgs(os.Args[1:])
 
 	// R1.1/R1.2: Default to current directory when no arguments given.
 	if len(paths) == 0 {
@@ -45,7 +55,6 @@ func main() {
 	// listed first, then directories, matching GNU ls argument ordering.
 	var files []string
 	var dirs []string
-	var errs []string
 
 	for _, path := range paths {
 		fi, err := os.Lstat(path)
@@ -53,7 +62,6 @@ func main() {
 			// R1.4: Print diagnostic to stderr for inaccessible arguments.
 			fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, path, unwrapPathError(err))
 			exitCode = 2
-			errs = append(errs, path)
 			continue
 		}
 		if fi.IsDir() {
@@ -63,9 +71,24 @@ func main() {
 		}
 	}
 
-	// R1.3: Print file arguments first, one per line.
-	for _, f := range files {
-		fmt.Println(f)
+	// R1.6/R1.7: For file arguments in long format, collect metadata and print.
+	if opts.format == formatLong && len(files) > 0 {
+		var entries []longEntry
+		for _, f := range files {
+			fi, err := sys.Lstat(f)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, f, unwrapPathError(err))
+				exitCode = 2
+				continue
+			}
+			entries = append(entries, longEntry{name: f, path: f, fi: fi})
+		}
+		printLongEntries(entries)
+	} else {
+		// R1.3: Print file arguments first, one per line.
+		for _, f := range files {
+			fmt.Println(f)
+		}
 	}
 
 	// R1.2: When multiple directories (or mix of files and directories),
@@ -85,7 +108,7 @@ func main() {
 			fmt.Printf("%s:\n", dir)
 		}
 
-		if err := listDir(dir); err != nil {
+		if err := listDir(dir, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: cannot open directory '%s': %v\n", progName, dir, unwrapPathError(err))
 			exitCode = 2
 		}
@@ -94,33 +117,293 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// parseArgs parses command-line arguments into options and path operands.
+// Flags are single-character and may be combined (e.g., -la). "--" ends flag
+// parsing. Unknown flags cause exit 2 matching GNU ls.
+// R1.5/R1.6: -1 sets single-column mode; -l sets long format. In GNU ls,
+// -l implies one-per-line, so -1 never overrides -l. -1 only overrides
+// multi-column formats (-C, -x) in future tasks.
+func parseArgs(args []string) (lsOptions, []string) {
+	opts := lsOptions{format: formatDefault}
+	var paths []string
+	flagsDone := false
+	longFlag := false
+
+	for _, arg := range args {
+		if flagsDone {
+			paths = append(paths, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		if len(arg) > 1 && arg[0] == '-' {
+			for _, ch := range arg[1:] {
+				switch ch {
+				case '1':
+					// R1.5: -1 forces single-column output.
+					if !longFlag {
+						opts.format = formatSingleCol
+					}
+				case 'l':
+					// R1.6: -l forces long format output. Overrides -1.
+					opts.format = formatLong
+					longFlag = true
+				default:
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, ch)
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+					os.Exit(2)
+				}
+			}
+			continue
+		}
+		paths = append(paths, arg)
+	}
+
+	return opts, paths
+}
+
+// longEntry holds the name and metadata for a single entry in long format.
+type longEntry struct {
+	name string      // display name (basename for directory entries, full for file args)
+	path string      // full path for symlink resolution
+	fi   *sys.FileInfo
+}
+
 // listDir reads and prints the contents of a single directory.
 // R1.1/R1.2: One entry per line (non-TTY default), sorted alphabetically.
 // R1.4: Entries whose names start with "." are excluded by default.
-func listDir(path string) error {
-	// D2: os.ReadDir returns entries sorted by name, matching GNU ls
-	// default sort order under LC_ALL=C.
+func listDir(path string, opts lsOptions) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
-	// R1.3: Sort entries in C locale order. os.ReadDir already returns
-	// sorted entries, but we sort explicitly to guarantee LC_ALL=C order.
+	// R1.3: Sort entries in C locale order.
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Name() < entries[j].Name()
 	})
 
+	// R1.4: Filter dotfiles.
+	var names []string
 	for _, entry := range entries {
 		name := entry.Name()
-		// R1.4: Skip dotfiles unless -a or -A is given (deferred to R2 tasks).
 		if len(name) > 0 && name[0] == '.' {
 			continue
 		}
+		names = append(names, name)
+	}
+
+	// R1.6/R1.7: Long format requires metadata for each entry.
+	if opts.format == formatLong {
+		var longEntries []longEntry
+		for _, name := range names {
+			fullPath := filepath.Join(path, name)
+			fi, err := sys.Lstat(fullPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, fullPath, unwrapPathError(err))
+				continue
+			}
+			longEntries = append(longEntries, longEntry{name: name, path: fullPath, fi: fi})
+		}
+		// R1.10: Print "total N" block count line.
+		var totalBlocks int64
+		for _, le := range longEntries {
+			totalBlocks += le.fi.Blocks
+		}
+		fmt.Printf("total %d\n", totalBlocks/2)
+		printLongEntries(longEntries)
+		return nil
+	}
+
+	// R1.1/R1.2/R1.5: Single-column output.
+	for _, name := range names {
 		fmt.Println(name)
 	}
 
 	return nil
+}
+
+// printLongEntries prints entries in long format with aligned columns.
+// R1.6: permissions, nlink, owner, group, size, mtime, name.
+// R1.7: metadata from sys.FileInfo via sys.Lstat.
+// R1.8: owner/group name resolution via os/user.
+func printLongEntries(entries []longEntry) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// Compute column widths for alignment.
+	maxNlink := 0
+	maxOwner := 0
+	maxGroup := 0
+	maxSize := 0
+
+	type resolvedEntry struct {
+		perms string
+		nlink string
+		owner string
+		group string
+		size  string
+		mtime string
+		name  string
+	}
+
+	resolved := make([]resolvedEntry, len(entries))
+	for i, le := range entries {
+		fi := le.fi
+		re := resolvedEntry{
+			perms: formatPermissions(fi.Mode),
+			nlink: strconv.FormatUint(fi.Nlink, 10),
+			owner: resolveOwner(fi.Uid),
+			group: resolveGroup(fi.Gid),
+			size:  strconv.FormatInt(fi.Size, 10),
+			mtime: formatMtime(fi.ModTime),
+			name:  le.name,
+		}
+
+		// R1.10: Symlink display — append " -> target".
+		if fi.Mode&os.ModeSymlink != 0 {
+			target, err := os.Readlink(le.path)
+			if err == nil {
+				re.name = le.name + " -> " + target
+			}
+		}
+
+		if len(re.nlink) > maxNlink {
+			maxNlink = len(re.nlink)
+		}
+		if len(re.owner) > maxOwner {
+			maxOwner = len(re.owner)
+		}
+		if len(re.group) > maxGroup {
+			maxGroup = len(re.group)
+		}
+		if len(re.size) > maxSize {
+			maxSize = len(re.size)
+		}
+
+		resolved[i] = re
+	}
+
+	// R1.6: Print each entry with aligned fields.
+	for _, re := range resolved {
+		fmt.Printf("%s %*s %-*s %-*s %*s %s %s\n",
+			re.perms,
+			maxNlink, re.nlink,
+			maxOwner, re.owner,
+			maxGroup, re.group,
+			maxSize, re.size,
+			re.mtime,
+			re.name,
+		)
+	}
+}
+
+// formatPermissions produces the 10-character permission string for long format.
+// R1.6: file type + owner rwx + group rwx + other rwx with setuid/setgid/sticky.
+func formatPermissions(mode os.FileMode) string {
+	var buf [10]byte
+
+	// Position 0: file type.
+	switch {
+	case mode&os.ModeDir != 0:
+		buf[0] = 'd'
+	case mode&os.ModeSymlink != 0:
+		buf[0] = 'l'
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
+		buf[0] = 'c'
+	case mode&os.ModeDevice != 0:
+		buf[0] = 'b'
+	case mode&os.ModeNamedPipe != 0:
+		buf[0] = 'p'
+	case mode&os.ModeSocket != 0:
+		buf[0] = 's'
+	default:
+		buf[0] = '-'
+	}
+
+	perm := mode.Perm()
+
+	// Positions 1-3: owner rwx.
+	buf[1] = rwChar(perm, 0o400, 'r')
+	buf[2] = rwChar(perm, 0o200, 'w')
+	if mode&os.ModeSetuid != 0 {
+		if perm&0o100 != 0 {
+			buf[3] = 's'
+		} else {
+			buf[3] = 'S'
+		}
+	} else {
+		buf[3] = rwChar(perm, 0o100, 'x')
+	}
+
+	// Positions 4-6: group rwx.
+	buf[4] = rwChar(perm, 0o040, 'r')
+	buf[5] = rwChar(perm, 0o020, 'w')
+	if mode&os.ModeSetgid != 0 {
+		if perm&0o010 != 0 {
+			buf[6] = 's'
+		} else {
+			buf[6] = 'S'
+		}
+	} else {
+		buf[6] = rwChar(perm, 0o010, 'x')
+	}
+
+	// Positions 7-9: other rwx.
+	buf[7] = rwChar(perm, 0o004, 'r')
+	buf[8] = rwChar(perm, 0o002, 'w')
+	if mode&os.ModeSticky != 0 {
+		if perm&0o001 != 0 {
+			buf[9] = 't'
+		} else {
+			buf[9] = 'T'
+		}
+	} else {
+		buf[9] = rwChar(perm, 0o001, 'x')
+	}
+
+	return string(buf[:])
+}
+
+// rwChar returns ch if the bit is set in perm, '-' otherwise.
+func rwChar(perm os.FileMode, bit os.FileMode, ch byte) byte {
+	if perm&bit != 0 {
+		return ch
+	}
+	return '-'
+}
+
+// resolveOwner resolves a UID to a username, falling back to the numeric string.
+// R1.8: Uses os/user.LookupId; falls back to numeric on error.
+func resolveOwner(uid uint32) string {
+	u, err := user.LookupId(strconv.Itoa(int(uid)))
+	if err != nil {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return u.Username
+}
+
+// resolveGroup resolves a GID to a group name, falling back to the numeric string.
+// R1.8: Uses os/user.LookupGroupId; falls back to numeric on error.
+func resolveGroup(gid uint32) string {
+	g, err := user.LookupGroupId(strconv.Itoa(int(gid)))
+	if err != nil {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	return g.Name
+}
+
+// formatMtime formats a modification time for long format display.
+// R1.9: If within ~6 months, "Jan _2 15:04"; otherwise "Jan _2  2006".
+func formatMtime(t time.Time) string {
+	sixMonths := 6 * 30 * 24 * time.Hour
+	if time.Since(t) < sixMonths && time.Since(t) >= 0 {
+		return t.Format("Jan _2 15:04")
+	}
+	return t.Format("Jan _2  2006")
 }
 
 // unwrapPathError extracts the inner error from *os.PathError for cleaner
@@ -131,3 +414,4 @@ func unwrapPathError(err error) error {
 	}
 	return err
 }
+
