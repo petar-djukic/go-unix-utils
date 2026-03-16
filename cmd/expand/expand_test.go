@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/expand against the GNU reference binary (gexpand).
-// Implements prd024-expand R1.1-R1.4 test coverage.
+// Implements prd024-expand R1.1-R1.4, R2.1-R2.4 test coverage.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,12 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrProgNameNormalizer replaces the reference binary name (gexpand) with
+// the Go binary name (expand) in stderr so error message comparisons match.
+func stderrProgNameNormalizer(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gexpand:"), []byte("expand:"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -173,6 +180,118 @@ func TestDiff(t *testing.T) {
 			// R1.3: long line of tabs.
 			Name:  "many_tabs",
 			Stdin: []byte(strings.Repeat("\t", 20) + "X\n"),
+		},
+		// R2.1: -t N sets uniform tab stop interval.
+		{
+			Name:  "t_single_value_4",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\n"),
+		},
+		{
+			Name:  "t_single_value_2",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "t_single_value_12",
+			Args:  []string{"-t", "12"},
+			Stdin: []byte("\tA\n"),
+		},
+		{
+			// R2.1: -t with consecutive tabs using uniform interval.
+			Name:  "t_uniform_consecutive_tabs",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("\t\t\tX\n"),
+		},
+		{
+			// R2.1: -tN short form.
+			Name:  "t_short_form",
+			Args:  []string{"-t4"},
+			Stdin: []byte("a\tb\n"),
+		},
+		{
+			// R2.1: --tabs=N long form.
+			Name:  "tabs_long_form",
+			Args:  []string{"--tabs=4"},
+			Stdin: []byte("a\tb\n"),
+		},
+		// R2.2: -t LIST sets explicit tab stop positions.
+		{
+			Name:  "t_list_three_stops",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("a\tb\tc\td\te\n"),
+		},
+		{
+			Name:  "t_list_two_stops",
+			Args:  []string{"-t", "5,10"},
+			Stdin: []byte("\tA\tB\tC\n"),
+		},
+		{
+			// R2.2: tab past last explicit stop replaced by single space.
+			Name:  "t_list_past_last_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a\tb\tc\td\n"),
+		},
+		{
+			// R2.2: explicit positions with --tabs= form.
+			Name:  "tabs_list_long_form",
+			Args:  []string{"--tabs=4,8,12"},
+			Stdin: []byte("\tA\tB\tC\n"),
+		},
+		{
+			// R2.2: explicit positions with short -t form.
+			Name:  "t_list_short_form",
+			Args:  []string{"-t4,8,12"},
+			Stdin: []byte("\tA\tB\tC\n"),
+		},
+		// R2.4: single value in list behaves as uniform interval.
+		{
+			Name:  "t_single_in_list",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		// R2.4: error on non-increasing tab stops.
+		{
+			Name:      "t_error_non_increasing",
+			Args:      []string{"-t", "4,2"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.4: error on zero tab stop.
+		{
+			Name:      "t_error_zero",
+			Args:      []string{"-t", "0"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.4: error on negative tab stop.
+		{
+			Name:      "t_error_negative",
+			Args:      []string{"-t", "-1"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.4: error on non-numeric tab stop.
+		{
+			Name:      "t_error_non_numeric",
+			Args:      []string{"-t", "abc"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		{
+			// R2.2: tab at exact stop position advances to next.
+			Name:  "t_list_tab_at_stop",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("abc\tdef\tghi\tjkl\n"),
+		},
+		{
+			// R2.1: file input with custom tab stop.
+			Name: "t_uniform_with_file",
+			Args: []string{"-t", "4", tabFile},
 		},
 	}
 

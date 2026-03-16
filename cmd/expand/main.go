@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd024-expand R1.1-R1.4: cmd/expand converts tab characters to
-// the appropriate number of spaces to reach the next tab stop (default every
-// 8 columns). Reads from files listed as arguments or stdin when no files are
-// given. Treats '-' as stdin. Installs SIGPIPE handler for clean exit on
-// broken pipe.
+// Implements prd024-expand R1.1-R1.4, R2.1-R2.4: cmd/expand converts tab
+// characters to the appropriate number of spaces to reach the next tab stop.
+// Supports -t/--tabs for custom tab stop intervals or explicit position lists.
+// Reads from files listed as arguments or stdin when no files are given.
+// Treats '-' as stdin. Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -23,18 +25,71 @@ const progName = "expand"
 // defaultTabStop is the default tab stop interval in columns (R1.1).
 const defaultTabStop = 8
 
+// tabStops holds the parsed tab stop configuration.
+// R2.1-R2.4: either a single uniform interval or a list of explicit positions.
+type tabStops struct {
+	// uniform is the tab stop interval when a single value is given (R2.1, R2.4).
+	uniform int
+	// positions holds explicit tab stop positions when multiple values are given (R2.2).
+	// Empty when uniform mode is used.
+	positions []int
+}
+
+// nextStop returns the number of spaces needed to reach the next tab stop
+// from the given 0-indexed column position.
+func (ts *tabStops) nextStop(col int) int {
+	if len(ts.positions) == 0 {
+		// R2.1, R2.4: uniform interval mode.
+		return ts.uniform - (col % ts.uniform)
+	}
+	// R2.2: explicit positions mode.
+	for _, pos := range ts.positions {
+		if pos > col {
+			return pos - col
+		}
+	}
+	// R2.2: past the last explicit tab stop, replace with a single space.
+	return 1
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
+	ts := &tabStops{uniform: defaultTabStop}
 	args := os.Args[1:]
 	var files []string
 
-	for i, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if arg == "--" {
 			files = append(files, args[i+1:]...)
 			break
 		}
-		files = append(files, arg)
+		// R2.1-R2.3: parse -t/--tabs option.
+		var tabVal string
+		if arg == "-t" || arg == "--tabs" {
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 't'\n", progName)
+				os.Exit(1)
+			}
+			i++
+			tabVal = args[i]
+		} else if strings.HasPrefix(arg, "-t") {
+			tabVal = arg[2:]
+		} else if strings.HasPrefix(arg, "--tabs=") {
+			tabVal = arg[7:]
+		} else {
+			files = append(files, arg)
+			continue
+		}
+
+		parsed, err := parseTabStops(tabVal)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+			os.Exit(1)
+		}
+		// R2.3: last -t value takes effect.
+		ts = parsed
 	}
 
 	w := bufio.NewWriter(os.Stdout)
@@ -42,7 +97,7 @@ func main() {
 
 	if len(files) == 0 {
 		// R1.1: no file arguments — read from stdin.
-		if err := expandReader(os.Stdin, w); err != nil {
+		if err := expandReader(os.Stdin, w, ts); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 			exitCode = 1
 		}
@@ -51,7 +106,7 @@ func main() {
 		for _, name := range files {
 			if name == "-" {
 				// R1.4: '-' means read from stdin.
-				if err := expandReader(os.Stdin, w); err != nil {
+				if err := expandReader(os.Stdin, w, ts); err != nil {
 					fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 					exitCode = 1
 				}
@@ -64,7 +119,7 @@ func main() {
 				exitCode = 1
 				continue
 			}
-			if err := expandReader(f, w); err != nil {
+			if err := expandReader(f, w, ts); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 				exitCode = 1
 			}
@@ -82,12 +137,51 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// parseTabStops parses a comma-separated or single tab stop specification.
+// R2.1: a single positive integer sets uniform interval.
+// R2.2: multiple comma-separated positive integers set explicit positions.
+// R2.4: validates that values are strictly increasing positive integers.
+func parseTabStops(s string) (*tabStops, error) {
+	parts := strings.Split(s, ",")
+	if len(parts) == 1 {
+		// R2.1, R2.4: single value — uniform interval.
+		n, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("tab size contains invalid character(s): '%s'", s)
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("tab size cannot be 0")
+		}
+		return &tabStops{uniform: n}, nil
+	}
+
+	// R2.2: multiple values — explicit tab stop positions.
+	positions := make([]int, 0, len(parts))
+	prev := 0
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("tab size contains invalid character(s): '%s'", s)
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("tab size cannot be 0")
+		}
+		if n <= prev {
+			// R2.4: not strictly increasing.
+			return nil, fmt.Errorf("tab sizes must be ascending")
+		}
+		positions = append(positions, n)
+		prev = n
+	}
+	return &tabStops{positions: positions}, nil
+}
+
 // expandReader reads from r and writes tab-expanded output to w.
-// R1.1: tabs are replaced by spaces to reach the next multiple-of-8 column.
+// R1.1: tabs are replaced by spaces to reach the next tab stop.
 // R1.2: consecutive tabs each advance to the next tab stop independently.
 // R1.3: non-tab characters are written unchanged; each byte counts as one column.
 // R1.4: newline resets the column position to 0 (0-indexed internally).
-func expandReader(r io.Reader, w *bufio.Writer) error {
+func expandReader(r io.Reader, w *bufio.Writer, ts *tabStops) error {
 	br := bufio.NewReader(r)
 	col := 0
 
@@ -102,8 +196,8 @@ func expandReader(r io.Reader, w *bufio.Writer) error {
 
 		switch b {
 		case '\t':
-			// R1.1, R1.2: replace tab with spaces to next tab stop.
-			spaces := defaultTabStop - (col % defaultTabStop)
+			// R1.1, R1.2, R2.1-R2.2: replace tab with spaces to next tab stop.
+			spaces := ts.nextStop(col)
 			for range spaces {
 				if err := w.WriteByte(' '); err != nil {
 					return err
