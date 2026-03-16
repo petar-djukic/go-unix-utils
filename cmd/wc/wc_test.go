@@ -315,6 +315,102 @@ func TestDiff(t *testing.T) {
 			},
 			WorkDir: tmpDir,
 		},
+
+		// R2.5: -L with a file argument (not just stdin).
+		{
+			Name:    "R2.5_max_line_file",
+			Args:    []string{"-L", filepath.Join(tmpDir, "multiword.txt")},
+			WorkDir: tmpDir,
+		},
+		// R2.5: -L with multiple files — total shows max of per-file maxlines.
+		{
+			Name: "R2.5_max_line_multi_file",
+			Args: []string{
+				"-L",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+				filepath.Join(tmpDir, "multiword.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R2.5: -L with no trailing newline.
+		{
+			Name:  "R2.5_max_line_no_trailing_newline",
+			Args:  []string{"-L"},
+			Stdin: []byte("abc\ndef"),
+		},
+		// R2.5: -L on empty input.
+		{
+			Name:  "R2.5_max_line_empty",
+			Args:  []string{"-L"},
+			Stdin: []byte(""),
+		},
+
+		// R2.6: all flags combined (-lwcL) — output order: lines, words, bytes, maxline.
+		{
+			Name:  "R2.6_all_flags_lwcL",
+			Args:  []string{"-lwcL"},
+			Stdin: []byte("hello world\nfoo\n"),
+		},
+		// R2.6: -m and -L combined — output order: chars, maxline.
+		{
+			Name:  "R2.6_combined_mL",
+			Args:  []string{"-mL"},
+			Stdin: []byte("hello\tworld\n"),
+		},
+		// R2.6: -lmL combined — output order: lines, chars, maxline.
+		{
+			Name:  "R2.6_combined_lmL",
+			Args:  []string{"-lmL"},
+			Stdin: []byte("short\na longer line here\n"),
+		},
+		// R2.6: -wcL combined — output order: words, bytes, maxline.
+		{
+			Name:  "R2.6_combined_wcL",
+			Args:  []string{"-wcL"},
+			Stdin: []byte("one two three\n"),
+		},
+
+		// R3.1: multi-file -L column alignment.
+		{
+			Name: "R3.1_multi_file_L_alignment",
+			Args: []string{
+				"-lL",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "multiword.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.1: multi-file default mode — column widths match across files and total.
+		{
+			Name: "R3.1_multi_file_default_alignment",
+			Args: []string{
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+				filepath.Join(tmpDir, "no-trailing-newline.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+
+		// R3.2: total line with -L — total maxline is max across files.
+		{
+			Name: "R3.2_total_max_line",
+			Args: []string{
+				"-L",
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R3.2: total line sums with two files and all default counters.
+		{
+			Name: "R3.2_total_sums_default",
+			Args: []string{
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "multiword.txt"),
+			},
+			WorkDir: tmpDir,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
