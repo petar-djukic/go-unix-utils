@@ -28,6 +28,10 @@
 // R4.1: Exit 0 on success. R4.2: Exit 1 on minor problems.
 // R4.3: Exit 2 on serious problems (invalid options).
 // R4.4: SIGPIPE handler via pkg/sys.InstallSIGPIPEHandler.
+// R4.5: SIGWINCH handler via pkg/sys.OnTerminalResize for terminal resize.
+// R4.6: -n implies -l (numeric UID/GID in long format).
+// R4.7: Format flags (-C, -x, -l, -1) are mutually exclusive; last wins.
+// R4.8: -R with -l produces "total N" block line for each subdirectory.
 package main
 
 import (
@@ -99,6 +103,10 @@ const (
 // access failures).
 var exitStatus int
 
+// cachedTermWidth holds the current terminal width, updated by the SIGWINCH
+// handler. R4.5: Updated by sys.OnTerminalResize callback.
+var cachedTermWidth = defaultTermWidth
+
 // setExitStatus sets the exit status to code if it is higher than the
 // current value. Higher codes take precedence: 2 (serious) > 1 (minor) > 0.
 func setExitStatus(code int) {
@@ -127,6 +135,9 @@ type lsOptions struct {
 func main() {
 	// D1: Install SIGPIPE handler for clean pipe exit.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.5: Query initial terminal width and install SIGWINCH handler.
+	initTermWidth()
 
 	opts, paths := parseArgs(os.Args[1:])
 
@@ -412,14 +423,23 @@ const defaultTermWidth = 80
 // tabSize is the tab stop interval used by GNU ls for column alignment.
 const tabSize = 8
 
-// getTermWidth returns the terminal width for multi-column layout. Returns
-// defaultTermWidth when stdout is not a TTY.
-func getTermWidth() int {
+// initTermWidth queries the initial terminal width and installs a SIGWINCH
+// handler to update it on terminal resize.
+// R4.5: Uses sys.OnTerminalResize to adapt column layout during long listings.
+func initTermWidth() {
 	w, err := sys.TerminalWidth()
-	if err != nil {
-		return defaultTermWidth
+	if err == nil {
+		cachedTermWidth = w
 	}
-	return w
+	sys.OnTerminalResize(func(width int) {
+		cachedTermWidth = width
+	})
+}
+
+// getTermWidth returns the current terminal width for multi-column layout.
+// R4.5: Returns the cached value, which is updated by the SIGWINCH handler.
+func getTermWidth() int {
+	return cachedTermWidth
 }
 
 // writeIndent writes tabs and spaces to advance output from column position

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.15, R4.1-R4.4 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15, R3.1-R3.15, R4.1-R4.8 test coverage.
 package main
 
 import (
@@ -1144,6 +1144,106 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-1", fixtureDir},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
+		},
+
+		// === R4.5: SIGWINCH handler — terminal width handling ===
+		// R4.5: SIGWINCH handler is installed; in pipe mode (non-TTY), -C uses
+		// default 80-column width. Verifies terminal width code path works.
+		{
+			Name:    "R4.5_sigwinch_multicol_default_width",
+			Args:    []string{"-C", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.5: -x also uses cached terminal width for layout.
+		{
+			Name:    "R4.5_sigwinch_horizontal_default_width",
+			Args:    []string{"-x", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.5: Multi-column with many entries tests width handling path.
+		{
+			Name:    "R4.5_sigwinch_multicol_many_entries",
+			Args:    []string{"-C", colorDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R4.6: -n implies -l (long format with numeric UID/GID) ===
+		// R4.6: -n alone (without -l) produces long-format output.
+		{
+			Name:      "R4.6_n_implies_long_format",
+			Args:      []string{"-n", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R4.6: -n on a single file produces long format with numeric IDs.
+		{
+			Name:      "R4.6_n_implies_long_single_file",
+			Args:      []string{"-n", filepath.Join(fixtureDir, "alpha.txt")},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R4.6: -n with -r (reverse sort, numeric long format).
+		{
+			Name:      "R4.6_n_implies_long_reverse",
+			Args:      []string{"-nr", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R4.7: Format flag mutual exclusivity (last wins) ===
+		// R4.7: -Cl combined — l appears last, long format wins.
+		{
+			Name:      "R4.7_C_then_l_combined",
+			Args:      []string{"-Cl", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R4.7: -xC combined — C appears last, multi-column wins.
+		{
+			Name:    "R4.7_x_then_C_combined",
+			Args:    []string{"-xC", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R4.7: -lx combined — x appears last, horizontal wins.
+		{
+			Name:    "R4.7_l_then_x_combined",
+			Args:    []string{"-lx", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R4.8: -R with -l produces "total N" for each subdirectory ===
+		// R4.8: -lR on fixture with nested subdirectories.
+		{
+			Name:      "R4.8_recursive_long_total_per_subdir",
+			Args:      []string{"-lR", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R4.8: -lR on recurfix with multiple subdirectories.
+		{
+			Name:      "R4.8_recursive_long_total_recurfix",
+			Args:      []string{"-lR", recurDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R4.8: -lR with -a (total line includes dotfiles' blocks).
+		{
+			Name:      "R4.8_recursive_long_total_all",
+			Args:      []string{"-laR", recurDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
 		},
 	}
 
