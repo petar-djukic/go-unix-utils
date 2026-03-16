@@ -105,11 +105,25 @@ func main() {
 	hasCustomFormat := len(positionalArgs) > 0
 
 	// R1.1: read stdin line by line and prepend a timestamp to each line.
-	scanner := bufio.NewScanner(os.Stdin)
+	// R9.2: use bufio.Reader to preserve partial last line behavior — if the
+	// final line has no trailing newline, the output omits it too, matching
+	// the reference Perl ts which preserves line endings from <STDIN>.
+	reader := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		rawLine, err := reader.ReadBytes('\n')
+		if len(rawLine) == 0 && err != nil {
+			break
+		}
+
+		// Determine if the line has a trailing newline.
+		hasNewline := len(rawLine) > 0 && rawLine[len(rawLine)-1] == '\n'
+		line := string(rawLine)
+		if hasNewline {
+			line = line[:len(line)-1]
+		}
+
 		now := time.Now()
 
 		var output string
@@ -136,12 +150,22 @@ func main() {
 			output = ts + " " + line
 		}
 
-		// R1.4: preserve the original newline; do not add extra.
-		if _, err := fmt.Fprintf(w, "%s\n", output); err != nil {
-			break
+		// R9.2: preserve original line ending — add newline only if input had one.
+		if hasNewline {
+			if _, err := fmt.Fprintf(w, "%s\n", output); err != nil {
+				break
+			}
+		} else {
+			if _, err := fmt.Fprint(w, output); err != nil {
+				break
+			}
 		}
 		// R1.3: flush stdout after each line for real-time output.
 		if err := w.Flush(); err != nil {
+			break
+		}
+
+		if err != nil {
 			break
 		}
 	}

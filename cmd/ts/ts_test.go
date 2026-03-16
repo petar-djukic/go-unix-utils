@@ -352,6 +352,45 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C", "TZ=America/New_York"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
+		// R9.2: -m mode (monotonic clock) with default format.
+		{
+			Name:      "R9.2_monotonic_default",
+			Args:      []string{"-m"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: -m mode combined with -s (elapsed + monotonic).
+		{
+			Name:      "R9.2_monotonic_elapsed",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("line one\nline two\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: -m mode combined with -i (incremental + monotonic).
+		{
+			Name:      "R9.2_monotonic_incremental",
+			Args:      []string{"-m", "-i"},
+			Stdin:     []byte("line one\nline two\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: partial last line (no trailing newline).
+		{
+			Name:      "R9.2_partial_last_line",
+			Stdin:     []byte("complete line\npartial line"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: partial last line with -s mode.
+		{
+			Name:      "R9.2_partial_last_line_elapsed",
+			Args:      []string{"-s"},
+			Stdin:     []byte("first\nsecond"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
