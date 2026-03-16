@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.12 test coverage.
+// Implements prd008-ls R1.1-R1.14 test coverage.
 package main
 
 import (
@@ -300,6 +300,106 @@ func TestDiff(t *testing.T) {
 		{
 			Name:    "R1.12_indicator_empty_dir",
 			Args:    []string{"-p", emptyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.13: -x horizontal multi-column output.
+		{
+			Name:    "R1.13_horizontal_columns",
+			Args:    []string{"-x", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.13: -x on empty directory.
+		{
+			Name:    "R1.13_horizontal_empty_dir",
+			Args:    []string{"-x", emptyDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.13: -x with -a (horizontal with dotfiles).
+		{
+			Name:    "R1.13_horizontal_all",
+			Args:    []string{"-xa", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.13: -x with -r (horizontal reversed).
+		{
+			Name:    "R1.13_horizontal_reverse",
+			Args:    []string{"-xr", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.13: -x with -p (horizontal with directory indicator).
+		{
+			Name:    "R1.13_horizontal_indicator",
+			Args:    []string{"-xp", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -C multi-column vertical fill (piped).
+		{
+			Name:    "R1.14_C_vertical_columns",
+			Args:    []string{"-C", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -l after -x (long format overrides horizontal).
+		{
+			Name:      "R1.14_l_after_x",
+			Args:      []string{"-x", "-l", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R1.14: -x after -l (horizontal overrides long).
+		{
+			Name:    "R1.14_x_after_l",
+			Args:    []string{"-l", "-x", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -1 after -x (single-column overrides horizontal).
+		{
+			Name:    "R1.14_1_after_x",
+			Args:    []string{"-x", "-1", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -x after -1 (horizontal overrides single-column).
+		{
+			Name:    "R1.14_x_after_1",
+			Args:    []string{"-1", "-x", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -C after -l (multi-column overrides long).
+		{
+			Name:    "R1.14_C_after_l",
+			Args:    []string{"-l", "-C", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -l after -C (long overrides multi-column).
+		{
+			Name:      "R1.14_l_after_C",
+			Args:      []string{"-C", "-l", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R1.14: -x after -C (horizontal overrides vertical).
+		{
+			Name:    "R1.14_x_after_C",
+			Args:    []string{"-C", "-x", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R1.14: -C after -x (vertical overrides horizontal).
+		{
+			Name:    "R1.14_C_after_x",
+			Args:    []string{"-x", "-C", fixtureDir},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
 		},
