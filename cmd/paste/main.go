@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd027-paste R1.1-R1.4, R2.1-R2.3: cmd/paste merges corresponding
-// lines from multiple input files, separating fields with a delimiter and writing
-// the result to stdout. Supports custom delimiter lists via -d with cycling across
-// columns, including escape sequences (\n, \t, \\, \0). When one file is exhausted
-// before others, empty strings are substituted. '-' reads from stdin with
-// round-robin consumption across multiple '-' operands. Installs SIGPIPE handler.
+// Implements prd027-paste R1.1-R1.4, R2.1-R2.3, R3.1-R3.3: cmd/paste merges
+// corresponding lines from multiple input files, separating fields with a delimiter
+// and writing the result to stdout. Supports custom delimiter lists via -d with
+// cycling across columns, including escape sequences (\n, \t, \\, \0). When one
+// file is exhausted before others, empty strings are substituted. '-' reads from
+// stdin with round-robin consumption across multiple '-' operands. Serial mode (-s)
+// processes files one at a time, joining all lines of each file into a single
+// output line separated by the delimiter. Installs SIGPIPE handler.
 package main
 
 import (

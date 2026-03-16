@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/paste against the GNU reference binary (gpaste).
-// Implements prd027-paste R1.1-R1.4, R2.1-R2.3 test coverage: multi-file parallel
-// merge with default tab delimiter, custom delimiter lists with cycling, escape
-// sequences (\n, \t, \\, \0), stdin via '-' operand with round-robin consumption,
-// unequal-length file handling, and single-file passthrough.
+// Implements prd027-paste R1.1-R1.4, R2.1-R2.3, R3.1-R3.3 test coverage:
+// multi-file parallel merge with default tab delimiter, custom delimiter lists with
+// cycling, escape sequences (\n, \t, \\, \0), stdin via '-' operand with
+// round-robin consumption, unequal-length file handling, single-file passthrough,
+// and serial mode (-s) with default and custom delimiters.
 package main
 
 import (
@@ -230,14 +231,69 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-d", ",", fileShort, fileLong},
 		},
 
-		// --- R2.1: custom delimiter with serial mode ---
+		// --- R3.1: serial mode with default tab delimiter (AC1, AC4) ---
 		{
-			Name: "comma_delimiter_serial",
+			Name: "serial_single_file_tab",
+			Args: []string{"-s", fileThree},
+		},
+		{
+			Name: "serial_two_files_tab",
+			Args: []string{"-s", fileA, fileNums},
+		},
+		{
+			Name: "serial_three_files_tab",
+			Args: []string{"-s", fileA, fileNums, fileThree},
+		},
+		{
+			Name: "serial_single_line_file",
+			Args: []string{"-s", singleLine},
+		},
+		{
+			Name: "serial_empty_file",
+			Args: []string{"-s", emptyFile},
+		},
+		{
+			Name: "serial_empty_and_nonempty",
+			Args: []string{"-s", emptyFile, fileA},
+		},
+
+		// --- R3.2: serial mode with custom delimiter (AC2) ---
+		{
+			Name: "serial_comma_delimiter",
 			Args: []string{"-s", "-d", ",", fileThree},
 		},
 		{
-			Name: "cycling_delimiter_serial",
+			Name: "serial_cycling_delimiter",
 			Args: []string{"-s", "-d", ",;:", fileThree},
+		},
+		{
+			Name: "serial_cycling_delimiter_multi_file",
+			Args: []string{"-s", "-d", ",;", fileA, fileThree},
+		},
+		{
+			Name: "serial_newline_escape_delimiter",
+			Args: []string{"-s", "-d", `\n`, fileThree},
+		},
+		{
+			Name: "serial_empty_escape_delimiter",
+			Args: []string{"-s", "-d", `\0`, fileThree},
+		},
+
+		// --- R3.3: serial mode with stdin (AC3) ---
+		{
+			Name:  "serial_stdin_dash",
+			Args:  []string{"-s", "-"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			Name:  "serial_stdin_comma",
+			Args:  []string{"-s", "-d", ",", "-"},
+			Stdin: []byte("x\ny\nz\n"),
+		},
+		{
+			Name:  "serial_stdin_empty",
+			Args:  []string{"-s", "-"},
+			Stdin: []byte{},
 		},
 
 		// --- R2.1: delimiter with --delimiters= long form ---
