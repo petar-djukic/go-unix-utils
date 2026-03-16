@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd029-comm R1.1-R1.4, R2.1-R2.4: cmd/comm reads two sorted
-// text files line by line and produces three-column output showing lines
-// unique to file 1, unique to file 2, and common to both. Supports -1,
-// -2, -3 flags to suppress individual columns, --check-order and
-// --nocheck-order to control input order validation, and --version/--help
-// flags. Installs SIGPIPE handler per shared protocol.
+// Implements prd029-comm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4: cmd/comm reads
+// two sorted text files line by line and produces three-column output
+// showing lines unique to file 1, unique to file 2, and common to both.
+// Supports -1, -2, -3 flags to suppress individual columns, --check-order
+// and --nocheck-order to control input order validation,
+// --output-delimiter=STRING to replace tab as the column separator, and
+// --version/--help flags. Installs SIGPIPE handler per shared protocol.
 package main
 
 import (
@@ -39,15 +40,18 @@ const (
 	orderNoCheck
 )
 
-// options holds the parsed command-line flags for column suppression and
-// order checking.
+// options holds the parsed command-line flags for column suppression,
+// order checking, and output delimiter.
 // R1.3: -1, -2, -3 suppress columns 1, 2, 3 respectively.
 // R2.1-R2.3: --check-order / --nocheck-order / default.
+// R3.4: --output-delimiter=STRING replaces tab as column separator.
 type options struct {
-	suppress1 bool      // -1: suppress column 1 (lines unique to file1)
-	suppress2 bool      // -2: suppress column 2 (lines unique to file2)
-	suppress3 bool      // -3: suppress column 3 (lines common to both)
-	order     orderMode // order-checking mode
+	suppress1      bool      // -1: suppress column 1 (lines unique to file1)
+	suppress2      bool      // -2: suppress column 2 (lines unique to file2)
+	suppress3      bool      // -3: suppress column 3 (lines common to both)
+	order          orderMode // order-checking mode
+	outputDelim    string    // column separator (default: tab)
+	outputDelimSet bool      // true if --output-delimiter was explicitly given
 }
 
 func main() {
@@ -78,6 +82,7 @@ func main() {
 					"  -3                    suppress column 3 (lines that appear in both files)\n"+
 					"      --check-order     check that the input is correctly sorted\n"+
 					"      --nocheck-order   do not check that the input is correctly sorted\n"+
+					"      --output-delimiter=STR  separate columns with STR\n"+
 					"      --help            display this help and exit\n"+
 					"      --version         output version information and exit\n",
 				progName,
@@ -100,6 +105,23 @@ func main() {
 		// D2: last flag wins when both are specified.
 		if arg == "--nocheck-order" {
 			opts.order = orderNoCheck
+			continue
+		}
+
+		// R3.4: --output-delimiter=STRING replaces tab as column separator.
+		if arg == "--output-delimiter" || strings.HasPrefix(arg, "--output-delimiter=") {
+			if strings.Contains(arg, "=") {
+				opts.outputDelim = arg[len("--output-delimiter="):]
+			} else {
+				i++
+				if i >= len(args) {
+					fmt.Fprintf(os.Stderr, "%s: option '--output-delimiter' requires an argument\n", progName)
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+					os.Exit(1)
+				}
+				opts.outputDelim = args[i]
+			}
+			opts.outputDelimSet = true
 			continue
 		}
 
@@ -203,32 +225,37 @@ func readLine(br *bufio.Reader) (string, bool, error) {
 	return "", false, err
 }
 
-// columnPrefix returns the tab-based indentation prefix for a given column
-// (1, 2, or 3) with the suppression flags applied.
+// columnPrefix returns the delimiter-based indentation prefix for a given
+// column (1, 2, or 3) with the suppression flags applied.
 // R2.4: when a column is suppressed, remaining columns shift left.
+// R3.4: when --output-delimiter is set, uses that string instead of tab.
 func columnPrefix(col int, opts options) string {
-	tabs := 0
+	count := 0
 	switch col {
 	case 1:
 		// Column 1 has no indentation.
-		tabs = 0
+		count = 0
 	case 2:
-		// Column 2 normally has 1 tab, reduced by 1 for each suppressed earlier column.
-		tabs = 1
+		// Column 2 normally has 1 delimiter, reduced by 1 for each suppressed earlier column.
+		count = 1
 		if opts.suppress1 {
-			tabs--
+			count--
 		}
 	case 3:
-		// Column 3 normally has 2 tabs, reduced by 1 for each suppressed earlier column.
-		tabs = 2
+		// Column 3 normally has 2 delimiters, reduced by 1 for each suppressed earlier column.
+		count = 2
 		if opts.suppress1 {
-			tabs--
+			count--
 		}
 		if opts.suppress2 {
-			tabs--
+			count--
 		}
 	}
-	return strings.Repeat("\t", tabs)
+	delim := "\t"
+	if opts.outputDelimSet {
+		delim = opts.outputDelim
+	}
+	return strings.Repeat(delim, count)
 }
 
 // warnUnsorted emits a diagnostic to stderr if the current line is out of

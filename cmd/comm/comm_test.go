@@ -7,6 +7,7 @@
 // --version/--help exit behavior.
 // Covers prd029-comm R2.1-R2.4: --check-order, --nocheck-order,
 // and unsorted input handling.
+// Covers prd029-comm R3.1-R3.4: output delimiter and column suppression options.
 package main
 
 import (
@@ -376,6 +377,57 @@ func TestDiffOrderChecking(t *testing.T) {
 			Args:      []string{"--check-order", "-1", unsorted1, sorted2},
 			WorkDir:   dir,
 			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffOutputDelimiter tests R3.4: --output-delimiter=STRING replaces
+// tab as the column separator.
+func TestDiffOutputDelimiter(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcomm")
+	if err != nil {
+		t.Skipf("reference binary gcomm not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	file1 := writeTestFile(t, dir, "f1.txt", "a\nb\nc\n")
+	file2 := writeTestFile(t, dir, "f2.txt", "b\nc\nd\n")
+
+	tests := []testutils.DiffTest{
+		// R3.4: --output-delimiter=| uses | instead of tab.
+		{
+			Name:    "output_delimiter_pipe",
+			Args:    []string{"--output-delimiter=|", file1, file2},
+			WorkDir: dir,
+		},
+		// R3.4: --output-delimiter with multi-character string.
+		{
+			Name:    "output_delimiter_multi_char",
+			Args:    []string{"--output-delimiter=<=>", file1, file2},
+			WorkDir: dir,
+		},
+		// R3.4: --output-delimiter combined with column suppression -1.
+		{
+			Name:    "output_delimiter_with_suppress1",
+			Args:    []string{"--output-delimiter=,", "-1", file1, file2},
+			WorkDir: dir,
+		},
+		// R3.4: --output-delimiter combined with column suppression -12.
+		{
+			Name:    "output_delimiter_with_suppress12",
+			Args:    []string{"--output-delimiter=,", "-12", file1, file2},
+			WorkDir: dir,
+		},
+		// R3.4: --output-delimiter combined with column suppression -3.
+		{
+			Name:    "output_delimiter_with_suppress3",
+			Args:    []string{"--output-delimiter=,", "-3", file1, file2},
+			WorkDir: dir,
 		},
 	}
 
