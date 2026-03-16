@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.3:
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.4:
 // cmd/mktemp creates temporary files or directories with unique names and
 // prints the path to stdout. Supports custom templates, -d for directory
 // creation, --tmpdir/-p for parent directory control, --suffix for appending
-// a suffix after the random characters, --version, and --help.
+// a suffix after the random characters, -t for legacy BSD compatibility mode,
+// --version, and --help.
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
@@ -42,6 +43,7 @@ type mktempOptions struct {
 	tmpdir      string // R3.1: --tmpdir=DIR or -p DIR overrides parent directory.
 	tmpdirSet   bool   // True when --tmpdir or -p was explicitly provided.
 	suffix      string // R3.3: --suffix=SUFF appended after random characters.
+	legacyT     bool   // R3.4: -t treats template as filename prefix in TMPDIR.
 }
 
 func main() {
@@ -81,7 +83,22 @@ func main() {
 
 	// Determine the parent directory and filename template.
 	var dir, fileTemplate string
-	if opts.tmpdirSet {
+	if opts.legacyT {
+		// R3.4: -t treats template as a single filename component in
+		// $TMPDIR (if set), else -p directory, else /tmp.
+		if strings.Contains(template, "/") {
+			fmt.Fprintf(os.Stderr, "%s: invalid template, '%s', contains directory separator\n", progName, template)
+			os.Exit(1)
+		}
+		dir = os.Getenv("TMPDIR")
+		if dir == "" && opts.tmpdirSet && opts.tmpdir != "" {
+			dir = opts.tmpdir
+		}
+		if dir == "" {
+			dir = "/tmp"
+		}
+		fileTemplate = template
+	} else if opts.tmpdirSet {
 		// R3.1: --tmpdir=DIR or -p DIR overrides parent directory.
 		// R3.2: --tmpdir without value uses TMPDIR or /tmp.
 		dir = opts.tmpdir
@@ -175,6 +192,9 @@ func parseArgs(args []string) (*mktempOptions, string) {
 				switch arg[j] {
 				case 'd':
 					opts.directory = true
+				case 't':
+					// R3.4: -t treats template as filename prefix in TMPDIR.
+					opts.legacyT = true
 				case 'p':
 					// -p DIR: next argument or rest of current arg is the directory.
 					rest := arg[j+1:]

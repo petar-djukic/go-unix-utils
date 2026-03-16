@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
-// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.3 test coverage.
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.4 test coverage.
 package main
 
 import (
@@ -75,6 +75,13 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "tmpdir_nonexistent",
 			Args:      []string{"--tmpdir=/nonexistent/dir/for/mktemp"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
+		// R3.4: -t with template containing slash exits 1.
+		{
+			Name:      "t_flag_template_with_slash",
+			Args:      []string{"-t", "sub/dir.XXX"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
 		},
@@ -155,6 +162,23 @@ func TestDiffCreation(t *testing.T) {
 			name:        "suffix_with_directory",
 			args:        []string{"-d", "--suffix=.d", "tmpd.XXX"},
 			pattern:     regexp.MustCompile(`tmpd\.[A-Za-z0-9]{3}\.d$`),
+			permissions: 0o700,
+			isDir:       true,
+		},
+		// R3.4: -t treats template as filename prefix in TMPDIR.
+		{
+			name:        "t_flag_in_tmpdir",
+			args:        []string{"-t", "myprefix.XXXXXX"},
+			useTMPDIR:   true,
+			pattern:     regexp.MustCompile(`myprefix\.[A-Za-z0-9]{6}$`),
+			permissions: 0o600,
+		},
+		// R3.4: -t with -d creates directory in TMPDIR.
+		{
+			name:        "t_flag_with_directory",
+			args:        []string{"-t", "-d", "mydir.XXXXXX"},
+			useTMPDIR:   true,
+			pattern:     regexp.MustCompile(`mydir\.[A-Za-z0-9]{6}$`),
 			permissions: 0o700,
 			isDir:       true,
 		},
@@ -333,6 +357,76 @@ func TestTmpdirFlag(t *testing.T) {
 		}
 
 		os.Remove(path) // best-effort cleanup
+	})
+}
+
+// TestLegacyTFlag verifies R3.4: -t treats template as a filename prefix
+// in the TMPDIR directory.
+func TestLegacyTFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("t_uses_TMPDIR", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		env := buildTestEnvWithTMPDIR(tmpDir)
+		out, exitCode := runMktempInDir(t, goBin, []string{"-t", "app.XXXXXX"}, env, t.TempDir())
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", exitCode, out)
+		}
+
+		path := strings.TrimSpace(string(out))
+		// R3.4: must be in TMPDIR.
+		if filepath.Dir(path) != tmpDir {
+			t.Errorf("expected file in %s, got dir %s", tmpDir, filepath.Dir(path))
+		}
+
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("created file does not exist: %v", err)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
+
+	t.Run("t_falls_back_to_tmp", func(t *testing.T) {
+		t.Parallel()
+
+		// No TMPDIR set, no -p: should use /tmp.
+		env := buildTestEnv()
+		// Remove TMPDIR from env.
+		var filtered []string
+		for _, e := range env {
+			if !strings.HasPrefix(e, "TMPDIR=") {
+				filtered = append(filtered, e)
+			}
+		}
+		out, exitCode := runMktempInDir(t, goBin, []string{"-t", "fall.XXXXXX"}, filtered, t.TempDir())
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", exitCode, out)
+		}
+
+		path := strings.TrimSpace(string(out))
+		if filepath.Dir(path) != "/tmp" {
+			t.Errorf("expected file in /tmp, got dir %s", filepath.Dir(path))
+		}
+
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("created file does not exist: %v", err)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
+
+	t.Run("t_rejects_template_with_slash", func(t *testing.T) {
+		t.Parallel()
+
+		env := buildTestEnv()
+		_, exitCode := runMktempInDir(t, goBin, []string{"-t", "sub/dir.XXX"}, env, t.TempDir())
+		if exitCode != 1 {
+			t.Errorf("expected exit 1 for template with slash under -t, got %d", exitCode)
+		}
 	})
 }
 
