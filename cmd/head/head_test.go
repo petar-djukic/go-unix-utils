@@ -304,6 +304,118 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffHelpVersion tests --help and --version output.
+// These are not compared against the reference binary since output text differs.
+// Instead we verify the exit code is 0 and output goes to stdout.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R4.1: --help exits 0 and produces output on stdout.
+	t.Run("help_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--help")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--help failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--help produced no output")
+		}
+		if !bytes.Contains(out, []byte("Usage:")) {
+			t.Fatalf("--help output missing 'Usage:': %s", out)
+		}
+	})
+
+	// R4.1: --version exits 0 and prints version info.
+	t.Run("version_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--version")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--version failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--version produced no output")
+		}
+		if !bytes.Contains(out, []byte("head")) {
+			t.Fatalf("--version output missing 'head': %s", out)
+		}
+	})
+}
+
+// TestDiffEdgeCases tests R3.5 and R4.1-R4.2 edge cases with differential testing.
+func TestDiffEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("ghead")
+	if err != nil {
+		t.Skipf("reference binary ghead not in PATH: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	writeTestFile(t, tmpDir, "good.txt", "line1\nline2\nline3\n")
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 on successful single file.
+		{
+			Name:    "R4.1_exit_0_single_file",
+			Args:    []string{filepath.Join(tmpDir, "good.txt")},
+			WorkDir: tmpDir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		// R4.1: exit 0 on stdin.
+		{
+			Name:  "R4.1_exit_0_stdin",
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.5/R4.2: error on non-existent file only.
+		{
+			Name:      "R3.5_error_nonexistent_only",
+			Args:      []string{filepath.Join(tmpDir, "does_not_exist.txt")},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.5/R4.2: error file between good files — still processes good files.
+		{
+			Name: "R3.5_error_between_good_files",
+			Args: []string{
+				filepath.Join(tmpDir, "good.txt"),
+				filepath.Join(tmpDir, "missing.txt"),
+				filepath.Join(tmpDir, "good.txt"),
+			},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.5: multiple non-existent files.
+		{
+			Name: "R3.5_multiple_nonexistent",
+			Args: []string{
+				filepath.Join(tmpDir, "no1.txt"),
+				filepath.Join(tmpDir, "no2.txt"),
+			},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: -- separator then file.
+		{
+			Name:    "R4.2_double_dash_separator",
+			Args:    []string{"--", filepath.Join(tmpDir, "good.txt")},
+			WorkDir: tmpDir,
+			Env:     []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffQuietVerbose tests -q and -v header control.
 func TestDiffQuietVerbose(t *testing.T) {
 	t.Parallel()
