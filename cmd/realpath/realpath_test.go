@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/realpath against grealpath (GNU coreutils).
-// Implements prd049-realpath R1.1-R1.4, R3.1, R3.3, R4.1-R4.3 test coverage.
+// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1, R3.3, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -18,7 +18,7 @@ func TestDiff(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
-	// D2: graceful skip if grealpath is not installed.
+	// D3: graceful skip if grealpath is not installed.
 	refBin, err := exec.LookPath("grealpath")
 	if err != nil {
 		t.Skipf("reference binary grealpath not in PATH: %v", err)
@@ -39,6 +39,16 @@ func TestDiff(t *testing.T) {
 	subDir := filepath.Join(tmpDir, "sub")
 	if err := os.Mkdir(subDir, 0o755); err != nil {
 		t.Fatalf("creating subdir: %v", err)
+	}
+
+	// Create a nested directory structure for --relative-to and --relative-base tests.
+	deepDir := filepath.Join(tmpDir, "a", "b", "c")
+	if err := os.MkdirAll(deepDir, 0o755); err != nil {
+		t.Fatalf("creating deep dir: %v", err)
+	}
+	siblingDir := filepath.Join(tmpDir, "a", "x")
+	if err := os.Mkdir(siblingDir, 0o755); err != nil {
+		t.Fatalf("creating sibling dir: %v", err)
 	}
 
 	tests := []testutils.DiffTest{
@@ -92,6 +102,78 @@ func TestDiff(t *testing.T) {
 		{
 			Name:     "R1.1_multiple_existing",
 			Args:     []string{"/tmp", "/usr"},
+			ExitCode: 0,
+		},
+		// R1.5: -s flag does not resolve symlinks.
+		{
+			Name:     "R1.5_strip_symlink",
+			Args:     []string{"-s", symlinkPath},
+			ExitCode: 0,
+		},
+		// R1.5: --no-symlinks long form.
+		{
+			Name:     "R1.5_no_symlinks_long",
+			Args:     []string{"--no-symlinks", symlinkPath},
+			ExitCode: 0,
+		},
+		// R1.5: -s cleans .. without resolving symlinks.
+		{
+			Name:     "R1.5_strip_dotdot",
+			Args:     []string{"-s", filepath.Join(subDir, "..", "target.txt")},
+			ExitCode: 0,
+		},
+		// R2.1: --relative-to makes output relative to the given directory.
+		{
+			Name:     "R2.1_relative_to_parent",
+			Args:     []string{"--relative-to=" + tmpDir, targetFile},
+			ExitCode: 0,
+		},
+		// R2.1: --relative-to with a sibling path.
+		{
+			Name:     "R2.1_relative_to_sibling",
+			Args:     []string{"--relative-to=" + filepath.Join(tmpDir, "a"), deepDir},
+			ExitCode: 0,
+		},
+		// R2.1: --relative-to with multiple paths (AC3: at least 3 inputs).
+		{
+			Name:     "R2.1_relative_to_multiple",
+			Args:     []string{"--relative-to=" + tmpDir, targetFile, subDir, deepDir},
+			ExitCode: 0,
+		},
+		// R2.2: --relative-base with path inside base prints relative.
+		{
+			Name:     "R2.2_relative_base_inside",
+			Args:     []string{"--relative-base=" + filepath.Join(tmpDir, "a"), deepDir},
+			ExitCode: 0,
+		},
+		// R2.2: --relative-base with path outside base prints absolute (AC4).
+		{
+			Name:     "R2.2_relative_base_outside",
+			Args:     []string{"--relative-base=" + filepath.Join(tmpDir, "a"), "/tmp"},
+			ExitCode: 0,
+		},
+		// R2.2: --relative-base with mixed inside and outside paths.
+		{
+			Name:     "R2.2_relative_base_mixed",
+			Args:     []string{"--relative-base=" + filepath.Join(tmpDir, "a"), deepDir, "/tmp"},
+			ExitCode: 0,
+		},
+		// R2.3: combined --relative-to and --relative-base (AC5).
+		{
+			Name:     "R2.3_combined_inside",
+			Args:     []string{"--relative-to=" + filepath.Join(tmpDir, "a"), "--relative-base=" + filepath.Join(tmpDir, "a"), deepDir},
+			ExitCode: 0,
+		},
+		// R2.3: combined flags with path outside base prints absolute.
+		{
+			Name:     "R2.3_combined_outside",
+			Args:     []string{"--relative-to=" + filepath.Join(tmpDir, "a"), "--relative-base=" + filepath.Join(tmpDir, "a"), "/tmp"},
+			ExitCode: 0,
+		},
+		// R2.3: combined flags with sibling directory inside base.
+		{
+			Name:     "R2.3_combined_sibling",
+			Args:     []string{"--relative-to=" + filepath.Join(tmpDir, "a", "b"), "--relative-base=" + filepath.Join(tmpDir, "a"), siblingDir},
 			ExitCode: 0,
 		},
 	}
