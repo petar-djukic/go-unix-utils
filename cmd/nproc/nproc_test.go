@@ -20,6 +20,18 @@ var binaryPathNormalizer = func(b []byte) []byte {
 	return re.ReplaceAll(b, []byte("PROG"))
 }
 
+// versionHelpNormalizer blanks stdout content for --version and --help tests.
+// GNU and Go implementations produce structurally different output (different
+// suite names, version numbers, copyright text, help wording), so byte-level
+// comparison is not meaningful. The differential value is verifying both exit 0
+// and write to stdout (not stderr).
+var versionHelpNormalizer = func(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("OUTPUT\n")
+	}
+	return b
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -138,6 +150,22 @@ func TestDiff(t *testing.T) {
 			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
+		},
+		// R3.3: --version exits 0 and produces stdout output.
+		{
+			Name:      "R3.3_version_flag",
+			Args:      []string{"--version"},
+			Env:       lcEnv,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{versionHelpNormalizer},
+		},
+		// R3.3: --help exits 0 and produces stdout output.
+		{
+			Name:      "R3.3_help_flag",
+			Args:      []string{"--help"},
+			Env:       lcEnv,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{versionHelpNormalizer},
 		},
 	}
 
