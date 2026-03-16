@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.12: basic directory listing with
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15: basic directory listing with
 // single-column output (non-TTY default), dotfile filtering, multi-directory
 // headers, mixed file/directory argument handling, error diagnostics,
 // -1 single-column flag, -l long format with permissions/nlink/owner/group/
@@ -10,7 +10,8 @@
 // listing), -p (directory indicator), -C (multi-column vertical fill),
 // -x (multi-column horizontal fill), format flag mutual exclusivity (last
 // flag wins), -t (time sort), -S (size sort), -U (unsorted/directory order),
-// -v (version sort), -i (inode display), -s (block count display).
+// -v (version sort), -i (inode display), -s (block count display),
+// -n (numeric UID/GID, implies -l), -i and -s combined ordering.
 // R2.10: last sort flag wins. Installs SIGPIPE handler per ARCHITECTURE.yaml
 // shared protocol.
 package main
@@ -64,8 +65,9 @@ type lsOptions struct {
 	reverse   bool     // -r: reverse sort order
 	recursive bool     // -R: list subdirectories recursively
 	indicator bool     // -p: append '/' to directory names
-	showInode bool     // -i: prepend inode number (R2.11)
-	showBlocks bool   // -s: prepend block count (R2.12)
+	showInode  bool // -i: prepend inode number (R2.11)
+	showBlocks bool // -s: prepend block count (R2.12)
+	numericIDs bool // -n: display numeric UID/GID (R2.14)
 }
 
 func main() {
@@ -187,6 +189,7 @@ func main() {
 // not override -l, matching GNU ls behavior).
 // R2.1: -a includes dotfiles. R2.5: -t sorts by time. R2.6: -S sorts by size.
 // R2.7: -r reverses sort. R2.8: -U unsorted. R2.10: last sort flag wins.
+// R2.14: -n implies -l with numeric UID/GID.
 // R3.11: -R lists recursively. R3.8 (partial): -p appends '/' to directories.
 func parseArgs(args []string) (lsOptions, []string) {
 	opts := lsOptions{format: formatDefault}
@@ -238,6 +241,10 @@ func parseArgs(args []string) (lsOptions, []string) {
 				case 'i':
 					// R2.11: -i prepends inode number.
 					opts.showInode = true
+				case 'n':
+					// R2.14: -n implies -l and displays numeric UID/GID.
+					opts.numericIDs = true
+					opts.format = formatLong
 				case 's':
 					// R2.12: -s prepends allocated block count.
 					opts.showBlocks = true
@@ -723,11 +730,20 @@ func printLongEntries(entries []longEntry, opts lsOptions) {
 	resolved := make([]resolvedEntry, len(entries))
 	for i, le := range entries {
 		fi := le.fi
+		// R2.14: -n displays numeric UID/GID instead of resolving names.
+		var owner, group string
+		if opts.numericIDs {
+			owner = strconv.FormatUint(uint64(fi.Uid), 10)
+			group = strconv.FormatUint(uint64(fi.Gid), 10)
+		} else {
+			owner = resolveOwner(fi.Uid)
+			group = resolveGroup(fi.Gid)
+		}
 		re := resolvedEntry{
 			perms: formatPermissions(fi.Mode),
 			nlink: strconv.FormatUint(fi.Nlink, 10),
-			owner: resolveOwner(fi.Uid),
-			group: resolveGroup(fi.Gid),
+			owner: owner,
+			group: group,
 			size:  strconv.FormatInt(fi.Size, 10),
 			mtime: formatMtime(fi.ModTime),
 			name:  le.name,

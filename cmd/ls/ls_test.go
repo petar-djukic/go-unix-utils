@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.12 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.15 test coverage.
 package main
 
 import (
@@ -595,6 +595,57 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-1", "-is", fixtureDir},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
+		},
+
+		// === R2.13: -s with -l total line includes block counts ===
+		{
+			Name:      "R2.13_blocks_long_total",
+			Args:      []string{"-ls", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R2.14: -n numeric UID/GID (implies -l) ===
+		{
+			Name:      "R2.14_numeric_ids",
+			Args:      []string{"-n", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R2.14: -n with -a (numeric IDs with dotfiles).
+		{
+			Name:      "R2.14_numeric_ids_all",
+			Args:      []string{"-na", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R2.14: -n on a single file.
+		{
+			Name:      "R2.14_numeric_ids_single_file",
+			Args:      []string{"-n", filepath.Join(fixtureDir, "alpha.txt")},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R2.15: -i and -s combined with -l ===
+		{
+			Name:      "R2.15_inode_blocks_long",
+			Args:      []string{"-lis", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R2.15: -i and -s combined with -n (numeric IDs).
+		{
+			Name:      "R2.15_inode_blocks_numeric",
+			Args:      []string{"-nis", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
 		},
 	}
 
