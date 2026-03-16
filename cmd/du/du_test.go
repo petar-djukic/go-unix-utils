@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/du against gdu (GNU coreutils).
-// Implements prd009-du R1.1-R1.5, R2.2-R2.3, R3.1-R3.3, R4.1-R4.2 test coverage.
+// Implements prd009-du R1.1-R1.5, R2.1-R2.7, R3.1-R3.3, R4.1-R4.2 test coverage.
 package main
 
 import (
@@ -69,6 +69,17 @@ func TestDiff(t *testing.T) {
 	); err != nil {
 		t.Fatalf("failed to create dir symlink: %v", err)
 	}
+
+	// Deeper directory tree for max-depth tests (R2.4).
+	deepDir := filepath.Join(tmpDir, "deep")
+	mkDir(t, deepDir)
+	mkDir(t, filepath.Join(deepDir, "a"))
+	mkDir(t, filepath.Join(deepDir, "a", "b"))
+	mkDir(t, filepath.Join(deepDir, "a", "b", "c"))
+	writeFile(t, filepath.Join(deepDir, "top.txt"), "top level\n")
+	writeFile(t, filepath.Join(deepDir, "a", "mid.txt"), "mid level\n")
+	writeFile(t, filepath.Join(deepDir, "a", "b", "deep.txt"), "deep level\n")
+	writeFile(t, filepath.Join(deepDir, "a", "b", "c", "bottom.txt"), "bottom level\n")
 
 	// Permission denied fixture: subdirectory without read permission.
 	noPermDir := filepath.Join(tmpDir, "noperm")
@@ -162,6 +173,41 @@ func TestDiff(t *testing.T) {
 			Args:      []string{noPermDir},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeDuOutput},
+		},
+		// R2.4: -d 0 shows only the argument itself (equivalent to -s).
+		{
+			Name: "R2.4_max_depth_0",
+			Args: []string{"-d", "0", deepDir},
+		},
+		// R2.4: -d 1 shows argument and immediate children.
+		{
+			Name: "R2.4_max_depth_1",
+			Args: []string{"-d", "1", deepDir},
+		},
+		// R2.4: --max-depth=2 long form.
+		{
+			Name: "R2.4_max_depth_2_long",
+			Args: []string{"--max-depth=2", deepDir},
+		},
+		// R2.5: -k accepted without error (1024-byte blocks, already default).
+		{
+			Name: "R2.5_k_flag",
+			Args: []string{"-k", basicDir},
+		},
+		// R2.6: -m reports sizes in 1M blocks.
+		{
+			Name: "R2.6_m_flag",
+			Args: []string{"-m", basicDir},
+		},
+		// R2.7: -c prints grand total line.
+		{
+			Name: "R2.7_grand_total",
+			Args: []string{"-c", basicDir, emptyDir},
+		},
+		// R2.7: -c with -s prints summary per arg plus grand total.
+		{
+			Name: "R2.7_grand_total_summary",
+			Args: []string{"-cs", basicDir, emptyDir},
 		},
 	}
 

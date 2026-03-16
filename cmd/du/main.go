@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd009-du R1.1-R1.5, R2.2-R2.3, R3.1-R3.3, R4.1-R4.2, R5.1:
+// Implements prd009-du R1.1-R1.5, R2.1-R2.7, R3.1-R3.3, R4.1-R4.2, R5.1:
 // cmd/du reports disk usage for directory trees. Walks each path argument
 // recursively using Lstat (no symlink following), summing allocated 512-byte
 // blocks with hard-link deduplication. Prints one line per directory
@@ -30,9 +30,11 @@ type inodeKey struct {
 
 // duOptions holds the parsed flags for a du invocation.
 type duOptions struct {
-	summarize bool  // -s/--summarize: display only total per argument (R2.2)
-	all       bool  // -a/--all: report sizes for all files (R2.3)
-	blockSize int64 // display block size in bytes (R1.2)
+	summarize  bool  // -s/--summarize: display only total per argument (R2.2)
+	all        bool  // -a/--all: report sizes for all files (R2.3)
+	blockSize  int64 // display block size in bytes (R1.2)
+	maxDepth   int   // -d N/--max-depth=N: limit depth of reported entries (R2.4), -1 means unlimited
+	grandTotal bool  // -c/--total: print grand total after all arguments (R2.7)
 }
 
 func main() {
@@ -54,12 +56,20 @@ func main() {
 	// R3.3: Hard-link deduplication map shared across all arguments.
 	seen := make(map[inodeKey]bool)
 
+	var grandTotal int64
+
 	// R1.5: Process arguments in order.
 	for _, path := range paths {
 		total := walkPath(path, opts, seen, &exitCode)
 		if opts.summarize {
 			printEntry(toDisplayBlocks(total, opts.blockSize), path)
 		}
+		grandTotal += total
+	}
+
+	// R2.7: -c prints a grand total line after all arguments.
+	if opts.grandTotal {
+		printEntry(toDisplayBlocks(grandTotal, opts.blockSize), "total")
 	}
 
 	os.Exit(exitCode)
@@ -69,11 +79,13 @@ func main() {
 func parseArgs(args []string) (*duOptions, []string, error) {
 	opts := &duOptions{
 		blockSize: defaultBlockSize(),
+		maxDepth:  -1, // R2.4: -1 means unlimited depth.
 	}
 	var paths []string
 	flagsDone := false
 
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if flagsDone {
 			paths = append(paths, arg)
 			continue
@@ -90,18 +102,81 @@ func parseArgs(args []string) (*duOptions, []string, error) {
 			opts.all = true
 			continue
 		}
+		if arg == "--total" {
+			// R2.7: --total is the long form of -c.
+			opts.grandTotal = true
+			continue
+		}
+		// R2.4: --max-depth=N long form.
+		if strings.HasPrefix(arg, "--max-depth=") {
+			val := arg[len("--max-depth="):]
+			d, err := strconv.Atoi(val)
+			if err != nil || d < 0 {
+				return nil, nil, fmt.Errorf("invalid maximum depth '%s'", val)
+			}
+			opts.maxDepth = d
+			continue
+		}
+		if arg == "--max-depth" {
+			i++
+			if i >= len(args) {
+				return nil, nil, fmt.Errorf("option '--max-depth' requires an argument")
+			}
+			d, err := strconv.Atoi(args[i])
+			if err != nil || d < 0 {
+				return nil, nil, fmt.Errorf("invalid maximum depth '%s'", args[i])
+			}
+			opts.maxDepth = d
+			continue
+		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--") {
-			for _, ch := range arg[1:] {
+			// R2.4: -d may be followed by the depth value in the same or next arg.
+			chars := arg[1:]
+			for j := 0; j < len(chars); j++ {
+				ch := chars[j]
 				switch ch {
 				case 's':
 					opts.summarize = true
 				case 'a':
 					opts.all = true
+				case 'c':
+					// R2.7: -c prints grand total.
+					opts.grandTotal = true
+				case 'k':
+					// R2.5: -k forces 1024-byte blocks (already default).
+					opts.blockSize = 1024
+				case 'm':
+					// R2.6: -m forces 1048576-byte (1M) blocks.
+					opts.blockSize = 1048576
+				case 'd':
+					// R2.4: -d N depth limit. Value may be rest of this arg or next arg.
+					rest := chars[j+1:]
+					var val string
+					if len(rest) > 0 {
+						val = string(rest)
+					} else {
+						i++
+						if i >= len(args) {
+							return nil, nil, fmt.Errorf("option requires an argument -- 'd'")
+						}
+						val = args[i]
+					}
+					d, err := strconv.Atoi(val)
+					if err != nil || d < 0 {
+						return nil, nil, fmt.Errorf("invalid maximum depth '%s'", val)
+					}
+					opts.maxDepth = d
+					j = len(chars) // consume rest of short flag group
 				}
 			}
 			continue
 		}
 		paths = append(paths, arg)
+	}
+
+	// R2.4: -s is equivalent to --max-depth=0.
+	if opts.summarize && opts.maxDepth == -1 {
+		opts.maxDepth = 0
 	}
 
 	// R1.3: -s and -a are mutually exclusive.
@@ -165,12 +240,26 @@ func walkPath(path string, opts *duOptions, seen map[inodeKey]bool, exitCode *in
 		return blocks
 	}
 
-	return walkDir(path, fi, opts, seen, exitCode)
+	// R2.4: depth 0 is the argument itself.
+	return walkDir(path, fi, opts, seen, exitCode, 0)
+}
+
+// shouldPrint returns true if the entry at the given depth should be printed,
+// considering summarize and maxDepth settings per R2.2 and R2.4.
+func shouldPrint(opts *duOptions, depth int) bool {
+	if opts.summarize {
+		return false
+	}
+	if opts.maxDepth >= 0 && depth > opts.maxDepth {
+		return false
+	}
+	return true
 }
 
 // walkDir recursively walks a directory and returns the total raw 512-byte
 // block count. Prints entries in depth-first order per R1.1.
-func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inodeKey]bool, exitCode *int) int64 {
+// R2.4: depth tracks the current depth relative to the command-line argument (0 = the argument itself).
+func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inodeKey]bool, exitCode *int, depth int) int64 {
 	total, _ := countBlocks(dirFI, seen)
 
 	// Use os.Open + ReadDir(-1) instead of os.ReadDir to preserve filesystem
@@ -179,7 +268,7 @@ func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inod
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: cannot read directory '%s': %v\n", progName, dirPath, unwrapPathError(err))
 		*exitCode = 1
-		if !opts.summarize {
+		if shouldPrint(opts, depth) {
 			printEntry(toDisplayBlocks(total, opts.blockSize), dirPath)
 		}
 		return total
@@ -189,7 +278,7 @@ func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inod
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: cannot read directory '%s': %v\n", progName, dirPath, unwrapPathError(err))
 		*exitCode = 1
-		if !opts.summarize {
+		if shouldPrint(opts, depth) {
 			printEntry(toDisplayBlocks(total, opts.blockSize), dirPath)
 		}
 		return total
@@ -207,20 +296,20 @@ func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inod
 		}
 
 		if childFI.Mode.IsDir() {
-			total += walkDir(childPath, childFI, opts, seen, exitCode)
+			total += walkDir(childPath, childFI, opts, seen, exitCode, depth+1)
 		} else {
 			blocks, dup := countBlocks(childFI, seen)
 			total += blocks
 			// R2.3: -a prints entries for all files, not just directories.
 			// Hard-link duplicates are not printed (GNU du behavior).
-			if opts.all && !opts.summarize && !dup {
+			if opts.all && !dup && shouldPrint(opts, depth+1) {
 				printEntry(toDisplayBlocks(blocks, opts.blockSize), childPath)
 			}
 		}
 	}
 
 	// R1.1: Print directory entry after children (depth-first order).
-	if !opts.summarize {
+	if shouldPrint(opts, depth) {
 		printEntry(toDisplayBlocks(total, opts.blockSize), dirPath)
 	}
 
