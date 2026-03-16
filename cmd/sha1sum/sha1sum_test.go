@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd031-sha1sum R1.1-R1.4, R2.1-R2.3: core SHA-1
-// digest computation, standard GNU output format, stdin reading, multiple
-// file processing with error handling, --help/--version flags, and --check
-// verification mode with OK/FAILED output and exit code behavior.
+// Differential tests for prd031-sha1sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2:
+// core SHA-1 digest computation, standard GNU output format, stdin reading,
+// multiple file processing with error handling, --help/--version flags,
+// --check verification mode with OK/FAILED output and exit code behavior,
+// --tag BSD-style output format, and --binary/--text mode flags.
 package main
 
 import (
@@ -20,8 +21,9 @@ import (
 )
 
 // stderrNormalizer normalizes stderr differences between our binary ("sha1sum:")
-// and the reference binary ("gsha1sum:"), and lowercases the error message so
-// platform casing differences do not cause false failures.
+// and the reference binary ("gsha1sum:"), normalizes the "Try '...' for more
+// information" line, and lowercases the error message so platform casing
+// differences do not cause false failures.
 func stderrNormalizer(b []byte) []byte {
 	s := string(b)
 	s = strings.ReplaceAll(s, "gsha1sum:", "sha1sum:")
@@ -29,7 +31,11 @@ func stderrNormalizer(b []byte) []byte {
 	// platform differences like "No such file" vs "no such file".
 	var lines []string
 	for _, line := range strings.Split(s, "\n") {
-		if idx := strings.LastIndex(line, ": "); idx != -1 {
+		// Normalize "Try '...' for more information." lines that contain
+		// different binary paths.
+		if strings.HasPrefix(line, "Try '") && strings.HasSuffix(line, "' for more information.") {
+			line = "Try 'sha1sum --help' for more information."
+		} else if idx := strings.LastIndex(line, ": "); idx != -1 {
 			line = line[:idx+2] + strings.ToLower(line[idx+2:])
 		}
 		lines = append(lines, line)
@@ -122,6 +128,72 @@ func TestDiff(t *testing.T) {
 		},
 	}
 
+	// --- R3.1: --binary and --text mode flags ---
+
+	tagTests := []testutils.DiffTest{
+		// R3.1: --binary outputs "HASH *FILENAME".
+		{
+			Name: "binary flag",
+			Args: []string{"--binary", fileA},
+		},
+		// R3.1: -b short flag.
+		{
+			Name: "binary short flag",
+			Args: []string{"-b", fileA},
+		},
+		// R3.1: --text outputs "HASH  FILENAME" (default).
+		{
+			Name: "text flag",
+			Args: []string{"--text", fileA},
+		},
+		// R3.1: -t short flag.
+		{
+			Name: "text short flag",
+			Args: []string{"-t", fileA},
+		},
+		// R3.1: --binary with multiple files.
+		{
+			Name: "binary multiple files",
+			Args: []string{"--binary", fileA, fileB},
+		},
+		// R3.1: --binary with stdin.
+		{
+			Name:  "binary stdin",
+			Args:  []string{"--binary"},
+			Stdin: []byte("abc"),
+		},
+		// R3.2: --tag produces BSD tag format.
+		{
+			Name: "tag format",
+			Args: []string{"--tag", fileA},
+		},
+		// R3.2: --tag with multiple files.
+		{
+			Name: "tag multiple files",
+			Args: []string{"--tag", fileA, fileB},
+		},
+		// R3.2: --tag with stdin.
+		{
+			Name:  "tag stdin",
+			Args:  []string{"--tag"},
+			Stdin: []byte("abc"),
+		},
+		// R3.2: --tag with empty file.
+		{
+			Name: "tag empty file",
+			Args: []string{"--tag", emptyFile},
+		},
+		// R3.2: --tag combined with --text is an error.
+		{
+			Name:      "tag with text error",
+			Args:      []string{"--tag", "--text", fileA},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+	}
+
+	tests = append(tests, tagTests...)
+
 	// --- R2.1-R2.3: check mode tests ---
 
 	// Create a valid checksum file for a.txt and b.txt in GNU format.
@@ -161,6 +233,15 @@ func TestDiff(t *testing.T) {
 	if err := os.WriteFile(tagChecksumFile, []byte(tagChecksumContent), 0o644); err != nil {
 		t.Fatalf("writing tag_checksums.txt: %v", err)
 	}
+
+	// R3.2: --tag combined with --check is an error (placed here because checksumFile
+	// must be created first).
+	tests = append(tests, testutils.DiffTest{
+		Name:      "tag with check error",
+		Args:      []string{"--tag", "--check", checksumFile},
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+	})
 
 	checkTests := []testutils.DiffTest{
 		// R2.1/R2.2: --check with all files matching — exit 0, prints OK lines.

@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd031-sha1sum R1.1-R1.4, R2.1-R2.3: core SHA-1 digest
-// computation, standard GNU output format, and --check verification mode.
+// Implements prd031-sha1sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: core SHA-1
+// digest computation, standard GNU output format, --check verification
+// mode, and --tag BSD-style output format with --binary/--text mode flags.
 // Computes SHA-1 digests for files or stdin, printing one line per input
-// in the format "HASH  FILENAME". In check mode, reads a checksum file
+// in text, binary, or BSD tag format. In check mode, reads a checksum file
 // and verifies each listed file, printing OK/FAILED. Installs SIGPIPE
 // handler for clean exit on broken pipe (R4.3 prerequisite).
 package main
@@ -34,27 +35,44 @@ func main() {
 
 	opts, files := parseArgs(os.Args[1:])
 
+	// R3.2: GNU sha1sum rejects --tag combined with --text.
+	if opts.tagMode && opts.textSet {
+		fmt.Fprintf(os.Stderr, "%s: --tag does not support --text mode\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
+	// D2: --tag does not support --check.
+	if opts.tagMode && opts.check {
+		fmt.Fprintf(os.Stderr, "%s: the --tag option is meaningless when verifying checksums\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
 	var exitCode int
 	if opts.check {
 		exitCode = runCheck(files)
 	} else {
-		exitCode = run(files)
+		exitCode = run(opts.binaryMode, opts.tagMode, files)
 	}
 	os.Exit(exitCode)
 }
 
 // options holds parsed command-line flag state.
 type options struct {
-	check bool
+	binaryMode bool
+	textSet    bool // true when -t/--text was explicitly given
+	check      bool
+	tagMode    bool
 }
 
 // run processes files and returns the exit code.
-func run(files []string) int {
+func run(binaryMode, tagMode bool, files []string) int {
 	exitCode := 0
 
 	if len(files) == 0 {
 		// R1.2: no file arguments — read from stdin.
-		if err := hashReader(os.Stdin, "-"); err != nil {
+		if err := hashReader(os.Stdin, "-", binaryMode, tagMode); err != nil {
 			if isEPIPE(err) {
 				os.Exit(0)
 			}
@@ -68,7 +86,7 @@ func run(files []string) int {
 	for _, name := range files {
 		if name == "-" {
 			// R1.2: "-" means read from stdin.
-			if err := hashReader(os.Stdin, "-"); err != nil {
+			if err := hashReader(os.Stdin, "-", binaryMode, tagMode); err != nil {
 				if isEPIPE(err) {
 					os.Exit(0)
 				}
@@ -85,7 +103,7 @@ func run(files []string) int {
 			exitCode = 1
 			continue
 		}
-		if err := hashReader(f, name); err != nil {
+		if err := hashReader(f, name, binaryMode, tagMode); err != nil {
 			f.Close() // best-effort close
 			if isEPIPE(err) {
 				os.Exit(0)
@@ -101,8 +119,9 @@ func run(files []string) int {
 }
 
 // hashReader computes the SHA-1 digest of r and writes one output line.
-// R1.1: format is "HASH  FILENAME" (two spaces).
-func hashReader(r io.Reader, name string) error {
+// R1.1: format is "HASH  FILENAME" (text mode) or "HASH *FILENAME" (binary mode).
+// R3.1/R3.2: --tag uses BSD-style "SHA1 (FILENAME) = HASH"; mode flag has no effect.
+func hashReader(r io.Reader, name string, binaryMode, tagMode bool) error {
 	h := sha1.New()
 	if _, err := io.Copy(h, r); err != nil {
 		return err
@@ -110,7 +129,18 @@ func hashReader(r io.Reader, name string) error {
 
 	digest := fmt.Sprintf("%x", h.Sum(nil))
 
-	_, err := fmt.Fprintf(os.Stdout, "%s  %s\n", digest, name)
+	var err error
+	if tagMode {
+		// R3.2: BSD tag format — mode flag has no effect on output format.
+		_, err = fmt.Fprintf(os.Stdout, "SHA1 (%s) = %s\n", name, digest)
+	} else {
+		// R3.1: text mode uses two spaces; binary mode uses space+asterisk.
+		sep := "  "
+		if binaryMode {
+			sep = " *"
+		}
+		_, err = fmt.Fprintf(os.Stdout, "%s%s%s\n", digest, sep, name)
+	}
 	return err
 }
 
@@ -300,9 +330,9 @@ func computeFileHash(name string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-// parseArgs separates flags from file arguments. Supports -c/--check,
-// --help, --version, and -- to end flag parsing. Single-char flags
-// can be grouped.
+// parseArgs separates flags from file arguments. Supports -b/--binary,
+// -t/--text, -c/--check, --tag, --help, --version, and -- to end flag
+// parsing. Single-char flags can be grouped.
 func parseArgs(args []string) (opts options, files []string) {
 	flagsDone := false
 
@@ -315,8 +345,21 @@ func parseArgs(args []string) (opts options, files []string) {
 			flagsDone = true
 			continue
 		}
+		if arg == "--binary" {
+			opts.binaryMode = true
+			continue
+		}
+		if arg == "--text" {
+			opts.binaryMode = false
+			opts.textSet = true
+			continue
+		}
 		if arg == "--check" {
 			opts.check = true
+			continue
+		}
+		if arg == "--tag" {
+			opts.tagMode = true
 			continue
 		}
 		if arg == "--help" {
@@ -328,9 +371,14 @@ func parseArgs(args []string) (opts options, files []string) {
 			os.Exit(0)
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-' {
-			// Short flags: -c, or grouped.
+			// Short flags: -b, -t, -c, or grouped like -bc.
 			for _, ch := range arg[1:] {
 				switch ch {
+				case 'b':
+					opts.binaryMode = true
+				case 't':
+					opts.binaryMode = false
+					opts.textSet = true
 				case 'c':
 					opts.check = true
 				}
@@ -351,9 +399,12 @@ Print or check SHA1 (160-bit) checksums.
 
 With no FILE, or when FILE is -, read standard input.
 
-  -c, --check  read SHA1 sums from the FILEs and check them
-      --help     display this help and exit
-      --version  output version information and exit
+  -b, --binary  read in binary mode
+  -c, --check   read SHA1 sums from the FILEs and check them
+  -t, --text    read in text mode (default)
+      --tag     create a BSD-style checksum
+      --help    display this help and exit
+      --version output version information and exit
 `)
 }
 
