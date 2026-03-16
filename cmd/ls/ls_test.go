@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14, R2.5-R2.8 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.12 test coverage.
 package main
 
 import (
@@ -114,6 +114,17 @@ func TestDiff(t *testing.T) {
 	setMtime(t, filepath.Join(sortDir, "small.txt"), now.Add(-3*time.Hour))
 	setMtime(t, filepath.Join(sortDir, "medium.txt"), now.Add(-2*time.Hour))
 	setMtime(t, filepath.Join(sortDir, "large.txt"), now.Add(-1*time.Hour))
+
+	// R2.9: Create a fixture for version sort testing.
+	versionDir := filepath.Join(tmpDir, "versionfix")
+	if err := os.Mkdir(versionDir, 0o755); err != nil {
+		t.Fatalf("creating version fixture dir: %v", err)
+	}
+	writeFile(t, filepath.Join(versionDir, "file1"), "")
+	writeFile(t, filepath.Join(versionDir, "file2"), "")
+	writeFile(t, filepath.Join(versionDir, "file10"), "")
+	writeFile(t, filepath.Join(versionDir, "file20"), "")
+	writeFile(t, filepath.Join(versionDir, "file3"), "")
 
 	longNorm := []testutils.NormalizeFunc{
 		normalizeLongFormat,
@@ -512,6 +523,76 @@ func TestDiff(t *testing.T) {
 		{
 			Name:    "R2.10_time_after_unsorted",
 			Args:    []string{"-1", "-U", "-t", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R2.9: -v version sort ===
+		{
+			Name:    "R2.9_version_sort",
+			Args:    []string{"-1", "-v", versionDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.9: -v with -r (reverse version sort).
+		{
+			Name:    "R2.9_version_sort_reverse",
+			Args:    []string{"-1", "-vr", versionDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R2.10: Last sort flag wins ===
+		// R2.10: -v after -t (version sort overrides time sort).
+		{
+			Name:    "R2.10_version_after_time",
+			Args:    []string{"-1", "-t", "-v", versionDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.10: -t after -v (time sort overrides version sort).
+		{
+			Name:    "R2.10_time_after_version",
+			Args:    []string{"-1", "-v", "-t", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+
+		// === R2.11: -i inode display ===
+		{
+			Name:    "R2.11_inode_display",
+			Args:    []string{"-1", "-i", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.11: -i with -l (long format with inode).
+		{
+			Name:      "R2.11_inode_long_format",
+			Args:      []string{"-li", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R2.12: -s block count display ===
+		{
+			Name:    "R2.12_blocks_display",
+			Args:    []string{"-1", "-s", fixtureDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.12: -s with -l (long format with blocks).
+		{
+			Name:      "R2.12_blocks_long_format",
+			Args:      []string{"-ls", fixtureDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+		// R2.15: -i and -s combined.
+		{
+			Name:    "R2.15_inode_and_blocks",
+			Args:    []string{"-1", "-is", fixtureDir},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
 		},

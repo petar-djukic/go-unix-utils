@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.8: basic directory listing with
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.12: basic directory listing with
 // single-column output (non-TTY default), dotfile filtering, multi-directory
 // headers, mixed file/directory argument handling, error diagnostics,
 // -1 single-column flag, -l long format with permissions/nlink/owner/group/
@@ -9,8 +9,10 @@
 // -a (all entries including dotfiles), -r (reverse sort), -R (recursive
 // listing), -p (directory indicator), -C (multi-column vertical fill),
 // -x (multi-column horizontal fill), format flag mutual exclusivity (last
-// flag wins), -t (time sort), -S (size sort), -U (unsorted/directory order).
-// Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
+// flag wins), -t (time sort), -S (size sort), -U (unsorted/directory order),
+// -v (version sort), -i (inode display), -s (block count display).
+// R2.10: last sort flag wins. Installs SIGPIPE handler per ARCHITECTURE.yaml
+// shared protocol.
 package main
 
 import (
@@ -21,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
@@ -46,20 +49,23 @@ const (
 type sortMode int
 
 const (
-	sortByName sortMode = iota // default: C locale alphabetical
-	sortByTime                 // -t: newest mtime first (R2.5)
-	sortBySize                 // -S: largest first (R2.6)
-	sortNone                   // -U: directory order (R2.8)
+	sortByName    sortMode = iota // default: C locale alphabetical
+	sortByTime                    // -t: newest mtime first (R2.5)
+	sortBySize                    // -S: largest first (R2.6)
+	sortNone                      // -U: directory order (R2.8)
+	sortByVersion                 // -v: version sort (R2.9)
 )
 
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
 	format    outputFormat
-	sortBy    sortMode // R2.5/R2.6/R2.8/R2.10: sort mode
+	sortBy    sortMode // R2.5/R2.6/R2.8/R2.9/R2.10: sort mode
 	showAll   bool     // -a: include dotfiles including "." and ".."
 	reverse   bool     // -r: reverse sort order
 	recursive bool     // -R: list subdirectories recursively
 	indicator bool     // -p: append '/' to directory names
+	showInode bool     // -i: prepend inode number (R2.11)
+	showBlocks bool   // -s: prepend block count (R2.12)
 }
 
 func main() {
@@ -112,7 +118,7 @@ func main() {
 			}
 			entries = append(entries, longEntry{name: displayName, path: f, fi: fi})
 		}
-		printLongEntries(entries)
+		printLongEntries(entries, opts)
 	} else if (opts.format == formatMultiCol || opts.format == formatHorizontal) && len(files) > 0 {
 		// R1.13/R1.14: Multi-column output for file arguments.
 		var displayNames []string
@@ -226,6 +232,15 @@ func parseArgs(args []string) (lsOptions, []string) {
 				case 'U':
 					// R2.8: -U disables sorting (directory order).
 					opts.sortBy = sortNone
+				case 'v':
+					// R2.9: -v sorts using version sort (strverscmp).
+					opts.sortBy = sortByVersion
+				case 'i':
+					// R2.11: -i prepends inode number.
+					opts.showInode = true
+				case 's':
+					// R2.12: -s prepends allocated block count.
+					opts.showBlocks = true
 				case 'r':
 					// R2.7: -r reverses sort order.
 					opts.reverse = true
@@ -458,10 +473,17 @@ func listDir(path string, opts lsOptions) error {
 
 	// R2.8: When -U is given, preserve directory order (skip sorting).
 	if opts.sortBy != sortNone {
-		// R1.3: Sort entries in C locale order (initial alphabetical sort).
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].Name() < entries[j].Name()
-		})
+		if opts.sortBy == sortByVersion {
+			// R2.9: -v sorts using version sort (strverscmp semantics).
+			sort.Slice(entries, func(i, j int) bool {
+				return strverscmp(entries[i].Name(), entries[j].Name()) < 0
+			})
+		} else {
+			// R1.3: Sort entries in C locale order (initial alphabetical sort).
+			sort.Slice(entries, func(i, j int) bool {
+				return entries[i].Name() < entries[j].Name()
+			})
+		}
 	}
 
 	// R1.4/R2.1: Filter dotfiles unless -a is given.
@@ -533,14 +555,51 @@ func listDir(path string, opts lsOptions) error {
 		reverseStrings(names)
 	}
 
+	// R2.11/R2.12: When -i or -s is given, we need metadata for every entry
+	// even in non-long formats. Collect it once and reuse.
+	var metaMap map[string]*sys.FileInfo
+	if opts.showInode || opts.showBlocks {
+		metaMap = make(map[string]*sys.FileInfo, len(names))
+		for _, name := range names {
+			fullPath := filepath.Join(path, name)
+			fi, err := sys.Lstat(fullPath)
+			if err == nil {
+				metaMap[name] = fi
+			}
+		}
+	}
+
+	// R2.12/R2.13: When -s is active in non-long format, print "total N" line.
+	// (Long format handles its own total line below.)
+	if opts.showBlocks && opts.format != formatLong && metaMap != nil {
+		var totalBlocks int64
+		for _, name := range names {
+			if fi := metaMap[name]; fi != nil {
+				totalBlocks += fi.Blocks
+			}
+		}
+		fmt.Printf("total %d\n", totalBlocks/2)
+	}
+
 	// R1.6/R1.7: Long format requires metadata for each entry.
 	if opts.format == formatLong {
 		var longEntries []longEntry
 		for _, name := range names {
 			fullPath := filepath.Join(path, name)
-			fi, err := sys.Lstat(fullPath)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, fullPath, unwrapPathError(err))
+			var fi *sys.FileInfo
+			var err error
+			if metaMap != nil {
+				fi = metaMap[name]
+				if fi == nil {
+					_, err = sys.Lstat(fullPath)
+				}
+			} else {
+				fi, err = sys.Lstat(fullPath)
+			}
+			if fi == nil {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, fullPath, unwrapPathError(err))
+				}
 				continue
 			}
 			displayName := name
@@ -556,9 +615,10 @@ func listDir(path string, opts lsOptions) error {
 			totalBlocks += le.fi.Blocks
 		}
 		fmt.Printf("total %d\n", totalBlocks/2)
-		printLongEntries(longEntries)
+		printLongEntries(longEntries, opts)
 	} else if opts.format == formatMultiCol || opts.format == formatHorizontal {
 		// R1.13/R1.14: Multi-column output.
+		// R2.11/R2.12: Prepend inode/blocks prefix when -i or -s is active.
 		var displayNames []string
 		for _, name := range names {
 			displayName := name
@@ -569,6 +629,7 @@ func listDir(path string, opts lsOptions) error {
 					displayName = name + "/"
 				}
 			}
+			displayName = prependMeta(displayName, name, metaMap, opts)
 			displayNames = append(displayNames, displayName)
 		}
 		tw := getTermWidth()
@@ -579,6 +640,8 @@ func listDir(path string, opts lsOptions) error {
 		}
 	} else {
 		// R1.1/R1.2/R1.5: Single-column output.
+		// R2.11/R2.12: Compute column widths for inode/blocks alignment.
+		maxIno, maxBlk := metaColumnWidths(names, metaMap, opts)
 		for _, name := range names {
 			displayName := name
 			// R1.12: -p appends '/' to directory names.
@@ -589,7 +652,8 @@ func listDir(path string, opts lsOptions) error {
 					displayName = name + "/"
 				}
 			}
-			fmt.Println(displayName)
+			prefix := metaPrefix(name, metaMap, opts, maxIno, maxBlk)
+			fmt.Printf("%s%s\n", prefix, displayName)
 		}
 	}
 
@@ -630,7 +694,8 @@ func reverseStrings(s []string) {
 // R1.6: permissions, nlink, owner, group, size, mtime, name.
 // R1.7: metadata from sys.FileInfo via sys.Lstat.
 // R1.8: owner/group name resolution via os/user.
-func printLongEntries(entries []longEntry) {
+// R2.11: -i prepends inode number. R2.12: -s prepends block count.
+func printLongEntries(entries []longEntry, opts lsOptions) {
 	if len(entries) == 0 {
 		return
 	}
@@ -640,8 +705,12 @@ func printLongEntries(entries []longEntry) {
 	maxOwner := 0
 	maxGroup := 0
 	maxSize := 0
+	maxIno := 0
+	maxBlk := 0
 
 	type resolvedEntry struct {
+		ino   string // R2.11: inode number
+		blk   string // R2.12: block count
 		perms string
 		nlink string
 		owner string
@@ -662,6 +731,22 @@ func printLongEntries(entries []longEntry) {
 			size:  strconv.FormatInt(fi.Size, 10),
 			mtime: formatMtime(fi.ModTime),
 			name:  le.name,
+		}
+
+		// R2.11: Format inode number.
+		if opts.showInode {
+			re.ino = strconv.FormatUint(fi.Ino, 10)
+			if len(re.ino) > maxIno {
+				maxIno = len(re.ino)
+			}
+		}
+
+		// R2.12: Format block count in 1024-byte units.
+		if opts.showBlocks {
+			re.blk = strconv.FormatInt(fi.Blocks/2, 10)
+			if len(re.blk) > maxBlk {
+				maxBlk = len(re.blk)
+			}
 		}
 
 		// R1.10: Symlink display — append " -> target".
@@ -689,8 +774,17 @@ func printLongEntries(entries []longEntry) {
 	}
 
 	// R1.6: Print each entry with aligned fields.
+	// R2.11/R2.12/R2.15: inode first, then blocks, then long-format fields.
 	for _, re := range resolved {
-		fmt.Printf("%s %*s %-*s %-*s %*s %s %s\n",
+		prefix := ""
+		if opts.showInode {
+			prefix += fmt.Sprintf("%*s ", maxIno, re.ino)
+		}
+		if opts.showBlocks {
+			prefix += fmt.Sprintf("%*s ", maxBlk, re.blk)
+		}
+		fmt.Printf("%s%s %*s %-*s %-*s %*s %s %s\n",
+			prefix,
 			re.perms,
 			maxNlink, re.nlink,
 			maxOwner, re.owner,
@@ -814,4 +908,184 @@ func unwrapPathError(err error) error {
 		return pe.Err
 	}
 	return err
+}
+
+// metaColumnWidths computes the maximum column widths for inode and block
+// count prefixes across all entries.
+// R2.11/R2.12: Used for right-aligned prefix columns in non-long formats.
+func metaColumnWidths(names []string, metaMap map[string]*sys.FileInfo, opts lsOptions) (maxIno, maxBlk int) {
+	if metaMap == nil {
+		return 0, 0
+	}
+	for _, name := range names {
+		fi := metaMap[name]
+		if fi == nil {
+			continue
+		}
+		if opts.showInode {
+			s := strconv.FormatUint(fi.Ino, 10)
+			if len(s) > maxIno {
+				maxIno = len(s)
+			}
+		}
+		if opts.showBlocks {
+			s := strconv.FormatInt(fi.Blocks/2, 10)
+			if len(s) > maxBlk {
+				maxBlk = len(s)
+			}
+		}
+	}
+	return maxIno, maxBlk
+}
+
+// metaPrefix returns the inode/blocks prefix string for a single entry in
+// non-long output modes.
+// R2.11/R2.12/R2.15: inode first, then blocks.
+func metaPrefix(name string, metaMap map[string]*sys.FileInfo, opts lsOptions, maxIno, maxBlk int) string {
+	if metaMap == nil {
+		return ""
+	}
+	fi := metaMap[name]
+	prefix := ""
+	if opts.showInode {
+		ino := "?"
+		if fi != nil {
+			ino = strconv.FormatUint(fi.Ino, 10)
+		}
+		prefix += fmt.Sprintf("%*s ", maxIno, ino)
+	}
+	if opts.showBlocks {
+		blk := "?"
+		if fi != nil {
+			blk = strconv.FormatInt(fi.Blocks/2, 10)
+		}
+		prefix += fmt.Sprintf("%*s ", maxBlk, blk)
+	}
+	return prefix
+}
+
+// prependMeta prepends inode/blocks to a display name for multi-column modes.
+// R2.11/R2.12: In multi-column output, the prefix is not separately aligned;
+// it is part of the entry string that format.Columns lays out.
+func prependMeta(displayName, origName string, metaMap map[string]*sys.FileInfo, opts lsOptions) string {
+	if metaMap == nil {
+		return displayName
+	}
+	fi := metaMap[origName]
+	prefix := ""
+	if opts.showInode {
+		ino := "?"
+		if fi != nil {
+			ino = strconv.FormatUint(fi.Ino, 10)
+		}
+		prefix += ino + " "
+	}
+	if opts.showBlocks {
+		blk := "?"
+		if fi != nil {
+			blk = strconv.FormatInt(fi.Blocks/2, 10)
+		}
+		prefix += blk + " "
+	}
+	return prefix + displayName
+}
+
+// strverscmp implements GNU strverscmp semantics for version sorting (R2.9).
+// Runs of digits are compared numerically so "file2" < "file10".
+func strverscmp(a, b string) int {
+	ai, bi := 0, 0
+	for ai < len(a) && bi < len(b) {
+		ca, cb := rune(a[ai]), rune(b[bi])
+		aDigit := unicode.IsDigit(ca)
+		bDigit := unicode.IsDigit(cb)
+
+		if aDigit && bDigit {
+			// Compare digit runs numerically.
+			// Skip leading zeros — they affect ordering per strverscmp.
+			aStart, bStart := ai, bi
+
+			// Count leading zeros.
+			aZeros := 0
+			for ai < len(a) && a[ai] == '0' {
+				aZeros++
+				ai++
+			}
+			bZeros := 0
+			for bi < len(b) && b[bi] == '0' {
+				bZeros++
+				bi++
+			}
+
+			// Collect remaining digits.
+			aNumStart, bNumStart := ai, bi
+			for ai < len(a) && unicode.IsDigit(rune(a[ai])) {
+				ai++
+			}
+			for bi < len(b) && unicode.IsDigit(rune(b[bi])) {
+				bi++
+			}
+
+			aLen := ai - aNumStart
+			bLen := bi - bNumStart
+
+			// If both runs are entirely zeros (or empty after stripping zeros).
+			if aLen == 0 && bLen == 0 {
+				// Pure zero runs: more zeros = smaller (strverscmp treats
+				// leading-zero numbers as fractional-like, so "01" < "1").
+				if aZeros != bZeros {
+					// With leading zeros, the number with more leading zeros
+					// sorts first if remaining digits are equal.
+					_ = aStart
+					_ = bStart
+				}
+			}
+
+			// Different number of significant digits means different magnitude.
+			if aLen != bLen {
+				if aLen < bLen {
+					return -1
+				}
+				return 1
+			}
+
+			// Same number of significant digits: compare lexicographically.
+			for k := 0; k < aLen; k++ {
+				if a[aNumStart+k] != b[bNumStart+k] {
+					if a[aNumStart+k] < b[bNumStart+k] {
+						return -1
+					}
+					return 1
+				}
+			}
+
+			// Significant digits are equal. More leading zeros = smaller
+			// (strverscmp: "01" < "1").
+			if aZeros != bZeros {
+				if aZeros > bZeros {
+					return -1
+				}
+				return 1
+			}
+
+			continue
+		}
+
+		if ca != cb {
+			if ca < cb {
+				return -1
+			}
+			return 1
+		}
+		ai++
+		bi++
+	}
+
+	// Ran out of characters in one or both strings.
+	if ai < len(a) {
+		return 1
+	}
+	if bi < len(b) {
+		return -1
+	}
+	return 0
 }
