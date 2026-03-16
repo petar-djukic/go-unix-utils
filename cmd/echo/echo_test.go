@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/echo covering prd020-echo R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
+// Differential tests for cmd/echo covering prd020-echo R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.3.
+// R4.1: all differential tests use pkg/testutils.RunDiffTests to compare against gecho.
+// R4.3: LC_ALL=C is set by the RunDiffTests harness by default (nil Env).
 package main
 
 import (
@@ -153,6 +155,77 @@ func TestDiff(t *testing.T) {
 			Name:     "exit_0_with_n",
 			Args:     []string{"-n", "test"},
 			ExitCode: 0,
+		},
+
+		// R4.2 edge cases: arguments starting with '-' that are not recognized flags.
+		{
+			Name: "dash_dash_literal",
+			Args: []string{"--", "hello"},
+		},
+		{
+			Name: "dash_only",
+			Args: []string{"-"},
+		},
+		// Note: --help and --version are excluded per PRD non_goals
+		// (GNU echo processes them but our implementation does not).
+		// R4.2 edge case: -n with no arguments (suppress newline on empty output).
+		{
+			Name: "n_no_args",
+			Args: []string{"-n"},
+		},
+		// R4.2 edge case: empty string argument.
+		{
+			Name: "empty_string_arg",
+			Args: []string{""},
+		},
+		// R4.2 edge case: multiple empty string arguments.
+		{
+			Name: "multiple_empty_strings",
+			Args: []string{"", "", ""},
+		},
+		// R4.2 edge case: combined flag group -nneE (last flag char wins for e/E).
+		{
+			Name: "combined_flag_group_nneE",
+			Args: []string{"-nneE", `hello\nworld`},
+		},
+		// R4.2 edge case: -e with each escape sequence individually.
+		{
+			Name: "e_backslash_a",
+			Args: []string{"-e", `\a`},
+		},
+		{
+			Name: "e_backslash_b",
+			Args: []string{"-e", `\b`},
+		},
+		{
+			Name: "e_backslash_e_escape",
+			Args: []string{"-e", `\e`},
+		},
+		{
+			Name: "e_backslash_f",
+			Args: []string{"-e", `\f`},
+		},
+		{
+			Name: "e_backslash_r",
+			Args: []string{"-e", `\r`},
+		},
+		{
+			Name: "e_backslash_v",
+			Args: []string{"-e", `\v`},
+		},
+		{
+			Name: "e_backslash_backslash",
+			Args: []string{"-e", `\\`},
+		},
+		// R4.2 edge case: -e with \0 (octal zero, no digits = NUL).
+		{
+			Name: "e_octal_zero_no_digits",
+			Args: []string{"-e", `\0`},
+		},
+		// R4.2 edge case: multiple arguments with -e, escapes in each.
+		{
+			Name: "e_multiple_args_with_escapes",
+			Args: []string{"-e", `a\tb`, `c\nd`},
 		},
 	}
 
