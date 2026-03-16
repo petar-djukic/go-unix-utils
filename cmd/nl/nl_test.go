@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/nl against gnl (GNU coreutils).
-// Implements prd022-nl R1.1-R1.4 test coverage.
+// Implements prd022-nl R1.1-R1.4, R2.1-R2.4 test coverage.
 package main
 
 import (
@@ -148,6 +148,119 @@ func TestDiff(t *testing.T) {
 		{
 			Name:  "single_empty_line",
 			Stdin: []byte("\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffR2(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.1: -b a numbers all lines including empty ones.
+		{
+			Name:  "R2.1_body_style_a_all_lines",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("first\n\nsecond\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -ba concatenated form.
+		{
+			Name:  "R2.1_body_style_a_concatenated",
+			Args:  []string{"-ba"},
+			Stdin: []byte("x\n\ny\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -b t numbers non-empty lines only (explicit default).
+		{
+			Name:  "R2.1_body_style_t_explicit",
+			Args:  []string{"-b", "t"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -b n numbers no lines.
+		{
+			Name:  "R2.1_body_style_n_none",
+			Args:  []string{"-b", "n"},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -b pRE numbers lines matching regex.
+		{
+			Name:  "R2.1_body_style_p_regex",
+			Args:  []string{"-bp^[aeiou]"},
+			Stdin: []byte("apple\nbanana\norange\ngrape\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -b p with separate arg for regex.
+		{
+			Name:  "R2.1_body_style_p_regex_separate",
+			Args:  []string{"-b", "p^[0-9]"},
+			Stdin: []byte("123\nabc\n456\ndef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: style n outputs lines with no number and no separator.
+		{
+			Name:  "R2.4_style_n_no_number_no_separator",
+			Args:  []string{"-bn"},
+			Stdin: []byte("alpha\nbeta\n\ngamma\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -b a with all empty lines — all get numbered.
+		{
+			Name:  "R2.1_body_style_a_all_empty",
+			Args:  []string{"-ba"},
+			Stdin: []byte("\n\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -b a with mixed content.
+		{
+			Name:  "R2.1_body_style_a_mixed",
+			Args:  []string{"-ba"},
+			Stdin: []byte("one\n\ntwo\n\n\nthree\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -bp with dot-star regex matches all non-empty.
+		{
+			Name:  "R2.1_body_style_p_dotstar",
+			Args:  []string{"-bp."},
+			Stdin: []byte("foo\n\nbar\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -bn with empty lines — all lines pass through unnumbered.
+		{
+			Name:  "R2.4_style_n_with_empty",
+			Args:  []string{"-bn"},
+			Stdin: []byte("x\n\ny\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -h flag accepted (header style, no effect without section delimiters).
+		{
+			Name:  "R2.2_header_style_flag_accepted",
+			Args:  []string{"-ha"},
+			Stdin: []byte("line1\nline2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -f flag accepted (footer style, no effect without section delimiters).
+		{
+			Name:  "R2.3_footer_style_flag_accepted",
+			Args:  []string{"-fn"},
+			Stdin: []byte("line1\nline2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1-R2.3: combined body and header style flags.
+		{
+			Name:  "R2.1_R2.2_combined_b_h_flags",
+			Args:  []string{"-ba", "-ha"},
+			Stdin: []byte("data\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
