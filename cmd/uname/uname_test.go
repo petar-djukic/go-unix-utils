@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/uname against guname (GNU coreutils).
-// Implements prd044-uname R1.1-R1.4, R4.1-R4.3 test coverage.
+// Implements prd044-uname R1.1-R1.9, R2.2, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -103,6 +103,72 @@ func TestDiff(t *testing.T) {
 		{
 			Name:     "duplicate_flag_ss",
 			Args:     []string{"-s", "-s"},
+			ExitCode: 0,
+		},
+		// R1.5: -v prints the kernel version string.
+		{
+			Name:     "R1.5_flag_v_kernel_version",
+			Args:     []string{"-v"},
+			ExitCode: 0,
+		},
+		// R1.6: -m prints the machine hardware name.
+		{
+			Name:     "R1.6_flag_m_machine",
+			Args:     []string{"-m"},
+			ExitCode: 0,
+		},
+		// R1.7: -p prints the processor type.
+		{
+			Name:     "R1.7_flag_p_processor",
+			Args:     []string{"-p"},
+			ExitCode: 0,
+		},
+		// R1.8: -i prints the hardware platform.
+		{
+			Name:     "R1.8_flag_i_hardware_platform",
+			Args:     []string{"-i"},
+			ExitCode: 0,
+		},
+		// R1.9: -o prints the operating system.
+		{
+			Name:     "R1.9_flag_o_operating_system",
+			Args:     []string{"-o"},
+			ExitCode: 0,
+		},
+		// R2.2: combined -snrvm prints five fields in canonical order.
+		{
+			Name:     "R2.2_combined_snrvm",
+			Args:     []string{"-snrvm"},
+			ExitCode: 0,
+		},
+		// R2.2: combined -snrvmpio prints all fields in canonical order.
+		{
+			Name:     "R2.2_combined_all_flags",
+			Args:     []string{"-snrvmpio"},
+			ExitCode: 0,
+		},
+		// R2.2: separate new flags produce same as combined.
+		{
+			Name:     "R2.2_separate_v_m",
+			Args:     []string{"-v", "-m"},
+			ExitCode: 0,
+		},
+		// R2.2: mixed old and new flags in non-canonical order.
+		{
+			Name:     "R2.2_mixed_flags_mrsn",
+			Args:     []string{"-m", "-r", "-s", "-n"},
+			ExitCode: 0,
+		},
+		// R2.2: combined -oi prints operating system and hardware platform.
+		{
+			Name:     "R2.2_combined_oi",
+			Args:     []string{"-oi"},
+			ExitCode: 0,
+		},
+		// R2.2: combined -po prints processor and operating system in canonical order.
+		{
+			Name:     "R2.2_combined_po",
+			Args:     []string{"-po"},
 			ExitCode: 0,
 		},
 	}

@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd044-uname R1.1-R1.4, R2.2, R3.1-R3.2:
+// Implements prd044-uname R1.1-R1.9, R2.2, R3.1-R3.2:
 // cmd/uname prints system information fields. With no arguments, prints the
 // kernel name (equivalent to -s). Supports -s (kernel name), -n (nodename),
-// -r (kernel release) individually or in combination. Multiple flags print
-// selected fields in canonical order separated by spaces. Installs SIGPIPE
-// handler per ARCHITECTURE.yaml.
+// -r (kernel release), -v (kernel version), -m (machine), -p (processor),
+// -i (hardware platform), -o (operating system) individually or in combination.
+// Multiple flags print selected fields in canonical order separated by spaces.
+// Installs SIGPIPE handler per ARCHITECTURE.yaml.
 package main
 
 import (
@@ -25,14 +26,20 @@ const progName = "uname"
 
 // unameFields holds the parsed flag selections for which fields to print.
 type unameFields struct {
-	sysname  bool // -s: kernel name
-	nodename bool // -n: network node hostname
-	release  bool // -r: kernel release
+	sysname          bool // -s: kernel name
+	nodename         bool // -n: network node hostname
+	release          bool // -r: kernel release
+	version          bool // -v: kernel version
+	machine          bool // -m: machine hardware name
+	processor        bool // -p: processor type
+	hardwarePlatform bool // -i: hardware platform
+	operatingSystem  bool // -o: operating system
 }
 
 // anySet returns true if at least one field is selected.
 func (f *unameFields) anySet() bool {
-	return f.sysname || f.nodename || f.release
+	return f.sysname || f.nodename || f.release || f.version || f.machine ||
+		f.processor || f.hardwarePlatform || f.operatingSystem
 }
 
 func main() {
@@ -56,10 +63,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// R2.2: collect selected fields in canonical order (sysname, nodename, release).
+	// R2.2: collect selected fields in canonical order:
+	// sysname, nodename, release, version, machine, processor, hardware-platform, operating-system.
+	sysname := byteArrayToString(utsname.Sysname[:])
 	var parts []string
 	if fields.sysname {
-		parts = append(parts, byteArrayToString(utsname.Sysname[:]))
+		parts = append(parts, sysname)
 	}
 	if fields.nodename {
 		parts = append(parts, byteArrayToString(utsname.Nodename[:]))
@@ -67,8 +76,36 @@ func main() {
 	if fields.release {
 		parts = append(parts, byteArrayToString(utsname.Release[:]))
 	}
+	if fields.version {
+		parts = append(parts, byteArrayToString(utsname.Version[:]))
+	}
+	if fields.machine {
+		parts = append(parts, byteArrayToString(utsname.Machine[:]))
+	}
+	// R1.7: -p processor type — platform-specific, matches GNU uname behavior.
+	if fields.processor {
+		parts = append(parts, processorType())
+	}
+	// R1.8: -i hardware platform — GNU uname outputs "unknown" on most platforms.
+	if fields.hardwarePlatform {
+		parts = append(parts, "unknown")
+	}
+	// R1.9: -o operating system name.
+	if fields.operatingSystem {
+		parts = append(parts, osName(sysname))
+	}
 
 	fmt.Println(strings.Join(parts, " "))
+}
+
+// osName returns the operating system name matching GNU uname -o behavior.
+// On Linux, GNU uname outputs "GNU/Linux"; on other platforms it outputs the
+// kernel name (sysname).
+func osName(sysname string) string {
+	if sysname == "Linux" {
+		return "GNU/Linux"
+	}
+	return sysname
 }
 
 // byteArrayToString converts a null-terminated byte array to a Go string.
@@ -106,6 +143,11 @@ func parseArgs(args []string) (*unameFields, error) {
 					"  -s, --kernel-name        print the kernel name\n"+
 					"  -n, --nodename           print the network node hostname\n"+
 					"  -r, --kernel-release     print the kernel release\n"+
+					"  -v, --kernel-version     print the kernel version\n"+
+					"  -m, --machine            print the machine hardware name\n"+
+					"  -p, --processor          print the processor type (non-portable)\n"+
+					"  -i, --hardware-platform  print the hardware platform (non-portable)\n"+
+					"  -o, --operating-system   print the operating system\n"+
 					"      --help     display this help and exit\n"+
 					"      --version  output version information and exit\n",
 				progName,
@@ -149,6 +191,16 @@ func parseArgs(args []string) (*unameFields, error) {
 					fields.nodename = true
 				case 'r':
 					fields.release = true
+				case 'v':
+					fields.version = true
+				case 'm':
+					fields.machine = true
+				case 'p':
+					fields.processor = true
+				case 'i':
+					fields.hardwarePlatform = true
+				case 'o':
+					fields.operatingSystem = true
 				default:
 					// R3.2: unknown flags produce an error.
 					return nil, fmt.Errorf("invalid option -- '%c'", ch)
