@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd035-rmdir R1.1-R1.4:
+// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3:
 // cmd/rmdir removes empty directories. Supports --ignore-fail-on-non-empty
 // to suppress errors for non-empty directories and -p/--parents to remove
-// each directory component in the path. Installs SIGPIPE handler for clean
-// exit on broken pipe.
+// each directory component in the path. R2.1: -p removes the target then
+// each successive empty parent. R2.2: stops ascending on non-empty parent
+// and reports the error. R2.3: each argument is processed independently.
+// Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (

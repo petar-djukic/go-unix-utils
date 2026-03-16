@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rmdir against grmdir (GNU coreutils).
-// Implements prd035-rmdir R1.1-R1.4 test coverage.
+// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3 test coverage.
 package main
 
 import (
@@ -122,6 +122,43 @@ func TestDiff(t *testing.T) {
 		assertBothExitCode(t, goBin, refBin, []string{"-p", "--ignore-fail-on-non-empty", "a/b/c"}, 0, func(dir string) {
 			os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755)                       //nolint:errcheck // test setup
 			os.WriteFile(filepath.Join(dir, "a", "blocker.txt"), []byte("x"), 0o644)     //nolint:errcheck // test setup
+		})
+	})
+
+	// R2.3: -p with multiple arguments processed independently.
+	t.Run("R2.3_parents_multiple_args", func(t *testing.T) {
+		t.Parallel()
+		assertBothRemoveDir(t, goBin, refBin, []string{"-p", "a/b/c", "x/y"}, func(dir string) {
+			os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755) //nolint:errcheck // test setup
+			os.MkdirAll(filepath.Join(dir, "x", "y"), 0o755)      //nolint:errcheck // test setup
+		})
+	})
+
+	// R2.1: -p on a nonexistent path — error, exit 1.
+	t.Run("R2.1_parents_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		assertBothExitCode(t, goBin, refBin, []string{"-p", "no/such/path"}, 1, func(dir string) {
+			// no setup — path does not exist
+		})
+	})
+
+	// R2.2: -p where intermediate ancestor is non-empty — partial removal, exit 1.
+	// Deepest child and middle dir removed, top dir kept because it has a file.
+	t.Run("R2.2_parents_intermediate_nonempty", func(t *testing.T) {
+		t.Parallel()
+		assertBothExitCode(t, goBin, refBin, []string{"-p", "a/b/c"}, 1, func(dir string) {
+			os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755)                   //nolint:errcheck // test setup
+			os.WriteFile(filepath.Join(dir, "a", "other.txt"), []byte("x"), 0o644)   //nolint:errcheck // test setup
+		})
+	})
+
+	// R2.3: -p with multiple args where one fails and one succeeds — exit 1.
+	t.Run("R2.3_parents_mixed_success_fail", func(t *testing.T) {
+		t.Parallel()
+		assertBothExitCode(t, goBin, refBin, []string{"-p", "good/sub", "bad/sub"}, 1, func(dir string) {
+			os.MkdirAll(filepath.Join(dir, "good", "sub"), 0o755)                    //nolint:errcheck // test setup
+			os.MkdirAll(filepath.Join(dir, "bad", "sub"), 0o755)                     //nolint:errcheck // test setup
+			os.WriteFile(filepath.Join(dir, "bad", "file.txt"), []byte("x"), 0o644)  //nolint:errcheck // test setup
 		})
 	})
 }
