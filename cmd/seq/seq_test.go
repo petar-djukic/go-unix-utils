@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/seq against gseq (GNU coreutils).
-// Implements prd019-seq R1.1-R1.4 test coverage.
+// Implements prd019-seq R1.1-R1.5, R2.1-R2.3, R3.1-R3.2 test coverage.
 package main
 
 import (
@@ -137,6 +137,108 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--", "-3", "1", "3"},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R1.5/AC1: floating-point sequence 0.5 0.1 1.0.
+		{
+			Name: "R1.5_float_seq_0.5_0.1_1.0",
+			Args: []string{"0.5", "0.1", "1.0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2/AC3: custom separator -s ', '.
+		{
+			Name: "R2.2_separator_comma_space",
+			Args: []string{"-s", ", ", "1", "4"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: custom separator -s ':'.
+		{
+			Name: "R2.2_separator_colon",
+			Args: []string{"-s", ":", "1", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: empty separator.
+		{
+			Name: "R2.2_separator_empty",
+			Args: []string{"-s", "", "1", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: long option --separator=.
+		{
+			Name: "R2.2_long_separator",
+			Args: []string{"--separator=:", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1/AC2: format flag -f '%.2f'.
+		{
+			Name: "R3.1_format_percent_2f",
+			Args: []string{"-f", "%.2f", "1", "5"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: format flag with %e.
+		{
+			Name: "R3.1_format_percent_e",
+			Args: []string{"-f", "%e", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: format flag with %g.
+		{
+			Name: "R3.1_format_percent_g",
+			Args: []string{"-f", "%g", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: format with width and precision.
+		{
+			Name: "R3.1_format_width_precision",
+			Args: []string{"-f", "%010.3f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: long option --format=.
+		{
+			Name: "R3.1_long_format",
+			Args: []string{"--format=%.2f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: format with surrounding text.
+		{
+			Name: "R3.1_format_with_text",
+			Args: []string{"-f", "num_%g_end", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3/AC4: combined -f and -s flags.
+		{
+			Name: "R2.3_combined_format_separator",
+			Args: []string{"-f", "%.1f", "-s", ":", "1", "0.5", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: -f with float args.
+		{
+			Name: "R2.3_format_with_float_args",
+			Args: []string{"-f", "%.3f", "0.5", "0.5", "2.0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: separator with single number.
+		{
+			Name: "R2.2_separator_single_number",
+			Args: []string{"-s", ":", "1", "1"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: -f combined in short form -f%.2f.
+		{
+			Name: "R3.1_format_short_combined",
+			Args: []string{"-f%.2f", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -s combined in short form -s:.
+		{
+			Name: "R2.2_separator_short_combined",
+			Args: []string{"-s:", "1", "3"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: float sequence with small increments.
+		{
+			Name: "R1.5_float_0.1_0.1_0.5",
+			Args: []string{"0.1", "0.1", "0.5"},
+			Env:  []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -194,6 +296,30 @@ func TestDiffErrorCases(t *testing.T) {
 		{
 			Name:      "R1.5_zero_step",
 			Args:      []string{"1", "0", "5"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.2: format with no directive.
+		{
+			Name:      "R3.2_format_no_directive",
+			Args:      []string{"-f", "hello", "1", "3"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.2: format with invalid directive.
+		{
+			Name:      "R3.2_format_invalid_directive",
+			Args:      []string{"-f", "%d", "1", "3"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.2: format with too many directives.
+		{
+			Name:      "R3.2_format_too_many_directives",
+			Args:      []string{"-f", "%f%f", "1", "3"},
 			ExitCode:  1,
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
