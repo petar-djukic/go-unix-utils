@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/dirname against gdirname (GNU coreutils).
-// Implements prd016-dirname R1.1-R1.4 test coverage.
+// Implements prd016-dirname R1.1-R1.5, R2.1-R2.2, R3.1-R3.3 test coverage.
 package main
 
 import (

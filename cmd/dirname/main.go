@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd016-dirname R1.1-R1.4:
+// Implements prd016-dirname R1.1-R1.5, R2.1-R2.2, R3.1-R3.3:
 // cmd/dirname strips the last component from file paths, outputting the
-// directory portion. Handles trailing slashes, root paths, and no-slash
-// paths. Installs SIGPIPE handler for clean exit on broken pipe.
+// directory portion. Handles trailing slashes, root paths, no-slash paths,
+// multiple operands, NUL-delimited output (--zero/-z), --help/--version
+// flags, and error diagnostics. Installs SIGPIPE handler for clean exit
+// on broken pipe.
 package main
 
 import (
