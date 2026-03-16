@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd033-sha512sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: core SHA-512
-// digest computation, standard GNU output format, --check verification mode
-// with OK/FAILED status output and summary warnings, and --tag BSD-style
+// Implements prd033-sha512sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2, R4.1-R4.3:
+// core SHA-512 digest computation, standard GNU output format, --check
+// verification mode with --strict and --warn modifiers, and --tag BSD-style
 // output format with --binary/--text mode flags. Computes SHA-512 digests for
 // files or stdin, printing one line per input in text, binary, or BSD tag
 // format. In check mode, reads a checksum file and verifies each listed file.
-// Installs SIGPIPE handler for clean exit on broken pipe.
+// --strict exits non-zero on improperly formatted lines; --warn emits
+// per-line warnings. Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -35,15 +36,6 @@ func main() {
 
 	opts, files := parseArgs(os.Args[1:])
 
-	if opts.helpRequested {
-		printHelp()
-		os.Exit(0)
-	}
-	if opts.versionRequested {
-		printVersion()
-		os.Exit(0)
-	}
-
 	// R3.2: GNU sha512sum rejects --tag combined with --text.
 	if opts.tagMode && opts.textSet {
 		fmt.Fprintf(os.Stderr, "%s: --tag does not support --text mode\n", progName)
@@ -60,7 +52,7 @@ func main() {
 
 	var exitCode int
 	if opts.check {
-		exitCode = runCheck(files)
+		exitCode = runCheck(opts.strict, opts.warn, files)
 	} else {
 		exitCode = run(opts.binaryMode, opts.tagMode, files)
 	}
@@ -69,12 +61,12 @@ func main() {
 
 // options holds parsed command-line flag state.
 type options struct {
-	helpRequested    bool
-	versionRequested bool
-	binaryMode       bool
-	textSet          bool // true when -t/--text was explicitly given
-	check            bool
-	tagMode          bool
+	binaryMode bool
+	textSet    bool // true when -t/--text was explicitly given
+	check      bool
+	tagMode    bool
+	strict     bool // R4.1: exit non-zero on improperly formatted check lines
+	warn       bool // R4.2: emit stderr warning for each improperly formatted check line
 }
 
 // run processes files and returns the exit code.
@@ -162,12 +154,14 @@ func hashReader(r io.Reader, name string, binaryMode, tagMode bool) error {
 type checkResult struct {
 	mismatched int
 	unreadable int
+	malformed  int
 }
 
 // runCheck reads one or more checksum files and verifies each listed file.
-// R2.1: parses GNU format lines. R2.2: prints OK/FAILED.
+// R2.1: parses GNU and BSD format lines. R2.2: prints OK/FAILED.
 // R2.3: summary warning on stderr. Exit 0 on all-pass, 1 on any failure.
-func runCheck(files []string) int {
+// R4.1: --strict exits non-zero on malformed lines. R4.2: --warn emits per-line warnings.
+func runCheck(strict, warn bool, files []string) int {
 	if len(files) == 0 {
 		// --check with no file argument reads from stdin.
 		files = []string{"-"}
@@ -177,7 +171,7 @@ func runCheck(files []string) int {
 	exitCode := 0
 
 	for _, name := range files {
-		result, err := checkFile(name)
+		result, err := checkFile(name, warn)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, unwrapPathError(err))
 			exitCode = 1
@@ -185,6 +179,7 @@ func runCheck(files []string) int {
 		}
 		total.mismatched += result.mismatched
 		total.unreadable += result.unreadable
+		total.malformed += result.malformed
 	}
 
 	// R2.3: GNU prints separate summary warnings for unreadable files and mismatches.
@@ -196,13 +191,22 @@ func runCheck(files []string) int {
 		fmt.Fprintf(os.Stderr, "%s: WARNING: %d computed checksum did NOT match\n", progName, total.mismatched)
 		exitCode = 1
 	}
+	// R4.1: --strict causes non-zero exit when malformed lines are present.
+	if total.malformed > 0 {
+		if strict {
+			exitCode = 1
+		}
+		fmt.Fprintf(os.Stderr, "%s: WARNING: %d line is improperly formatted\n", progName, total.malformed)
+	}
 
 	return exitCode
 }
 
 // checkFile opens a checksum file (or stdin for "-"), parses each line, verifies
-// the digest, and prints OK/FAILED. Returns counts of mismatches and unreadable files.
-func checkFile(name string) (checkResult, error) {
+// the digest, and prints OK/FAILED. Returns counts of mismatches, unreadable files,
+// and malformed lines.
+// R4.2: when warn is true, emits a stderr warning for each improperly formatted line.
+func checkFile(name string, warn bool) (checkResult, error) {
 	var r io.Reader
 	if name == "-" {
 		r = os.Stdin
@@ -216,11 +220,20 @@ func checkFile(name string) (checkResult, error) {
 	}
 
 	var result checkResult
+	lineNum := 0
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
+		lineNum++
 		hash, filename, ok := parseCheckLine(line)
 		if !ok {
+			// R4.1/R4.2: track malformed lines; warn if requested.
+			if line != "" {
+				result.malformed++
+				if warn {
+					fmt.Fprintf(os.Stderr, "%s: %s: %d: improperly formatted SHA512 checksum line\n", progName, name, lineNum)
+				}
+			}
 			continue
 		}
 
@@ -336,8 +349,8 @@ func computeFileHash(name string) (string, error) {
 }
 
 // parseArgs separates flags from file arguments. Supports -b/--binary,
-// -t/--text, -c/--check, --tag, --help, --version, and -- to end flag
-// parsing. Single-char flags can be grouped.
+// -t/--text, -c/--check, --tag, -w/--warn, --help, --version, and -- to end
+// flag parsing. Single-char flags can be grouped.
 func parseArgs(args []string) (opts options, files []string) {
 	flagsDone := false
 
@@ -367,16 +380,24 @@ func parseArgs(args []string) (opts options, files []string) {
 			opts.tagMode = true
 			continue
 		}
+		if arg == "--strict" {
+			opts.strict = true
+			continue
+		}
+		if arg == "--warn" {
+			opts.warn = true
+			continue
+		}
 		if arg == "--help" {
-			opts.helpRequested = true
-			return opts, nil
+			printHelp()
+			os.Exit(0)
 		}
 		if arg == "--version" {
-			opts.versionRequested = true
-			return opts, nil
+			printVersion()
+			os.Exit(0)
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-' {
-			// Short flags: -b, -t, -c, or grouped like -bc.
+			// Short flags: -b, -t, -c, -w, or grouped like -bc.
 			for _, ch := range arg[1:] {
 				switch ch {
 				case 'b':
@@ -386,6 +407,8 @@ func parseArgs(args []string) (opts options, files []string) {
 					opts.textSet = true
 				case 'c':
 					opts.check = true
+				case 'w':
+					opts.warn = true
 				}
 			}
 			continue

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd033-sha512sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2:
-// core SHA-512 digest computation, standard GNU output format, stdin reading,
-// multiple file processing with error handling, --check verification mode with
-// OK/FAILED status output and summary warnings, --tag BSD-style output format,
-// and --binary/--text mode flags.
+// Differential tests for prd033-sha512sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2,
+// R4.1-R4.3: core SHA-512 digest computation, standard GNU output format,
+// stdin reading, multiple file processing with error handling, --check
+// verification mode with OK/FAILED status output and summary warnings, --strict
+// and --warn check mode modifiers, --tag BSD-style output format, and
+// --binary/--text mode flags.
 package main
 
 import (
@@ -158,6 +159,15 @@ func TestDiff(t *testing.T) {
 		t.Fatalf("writing missing_checksums.txt: %v", err)
 	}
 
+	// Create a checksum file with a malformed line mixed in.
+	malformedChecksumFile := filepath.Join(tmpDir, "malformed_checksums.txt")
+	malformedContent := hashA + "  " + fileA + "\n" +
+		"this is garbage\n" +
+		hashB + "  " + fileB + "\n"
+	if err := os.WriteFile(malformedChecksumFile, []byte(malformedContent), 0o644); err != nil {
+		t.Fatalf("writing malformed_checksums.txt: %v", err)
+	}
+
 	checkTests := []testutils.DiffTest{
 		// R2.1/R2.2: --check with all files matching — exit 0, prints OK lines.
 		{
@@ -197,6 +207,50 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests = append(tests, checkTests...)
+
+	// --- R4.1-R4.3: --strict and --warn check mode modifiers ---
+
+	strictWarnTests := []testutils.DiffTest{
+		// R4.1: --strict exits non-zero when malformed lines are present.
+		{
+			Name:      "check strict with malformed line",
+			Args:      []string{"--check", "--strict", malformedChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: --warn emits per-line warning, exit 0 when all checksums pass.
+		{
+			Name:      "check warn with malformed line",
+			Args:      []string{"--check", "--warn", malformedChecksumFile},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: -w short flag for --warn.
+		{
+			Name:      "check warn short flag",
+			Args:      []string{"-cw", malformedChecksumFile},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3: --strict and --warn combined — both effects apply.
+		{
+			Name:      "check strict and warn combined",
+			Args:      []string{"--check", "--strict", "--warn", malformedChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// Default --check with malformed line: summary warning printed, exit 0.
+		{
+			Name:      "check default malformed line",
+			Args:      []string{"--check", malformedChecksumFile},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// --strict with no malformed lines: exit 0.
+		{
+			Name: "check strict no malformed lines",
+			Args: []string{"--check", "--strict", checksumFile},
+		},
+	}
+
+	tests = append(tests, strictWarnTests...)
 
 	// --- R3.1-R3.2: --tag, --binary, --text tests ---
 
