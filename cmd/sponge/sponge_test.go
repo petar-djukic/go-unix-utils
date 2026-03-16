@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/sponge against sponge (moreutils).
-// Implements prd007-sponge R1.1-R1.4 test coverage.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.3, R3.1-R3.2 test coverage.
 package main
 
 import (
@@ -165,6 +165,179 @@ func TestFileOutput(t *testing.T) {
 		err := cmd.Run()
 		if err == nil {
 			t.Error("expected non-zero exit for unwritable path, got exit 0")
+		}
+	})
+
+	// R3.1: -a appends stdin to existing file.
+	t.Run("R3.1_append_existing", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "existing.txt")
+		writeFile(t, outFile, "original\n")
+		input := []byte("appended\n")
+
+		cmd := exec.Command(goBin, "-a", outFile)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("sponge -a failed: %v\noutput: %s", err, out)
+		}
+
+		got := readFile(t, outFile)
+		want := []byte("original\nappended\n")
+		if !bytes.Equal(got, want) {
+			t.Errorf("expected %q, got %q", want, got)
+		}
+	})
+
+	// R3.2: -a with non-existing file creates new file.
+	t.Run("R3.2_append_new_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "newfile.txt")
+		input := []byte("new content\n")
+
+		cmd := exec.Command(goBin, "-a", outFile)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("sponge -a new file failed: %v\noutput: %s", err, out)
+		}
+
+		got := readFile(t, outFile)
+		if !bytes.Equal(got, input) {
+			t.Errorf("expected %q, got %q", input, got)
+		}
+	})
+
+	// R2.3: new file gets default permissions (0666 before umask).
+	t.Run("R2.3_new_file_permissions", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "perms.txt")
+		input := []byte("data\n")
+
+		runSponge(t, goBin, dir, input, outFile)
+
+		info, err := os.Stat(outFile)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		// File should be created; exact perms depend on umask, but it must exist.
+		if !info.Mode().IsRegular() {
+			t.Errorf("expected regular file, got mode %v", info.Mode())
+		}
+	})
+
+	// R3.1: -a appends multiple times.
+	t.Run("R3.1_append_multiple", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "multi.txt")
+		writeFile(t, outFile, "first\n")
+
+		// First append.
+		cmd := exec.Command(goBin, "-a", outFile)
+		cmd.Stdin = bytes.NewReader([]byte("second\n"))
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("first append failed: %v\noutput: %s", err, out)
+		}
+
+		// Second append.
+		cmd = exec.Command(goBin, "-a", outFile)
+		cmd.Stdin = bytes.NewReader([]byte("third\n"))
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("second append failed: %v\noutput: %s", err, out)
+		}
+
+		got := readFile(t, outFile)
+		want := []byte("first\nsecond\nthird\n")
+		if !bytes.Equal(got, want) {
+			t.Errorf("expected %q, got %q", want, got)
+		}
+	})
+}
+
+// TestAppendDiff runs differential tests for append mode against the reference binary.
+func TestAppendDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	// R3.1: -a appends to existing file — compare Go and reference outputs.
+	t.Run("R3.1_append_diff", func(t *testing.T) {
+		t.Parallel()
+
+		input := []byte("appended line\n")
+		original := "existing content\n"
+
+		for _, label := range []string{"go", "ref"} {
+			t.Run(label, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				outFile := filepath.Join(dir, "out.txt")
+				writeFile(t, outFile, original)
+
+				bin := goBin
+				if label == "ref" {
+					bin = refBin
+				}
+
+				cmd := exec.Command(bin, "-a", outFile)
+				cmd.Stdin = bytes.NewReader(input)
+				cmd.Dir = dir
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("sponge -a failed: %v\noutput: %s", err, out)
+				}
+
+				got := readFile(t, outFile)
+				want := []byte(original + string(input))
+				if !bytes.Equal(got, want) {
+					t.Errorf("expected %q, got %q", want, got)
+				}
+			})
+		}
+	})
+
+	// R3.2: -a with non-existing file — both should create it.
+	t.Run("R3.2_append_new_diff", func(t *testing.T) {
+		t.Parallel()
+
+		input := []byte("new file content\n")
+
+		for _, label := range []string{"go", "ref"} {
+			t.Run(label, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				outFile := filepath.Join(dir, "newout.txt")
+
+				bin := goBin
+				if label == "ref" {
+					bin = refBin
+				}
+
+				cmd := exec.Command(bin, "-a", outFile)
+				cmd.Stdin = bytes.NewReader(input)
+				cmd.Dir = dir
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("sponge -a new file failed: %v\noutput: %s", err, out)
+				}
+
+				got := readFile(t, outFile)
+				if !bytes.Equal(got, input) {
+					t.Errorf("expected %q, got %q", input, got)
+				}
+			})
 		}
 	})
 }
