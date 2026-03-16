@@ -189,6 +189,183 @@ func TestDiffWriteError(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffOutputErrorWarn runs differential tests for -p / --output-error=warn.
+func TestDiffOutputErrorWarn(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// R3.2: -p flag passthrough — normal data, exits 0.
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R3.2_p_flag_passthrough",
+			Args:  []string{"-p"},
+			Stdin: []byte("warn mode data\n"),
+		},
+		{
+			Name:  "R3.2_output_error_warn_passthrough",
+			Args:  []string{"--output-error=warn"},
+			Stdin: []byte("warn mode explicit\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffOutputErrorWarnNopipe runs differential tests for --output-error=warn-nopipe.
+func TestDiffOutputErrorWarnNopipe(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// R3.3: --output-error=warn-nopipe passthrough — normal data, exits 0.
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R3.3_warn_nopipe_passthrough",
+			Args:  []string{"--output-error=warn-nopipe"},
+			Stdin: []byte("warn-nopipe data\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffOutputErrorExit runs differential tests for --output-error=exit modes.
+func TestDiffOutputErrorExit(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	// R3.4: --output-error=exit passthrough — normal data, exits 0.
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R3.4_exit_passthrough",
+			Args:  []string{"--output-error=exit"},
+			Stdin: []byte("exit mode data\n"),
+		},
+		{
+			Name:  "R3.4_exit_nopipe_passthrough",
+			Args:  []string{"--output-error=exit-nopipe"},
+			Stdin: []byte("exit-nopipe data\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestOutputErrorWarnWithBadFile verifies that -p continues on write errors.
+func TestOutputErrorWarnWithBadFile(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	input := []byte("data with bad file\n")
+
+	for _, label := range []string{"go", "ref"} {
+		t.Run(label, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			roDir := filepath.Join(dir, "readonly")
+			if err := os.Mkdir(roDir, 0o555); err != nil {
+				t.Fatalf("creating read-only dir: %v", err)
+			}
+			badFile := filepath.Join(roDir, "bad.txt")
+			goodFile := filepath.Join(dir, "good.txt")
+
+			bin := goBin
+			if label == "ref" {
+				bin = refBin
+			}
+
+			cmd := exec.Command(bin, "-p", badFile, goodFile)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			var stdoutBuf bytes.Buffer
+			var stderrBuf bytes.Buffer
+			cmd.Stdout = &stdoutBuf
+			cmd.Stderr = &stderrBuf
+			_ = cmd.Run() // expect exit 1
+
+			// R3.2: stdout should still have the data.
+			if !bytes.Equal(stdoutBuf.Bytes(), input) {
+				t.Errorf("stdout: expected %q, got %q", input, stdoutBuf.Bytes())
+			}
+
+			// Good file should still have the data.
+			got := readFile(t, goodFile)
+			if !bytes.Equal(got, input) {
+				t.Errorf("good file: expected %q, got %q", input, got)
+			}
+
+			// Stderr should contain a diagnostic.
+			if !bytes.Contains(stderrBuf.Bytes(), []byte("tee:")) {
+				t.Errorf("expected stderr diagnostic containing 'tee:', got %q", stderrBuf.String())
+			}
+		})
+	}
+}
+
+// TestOutputErrorExitWithBadFile verifies --output-error=exit exits on write error.
+func TestOutputErrorExitWithBadFile(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skipf("reference binary gtee not in PATH: %v", err)
+	}
+
+	for _, label := range []string{"go", "ref"} {
+		t.Run(label, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			roDir := filepath.Join(dir, "readonly")
+			if err := os.Mkdir(roDir, 0o555); err != nil {
+				t.Fatalf("creating read-only dir: %v", err)
+			}
+			badFile := filepath.Join(roDir, "bad.txt")
+
+			bin := goBin
+			if label == "ref" {
+				bin = refBin
+			}
+
+			cmd := exec.Command(bin, "--output-error=exit", badFile)
+			cmd.Stdin = bytes.NewReader([]byte("data\n"))
+			cmd.Dir = dir
+			var stderrBuf bytes.Buffer
+			cmd.Stderr = &stderrBuf
+			runErr := cmd.Run()
+
+			// R3.4: must exit non-zero on write error.
+			if runErr == nil {
+				t.Error("expected non-zero exit for --output-error=exit with bad file")
+			}
+
+			// Stderr should contain a diagnostic.
+			if !bytes.Contains(stderrBuf.Bytes(), []byte("tee:")) {
+				t.Errorf("expected stderr diagnostic, got %q", stderrBuf.String())
+			}
+		})
+	}
+}
+
 // TestFileOutput verifies that tee writes stdin content to named output files.
 // These are Go-binary-only tests for file content verification.
 func TestFileOutput(t *testing.T) {
