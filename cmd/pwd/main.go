@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd051-pwd R1.1-R1.4, R2.1-R2.2:
+// Implements prd051-pwd R1.1-R1.4, R2.1-R2.2, R3.1-R3.3:
 // cmd/pwd prints the current working directory. Supports -L (logical, prints
 // PWD env if valid) and -P (physical, resolves symlinks). Default is -P.
-// When both flags are given, the last one takes precedence.
+// When both flags are given, the last one takes precedence. Supports --version
+// and --help. Error handling for positional operands and unknown flags.
 package main
 
 import (
@@ -37,15 +38,15 @@ func main() {
 	// R1.1: default mode is physical.
 	m := modePhysical
 
+	// R2.1: track whether non-option arguments are present.
+	hasNonOption := false
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			// Everything after -- is a positional operand.
 			if i+1 < len(args) {
-				// R2.1: positional operands are an error.
-				fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", progName, args[i+1]) //nolint:errcheck // best-effort diagnostic
-				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
-				os.Exit(1)
+				hasNonOption = true
 			}
 			break
 		}
@@ -100,11 +101,15 @@ func main() {
 				}
 			}
 		} else {
-			// R2.1: positional operands are an error.
-			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", progName, arg)           //nolint:errcheck // best-effort diagnostic
-			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
-			os.Exit(1)
+			// R2.1: GNU pwd ignores non-option arguments with a warning.
+			hasNonOption = true
 		}
+	}
+
+	// R2.1: GNU pwd prints a warning for non-option arguments but still
+	// prints the working directory and exits 0.
+	if hasNonOption {
+		fmt.Fprintf(os.Stderr, "%s: ignoring non-option arguments\n", progName) //nolint:errcheck // best-effort diagnostic
 	}
 
 	dir, err := getWorkingDir(m)
