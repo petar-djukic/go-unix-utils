@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/true against gtrue (GNU coreutils).
-// Implements prd013-true R1.1-R1.3, R2.1-R2.2, R3.1-R3.2, R4.1-R4.3 test coverage.
+// Implements prd013-true R1.1-R1.3, R2.1-R2.3, R3.1-R3.2, R4.1-R4.3 test coverage.
 package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -45,12 +46,12 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"-x", "-v", "--unknown"},
 			ExitCode: 0,
 		},
-		// R2.1, R4.2: --help prints usage and exits 0.
+		// R2.1, R2.2, R4.2: --help prints usage and exits 0.
 		{
 			Name:      "R2.1_help_exits_0",
 			Args:      []string{"--help"},
 			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{normalizeAllOutput},
+			Normalize: []testutils.NormalizeFunc{normalizeHelpOutput},
 		},
 		// R2.2, R4.2: --version prints version info and exits 0.
 		{
@@ -64,9 +65,61 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestHelpOutput verifies the --help output contains the expected elements
+// per R2.2 and R2.3: utility name, synopsis, and description.
+func TestHelpOutput(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("unexpected error running %s --help: %v", goBin, err)
+	}
+
+	output := string(out)
+
+	// R2.2: output includes the utility name in Usage line.
+	if !strings.Contains(output, "Usage: true") {
+		t.Errorf("--help output missing 'Usage: true', got: %s", output)
+	}
+
+	// R2.3: output includes synopsis and description.
+	if !strings.Contains(output, "Exit with a status code indicating success.") {
+		t.Errorf("--help output missing description, got: %s", output)
+	}
+}
+
+// TestWriteErrorExitsZero verifies R3.1: true exits 0 even when stdout
+// write fails. We redirect stdout to /dev/full on Linux or simulate by
+// closing stdout via a subprocess that closes fd 1.
+func TestWriteErrorExitsZero(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Run true --help with stdout closed (write will fail).
+	// Use shell to close fd 1 before exec.
+	cmd := exec.Command("sh", "-c", goBin+" --help >&- 2>/dev/null")
+	err := cmd.Run()
+
+	// R3.1: must exit 0 regardless of write errors.
+	if err != nil {
+		t.Errorf("expected exit 0 on stdout write error, got: %v", err)
+	}
+}
+
 // normalizeAllOutput replaces all output with empty bytes so that only
-// exit codes are compared. Used for --version and --help where output
-// content intentionally differs between implementations.
+// exit codes are compared. Used for --version where output content
+// intentionally differs between implementations.
 func normalizeAllOutput(b []byte) []byte {
+	return nil
+}
+
+// normalizeHelpOutput replaces all output with empty bytes so that only
+// exit codes are compared. GNU help includes hyperlinks, shell notes, and
+// the full binary path which intentionally differ from our implementation.
+func normalizeHelpOutput(b []byte) []byte {
 	return nil
 }
