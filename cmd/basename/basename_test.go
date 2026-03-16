@@ -138,6 +138,25 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"-s", ".h", "-z", "stdio.h", "stdlib.h"},
 			ExitCode: 0,
 		},
+		// R4.2: dot path.
+		{
+			Name:     "R4.2_dot_path",
+			Args:     []string{"."},
+			ExitCode: 0,
+		},
+		// R4.2: dotdot path.
+		{
+			Name:     "R4.2_dotdot_path",
+			Args:     []string{".."},
+			ExitCode: 0,
+		},
+		// R4.3: invalid option — exit 1.
+		{
+			Name:      "R4.3_invalid_option",
+			Args:      []string{"--invalid-option"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
 		// R2.3 (task R4): --help exits 0.
 		{
 			Name:      "R2.3_help_exits_0",

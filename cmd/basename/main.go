@@ -73,7 +73,7 @@ func main() {
 			multipleMode = true
 			continue
 		}
-		if strings.HasPrefix(arg, "--suffix") && arg == "--suffix" {
+		if arg == "--suffix" {
 			// --suffix SUFFIX (space-separated)
 			if i+1 >= len(args) {
 				fmt.Fprintf(os.Stderr, "%s: option '--suffix' requires an argument\n", progName) //nolint:errcheck // best-effort diagnostic
@@ -83,6 +83,12 @@ func main() {
 			suffix = args[i]
 			multipleMode = true
 			continue
+		}
+		// R3.4: reject unrecognized long options.
+		if strings.HasPrefix(arg, "--") {
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)    //nolint:errcheck // best-effort diagnostic
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
+			os.Exit(1)
 		}
 		// Handle short flags, possibly combined (e.g., -az, -as .txt)
 		if len(arg) > 1 && arg[0] == '-' && arg[1] != '-' {
@@ -109,9 +115,10 @@ func main() {
 					}
 					j = len(arg) // consumed rest
 				default:
-					// Unknown short flag — treat as operand.
-					operands = append(operands, arg)
-					j = len(arg)
+					// R3.4: reject unrecognized short option.
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, arg[j])   //nolint:errcheck // best-effort diagnostic
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
+					os.Exit(1)
 				}
 			}
 			continue
