@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/paste against the GNU reference binary (gpaste).
-// Implements prd027-paste R1.1-R1.4 test coverage: multi-file parallel merge
-// with default tab delimiter, stdin via '-' operand with round-robin consumption,
+// Implements prd027-paste R1.1-R1.4, R2.1-R2.3 test coverage: multi-file parallel
+// merge with default tab delimiter, custom delimiter lists with cycling, escape
+// sequences (\n, \t, \\, \0), stdin via '-' operand with round-robin consumption,
 // unequal-length file handling, and single-file passthrough.
 package main
 
@@ -165,6 +166,103 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin_unequal_file_shorter",
 			Args:  []string{fileShort, "-"},
 			Stdin: []byte("a\nb\nc\n"),
+		},
+
+		// --- R2.1: custom single-character delimiter (AC1) ---
+		{
+			Name: "comma_delimiter_two_files",
+			Args: []string{"-d", ",", fileA, fileNums},
+		},
+		{
+			Name: "colon_delimiter_two_files",
+			Args: []string{"-d", ":", fileA, fileNums},
+		},
+		{
+			Name: "space_delimiter_two_files",
+			Args: []string{"-d", " ", fileA, fileNums},
+		},
+
+		// --- R2.1/R2.3: multi-character delimiter cycling (AC2) ---
+		{
+			Name: "cycling_delimiters_three_files",
+			Args: []string{"-d", ",;:", fileA, fileNums, fileThree},
+		},
+		{
+			Name: "cycling_delimiters_more_fields_than_delims",
+			Args: []string{"-d", ",;", fileA, fileNums, fileThree, fileLong},
+		},
+		{
+			Name: "cycling_delimiters_two_char_three_files",
+			Args: []string{"-d", ",-", fileA, fileNums, fileThree},
+		},
+
+		// --- R2.2: escape sequences (AC3-AC6) ---
+		{
+			Name: "newline_delimiter",
+			Args: []string{"-d", `\n`, fileA, fileNums},
+		},
+		{
+			Name: "tab_delimiter_explicit",
+			Args: []string{"-d", `\t`, fileA, fileNums},
+		},
+		{
+			Name: "backslash_delimiter",
+			Args: []string{"-d", `\\`, fileA, fileNums},
+		},
+		{
+			Name: "empty_delimiter_backslash_zero",
+			Args: []string{"-d", `\0`, fileA, fileNums},
+		},
+
+		// --- R2.2: escape sequences in multi-char delimiter list ---
+		{
+			Name: "mixed_escape_cycling",
+			Args: []string{"-d", `,\n`, fileA, fileNums, fileThree},
+		},
+		{
+			Name: "backslash_zero_in_list",
+			Args: []string{"-d", `,\0:`, fileA, fileNums, fileThree, fileLong},
+		},
+
+		// --- R2.1: custom delimiter with unequal files ---
+		{
+			Name: "comma_delimiter_unequal",
+			Args: []string{"-d", ",", fileShort, fileLong},
+		},
+
+		// --- R2.1: custom delimiter with serial mode ---
+		{
+			Name: "comma_delimiter_serial",
+			Args: []string{"-s", "-d", ",", fileThree},
+		},
+		{
+			Name: "cycling_delimiter_serial",
+			Args: []string{"-s", "-d", ",;:", fileThree},
+		},
+
+		// --- R2.1: delimiter with --delimiters= long form ---
+		{
+			Name: "long_form_delimiters_comma",
+			Args: []string{"--delimiters=,", fileA, fileNums},
+		},
+
+		// --- R2.1: delimiter with -d attached ---
+		{
+			Name: "short_d_attached_comma",
+			Args: []string{"-d,", fileA, fileNums},
+		},
+
+		// --- R2.1: combined flags -sd ---
+		{
+			Name: "combined_sd_comma",
+			Args: []string{"-sd", ",", fileThree},
+		},
+
+		// --- R2.1: custom delimiter with stdin ---
+		{
+			Name:  "comma_delimiter_stdin",
+			Args:  []string{"-d", ",", "-", "-"},
+			Stdin: []byte("a\nb\nc\nd\n"),
 		},
 
 		// --- Edge cases ---

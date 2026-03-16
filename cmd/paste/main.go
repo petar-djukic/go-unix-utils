@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd027-paste R1.1-R1.4: cmd/paste merges corresponding lines from
-// multiple input files, separating fields with a tab delimiter and writing the
-// result to stdout. When one file is exhausted before others, empty strings are
-// substituted. '-' reads from stdin with round-robin consumption across multiple
-// '-' operands. Installs SIGPIPE handler.
+// Implements prd027-paste R1.1-R1.4, R2.1-R2.3: cmd/paste merges corresponding
+// lines from multiple input files, separating fields with a delimiter and writing
+// the result to stdout. Supports custom delimiter lists via -d with cycling across
+// columns, including escape sequences (\n, \t, \\, \0). When one file is exhausted
+// before others, empty strings are substituted. '-' reads from stdin with
+// round-robin consumption across multiple '-' operands. Installs SIGPIPE handler.
 package main
 
 import (
@@ -22,13 +23,13 @@ import (
 // progName is the name used in error messages to match GNU paste format.
 const progName = "paste"
 
-// defaultDelimiter is the tab character used between fields when -d is not specified.
-const defaultDelimiter = "\t"
+// defaultDelims is the default delimiter list (a single tab) used when -d is not specified.
+var defaultDelims = []string{"\t"}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	delimiter := defaultDelimiter
+	delims := defaultDelims
 	serial := false
 	args := os.Args[1:]
 	var files []string
@@ -70,7 +71,7 @@ func main() {
 			continue
 		}
 		if strings.HasPrefix(arg, "--delimiters=") {
-			delimiter = parseDelimiterEscapes(arg[len("--delimiters="):])
+			delims = parseDelimiterList(arg[len("--delimiters="):])
 			continue
 		}
 		if arg == "--delimiters" || arg == "-d" {
@@ -79,13 +80,13 @@ func main() {
 				os.Exit(1)
 			}
 			i++
-			delimiter = parseDelimiterEscapes(args[i])
+			delims = parseDelimiterList(args[i])
 			continue
 		}
 
 		// Short options: -d with value attached.
 		if len(arg) > 2 && arg[0] == '-' && arg[1] == 'd' {
-			delimiter = parseDelimiterEscapes(arg[2:])
+			delims = parseDelimiterList(arg[2:])
 			continue
 		}
 
@@ -110,7 +111,7 @@ func main() {
 					i++
 					val = args[i]
 				}
-				delimiter = parseDelimiterEscapes(val)
+				delims = parseDelimiterList(val)
 				j = len(flags) // consumed rest
 			default:
 				fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, flags[j])
@@ -129,9 +130,9 @@ func main() {
 
 	var exitCode int
 	if serial {
-		exitCode = pasteSerial(w, files, delimiter)
+		exitCode = pasteSerial(w, files, delims)
 	} else {
-		exitCode = pasteParallel(w, files, delimiter)
+		exitCode = pasteParallel(w, files, delims)
 	}
 
 	if err := w.Flush(); err != nil {
@@ -144,40 +145,49 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// parseDelimiterEscapes processes escape sequences in the delimiter string.
+// parseDelimiterList processes the -d argument into a slice of delimiter strings.
+// Each element is one delimiter position in the cycling list. \0 produces an empty
+// string (no delimiter at that position), preserving its place in the cycle.
+// R2.1: custom delimiter character(s) replacing the default tab.
 // R2.2: recognizes \n (newline), \t (tab), \\ (backslash), and \0 (empty string).
-func parseDelimiterEscapes(s string) string {
-	var buf strings.Builder
+// R2.3: the returned slice is cycled per output line, resetting at each new line.
+func parseDelimiterList(s string) []string {
+	var delims []string
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\\' && i+1 < len(s) {
 			switch s[i+1] {
 			case 'n':
-				buf.WriteByte('\n')
+				delims = append(delims, "\n")
 				i++
 			case 't':
-				buf.WriteByte('\t')
+				delims = append(delims, "\t")
 				i++
 			case '\\':
-				buf.WriteByte('\\')
+				delims = append(delims, "\\")
 				i++
 			case '0':
-				// Empty string delimiter — write nothing.
+				// R2.2: empty string delimiter — no character between fields.
+				delims = append(delims, "")
 				i++
 			default:
-				buf.WriteByte(s[i])
+				delims = append(delims, string(s[i]))
 			}
 		} else {
-			buf.WriteByte(s[i])
+			delims = append(delims, string(s[i]))
 		}
 	}
-	return buf.String()
+	if len(delims) == 0 {
+		delims = []string{"\t"}
+	}
+	return delims
 }
 
 // pasteParallel merges corresponding lines from all files side by side.
 // R1.1: reads one line from each file per output line, separated by delimiter.
 // R1.3: when one file is exhausted, empty strings substitute for its fields.
 // R1.4: '-' reads from stdin with round-robin consumption.
-func pasteParallel(w *bufio.Writer, files []string, delimiter string) int {
+// R2.1-R2.3: delimiters cycle across columns and reset each line.
+func pasteParallel(w *bufio.Writer, files []string, delims []string) int {
 	readers := make([]*bufio.Reader, len(files))
 	closers := make([]io.Closer, len(files))
 	eof := make([]bool, len(files))
@@ -209,11 +219,6 @@ func pasteParallel(w *bufio.Writer, files []string, delimiter string) int {
 		}
 	}
 
-	delimRunes := []rune(delimiter)
-	if len(delimRunes) == 0 {
-		delimRunes = []rune{'\t'}
-	}
-
 	for {
 		allDone := true
 		fields := make([]string, len(files))
@@ -237,12 +242,12 @@ func pasteParallel(w *bufio.Writer, files []string, delimiter string) int {
 			break
 		}
 
-		// Build output line with cycling delimiters.
+		// Build output line with cycling delimiters (R2.3: reset each line).
 		var buf strings.Builder
 		for i, field := range fields {
 			if i > 0 {
-				delimIdx := (i - 1) % len(delimRunes)
-				buf.WriteRune(delimRunes[delimIdx])
+				delimIdx := (i - 1) % len(delims)
+				buf.WriteString(delims[delimIdx])
 			}
 			buf.WriteString(field)
 		}
@@ -268,13 +273,8 @@ func pasteParallel(w *bufio.Writer, files []string, delimiter string) int {
 // into a single output line separated by the delimiter.
 // R3.1: all lines of one file become one output line.
 // R3.2: delimiter list cycles across fields within the output line.
-func pasteSerial(w *bufio.Writer, files []string, delimiter string) int {
+func pasteSerial(w *bufio.Writer, files []string, delims []string) int {
 	exitCode := 0
-
-	delimRunes := []rune(delimiter)
-	if len(delimRunes) == 0 {
-		delimRunes = []rune{'\t'}
-	}
 
 	var stdinReader *bufio.Reader
 
@@ -306,8 +306,8 @@ func pasteSerial(w *bufio.Writer, files []string, delimiter string) int {
 				break
 			}
 			if fieldIdx > 0 {
-				delimIdx := (fieldIdx - 1) % len(delimRunes)
-				buf.WriteRune(delimRunes[delimIdx])
+				delimIdx := (fieldIdx - 1) % len(delims)
+				buf.WriteString(delims[delimIdx])
 			}
 			buf.WriteString(line)
 			fieldIdx++
