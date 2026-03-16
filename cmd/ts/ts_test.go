@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts against ts (moreutils).
-// Implements prd004-ts R1.1-R1.4, R9.1-R9.2 test coverage.
+// Implements prd004-ts R1.1-R1.6, R3.1-R3.4, R4.1-R4.3, R9.1-R9.2 test coverage.
 package main
 
 import (
@@ -77,6 +77,70 @@ func TestDiff(t *testing.T) {
 			Name:      "R2.1_custom_format_date_only",
 			Args:      []string{"%Y-%m-%d"},
 			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1: incremental mode single line.
+		{
+			Name:      "R3.1_incremental_single_line",
+			Args:      []string{"-i"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1: incremental mode multi-line.
+		{
+			Name:      "R3.1_incremental_multi_line",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line one\nline two\nline three\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.3: incremental mode with custom format.
+		{
+			Name:      "R3.3_incremental_custom_format",
+			Args:      []string{"-i", "%H:%M:%S"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1: elapsed mode single line.
+		{
+			Name:      "R4.1_elapsed_single_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1: elapsed mode multi-line.
+		{
+			Name:      "R4.1_elapsed_multi_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line one\nline two\nline three\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.3: elapsed mode with custom format.
+		{
+			Name:      "R4.3_elapsed_custom_format",
+			Args:      []string{"-s", "%H:%M:%S"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: incremental mode empty stdin.
+		{
+			Name:      "R9.2_incremental_empty_stdin",
+			Args:      []string{"-i"},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: elapsed mode empty stdin.
+		{
+			Name:      "R9.2_elapsed_empty_stdin",
+			Args:      []string{"-s"},
+			Stdin:     []byte(""),
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
