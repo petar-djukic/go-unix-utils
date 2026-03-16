@@ -9,11 +9,16 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
+
+// progName is the name used in help, version, and diagnostic output.
+const progName = "yes"
 
 // bufSize is the output buffer size.
 // R2.1: at least 8192 bytes for performance.
@@ -23,9 +28,28 @@ func main() {
 	// R3.1, R3.3: install SIGPIPE handler per shared protocol.
 	sys.InstallSIGPIPEHandler()
 
+	// R3.1: handle --help and --version as the first argument.
+	args := os.Args[1:]
+	if len(args) > 0 {
+		switch args[0] {
+		case "--help":
+			fmt.Fprintf(os.Stdout, //nolint:errcheck // best-effort output
+				"Usage: %s [STRING]...\n  or:  %s OPTION\nRepeatedly output a line with all specified STRING(s), or 'y'.\n\n"+
+					"      --help     display this help and exit\n"+
+					"      --version  output version information and exit\n",
+				progName, progName,
+			)
+			os.Exit(0)
+		case "--version":
+			fmt.Fprintf(os.Stdout, "%s (%s) %s\n", //nolint:errcheck // best-effort output
+				progName, "go-unix-utils", version.Version,
+			)
+			os.Exit(0)
+		}
+	}
+
 	// R1.1, R1.2, R1.3: determine the line to output.
 	// R1.3: skip "--" separator if it is the first argument.
-	args := os.Args[1:]
 	if len(args) > 0 && args[0] == "--" {
 		args = args[1:]
 	}

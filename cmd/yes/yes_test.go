@@ -11,6 +11,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -100,6 +101,114 @@ func TestSIGPIPEExitCode(t *testing.T) {
 	// R3.1: exit 0 on SIGPIPE.
 	if err != nil {
 		t.Errorf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
+}
+
+// TestHelp verifies that --help prints usage to stdout and exits 0.
+func TestHelp(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+
+	got := string(out)
+	if !strings.Contains(got, "Usage:") {
+		t.Errorf("--help output missing 'Usage:': %s", got)
+	}
+	if !strings.Contains(got, "yes") {
+		t.Errorf("--help output missing program name 'yes': %s", got)
+	}
+}
+
+// TestVersion verifies that --version prints version info to stdout and exits 0.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+
+	got := string(out)
+	if !strings.Contains(got, "yes") {
+		t.Errorf("--version output missing program name 'yes': %s", got)
+	}
+	if !strings.Contains(got, "go-unix-utils") {
+		t.Errorf("--version output missing 'go-unix-utils': %s", got)
+	}
+}
+
+// TestHelpDiff verifies that --help exit code matches gyes --help.
+func TestHelpDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gyes")
+	if err != nil {
+		t.Skipf("reference binary gyes not in PATH: %v", err)
+	}
+
+	// Both should exit 0 on --help.
+	goCmd := exec.Command(goBin, "--help")
+	goErr := goCmd.Run()
+
+	refCmd := exec.Command(refBin, "--help")
+	refErr := refCmd.Run()
+
+	if (goErr == nil) != (refErr == nil) {
+		t.Errorf("--help exit code mismatch: go=%v ref=%v", goErr, refErr)
+	}
+}
+
+// TestVersionDiff verifies that --version exit code matches gyes --version.
+func TestVersionDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gyes")
+	if err != nil {
+		t.Skipf("reference binary gyes not in PATH: %v", err)
+	}
+
+	// Both should exit 0 on --version.
+	goCmd := exec.Command(goBin, "--version")
+	goErr := goCmd.Run()
+
+	refCmd := exec.Command(refBin, "--version")
+	refErr := refCmd.Run()
+
+	if (goErr == nil) != (refErr == nil) {
+		t.Errorf("--version exit code mismatch: go=%v ref=%v", goErr, refErr)
+	}
+}
+
+// TestWriteErrorExit verifies R3.2: yes exits 1 on a write error other than EPIPE.
+// On Linux, /dev/full triggers ENOSPC. On macOS, /dev/full is not available,
+// so we skip the test if it cannot be triggered.
+func TestWriteErrorExit(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// /dev/full only exists on Linux; skip on macOS.
+	if _, err := os.Stat("/dev/full"); err != nil {
+		t.Skip("/dev/full not available on this platform")
+	}
+
+	// Redirect stdout to /dev/full to trigger ENOSPC.
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("%s > /dev/full 2>/dev/null", goBin))
+	err := cmd.Run()
+
+	if err == nil {
+		t.Errorf("expected non-zero exit on write error, got exit 0")
 	}
 }
 
