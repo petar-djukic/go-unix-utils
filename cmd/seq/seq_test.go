@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/seq against gseq (GNU coreutils).
-// Implements prd019-seq R1.1-R1.5, R2.1-R2.3, R3.1-R3.2 test coverage.
+// Implements prd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4 test coverage.
 package main
 
 import (
@@ -239,6 +239,44 @@ func TestDiff(t *testing.T) {
 			Args: []string{"0.1", "0.1", "0.5"},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R2.4: large integer near 2^32.
+		{
+			Name: "R2.4_large_int_near_2pow32",
+			Args: []string{"4294967294", "1", "4294967296"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.4: large integer near 2^40.
+		{
+			Name: "R2.4_large_int_near_2pow40",
+			Args: []string{"1099511627774", "1", "1099511627776"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: equal-width with -w, single digit to double digit.
+		{
+			Name: "R3.3_equal_width_8_12",
+			Args: []string{"-w", "8", "12"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: equal-width with --equal-width long option.
+		{
+			Name: "R3.3_equal_width_long_option_1_10",
+			Args: []string{"--equal-width", "1", "10"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: equal-width with 3-digit numbers.
+		{
+			Name: "R3.3_equal_width_98_101",
+			Args: []string{"-w", "98", "101"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: -f and -w are mutually exclusive — error.
+		{
+			Name:      "R3.4_format_and_equal_width_error",
+			Args:      []string{"-w", "-f", "%.2f", "1", "3"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -320,6 +358,14 @@ func TestDiffErrorCases(t *testing.T) {
 		{
 			Name:      "R3.2_format_too_many_directives",
 			Args:      []string{"-f", "%f%f", "1", "3"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.2: format with %s (string, not float).
+		{
+			Name:      "R3.2_format_string_directive",
+			Args:      []string{"-f", "%s", "1", "3"},
 			ExitCode:  1,
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},

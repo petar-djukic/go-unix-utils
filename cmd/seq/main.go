@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd019-seq R1.1-R1.5, R2.1-R2.3, R3.1-R3.2:
+// Implements prd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4:
 // cmd/seq prints a sequence of numbers. Supports three argument forms:
 // seq LAST (FIRST=1, STEP=1), seq FIRST LAST (STEP=1), and seq FIRST STEP LAST.
 // All arguments are floating-point. Supports -f for printf-style format
-// strings and -s for custom separators. Output formatting matches GNU seq
-// precision based on the textual representation of input arguments.
+// strings, -s for custom separators, and -w for equal-width zero-padded output.
+// R2.4: Large integers are exact up to 2^53 via float64 representation.
 // Installs SIGPIPE handler per ARCHITECTURE.yaml.
 package main
 
@@ -33,6 +33,8 @@ type seqOptions struct {
 	separator string
 	// hasFormat is true when -f/--format was provided.
 	hasFormat bool
+	// equalWidth is true when -w/--equal-width was provided. R3.3.
+	equalWidth bool
 	// positional contains the numeric arguments (FIRST, STEP, LAST).
 	positional []string
 }
@@ -59,6 +61,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 			os.Exit(1)
 		}
+	}
+
+	// R3.4: -f and -w are mutually exclusive. GNU seq errors when both are given.
+	if opts.hasFormat && opts.equalWidth {
+		fmt.Fprintf(os.Stderr, "%s: format string may not be specified when printing equal width strings\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
 	}
 
 	var firstStr, stepStr, lastStr string
@@ -101,14 +110,28 @@ func main() {
 	var formatNum func(float64) string
 	if opts.hasFormat {
 		// R3.1: Apply user-provided printf-style format string.
+		// R3.4: -f overrides -w; equal-width is ignored when format is given.
 		formatNum = func(val float64) string {
 			return fmt.Sprintf(opts.format, val)
 		}
 	} else {
 		// R2.3: Default format based on input argument precision.
 		prec := computePrecision(opts.positional)
-		formatNum = func(val float64) string {
-			return formatNumber(val, prec)
+		if opts.equalWidth {
+			// R3.3: Zero-pad each number to the width of the widest endpoint.
+			firstFmt := formatNumber(first, prec)
+			lastFmt := formatNumber(last, prec)
+			width := len(firstFmt)
+			if len(lastFmt) > width {
+				width = len(lastFmt)
+			}
+			formatNum = func(val float64) string {
+				return zeroPad(formatNumber(val, prec), width)
+			}
+		} else {
+			formatNum = func(val float64) string {
+				return formatNumber(val, prec)
+			}
 		}
 	}
 
@@ -157,7 +180,8 @@ func inRange(val, last, step float64) bool {
 }
 
 // parseArgs processes command-line arguments, extracting flags and positional args.
-// Handles --help, --version, -f/--format, -s/--separator, and -- (end of flags).
+// Handles --help, --version, -f/--format, -s/--separator, -w/--equal-width,
+// and -- (end of flags).
 func parseArgs(args []string) seqOptions {
 	opts := seqOptions{separator: "\n"}
 	endOfFlags := false
@@ -206,6 +230,9 @@ func parseArgs(args []string) seqOptions {
 				opts.separator = args[i]
 			case strings.HasPrefix(arg, "--separator="):
 				opts.separator = arg[len("--separator="):]
+			case arg == "--equal-width":
+				// R3.3: Enable zero-padded equal-width output.
+				opts.equalWidth = true
 			default:
 				fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
 				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
@@ -246,6 +273,10 @@ func parseArgs(args []string) seqOptions {
 						opts.separator = args[i]
 					}
 					j = len(arg)
+				case 'w':
+					// R3.3: Enable zero-padded equal-width output.
+					opts.equalWidth = true
+					j++
 				default:
 					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, arg[j])
 					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
@@ -333,6 +364,7 @@ func printHelp() {
 			"Mandatory arguments to long options are mandatory for short options too.\n"+
 			"  -f, --format=FORMAT  use printf style floating-point FORMAT\n"+
 			"  -s, --separator=STRING  use STRING to separate numbers (default: \\n)\n"+
+			"  -w, --equal-width    equalize width by padding with leading zeroes\n"+
 			"      --help     display this help and exit\n"+
 			"      --version  output version information and exit\n",
 		progName, progName, progName,
@@ -380,4 +412,17 @@ func formatNumber(val float64, prec int) string {
 		return "0"
 	}
 	return s
+}
+
+// zeroPad pads s with leading zeros to reach the target width. R3.3.
+// For negative numbers, zeros are inserted after the minus sign.
+func zeroPad(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	pad := width - len(s)
+	if len(s) > 0 && s[0] == '-' {
+		return "-" + strings.Repeat("0", pad) + s[1:]
+	}
+	return strings.Repeat("0", pad) + s
 }
