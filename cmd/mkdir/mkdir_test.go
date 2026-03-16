@@ -67,6 +67,13 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--version"},
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
+		// R4.2: invalid octal mode.
+		{
+			Name:      "error_invalid_mode",
+			Args:      []string{"-m", "999", filepath.Join(tmpDir, "badmode")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -322,6 +329,135 @@ func TestParentsModePermissions(t *testing.T) {
 		// The intermediate must not have the restricted 0700 mode.
 		if parentMode == 0o700 {
 			t.Errorf("intermediate 'parent' has mode 0700; expected default permissions (umask applied)")
+		}
+	})
+}
+
+// TestDiffModePermissions verifies R4.3: permission bits match between Go
+// and gmkdir for various -m and -p combinations.
+func TestDiffModePermissions(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+		// target is the directory whose permissions to compare (relative to workdir).
+		target string
+	}{
+		{
+			name:   "m_0700",
+			args:   []string{"-m", "0700", "d"},
+			target: "d",
+		},
+		{
+			name:   "m_0755",
+			args:   []string{"-m", "0755", "d"},
+			target: "d",
+		},
+		{
+			name:   "m_0644",
+			args:   []string{"-m", "0644", "d"},
+			target: "d",
+		},
+		{
+			name:   "p_m_0700_final",
+			args:   []string{"-p", "-m", "0700", "a/b/c"},
+			target: "a/b/c",
+		},
+		{
+			name:   "p_m_0700_intermediate",
+			args:   []string{"-p", "-m", "0700", "x/y/z"},
+			target: "x/y",
+		},
+		{
+			name:   "default_mode",
+			args:   []string{"d"},
+			target: "d",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			refDir := t.TempDir()
+			goDir := t.TempDir()
+
+			runCmd(t, refBin, tc.args, refDir)
+			runCmd(t, goBin, tc.args, goDir)
+
+			refInfo, err := os.Stat(filepath.Join(refDir, tc.target))
+			if err != nil {
+				t.Fatalf("stat ref target: %v", err)
+			}
+			goInfo, err := os.Stat(filepath.Join(goDir, tc.target))
+			if err != nil {
+				t.Fatalf("stat go target: %v", err)
+			}
+
+			refPerm := refInfo.Mode().Perm()
+			goPerm := goInfo.Mode().Perm()
+			if refPerm != goPerm {
+				t.Errorf("permission mismatch for %q: ref=%04o go=%04o", tc.target, refPerm, goPerm)
+			}
+		})
+	}
+}
+
+// TestDiffMultipleMixed verifies R4.2: when multiple directory arguments are given
+// and some fail, exit code and stderr match between Go and gmkdir.
+func TestDiffMultipleMixed(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skipf("reference binary gmkdir not in PATH: %v", err)
+	}
+
+	t.Run("some_exist", func(t *testing.T) {
+		t.Parallel()
+
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		// Pre-create one directory so that one arg fails and one succeeds.
+		if err := os.Mkdir(filepath.Join(refDir, "exists"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		if err := os.Mkdir(filepath.Join(goDir, "exists"), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+
+		args := []string{"exists", "newone"}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, refDir)
+		goOut, goErr, goExit := runCmd(t, goBin, args, goDir)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		if refExit != goExit {
+			t.Errorf("exit code mismatch: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refOut, goOut) {
+			t.Errorf("stdout mismatch\nref: %q\ngo:  %q", refOut, goOut)
+		}
+		if !bytes.Equal(refErr, goErr) {
+			t.Errorf("stderr mismatch\nref: %q\ngo:  %q", refErr, goErr)
+		}
+
+		// Verify the new directory was still created despite the error.
+		if _, err := os.Stat(filepath.Join(goDir, "newone")); err != nil {
+			t.Errorf("newone not created despite partial failure: %v", err)
 		}
 	})
 }

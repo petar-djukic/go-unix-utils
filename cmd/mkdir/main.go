@@ -67,7 +67,7 @@ func main() {
 	if opts.mode != "" {
 		m, err := parseMode(opts.mode)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: invalid mode %q\n", progName, opts.mode)
+			fmt.Fprintf(os.Stderr, "%s: invalid mode '%s'\n", progName, opts.mode)
 			os.Exit(1)
 		}
 		dirMode = m
