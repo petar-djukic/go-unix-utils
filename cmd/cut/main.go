@@ -1,12 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd026-cut R1.1-R1.4, R2.1-R2.4, R3.1-R3.3: cmd/cut removes
-// sections from each line of input. This file covers byte selection (-b),
+// Implements prd026-cut R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4: cmd/cut
+// removes sections from each line of input. This file covers byte selection (-b),
 // character selection (-c), field selection (-f) with delimiter (-d), suppress
 // (-s), complement, and output-delimiter support. R3.1: reads stdin when no
 // FILE operands are given. R3.2: processes multiple files sequentially. R3.3:
-// a FILE operand of '-' reads standard input. Installs SIGPIPE handler.
+// a FILE operand of '-' reads standard input. R4.1-R4.4: --version prints
+// version info and exits 0, --help prints usage and exits 0, error messages for
+// invalid options and missing flags to stderr with exit 1, edge case handling
+// for empty input, single-char delimiter, and multi-byte output-delimiter.
+// Installs SIGPIPE handler.
 package main
 
 import (
@@ -164,6 +168,7 @@ func main() {
 			delimiter = arg[len("--delimiter="):]
 			if len(delimiter) != 1 {
 				fmt.Fprintf(os.Stderr, "%s: the delimiter must be a single character\n", progName)
+				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 				os.Exit(1)
 			}
 			continue
@@ -177,6 +182,7 @@ func main() {
 			delimiter = args[i]
 			if len(delimiter) != 1 {
 				fmt.Fprintf(os.Stderr, "%s: the delimiter must be a single character\n", progName)
+				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 				os.Exit(1)
 			}
 			continue
@@ -240,6 +246,7 @@ func main() {
 				}
 				if len(val) != 1 {
 					fmt.Fprintf(os.Stderr, "%s: the delimiter must be a single character\n", progName)
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 					os.Exit(1)
 				}
 				delimiter = val
@@ -261,7 +268,7 @@ func main() {
 		os.Exit(1)
 	}
 	if modeCount > 1 {
-		fmt.Fprintf(os.Stderr, "%s: only one type of list may be specified\n", progName)
+		fmt.Fprintf(os.Stderr, "%s: only one list may be specified\n", progName)
 		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
@@ -269,6 +276,7 @@ func main() {
 	intervals, err := parseRangeList(listStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
 
@@ -281,14 +289,14 @@ func main() {
 	exitCode := 0
 
 	if len(files) == 0 {
-		if err := cutReader(os.Stdin, w, mode, intervals, complement, delimiter, outputDelimiter, suppress); err != nil {
+		if err := cutReader(os.Stdin, w, mode, intervals, complement, delimiter, outputDelimiter, outputDelimiterSet, suppress); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 			exitCode = 1
 		}
 	} else {
 		for _, name := range files {
 			if name == "-" {
-				if err := cutReader(os.Stdin, w, mode, intervals, complement, delimiter, outputDelimiter, suppress); err != nil {
+				if err := cutReader(os.Stdin, w, mode, intervals, complement, delimiter, outputDelimiter, outputDelimiterSet, suppress); err != nil {
 					fmt.Fprintf(os.Stderr, "%s: standard input: %v\n", progName, err)
 					exitCode = 1
 				}
@@ -300,7 +308,7 @@ func main() {
 				exitCode = 1
 				continue
 			}
-			if err := cutReader(f, w, mode, intervals, complement, delimiter, outputDelimiter, suppress); err != nil {
+			if err := cutReader(f, w, mode, intervals, complement, delimiter, outputDelimiter, outputDelimiterSet, suppress); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 				exitCode = 1
 			}
@@ -337,33 +345,40 @@ func parseRangeList(s string) ([]interval, error) {
 	}
 
 	if len(intervals) == 0 {
-		return nil, fmt.Errorf("invalid byte, character or field list")
+		return nil, fmt.Errorf("byte/character positions are numbered from 1")
 	}
 
 	return mergeIntervals(intervals), nil
 }
 
 // parseRange parses a single range spec: N, N-M, N-, -M.
+// Error messages match GNU cut format for differential testing.
 func parseRange(s string) (interval, error) {
 	left, right, hasDash := strings.Cut(s, "-")
 	if !hasDash {
 		// Single value: N
 		n, err := strconv.Atoi(s)
-		if err != nil || n <= 0 {
-			return interval{}, fmt.Errorf("invalid byte, character or field list")
+		if err != nil {
+			return interval{}, fmt.Errorf("invalid byte/character position '%s'", s)
+		}
+		if n <= 0 {
+			return interval{}, fmt.Errorf("byte/character positions are numbered from 1")
 		}
 		return interval{start: n, end: n}, nil
 	}
 
 	if left == "" && right == "" {
-		return interval{}, fmt.Errorf("invalid byte, character or field list")
+		return interval{}, fmt.Errorf("invalid range with no endpoint: -")
 	}
 
 	if left == "" {
 		// -M: from 1 to M
 		m, err := strconv.Atoi(right)
-		if err != nil || m <= 0 {
-			return interval{}, fmt.Errorf("invalid byte, character or field list")
+		if err != nil {
+			return interval{}, fmt.Errorf("invalid byte/character position '%s'", right)
+		}
+		if m <= 0 {
+			return interval{}, fmt.Errorf("byte/character positions are numbered from 1")
 		}
 		return interval{start: 1, end: m}, nil
 	}
@@ -371,20 +386,29 @@ func parseRange(s string) (interval, error) {
 	if right == "" {
 		// N-: from N to end
 		n, err := strconv.Atoi(left)
-		if err != nil || n <= 0 {
-			return interval{}, fmt.Errorf("invalid byte, character or field list")
+		if err != nil {
+			return interval{}, fmt.Errorf("invalid byte/character position '%s'", left)
+		}
+		if n <= 0 {
+			return interval{}, fmt.Errorf("byte/character positions are numbered from 1")
 		}
 		return interval{start: n, end: -1}, nil
 	}
 
 	// N-M
 	n, err := strconv.Atoi(left)
-	if err != nil || n <= 0 {
-		return interval{}, fmt.Errorf("invalid byte, character or field list")
+	if err != nil {
+		return interval{}, fmt.Errorf("invalid byte/character position '%s'", left)
+	}
+	if n <= 0 {
+		return interval{}, fmt.Errorf("byte/character positions are numbered from 1")
 	}
 	m, err := strconv.Atoi(right)
-	if err != nil || m <= 0 {
-		return interval{}, fmt.Errorf("invalid byte, character or field list")
+	if err != nil {
+		return interval{}, fmt.Errorf("invalid byte/character position '%s'", right)
+	}
+	if m <= 0 {
+		return interval{}, fmt.Errorf("byte/character positions are numbered from 1")
 	}
 	if n > m {
 		return interval{}, fmt.Errorf("invalid decreasing range")
@@ -436,7 +460,7 @@ func mergeIntervals(ivs []interval) []interval {
 }
 
 // cutReader reads from r and writes selected portions of each line to w.
-func cutReader(r io.Reader, w *bufio.Writer, mode selMode, intervals []interval, complement bool, delim, outDelim string, suppress bool) error {
+func cutReader(r io.Reader, w *bufio.Writer, mode selMode, intervals []interval, complement bool, delim, outDelim string, outDelimSet bool, suppress bool) error {
 	br := bufio.NewReader(r)
 
 	for {
@@ -452,7 +476,8 @@ func cutReader(r io.Reader, w *bufio.Writer, mode selMode, intervals []interval,
 			switch mode {
 			case modeBytes, modeChars:
 				// R1.2, R1.3: under LC_ALL=C, -c and -b are equivalent.
-				out = selectBytes(content, intervals, complement)
+				// R4.4: when --output-delimiter is set, insert it between disjoint ranges.
+				out = selectBytes(content, intervals, complement, outDelim, outDelimSet)
 			case modeFields:
 				var skip bool
 				out, skip = selectFields(content, intervals, complement, delim, outDelim, suppress)
@@ -486,7 +511,8 @@ func cutReader(r io.Reader, w *bufio.Writer, mode selMode, intervals []interval,
 // selectBytes extracts selected byte positions from a line.
 // R1.1: 1-based byte selection. R1.4: out-of-range positions produce no output.
 // R1.3: newlines are not part of the line; they are handled by the caller.
-func selectBytes(line string, intervals []interval, complement bool) string {
+// R4.4: when outDelimSet is true, outDelim is inserted between disjoint ranges.
+func selectBytes(line string, intervals []interval, complement bool, outDelim string, outDelimSet bool) string {
 	n := len(line)
 	if n == 0 {
 		return ""
@@ -497,6 +523,7 @@ func selectBytes(line string, intervals []interval, complement bool) string {
 	}
 
 	var buf strings.Builder
+	first := true
 	for _, iv := range intervals {
 		start := iv.start - 1 // convert to 0-based
 		if start >= n {
@@ -505,6 +532,12 @@ func selectBytes(line string, intervals []interval, complement bool) string {
 		end := iv.end
 		if end == -1 || end > n {
 			end = n
+		}
+		if outDelimSet {
+			if !first {
+				buf.WriteString(outDelim)
+			}
+			first = false
 		}
 		buf.WriteString(line[start:end])
 	}

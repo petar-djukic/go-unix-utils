@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cut against the GNU reference binary (gcut).
-// Implements prd026-cut R1.1-R1.4, R2.1-R2.4, and R3.1-R3.3 test coverage:
-// byte selection, character selection, field selection with delimiter support,
-// range list parsing, mode exclusivity error handling, stdin input, multi-file
-// sequential processing, and dash-as-stdin.
+// Implements prd026-cut R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, and R4.1-R4.4 test
+// coverage: byte selection, character selection, field selection with delimiter
+// support, range list parsing, mode exclusivity error handling, stdin input,
+// multi-file sequential processing, dash-as-stdin, --version/--help output,
+// error messages for invalid options and ranges, and edge cases.
 package main
 
 import (
@@ -18,13 +19,26 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// stderrProgNameNormalizer replaces the reference binary name (gcut) with
-// the Go binary name (cut) in stderr so error message comparisons match.
-// Also normalizes the "Try '...gcut --help'" path to "Try 'cut --help'".
+// stderrProgNameNormalizer replaces the reference binary name (gcut or its
+// full path) with the Go binary name (cut) in stderr so error message
+// comparisons match. The reference binary may appear as "gcut:", as a full
+// path like "/opt/homebrew/bin/gcut:", or in "Try '...gcut --help'" blocks.
 func stderrProgNameNormalizer(data []byte) []byte {
+	// Replace full-path occurrences first (e.g., "/opt/homebrew/bin/gcut:" → "cut:").
+	for {
+		idx := bytes.Index(data, []byte("/"))
+		if idx < 0 {
+			break
+		}
+		end := bytes.Index(data[idx:], []byte("gcut:"))
+		if end < 0 {
+			break
+		}
+		data = append(data[:idx], append([]byte("cut:"), data[idx+end+len("gcut:"):]...)...)
+	}
+	// Replace bare gcut: occurrences.
 	data = bytes.ReplaceAll(data, []byte("gcut:"), []byte("cut:"))
 	// Normalize "Try '/path/to/gcut --help'" to "Try 'cut --help'".
-	// The reference binary may include a full path.
 	if idx := bytes.Index(data, []byte("Try '")); idx >= 0 {
 		if end := bytes.Index(data[idx:], []byte("--help'")); end >= 0 {
 			prefix := data[:idx]
@@ -528,6 +542,224 @@ func TestDiff(t *testing.T) {
 			Name:  "f_double_dash",
 			Args:  []string{"-d:", "-f", "1", "-", "-"},
 			Stdin: []byte("first:line\nsecond:line\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHelpVersion tests --help and --version output.
+// These are not compared against the reference binary since output text differs.
+// Instead we verify the exit code is 0 and output goes to stdout.
+// R4.1, R4.2.
+func TestDiffHelpVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R4.1: --version exits 0 and prints version info to stdout.
+	t.Run("version_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--version")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--version failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--version produced no output")
+		}
+		if !bytes.Contains(out, []byte("cut")) {
+			t.Fatalf("--version output missing 'cut': %s", out)
+		}
+	})
+
+	// R4.2: --help exits 0 and prints usage to stdout.
+	t.Run("help_exit_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--help")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--help failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Fatal("--help produced no output")
+		}
+		if !bytes.Contains(out, []byte("Usage:")) {
+			t.Fatalf("--help output missing 'Usage:': %s", out)
+		}
+	})
+}
+
+// TestDiffErrors tests error handling via differential testing.
+// R4.3: error messages for invalid options, missing required flags, and invalid ranges.
+func TestDiffErrors(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcut")
+	if err != nil {
+		t.Skipf("reference binary gcut not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.3: no -b/-c/-f specified.
+		{
+			Name:      "error_no_mode_specified",
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: invalid option -x.
+		{
+			Name:      "error_invalid_option",
+			Args:      []string{"-x"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: invalid range -b 0 (positions are 1-based).
+		{
+			Name:      "error_range_zero",
+			Args:      []string{"-b", "0"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: invalid range -b abc (non-numeric).
+		{
+			Name:      "error_range_nonnumeric",
+			Args:      []string{"-b", "abc"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: decreasing range -b 5-2.
+		{
+			Name:      "error_decreasing_range",
+			Args:      []string{"-b", "5-2"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: only one mode may be specified (both -b and -f).
+		{
+			Name:      "error_multiple_modes",
+			Args:      []string{"-b", "1", "-f", "1"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: delimiter must be single character.
+		{
+			Name:      "error_multichar_delimiter",
+			Args:      []string{"-d", "ab", "-f", "1"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: empty range list.
+		{
+			Name:      "error_empty_list",
+			Args:      []string{"-b", ""},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffEdgeCases tests R4.4 edge cases via differential testing.
+func TestDiffEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcut")
+	if err != nil {
+		t.Skipf("reference binary gcut not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.4: empty input produces empty output.
+		{
+			Name:  "edge_empty_input_bytes",
+			Args:  []string{"-b", "1"},
+			Stdin: []byte{},
+		},
+		{
+			Name:  "edge_empty_input_fields",
+			Args:  []string{"-d:", "-f", "1"},
+			Stdin: []byte{},
+		},
+		// R4.4: single-character delimiter works correctly.
+		{
+			Name:  "edge_single_char_delim_tab",
+			Args:  []string{"-f", "2"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "edge_single_char_delim_pipe",
+			Args:  []string{"-d|", "-f", "2"},
+			Stdin: []byte("a|b|c\n"),
+		},
+		{
+			Name:  "edge_single_char_delim_space",
+			Args:  []string{"-d", " ", "-f", "2"},
+			Stdin: []byte("a b c\n"),
+		},
+		// R4.4: --output-delimiter with multi-byte string.
+		{
+			Name:  "edge_output_delim_multichar",
+			Args:  []string{"-d:", "-f", "1,2,3", "--output-delimiter=, "},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "edge_output_delim_longer",
+			Args:  []string{"-d:", "-f", "1-3", "--output-delimiter= -> "},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R4.4: --output-delimiter with single-char string.
+		{
+			Name:  "edge_output_delim_single_char",
+			Args:  []string{"-d:", "-f", "1,2,3", "--output-delimiter=|"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R4.4: line with only delimiters (empty fields).
+		{
+			Name:  "edge_only_delimiters",
+			Args:  []string{"-d:", "-f", "1,2,3"},
+			Stdin: []byte("::\n"),
+		},
+		// R4.4: line containing just the delimiter.
+		{
+			Name:  "edge_single_delimiter",
+			Args:  []string{"-d:", "-f", "1,2"},
+			Stdin: []byte(":\n"),
+		},
+		// R4.4: single byte line.
+		{
+			Name:  "edge_single_byte_line",
+			Args:  []string{"-b", "1"},
+			Stdin: []byte("x\n"),
+		},
+		// R4.4: --output-delimiter applies to byte/char mode too.
+		{
+			Name:  "edge_output_delim_byte_mode",
+			Args:  []string{"-b", "1,3,5", "--output-delimiter=_"},
+			Stdin: []byte("abcdef\n"),
+		},
+		// R4.4: complement with single-field input.
+		{
+			Name:  "edge_complement_single_field",
+			Args:  []string{"-d:", "-f", "1", "--complement"},
+			Stdin: []byte("only\n"),
+		},
+		// R4.4: complement with fields on delimiter-containing line.
+		{
+			Name:  "edge_complement_all_fields",
+			Args:  []string{"-d:", "-f", "1-", "--complement"},
+			Stdin: []byte("a:b:c\n"),
 		},
 	}
 
