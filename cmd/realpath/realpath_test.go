@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,6 +53,20 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// R4.1: --version prints version info to stdout, exit 0.
+		{
+			Name:      "R4.1_version",
+			Args:      []string{"--version"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeVersion},
+		},
+		// R4.2: --help prints usage to stdout, exit 0.
+		{
+			Name:      "R4.2_help",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeHelp},
+		},
 		// R1.1: resolve an existing absolute path.
 		{
 			Name:     "R1.1_absolute_path",
@@ -200,4 +215,27 @@ func TestDiff(t *testing.T) {
 // and stdout are compared.
 func normalizeStderr(b []byte) []byte {
 	return nil
+}
+
+// normalizeVersion reduces version output to just the first line's prefix
+// ("realpath") so different version strings (dev vs GNU) don't cause divergence.
+// Both binaries must produce output that starts with the program name.
+func normalizeVersion(b []byte) []byte {
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
+		b = b[:i+1]
+	}
+	// Keep only the program name portion before the first space.
+	if i := bytes.IndexByte(b, ' '); i >= 0 {
+		return append(b[:i], '\n')
+	}
+	return b
+}
+
+// normalizeHelp reduces help output to empty since the exact help text differs
+// between implementations. Both must exit 0 and produce some stdout output.
+func normalizeHelp(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("help\n")
+	}
+	return b
 }

@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1-R3.3:
+// Implements prd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1-R3.3, R4.1-R4.3:
 // cmd/realpath resolves each command-line path argument to its canonical
 // absolute pathname, prints one per line, and reports errors for nonexistent
 // paths. Supports -e (all must exist), -m (none must exist), -s (no symlink
-// resolution), --relative-to, and --relative-base flags. Installs SIGPIPE
-// handler for clean exit on broken pipe.
+// resolution), --relative-to, --relative-base, --help, and --version flags.
+// Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in diagnostic output.
@@ -50,6 +51,32 @@ func main() {
 		if strings.HasPrefix(arg, "--") {
 			// Long flags.
 			switch {
+			case arg == "--help":
+				// R4.2: print usage to stdout and exit 0.
+				fmt.Fprintf(os.Stdout, //nolint:errcheck // best-effort output
+					"Usage: %s [OPTION]... FILE...\n"+
+						"Print the resolved absolute file name;\n"+
+						"all but the last component must exist\n\n"+
+						"  -e, --canonicalize-existing  all components of the path must exist\n"+
+						"  -m, --canonicalize-missing   no path components need exist or be a directory\n"+
+						"  -L, --logical                resolve '..' components before symlinks\n"+
+						"  -P, --physical               resolve symlinks as encountered (default)\n"+
+						"  -q, --quiet                  suppress most error messages\n"+
+						"      --relative-to=DIR        print the resolved path relative to DIR\n"+
+						"      --relative-base=DIR      print absolute paths unless paths below DIR\n"+
+						"  -s, --strip, --no-symlinks   don't expand symlinks\n"+
+						"  -z, --zero                   end each output line with NUL, not newline\n"+
+						"      --help     display this help and exit\n"+
+						"      --version  output version information and exit\n",
+					progName,
+				)
+				os.Exit(0)
+			case arg == "--version":
+				// R4.1: print version to stdout and exit 0.
+				fmt.Fprintf(os.Stdout, "%s (%s) %s\n", //nolint:errcheck // best-effort output
+					progName, "go-unix-utils", version.Version,
+				)
+				os.Exit(0)
 			case arg == "--canonicalize-existing":
 				// R1.3: all components must exist.
 				modeExisting = true
