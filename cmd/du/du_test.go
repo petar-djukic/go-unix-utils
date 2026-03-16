@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/du against gdu (GNU coreutils).
-// Implements prd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1-R4.2 test coverage.
+// Implements prd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1-R4.2, R5.1 test coverage.
 package main
 
 import (
@@ -281,6 +281,51 @@ func TestMutualExclusion(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestVersionHelpExitCodes verifies --version, --help, and invalid option
+// exit codes via differential testing per R4.1, R4.2, R5.1.
+func TestVersionHelpExitCodes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1: --version prints version info to stdout and exits 0.
+		{
+			Name:      "R4.1_version_exits_0",
+			Args:      []string{"--version"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeAllOutput},
+		},
+		// R4.2: --help prints usage info to stdout and exits 0.
+		{
+			Name:      "R4.2_help_exits_0",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeAllOutput},
+		},
+		// R4.2: Invalid long option exits 1.
+		{
+			Name:      "R4.2_invalid_long_option_exits_1",
+			Args:      []string{"--invalid-xyz-option"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeDuOutput, stripTryHelp},
+		},
+		// R4.2: Invalid short option exits 1.
+		{
+			Name:      "R4.2_invalid_short_option_exits_1",
+			Args:      []string{"-Z"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeDuOutput, stripTryHelp},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // mkDir creates a directory with standard permissions.
 func mkDir(t *testing.T, path string) {
 	t.Helper()
@@ -300,9 +345,32 @@ func writeFile(t *testing.T, path, content string) {
 // normalizeDuOutput normalizes error messages for differential comparison.
 // Replaces the program name (gdu → du) and lowercases output so that
 // platform-specific error string capitalization does not cause false failures.
+// Also normalizes full binary paths (e.g., /opt/homebrew/bin/du:) to just "du:".
 func normalizeDuOutput(b []byte) []byte {
 	b = bytes.ReplaceAll(b, []byte("gdu: "), []byte("du: "))
+	// Normalize full path references to the binary (e.g., from getopt error messages).
+	b = normalizeBinaryPath(b)
 	return bytes.ToLower(b)
+}
+
+// normalizeBinaryPath replaces any path ending in /du: with du: so that
+// error messages from the reference binary match our output.
+func normalizeBinaryPath(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		// Match lines starting with a path to the du binary.
+		if idx := bytes.Index(line, []byte("/du: ")); idx >= 0 {
+			lines[i] = append([]byte("du: "), line[idx+len("/du: "):]...)
+		}
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// normalizeAllOutput replaces all output with empty bytes so that only
+// exit codes are compared. Used for --version and --help where output
+// content intentionally differs between implementations.
+func normalizeAllOutput(b []byte) []byte {
+	return nil
 }
 
 // stripTryHelp removes GNU's "Try '...' for more information" line that

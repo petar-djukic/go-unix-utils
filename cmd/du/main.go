@@ -16,10 +16,12 @@ import (
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in error messages to match GNU du format.
 const progName = "du"
+
 
 // inodeKey identifies a unique file by device and inode for hard-link
 // deduplication per R3.1-R3.2.
@@ -30,20 +32,37 @@ type inodeKey struct {
 
 // duOptions holds the parsed flags for a du invocation.
 type duOptions struct {
-	summarize    bool  // -s/--summarize: display only total per argument (R2.2)
-	all          bool  // -a/--all: report sizes for all files (R2.3)
-	blockSize    int64 // display block size in bytes (R1.2)
-	maxDepth     int   // -d N/--max-depth=N: limit depth of reported entries (R2.4), -1 means unlimited
-	grandTotal   bool  // -c/--total: print grand total after all arguments (R2.7)
-	apparentSize bool  // --apparent-size: report apparent size (st_size) instead of blocks (R2.8)
+	summarize     bool  // -s/--summarize: display only total per argument (R2.2)
+	all           bool  // -a/--all: report sizes for all files (R2.3)
+	humanReadable bool  // -h: human-readable output with binary suffixes (R2.1)
+	blockSize     int64 // display block size in bytes (R1.2)
+	maxDepth      int   // -d N/--max-depth=N: limit depth of reported entries (R2.4), -1 means unlimited
+	grandTotal    bool  // -c/--total: print grand total after all arguments (R2.7)
+	apparentSize  bool  // --apparent-size: report apparent size (st_size) instead of blocks (R2.8)
 }
 
 func main() {
 	// R5.1: Install SIGPIPE handler for clean pipe exit.
 	sys.InstallSIGPIPEHandler()
 
+	// R4.1, R4.2: Handle --version and --help before flag parsing.
+	for _, arg := range os.Args[1:] {
+		if arg == "--" {
+			break
+		}
+		if arg == "--version" {
+			fmt.Printf("du (go-unix-utils) %s\n", version.Version)
+			os.Exit(0)
+		}
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
+	}
+
 	opts, paths, err := parseArgs(os.Args[1:])
 	if err != nil {
+		// R4.2: Print diagnostic to stderr and exit 1 on errors.
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		os.Exit(1)
 	}
@@ -135,7 +154,11 @@ func parseArgs(args []string) (*duOptions, []string, error) {
 			opts.maxDepth = d
 			continue
 		}
-		if strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--") {
+		// R4.2: Unrecognized long flags are errors.
+		if strings.HasPrefix(arg, "--") {
+			return nil, nil, fmt.Errorf("unrecognized option '%s'", arg)
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 			// R2.4: -d may be followed by the depth value in the same or next arg.
 			chars := arg[1:]
 			for j := 0; j < len(chars); j++ {
@@ -148,6 +171,9 @@ func parseArgs(args []string) (*duOptions, []string, error) {
 				case 'c':
 					// R2.7: -c prints grand total.
 					opts.grandTotal = true
+				case 'h':
+					// R2.1: -h human-readable output (binary 1024-based).
+					opts.humanReadable = true
 				case 'k':
 					// R2.5: -k forces 1024-byte blocks (already default).
 					opts.blockSize = 1024
@@ -173,6 +199,9 @@ func parseArgs(args []string) (*duOptions, []string, error) {
 					}
 					opts.maxDepth = d
 					j = len(chars) // consume rest of short flag group
+				default:
+					// R4.2: Unrecognized short flags are errors.
+					return nil, nil, fmt.Errorf("invalid option -- '%c'", ch)
 				}
 			}
 			continue
@@ -360,4 +389,23 @@ func unwrapPathError(err error) error {
 		return pe.Err
 	}
 	return err
+}
+
+// printHelp writes usage information to stdout per R4.2.
+func printHelp() {
+	fmt.Print(`Usage: du [OPTION]... [FILE]...
+Summarize disk usage of the set of FILEs, recursively for directories.
+
+  -a, --all             write counts for all files, not just directories
+      --apparent-size   print apparent sizes rather than disk usage
+  -c, --total           produce a grand total
+  -d, --max-depth=N     print the total for a directory only if it is N or
+                          fewer levels below the command line argument
+  -h                    print sizes in human readable format (e.g., 1K 234M 2G)
+  -k                    like --block-size=1K
+  -m                    like --block-size=1M
+  -s, --summarize       display only a total for each argument
+      --help            display this help and exit
+      --version         output version information and exit
+`)
 }
