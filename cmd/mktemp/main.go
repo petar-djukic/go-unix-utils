@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.6:
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.6, R4.1-R4.4:
 // cmd/mktemp creates temporary files or directories with unique names and
 // prints the path to stdout. Supports custom templates, -d for directory
 // creation, --tmpdir/-p for parent directory control, --suffix for appending
 // a suffix after the random characters, -t for legacy BSD compatibility mode,
 // -u/--dry-run for name-only output, -q/--quiet for error suppression,
 // --version, and --help.
+// R4.1-R4.4: exits 1 with diagnostic on stderr for creation failures, invalid
+// templates, and inaccessible target directories. --version and --help exit 0.
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
@@ -135,13 +137,17 @@ func main() {
 	// Generate the temporary name and create the file or directory.
 	trailingXs = countTrailingXs(fileTemplate)
 
+	// R4.1: construct full template path for GNU-format error messages.
+	// GNU mktemp includes the resolved directory and suffix in error output.
+	errorTemplate := dir + "/" + fileTemplate + opts.suffix
+
 	// R3.5: -u/--dry-run prints the name without creating anything.
 	if opts.dryRun {
 		fmt.Fprintf(os.Stderr, "%s: warning: remember that the name returned may already be in use,\nand another program may be able to create and use the name;\nuse of -u/--dry-run is discouraged\n", progName)
 		path, err := generateTempName(dir, fileTemplate, trailingXs, opts.suffix)
 		if err != nil {
 			if !opts.quiet {
-				fmt.Fprintf(os.Stderr, "%s: failed to create name via template '%s': %v\n", progName, template, err)
+				fmt.Fprintf(os.Stderr, "%s: failed to create name via template '%s': %v\n", progName, errorTemplate, err)
 			}
 			os.Exit(1)
 		}
@@ -154,7 +160,8 @@ func main() {
 		path, err := createTempDir(dir, fileTemplate, trailingXs, opts.suffix)
 		if err != nil {
 			if !opts.quiet {
-				fmt.Fprintf(os.Stderr, "%s: failed to create directory via template '%s': %v\n", progName, template, err)
+				// R4.1, R4.3: GNU-format error with full resolved template path.
+				fmt.Fprintf(os.Stderr, "%s: failed to create directory via template '%s': %v\n", progName, errorTemplate, err)
 			}
 			os.Exit(1)
 		}
@@ -164,7 +171,8 @@ func main() {
 		path, err := createTempFile(dir, fileTemplate, trailingXs, opts.suffix)
 		if err != nil {
 			if !opts.quiet {
-				fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", progName, template, err)
+				// R4.1, R4.3: GNU-format error with full resolved template path.
+				fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", progName, errorTemplate, err)
 			}
 			os.Exit(1)
 		}

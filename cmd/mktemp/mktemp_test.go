@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
-// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.6 test coverage.
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.6, R4.1-R4.4 test coverage.
 package main
 
 import (
@@ -82,6 +82,28 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "t_flag_template_with_slash",
 			Args:      []string{"-t", "sub/dir.XXX"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
+		// R4.2: --suffix with a template that has too few trailing Xs exits 1.
+		{
+			Name:      "suffix_too_few_Xs",
+			Args:      []string{"--suffix=.log", "foo.XX"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
+		// R4.1: -p with non-existent directory exits 1.
+		{
+			Name:      "p_flag_nonexistent_dir",
+			Args:      []string{"-p", "/nonexistent/dir/for/mktemp/p"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
+		// R4.1: -d with non-existent TMPDIR exits 1.
+		{
+			Name:      "dir_mode_bad_tmpdir",
+			Args:      []string{"-d"},
+			Env:       []string{"TMPDIR=/nonexistent/path/for/mktemp/dtest"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
 		},
@@ -802,6 +824,93 @@ func TestQuiet(t *testing.T) {
 		}
 
 		os.Remove(path) // best-effort cleanup
+	})
+}
+
+// TestNonWritableDir verifies R4.3: mktemp exits 1 when the target directory
+// is not writable, printing the appropriate errno-derived message to stderr.
+func TestNonWritableDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("file_in_readonly_dir", func(t *testing.T) {
+		t.Parallel()
+		parentDir := t.TempDir()
+		readonlyDir := filepath.Join(parentDir, "readonly")
+		if err := os.Mkdir(readonlyDir, 0o500); err != nil {
+			t.Fatalf("failed to create readonly dir: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(readonlyDir, 0o700) // best-effort restore for cleanup
+		})
+
+		env := buildTestEnvWithTMPDIR(readonlyDir)
+		cmd := exec.Command(goBin)
+		cmd.Env = env
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr == nil {
+			// If the OS allows writing (e.g., running as root), skip.
+			path := strings.TrimSpace(outBuf.String())
+			os.Remove(path) // best-effort cleanup
+			t.Skip("OS allowed write to read-only directory (likely running as root)")
+		}
+
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("unexpected error type: %v", runErr)
+		}
+		// R4.3: must exit 1.
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+		// R4.3: must print errno-derived message to stderr.
+		if errBuf.Len() == 0 {
+			t.Errorf("expected diagnostic on stderr for non-writable directory")
+		}
+	})
+
+	t.Run("dir_mode_in_readonly_dir", func(t *testing.T) {
+		t.Parallel()
+		parentDir := t.TempDir()
+		readonlyDir := filepath.Join(parentDir, "readonly")
+		if err := os.Mkdir(readonlyDir, 0o500); err != nil {
+			t.Fatalf("failed to create readonly dir: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(readonlyDir, 0o700) // best-effort restore for cleanup
+		})
+
+		env := buildTestEnvWithTMPDIR(readonlyDir)
+		cmd := exec.Command(goBin, "-d")
+		cmd.Env = env
+
+		var outBuf, errBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		runErr := cmd.Run()
+		if runErr == nil {
+			path := strings.TrimSpace(outBuf.String())
+			os.Remove(path) // best-effort cleanup
+			t.Skip("OS allowed write to read-only directory (likely running as root)")
+		}
+
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("unexpected error type: %v", runErr)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+		if errBuf.Len() == 0 {
+			t.Errorf("expected diagnostic on stderr for non-writable directory with -d")
+		}
 	})
 }
 
