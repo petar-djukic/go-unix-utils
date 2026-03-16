@@ -2,15 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/uname against guname (GNU coreutils).
-// Implements prd044-uname R1.1-R1.9, R2.2, R4.1-R4.3 test coverage.
+// Implements prd044-uname R1.1-R1.9, R2.1-R2.2, R3.1-R3.2, R4.1-R4.3 test coverage.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// binaryPathNormalizer returns a NormalizeFunc that replaces binary paths in
+// error messages with "PROG" so that stderr comparison is path-independent.
+// GNU coreutils uses argv[0] in error messages, which includes the full path
+// when invoked via exec.Command with a resolved path.
+var binaryPathNormalizer = func(b []byte) []byte {
+	re := regexp.MustCompile(`[^\s']*[/\\]?[gG]?uname`)
+	return re.ReplaceAll(b, []byte("PROG"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -170,6 +180,52 @@ func TestDiff(t *testing.T) {
 			Name:     "R2.2_combined_po",
 			Args:     []string{"-po"},
 			ExitCode: 0,
+		},
+		// R2.1: -a prints all fields in canonical order.
+		{
+			Name:     "R2.1_flag_a_all",
+			Args:     []string{"-a"},
+			ExitCode: 0,
+		},
+		// R2.1: --all long form prints all fields in canonical order.
+		{
+			Name:     "R2.1_long_all",
+			Args:     []string{"--all"},
+			ExitCode: 0,
+		},
+		// R2.1: -a combined with individual flags still prints all.
+		{
+			Name:     "R2.1_flag_a_with_s",
+			Args:     []string{"-a", "-s"},
+			ExitCode: 0,
+		},
+		// R3.2: unknown short flag produces error and exits 1.
+		{
+			Name:      "R3.2_invalid_short_flag",
+			Args:      []string{"-z"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
+		},
+		// R3.2: unknown long option produces error and exits 1.
+		{
+			Name:      "R3.2_invalid_long_option",
+			Args:      []string{"--invalid"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
+		},
+		// R3.1: extra positional operand produces error and exits 1.
+		{
+			Name:      "R3.1_extra_operand",
+			Args:      []string{"foo"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
+		},
+		// R3.1: extra operand after valid flag produces error and exits 1.
+		{
+			Name:      "R3.1_extra_operand_after_flag",
+			Args:      []string{"-s", "bar"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
 		},
 	}
 
