@@ -36,6 +36,13 @@ func TestDiff(t *testing.T) {
 	writeTestFile(t, tmpDir, "binary.txt", "\x00\x01\x02\xff\n")
 	writeTestFile(t, tmpDir, "multiword.txt", "a b c\nd e f\ng h i\n")
 
+	// R4.4: NUL-delimited file lists for --files0-from tests.
+	writeTestFile(t, tmpDir, "filelist.txt",
+		filepath.Join(tmpDir, "hello.txt")+"\x00")
+	writeTestFile(t, tmpDir, "filelist-multi.txt",
+		filepath.Join(tmpDir, "hello.txt")+"\x00"+
+			filepath.Join(tmpDir, "three-words.txt")+"\x00")
+
 	tests := []testutils.DiffTest{
 		// R1.1: default mode (lines, words, bytes) from stdin.
 		{
@@ -505,6 +512,66 @@ func TestDiff(t *testing.T) {
 			Name:  "R4.3_empty_stdin_flags",
 			Args:  []string{"-lwc"},
 			Stdin: []byte{},
+		},
+
+		// R4.4: --files0-from reads NUL-delimited filenames from a file.
+		{
+			Name: "R4.4_files0_from_file",
+			Args: []string{
+				"--files0-from=" + filepath.Join(tmpDir, "filelist.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R4.4: --files0-from with multiple files listed.
+		{
+			Name: "R4.4_files0_from_multi",
+			Args: []string{
+				"--files0-from=" + filepath.Join(tmpDir, "filelist-multi.txt"),
+			},
+			WorkDir: tmpDir,
+		},
+		// R4.4: --files0-from=- reads filenames from stdin.
+		{
+			Name:  "R4.4_files0_from_stdin",
+			Args:  []string{"--files0-from=-"},
+			Stdin: []byte(filepath.Join(tmpDir, "hello.txt") + "\x00"),
+		},
+		// R4.4: --files0-from=- with multiple filenames from stdin.
+		{
+			Name: "R4.4_files0_from_stdin_multi",
+			Args: []string{"--files0-from=-"},
+			Stdin: []byte(filepath.Join(tmpDir, "hello.txt") + "\x00" +
+				filepath.Join(tmpDir, "three-words.txt") + "\x00"),
+		},
+
+		// R5.2: under LC_ALL=C, -m and -c produce identical counts (bytes == chars).
+		{
+			Name:    "R5.2_m_equals_c_file",
+			Args:    []string{"-m", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+		// R5.2: -c on same file for comparison.
+		{
+			Name:    "R5.2_c_same_file",
+			Args:    []string{"-c", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+
+		// R6.1: exit 0 on successful stdin processing.
+		{
+			Name:     "R6.1_success_stdin_exit_0",
+			Stdin:    []byte("hello world\n"),
+			ExitCode: 0,
+		},
+		// R6.1: exit 0 with multiple files all valid.
+		{
+			Name: "R6.1_success_multi_file",
+			Args: []string{
+				filepath.Join(tmpDir, "hello.txt"),
+				filepath.Join(tmpDir, "three-words.txt"),
+			},
+			WorkDir:  tmpDir,
+			ExitCode: 0,
 		},
 	}
 

@@ -38,12 +38,13 @@ const (
 
 // wcOptions holds the parsed flags for a wc invocation.
 type wcOptions struct {
-	lines   bool      // -l: count newlines
-	words   bool      // -w: count words
-	bytes   bool      // -c: count bytes
-	chars   bool      // -m: count characters
-	maxLine bool      // -L: max line length
-	total   totalMode // R3.3: --total mode
+	lines      bool      // -l: count newlines
+	words      bool      // -w: count words
+	bytes      bool      // -c: count bytes
+	chars      bool      // -m: count characters
+	maxLine    bool      // -L: max line length
+	total      totalMode // R3.3: --total mode
+	files0From string    // R4.4: --files0-from=FILE; empty means not set
 }
 
 // isDefault returns true when no flags were explicitly set.
@@ -84,6 +85,26 @@ func main() {
 	}
 
 	exitCode := 0
+
+	// R4.4: --files0-from replaces file arguments with NUL-delimited names
+	// read from a file (or stdin if "-").
+	// When --files0-from=- (stdin), GNU wc does not pre-stat listed files
+	// for column width because it processes stdin as a stream.
+	files0FromStdin := false
+	if opts.files0From != "" {
+		if len(files) > 0 {
+			fmt.Fprintf(os.Stderr, "%s: extra operand %q\n", progName, files[0])
+			fmt.Fprintf(os.Stderr, "file operands cannot be combined with --files0-from\n")
+			os.Exit(1)
+		}
+		files0FromStdin = opts.files0From == "-"
+		var err error
+		files, err = readFiles0From(opts.files0From)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+			os.Exit(1)
+		}
+	}
 
 	// fileResult holds the counted result for a single input.
 	type fileResult struct {
@@ -132,12 +153,16 @@ func main() {
 					continue
 				}
 				// Stat the file to determine size for column width.
-				if fi, serr := f.Stat(); serr == nil {
-					if sz := fi.Size(); sz > maxFileSize {
-						maxFileSize = sz
+				// R4.4: skip statting when --files0-from=- was used — GNU wc
+				// does not pre-stat files read from stdin.
+				if !files0FromStdin {
+					if fi, serr := f.Stat(); serr == nil {
+						if sz := fi.Size(); sz > maxFileSize {
+							maxFileSize = sz
+						}
+					} else {
+						hasUnstatable = true
 					}
-				} else {
-					hasUnstatable = true
 				}
 				c, err := countReader(f)
 				f.Close() // best-effort close
@@ -435,6 +460,9 @@ func parseArgs(args []string) (*wcOptions, []string) {
 					"  -l, --lines            print the newline counts\n"+
 					"  -L, --max-line-length  print the maximum display width\n"+
 					"  -w, --words            print the word counts\n"+
+					"      --files0-from=F    read input from the files specified by\n"+
+					"                           NUL-terminated names in file F;\n"+
+					"                           If F is - then read names from standard input\n"+
 					"      --total=WHEN       when to print a line with total counts;\n"+
 					"                           WHEN can be: auto, always, only, never\n"+
 					"      --help     display this help and exit\n"+
@@ -448,6 +476,20 @@ func parseArgs(args []string) (*wcOptions, []string) {
 				progName, "go-unix-utils", version.Version,
 			)
 			os.Exit(0)
+		}
+
+		// R4.4: --files0-from=FILE flag.
+		if arg == "--files0-from" || strings.HasPrefix(arg, "--files0-from=") {
+			if strings.HasPrefix(arg, "--files0-from=") {
+				opts.files0From = arg[len("--files0-from="):]
+			} else if i+1 < len(args) {
+				i++
+				opts.files0From = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "%s: option '--files0-from' requires an argument\n", progName)
+				os.Exit(1)
+			}
+			continue
 		}
 
 		// R3.3: --total=MODE flag.
@@ -522,6 +564,42 @@ func parseArgs(args []string) (*wcOptions, []string) {
 	}
 
 	return opts, files
+}
+
+// readFiles0From reads NUL-delimited filenames from the specified source.
+// R4.4: when source is "-", filenames are read from stdin.
+func readFiles0From(source string) ([]string, error) {
+	var r io.Reader
+	if source == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(source)
+		if err != nil {
+			return nil, fmt.Errorf("cannot open %q for reading: %w", source, unwrapPathError(err))
+		}
+		defer f.Close()
+		r = f
+	}
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read error: %w", err)
+	}
+
+	parts := strings.Split(string(data), "\x00")
+	var files []string
+	for i, name := range parts {
+		// A trailing NUL produces an empty final element — skip it.
+		if name == "" && i == len(parts)-1 {
+			continue
+		}
+		if name == "" {
+			return nil, fmt.Errorf("invalid zero-length file name")
+		}
+		files = append(files, name)
+	}
+
+	return files, nil
 }
 
 // isEPIPE returns true if err wraps a syscall.EPIPE error.
