@@ -1,14 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14: basic directory listing with single-column
-// output (non-TTY default), dotfile filtering, multi-directory headers, mixed
-// file/directory argument handling, error diagnostics, -1 single-column flag,
-// -l long format with permissions/nlink/owner/group/size/mtime, file metadata
-// via pkg/sys.Lstat, owner/group name resolution, -a (all entries including
-// dotfiles), -r (reverse sort), -R (recursive listing), -p (directory
-// indicator), -C (multi-column vertical fill), -x (multi-column horizontal
-// fill), and format flag mutual exclusivity (last flag wins).
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.8: basic directory listing with
+// single-column output (non-TTY default), dotfile filtering, multi-directory
+// headers, mixed file/directory argument handling, error diagnostics,
+// -1 single-column flag, -l long format with permissions/nlink/owner/group/
+// size/mtime, file metadata via pkg/sys.Lstat, owner/group name resolution,
+// -a (all entries including dotfiles), -r (reverse sort), -R (recursive
+// listing), -p (directory indicator), -C (multi-column vertical fill),
+// -x (multi-column horizontal fill), format flag mutual exclusivity (last
+// flag wins), -t (time sort), -S (size sort), -U (unsorted/directory order).
 // Installs SIGPIPE handler per ARCHITECTURE.yaml shared protocol.
 package main
 
@@ -40,13 +41,25 @@ const (
 	formatHorizontal                    // -x: multi-column, horizontal fill
 )
 
+// sortMode controls the entry sort order.
+// R2.10: When multiple sort flags are given, the last one wins.
+type sortMode int
+
+const (
+	sortByName sortMode = iota // default: C locale alphabetical
+	sortByTime                 // -t: newest mtime first (R2.5)
+	sortBySize                 // -S: largest first (R2.6)
+	sortNone                   // -U: directory order (R2.8)
+)
+
 // lsOptions holds parsed command-line options.
 type lsOptions struct {
 	format    outputFormat
-	showAll   bool // -a: include dotfiles including "." and ".."
-	reverse   bool // -r: reverse sort order
-	recursive bool // -R: list subdirectories recursively
-	indicator bool // -p: append '/' to directory names
+	sortBy    sortMode // R2.5/R2.6/R2.8/R2.10: sort mode
+	showAll   bool     // -a: include dotfiles including "." and ".."
+	reverse   bool     // -r: reverse sort order
+	recursive bool     // -R: list subdirectories recursively
+	indicator bool     // -p: append '/' to directory names
 }
 
 func main() {
@@ -166,7 +179,8 @@ func main() {
 // R1.13: -x sets horizontal multi-column mode.
 // R1.14: -C, -x, -l, -1 are format flags; last flag wins (except -1 does
 // not override -l, matching GNU ls behavior).
-// R2.1: -a includes dotfiles. R2.7: -r reverses sort.
+// R2.1: -a includes dotfiles. R2.5: -t sorts by time. R2.6: -S sorts by size.
+// R2.7: -r reverses sort. R2.8: -U unsorted. R2.10: last sort flag wins.
 // R3.11: -R lists recursively. R3.8 (partial): -p appends '/' to directories.
 func parseArgs(args []string) (lsOptions, []string) {
 	opts := lsOptions{format: formatDefault}
@@ -203,6 +217,15 @@ func parseArgs(args []string) (lsOptions, []string) {
 				case 'a':
 					// R2.1: -a includes all entries including "." and "..".
 					opts.showAll = true
+				case 't':
+					// R2.5: -t sorts by modification time, newest first.
+					opts.sortBy = sortByTime
+				case 'S':
+					// R2.6: -S sorts by file size, largest first.
+					opts.sortBy = sortBySize
+				case 'U':
+					// R2.8: -U disables sorting (directory order).
+					opts.sortBy = sortNone
 				case 'r':
 					// R2.7: -r reverses sort order.
 					opts.reverse = true
@@ -399,8 +422,15 @@ func printHorizontalCols(names []string, termWidth int) {
 
 // longEntry holds the name and metadata for a single entry in long format.
 type longEntry struct {
-	name string      // display name (basename for directory entries, full for file args)
-	path string      // full path for symlink resolution
+	name string // display name (basename for directory entries, full for file args)
+	path string // full path for symlink resolution
+	fi   *sys.FileInfo
+}
+
+// dirEntry pairs an entry name with its metadata for sorting.
+// R2.5/R2.6: Used when -t or -S requires metadata-aware sorting.
+type dirEntry struct {
+	name string
 	fi   *sys.FileInfo
 }
 
@@ -408,19 +438,31 @@ type longEntry struct {
 // R1.1/R1.2: One entry per line (non-TTY default), sorted alphabetically.
 // R1.4: Entries whose names start with "." are excluded by default.
 // R2.1: -a includes dotfiles including "." and "..".
+// R2.5: -t sorts by modification time. R2.6: -S sorts by size.
 // R2.7: -r reverses the current sort order.
+// R2.8: -U lists in directory order (no sorting).
 // R3.11-R3.15: -R recursively lists subdirectories.
 // R1.12: -p appends '/' to directory names.
 func listDir(path string, opts lsOptions) error {
-	entries, err := os.ReadDir(path)
+	// R2.8: Use (*os.File).ReadDir to preserve directory order for -U.
+	// os.ReadDir (package-level) always sorts; (*os.File).ReadDir does not.
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	entries, err := f.ReadDir(-1)
+	f.Close() // best-effort close; directory read is complete
 	if err != nil {
 		return err
 	}
 
-	// R1.3: Sort entries in C locale order.
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
+	// R2.8: When -U is given, preserve directory order (skip sorting).
+	if opts.sortBy != sortNone {
+		// R1.3: Sort entries in C locale order (initial alphabetical sort).
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].Name() < entries[j].Name()
+		})
+	}
 
 	// R1.4/R2.1: Filter dotfiles unless -a is given.
 	var names []string
@@ -436,8 +478,58 @@ func listDir(path string, opts lsOptions) error {
 		names = append(names, name)
 	}
 
+	// R2.5/R2.6: When sorting by time or size, collect metadata and sort.
+	if opts.sortBy == sortByTime || opts.sortBy == sortBySize {
+		dirEntries := make([]dirEntry, 0, len(names))
+		for _, name := range names {
+			fullPath := filepath.Join(path, name)
+			fi, err := sys.Lstat(fullPath)
+			if err != nil {
+				// Still include the entry; it will fail again when printing.
+				dirEntries = append(dirEntries, dirEntry{name: name, fi: nil})
+				continue
+			}
+			dirEntries = append(dirEntries, dirEntry{name: name, fi: fi})
+		}
+
+		switch opts.sortBy {
+		case sortByTime:
+			// R2.5: Sort by mtime newest first, tiebreak by name in C locale.
+			sort.SliceStable(dirEntries, func(i, j int) bool {
+				fi, fj := dirEntries[i].fi, dirEntries[j].fi
+				if fi == nil || fj == nil {
+					return dirEntries[i].name < dirEntries[j].name
+				}
+				if !fi.ModTime.Equal(fj.ModTime) {
+					return fi.ModTime.After(fj.ModTime)
+				}
+				return dirEntries[i].name < dirEntries[j].name
+			})
+		case sortBySize:
+			// R2.6: Sort by size largest first, tiebreak by name in C locale.
+			sort.SliceStable(dirEntries, func(i, j int) bool {
+				fi, fj := dirEntries[i].fi, dirEntries[j].fi
+				if fi == nil || fj == nil {
+					return dirEntries[i].name < dirEntries[j].name
+				}
+				if fi.Size != fj.Size {
+					return fi.Size > fj.Size
+				}
+				return dirEntries[i].name < dirEntries[j].name
+			})
+		}
+
+		// Rebuild names slice in sorted order.
+		names = make([]string, len(dirEntries))
+		for i, de := range dirEntries {
+			names[i] = de.name
+		}
+	}
+
 	// R2.7: Reverse sort order if -r is given.
-	if opts.reverse {
+	// R2.8: -r with -U has no defined effect; GNU ls does not reverse
+	// directory order, so skip reversal when -U is active.
+	if opts.reverse && opts.sortBy != sortNone {
 		reverseStrings(names)
 	}
 
@@ -723,4 +815,3 @@ func unwrapPathError(err error) error {
 	}
 	return err
 }
-

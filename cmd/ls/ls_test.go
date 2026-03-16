@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ls against gls (GNU coreutils).
-// Implements prd008-ls R1.1-R1.14 test coverage.
+// Implements prd008-ls R1.1-R1.14, R2.5-R2.8 test coverage.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -95,6 +96,24 @@ func TestDiff(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(subDir, "sub-file.txt"), "sub content\n")
 	writeFile(t, filepath.Join(nestedDir, "deep-file.txt"), "deep content\n")
+
+	// R2.5/R2.6: Create a fixture with files of known different sizes and mtimes.
+	sortDir := filepath.Join(tmpDir, "sortfix")
+	if err := os.Mkdir(sortDir, 0o755); err != nil {
+		t.Fatalf("creating sort fixture dir: %v", err)
+	}
+	// Files with different sizes for -S testing.
+	writeFile(t, filepath.Join(sortDir, "small.txt"), "a\n")
+	writeFile(t, filepath.Join(sortDir, "medium.txt"), "medium content here\n")
+	writeFile(t, filepath.Join(sortDir, "large.txt"), "this is a much larger file with significantly more content than the others for testing size sort\n")
+	writeFile(t, filepath.Join(sortDir, "tiny.txt"), "x")
+	// Set distinct modification times for -t testing.
+	// oldest -> newest: tiny, small, medium, large
+	now := time.Now()
+	setMtime(t, filepath.Join(sortDir, "tiny.txt"), now.Add(-4*time.Hour))
+	setMtime(t, filepath.Join(sortDir, "small.txt"), now.Add(-3*time.Hour))
+	setMtime(t, filepath.Join(sortDir, "medium.txt"), now.Add(-2*time.Hour))
+	setMtime(t, filepath.Join(sortDir, "large.txt"), now.Add(-1*time.Hour))
 
 	longNorm := []testutils.NormalizeFunc{
 		normalizeLongFormat,
@@ -403,6 +422,99 @@ func TestDiff(t *testing.T) {
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: tmpDir,
 		},
+
+		// === R2.5: -t sorts by modification time, newest first ===
+		{
+			Name:    "R2.5_time_sort",
+			Args:    []string{"-1", "-t", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.5: -t with -l (long format, time-sorted).
+		{
+			Name:      "R2.5_time_sort_long",
+			Args:      []string{"-lt", sortDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R2.6: -S sorts by file size, largest first ===
+		{
+			Name:    "R2.6_size_sort",
+			Args:    []string{"-1", "-S", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.6: -S with -l (long format, size-sorted).
+		{
+			Name:      "R2.6_size_sort_long",
+			Args:      []string{"-lS", sortDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R2.7: -r reverses the current sort order ===
+		// R2.7: -r with -t (reverse time sort = oldest first).
+		{
+			Name:    "R2.7_reverse_time_sort",
+			Args:    []string{"-1", "-tr", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.7: -r with -S (reverse size sort = smallest first).
+		{
+			Name:    "R2.7_reverse_size_sort",
+			Args:    []string{"-1", "-Sr", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.7: -r with -l -t (reverse time, long format).
+		{
+			Name:      "R2.7_reverse_time_long",
+			Args:      []string{"-ltr", sortDir},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   tmpDir,
+			Normalize: longNorm,
+		},
+
+		// === R2.8: -U disables sorting (directory order) ===
+		{
+			Name:    "R2.8_unsorted",
+			Args:    []string{"-1", "-U", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.8: -U overrides -t (last flag wins per R2.10, but -U also
+		// explicitly overrides time/size sort).
+		{
+			Name:    "R2.8_unsorted_overrides_time",
+			Args:    []string{"-1", "-t", "-U", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.8: -U overrides -S.
+		{
+			Name:    "R2.8_unsorted_overrides_size",
+			Args:    []string{"-1", "-S", "-U", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.8: -r with -U is accepted without error.
+		{
+			Name:    "R2.8_unsorted_with_reverse",
+			Args:    []string{"-1", "-Ur", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
+		// R2.10: -t after -U re-enables time sort (last sort flag wins).
+		{
+			Name:    "R2.10_time_after_unsorted",
+			Args:    []string{"-1", "-U", "-t", sortDir},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: tmpDir,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -413,5 +525,13 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
+	}
+}
+
+// setMtime is a test helper that sets the modification time of a file.
+func setMtime(t *testing.T, path string, mtime time.Time) {
+	t.Helper()
+	if err := os.Chtimes(path, mtime, mtime); err != nil {
+		t.Fatalf("setting mtime on %s: %v", path, err)
 	}
 }
