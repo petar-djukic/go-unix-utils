@@ -20,6 +20,14 @@ var binaryPathNormalizer = func(b []byte) []byte {
 	return re.ReplaceAll(b, []byte("PROG"))
 }
 
+// versionNormalizer replaces the entire --version output with a fixed string
+// so that version differences between Go and GNU binaries do not cause false
+// divergence. GNU --version prints version, license, and author lines; the
+// Go binary prints only the version line. Both exit 0.
+var versionNormalizer = func(b []byte) []byte {
+	return []byte("VERSION\n")
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -62,6 +70,14 @@ func TestDiff(t *testing.T) {
 			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{binaryPathNormalizer},
+		},
+		// R1.2, R3.2: --version prints version info and exits 0.
+		{
+			Name:      "R1.2_version_flag",
+			Args:      []string{"--version"},
+			Env:       lcEnv,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{versionNormalizer},
 		},
 	}
 
