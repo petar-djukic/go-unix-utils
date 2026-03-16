@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/du against gdu (GNU coreutils).
-// Implements prd009-du R1.1-R1.5, R2.1-R2.7, R3.1-R3.3, R4.1-R4.2 test coverage.
+// Implements prd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1-R4.2 test coverage.
 package main
 
 import (
@@ -80,6 +80,20 @@ func TestDiff(t *testing.T) {
 	writeFile(t, filepath.Join(deepDir, "a", "mid.txt"), "mid level\n")
 	writeFile(t, filepath.Join(deepDir, "a", "b", "deep.txt"), "deep level\n")
 	writeFile(t, filepath.Join(deepDir, "a", "b", "c", "bottom.txt"), "bottom level\n")
+
+	// R3.3: Cross-argument hard-link dedup fixture.
+	// Two directories each containing a hard link to the same file.
+	hlCrossDir1 := filepath.Join(tmpDir, "hlcross1")
+	hlCrossDir2 := filepath.Join(tmpDir, "hlcross2")
+	mkDir(t, hlCrossDir1)
+	mkDir(t, hlCrossDir2)
+	writeFile(t, filepath.Join(hlCrossDir1, "shared.txt"), "cross-argument hard link dedup test data\n")
+	if err := os.Link(
+		filepath.Join(hlCrossDir1, "shared.txt"),
+		filepath.Join(hlCrossDir2, "shared.txt"),
+	); err != nil {
+		t.Fatalf("failed to create cross-directory hard link: %v", err)
+	}
 
 	// Permission denied fixture: subdirectory without read permission.
 	noPermDir := filepath.Join(tmpDir, "noperm")
@@ -208,6 +222,36 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "R2.7_grand_total_summary",
 			Args: []string{"-cs", basicDir, emptyDir},
+		},
+		// R2.8: --apparent-size reports file size instead of block allocation.
+		{
+			Name: "R2.8_apparent_size",
+			Args: []string{"--apparent-size", basicDir},
+		},
+		// R2.8: --apparent-size with -a shows apparent size for all files.
+		{
+			Name: "R2.8_apparent_size_all",
+			Args: []string{"--apparent-size", "-a", basicDir},
+		},
+		// R2.8: --apparent-size with -s shows summary apparent size.
+		{
+			Name: "R2.8_apparent_size_summary",
+			Args: []string{"--apparent-size", "-s", basicDir},
+		},
+		// R2.8: --apparent-size with -c shows apparent-size grand total.
+		{
+			Name: "R2.8_apparent_size_grand_total",
+			Args: []string{"--apparent-size", "-c", basicDir, emptyDir},
+		},
+		// R3.3: Hard-link dedup across arguments — file counted only once.
+		{
+			Name: "R3.3_hardlink_dedup_cross_arg",
+			Args: []string{"-a", hlCrossDir1, hlCrossDir2},
+		},
+		// R3.3: Cross-argument dedup visible with -c grand total.
+		{
+			Name: "R3.3_hardlink_dedup_cross_arg_total",
+			Args: []string{"-cs", hlCrossDir1, hlCrossDir2},
 		},
 	}
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd009-du R1.1-R1.5, R2.1-R2.7, R3.1-R3.3, R4.1-R4.2, R5.1:
+// Implements prd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1-R4.2, R5.1:
 // cmd/du reports disk usage for directory trees. Walks each path argument
 // recursively using Lstat (no symlink following), summing allocated 512-byte
 // blocks with hard-link deduplication. Prints one line per directory
@@ -30,11 +30,12 @@ type inodeKey struct {
 
 // duOptions holds the parsed flags for a du invocation.
 type duOptions struct {
-	summarize  bool  // -s/--summarize: display only total per argument (R2.2)
-	all        bool  // -a/--all: report sizes for all files (R2.3)
-	blockSize  int64 // display block size in bytes (R1.2)
-	maxDepth   int   // -d N/--max-depth=N: limit depth of reported entries (R2.4), -1 means unlimited
-	grandTotal bool  // -c/--total: print grand total after all arguments (R2.7)
+	summarize    bool  // -s/--summarize: display only total per argument (R2.2)
+	all          bool  // -a/--all: report sizes for all files (R2.3)
+	blockSize    int64 // display block size in bytes (R1.2)
+	maxDepth     int   // -d N/--max-depth=N: limit depth of reported entries (R2.4), -1 means unlimited
+	grandTotal   bool  // -c/--total: print grand total after all arguments (R2.7)
+	apparentSize bool  // --apparent-size: report apparent size (st_size) instead of blocks (R2.8)
 }
 
 func main() {
@@ -62,14 +63,14 @@ func main() {
 	for _, path := range paths {
 		total := walkPath(path, opts, seen, &exitCode)
 		if opts.summarize {
-			printEntry(toDisplayBlocks(total, opts.blockSize), path)
+			printEntry(toDisplayBlocks(total, opts.blockSize, opts.apparentSize), path)
 		}
 		grandTotal += total
 	}
 
 	// R2.7: -c prints a grand total line after all arguments.
 	if opts.grandTotal {
-		printEntry(toDisplayBlocks(grandTotal, opts.blockSize), "total")
+		printEntry(toDisplayBlocks(grandTotal, opts.blockSize, opts.apparentSize), "total")
 	}
 
 	os.Exit(exitCode)
@@ -105,6 +106,11 @@ func parseArgs(args []string) (*duOptions, []string, error) {
 		if arg == "--total" {
 			// R2.7: --total is the long form of -c.
 			opts.grandTotal = true
+			continue
+		}
+		if arg == "--apparent-size" {
+			// R2.8: Report apparent file size instead of block allocation.
+			opts.apparentSize = true
 			continue
 		}
 		// R2.4: --max-depth=N long form.
@@ -206,13 +212,18 @@ func defaultBlockSize() int64 {
 	return 1024
 }
 
-// toDisplayBlocks converts raw 512-byte block counts to display block units
-// using ceiling division.
-func toDisplayBlocks(raw512Blocks int64, blockSize int64) int64 {
-	if blockSize == 512 {
-		return raw512Blocks
+// toDisplayBlocks converts a raw size value to display block units using
+// ceiling division. When apparentSize is true, rawValue is in bytes (R2.8);
+// otherwise rawValue is a 512-byte block count (R1.2).
+func toDisplayBlocks(rawValue int64, blockSize int64, apparentSize bool) int64 {
+	if apparentSize {
+		// R2.8: rawValue is bytes; convert to display block units.
+		return (rawValue + blockSize - 1) / blockSize
 	}
-	rawBytes := raw512Blocks * 512
+	if blockSize == 512 {
+		return rawValue
+	}
+	rawBytes := rawValue * 512
 	return (rawBytes + blockSize - 1) / blockSize
 }
 
@@ -233,11 +244,11 @@ func walkPath(path string, opts *duOptions, seen map[inodeKey]bool, exitCode *in
 	}
 
 	if !fi.Mode.IsDir() {
-		blocks, _ := countBlocks(fi, seen)
+		size, _ := countSize(fi, seen, opts.apparentSize)
 		if !opts.summarize {
-			printEntry(toDisplayBlocks(blocks, opts.blockSize), path)
+			printEntry(toDisplayBlocks(size, opts.blockSize, opts.apparentSize), path)
 		}
-		return blocks
+		return size
 	}
 
 	// R2.4: depth 0 is the argument itself.
@@ -260,7 +271,7 @@ func shouldPrint(opts *duOptions, depth int) bool {
 // block count. Prints entries in depth-first order per R1.1.
 // R2.4: depth tracks the current depth relative to the command-line argument (0 = the argument itself).
 func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inodeKey]bool, exitCode *int, depth int) int64 {
-	total, _ := countBlocks(dirFI, seen)
+	total, _ := countSize(dirFI, seen, opts.apparentSize)
 
 	// Use os.Open + ReadDir(-1) instead of os.ReadDir to preserve filesystem
 	// readdir() order, matching GNU du's FTS traversal order.
@@ -269,7 +280,7 @@ func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inod
 		fmt.Fprintf(os.Stderr, "%s: cannot read directory '%s': %v\n", progName, dirPath, unwrapPathError(err))
 		*exitCode = 1
 		if shouldPrint(opts, depth) {
-			printEntry(toDisplayBlocks(total, opts.blockSize), dirPath)
+			printEntry(toDisplayBlocks(total, opts.blockSize, opts.apparentSize), dirPath)
 		}
 		return total
 	}
@@ -279,7 +290,7 @@ func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inod
 		fmt.Fprintf(os.Stderr, "%s: cannot read directory '%s': %v\n", progName, dirPath, unwrapPathError(err))
 		*exitCode = 1
 		if shouldPrint(opts, depth) {
-			printEntry(toDisplayBlocks(total, opts.blockSize), dirPath)
+			printEntry(toDisplayBlocks(total, opts.blockSize, opts.apparentSize), dirPath)
 		}
 		return total
 	}
@@ -298,28 +309,29 @@ func walkDir(dirPath string, dirFI *sys.FileInfo, opts *duOptions, seen map[inod
 		if childFI.Mode.IsDir() {
 			total += walkDir(childPath, childFI, opts, seen, exitCode, depth+1)
 		} else {
-			blocks, dup := countBlocks(childFI, seen)
-			total += blocks
+			size, dup := countSize(childFI, seen, opts.apparentSize)
+			total += size
 			// R2.3: -a prints entries for all files, not just directories.
 			// Hard-link duplicates are not printed (GNU du behavior).
 			if opts.all && !dup && shouldPrint(opts, depth+1) {
-				printEntry(toDisplayBlocks(blocks, opts.blockSize), childPath)
+				printEntry(toDisplayBlocks(size, opts.blockSize, opts.apparentSize), childPath)
 			}
 		}
 	}
 
 	// R1.1: Print directory entry after children (depth-first order).
 	if shouldPrint(opts, depth) {
-		printEntry(toDisplayBlocks(total, opts.blockSize), dirPath)
+		printEntry(toDisplayBlocks(total, opts.blockSize, opts.apparentSize), dirPath)
 	}
 
 	return total
 }
 
-// countBlocks returns the raw 512-byte block count for a file, applying
-// hard-link deduplication per R3.1-R3.2. The second return value is true
+// countSize returns the raw size for a file, applying hard-link deduplication
+// per R3.1-R3.2. Returns 512-byte block count normally, or apparent size in
+// bytes when apparentSize is true (R2.8). The second return value is true
 // when the inode was already counted (duplicate hard link).
-func countBlocks(fi *sys.FileInfo, seen map[inodeKey]bool) (int64, bool) {
+func countSize(fi *sys.FileInfo, seen map[inodeKey]bool, apparentSize bool) (int64, bool) {
 	key := inodeKey{Dev: fi.Dev, Ino: fi.Ino}
 	// R3.1: Track files with nlink > 1 to prevent double-counting hard links.
 	if fi.Nlink > 1 {
@@ -327,6 +339,16 @@ func countBlocks(fi *sys.FileInfo, seen map[inodeKey]bool) (int64, bool) {
 			return 0, true
 		}
 		seen[key] = true
+	}
+	// R2.8: --apparent-size reports st_size (file size in bytes) instead of
+	// st_blocks (physical block allocation). Directory entries contribute
+	// only their children's sizes, not their own directory metadata size,
+	// matching GNU du behavior.
+	if apparentSize {
+		if fi.Mode.IsDir() {
+			return 0, false
+		}
+		return fi.Size, false
 	}
 	return fi.Blocks, false
 }
