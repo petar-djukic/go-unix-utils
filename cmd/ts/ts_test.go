@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts against ts (moreutils).
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R9.1-R9.2 test coverage.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.4, R9.1-R9.2 test coverage.
 package main
 
 import (
 	"bytes"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -34,6 +36,14 @@ var deltaSubsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 var secSubsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	re := regexp.MustCompile(`\d{2}\.\d{6}`)
 	return re.ReplaceAll(b, []byte("<SEC_USEC>"))
+}
+
+// relativeAgeNormalizer replaces relative age strings (e.g., "5d3h2m1s ago")
+// with a fixed placeholder. Used for -r mode tests where the exact age depends
+// on when the test runs.
+var relativeAgeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d+[dhms](?:\d+[dhms])* (?:ago|from now)`)
+	return re.ReplaceAll(b, []byte("<RELATIVE_AGE>"))
 }
 
 func TestDiff(t *testing.T) {
@@ -280,6 +290,37 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
+		// R6.1: -r with syslog timestamp produces relative age string.
+		{
+			Name:      "R6.1_relative_syslog",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  5 14:30:00 some log message\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R6.2: -r with RFC 2822 timestamp (matched via syslog-style regex by reference).
+		{
+			Name:      "R6.2_relative_rfc2822",
+			Args:      []string{"-r"},
+			Stdin:     []byte("16 Jun 94 07:29:35 GMT\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R6.3: -r with custom format reformats syslog timestamp.
+		{
+			Name:      "R6.3_relative_with_format",
+			Args:      []string{"-r", "%Y-%m-%d %H:%M:%S"},
+			Stdin:     []byte("Jan  5 14:30:00 logged event\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R6.4: -r with no recognizable timestamp passes through unchanged.
+		{
+			Name:      "R6.4_relative_no_timestamp",
+			Args:      []string{"-r"},
+			Stdin:     []byte("no timestamp here\n"),
+			Env:       []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -315,4 +356,139 @@ func TestR3_4_MutualExclusion(t *testing.T) {
 	if !bytes.Contains(stderr.Bytes(), []byte("mutually exclusive")) {
 		t.Errorf("expected stderr to mention 'mutually exclusive', got: %q", stderr.String())
 	}
+}
+
+// TestR6_5_MutualExclusion verifies that passing -r with -i or -s prints a
+// usage error to stderr and exits non-zero. R6.5: -r is mutually exclusive
+// with -i and -s.
+func TestR6_5_MutualExclusion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"r_and_i", []string{"-r", "-i"}},
+		{"r_and_s", []string{"-r", "-s"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = bytes.NewReader([]byte("test\n"))
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected non-zero exit code when -r is combined with -i or -s")
+			}
+
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.ExitCode() == 0 {
+				t.Fatal("expected non-zero exit code when -r is combined with -i or -s")
+			}
+
+			if !bytes.Contains(stderr.Bytes(), []byte("mutually exclusive")) {
+				t.Errorf("expected stderr to mention 'mutually exclusive', got: %q", stderr.String())
+			}
+		})
+	}
+}
+
+// TestR6_RelativeMode verifies -r mode behavior directly without requiring the
+// reference binary. R6.1-R6.4.
+func TestR6_RelativeMode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("R6.1_syslog_relative_age", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a timestamp from "now" to get a predictable small relative age.
+		now := time.Now()
+		syslogTs := now.Add(-5 * time.Minute).Format("Jan  2 15:04:05")
+		input := syslogTs + " syslog message\n"
+
+		cmd := exec.Command(goBin, "-r")
+		cmd.Stdin = strings.NewReader(input)
+		cmd.Env = append(cmd.Environ(), "LC_ALL=C")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		output := strings.TrimSpace(string(out))
+		if !strings.Contains(output, "ago") {
+			t.Errorf("expected relative age with 'ago', got: %q", output)
+		}
+		if !strings.Contains(output, "syslog message") {
+			t.Errorf("expected original message preserved, got: %q", output)
+		}
+	})
+
+	t.Run("R6.2_iso8601_recognized", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := exec.Command(goBin, "-r")
+		cmd.Stdin = strings.NewReader("2024-01-05T14:30:00Z event happened\n")
+		cmd.Env = append(cmd.Environ(), "LC_ALL=C")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		output := strings.TrimSpace(string(out))
+		if !strings.Contains(output, "ago") {
+			t.Errorf("expected relative age with 'ago', got: %q", output)
+		}
+		if !strings.Contains(output, "event happened") {
+			t.Errorf("expected original message preserved, got: %q", output)
+		}
+	})
+
+	t.Run("R6.3_format_reformats_timestamp", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := exec.Command(goBin, "-r", "%Y-%m-%d %H:%M:%S")
+		cmd.Stdin = strings.NewReader("2024-01-05T14:30:00Z event\n")
+		cmd.Env = append(cmd.Environ(), "LC_ALL=C")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		output := strings.TrimSpace(string(out))
+		if !strings.Contains(output, "2024-01-05 14:30:00") {
+			t.Errorf("expected reformatted timestamp '2024-01-05 14:30:00', got: %q", output)
+		}
+		if strings.Contains(output, "ago") {
+			t.Errorf("with custom format, should not produce relative age, got: %q", output)
+		}
+	})
+
+	t.Run("R6.4_no_timestamp_passthrough", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := exec.Command(goBin, "-r")
+		cmd.Stdin = strings.NewReader("no timestamp here\n")
+		cmd.Env = append(cmd.Environ(), "LC_ALL=C")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		output := strings.TrimSpace(string(out))
+		if output != "no timestamp here" {
+			t.Errorf("expected passthrough 'no timestamp here', got: %q", output)
+		}
+	})
 }
