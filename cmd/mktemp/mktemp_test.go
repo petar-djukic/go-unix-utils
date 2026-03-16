@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
-// Implements prd036-mktemp R1.1-R1.4 test coverage.
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.3 test coverage.
 package main
 
 import (
@@ -64,6 +64,20 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
 		},
+		// R3.3: suffix containing a slash exits 1.
+		{
+			Name:      "suffix_with_slash",
+			Args:      []string{"--suffix=/bad", "tmp.XXX"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
+		// R3.1: --tmpdir with non-existent directory exits 1.
+		{
+			Name:      "tmpdir_nonexistent",
+			Args:      []string{"--tmpdir=/nonexistent/dir/for/mktemp"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeStderrContent},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -88,6 +102,7 @@ func TestDiffCreation(t *testing.T) {
 		useTMPDIR   bool           // if true, set TMPDIR to workDir; output is absolute
 		pattern     *regexp.Regexp // pattern the output path must match
 		permissions os.FileMode    // expected file permissions
+		isDir       bool           // true if expecting a directory
 	}{
 		// R1.1, R1.2: default template creates file in TMPDIR.
 		{
@@ -110,6 +125,38 @@ func TestDiffCreation(t *testing.T) {
 			args:        []string{"test.XXX"},
 			pattern:     regexp.MustCompile(`test\.[A-Za-z0-9]{3}$`),
 			permissions: 0o600,
+		},
+		// R2.1-R2.3: -d creates a directory in TMPDIR with mode 0700.
+		{
+			name:        "directory_flag",
+			args:        []string{"-d"},
+			useTMPDIR:   true,
+			pattern:     regexp.MustCompile(`/tmp\.[A-Za-z0-9]{10}$`),
+			permissions: 0o700,
+			isDir:       true,
+		},
+		// R2.1: -d with custom template.
+		{
+			name:        "directory_custom_template",
+			args:        []string{"-d", "mydir.XXXXXX"},
+			pattern:     regexp.MustCompile(`mydir\.[A-Za-z0-9]{6}$`),
+			permissions: 0o700,
+			isDir:       true,
+		},
+		// R3.3: --suffix appends after random characters.
+		{
+			name:        "suffix_flag",
+			args:        []string{"--suffix=.txt", "tmp.XXX"},
+			pattern:     regexp.MustCompile(`tmp\.[A-Za-z0-9]{3}\.txt$`),
+			permissions: 0o600,
+		},
+		// R3.3: --suffix with -d.
+		{
+			name:        "suffix_with_directory",
+			args:        []string{"-d", "--suffix=.d", "tmpd.XXX"},
+			pattern:     regexp.MustCompile(`tmpd\.[A-Za-z0-9]{3}\.d$`),
+			permissions: 0o700,
+			isDir:       true,
 		},
 	}
 
@@ -152,28 +199,141 @@ func TestDiffCreation(t *testing.T) {
 			refResolved := resolvePath(workDir, refPath)
 			goResolved := resolvePath(workDir, goPath)
 
-			// R4.2: file must exist after creation.
+			// R4.2: file/directory must exist after creation.
 			if _, err := os.Stat(goResolved); err != nil {
-				t.Errorf("go created file does not exist: %v", err)
+				t.Errorf("go created path does not exist: %v", err)
 			}
 			if _, err := os.Stat(refResolved); err != nil {
-				t.Errorf("ref created file does not exist: %v", err)
+				t.Errorf("ref created path does not exist: %v", err)
 			}
 
-			// R4.2: file permissions must match specification.
+			// R4.2: verify directory vs file type matches expectation.
 			goInfo, err := os.Stat(goResolved)
 			if err == nil {
+				if tc.isDir && !goInfo.IsDir() {
+					t.Errorf("go output is not a directory")
+				}
+				if !tc.isDir && goInfo.IsDir() {
+					t.Errorf("go output is a directory, expected file")
+				}
+				// R4.2: permissions must match specification.
 				gotPerm := goInfo.Mode().Perm()
 				if gotPerm != tc.permissions {
-					t.Errorf("go file permissions: got %04o, want %04o", gotPerm, tc.permissions)
+					t.Errorf("go permissions: got %04o, want %04o", gotPerm, tc.permissions)
 				}
 			}
 
-			// Clean up created files.
+			// Clean up created files/directories.
 			os.Remove(refResolved) // best-effort cleanup
 			os.Remove(goResolved)  // best-effort cleanup
 		})
 	}
+}
+
+// TestTmpdirFlag verifies R3.1-R3.2: --tmpdir and -p control the parent directory.
+func TestTmpdirFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("tmpdir_explicit_dir", func(t *testing.T) {
+		t.Parallel()
+		parentDir := t.TempDir()
+
+		env := buildTestEnv()
+		out, exitCode := runMktempInDir(t, goBin, []string{"--tmpdir=" + parentDir, "app.XXXXXX"}, env, t.TempDir())
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", exitCode, out)
+		}
+
+		path := strings.TrimSpace(string(out))
+
+		// R3.1: must be in the specified parent directory.
+		if filepath.Dir(path) != parentDir {
+			t.Errorf("expected file in %s, got dir %s", parentDir, filepath.Dir(path))
+		}
+
+		// File must exist.
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("created file does not exist: %v", err)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
+
+	t.Run("p_short_flag", func(t *testing.T) {
+		t.Parallel()
+		parentDir := t.TempDir()
+
+		env := buildTestEnv()
+		out, exitCode := runMktempInDir(t, goBin, []string{"-p", parentDir, "short.XXXXXX"}, env, t.TempDir())
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", exitCode, out)
+		}
+
+		path := strings.TrimSpace(string(out))
+		if filepath.Dir(path) != parentDir {
+			t.Errorf("expected file in %s, got dir %s", parentDir, filepath.Dir(path))
+		}
+
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("created file does not exist: %v", err)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
+
+	t.Run("tmpdir_no_value_uses_TMPDIR", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		env := buildTestEnvWithTMPDIR(tmpDir)
+		out, exitCode := runMktempInDir(t, goBin, []string{"--tmpdir", "val.XXXXXX"}, env, t.TempDir())
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", exitCode, out)
+		}
+
+		path := strings.TrimSpace(string(out))
+		// R3.2: --tmpdir without value uses TMPDIR.
+		if filepath.Dir(path) != tmpDir {
+			t.Errorf("expected file in %s, got dir %s", tmpDir, filepath.Dir(path))
+		}
+
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("created file does not exist: %v", err)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
+
+	t.Run("tmpdir_with_directory_flag", func(t *testing.T) {
+		t.Parallel()
+		parentDir := t.TempDir()
+
+		env := buildTestEnv()
+		out, exitCode := runMktempInDir(t, goBin, []string{"-d", "--tmpdir=" + parentDir, "dir.XXXXXX"}, env, t.TempDir())
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", exitCode, out)
+		}
+
+		path := strings.TrimSpace(string(out))
+		if filepath.Dir(path) != parentDir {
+			t.Errorf("expected dir in %s, got dir %s", parentDir, filepath.Dir(path))
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("created directory does not exist: %v", err)
+		}
+		if !info.IsDir() {
+			t.Errorf("expected directory, got file")
+		}
+		if got := info.Mode().Perm(); got != 0o700 {
+			t.Errorf("expected permissions 0700, got %04o", got)
+		}
+
+		os.Remove(path) // best-effort cleanup
+	})
 }
 
 // TestDefaultCreation verifies R1.1: mktemp with no arguments creates a file

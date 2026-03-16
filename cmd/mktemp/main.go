@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R1.1-R1.4:
-// cmd/mktemp creates temporary files with unique names and prints the path
-// to stdout. Supports custom templates, --version, and --help.
+// Implements prd036-mktemp R1.1-R1.5, R2.1-R2.3, R3.1-R3.3:
+// cmd/mktemp creates temporary files or directories with unique names and
+// prints the path to stdout. Supports custom templates, -d for directory
+// creation, --tmpdir/-p for parent directory control, --suffix for appending
+// a suffix after the random characters, --version, and --help.
 // Installs SIGPIPE handler for clean exit on broken pipe.
 package main
 
@@ -36,6 +38,10 @@ const randChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345678
 type mktempOptions struct {
 	showVersion bool
 	showHelp    bool
+	directory   bool   // R2.1: -d/--directory creates a directory instead of a file.
+	tmpdir      string // R3.1: --tmpdir=DIR or -p DIR overrides parent directory.
+	tmpdirSet   bool   // True when --tmpdir or -p was explicitly provided.
+	suffix      string // R3.3: --suffix=SUFF appended after random characters.
 }
 
 func main() {
@@ -53,6 +59,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// R3.3: suffix must not contain a directory separator.
+	if strings.Contains(opts.suffix, "/") {
+		fmt.Fprintf(os.Stderr, "%s: invalid suffix '%s', contains directory separator\n", progName, opts.suffix)
+		os.Exit(1)
+	}
+
 	// R1.1, R1.2: use default template in TMPDIR when no template provided.
 	// R1.3: when a template is provided, use it as-is (may be relative to cwd).
 	useDefaultTemplate := template == ""
@@ -60,7 +72,7 @@ func main() {
 		template = defaultTemplate
 	}
 
-	// R1.3: validate template has at least 3 trailing Xs.
+	// R1.5: validate template has at least 3 trailing Xs (before suffix is appended).
 	trailingXs := countTrailingXs(template)
 	if trailingXs < minTrailingXs {
 		fmt.Fprintf(os.Stderr, "%s: too few X's in template '%s'\n", progName, template)
@@ -69,7 +81,18 @@ func main() {
 
 	// Determine the parent directory and filename template.
 	var dir, fileTemplate string
-	if strings.Contains(template, "/") {
+	if opts.tmpdirSet {
+		// R3.1: --tmpdir=DIR or -p DIR overrides parent directory.
+		// R3.2: --tmpdir without value uses TMPDIR or /tmp.
+		dir = opts.tmpdir
+		if dir == "" {
+			dir = os.Getenv("TMPDIR")
+			if dir == "" {
+				dir = "/tmp"
+			}
+		}
+		fileTemplate = template
+	} else if strings.Contains(template, "/") {
 		// Template contains a directory component.
 		dir = template[:strings.LastIndex(template, "/")]
 		fileTemplate = template[strings.LastIndex(template, "/")+1:]
@@ -86,17 +109,25 @@ func main() {
 		fileTemplate = template
 	}
 
-	// Generate the temporary file name and create it.
+	// Generate the temporary name and create the file or directory.
 	trailingXs = countTrailingXs(fileTemplate)
-	path, err := createTempFile(dir, fileTemplate, trailingXs)
-	if err != nil {
-		// R1.4: exit 1 with diagnostic on stderr.
-		fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", progName, template, err)
-		os.Exit(1)
+	if opts.directory {
+		// R2.1-R2.3: create a directory with mode 0700.
+		path, err := createTempDir(dir, fileTemplate, trailingXs, opts.suffix)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: failed to create directory via template '%s': %v\n", progName, template, err)
+			os.Exit(1)
+		}
+		fmt.Println(path)
+	} else {
+		// R1.1-R1.5: create a file with mode 0600.
+		path, err := createTempFile(dir, fileTemplate, trailingXs, opts.suffix)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: failed to create file via template '%s': %v\n", progName, template, err)
+			os.Exit(1)
+		}
+		fmt.Println(path)
 	}
-
-	// R1.1: print the absolute path to stdout.
-	fmt.Println(path)
 }
 
 // parseArgs separates flags from the optional template argument.
@@ -105,7 +136,8 @@ func parseArgs(args []string) (*mktempOptions, string) {
 	var template string
 	flagsDone := false
 
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if flagsDone {
 			template = arg
 			continue
@@ -116,11 +148,49 @@ func parseArgs(args []string) (*mktempOptions, string) {
 		}
 		// Long options.
 		if strings.HasPrefix(arg, "--") {
-			switch arg {
-			case "--version":
+			switch {
+			case arg == "--version":
 				opts.showVersion = true
-			case "--help":
+			case arg == "--help":
 				opts.showHelp = true
+			case arg == "--directory":
+				opts.directory = true
+			case arg == "--tmpdir":
+				// R3.2: --tmpdir without =DIR uses TMPDIR or /tmp.
+				opts.tmpdirSet = true
+				opts.tmpdir = ""
+			case strings.HasPrefix(arg, "--tmpdir="):
+				// R3.1: --tmpdir=DIR uses DIR as parent.
+				opts.tmpdirSet = true
+				opts.tmpdir = arg[len("--tmpdir="):]
+			case strings.HasPrefix(arg, "--suffix="):
+				// R3.3: --suffix=SUFF appended after random chars.
+				opts.suffix = arg[len("--suffix="):]
+			}
+			continue
+		}
+		// Short options.
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			for j := 1; j < len(arg); j++ {
+				switch arg[j] {
+				case 'd':
+					opts.directory = true
+				case 'p':
+					// -p DIR: next argument or rest of current arg is the directory.
+					rest := arg[j+1:]
+					if rest != "" {
+						opts.tmpdirSet = true
+						opts.tmpdir = rest
+					} else if i+1 < len(args) {
+						i++
+						opts.tmpdirSet = true
+						opts.tmpdir = args[i]
+					} else {
+						opts.tmpdirSet = true
+						opts.tmpdir = ""
+					}
+					j = len(arg) // stop processing this arg
+				}
 			}
 			continue
 		}
@@ -145,18 +215,19 @@ func countTrailingXs(template string) int {
 
 // createTempFile generates a unique filename from the template and creates the
 // file with mode 0600 in the specified directory.
-// R1.4: returns an error if file creation fails.
-func createTempFile(dir, template string, trailingXs int) (string, error) {
+// R1.4: file permission mode 0600. R1.5: returns error on failure.
+func createTempFile(dir, template string, trailingXs int, suffix string) (string, error) {
 	prefix := template[:len(template)-trailingXs]
 
 	// Try up to 100 times to avoid collisions.
 	for range 100 {
-		suffix, err := randomString(trailingXs)
+		randStr, err := randomString(trailingXs)
 		if err != nil {
 			return "", fmt.Errorf("generating random characters: %w", err)
 		}
 
-		name := prefix + suffix
+		// R3.3: append suffix after the random characters.
+		name := prefix + randStr + suffix
 		path := dir + "/" + name
 
 		// R1.4: create file with mode 0600 (owner read-write only).
@@ -170,6 +241,36 @@ func createTempFile(dir, template string, trailingXs int) (string, error) {
 		}
 		// best-effort close; file is created, error ignored
 		f.Close()
+		return path, nil
+	}
+	return "", fmt.Errorf("exhausted attempts to create unique name")
+}
+
+// createTempDir generates a unique directory name from the template and creates
+// the directory with mode 0700 in the specified parent directory.
+// R2.1: creates directory. R2.2: permission mode 0700. R2.3: returns path.
+func createTempDir(dir, template string, trailingXs int, suffix string) (string, error) {
+	prefix := template[:len(template)-trailingXs]
+
+	// Try up to 100 times to avoid collisions.
+	for range 100 {
+		randStr, err := randomString(trailingXs)
+		if err != nil {
+			return "", fmt.Errorf("generating random characters: %w", err)
+		}
+
+		// R3.3: append suffix after the random characters.
+		name := prefix + randStr + suffix
+		path := dir + "/" + name
+
+		// R2.2: create directory with mode 0700 (owner read-write-execute only).
+		err = os.Mkdir(path, 0o700)
+		if err != nil {
+			if os.IsExist(err) {
+				continue // collision, retry
+			}
+			return "", err
+		}
 		return path, nil
 	}
 	return "", fmt.Errorf("exhausted attempts to create unique name")
