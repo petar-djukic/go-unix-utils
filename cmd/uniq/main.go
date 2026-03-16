@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd028-uniq R1.1-R1.4, R2.1-R2.4: cmd/uniq reads input line by
-// line and suppresses adjacent duplicate lines, writing unique lines to stdout
-// or an output file. Supports counting (-c), duplicate-only (-d), unique-only
-// (-u), and all-repeated (-D) output modes. Reads from stdin when no file
-// argument is given, or from a named file. A second positional argument
-// specifies the output file. Installs SIGPIPE handler per shared protocol.
+// Implements prd028-uniq R1.1-R1.4, R2.1-R2.4, R3.1-R3.4: cmd/uniq reads
+// input line by line and suppresses adjacent duplicate lines, writing unique
+// lines to stdout or an output file. Supports counting (-c), duplicate-only
+// (-d), unique-only (-u), and all-repeated (-D) output modes. Supports field
+// skipping (-f), character skipping (-s), check-chars (-w), and case-insensitive
+// comparison (-i). Reads from stdin when no file argument is given, or from a
+// named file. A second positional argument specifies the output file. Installs
+// SIGPIPE handler per shared protocol.
 package main
 
 import (
@@ -14,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -24,13 +27,19 @@ import (
 // progName is the name used in error messages to match GNU uniq format.
 const progName = "uniq"
 
-// options holds the parsed command-line flags for output selection.
+// options holds the parsed command-line flags for output selection and
+// comparison control.
 // R2.1-R2.4: counting and duplicate filtering modes.
+// R3.1-R3.4: field/character skip, check-chars, and case-insensitive options.
 type options struct {
 	count       bool   // -c/--count: prefix lines with occurrence count
 	repeated    bool   // -d/--repeated: print only duplicate lines (one per group)
 	unique      bool   // -u/--unique: print only unique lines
 	allRepeated string // -D/--all-repeated: print all duplicate lines; "none", "prepend", or "separate"
+	skipFields  int    // -f N/--skip-fields=N: skip first N fields before comparing
+	skipChars   int    // -s N/--skip-chars=N: skip first N characters (after field skip)
+	checkChars  int    // -w N/--check-chars=N: compare at most N characters (0 = unlimited)
+	ignoreCase  bool   // -i/--ignore-case: fold case when comparing
 }
 
 func main() {
@@ -60,7 +69,11 @@ func main() {
 					"      --all-repeated[=METHOD]  like -D, but allow separating groups\n"+
 					"                                 with an empty line;\n"+
 					"                                 METHOD={none(default),prepend,separate}\n"+
+					"  -f, --skip-fields=N   avoid comparing the first N fields\n"+
+					"  -i, --ignore-case     ignore differences in case when comparing\n"+
+					"  -s, --skip-chars=N    avoid comparing the first N characters\n"+
 					"  -u, --unique          only print unique lines\n"+
+					"  -w, --check-chars=N   compare no more than N characters in lines\n"+
 					"      --help     display this help and exit\n"+
 					"      --version  output version information and exit\n",
 				progName,
@@ -104,6 +117,42 @@ func main() {
 			continue
 		}
 
+		// R3.4: -i/--ignore-case.
+		if arg == "--ignore-case" {
+			opts.ignoreCase = true
+			continue
+		}
+		// R3.1: --skip-fields=N.
+		if strings.HasPrefix(arg, "--skip-fields=") {
+			n, perr := strconv.Atoi(arg[len("--skip-fields="):])
+			if perr != nil || n < 0 {
+				fmt.Fprintf(os.Stderr, "%s: invalid number of fields to skip: '%s'\n", progName, arg[len("--skip-fields="):])
+				os.Exit(1)
+			}
+			opts.skipFields = n
+			continue
+		}
+		// R3.2: --skip-chars=N.
+		if strings.HasPrefix(arg, "--skip-chars=") {
+			n, perr := strconv.Atoi(arg[len("--skip-chars="):])
+			if perr != nil || n < 0 {
+				fmt.Fprintf(os.Stderr, "%s: invalid number of bytes to skip: '%s'\n", progName, arg[len("--skip-chars="):])
+				os.Exit(1)
+			}
+			opts.skipChars = n
+			continue
+		}
+		// R3.3: --check-chars=N.
+		if strings.HasPrefix(arg, "--check-chars=") {
+			n, perr := strconv.Atoi(arg[len("--check-chars="):])
+			if perr != nil || n < 0 {
+				fmt.Fprintf(os.Stderr, "%s: invalid number of bytes to compare: '%s'\n", progName, arg[len("--check-chars="):])
+				os.Exit(1)
+			}
+			opts.checkChars = n
+			continue
+		}
+
 		// Unrecognized long options.
 		if strings.HasPrefix(arg, "--") {
 			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
@@ -116,7 +165,7 @@ func main() {
 			continue
 		}
 
-		// Short flags: -c, -d, -u, -D and combinations.
+		// Short flags: -c, -d, -u, -D, -f, -s, -w, -i and combinations.
 		flags := arg[1:]
 		for j := 0; j < len(flags); j++ {
 			switch flags[j] {
@@ -126,9 +175,66 @@ func main() {
 				opts.repeated = true
 			case 'u':
 				opts.unique = true
+			case 'i':
+				// R3.4: case-insensitive comparison.
+				opts.ignoreCase = true
 			case 'D':
 				// R2.4: -D defaults to "none" delimiter method.
 				opts.allRepeated = "none"
+			case 'f':
+				// R3.1: -f N skip fields. Value is rest of this arg or next arg.
+				val := flags[j+1:]
+				if len(val) == 0 {
+					i++
+					if i >= len(args) {
+						fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 'f'\n", progName)
+						os.Exit(1)
+					}
+					val = args[i]
+				}
+				n, perr := strconv.Atoi(val)
+				if perr != nil || n < 0 {
+					fmt.Fprintf(os.Stderr, "%s: invalid number of fields to skip: '%s'\n", progName, val)
+					os.Exit(1)
+				}
+				opts.skipFields = n
+				j = len(flags) // consumed rest of flag cluster
+			case 's':
+				// R3.2: -s N skip characters. Value is rest of this arg or next arg.
+				val := flags[j+1:]
+				if len(val) == 0 {
+					i++
+					if i >= len(args) {
+						fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 's'\n", progName)
+						os.Exit(1)
+					}
+					val = args[i]
+				}
+				n, perr := strconv.Atoi(val)
+				if perr != nil || n < 0 {
+					fmt.Fprintf(os.Stderr, "%s: invalid number of bytes to skip: '%s'\n", progName, val)
+					os.Exit(1)
+				}
+				opts.skipChars = n
+				j = len(flags) // consumed rest of flag cluster
+			case 'w':
+				// R3.3: -w N check-chars. Value is rest of this arg or next arg.
+				val := flags[j+1:]
+				if len(val) == 0 {
+					i++
+					if i >= len(args) {
+						fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 'w'\n", progName)
+						os.Exit(1)
+					}
+					val = args[i]
+				}
+				n, perr := strconv.Atoi(val)
+				if perr != nil || n < 0 {
+					fmt.Fprintf(os.Stderr, "%s: invalid number of bytes to compare: '%s'\n", progName, val)
+					os.Exit(1)
+				}
+				opts.checkChars = n
+				j = len(flags) // consumed rest of flag cluster
 			default:
 				fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, flags[j])
 				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
@@ -193,12 +299,49 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// compareKey extracts the comparison substring from a line after applying
+// field skip (-f), character skip (-s), and check-chars (-w) options, then
+// optionally folds case (-i).
+// R3.1: skip N fields. R3.2: skip N chars. R3.3: limit to N chars. R3.4: fold case.
+func compareKey(line string, opts options) string {
+	s := line
+	// R3.1: skip fields (whitespace-delimited).
+	for f := 0; f < opts.skipFields && len(s) > 0; f++ {
+		// Skip leading whitespace before the field.
+		for len(s) > 0 && (s[0] == ' ' || s[0] == '\t') {
+			s = s[1:]
+		}
+		// Skip the non-whitespace field content.
+		for len(s) > 0 && s[0] != ' ' && s[0] != '\t' {
+			s = s[1:]
+		}
+	}
+	// R3.2: skip characters (after field skip).
+	if opts.skipChars > 0 {
+		if opts.skipChars >= len(s) {
+			s = ""
+		} else {
+			s = s[opts.skipChars:]
+		}
+	}
+	// R3.3: limit comparison to N characters.
+	if opts.checkChars > 0 && opts.checkChars < len(s) {
+		s = s[:opts.checkChars]
+	}
+	// R3.4: fold case for case-insensitive comparison.
+	if opts.ignoreCase {
+		s = strings.ToUpper(s)
+	}
+	return s
+}
+
 // uniqLines reads from r and writes deduplicated adjacent lines to w,
 // applying the output selection modes from opts.
 // R1.1: suppresses all but the first occurrence of any run of identical
 // adjacent lines. R1.2: lines appearing only once are written through.
 // R1.4: comparison is case-sensitive and includes the full line content.
 // R2.1-R2.4: counting and filtering via opts.
+// R3.1-R3.4: comparison key extraction via compareKey.
 func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 	br := bufio.NewReader(r)
 
@@ -208,6 +351,7 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 	}
 
 	var prevLine string
+	var prevKey string
 	hasPrev := false
 	count := 0
 
@@ -219,11 +363,13 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 				content = line[:len(line)-1]
 			}
 
+			key := compareKey(content, opts)
 			if !hasPrev {
 				prevLine = content
+				prevKey = key
 				hasPrev = true
 				count = 1
-			} else if content == prevLine {
+			} else if key == prevKey {
 				count++
 			} else {
 				if shouldOutput(count, opts) {
@@ -232,6 +378,7 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 					}
 				}
 				prevLine = content
+				prevKey = key
 				count = 1
 			}
 		}
@@ -253,14 +400,16 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 
 // uniqAllRepeated handles -D/--all-repeated mode, printing every line in
 // duplicate groups. R2.4: the delimiter method controls blank line insertion.
+// R3.1-R3.4: uses compareKey for line comparison.
 func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
-	var prevLine string
+	// In -D mode we need to keep all lines in the current group, not just count.
+	var group []string
+	var prevKey string
 	hasPrev := false
-	count := 0
 	firstDupGroup := true
 
 	flushGroup := func() error {
-		if count <= 1 {
+		if len(group) <= 1 {
 			return nil
 		}
 		// R2.4: delimiter method controls blank lines between groups.
@@ -270,8 +419,8 @@ func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
 			}
 		}
 		firstDupGroup = false
-		for i := 0; i < count; i++ {
-			if _, err := w.WriteString(prevLine); err != nil {
+		for _, l := range group {
+			if _, err := w.WriteString(l); err != nil {
 				return err
 			}
 			if err := w.WriteByte('\n'); err != nil {
@@ -289,18 +438,19 @@ func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
 				content = line[:len(line)-1]
 			}
 
+			key := compareKey(content, opts)
 			if !hasPrev {
-				prevLine = content
+				group = []string{content}
+				prevKey = key
 				hasPrev = true
-				count = 1
-			} else if content == prevLine {
-				count++
+			} else if key == prevKey {
+				group = append(group, content)
 			} else {
 				if ferr := flushGroup(); ferr != nil {
 					return 1
 				}
-				prevLine = content
-				count = 1
+				group = []string{content}
+				prevKey = key
 			}
 		}
 		if err != nil {

@@ -6,6 +6,8 @@
 // stdin/file input, output file, and exit code behavior.
 // Covers prd028-uniq R2.1-R2.4: counting (-c), duplicate filtering (-d, -u),
 // and all-repeated (-D) output modes.
+// Covers prd028-uniq R3.1-R3.4: field skip (-f), char skip (-s), check-chars
+// (-w), and case-insensitive (-i) comparison options.
 package main
 
 import (
@@ -447,6 +449,230 @@ func TestOutputFile(t *testing.T) {
 	if string(goData) != string(refData) {
 		t.Errorf("output file mismatch:\ngo:  %q\nref: %q", goData, refData)
 	}
+}
+
+// TestDiffSkipFields tests R3.1: -f N skips N whitespace-delimited fields.
+func TestDiffSkipFields(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.1: skip 1 field — lines differ only in first field.
+		{
+			Name:  "skip_fields_1",
+			Args:  []string{"-f", "1"},
+			Stdin: []byte("a foo\nb foo\nc bar\n"),
+		},
+		// R3.1: skip 2 fields.
+		{
+			Name:  "skip_fields_2",
+			Args:  []string{"-f", "2"},
+			Stdin: []byte("a b same\nc d same\ne f diff\n"),
+		},
+		// R3.1: skip more fields than exist — all lines compare as empty.
+		{
+			Name:  "skip_fields_more_than_exist",
+			Args:  []string{"-f", "10"},
+			Stdin: []byte("a b\nc d\ne f\n"),
+		},
+		// R3.1: long form --skip-fields=N.
+		{
+			Name:  "skip_fields_long",
+			Args:  []string{"--skip-fields=1"},
+			Stdin: []byte("x same\ny same\nz diff\n"),
+		},
+		// R3.1: skip fields with count.
+		{
+			Name:  "skip_fields_with_count",
+			Args:  []string{"-f", "1", "-c"},
+			Stdin: []byte("a foo\nb foo\nc bar\n"),
+		},
+		// R3.1: fields separated by tabs.
+		{
+			Name:  "skip_fields_tabs",
+			Args:  []string{"-f", "1"},
+			Stdin: []byte("a\tfoo\nb\tfoo\nc\tbar\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSkipChars tests R3.2: -s N skips N characters after field skip.
+func TestDiffSkipChars(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.2: skip 1 character.
+		{
+			Name:  "skip_chars_1",
+			Args:  []string{"-s", "1"},
+			Stdin: []byte("aXX\nbXX\ncYY\n"),
+		},
+		// R3.2: skip more characters than line length.
+		{
+			Name:  "skip_chars_more_than_length",
+			Args:  []string{"-s", "100"},
+			Stdin: []byte("abc\ndef\n"),
+		},
+		// R3.2: long form --skip-chars=N.
+		{
+			Name:  "skip_chars_long",
+			Args:  []string{"--skip-chars=2"},
+			Stdin: []byte("xxfoo\nyyfoo\nzzbar\n"),
+		},
+		// R3.2: combine -f and -s: skip 1 field then 2 chars.
+		{
+			Name:  "skip_fields_and_chars",
+			Args:  []string{"-f", "1", "-s", "2"},
+			Stdin: []byte("a xxfoo\nb yyfoo\nc zzbar\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCheckChars tests R3.3: -w N compares at most N characters.
+func TestDiffCheckChars(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.3: compare only first 3 characters.
+		{
+			Name:  "check_chars_3",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("foobar\nfoobaz\nbarqux\n"),
+		},
+		// R3.3: check-chars larger than line — same as no limit.
+		{
+			Name:  "check_chars_large",
+			Args:  []string{"-w", "100"},
+			Stdin: []byte("abc\nabc\ndef\n"),
+		},
+		// R3.3: long form --check-chars=N.
+		{
+			Name:  "check_chars_long",
+			Args:  []string{"--check-chars=2"},
+			Stdin: []byte("ab1\nab2\ncd3\n"),
+		},
+		// R3.3: -w with -c.
+		{
+			Name:  "check_chars_with_count",
+			Args:  []string{"-w", "3", "-c"},
+			Stdin: []byte("foobar\nfoobaz\nbarqux\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffIgnoreCase tests R3.4: -i case-insensitive comparison.
+func TestDiffIgnoreCase(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.4: case folding treats A and a as same.
+		{
+			Name:  "ignore_case_basic",
+			Args:  []string{"-i"},
+			Stdin: []byte("A\na\nb\n"),
+		},
+		// R3.4: mixed case runs.
+		{
+			Name:  "ignore_case_mixed",
+			Args:  []string{"-i"},
+			Stdin: []byte("Hello\nhello\nHELLO\nWorld\n"),
+		},
+		// R3.4: long form --ignore-case.
+		{
+			Name:  "ignore_case_long",
+			Args:  []string{"--ignore-case"},
+			Stdin: []byte("FOO\nfoo\nbar\n"),
+		},
+		// R3.4: -i with -c.
+		{
+			Name:  "ignore_case_with_count",
+			Args:  []string{"-i", "-c"},
+			Stdin: []byte("A\na\nB\n"),
+		},
+		// R3.4: -i with -d — only case-insensitive duplicates.
+		{
+			Name:  "ignore_case_with_repeated",
+			Args:  []string{"-i", "-d"},
+			Stdin: []byte("A\na\nb\nC\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCombinedComparisonFlags tests AC7: combined comparison flags work together.
+func TestDiffCombinedComparisonFlags(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// AC7: -f 1 -s 2 -w 5 -i -c all combined.
+		{
+			Name:  "combined_all_comparison",
+			Args:  []string{"-f", "1", "-s", "2", "-w", "5", "-i", "-c"},
+			Stdin: []byte("x aaHELLOworld\ny bbhelloearth\nz ccDIFFERENT\n"),
+		},
+		// Combined: -f 1 -i.
+		{
+			Name:  "skip_fields_ignore_case",
+			Args:  []string{"-f", "1", "-i"},
+			Stdin: []byte("a FOO\nb foo\nc bar\n"),
+		},
+		// Combined: -s 1 -w 3.
+		{
+			Name:  "skip_chars_check_chars",
+			Args:  []string{"-s", "1", "-w", "3"},
+			Stdin: []byte("xfoobar\nyfooXXX\nzbarYYY\n"),
+		},
+		// Combined: -f 1 -w 3 -d — only duplicates with field skip and check chars.
+		{
+			Name:  "skip_fields_check_chars_repeated",
+			Args:  []string{"-f", "1", "-w", "3", "-d"},
+			Stdin: []byte("a foobar\nb foobaz\nc barqux\n"),
+		},
+		// Combined: -i with -D.
+		{
+			Name:  "ignore_case_all_repeated",
+			Args:  []string{"-i", "-D"},
+			Stdin: []byte("A\na\nb\nC\nc\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 // TestFileNotFound tests R1.4: exit non-zero when input file does not exist.
