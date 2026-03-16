@@ -127,7 +127,9 @@ func main() {
 	if multipleMode {
 		// R2.1: multiple-argument mode. Each operand is a NAME.
 		if len(operands) == 0 {
-			fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName) //nolint:errcheck // best-effort diagnostic
+			// R3.3, R3.4: exit 1 with diagnostic to stderr.
+			fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)                            //nolint:errcheck // best-effort diagnostic
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
 			os.Exit(1)
 		}
 		for _, name := range operands {
@@ -140,13 +142,15 @@ func main() {
 		}
 	} else {
 		// Single-argument mode.
-		// R3.3, R3.4: exit 1 on incorrect argument count.
+		// R3.3, R3.4: exit 1 on incorrect argument count with diagnostic to stderr.
 		if len(operands) == 0 {
-			fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName) //nolint:errcheck // best-effort diagnostic
+			fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)                            //nolint:errcheck // best-effort diagnostic
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
 			os.Exit(1)
 		}
 		if len(operands) > 2 {
-			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", progName, operands[2]) //nolint:errcheck // best-effort diagnostic
+			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", progName, operands[2])            //nolint:errcheck // best-effort diagnostic
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
 			os.Exit(1)
 		}
 
