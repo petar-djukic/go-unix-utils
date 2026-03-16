@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/head against ghead (GNU coreutils).
-// Implements prd018-head R1.1-R1.5, R2.1-R2.3 test coverage.
+// Implements prd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.5, R4.1-R4.4 test coverage.
 package main
 
 import (
@@ -259,6 +259,21 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+
+		// R3.1-R3.4/AC1: negative line count on a file.
+		{
+			Name:    "R3.1_negative_n_file",
+			Args:    []string{"-n", "-5", filepath.Join(tmpDir, "twenty.txt")},
+			WorkDir: tmpDir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		// R3.4/AC2: negative byte count on a file.
+		{
+			Name:    "R3.4_negative_c_file",
+			Args:    []string{"-c", "-5", filepath.Join(tmpDir, "twenty.txt")},
+			WorkDir: tmpDir,
+			Env:     []string{"LC_ALL=C"},
 		},
 
 		// R1.3: -n with negative on multi-file.

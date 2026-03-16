@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd018-head R1.1-R1.5, R2.1-R2.3: cmd/head prints the first N
-// lines or bytes of each input file. Defaults to 10 lines. Supports -n
-// (line count), -c (byte count), negative counts (all but last N), multi-file
-// headers, multiplier suffixes (b, K/KiB, M/MiB, G/GiB), and stdin input.
-// Installs SIGPIPE handler per ARCHITECTURE.yaml.
+// Implements prd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.5, R4.1-R4.4:
+// cmd/head prints the first N lines or bytes of each input file. Defaults to
+// 10 lines. Supports -n (line count), -c (byte count), negative counts (all
+// but last N), multi-file headers with -q/-v control, multiplier suffixes
+// (b, K/KiB, M/MiB, G/GiB), stdin input, error diagnostics for unreadable
+// files, and correct exit codes. Installs SIGPIPE handler per ARCHITECTURE.yaml.
 package main
 
 import (
