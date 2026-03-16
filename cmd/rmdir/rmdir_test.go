@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rmdir against grmdir (GNU coreutils).
-// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3, R3.1-R3.4 test coverage.
+// Implements prd035-rmdir R1.1-R1.4, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -83,6 +83,32 @@ func TestDiff(t *testing.T) {
 		t.Parallel()
 		assertBothExitCode(t, goBin, refBin, []string{"afile"}, 1, func(dir string) {
 			os.WriteFile(filepath.Join(dir, "afile"), []byte("x"), 0o644) //nolint:errcheck // test setup
+		})
+	})
+
+	// R4.2: permission denied — error, exit 1.
+	t.Run("R4.2_permission_denied", func(t *testing.T) {
+		t.Parallel()
+		assertBothExitCode(t, goBin, refBin, []string{"denied"}, 1, func(dir string) {
+			p := filepath.Join(dir, "denied")
+			os.Mkdir(p, 0o755)                //nolint:errcheck // test setup
+			os.Chmod(dir, 0o555)              //nolint:errcheck // test setup
+			t.Cleanup(func() {
+				os.Chmod(dir, 0o755) //nolint:errcheck // restore for cleanup
+			})
+		})
+	})
+
+	// R4.2: --ignore-fail-on-non-empty does NOT suppress permission denied.
+	t.Run("R4.2_ignore_does_not_suppress_permission", func(t *testing.T) {
+		t.Parallel()
+		assertBothExitCode(t, goBin, refBin, []string{"--ignore-fail-on-non-empty", "denied"}, 1, func(dir string) {
+			p := filepath.Join(dir, "denied")
+			os.Mkdir(p, 0o755)                //nolint:errcheck // test setup
+			os.Chmod(dir, 0o555)              //nolint:errcheck // test setup
+			t.Cleanup(func() {
+				os.Chmod(dir, 0o755) //nolint:errcheck // restore for cleanup
+			})
 		})
 	})
 
