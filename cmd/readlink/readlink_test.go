@@ -68,10 +68,25 @@ func TestDiff(t *testing.T) {
 		t.Fatalf("creating dir symlink: %v", err)
 	}
 
+	// Second target file for multi-operand tests.
+	targetFile2 := filepath.Join(tmpDir, "target2.txt")
+	if err := os.WriteFile(targetFile2, []byte("world"), 0o644); err != nil {
+		t.Fatalf("creating target file 2: %v", err)
+	}
+
+	// Second symlink for multi-operand tests.
+	symlinkPath2 := filepath.Join(tmpDir, "link2.txt")
+	if err := os.Symlink(targetFile2, symlinkPath2); err != nil {
+		t.Fatalf("creating symlink 2: %v", err)
+	}
+
 	// D4: normalizer that strips stderr for error message format differences.
 	normalizeStderr := func(b []byte) []byte {
 		return nil
 	}
+
+	// Nonexistent path for error tests.
+	nonexistentPath := filepath.Join(tmpDir, "no_such_file")
 
 	tests := []testutils.DiffTest{
 		// R1.1: read symlink with absolute target.
@@ -131,7 +146,7 @@ func TestDiff(t *testing.T) {
 		// R1.4: -e with nonexistent path exits 1.
 		{
 			Name:      "R1.4_nonexistent_path",
-			Args:      []string{"-e", filepath.Join(tmpDir, "no_such_file")},
+			Args:      []string{"-e", nonexistentPath},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},
@@ -216,6 +231,112 @@ func TestDiff(t *testing.T) {
 			Name:     "R1.3_canonicalize_dir_symlink",
 			Args:     []string{"-f", dirLink},
 			ExitCode: 0,
+		},
+
+		// === New tests for R1.5 (-v/--verbose), R1.6 (-z/--zero), R2.1/R2.2 multi-operand ===
+
+		// R1.5: -v on non-symlink prints error to stderr.
+		{
+			Name:      "R1.5_verbose_non_symlink",
+			Args:      []string{"-v", targetFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R1.5: --verbose long form on non-symlink.
+		{
+			Name:      "R1.5_verbose_long_non_symlink",
+			Args:      []string{"--verbose", targetFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R1.5: -v on nonexistent path prints error to stderr.
+		{
+			Name:      "R1.5_verbose_nonexistent",
+			Args:      []string{"-v", nonexistentPath},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R1.5: -v with valid symlink succeeds normally.
+		{
+			Name:     "R1.5_verbose_valid_symlink",
+			Args:     []string{"-v", symlinkPath},
+			ExitCode: 0,
+		},
+		// R1.6: -z with single symlink uses NUL delimiter.
+		{
+			Name:     "R1.6_zero_single",
+			Args:     []string{"-z", symlinkPath},
+			ExitCode: 0,
+		},
+		// R1.6: --zero long form.
+		{
+			Name:     "R1.6_zero_long_single",
+			Args:     []string{"--zero", symlinkPath},
+			ExitCode: 0,
+		},
+		// R1.6: -z with multiple symlinks separates with NUL.
+		{
+			Name:     "R1.6_zero_multiple",
+			Args:     []string{"-z", symlinkPath, relSymlink},
+			ExitCode: 0,
+		},
+		// R1.6: -z with -f canonicalize mode.
+		{
+			Name:     "R1.6_zero_canonicalize",
+			Args:     []string{"-zf", targetFile, symlinkPath},
+			ExitCode: 0,
+		},
+		// R2.1: three operands processed in order.
+		{
+			Name:     "R2.1_three_symlinks",
+			Args:     []string{symlinkPath, relSymlink, chainLink},
+			ExitCode: 0,
+		},
+		// R2.1: multiple operands with -f mode.
+		{
+			Name:     "R2.1_multiple_canonicalize_three",
+			Args:     []string{"-f", targetFile, symlinkPath, chainLink},
+			ExitCode: 0,
+		},
+		// R2.2: mix of valid and invalid operands — exits 1 but prints valid results.
+		{
+			Name:      "R2.2_mixed_valid_invalid",
+			Args:      []string{symlinkPath, targetFile, relSymlink},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R2.2: mix of valid and invalid with -f (all should resolve).
+		{
+			Name:     "R2.2_mixed_canonicalize",
+			Args:     []string{"-f", symlinkPath, nonexistentPath, targetFile},
+			ExitCode: 0,
+		},
+		// R2.2: multiple operands all invalid.
+		{
+			Name:      "R2.2_all_invalid",
+			Args:      []string{targetFile, subDir},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R1.5+R2.2: -v with mixed valid/invalid — errors printed, valid results output.
+		{
+			Name:      "R1.5_R2.2_verbose_mixed",
+			Args:      []string{"-v", symlinkPath, targetFile, relSymlink},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R1.6+R2.1: -z with three symlinks.
+		{
+			Name:     "R1.6_R2.1_zero_three_symlinks",
+			Args:     []string{"-z", symlinkPath, relSymlink, chainLink},
+			ExitCode: 0,
+		},
+		// Combined -vz flags.
+		{
+			Name:      "R1.5_R1.6_verbose_zero_mixed",
+			Args:      []string{"-vz", symlinkPath, targetFile, relSymlink},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},
 	}
 

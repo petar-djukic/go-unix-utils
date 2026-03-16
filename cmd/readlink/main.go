@@ -4,7 +4,8 @@
 // Implements prd050-readlink R1.1-R1.6, R2.1-R2.2, R3.1-R3.2:
 // cmd/readlink prints the target of a symbolic link or resolves a path to its
 // canonical form via -f, -e, -m canonicalization modes. Supports -n to suppress
-// the trailing newline for single operands.
+// the trailing newline for single operands, -v/--verbose for error reporting,
+// and -z/--zero for NUL-delimited output.
 package main
 
 import (
@@ -30,6 +31,8 @@ func main() {
 		canonicalizeExist   bool // -e
 		canonicalizeMissing bool // -m
 		noNewline           bool // -n
+		verbose             bool // -v R1.5: print error messages to stderr
+		zero                bool // -z R1.6: NUL-delimited output
 		paths               []string
 	)
 
@@ -57,6 +60,12 @@ func main() {
 			case "--no-newline":
 				// R1.6: suppress trailing newline for single operand.
 				noNewline = true
+			case "--verbose":
+				// R1.5: print error messages to stderr.
+				verbose = true
+			case "--zero":
+				// R1.6: NUL-delimited output.
+				zero = true
 			default:
 				// R3.2: unknown long flag.
 				fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)     //nolint:errcheck // best-effort diagnostic
@@ -79,10 +88,16 @@ func main() {
 				case 'n':
 					// R1.6: no trailing newline.
 					noNewline = true
+				case 'v':
+					// R1.5: verbose — print error messages to stderr.
+					verbose = true
+				case 'z':
+					// R1.6: NUL-delimited output.
+					zero = true
 				default:
 					// R3.2: unknown short flag.
-					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, c)     //nolint:errcheck // best-effort diagnostic
-					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck // best-effort diagnostic
+					fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, c)          //nolint:errcheck // best-effort diagnostic
+					fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)  //nolint:errcheck // best-effort diagnostic
 					os.Exit(1)
 				}
 			}
@@ -106,6 +121,12 @@ func main() {
 		noNewline = false
 	}
 
+	// R1.6: determine output delimiter — NUL when -z is set, newline otherwise.
+	delimiter := "\n"
+	if zero {
+		delimiter = "\x00"
+	}
+
 	exitCode := 0
 
 	for i, p := range paths {
@@ -120,18 +141,19 @@ func main() {
 		}
 
 		if err != nil {
-			if canonMode {
+			// R1.5: in canon mode, always print errors; in default mode, only with -v.
+			if canonMode || verbose {
 				fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, p, stripPathError(err)) //nolint:errcheck // best-effort diagnostic
 			}
 			exitCode = 1
 			continue
 		}
 
-		// Print result with or without trailing newline.
+		// Print result with appropriate delimiter.
 		if noNewline && i == len(paths)-1 {
 			fmt.Fprint(os.Stdout, result) //nolint:errcheck // best-effort output
 		} else {
-			fmt.Fprintln(os.Stdout, result) //nolint:errcheck // best-effort output
+			fmt.Fprint(os.Stdout, result+delimiter) //nolint:errcheck // best-effort output
 		}
 	}
 
