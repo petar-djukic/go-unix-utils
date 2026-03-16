@@ -224,6 +224,54 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-bs", "-w", "11"},
 			Stdin: []byte("hello world foo bar\n"),
 		},
+		{
+			// R3.1: -s breaks at tab (blank character) within width.
+			Name:  "space_break_at_tab",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("hello\tworld\tfoo"),
+		},
+		{
+			// R3.3: -s with -b breaks at tab as blank using byte positions.
+			Name:  "byte_space_break_at_tab",
+			Args:  []string{"-b", "-s", "-w", "10"},
+			Stdin: []byte("hello\tworld\tfoo"),
+		},
+		{
+			// R3.1: -s with multiple spaces in segment picks last one.
+			Name:  "space_break_multiple_spaces",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("a b c d e f g\n"),
+		},
+		{
+			// R3.2: -s with long word exceeding width hard-wraps.
+			Name:  "space_break_long_word",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("ab cdefghij kl\n"),
+		},
+		{
+			// R3.1: -s with trailing spaces.
+			Name:  "space_break_trailing_spaces",
+			Args:  []string{"-s", "-w", "8"},
+			Stdin: []byte("hello   world\n"),
+		},
+		{
+			// R3.3: -s -w custom width.
+			Name:  "space_break_custom_width",
+			Args:  []string{"-s", "-w", "15"},
+			Stdin: []byte("the quick brown fox jumps over\n"),
+		},
+		{
+			// R3.1: -s with only spaces.
+			Name:  "space_break_only_spaces",
+			Args:  []string{"-s", "-w", "3"},
+			Stdin: []byte("          \n"),
+		},
+		{
+			// R3.2: -s with width 1 and spaces.
+			Name:  "space_break_width_one",
+			Args:  []string{"-s", "-w", "1"},
+			Stdin: []byte("a b c\n"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

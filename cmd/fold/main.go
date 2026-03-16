@@ -315,7 +315,8 @@ func foldLineSpace(w *bufio.Writer, content string, width int, byteMode bool) er
 				break
 			}
 
-			if ch == ' ' {
+			// R3.1: blank characters (space and tab) are break candidates.
+			if ch == ' ' || ch == '\t' {
 				lastSpaceIdx = j
 			}
 
