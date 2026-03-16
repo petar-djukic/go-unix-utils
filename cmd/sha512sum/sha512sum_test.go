@@ -1,12 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd033-sha512sum R1.1-R1.4: core SHA-512 digest
-// computation, standard GNU output format, stdin reading, multiple file
-// processing with error handling, and --help/--version flags.
+// Differential tests for prd033-sha512sum R1.1-R1.4, R2.1-R2.3: core SHA-512
+// digest computation, standard GNU output format, stdin reading, multiple file
+// processing with error handling, --check verification mode with OK/FAILED
+// status output and summary warnings, and --help/--version flags.
 package main
 
 import (
+	"crypto/sha512"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +36,12 @@ func stderrNormalizer(b []byte) []byte {
 		lines = append(lines, line)
 	}
 	return []byte(strings.Join(lines, "\n"))
+}
+
+// sha512Hex computes the SHA-512 hex digest of data.
+func sha512Hex(data []byte) string {
+	h := sha512.Sum512(data)
+	return fmt.Sprintf("%x", h)
 }
 
 func TestDiff(t *testing.T) {
@@ -62,6 +71,9 @@ func TestDiff(t *testing.T) {
 	if err := os.WriteFile(emptyFile, []byte{}, 0o644); err != nil {
 		t.Fatalf("writing empty.txt: %v", err)
 	}
+
+	hashA := sha512Hex(contentA)
+	hashB := sha512Hex(contentB)
 
 	tests := []testutils.DiffTest{
 		// R1.1: single file hash in text mode (default).
@@ -110,6 +122,80 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
+
+	// --- R2.1-R2.3: check mode tests ---
+
+	// Create a valid checksum file for a.txt and b.txt in GNU format.
+	checksumFile := filepath.Join(tmpDir, "checksums.txt")
+	checksumContent := hashA + "  " + fileA + "\n" +
+		hashB + "  " + fileB + "\n"
+	if err := os.WriteFile(checksumFile, []byte(checksumContent), 0o644); err != nil {
+		t.Fatalf("writing checksums.txt: %v", err)
+	}
+
+	// Create a checksum file with a wrong hash for b.txt.
+	badChecksumFile := filepath.Join(tmpDir, "bad_checksums.txt")
+	badHash := strings.Repeat("0", 127) + "1"
+	badChecksumContent := hashA + "  " + fileA + "\n" +
+		badHash + "  " + fileB + "\n"
+	if err := os.WriteFile(badChecksumFile, []byte(badChecksumContent), 0o644); err != nil {
+		t.Fatalf("writing bad_checksums.txt: %v", err)
+	}
+
+	// Create a checksum file with binary mode indicator.
+	binaryChecksumFile := filepath.Join(tmpDir, "binary_checksums.txt")
+	binaryChecksumContent := hashA + " *" + fileA + "\n"
+	if err := os.WriteFile(binaryChecksumFile, []byte(binaryChecksumContent), 0o644); err != nil {
+		t.Fatalf("writing binary_checksums.txt: %v", err)
+	}
+
+	// Create a checksum file referencing a nonexistent file.
+	missingFileChecksumFile := filepath.Join(tmpDir, "missing_checksums.txt")
+	emptyHash := sha512Hex([]byte{})
+	missingContent := emptyHash + "  " + filepath.Join(tmpDir, "nonexistent.txt") + "\n"
+	if err := os.WriteFile(missingFileChecksumFile, []byte(missingContent), 0o644); err != nil {
+		t.Fatalf("writing missing_checksums.txt: %v", err)
+	}
+
+	checkTests := []testutils.DiffTest{
+		// R2.1/R2.2: --check with all files matching — exit 0, prints OK lines.
+		{
+			Name: "check all pass",
+			Args: []string{"--check", checksumFile},
+		},
+		// R2.1/R2.2: -c short flag.
+		{
+			Name: "check short flag all pass",
+			Args: []string{"-c", checksumFile},
+		},
+		// R2.2/R2.3: --check with one mismatch — exit 1, prints FAILED + warning.
+		{
+			Name:      "check with mismatch",
+			Args:      []string{"--check", badChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.1: --check with binary mode indicator in checksum file.
+		{
+			Name: "check binary mode indicator",
+			Args: []string{"--check", binaryChecksumFile},
+		},
+		// R2.1/R2.2: --check with missing file — exit 1.
+		{
+			Name:      "check missing file",
+			Args:      []string{"--check", missingFileChecksumFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.1: --check reads from stdin via "-" argument.
+		{
+			Name:  "check from stdin dash",
+			Args:  []string{"--check", "-"},
+			Stdin: []byte(checksumContent),
+		},
+	}
+
+	tests = append(tests, checkTests...)
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
