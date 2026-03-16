@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd028-uniq R1.1-R1.4, R2.1-R2.4, R3.1-R3.4: cmd/uniq reads
-// input line by line and suppresses adjacent duplicate lines, writing unique
-// lines to stdout or an output file. Supports counting (-c), duplicate-only
-// (-d), unique-only (-u), and all-repeated (-D) output modes. Supports field
-// skipping (-f), character skipping (-s), check-chars (-w), and case-insensitive
-// comparison (-i). Reads from stdin when no file argument is given, or from a
-// named file. A second positional argument specifies the output file. Installs
-// SIGPIPE handler per shared protocol.
+// Implements prd028-uniq R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4:
+// cmd/uniq reads input line by line and suppresses adjacent duplicate lines,
+// writing unique lines to stdout or an output file. Supports counting (-c),
+// duplicate-only (-d), unique-only (-u), and all-repeated (-D) output modes.
+// Supports field skipping (-f), character skipping (-s), check-chars (-w),
+// and case-insensitive comparison (-i). Supports -z/--zero-terminated for
+// NUL-delimited I/O and --group for group separator insertion. Reads from
+// stdin when no file argument is given, or from a named file. A second
+// positional argument specifies the output file. Installs SIGPIPE handler
+// per shared protocol.
 package main
 
 import (
@@ -31,15 +33,18 @@ const progName = "uniq"
 // comparison control.
 // R2.1-R2.4: counting and duplicate filtering modes.
 // R3.1-R3.4: field/character skip, check-chars, and case-insensitive options.
+// R4.1-R4.4: zero-terminated I/O and group separator modes.
 type options struct {
-	count       bool   // -c/--count: prefix lines with occurrence count
-	repeated    bool   // -d/--repeated: print only duplicate lines (one per group)
-	unique      bool   // -u/--unique: print only unique lines
-	allRepeated string // -D/--all-repeated: print all duplicate lines; "none", "prepend", or "separate"
-	skipFields  int    // -f N/--skip-fields=N: skip first N fields before comparing
-	skipChars   int    // -s N/--skip-chars=N: skip first N characters (after field skip)
-	checkChars  int    // -w N/--check-chars=N: compare at most N characters (0 = unlimited)
-	ignoreCase  bool   // -i/--ignore-case: fold case when comparing
+	count          bool   // -c/--count: prefix lines with occurrence count
+	repeated       bool   // -d/--repeated: print only duplicate lines (one per group)
+	unique         bool   // -u/--unique: print only unique lines
+	allRepeated    string // -D/--all-repeated: print all duplicate lines; "none", "prepend", or "separate"
+	skipFields     int    // -f N/--skip-fields=N: skip first N fields before comparing
+	skipChars      int    // -s N/--skip-chars=N: skip first N characters (after field skip)
+	checkChars     int    // -w N/--check-chars=N: compare at most N characters (0 = unlimited)
+	ignoreCase     bool   // -i/--ignore-case: fold case when comparing
+	zeroTerminated bool   // -z/--zero-terminated: use NUL as line delimiter
+	group          string // --group: insert separators around groups; "prepend", "append", "separate", or "both"
 }
 
 func main() {
@@ -70,10 +75,13 @@ func main() {
 					"                                 with an empty line;\n"+
 					"                                 METHOD={none(default),prepend,separate}\n"+
 					"  -f, --skip-fields=N   avoid comparing the first N fields\n"+
+					"      --group[=METHOD]  show all items, separating groups with an empty line;\n"+
+					"                          METHOD={separate(default),prepend,append,both}\n"+
 					"  -i, --ignore-case     ignore differences in case when comparing\n"+
 					"  -s, --skip-chars=N    avoid comparing the first N characters\n"+
 					"  -u, --unique          only print unique lines\n"+
 					"  -w, --check-chars=N   compare no more than N characters in lines\n"+
+					"  -z, --zero-terminated  line delimiter is NUL, not newline\n"+
 					"      --help     display this help and exit\n"+
 					"      --version  output version information and exit\n",
 				progName,
@@ -96,6 +104,29 @@ func main() {
 		}
 		if arg == "--unique" {
 			opts.unique = true
+			continue
+		}
+		// R4.1: --zero-terminated.
+		if arg == "--zero-terminated" {
+			opts.zeroTerminated = true
+			continue
+		}
+		// R4.2: --group with optional method.
+		if arg == "--group" {
+			opts.group = "separate"
+			continue
+		}
+		if strings.HasPrefix(arg, "--group=") {
+			method := arg[len("--group="):]
+			switch method {
+			case "prepend", "append", "separate", "both":
+				opts.group = method
+			default:
+				fmt.Fprintf(os.Stderr, "%s: invalid argument '%s' for '--group'\n", progName, method)
+				fmt.Fprintf(os.Stderr, "Valid arguments are:\n  - 'prepend'\n  - 'append'\n  - 'separate'\n  - 'both'\n")
+				fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+				os.Exit(1)
+			}
 			continue
 		}
 		// R2.4: --all-repeated with optional method.
@@ -178,6 +209,9 @@ func main() {
 			case 'i':
 				// R3.4: case-insensitive comparison.
 				opts.ignoreCase = true
+			case 'z':
+				// R4.1: zero-terminated lines.
+				opts.zeroTerminated = true
 			case 'D':
 				// R2.4: -D defaults to "none" delimiter method.
 				opts.allRepeated = "none"
@@ -243,6 +277,13 @@ func main() {
 		}
 	}
 
+	// R4.3: --group is incompatible with -c, -d, -D, and -u.
+	if opts.group != "" && (opts.count || opts.repeated || opts.allRepeated != "" || opts.unique) {
+		fmt.Fprintf(os.Stderr, "%s: --group is mutually exclusive with -c/-d/-D/-u\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
 	// R1.2: first positional arg is input file, second is output file.
 	inputName := "-"
 	outputName := ""
@@ -287,7 +328,12 @@ func main() {
 	}
 
 	w := bufio.NewWriter(output)
-	exitCode := uniqLines(input, w, opts)
+	var exitCode int
+	if opts.group != "" {
+		exitCode = uniqGroup(bufio.NewReader(input), w, opts)
+	} else {
+		exitCode = uniqLines(input, w, opts)
+	}
 
 	if err := w.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, err)
@@ -297,6 +343,15 @@ func main() {
 	}
 
 	os.Exit(exitCode)
+}
+
+// lineDelimiter returns the line delimiter byte based on -z flag.
+// R4.1: NUL when zero-terminated, newline otherwise.
+func lineDelimiter(opts options) byte {
+	if opts.zeroTerminated {
+		return 0
+	}
+	return '\n'
 }
 
 // compareKey extracts the comparison substring from a line after applying
@@ -344,6 +399,7 @@ func compareKey(line string, opts options) string {
 // R3.1-R3.4: comparison key extraction via compareKey.
 func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 	br := bufio.NewReader(r)
+	delim := lineDelimiter(opts)
 
 	// R2.4: -D mode uses different output logic (all lines in duplicate groups).
 	if opts.allRepeated != "" {
@@ -356,10 +412,10 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 	count := 0
 
 	for {
-		line, err := br.ReadString('\n')
+		line, err := br.ReadString(delim)
 		if len(line) > 0 {
 			content := line
-			if line[len(line)-1] == '\n' {
+			if line[len(line)-1] == delim {
 				content = line[:len(line)-1]
 			}
 
@@ -373,7 +429,7 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 				count++
 			} else {
 				if shouldOutput(count, opts) {
-					if werr := writeLine(w, prevLine, count, opts.count); werr != nil {
+					if werr := writeLine(w, prevLine, count, opts.count, delim); werr != nil {
 						return 1
 					}
 				}
@@ -386,7 +442,7 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 			if err == io.EOF {
 				// Flush last group.
 				if hasPrev && shouldOutput(count, opts) {
-					if werr := writeLine(w, prevLine, count, opts.count); werr != nil {
+					if werr := writeLine(w, prevLine, count, opts.count, delim); werr != nil {
 						return 1
 					}
 				}
@@ -402,6 +458,7 @@ func uniqLines(r io.Reader, w *bufio.Writer, opts options) int {
 // duplicate groups. R2.4: the delimiter method controls blank line insertion.
 // R3.1-R3.4: uses compareKey for line comparison.
 func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
+	delim := lineDelimiter(opts)
 	// In -D mode we need to keep all lines in the current group, not just count.
 	var group []string
 	var prevKey string
@@ -414,7 +471,7 @@ func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
 		}
 		// R2.4: delimiter method controls blank lines between groups.
 		if opts.allRepeated == "prepend" || (opts.allRepeated == "separate" && !firstDupGroup) {
-			if err := w.WriteByte('\n'); err != nil {
+			if err := w.WriteByte(delim); err != nil {
 				return err
 			}
 		}
@@ -423,7 +480,7 @@ func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
 			if _, err := w.WriteString(l); err != nil {
 				return err
 			}
-			if err := w.WriteByte('\n'); err != nil {
+			if err := w.WriteByte(delim); err != nil {
 				return err
 			}
 		}
@@ -431,10 +488,10 @@ func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
 	}
 
 	for {
-		line, err := br.ReadString('\n')
+		line, err := br.ReadString(delim)
 		if len(line) > 0 {
 			content := line
-			if line[len(line)-1] == '\n' {
+			if line[len(line)-1] == delim {
 				content = line[:len(line)-1]
 			}
 
@@ -468,6 +525,77 @@ func uniqAllRepeated(br *bufio.Reader, w *bufio.Writer, opts options) int {
 	}
 }
 
+// uniqGroup handles --group mode, printing all lines and inserting empty
+// line separators between groups of identical adjacent lines.
+// R4.2: --group=prepend|append|separate|both controls separator placement.
+// Separator logic: "separate" inserts between groups only. "prepend" adds
+// before each group (including first). "append" adds after each group
+// (including last). "both" adds before first, between groups, and after last
+// — but inter-group separators are single (not doubled).
+func uniqGroup(br *bufio.Reader, w *bufio.Writer, opts options) int {
+	delim := lineDelimiter(opts)
+	var prevKey string
+	hasPrev := false
+	firstGroup := true
+
+	writeSep := func() error {
+		return w.WriteByte(delim)
+	}
+
+	for {
+		line, err := br.ReadString(delim)
+		if len(line) > 0 {
+			content := line
+			if line[len(line)-1] == delim {
+				content = line[:len(line)-1]
+			}
+
+			key := compareKey(content, opts)
+			newGroup := !hasPrev || key != prevKey
+
+			if newGroup {
+				if firstGroup {
+					// Before first group: prepend and both emit a separator.
+					if opts.group == "prepend" || opts.group == "both" {
+						if werr := writeSep(); werr != nil {
+							return 1
+						}
+					}
+				} else {
+					// Between groups: all modes emit exactly one separator.
+					if werr := writeSep(); werr != nil {
+						return 1
+					}
+				}
+				firstGroup = false
+			}
+
+			hasPrev = true
+			prevKey = key
+
+			if _, werr := w.WriteString(content); werr != nil {
+				return 1
+			}
+			if werr := w.WriteByte(delim); werr != nil {
+				return 1
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				// After last group: append and both emit a trailing separator.
+				if hasPrev && (opts.group == "append" || opts.group == "both") {
+					if werr := writeSep(); werr != nil {
+						return 1
+					}
+				}
+				return 0
+			}
+			fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
+			return 1
+		}
+	}
+}
+
 // shouldOutput returns true if a group with the given count should produce
 // output based on the filtering options.
 // R2.1: -d filters to count > 1. R2.3: -u filters to count == 1.
@@ -483,17 +611,18 @@ func shouldOutput(count int, opts options) bool {
 
 // writeLine writes a single output line, optionally prefixed with count.
 // R2.4: -c format uses %7d to match GNU uniq right-justified count.
-func writeLine(w *bufio.Writer, line string, count int, showCount bool) error {
+// R4.1: uses delim as the line terminator (NUL or newline).
+func writeLine(w *bufio.Writer, line string, count int, showCount bool, delim byte) error {
 	if showCount {
-		if _, err := fmt.Fprintf(w, "%7d %s\n", count, line); err != nil {
+		if _, err := fmt.Fprintf(w, "%7d %s", count, line); err != nil {
 			return err
 		}
-		return nil
+		return w.WriteByte(delim)
 	}
 	if _, err := w.WriteString(line); err != nil {
 		return err
 	}
-	return w.WriteByte('\n')
+	return w.WriteByte(delim)
 }
 
 // unwrapPathError extracts the inner error from an *os.PathError and

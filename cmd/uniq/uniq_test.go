@@ -8,6 +8,7 @@
 // and all-repeated (-D) output modes.
 // Covers prd028-uniq R3.1-R3.4: field skip (-f), char skip (-s), check-chars
 // (-w), and case-insensitive (-i) comparison options.
+// Covers prd028-uniq R4.1-R4.4: zero-terminated (-z), --group, --version, --help.
 package main
 
 import (
@@ -22,22 +23,23 @@ import (
 
 // stderrProgNameNormalizer replaces the reference binary name (guniq or its
 // full path) with the Go binary name (uniq) in stderr so error message
-// comparisons match.
+// comparisons match. Handles both "guniq:" prefixes and full paths like
+// "/opt/homebrew/bin/guniq" in "Try '...' --help" messages.
 func stderrProgNameNormalizer(data []byte) []byte {
-	// Replace full-path occurrences first (e.g., "/opt/homebrew/bin/guniq:" → "uniq:").
+	// First, replace full-path occurrences by finding path segments ending
+	// in guniq (e.g., "'/opt/homebrew/bin/guniq" → "'uniq").
 	for {
-		idx := bytes.Index(data, []byte("/"))
-		if idx < 0 {
+		pos := bytes.Index(data, []byte("guniq"))
+		if pos < 0 {
 			break
 		}
-		end := bytes.Index(data[idx:], []byte("guniq:"))
-		if end < 0 {
-			break
+		// Walk backwards to find the start of a filesystem path.
+		start := pos
+		for start > 0 && data[start-1] != '\'' && data[start-1] != '"' && data[start-1] != ' ' && data[start-1] != '\n' {
+			start--
 		}
-		data = append(data[:idx], append([]byte("uniq:"), data[idx+end+len("guniq:"):]...)...)
+		data = append(data[:start], append([]byte("uniq"), data[pos+len("guniq"):]...)...)
 	}
-	// Replace bare guniq: occurrences.
-	data = bytes.ReplaceAll(data, []byte("guniq:"), []byte("uniq:"))
 	return data
 }
 
@@ -695,4 +697,243 @@ func TestFileNotFound(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffZeroTerminated tests R4.1: -z/--zero-terminated uses NUL as delimiter.
+func TestDiffZeroTerminated(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1: basic NUL-delimited deduplication.
+		{
+			Name:  "zero_terminated_basic",
+			Args:  []string{"-z"},
+			Stdin: []byte("a\x00a\x00b\x00a\x00"),
+		},
+		// R4.1: NUL-delimited with all identical.
+		{
+			Name:  "zero_terminated_all_identical",
+			Args:  []string{"-z"},
+			Stdin: []byte("x\x00x\x00x\x00"),
+		},
+		// R4.1: NUL-delimited with count.
+		{
+			Name:  "zero_terminated_count",
+			Args:  []string{"-z", "-c"},
+			Stdin: []byte("a\x00a\x00b\x00"),
+		},
+		// R4.1: NUL-delimited with -d.
+		{
+			Name:  "zero_terminated_repeated",
+			Args:  []string{"-z", "-d"},
+			Stdin: []byte("a\x00a\x00b\x00c\x00c\x00"),
+		},
+		// R4.1: NUL-delimited with -u.
+		{
+			Name:  "zero_terminated_unique",
+			Args:  []string{"-z", "-u"},
+			Stdin: []byte("a\x00a\x00b\x00c\x00c\x00"),
+		},
+		// R4.1: NUL-delimited with -D.
+		{
+			Name:  "zero_terminated_all_repeated",
+			Args:  []string{"-z", "-D"},
+			Stdin: []byte("a\x00a\x00b\x00c\x00c\x00"),
+		},
+		// R4.1: long form --zero-terminated.
+		{
+			Name:  "zero_terminated_long",
+			Args:  []string{"--zero-terminated"},
+			Stdin: []byte("a\x00a\x00b\x00"),
+		},
+		// R4.1: NUL-delimited with -i.
+		{
+			Name:  "zero_terminated_ignore_case",
+			Args:  []string{"-z", "-i"},
+			Stdin: []byte("A\x00a\x00b\x00"),
+		},
+		// R4.1: lines contain embedded newlines when using -z.
+		{
+			Name:  "zero_terminated_embedded_newlines",
+			Args:  []string{"-z"},
+			Stdin: []byte("a\nb\x00a\nb\x00c\x00"),
+		},
+		// R4.1: empty NUL-delimited input.
+		{
+			Name:  "zero_terminated_empty",
+			Args:  []string{"-z"},
+			Stdin: []byte(""),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffGroup tests R4.2: --group inserts separators around groups.
+func TestDiffGroup(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.2: --group=separate (between groups only).
+		{
+			Name:  "group_separate",
+			Args:  []string{"--group=separate"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R4.2: --group=prepend (before each group).
+		{
+			Name:  "group_prepend",
+			Args:  []string{"--group=prepend"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R4.2: --group=append (after each group).
+		{
+			Name:  "group_append",
+			Args:  []string{"--group=append"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R4.2: --group=both (before and after each group, single separator between).
+		{
+			Name:  "group_both",
+			Args:  []string{"--group=both"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R4.2: --group bare defaults to separate.
+		{
+			Name:  "group_bare",
+			Args:  []string{"--group"},
+			Stdin: []byte("a\na\nb\nc\nc\n"),
+		},
+		// R4.2: --group with all unique lines.
+		{
+			Name:  "group_all_unique",
+			Args:  []string{"--group=separate"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R4.2: --group with single line.
+		{
+			Name:  "group_single_line",
+			Args:  []string{"--group=prepend"},
+			Stdin: []byte("hello\n"),
+		},
+		// R4.2: --group=both with single group.
+		{
+			Name:  "group_both_single_group",
+			Args:  []string{"--group=both"},
+			Stdin: []byte("a\na\na\n"),
+		},
+		// R4.2: --group with empty input.
+		{
+			Name:  "group_empty",
+			Args:  []string{"--group=separate"},
+			Stdin: []byte(""),
+		},
+		// R4.2: --group with -i.
+		{
+			Name:  "group_ignore_case",
+			Args:  []string{"--group=separate", "-i"},
+			Stdin: []byte("A\na\nb\nB\n"),
+		},
+		// R4.2: --group with -z.
+		{
+			Name:  "group_zero_terminated",
+			Args:  []string{"--group=separate", "-z"},
+			Stdin: []byte("a\x00a\x00b\x00c\x00c\x00"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffGroupIncompatible tests R4.3: --group is mutually exclusive with -c/-d/-D/-u.
+func TestDiffGroupIncompatible(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("guniq")
+	if err != nil {
+		t.Skipf("reference binary guniq not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.3: --group with -c.
+		{
+			Name:      "group_with_count",
+			Args:      []string{"--group", "-c"},
+			Stdin:     []byte("a\na\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: --group with -d.
+		{
+			Name:      "group_with_repeated",
+			Args:      []string{"--group", "-d"},
+			Stdin:     []byte("a\na\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: --group with -D.
+		{
+			Name:      "group_with_all_repeated",
+			Args:      []string{"--group", "-D"},
+			Stdin:     []byte("a\na\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R4.3: --group with -u.
+		{
+			Name:      "group_with_unique",
+			Args:      []string{"--group", "-u"},
+			Stdin:     []byte("a\na\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffVersionHelp tests R4.4: --version and --help flags.
+func TestDiffVersionHelp(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// --version: just check it exits 0 and produces output.
+	t.Run("version", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--version")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--version failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Error("--version produced no output")
+		}
+	})
+
+	// --help: just check it exits 0 and produces output.
+	t.Run("help", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--help")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--help failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Error("--help produced no output")
+		}
+	})
 }
