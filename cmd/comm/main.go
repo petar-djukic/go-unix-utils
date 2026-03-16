@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd029-comm R1.1-R1.4: cmd/comm reads two sorted text files
-// line by line and produces three-column output showing lines unique to
-// file 1, unique to file 2, and common to both. Supports -1, -2, -3 flags
-// to suppress individual columns, and --version/--help flags. Installs
-// SIGPIPE handler per shared protocol.
+// Implements prd029-comm R1.1-R1.4, R2.1-R2.4: cmd/comm reads two sorted
+// text files line by line and produces three-column output showing lines
+// unique to file 1, unique to file 2, and common to both. Supports -1,
+// -2, -3 flags to suppress individual columns, --check-order and
+// --nocheck-order to control input order validation, and --version/--help
+// flags. Installs SIGPIPE handler per shared protocol.
 package main
 
 import (
@@ -23,12 +24,30 @@ import (
 // progName is the name used in error messages to match GNU comm format.
 const progName = "comm"
 
-// options holds the parsed command-line flags for column suppression.
+// orderMode controls how comm responds to unsorted input.
+// R2.1-R2.3: three modes matching GNU comm behavior.
+type orderMode int
+
+const (
+	// orderDefault: warn per file, continue processing, print final
+	// "input is not in sorted order" message, exit 1.
+	orderDefault orderMode = iota
+	// orderCheck (--check-order): warn on first unsorted line, stop
+	// processing immediately, exit 1.
+	orderCheck
+	// orderNoCheck (--nocheck-order): no order validation at all.
+	orderNoCheck
+)
+
+// options holds the parsed command-line flags for column suppression and
+// order checking.
 // R1.3: -1, -2, -3 suppress columns 1, 2, 3 respectively.
+// R2.1-R2.3: --check-order / --nocheck-order / default.
 type options struct {
-	suppress1 bool // -1: suppress column 1 (lines unique to file1)
-	suppress2 bool // -2: suppress column 2 (lines unique to file2)
-	suppress3 bool // -3: suppress column 3 (lines common to both)
+	suppress1 bool      // -1: suppress column 1 (lines unique to file1)
+	suppress2 bool      // -2: suppress column 2 (lines unique to file2)
+	suppress3 bool      // -3: suppress column 3 (lines common to both)
+	order     orderMode // order-checking mode
 }
 
 func main() {
@@ -54,11 +73,13 @@ func main() {
 					"With no options, produce three-column output.  Column one contains\n"+
 					"lines unique to FILE1, column two contains lines unique to FILE2,\n"+
 					"and column three contains lines common to both files.\n\n"+
-					"  -1              suppress column 1 (lines unique to FILE1)\n"+
-					"  -2              suppress column 2 (lines unique to FILE2)\n"+
-					"  -3              suppress column 3 (lines that appear in both files)\n"+
-					"      --help     display this help and exit\n"+
-					"      --version  output version information and exit\n",
+					"  -1                    suppress column 1 (lines unique to FILE1)\n"+
+					"  -2                    suppress column 2 (lines unique to FILE2)\n"+
+					"  -3                    suppress column 3 (lines that appear in both files)\n"+
+					"      --check-order     check that the input is correctly sorted\n"+
+					"      --nocheck-order   do not check that the input is correctly sorted\n"+
+					"      --help            display this help and exit\n"+
+					"      --version         output version information and exit\n",
 				progName,
 			)
 			os.Exit(0)
@@ -68,6 +89,18 @@ func main() {
 				progName, "go-unix-utils", version.Version,
 			)
 			os.Exit(0)
+		}
+
+		// R2.1: --check-order makes order violations fatal (stop + exit 1).
+		if arg == "--check-order" {
+			opts.order = orderCheck
+			continue
+		}
+		// R2.2: --nocheck-order suppresses all order checking.
+		// D2: last flag wins when both are specified.
+		if arg == "--nocheck-order" {
+			opts.order = orderNoCheck
+			continue
 		}
 
 		// Unrecognized long options.
@@ -198,12 +231,35 @@ func columnPrefix(col int, opts options) string {
 	return strings.Repeat("\t", tabs)
 }
 
+// warnUnsorted emits a diagnostic to stderr if the current line is out of
+// sorted order relative to prev. Returns the new warned state.
+// D3: at most one diagnostic per file.
+// R2.4: format matches GNU comm: "comm: file N is not in sorted order".
+func warnUnsorted(current, prev string, fileNum int, hasPrev, alreadyWarned bool) bool {
+	if !hasPrev || alreadyWarned {
+		return alreadyWarned
+	}
+	if current < prev {
+		fmt.Fprintf(os.Stderr, "%s: file %d is not in sorted order\n", progName, fileNum)
+		return true
+	}
+	return false
+}
+
 // commLines performs the three-column comparison of two sorted inputs.
 // R1.1: lines unique to file1 go to column 1, unique to file2 go to column 2,
 // common lines go to column 3.
 // R1.2: comparison is lexicographic byte ordering (LC_ALL=C).
 // R1.3: when one file is exhausted, remaining lines go to the appropriate column.
+// R2.1-R2.3: order checking per opts.order mode.
 func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
+	doCheck := opts.order != orderNoCheck
+
+	// R2.1-R2.3: order tracking state per file.
+	var prev1, prev2 string
+	var hasPrev1, hasPrev2 bool
+	var warned1, warned2 bool
+
 	line1, has1, err1 := readLine(br1)
 	if err1 != nil && err1 != io.EOF {
 		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
@@ -224,10 +280,18 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 					return 1
 				}
 			}
+			prev1 = line1
+			hasPrev1 = true
 			line1, has1, err1 = readLine(br1)
 			if err1 != nil && err1 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 				return 1
+			}
+			if doCheck && has1 {
+				warned1 = warnUnsorted(line1, prev1, 1, hasPrev1, warned1)
+				if warned1 && opts.order == orderCheck {
+					break
+				}
 			}
 		} else if line1 > line2 {
 			// R1.1: line unique to file2 — column 2.
@@ -236,10 +300,18 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 					return 1
 				}
 			}
+			prev2 = line2
+			hasPrev2 = true
 			line2, has2, err2 = readLine(br2)
 			if err2 != nil && err2 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 				return 1
+			}
+			if doCheck && has2 {
+				warned2 = warnUnsorted(line2, prev2, 2, hasPrev2, warned2)
+				if warned2 && opts.order == orderCheck {
+					break
+				}
 			}
 		} else {
 			// R1.1: common line — column 3.
@@ -248,17 +320,38 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 					return 1
 				}
 			}
+			prev1 = line1
+			hasPrev1 = true
 			line1, has1, err1 = readLine(br1)
 			if err1 != nil && err1 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 				return 1
 			}
+			if doCheck && has1 {
+				warned1 = warnUnsorted(line1, prev1, 1, hasPrev1, warned1)
+				if warned1 && opts.order == orderCheck {
+					break
+				}
+			}
+			prev2 = line2
+			hasPrev2 = true
 			line2, has2, err2 = readLine(br2)
 			if err2 != nil && err2 != io.EOF {
 				fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 				return 1
 			}
+			if doCheck && has2 {
+				warned2 = warnUnsorted(line2, prev2, 2, hasPrev2, warned2)
+				if warned2 && opts.order == orderCheck {
+					break
+				}
+			}
 		}
+	}
+
+	// --check-order: if we detected unsorted input, stop here.
+	if opts.order == orderCheck && (warned1 || warned2) {
+		return 1
 	}
 
 	// R1.3: drain remaining lines from file1.
@@ -268,10 +361,18 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 				return 1
 			}
 		}
+		prev1 = line1
+		hasPrev1 = true
 		line1, has1, err1 = readLine(br1)
 		if err1 != nil && err1 != io.EOF {
 			fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
 			return 1
+		}
+		if doCheck && has1 {
+			warned1 = warnUnsorted(line1, prev1, 1, hasPrev1, warned1)
+			if warned1 && opts.order == orderCheck {
+				return 1
+			}
 		}
 	}
 
@@ -282,11 +383,26 @@ func commLines(br1, br2 *bufio.Reader, w *bufio.Writer, opts options) int {
 				return 1
 			}
 		}
+		prev2 = line2
+		hasPrev2 = true
 		line2, has2, err2 = readLine(br2)
 		if err2 != nil && err2 != io.EOF {
 			fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
 			return 1
 		}
+		if doCheck && has2 {
+			warned2 = warnUnsorted(line2, prev2, 2, hasPrev2, warned2)
+			if warned2 && opts.order == orderCheck {
+				return 1
+			}
+		}
+	}
+
+	// R2.3: default mode — if any unsorted input was detected, print final
+	// summary and exit 1.
+	if opts.order == orderDefault && (warned1 || warned2) {
+		fmt.Fprintf(os.Stderr, "%s: input is not in sorted order\n", progName)
+		return 1
 	}
 
 	return 0

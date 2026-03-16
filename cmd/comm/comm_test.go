@@ -5,6 +5,8 @@
 // Covers prd029-comm R1.1-R1.4: three-column comparison output,
 // stdin via '-', column suppression flags (-1, -2, -3), and
 // --version/--help exit behavior.
+// Covers prd029-comm R2.1-R2.4: --check-order, --nocheck-order,
+// and unsorted input handling.
 package main
 
 import (
@@ -295,6 +297,84 @@ func TestDiffFileNotFound(t *testing.T) {
 			Name:      "file2_not_found",
 			Args:      []string{file1, "/nonexistent/path.txt"},
 			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffOrderChecking tests R2.1-R2.4: --check-order, --nocheck-order,
+// and default behavior with unsorted input.
+func TestDiffOrderChecking(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcomm")
+	if err != nil {
+		t.Skipf("reference binary gcomm not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	sorted1 := writeTestFile(t, dir, "sorted1.txt", "a\nb\nc\n")
+	sorted2 := writeTestFile(t, dir, "sorted2.txt", "b\nc\nd\n")
+	unsorted1 := writeTestFile(t, dir, "unsorted1.txt", "b\na\nc\n")
+	unsorted2 := writeTestFile(t, dir, "unsorted2.txt", "c\na\nd\n")
+
+	tests := []testutils.DiffTest{
+		// R2.1: --check-order with unsorted file1 prints diagnostic to stderr.
+		{
+			Name:      "check_order_unsorted_file1",
+			Args:      []string{"--check-order", unsorted1, sorted2},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.1: --check-order with unsorted file2 prints diagnostic to stderr.
+		{
+			Name:      "check_order_unsorted_file2",
+			Args:      []string{"--check-order", sorted1, unsorted2},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.1: --check-order with sorted input produces no diagnostic.
+		{
+			Name:    "check_order_sorted_input",
+			Args:    []string{"--check-order", sorted1, sorted2},
+			WorkDir: dir,
+		},
+		// R2.2: --nocheck-order with unsorted input produces no diagnostic.
+		{
+			Name:      "nocheck_order_unsorted",
+			Args:      []string{"--nocheck-order", unsorted1, unsorted2},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.3: default (no flag) with unsorted input — warns and exits 1.
+		{
+			Name:      "default_unsorted",
+			Args:      []string{unsorted1, unsorted2},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// D2: last flag wins — --nocheck-order after --check-order.
+		{
+			Name:      "last_flag_wins_nocheck",
+			Args:      []string{"--check-order", "--nocheck-order", unsorted1, sorted2},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// D2: last flag wins — --check-order after --nocheck-order.
+		{
+			Name:      "last_flag_wins_check",
+			Args:      []string{"--nocheck-order", "--check-order", unsorted1, sorted2},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
+		},
+		// R2.1: --check-order combined with column suppression.
+		{
+			Name:      "check_order_with_suppress",
+			Args:      []string{"--check-order", "-1", unsorted1, sorted2},
+			WorkDir:   dir,
 			Normalize: []testutils.NormalizeFunc{stderrProgNameNormalizer},
 		},
 	}
