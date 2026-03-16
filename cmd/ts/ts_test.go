@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts against ts (moreutils).
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.5, R7.1-R7.3, R9.1-R9.2 test coverage.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.5, R7.1-R7.3, R8.1-R8.2, R9.1-R9.2 test coverage.
 package main
 
 import (
@@ -321,6 +321,37 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("no timestamp here\n"),
 			Env:       []string{"LC_ALL=C"},
 		},
+		// R8.1: TZ=UTC causes wall-clock timestamps to be in UTC.
+		{
+			Name:      "R8.1_tz_utc_wall_clock",
+			Args:      []string{"%Z"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.1: TZ affects default format output (differential parity).
+		{
+			Name:      "R8.1_tz_utc_default_format",
+			Stdin:     []byte("test line\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.2: -s mode uses GMT internally regardless of user TZ.
+		{
+			Name:      "R8.2_elapsed_ignores_tz",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line one\nline two\n"),
+			Env:       []string{"LC_ALL=C", "TZ=America/New_York"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.2: -i mode uses GMT internally regardless of user TZ.
+		{
+			Name:      "R8.2_incremental_ignores_tz",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line one\nline two\n"),
+			Env:       []string{"LC_ALL=C", "TZ=America/New_York"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -479,6 +510,65 @@ func TestR7_2_UnrecognizedFlag(t *testing.T) {
 
 			if !bytes.Contains(stderr.Bytes(), []byte("unrecognized option")) {
 				t.Errorf("expected stderr to mention 'unrecognized option', got: %q", stderr.String())
+			}
+		})
+	}
+}
+
+// TestR8_1_TZRespected verifies that wall-clock timestamps respect the TZ
+// environment variable. R8.1: Setting TZ=UTC must cause timestamps to be in UTC.
+func TestR8_1_TZRespected(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Use %Z format to emit the timezone abbreviation directly.
+	cmd := exec.Command(goBin, "%Z")
+	cmd.Stdin = strings.NewReader("hello\n")
+	cmd.Env = append(cmd.Environ(), "LC_ALL=C", "TZ=UTC")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(output, "UTC") {
+		t.Errorf("expected timezone 'UTC' prefix with TZ=UTC, got: %q", output)
+	}
+}
+
+// TestR8_2_ElapsedIgnoresTZ verifies that -i and -s modes use GMT internally
+// regardless of the user's TZ setting. R8.2: elapsed timestamps must not be
+// offset by the user's timezone.
+func TestR8_2_ElapsedIgnoresTZ(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"elapsed_mode", []string{"-s"}},
+		{"incremental_mode", []string{"-i"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.Command(goBin, append(tc.args, "%H:%M:%S")...)
+			cmd.Stdin = strings.NewReader("test\n")
+			cmd.Env = append(cmd.Environ(), "LC_ALL=C", "TZ=America/New_York")
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			output := strings.TrimSpace(string(out))
+			// Elapsed time should start near 00:00:00, not offset by -5h.
+			if !strings.HasPrefix(output, "00:00:0") {
+				t.Errorf("expected elapsed time near 00:00:00 regardless of TZ, got: %q", output)
 			}
 		})
 	}

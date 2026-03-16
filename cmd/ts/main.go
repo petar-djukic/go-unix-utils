@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.5, R7.1-R7.3:
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.5, R7.1-R7.3, R8.1-R8.2:
 // cmd/ts reads stdin line by line and prepends a strftime-formatted timestamp to
 // each line, writing to stdout. Supports a default format ("%b %d %H:%M:%S"), an
 // optional positional format argument with ts-specific subsecond extensions
@@ -14,6 +14,10 @@
 // R7.2: exits non-zero with usage message on unrecognized flags.
 // R7.3: the Go implementation compiles the timestamp parsing library in statically;
 // the -r dependency-unavailable condition cannot arise at runtime.
+// R8.1: respects the TZ environment variable for wall-clock timestamps via
+// Go's time.Now(), which reads TZ to determine time.Local on process start.
+// R8.2: in -i and -s modes, deltaToTime() returns UTC (equivalent to TZ=GMT)
+// so elapsed formatting is not affected by the user's TZ setting.
 // R5.1-R5.3: uses bufio.Writer with explicit Flush() after each output line for
 // line-buffered output across all modes (default, custom, incremental, elapsed).
 // Installs SIGPIPE handler for clean exit on broken pipe.
@@ -125,6 +129,7 @@ func main() {
 				ts = strftime(format, deltaToTime(delta))
 			} else {
 				// R1.2: evaluate timestamp at the time each line is received.
+				// R8.1: time.Now() respects TZ env var via time.Local.
 				ts = strftime(format, now)
 			}
 			// R1.1: prefix with timestamp and a single space.
@@ -151,6 +156,8 @@ func main() {
 // deltaToTime converts a duration to a time.Time at the Unix epoch plus the
 // duration, in UTC. R3.2, R4.2: TZ=GMT so strftime on a delta-second value
 // produces a correct elapsed string (e.g., 5 seconds → "00:00:05").
+// R8.2: returns UTC regardless of the user's TZ setting, matching the Perl
+// source behavior of setting TZ=GMT internally for elapsed-time formatting.
 func deltaToTime(d time.Duration) time.Time {
 	return time.Unix(0, 0).UTC().Add(d)
 }
