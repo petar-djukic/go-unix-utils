@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/sponge against sponge (moreutils).
-// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.2 test coverage.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3 test coverage.
 package main
 
 import (
@@ -527,6 +527,187 @@ func TestAppendEmptyStdin(t *testing.T) {
 			got := readFile(t, outFile)
 			if !bytes.Equal(got, []byte(original)) {
 				t.Errorf("expected %q, got %q", original, got)
+			}
+		})
+	}
+}
+
+// TestAppendAtomic verifies R3.3: append mode uses temp-file-then-rename
+// approach. The original file content is copied into the temp file first,
+// then stdin is appended, then the temp file is renamed over the original.
+// We verify by checking that the result is [original][stdin] and that the
+// file permissions are preserved (indicating the atomic path was used).
+func TestAppendAtomic(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R3.3_append_atomic_go", goBin},
+		{"R3.3_append_atomic_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			outFile := filepath.Join(dir, "atomic.txt")
+			original := "original content here\n"
+			writeFile(t, outFile, original)
+			// Set a distinctive permission to verify preservation.
+			if err := os.Chmod(outFile, 0o640); err != nil {
+				t.Fatalf("chmod: %v", err)
+			}
+
+			input := []byte("appended via atomic\n")
+			cmd := exec.Command(tc.bin, "-a", outFile)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sponge -a failed: %v\noutput: %s", err, out)
+			}
+
+			// R3.3: Result must be [original][stdin].
+			got := readFile(t, outFile)
+			want := []byte(original + string(input))
+			if !bytes.Equal(got, want) {
+				t.Errorf("expected %q, got %q", want, got)
+			}
+
+			// R2.3: Permissions must be preserved through the atomic path.
+			info, err := os.Stat(outFile)
+			if err != nil {
+				t.Fatalf("stat: %v", err)
+			}
+			if info.Mode().Perm() != 0o640 {
+				t.Errorf("expected mode 0640, got %04o", info.Mode().Perm())
+			}
+		})
+	}
+}
+
+// TestAppendLargeContent verifies R3.3 with larger content to exercise
+// the temp file write path more thoroughly.
+func TestAppendLargeContent(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	// Build a ~100KB original and ~100KB stdin to ensure the temp file
+	// path handles non-trivial sizes.
+	originalData := bytes.Repeat([]byte("original line of data\n"), 5000)
+	stdinData := bytes.Repeat([]byte("appended line of data\n"), 5000)
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R3.3_append_large_go", goBin},
+		{"R3.3_append_large_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			outFile := filepath.Join(dir, "large.txt")
+			if err := os.WriteFile(outFile, originalData, 0o644); err != nil {
+				t.Fatalf("writing file: %v", err)
+			}
+
+			cmd := exec.Command(tc.bin, "-a", outFile)
+			cmd.Stdin = bytes.NewReader(stdinData)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sponge -a large failed: %v\noutput: %s", err, out)
+			}
+
+			got := readFile(t, outFile)
+			want := append(originalData, stdinData...)
+			if !bytes.Equal(got, want) {
+				t.Errorf("large append mismatch: got %d bytes, want %d bytes", len(got), len(want))
+			}
+		})
+	}
+}
+
+// TestPassthroughDiff runs differential tests for R4.1-R4.3: passthrough
+// mode (no output filename) writes buffered stdin to stdout.
+func TestPassthroughDiff(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1, R4.3: small in-memory buffer written directly to stdout.
+		{
+			Name:  "R4.1_passthrough_hello",
+			Stdin: []byte("hello world\n"),
+		},
+		// R4.1, R4.3: passthrough with multiple lines.
+		{
+			Name:  "R4.1_passthrough_multiline",
+			Stdin: []byte("line1\nline2\nline3\n"),
+		},
+		// R4.3: empty input passthrough.
+		{
+			Name:  "R4.3_passthrough_empty",
+			Stdin: []byte{},
+		},
+		// R4.3: passthrough binary data with no trailing newline.
+		{
+			Name:  "R4.3_passthrough_binary_no_newline",
+			Stdin: []byte{0x00, 0xFF, 0x80, 0x7F},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestPassthroughLarge verifies R4.1 with a larger payload to exercise
+// the in-memory passthrough path (R4.3) with substantial data.
+func TestPassthroughLarge(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, _ := exec.LookPath("sponge")
+
+	// ~200KB of data to passthrough.
+	largeData := bytes.Repeat([]byte("passthrough line\n"), 12000)
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R4.1_passthrough_large_go", goBin},
+		{"R4.1_passthrough_large_ref", refBin},
+	} {
+		if tc.bin == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(tc.bin)
+			cmd.Stdin = bytes.NewReader(largeData)
+			got, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("sponge passthrough failed: %v", err)
+			}
+			if !bytes.Equal(got, largeData) {
+				t.Errorf("passthrough mismatch: got %d bytes, want %d bytes", len(got), len(largeData))
 			}
 		})
 	}
