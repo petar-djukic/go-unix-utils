@@ -370,6 +370,38 @@ func TestDiffErrorCases(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
+		// R4.2: non-numeric argument is an error.
+		{
+			Name:      "R4.2_non_numeric_arg",
+			Args:      []string{"abc"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: non-numeric FIRST argument with valid LAST.
+		{
+			Name:      "R4.2_non_numeric_first",
+			Args:      []string{"abc", "5"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: missing operand (no arguments).
+		{
+			Name:      "R4.2_missing_operand",
+			Args:      []string{},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: extra operand (four positional arguments).
+		{
+			Name:      "R4.2_extra_operand",
+			Args:      []string{"1", "1", "5", "10"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

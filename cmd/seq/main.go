@@ -86,16 +86,19 @@ func main() {
 	first, err := strconv.ParseFloat(firstStr, 64)
 	if err != nil || math.IsNaN(first) {
 		fmt.Fprintf(os.Stderr, "%s: invalid floating point argument: '%s'\n", progName, firstStr)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
 	step, err := strconv.ParseFloat(stepStr, 64)
 	if err != nil || math.IsNaN(step) {
 		fmt.Fprintf(os.Stderr, "%s: invalid floating point argument: '%s'\n", progName, stepStr)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
 	last, err := strconv.ParseFloat(lastStr, 64)
 	if err != nil || math.IsNaN(last) {
 		fmt.Fprintf(os.Stderr, "%s: invalid floating point argument: '%s'\n", progName, lastStr)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
 
