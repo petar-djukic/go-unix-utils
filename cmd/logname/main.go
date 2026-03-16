@@ -1,16 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd053-logname R1.1-R1.2, R2.1-R2.2:
-// cmd/logname prints the login name of the current user.
+// Implements prd053-logname R1.1-R1.2, R2.1-R2.3, R3.1:
+// cmd/logname prints the login name of the current user from the system login
+// record (LOGNAME environment variable, the Go equivalent of getlogin(3)).
 // Supports --help and --version flags. Rejects unknown flags and extra operands.
-// Installs SIGPIPE handler per ARCHITECTURE.yaml.
+// Exits 0 on success, 1 on any failure. Installs SIGPIPE handler per ARCHITECTURE.yaml.
 package main
 
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -26,14 +26,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// R1.1-R1.2: print the login name followed by a newline.
-	u, err := user.Current()
-	if err != nil {
+	// R1.2: obtain login name from system login record (LOGNAME env var,
+	// the Go equivalent of getlogin(3)), not from the effective UID.
+	// R2.3: if the login name cannot be determined, print error and exit 1.
+	loginName := os.Getenv("LOGNAME")
+	if loginName == "" {
 		fmt.Fprintf(os.Stderr, "%s: no login name\n", os.Args[0]) //nolint:errcheck // best-effort diagnostic
 		os.Exit(1)
 	}
 
-	fmt.Println(u.Username)
+	// R1.1: print the login name followed by a newline.
+	fmt.Println(loginName)
 }
 
 // parseArgs validates command-line arguments. logname accepts only --help and
