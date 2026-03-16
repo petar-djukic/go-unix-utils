@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/sponge against sponge (moreutils).
-// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3 test coverage.
+// Implements prd007-sponge R1.1-R1.5, R2.1-R2.5, R3.1-R3.3, R4.1-R4.3, R5.1-R5.4 test coverage.
 package main
 
 import (
@@ -801,4 +801,219 @@ func readFile(t *testing.T, path string) []byte {
 		t.Fatalf("reading file %s: %v", path, err)
 	}
 	return data
+}
+
+// TestDiffR5 runs differential tests for R5.1-R5.4: exit codes and error
+// handling, verifying parity with the sponge reference binary.
+func TestDiffR5(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	// Set up error condition directories before calling RunDiffTests.
+	permDir := t.TempDir()
+	roDir := filepath.Join(permDir, "readonly")
+	if err := os.Mkdir(roDir, 0o555); err != nil {
+		t.Fatalf("creating read-only dir: %v", err)
+	}
+	missingDir := t.TempDir()
+	successDir := t.TempDir()
+
+	tests := []testutils.DiffTest{
+		// R5.1: exit 0 on successful passthrough (no filename).
+		{
+			Name:  "R5.1_passthrough_exit_0",
+			Stdin: []byte("success data\n"),
+		},
+		// R5.1: exit 0 on successful file write.
+		{
+			Name:    "R5.1_file_write_exit_0",
+			Args:    []string{filepath.Join(successDir, "out.txt")},
+			Stdin:   []byte("file data\n"),
+			WorkDir: successDir,
+		},
+		// R5.1: exit 0 with empty stdin passthrough.
+		{
+			Name:  "R5.1_empty_stdin_exit_0",
+			Stdin: []byte{},
+		},
+		// R5.2: output path with non-existent parent directory — both must exit 1.
+		{
+			Name:      "R5.2_missing_parent_dir",
+			Args:      []string{filepath.Join(missingDir, "no", "such", "dir", "out.txt")},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			WorkDir:   missingDir,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// R5.2: permission denied on output directory — both must exit 1.
+		{
+			Name:      "R5.2_permission_denied",
+			Args:      []string{filepath.Join(roDir, "out.txt")},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			WorkDir:   permDir,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// R5.2: append mode with non-existent parent directory — both must exit 1.
+		{
+			Name:      "R5.2_append_missing_dir",
+			Args:      []string{"-a", filepath.Join(missingDir, "no", "dir", "out.txt")},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			WorkDir:   missingDir,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+		// R5.2: append mode with permission denied — both must exit 1.
+		{
+			Name:      "R5.2_append_permission_denied",
+			Args:      []string{"-a", filepath.Join(roDir, "out.txt")},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			WorkDir:   permDir,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFileWriteR5 runs differential file-write tests for R5.1: both
+// the Go binary and reference binary must produce identical file content
+// when writing stdin to a named output file.
+func TestDiffFileWriteR5(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	input := []byte("hello\nworld\n")
+
+	for _, tc := range []struct {
+		name string
+		bin  string
+	}{
+		{"R5.1_file_write_go", goBin},
+		{"R5.1_file_write_ref", refBin},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			outFile := filepath.Join(dir, "out.txt")
+
+			cmd := exec.Command(tc.bin, outFile)
+			cmd.Stdin = bytes.NewReader(input)
+			cmd.Dir = dir
+			out, runErr := cmd.CombinedOutput()
+			if runErr != nil {
+				t.Fatalf("expected exit 0, got error: %v\noutput: %s", runErr, out)
+			}
+
+			// R5.1: verify exit 0 and correct file content.
+			got := readFile(t, outFile)
+			if !bytes.Equal(got, input) {
+				t.Errorf("file content mismatch: expected %q, got %q", input, got)
+			}
+		})
+	}
+}
+
+// TestTempFileCleanup verifies R5.4: temp files are cleaned up after both
+// success and error exits. No sponge temp files should persist after the
+// process exits.
+func TestTempFileCleanup(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R5.4: Verify no temp files remain after successful write.
+	t.Run("R5.4_cleanup_after_success", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "out.txt")
+
+		cmd := exec.Command(goBin, outFile)
+		cmd.Stdin = bytes.NewReader([]byte("data\n"))
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("sponge failed: %v\noutput: %s", err, out)
+		}
+
+		// Check for leftover temp files (.sponge-* pattern).
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("reading dir: %v", err)
+		}
+		for _, entry := range entries {
+			if entry.Name() != "out.txt" {
+				t.Errorf("R5.4: leftover temp file after success: %s", entry.Name())
+			}
+		}
+	})
+
+	// R5.4: Verify no temp files remain after error exit.
+	// Permission denied prevents temp file creation, so this verifies
+	// that no files leak even when the error occurs early.
+	t.Run("R5.4_cleanup_after_error", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		roDir := filepath.Join(dir, "readonly")
+		if err := os.Mkdir(roDir, 0o555); err != nil {
+			t.Fatalf("creating read-only dir: %v", err)
+		}
+		outFile := filepath.Join(roDir, "out.txt")
+
+		cmd := exec.Command(goBin, outFile)
+		cmd.Stdin = bytes.NewReader([]byte("data\n"))
+		cmd.Dir = dir
+		_ = cmd.Run() // Expected to fail.
+
+		// Check that no temp files were left in the parent directory.
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("reading dir: %v", err)
+		}
+		for _, entry := range entries {
+			if entry.Name() == "readonly" {
+				continue
+			}
+			t.Errorf("R5.4: leftover file after error: %s", entry.Name())
+		}
+	})
+
+	// R5.4: Verify no temp files remain after append mode error.
+	t.Run("R5.4_cleanup_after_append_error", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		outFile := filepath.Join(dir, "no", "such", "dir", "out.txt")
+
+		cmd := exec.Command(goBin, "-a", outFile)
+		cmd.Stdin = bytes.NewReader([]byte("data\n"))
+		cmd.Dir = dir
+		_ = cmd.Run() // Expected to fail.
+
+		// Only the base dir should remain clean.
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("reading dir: %v", err)
+		}
+		for _, entry := range entries {
+			t.Errorf("R5.4: leftover file after append error: %s", entry.Name())
+		}
+	})
+}
+
+// clearStderr returns empty bytes, allowing differential comparison to focus
+// on exit code and stdout only. Used for error condition tests where the
+// error message format naturally differs between Go and C implementations.
+func clearStderr(b []byte) []byte {
+	return []byte{}
 }
