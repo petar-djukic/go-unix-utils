@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -1081,6 +1082,156 @@ func TestDiffTargetDirectory(t *testing.T) {
 
 		verifySymlink(t, filepath.Join(goDir, "newlink"), "target.txt")
 	})
+}
+
+// TestDiffCrossDevice runs differential tests for cross-device hard link error (R4.3).
+func TestDiffCrossDevice(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	// R4.3: cross-device hard link must fail with correct error message.
+	// Find two directories on different devices to exercise the EXDEV path.
+	t.Run("cross_device_hard_link", func(t *testing.T) {
+		t.Parallel()
+
+		dir1 := t.TempDir()
+		dir2 := findCrossDeviceDir(t, dir1)
+
+		// Setup: create a target file in dir1.
+		setupFile(t, dir1, "target.txt", "hello\n")
+
+		// Both binaries attempt to hard link target in dir1 to a name in dir2.
+		targetPath := filepath.Join(dir1, "target.txt")
+		linkPath := filepath.Join(dir2, "crosslink.txt")
+
+		args := []string{targetPath, linkPath}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, dir1)
+		goOut, goErr, goExit := runCmd(t, goBin, args, dir1)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		// Normalize absolute paths in error messages to avoid temp dir divergence.
+		refErr = normalizeTempPaths(refErr)
+		goErr = normalizeTempPaths(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+	})
+
+	// R4.3: cross-device with -f still fails (force cannot bypass device boundary).
+	t.Run("cross_device_hard_link_force", func(t *testing.T) {
+		t.Parallel()
+
+		dir1 := t.TempDir()
+		dir2 := findCrossDeviceDir(t, dir1)
+
+		setupFile(t, dir1, "target.txt", "hello\n")
+
+		targetPath := filepath.Join(dir1, "target.txt")
+		linkPath := filepath.Join(dir2, "crosslink.txt")
+
+		args := []string{"-f", targetPath, linkPath}
+
+		refOut, refErr, refExit := runCmd(t, refBin, args, dir1)
+		goOut, goErr, goExit := runCmd(t, goBin, args, dir1)
+
+		refOut = normalizeProgramName(refOut)
+		refErr = normalizeProgramName(refErr)
+		goOut = normalizeProgramName(goOut)
+		goErr = normalizeProgramName(goErr)
+
+		refErr = normalizeTempPaths(refErr)
+		goErr = normalizeTempPaths(goErr)
+
+		assertMatch(t, args, refOut, goOut, refErr, goErr, refExit, goExit)
+	})
+}
+
+// findCrossDeviceDir returns a directory on a different device than baseDir.
+// Skips the test if no cross-device directory can be found.
+func findCrossDeviceDir(t *testing.T, baseDir string) string {
+	t.Helper()
+
+	baseFi, err := os.Stat(baseDir)
+	if err != nil {
+		t.Fatalf("stat %s: %v", baseDir, err)
+	}
+	baseStat, ok := baseFi.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Skip("cannot get device ID: Sys() does not return *syscall.Stat_t")
+	}
+	baseDev := baseStat.Dev
+
+	// Try common mount points that may be on different devices.
+	candidates := []string{"/dev/shm", "/run", "/boot", "/Volumes"}
+	for _, c := range candidates {
+		fi, err := os.Stat(c)
+		if err != nil {
+			continue
+		}
+		st, ok := fi.Sys().(*syscall.Stat_t)
+		if !ok {
+			continue
+		}
+		if st.Dev != baseDev {
+			// Create a temp directory in this cross-device location.
+			tmpDir, err := os.MkdirTemp(c, "ln-crossdev-*")
+			if err != nil {
+				continue
+			}
+			t.Cleanup(func() { os.RemoveAll(tmpDir) }) // best-effort cleanup
+			return tmpDir
+		}
+	}
+
+	t.Skip("no cross-device directory found for testing")
+	return ""
+}
+
+// normalizeTempPaths replaces temporary directory paths in error messages
+// so that ref and go binary outputs can be compared despite different temp dirs.
+func normalizeTempPaths(b []byte) []byte {
+	// Replace paths like /var/folders/.../T/... or /tmp/... with <TMPDIR>/
+	// Strategy: find quoted paths and normalize the directory portion.
+	s := string(b)
+	// Normalize paths enclosed in single quotes.
+	result := strings.Builder{}
+	i := 0
+	for i < len(s) {
+		q := strings.Index(s[i:], "'")
+		if q == -1 {
+			result.WriteString(s[i:])
+			break
+		}
+		result.WriteString(s[i : i+q+1])
+		rest := s[i+q+1:]
+		end := strings.IndexByte(rest, '\'')
+		if end == -1 {
+			result.WriteString(rest)
+			i = len(s)
+			break
+		}
+		inner := rest[:end]
+		// Replace the path with just the basename if it looks like a temp path.
+		if strings.Contains(inner, "/") {
+			base := filepath.Base(inner)
+			result.WriteString("<PATH>/")
+			result.WriteString(base)
+		} else {
+			result.WriteString(inner)
+		}
+		result.WriteByte('\'')
+		i = i + q + 1 + end + 1
+	}
+	return []byte(result.String())
 }
 
 // verifyFileExists checks that a file exists at the given path.

@@ -396,10 +396,15 @@ func parseArgs(args []string) (*lnOptions, []string) {
 	return opts, operands
 }
 
-// unwrapPathError extracts the inner error from an *os.PathError.
+// unwrapPathError extracts the inner error from an *os.PathError or *os.LinkError.
+// R4.3: ensures cross-device hard link errors and other OS errors are reported
+// with the correct message format matching GNU ln.
 func unwrapPathError(err error) error {
 	if pe, ok := err.(*os.PathError); ok {
 		return pe.Err
+	}
+	if le, ok := err.(*os.LinkError); ok {
+		return le.Err
 	}
 	return err
 }
