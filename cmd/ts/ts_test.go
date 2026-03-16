@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts against ts (moreutils).
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.4, R9.1-R9.2 test coverage.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.5, R7.1-R7.3, R9.1-R9.2 test coverage.
 package main
 
 import (
@@ -398,6 +398,87 @@ func TestR6_5_MutualExclusion(t *testing.T) {
 
 			if !bytes.Contains(stderr.Bytes(), []byte("mutually exclusive")) {
 				t.Errorf("expected stderr to mention 'mutually exclusive', got: %q", stderr.String())
+			}
+		})
+	}
+}
+
+// TestR7_1_ExitZeroOnEOF verifies that ts exits 0 on clean EOF from stdin.
+// R7.1: must exit 0 on clean EOF.
+func TestR7_1_ExitZeroOnEOF(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name  string
+		args  []string
+		stdin []byte
+	}{
+		{"empty_stdin", nil, []byte("")},
+		{"single_line", nil, []byte("hello\n")},
+		{"with_flag_s", []string{"-s"}, []byte("hello\n")},
+		{"with_flag_i", []string{"-i"}, []byte("hello\n")},
+		{"with_flag_r", []string{"-r"}, []byte("no ts here\n")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = bytes.NewReader(tc.stdin)
+			cmd.Env = append(cmd.Environ(), "LC_ALL=C")
+
+			err := cmd.Run()
+			if err != nil {
+				t.Fatalf("expected exit 0, got error: %v", err)
+			}
+		})
+	}
+}
+
+// TestR7_2_UnrecognizedFlag verifies that ts exits non-zero and prints a usage
+// message to stderr when an unrecognized flag is given.
+// R7.2: must exit non-zero with usage message on unrecognized flags.
+func TestR7_2_UnrecognizedFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"unknown_x", []string{"-x"}},
+		{"unknown_long", []string{"--unknown"}},
+		{"unknown_z", []string{"-z"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = bytes.NewReader([]byte("test\n"))
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected non-zero exit code for unrecognized flag")
+			}
+
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.ExitCode() == 0 {
+				t.Fatal("expected non-zero exit code for unrecognized flag")
+			}
+
+			if !bytes.Contains(stderr.Bytes(), []byte("unrecognized option")) {
+				t.Errorf("expected stderr to mention 'unrecognized option', got: %q", stderr.String())
 			}
 		})
 	}

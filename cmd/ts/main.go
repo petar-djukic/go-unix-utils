@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.4:
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.5, R7.1-R7.3:
 // cmd/ts reads stdin line by line and prepends a strftime-formatted timestamp to
 // each line, writing to stdout. Supports a default format ("%b %d %H:%M:%S"), an
 // optional positional format argument with ts-specific subsecond extensions
@@ -9,6 +9,11 @@
 // relative-time conversion mode (-r). R6.1-R6.4: -r scans input lines for known
 // timestamp patterns and replaces them with human-readable relative age strings or
 // reformats them via a custom strftime format.
+// R6.5: -r is mutually exclusive with -i and -s.
+// R7.1: exits 0 on clean EOF from stdin.
+// R7.2: exits non-zero with usage message on unrecognized flags.
+// R7.3: the Go implementation compiles the timestamp parsing library in statically;
+// the -r dependency-unavailable condition cannot arise at runtime.
 // R5.1-R5.3: uses bufio.Writer with explicit Flush() after each output line for
 // line-buffered output across all modes (default, custom, incremental, elapsed).
 // Installs SIGPIPE handler for clean exit on broken pipe.
@@ -52,6 +57,12 @@ func main() {
 		case "-m":
 			monotonic = true
 		default:
+			// R7.2: reject unrecognized flags (anything starting with "-"
+			// that is not a known flag).
+			if len(arg) > 0 && arg[0] == '-' {
+				fmt.Fprintf(os.Stderr, "ts: unrecognized option '%s'\n", arg)
+				os.Exit(1)
+			}
 			positionalArgs = append(positionalArgs, arg)
 		}
 	}
