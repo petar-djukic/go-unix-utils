@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"github.com/petar-djukic/go-unix-utils/pkg/version"
 )
 
 // progName is the name used in error messages to match GNU unlink format.
