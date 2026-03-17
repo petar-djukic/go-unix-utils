@@ -1,0 +1,15 @@
+linters:
+  enable:
+    - funlen
+    - dupl
+    - gocognit
+
+linters-settings:
+  funlen:
+    lines: -1
+    statements: 40
+    ignore-comments: true
+  dupl:
+    threshold: 100
+  gocognit:
+    min-complexity: 15
