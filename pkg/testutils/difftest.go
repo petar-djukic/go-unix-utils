@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// difftest.go defines the DiffTest struct and RunDiffTests entry point for the
+// differential testing harness.
+// Implements prd001-testutils R1.1-R1.4, R2.1-R2.6, R3.6, R4.1-R4.2.
+
 package testutils
 
 import (
 	"bytes"
 	"context"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +19,6 @@ import (
 // defaultTimeout is the maximum duration each binary invocation may run.
 // R2.3: configurable default of 10 seconds.
 const defaultTimeout = 10 * time.Second
-
-// maxStdinDisplay is the maximum bytes of stdin shown in failure messages.
-// R3.5: stdin truncated to 256 bytes in divergence reports.
-const maxStdinDisplay = 256
 
 // DiffTest defines a single differential test case.
 // R1.1: all fields match the prd001-testutils contract.
@@ -45,6 +43,7 @@ type runResult struct {
 // RunDiffTests runs each DiffTest as a named subtest, executing both binaries
 // and comparing their stdout, stderr, and exit code.
 // R2.1: accepts Go binary and reference binary paths.
+// R3.6: each test case runs as a named subtest via t.Run.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
@@ -56,6 +55,7 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 }
 
 // runSingleTest executes both binaries and compares their outputs.
+// R2.5: uses WorkDir when set, otherwise t.TempDir().
 func runSingleTest(t *testing.T, goBinary, refBinary string, tc DiffTest) {
 	t.Helper()
 	workDir := tc.WorkDir
@@ -73,9 +73,10 @@ func runSingleTest(t *testing.T, goBinary, refBinary string, tc DiffTest) {
 
 // buildEnv constructs the environment for binary execution.
 // R2.6: sets LC_ALL=C by default, then merges DiffTest.Env overrides.
+// R4.1: propagates DiffTest.Env entries to both binaries.
+// D3: starts with a minimal base (LC_ALL=C) without inheriting parent env.
 func buildEnv(testEnv []string) []string {
-	env := os.Environ()
-	env = setEnvVar(env, "LC_ALL", "C")
+	env := []string{"LC_ALL=C"}
 	for _, kv := range testEnv {
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			env = setEnvVar(env, k, v)
@@ -99,6 +100,7 @@ func setEnvVar(env []string, key, value string) []string {
 // runBinary executes a binary and captures its output.
 // R2.2: captures stdout, stderr, and exit code independently.
 // R2.3: enforces defaultTimeout.
+// R4.2: always sets stdin to a reader; nil Stdin yields an empty reader.
 func runBinary(
 	t *testing.T, binary string, args []string,
 	stdin []byte, env []string, workDir string,
@@ -109,9 +111,8 @@ func runBinary(
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Env = env
 	cmd.Dir = workDir
-	if stdin != nil {
-		cmd.Stdin = bytes.NewReader(stdin)
-	}
+	// D4: each binary gets its own reader instance; nil stdin → empty reader.
+	cmd.Stdin = bytes.NewReader(stdin)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
@@ -150,67 +151,4 @@ func applyNormalizers(fns []NormalizeFunc, ref, got []byte) ([]byte, []byte) {
 		got = fn(got)
 	}
 	return ref, got
-}
-
-// compareResults checks stdout, stderr, and exit code for divergence.
-// R3.2-R3.5: reports differences with full context.
-func compareResults(
-	t *testing.T, tc DiffTest,
-	refStdout, goStdout, refStderr, goStderr []byte,
-	refExit, goExit int,
-) {
-	t.Helper()
-	if bytes.Equal(refStdout, goStdout) &&
-		bytes.Equal(refStderr, goStderr) &&
-		refExit == goExit {
-		return
-	}
-	stdinDisplay := truncateBytes(tc.Stdin, maxStdinDisplay)
-	t.Errorf("divergence in %s\n"+
-		"args: %v\nstdin: %q\n"+
-		"ref stdout: %q\n go stdout: %q\n"+
-		"ref stderr: %q\n go stderr: %q\n"+
-		"ref exit: %d\n go exit: %d",
-		tc.Name, tc.Args, stdinDisplay,
-		refStdout, goStdout,
-		refStderr, goStderr,
-		refExit, goExit,
-	)
-}
-
-// truncateBytes returns b truncated to maxLen bytes.
-func truncateBytes(b []byte, maxLen int) []byte {
-	if len(b) <= maxLen {
-		return b
-	}
-	return b[:maxLen]
-}
-
-// checkExpectedFiles verifies file content after binary execution.
-// R5.1-R5.2: compares expected file content byte-for-byte.
-func checkExpectedFiles(t *testing.T, tc DiffTest, workDir string) {
-	t.Helper()
-	if tc.ExpectedFiles == nil {
-		return
-	}
-	for relPath, expected := range tc.ExpectedFiles {
-		checkSingleFile(t, workDir, relPath, expected)
-	}
-}
-
-// checkSingleFile compares a single expected file against disk content.
-func checkSingleFile(t *testing.T, workDir, relPath string, expected []byte) {
-	t.Helper()
-	fullPath := filepath.Join(workDir, relPath)
-	actual, err := os.ReadFile(fullPath)
-	if err != nil {
-		t.Errorf("ExpectedFiles[%q]: %v", relPath, err)
-		return
-	}
-	if !bytes.Equal(expected, actual) {
-		t.Errorf("ExpectedFiles[%q] divergence:\n"+
-			"expected: %q\n  actual: %q",
-			relPath, expected, actual,
-		)
-	}
 }
