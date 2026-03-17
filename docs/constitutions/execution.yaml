@@ -41,31 +41,48 @@ articles:
       criteria require it. Do not skip any criterion.
 
   - id: E6
-    title: Build and test within module
+    title: Non-goals enforcement
     rule: |
-      Build and test within the Go module. Never create Go source files outside
-      this repository (e.g., not in os.TempDir()). Use go build -o bin/<name>
-      ./cmd/<name>/ for cmd/ binaries (bin/ is git-ignored). Do not use mage
-      build or mage lint for individual packages.
+      Features listed in a PRD's non_goals must not be implemented. Do not
+      parse, accept, or act on flags, options, or behaviors that appear in
+      non_goals. If a requirement references a non_goal feature, treat it as
+      a specification error and skip the requirement with a TODO comment
+      citing the conflict.
 
   - id: E7
-    title: Plan tests before writing
+    title: Skip ambiguous requirements
     rule: |
-      Plan test prerequisites before writing code. If a precondition is absent,
-      write a skip from the start rather than writing a test that fails and then
-      fixing it. Check: cmd/ directories may be empty during generation (skip
-      tests needing built binaries), reference binaries may not be installed
-      (always exec.LookPath + t.Skip), BuildBinary only works within the module.
-      When testing error conditions, do not write subtests that intentionally
-      fail the harness. Use assertions, subprocess exec.Command, or helper
-      functions instead.
+      If a requirement is too vague to implement completely, do not implement
+      it partially. Skip the requirement entirely. Add a TODO comment citing
+      the requirement ID and describing what is missing from the specification.
+      A parsed-but-nonfunctional flag is worse than a missing flag.
 
   - id: E8
-    title: Repository conventions
+    title: Function size limit
     rule: |
-      The cmd/mktemp/collision.* files are hash-collision test fixtures, not
-      source code. All cmd/ utilities that write to stdout must call
-      sys.InstallSIGPIPEHandler() at the start of main.
+      No function may exceed 40 lines of code. This is a hard limit, not a
+      guideline. If a function exceeds 40 lines, find a seam and split it
+      before the task is considered complete. Common seams: validation logic,
+      formatting logic, I/O operations, and branch-specific handling.
+
+  - id: E9
+    title: File size limit
+    rule: |
+      Each Go source file should stay under 500 lines of production code.
+      When a file exceeds this threshold, split by responsibility: main.go
+      (entry point and arg parsing), format.go (output formatting), and
+      additional files as needed. Test files follow the same split. pkg/
+      packages follow the same 500-line threshold.
+
+  - id: E10
+    title: DRY enforcement
+    rule: |
+      The duplication threshold is two. If you write the same logic twice,
+      extract it into a shared function. Common violations: entry display
+      logic duplicated across output modes, error formatting repeated in
+      multiple functions, path construction logic copied between list and
+      recurse paths. Before writing a function, search for existing code
+      that does the same thing.
 
 coding_standards:
   copyright_header: |
@@ -76,7 +93,10 @@ coding_standards:
   never_duplicate_code: |
     Before writing a function, search for existing code that does the same thing.
     When two pieces of code share logic, extract the common part. The threshold
-    is two: if you write the same thing twice, extract it.
+    is two: if you write the same thing twice, extract it. Common violations:
+    entry display logic duplicated across output modes, error formatting repeated
+    in multiple functions, path construction logic copied between list and recurse
+    paths. See article E10.
 
   design_patterns:
     - Strategy: Multiple implementations, caller picks one. Define interface, not if/else ladder.
@@ -95,7 +115,9 @@ coding_standards:
   struct_and_function_design: |
     Each struct represents one concept. Each function does one thing. If a
     function takes more than three parameters, group related parameters into a
-    config struct. If a function exceeds 40 lines, find a seam and split it.
+    config struct. No function may exceed 40 lines — this is a hard limit
+    enforced by article E8. Common seams for splitting: validation, formatting,
+    I/O, and branch-specific handling.
 
   error_handling: |
     Handle errors at the point they occur. Use guard clauses: check err != nil
@@ -169,6 +191,38 @@ traceability:
     - "Engineering guidelines: docs/engineering/eng*.md"
     - "Vision: docs/VISION.yaml"
 
+build_and_test:
+  build_within_module: |
+    Always build and test from within the Go module directory. Do not cd
+    outside the module or create separate Go modules for testing. Use
+    `go build -o bin/<name> ./cmd/<name>/` for cmd/ binaries so outputs
+    land in bin/ (git-ignored). Do not use mage build or mage lint for
+    individual packages — use go build and go vet directly.
+
+  test_planning: |
+    Plan test prerequisites before writing test code. Determine what
+    binaries, fixtures, or reference implementations the tests need.
+    If cmd/ is empty during generation (code not yet written), skip
+    tests that require a built binary — use t.Skip with an explanatory
+    message. For tests that compare against reference binaries (e.g.
+    GNU coreutils), always use exec.LookPath and t.Skip if the
+    reference is not installed.
+
+  negative_tests: |
+    Do not write subtests that intentionally fail the test harness and
+    then fix them afterward. Every test you write must pass on the first
+    run. Use assertions (require.Equal, assert.Error) to check expected
+    error conditions. Use subprocess exec.Command to test exit codes
+    and signal handling rather than calling os.Exit in-process. Never
+    write a test that you expect to fail — if behavior is conditional,
+    use t.Skip or build tags.
+
+  repository_notes: |
+    Files with "collision" in the name are test fixtures for hash
+    collision testing — do not delete or modify them. Utilities that
+    write to stdout must install a SIGPIPE handler (signal.Notify +
+    signal.Reset) so piped output does not cause a broken-pipe crash.
+
 session_completion:
   git_managed_externally: true  # Do NOT run any git commands
   token_tracking: true  # Log tokens used per issue
@@ -199,10 +253,11 @@ sections:
   - tag: articles
     title: Core Principles
     content: |
-      Six principles govern the stitch phase: specification-first development,
+      Ten principles govern the stitch phase: specification-first development,
       commit traceability, no scope creep, session completion via
-      orchestrator-managed git, quality gate enforcement, and prohibition of
-      magic test values.
+      orchestrator-managed git, quality gate enforcement, non-goals enforcement,
+      skip-on-ambiguity, function size limits, file size limits, and DRY
+      enforcement.
   - tag: coding_standards
     title: Coding Standards
     content: |
