@@ -112,18 +112,10 @@ requirements:
           -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). Without -l, -h must have no visible effect on output.
       - R3.6: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
       - R3.7: |
-          -h must apply to -s block counts when both -s and -h are given, converting block counts to human-readable form. Use the following binary HumanSize algorithm directly in cmd/ls (do not call pkg/format.HumanSize):
-
-            func humanSize(n int64) string {
-                if n == 0 { return "0" }
-                suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
-                f := float64(n)
-                i := 0
-                for f >= 1024 && i < len(suffixes)-1 { f /= 1024; i++ }
-                if i == 0 { return fmt.Sprintf("%d", n) }
-                if f == float64(int64(f)) { return fmt.Sprintf("%d%s", int64(f), suffixes[i]) }
-                return fmt.Sprintf("%.1f%s", f, suffixes[i])
-            }
+          -h must apply to -s block counts when both -s and -h are given, converting
+          block counts to human-readable form. Use pkg/format.HumanSize(bytes int64,
+          opts HumanSizeOpts) string with opts.Binary = true, consistent with R3.5.
+          Do not duplicate the HumanSize algorithm inline.
       - R3.8: -F must append a type indicator character after each entry name. The indicators are "/" for directories, "*" for executable regular files, "@" for symbolic links, "|" for named pipes (FIFOs), "=" for sockets. Regular non-executable files receive no indicator.
       - R3.9: Executable is defined as having any execute bit set (owner, group, or other) in the file's permission mode.
       - R3.10: -F must work with all output formats (-l, -1, -C, -x) and with color output. When color is enabled, the indicator character is printed after the ANSI reset sequence so it is not colorized.

@@ -35,7 +35,15 @@ requirements:
     items:
       - R3.1: -f or --force must remove existing destination files before creating the link.
       - R3.2: -n or --no-dereference must treat a destination that is a symlink to a directory as a regular file, rather than following it.
-      - R3.3: -i or --interactive must prompt the user on stderr before removing an existing destination, and must not remove if the user declines.
+      - R3.3: |
+          -i or --interactive must prompt the user on stderr before removing an existing
+          destination. Prompt format: 'ln: replace 'DEST'? ' where DEST is the destination
+          path. Read one line from stdin. If the response starts with 'y' or 'Y', proceed
+          with removal and link creation. Any other response (including empty) means decline;
+          do not remove the destination and do not create the link. Do not retry on invalid
+          input. When stdin is not a terminal (detected via os.Stdin.Fd() isatty check),
+          treat as decline (do not prompt, do not remove). When -f and -i are both given,
+          the last flag on the command line wins, matching GNU ln behavior.
       - R3.4: -v or --verbose must print the name of each link created to stdout.
       - R3.5: -b must create a backup of each existing destination file before removal, using the default backup suffix '~'. --backup=METHOD must accept numbered, existing, simple, and none as backup methods.
       - R3.6: -S SUFFIX or --suffix=SUFFIX must use SUFFIX instead of '~' for backup file names.
