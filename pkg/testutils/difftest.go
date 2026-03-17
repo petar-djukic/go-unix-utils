@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,16 +18,9 @@ import (
 // R2.3: configurable default of 10 seconds.
 const defaultTimeout = 10 * time.Second
 
-// timestampPlaceholder replaces matched timestamp patterns during normalization.
-const timestampPlaceholder = "<TIMESTAMP>"
-
 // maxStdinDisplay is the maximum bytes of stdin shown in failure messages.
 // R3.5: stdin truncated to 256 bytes in divergence reports.
 const maxStdinDisplay = 256
-
-// NormalizeFunc transforms raw output bytes before comparison.
-// R1.4: type alias so callers can use func([]byte) []byte interchangeably.
-type NormalizeFunc = func([]byte) []byte
 
 // DiffTest defines a single differential test case.
 // R1.1: all fields match the prd001-testutils contract.
@@ -50,28 +42,6 @@ type runResult struct {
 	exitCode int
 }
 
-// timestampPatterns matches common strftime-formatted timestamps.
-// R4.2: used by TimestampNormalizer.
-var timestampPatterns = []*regexp.Regexp{
-	// ISO 8601: 2024-02-19 12:34:56 or 2024-02-19T12:34:56 with optional fractional seconds
-	regexp.MustCompile(`\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?`),
-	// ctime-style: Feb 19 12:34:56
-	regexp.MustCompile(`[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}`),
-	// Unix epoch seconds with fractional part
-	regexp.MustCompile(`\d{10,}\.\d+`),
-	// Time only: 12:34:56 with optional fractional seconds
-	regexp.MustCompile(`\d{2}:\d{2}:\d{2}(\.\d+)?`),
-}
-
-// TimestampNormalizer replaces common timestamp patterns with a fixed placeholder.
-// R4.2: used by cmd/ts tests to normalize wall-clock differences.
-var TimestampNormalizer NormalizeFunc = func(b []byte) []byte {
-	for _, re := range timestampPatterns {
-		b = re.ReplaceAll(b, []byte(timestampPlaceholder))
-	}
-	return b
-}
-
 // RunDiffTests runs each DiffTest as a named subtest, executing both binaries
 // and comparing their stdout, stderr, and exit code.
 // R2.1: accepts Go binary and reference binary paths.
@@ -83,30 +53,6 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 			runSingleTest(t, goBinary, refBinary, tc)
 		})
 	}
-}
-
-// ComposeNormalizers returns a single NormalizeFunc that applies fns in order.
-// R4.4: convenience for combining multiple normalizers.
-func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc {
-	return func(b []byte) []byte {
-		for _, fn := range fns {
-			b = fn(b)
-		}
-		return b
-	}
-}
-
-// BuildBinary compiles a cmd/ package and returns the path to the built binary.
-// Uses go build within the module boundary per shared_protocols.
-func BuildBinary(t *testing.T, dir string) string {
-	t.Helper()
-	binPath := filepath.Join(t.TempDir(), "binary")
-	cmd := exec.Command("go", "build", "-o", binPath, dir)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("BuildBinary: go build %s failed: %v\n%s", dir, err, out)
-	}
-	return binPath
 }
 
 // runSingleTest executes both binaries and compares their outputs.
