@@ -40,6 +40,33 @@ articles:
       Every item in Acceptance Criteria must be verified. Run tests if the
       criteria require it. Do not skip any criterion.
 
+  - id: E6
+    title: Build and test within module
+    rule: |
+      Build and test within the Go module. Never create Go source files outside
+      this repository (e.g., not in os.TempDir()). Use go build -o bin/<name>
+      ./cmd/<name>/ for cmd/ binaries (bin/ is git-ignored). Do not use mage
+      build or mage lint for individual packages.
+
+  - id: E7
+    title: Plan tests before writing
+    rule: |
+      Plan test prerequisites before writing code. If a precondition is absent,
+      write a skip from the start rather than writing a test that fails and then
+      fixing it. Check: cmd/ directories may be empty during generation (skip
+      tests needing built binaries), reference binaries may not be installed
+      (always exec.LookPath + t.Skip), BuildBinary only works within the module.
+      When testing error conditions, do not write subtests that intentionally
+      fail the harness. Use assertions, subprocess exec.Command, or helper
+      functions instead.
+
+  - id: E8
+    title: Repository conventions
+    rule: |
+      The cmd/mktemp/collision.* files are hash-collision test fixtures, not
+      source code. All cmd/ utilities that write to stdout must call
+      sys.InstallSIGPIPEHandler() at the start of main.
+
 coding_standards:
   copyright_header: |
     Every Go file must start with the SPDX copyright header:
