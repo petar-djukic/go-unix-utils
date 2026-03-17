@@ -40,6 +40,33 @@ articles:
       Every item in Acceptance Criteria must be verified. Run tests if the
       criteria require it. Do not skip any criterion.
 
+  - id: E6
+    title: Build and test within module
+    rule: |
+      Build and test within the Go module. Never create Go source files outside
+      this repository (e.g., not in os.TempDir()). Use go build -o bin/<name>
+      ./cmd/<name>/ for cmd/ binaries (bin/ is git-ignored). Do not use mage
+      build or mage lint for individual packages.
+
+  - id: E7
+    title: Plan tests before writing
+    rule: |
+      Plan test prerequisites before writing code. If a precondition is absent,
+      write a skip from the start rather than writing a test that fails and then
+      fixing it. Check: cmd/ directories may be empty during generation (skip
+      tests needing built binaries), reference binaries may not be installed
+      (always exec.LookPath + t.Skip), BuildBinary only works within the module.
+      When testing error conditions, do not write subtests that intentionally
+      fail the harness. Use assertions, subprocess exec.Command, or helper
+      functions instead.
+
+  - id: E8
+    title: Repository conventions
+    rule: |
+      The cmd/mktemp/collision.* files are hash-collision test fixtures, not
+      source code. All cmd/ utilities that write to stdout must call
+      sys.InstallSIGPIPEHandler() at the start of main.
+
 coding_standards:
   copyright_header: |
     Every Go file must start with the SPDX copyright header:
@@ -141,46 +168,6 @@ traceability:
     - "Release tests (Go): tests/rel-*/rel-*_test.go"
     - "Engineering guidelines: docs/engineering/eng*.md"
     - "Vision: docs/VISION.yaml"
-
-build_and_test:
-  commands: |
-    Build and test within the Go module. Never create Go source files outside
-    this repository (e.g., not in os.TempDir()).
-
-    go build -o bin/<name> ./cmd/<name>/    # build a command (bin/ is git-ignored)
-    go build ./pkg/...                      # build all packages
-    go test ./cmd/<name>/... -count=1       # test a command
-    go test ./pkg/<name>/... -count=1       # test a package
-    go vet ./pkg/... ./cmd/...              # check for issues
-
-    Do not use mage build or mage lint for individual packages.
-
-  test_planning: |
-    Plan test prerequisites before writing code. If a precondition is absent,
-    write a skip from the start rather than writing a test that fails and then
-    fixing it. Common preconditions to check:
-
-    - cmd/ directories may be empty during generation. If a test needs a built
-      binary and no Go files exist in that cmd/ directory, skip the test.
-    - Reference binaries (gcat, gls, gsort, etc.) may not be installed. Always
-      call exec.LookPath and t.Skip if not found.
-    - BuildBinary(t, ".") compiles within the module. It does not work with
-      paths outside the module boundary.
-
-  negative_tests: |
-    When testing error conditions or expected failures, do not write subtests
-    that intentionally fail the test harness. Use one of these patterns instead:
-
-    - Check return values or error conditions directly in assertions.
-    - Use a helper function that captures the failure without propagating it.
-    - For exit code testing, use exec.Command to run the binary as a subprocess.
-
-    Never write a test that you expect to fail and then fix afterward.
-
-  repository_notes: |
-    The cmd/mktemp/collision.* files are hash-collision test fixtures, not source
-    code. All cmd/ utilities that write to stdout must call
-    sys.InstallSIGPIPEHandler() at the start of main.
 
 session_completion:
   git_managed_externally: true  # Do NOT run any git commands
