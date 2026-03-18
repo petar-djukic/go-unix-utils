@@ -44,8 +44,8 @@ generation:
     cycles: 6
 cobbler:
     dir: .cobbler/
-    max_stitch_issues_per_cycle: 1
-    max_measure_issues: 1
+    max_stitch_issues_per_cycle: 3
+    max_measure_issues: 3
     measure_prompt: docs/prompts/measure.yaml
     stitch_prompt: docs/prompts/stitch.yaml
     planning_constitution: docs/constitutions/planning.yaml
