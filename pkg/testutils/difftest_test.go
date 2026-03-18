@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for prd001-testutils R2.5-R2.6 (WorkDir, LC_ALL=C default),
-// R3.1-R3.2 (normalization and byte-for-byte comparison).
+// R3.1-R3.6 (normalization, byte-for-byte comparison, file comparison,
+// and divergence reporting).
 package testutils
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -383,5 +386,181 @@ func TestTruncateStdin_LongInput(t *testing.T) {
 	}
 	if len(result) != maxStdinDisplay+len("...(truncated)") {
 		t.Fatalf("truncated to wrong length: %d", len(result))
+	}
+}
+
+// TestCheckExpectedFiles_NilMap verifies R3.5: nil ExpectedFiles
+// does not cause any failure.
+func TestCheckExpectedFiles_NilMap(t *testing.T) {
+	t.Parallel()
+	tc := DiffTest{Name: "nil-files", ExpectedFiles: nil}
+	checkExpectedFiles(t, tc, t.TempDir())
+}
+
+// TestCheckExpectedFiles_Match verifies R3.5: files that exist with
+// expected content pass the check.
+func TestCheckExpectedFiles_Match(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	content := []byte("expected content\n")
+	path := filepath.Join(dir, "output.txt")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	tc := DiffTest{
+		Name:          "matching-file",
+		ExpectedFiles: map[string][]byte{"output.txt": content},
+	}
+	checkExpectedFiles(t, tc, dir)
+}
+
+// TestCheckExpectedFiles_MultipleFiles verifies R3.5: multiple
+// expected files are all checked.
+func TestCheckExpectedFiles_MultipleFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	files := map[string][]byte{
+		"a.txt": []byte("alpha\n"),
+		"b.txt": []byte("beta\n"),
+	}
+	for name, data := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	tc := DiffTest{Name: "multi-files", ExpectedFiles: files}
+	checkExpectedFiles(t, tc, dir)
+}
+
+// TestRunDiffTests_NormalizersAppliedToStdout verifies R3.3:
+// normalizers transform stdout before comparison through the full
+// RunDiffTests path.
+func TestRunDiffTests_NormalizersAppliedToStdout(t *testing.T) {
+	t.Parallel()
+	echoBin, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skip("echo not found in PATH")
+	}
+	// An identity normalizer that proves it was called by not
+	// breaking the comparison.
+	called := false
+	marker := func(b []byte) []byte {
+		called = true
+		return b
+	}
+	tests := []DiffTest{
+		{
+			Name:      "normalize-stdout",
+			Args:      []string{"hello"},
+			Normalize: []NormalizeFunc{marker},
+		},
+	}
+	RunDiffTests(t, echoBin, echoBin, tests)
+	if !called {
+		t.Fatal("R3.3: normalizer was not applied to stdout")
+	}
+}
+
+// TestRunDiffTests_NormalizersAppliedToStderr verifies R3.4:
+// normalizers transform stderr before comparison. Uses sh -c to
+// produce stderr output.
+func TestRunDiffTests_NormalizersAppliedToStderr(t *testing.T) {
+	t.Parallel()
+	shBin, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh not found in PATH")
+	}
+	called := false
+	marker := func(b []byte) []byte {
+		called = true
+		return b
+	}
+	tests := []DiffTest{
+		{
+			Name:      "normalize-stderr",
+			Args:      []string{"-c", "echo err >&2"},
+			Normalize: []NormalizeFunc{marker},
+		},
+	}
+	RunDiffTests(t, shBin, shBin, tests)
+	if !called {
+		t.Fatal("R3.4: normalizer was not applied to stderr")
+	}
+}
+
+// TestRunDiffTests_ExpectedFilesChecked verifies R3.5: RunDiffTests
+// checks ExpectedFiles after binary execution.
+func TestRunDiffTests_ExpectedFilesChecked(t *testing.T) {
+	t.Parallel()
+	shBin, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh not found in PATH")
+	}
+	dir := t.TempDir()
+	tests := []DiffTest{
+		{
+			Name:    "creates-file",
+			Args:    []string{"-c", "echo hello > output.txt"},
+			WorkDir: dir,
+			ExpectedFiles: map[string][]byte{
+				"output.txt": []byte("hello\n"),
+			},
+		},
+	}
+	RunDiffTests(t, shBin, shBin, tests)
+}
+
+// TestFormatDivergence_ShowsExitCodeDifference verifies R3.6:
+// the failure message includes both exit codes when they differ.
+func TestFormatDivergence_ShowsExitCodeDifference(t *testing.T) {
+	t.Parallel()
+	tc := DiffTest{Name: "exit-diff", Args: []string{"--bad"}}
+	msg := formatDivergence(tc,
+		[]byte("out"), []byte("out"),
+		[]byte(""), []byte("error"),
+		0, 1,
+	)
+	if !strings.Contains(msg, "ref exit:   0") {
+		t.Fatalf("R3.6: missing ref exit code in message:\n%s", msg)
+	}
+	if !strings.Contains(msg, "go  exit:   1") {
+		t.Fatalf("R3.6: missing go exit code in message:\n%s", msg)
+	}
+}
+
+// TestFormatDivergence_ShowsStdoutDifference verifies R3.6:
+// the failure message includes both stdout values when they differ.
+func TestFormatDivergence_ShowsStdoutDifference(t *testing.T) {
+	t.Parallel()
+	tc := DiffTest{Name: "stdout-diff", Args: []string{"-v"}}
+	msg := formatDivergence(tc,
+		[]byte("expected-output"), []byte("actual-output"),
+		nil, nil,
+		0, 0,
+	)
+	if !strings.Contains(msg, "expected-output") {
+		t.Fatalf("R3.6: missing ref stdout in message:\n%s", msg)
+	}
+	if !strings.Contains(msg, "actual-output") {
+		t.Fatalf("R3.6: missing go stdout in message:\n%s", msg)
+	}
+}
+
+// TestFormatDivergence_ShowsStderrDifference verifies R3.6:
+// the failure message includes both stderr values when they differ.
+func TestFormatDivergence_ShowsStderrDifference(t *testing.T) {
+	t.Parallel()
+	tc := DiffTest{Name: "stderr-diff"}
+	msg := formatDivergence(tc,
+		nil, nil,
+		[]byte("ref-error"), []byte("go-error"),
+		1, 1,
+	)
+	if !strings.Contains(msg, "ref-error") {
+		t.Fatalf("R3.6: missing ref stderr in message:\n%s", msg)
+	}
+	if !strings.Contains(msg, "go-error") {
+		t.Fatalf("R3.6: missing go stderr in message:\n%s", msg)
 	}
 }
