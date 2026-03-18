@@ -1,0 +1,196 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Differential tests for prd007-sponge R1.1–R1.4.
+package main_test
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skipf("reference binary sponge not in PATH: %v", err)
+	}
+
+	// Passthrough mode tests use standard RunDiffTests (stdout comparison).
+	passthroughTests := []testutils.DiffTest{
+		// R1.1, R4.1: passthrough writes buffered stdin to stdout.
+		{
+			Name:  "passthrough_stdout",
+			Stdin: []byte("hello world\n"),
+		},
+		// R1.1: empty stdin produces empty stdout.
+		{
+			Name:  "passthrough_empty",
+			Stdin: []byte{},
+		},
+		// R1.2: multi-line passthrough preserves content.
+		{
+			Name:  "passthrough_multiline",
+			Stdin: []byte("line1\nline2\nline3\n"),
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, passthroughTests)
+
+	// File output tests compare output file content between ref and Go binary.
+	fileTests := []fileOutputTest{
+		// R1.1, R1.2: small stdin written to output file.
+		{
+			name:    "small_stdin_to_file",
+			stdin:   generateSeq(1, 100),
+			outFile: "out.txt",
+		},
+		// R1.1: empty stdin creates empty output file.
+		{
+			name:    "empty_stdin_to_file",
+			stdin:   []byte{},
+			outFile: "empty.txt",
+		},
+		// R1.1: soak-before-write verified by writing to a pre-existing file
+		// whose content matches stdin. If sponge truncates before reading,
+		// the file would be empty; correct behavior preserves the content.
+		{
+			name:    "soak_before_write",
+			stdin:   []byte("line1\nline2\nline3\n"),
+			outFile: "data.txt",
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeTestFile(t, filepath.Join(dir, "data.txt"), "line1\nline2\nline3\n")
+			},
+		},
+		// R3.1: append mode prepends existing content before stdin.
+		{
+			name:    "append_mode",
+			stdin:   []byte("appended line\n"),
+			outFile: "existing.txt",
+			extraArgs: []string{"-a"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeTestFile(t, filepath.Join(dir, "existing.txt"), "original line\n")
+			},
+		},
+		// R3.2: append with non-existent file creates new file.
+		{
+			name:      "append_no_existing",
+			stdin:     []byte("new content\n"),
+			outFile:   "new.txt",
+			extraArgs: []string{"-a"},
+		},
+		// R1.3, R1.4: large stdin (>1 MB) to verify correct handling.
+		{
+			name:    "large_stdin",
+			stdin:   generateSeq(1, 50000),
+			outFile: "large.txt",
+		},
+	}
+	for _, tc := range fileTests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.run(t, goBin, refBin)
+		})
+	}
+}
+
+// fileOutputTest describes a sponge test that writes to a file.
+type fileOutputTest struct {
+	name      string
+	stdin     []byte
+	outFile   string
+	extraArgs []string
+	setup     func(t *testing.T, dir string)
+}
+
+// run executes both binaries in separate temp dirs and compares file content.
+func (ft fileOutputTest) run(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	if ft.setup != nil {
+		ft.setup(t, refDir)
+		ft.setup(t, goDir)
+	}
+	refArgs := ft.buildArgs(refDir)
+	goArgs := ft.buildArgs(goDir)
+	refContent := runAndReadFile(t, refBin, refArgs, ft.stdin, refDir, ft.outFile)
+	goContent := runAndReadFile(t, goBin, goArgs, ft.stdin, goDir, ft.outFile)
+	if !bytes.Equal(refContent, goContent) {
+		t.Fatalf("file content divergence\nref (%d bytes): %s\ngo  (%d bytes): %s",
+			len(refContent), truncate(refContent, 256),
+			len(goContent), truncate(goContent, 256))
+	}
+}
+
+// buildArgs constructs the argument list with the output file in dir.
+func (ft fileOutputTest) buildArgs(dir string) []string {
+	args := make([]string, len(ft.extraArgs))
+	copy(args, ft.extraArgs)
+	return append(args, filepath.Join(dir, ft.outFile))
+}
+
+// runAndReadFile executes a binary and reads the specified output file.
+func runAndReadFile(t *testing.T, binary string, args []string, stdin []byte, dir, outFile string) []byte {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = dir
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Env = buildTestEnv()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%s %v failed: %v\nstderr: %s", binary, args, err, stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(dir, outFile))
+	if err != nil {
+		t.Fatalf("reading output file %s: %v", outFile, err)
+	}
+	return data
+}
+
+// buildTestEnv constructs test environment with LC_ALL=C.
+func buildTestEnv() []string {
+	env := os.Environ()
+	for i, e := range env {
+		if strings.HasPrefix(e, "LC_ALL=") {
+			env[i] = "LC_ALL=C"
+			return env
+		}
+	}
+	return append(env, "LC_ALL=C")
+}
+
+// generateSeq generates "1\n2\n...\nN\n" matching seq output.
+func generateSeq(start, end int) []byte {
+	var buf bytes.Buffer
+	for i := start; i <= end; i++ {
+		fmt.Fprintf(&buf, "%d\n", i)
+	}
+	return buf.Bytes()
+}
+
+// writeTestFile writes content to a file, failing the test on error.
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing test file %s: %v", path, err)
+	}
+}
+
+// truncate returns data as a string, truncated for display.
+func truncate(data []byte, maxLen int) string {
+	if len(data) <= maxLen {
+		return fmt.Sprintf("%q", data)
+	}
+	return fmt.Sprintf("%q...(truncated, %d total)", data[:maxLen], len(data))
+}
