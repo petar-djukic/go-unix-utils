@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd002-sys R1.1–R1.3 (TerminalWidth, IsTerminal) and
-// R2.2–R2.5 (OnTerminalResize SIGWINCH handler).
+// R3.1–R3.3 (OnTerminalResize SIGWINCH handler with multiple callbacks).
 package sys
 
 import (
@@ -34,20 +34,21 @@ func IsTerminal(fd uintptr) bool {
 }
 
 var (
-	resizeMu       sync.Mutex
-	resizeCallback func(width int)
-	resizeOnce     sync.Once
+	resizeMu        sync.Mutex
+	resizeCallbacks []func(width int)
+	resizeOnce      sync.Once
 )
 
 // OnTerminalResize registers a SIGWINCH handler that invokes the callback
-// with the new terminal width when the terminal is resized. Subsequent calls
-// replace the previous callback; only the most recently registered callback
-// is invoked. If TerminalWidth returns an error, the callback is not invoked.
-// The background listener goroutine is started on the first call and reused
-// by subsequent calls. Implements prd002-sys R2.2–R2.5.
+// with the new terminal width when the terminal is resized. Multiple calls
+// accumulate callbacks; all registered callbacks are invoked in registration
+// order on each resize. If TerminalWidth returns an error, no callback is
+// invoked. The background listener goroutine is started on the first call
+// and reused by subsequent calls.
+// Implements prd002-sys R3.1–R3.3.
 func OnTerminalResize(callback func(width int)) {
 	resizeMu.Lock()
-	resizeCallback = callback
+	resizeCallbacks = append(resizeCallbacks, callback)
 	resizeMu.Unlock()
 
 	resizeOnce.Do(func() {
@@ -57,8 +58,8 @@ func OnTerminalResize(callback func(width int)) {
 	})
 }
 
-// listenSIGWINCH waits for SIGWINCH signals and invokes the registered
-// callback with the new terminal width.
+// listenSIGWINCH waits for SIGWINCH signals and invokes all registered
+// callbacks with the new terminal width in registration order.
 func listenSIGWINCH(ch <-chan os.Signal) {
 	for range ch {
 		width, err := TerminalWidth()
@@ -66,9 +67,10 @@ func listenSIGWINCH(ch <-chan os.Signal) {
 			continue
 		}
 		resizeMu.Lock()
-		cb := resizeCallback
+		cbs := make([]func(width int), len(resizeCallbacks))
+		copy(cbs, resizeCallbacks)
 		resizeMu.Unlock()
-		if cb != nil {
+		for _, cb := range cbs {
 			cb(width)
 		}
 	}

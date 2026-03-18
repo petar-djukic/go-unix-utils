@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package sys provides portable syscall abstractions for Darwin and Linux.
-// Implements prd002-sys R2.1–R2.3: FileInfo struct, Stat, and Lstat.
+// Implements prd002-sys R2.1–R2.3, R2.6: FileInfo struct, Stat, and Lstat.
 package sys
 
 import (
