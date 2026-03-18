@@ -199,19 +199,3 @@ func checkExpectedFiles(t *testing.T, tc DiffTest, workDir string) {
 		}
 	}
 }
-
-// BuildBinary compiles the Go package in dir to a temporary binary and
-// returns its path. Calls t.Fatal on build failure. The binary is cleaned
-// up automatically via t.TempDir. Implements prd001-testutils R1.3.
-func BuildBinary(t *testing.T, dir string) string {
-	t.Helper()
-	tmpDir := t.TempDir()
-	binPath := filepath.Join(tmpDir, "testbin")
-	cmd := exec.Command("go", "build", "-o", binPath, ".")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("BuildBinary: go build failed in %s: %v\n%s", dir, err, out)
-	}
-	return binPath
-}
