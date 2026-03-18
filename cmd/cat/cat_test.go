@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd006-cat R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.4.
+// Differential tests for prd006-cat R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.8.
 package main_test
 
 import (
@@ -266,6 +266,39 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-T"},
 			Stdin: []byte("\t\t\n"),
 			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.5: -A with high bytes shows M- notation, ^I tabs, and $ ends.
+		{
+			Name:  "show_all_high_bytes",
+			Args:  []string{"-A"},
+			Stdin: []byte{0x80, '\t', 0xFF, '\n'},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.6: -e shows $ at ends but preserves tabs.
+		{
+			Name:  "show_nonprint_ends_preserves_tabs",
+			Args:  []string{"-e"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.7: -t shows ^I for tabs but no $ at ends.
+		{
+			Name:  "show_nonprint_tabs_no_ends",
+			Args:  []string{"-t"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.8: -u is accepted but has no effect.
+		{
+			Name:  "u_flag_accepted",
+			Args:  []string{"-u"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		// R4.8: -u combined with other flags.
+		{
+			Name:  "u_flag_with_n",
+			Args:  []string{"-un"},
+			Stdin: []byte("hello\nworld\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
