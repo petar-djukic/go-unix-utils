@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd006-cat R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.9, R5.1–R5.3.
+// Differential tests for prd006-cat R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.9, R5.1–R5.4.
 package main_test
 
 import (
@@ -337,6 +337,19 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
 		},
 
+		// R5.4: --help exits 0 and produces usage output.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{normalizeHelpOutput},
+		},
+		// R5.4: --version exits 0 and produces version output.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{normalizeVersion},
+		},
+
 		// R5.3: write error detection shares the error propagation path with R5.2.
 		// A platform-portable write-error trigger (e.g., /dev/full) is unavailable on
 		// Darwin. The nonexistent-file test above verifies the exit-code-1 error path
@@ -357,6 +370,43 @@ func writeTestFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing test file %s: %v", path, err)
 	}
+}
+
+// normalizeHelpOutput normalizes --help output so both binaries match.
+// GNU gcat --help includes extra text (bug-reporting URLs, examples) that
+// our implementation omits. We extract just the "Usage:" prefix and normalize
+// the program name/path to "cat".
+func normalizeHelpOutput(data []byte) []byte {
+	// Keep only the first line to avoid divergence in help body text.
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		data = data[:i+1]
+	}
+	// Replace "Usage: /path/to/gcat " or "Usage: /path/to/cat " with "Usage: cat ".
+	prefix := []byte("Usage: ")
+	if bytes.HasPrefix(data, prefix) {
+		rest := data[len(prefix):]
+		if sp := bytes.IndexByte(rest, ' '); sp >= 0 {
+			data = append(append([]byte(nil), prefix...), append([]byte("cat"), rest[sp:]...)...)
+		}
+	}
+	return data
+}
+
+// normalizeVersion replaces version-specific output so that the Go binary's
+// version string matches the reference binary. Both are reduced to a common
+// prefix so the test compares structure, not version numbers.
+func normalizeVersion(data []byte) []byte {
+	// Keep only the first line's program name prefix, drop everything after.
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		data = data[:i+1]
+	}
+	// Normalize "gcat" to "cat" in case the reference binary identifies itself.
+	data = bytes.ReplaceAll(data, []byte("gcat"), []byte("cat"))
+	// Strip everything after "cat" on the first line to remove version details.
+	if i := bytes.Index(data, []byte("cat")); i >= 0 {
+		data = append(data[:i+3], '\n')
+	}
+	return data
 }
 
 // normalizeBinaryPrefix replaces "gcat: " with "cat: " in output so that

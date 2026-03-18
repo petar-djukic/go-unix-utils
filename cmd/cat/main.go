@@ -5,7 +5,7 @@
 // Implements prd006-cat R2.1–R2.4: line numbering (-n, -b).
 // Implements prd006-cat R3.1–R3.3: blank-line squeezing (-s).
 // Implements prd006-cat R4.1–R4.9: nonprinting display, show-ends, show-tabs.
-// Implements prd006-cat R5.1–R5.3: exit codes and error handling.
+// Implements prd006-cat R5.1–R5.4: exit codes, error handling, and SIGPIPE.
 package main
 
 import (
