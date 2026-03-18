@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd006-cat R1.5, R2.1–R2.4, R3.1–R3.3.
+// Differential tests for prd006-cat R1.5, R2.1–R2.4, R3.1–R3.3, R4.1–R4.4.
 package main_test
 
 import (
@@ -133,6 +133,139 @@ func TestDiff(t *testing.T) {
 			Name:  "squeeze_trailing_blanks",
 			Args:  []string{"-s"},
 			Stdin: []byte("a\n\n\n\n"),
+		},
+
+		// R4.1: -v displays control characters as ^X.
+		{
+			Name:  "show_nonprint_control",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x01, 0x02, 0x1B, '\n'},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: -v displays DEL (0x7F) as ^?.
+		{
+			Name:  "show_nonprint_del",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x7F, '\n'},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: -v displays high bytes (0x80-0x9F) as M-^X.
+		{
+			Name:  "show_nonprint_high_control",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x80, 0x81, 0x9F, '\n'},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: -v displays high bytes (0xA0-0xFE) as M-X.
+		{
+			Name:  "show_nonprint_high_printable",
+			Args:  []string{"-v"},
+			Stdin: []byte{0xA0, 0xA1, 0xFE, '\n'},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: -v displays 0xFF as M-^?.
+		{
+			Name:  "show_nonprint_0xff",
+			Args:  []string{"-v"},
+			Stdin: []byte{0xFF, '\n'},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: -v does not alter tab or newline.
+		{
+			Name:  "show_nonprint_preserves_tab_newline",
+			Args:  []string{"-v"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.3: -E appends $ before each newline.
+		{
+			Name:  "show_ends",
+			Args:  []string{"-E"},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.3: -E with blank lines.
+		{
+			Name:  "show_ends_blank_lines",
+			Args:  []string{"-E"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -T displays tab as ^I.
+		{
+			Name:  "show_tabs",
+			Args:  []string{"-T"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.5: -A = -vET combined.
+		{
+			Name:  "show_all",
+			Args:  []string{"-A"},
+			Stdin: []byte("a\tb\n\x01\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.6: -e = -vE combined.
+		{
+			Name:  "show_nonprint_ends",
+			Args:  []string{"-e"},
+			Stdin: []byte("a\tb\n\x01\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.7: -t = -vT combined.
+		{
+			Name:  "show_nonprint_tabs",
+			Args:  []string{"-t"},
+			Stdin: []byte("a\tb\n\x01\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.9: -v combined with -n (number + nonprint).
+		{
+			Name:  "nonprint_with_number",
+			Args:  []string{"-vn"},
+			Stdin: []byte("\x01\n\x02\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.9: -A combined with -s (squeeze + all display).
+		{
+			Name:  "show_all_with_squeeze",
+			Args:  []string{"-As"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.9: -A combined with -b (nonblank number + all display).
+		{
+			Name:  "show_all_with_number_nonblank",
+			Args:  []string{"-Ab"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1: full byte range with -v: NUL through 0x1F control chars.
+		{
+			Name: "show_nonprint_full_control_range",
+			Args: []string{"-v"},
+			Stdin: []byte{
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				'\n',
+			},
+			Env: []string{"LC_ALL=C"},
+		},
+		// R4.3: -E with no trailing newline.
+		{
+			Name:  "show_ends_no_trailing_newline",
+			Args:  []string{"-E"},
+			Stdin: []byte("hello"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -T with multiple tabs.
+		{
+			Name:  "show_tabs_multiple",
+			Args:  []string{"-T"},
+			Stdin: []byte("\t\t\n"),
+			Env:   []string{"LC_ALL=C"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

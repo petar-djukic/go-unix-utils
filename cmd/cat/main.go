@@ -4,7 +4,7 @@
 // Implements prd006-cat R1.1–R1.5: core file concatenation and stdin reading.
 // Implements prd006-cat R2.1–R2.4: line numbering (-n, -b).
 // Implements prd006-cat R3.1–R3.3: blank-line squeezing (-s).
-// Implements prd006-cat R4.1–R4.8: flag parsing and option handling.
+// Implements prd006-cat R4.1–R4.9: nonprinting display, show-ends, show-tabs.
 package main
 
 import (
@@ -290,7 +290,19 @@ func processLine(line []byte, opts options, state *lineState, w *bufio.Writer) e
 		return nil
 	}
 	state.lastWasBlank = blank
-	// R2.1–R2.3: prepend line number at start of line.
+	if !needsTransform(opts) {
+		return writeSimple(line, opts, blank, state, w)
+	}
+	return writeTransformed(line, opts, blank, state, w)
+}
+
+// needsTransform returns true when byte-level display transformations are needed.
+func needsTransform(opts options) bool {
+	return opts.showNonprint || opts.showEnds || opts.showTabs
+}
+
+// writeSimple writes the line with optional line numbering but no byte transforms.
+func writeSimple(line []byte, opts options, blank bool, state *lineState, w *bufio.Writer) error {
 	if state.atLineStart && shouldNumber(opts, blank) {
 		state.lineNum++
 		fmt.Fprintf(w, "%6d\t", state.lineNum)
@@ -298,6 +310,80 @@ func processLine(line []byte, opts options, state *lineState, w *bufio.Writer) e
 	state.atLineStart = len(line) > 0 && line[len(line)-1] == '\n'
 	_, err := w.Write(line)
 	return err
+}
+
+// writeTransformed writes the line byte-by-byte with -v/-E/-T transformations.
+// R4.9 order: nonprint(-v/-T) applied per byte, ends(-E) before newline,
+// number(-n/-b) prepended at line start.
+func writeTransformed(line []byte, opts options, blank bool, state *lineState, w *bufio.Writer) error {
+	for _, b := range line {
+		if state.atLineStart {
+			state.atLineStart = false
+			if shouldNumber(opts, blank) {
+				state.lineNum++
+				fmt.Fprintf(w, "%6d\t", state.lineNum)
+			}
+		}
+		if err := writeByte(w, b, opts); err != nil {
+			return err
+		}
+		if b == '\n' {
+			state.atLineStart = true
+		}
+	}
+	return nil
+}
+
+// writeByte writes a single byte with display transformations applied.
+// R4.3: -E appends "$" before newline. R4.4: -T shows tab as "^I".
+// R4.1–R4.2: -v converts non-printing except tab and newline.
+func writeByte(w *bufio.Writer, b byte, opts options) error {
+	if b == '\n' {
+		if opts.showEnds {
+			w.WriteByte('$')
+		}
+		return w.WriteByte('\n')
+	}
+	if b == '\t' {
+		if opts.showTabs {
+			w.WriteByte('^')
+			return w.WriteByte('I')
+		}
+		return w.WriteByte(b)
+	}
+	if opts.showNonprint {
+		return writeVisible(w, b)
+	}
+	return w.WriteByte(b)
+}
+
+// writeVisible writes a byte using caret and M- notation per R4.1.
+// 0x00-0x1F → ^X, 0x7F → ^?, 0x80-0x9F → M-^X, 0xA0-0xFE → M-X, 0xFF → M-^?.
+func writeVisible(w *bufio.Writer, b byte) error {
+	switch {
+	case b < 32:
+		w.WriteByte('^')
+		return w.WriteByte(b + 64)
+	case b == 127:
+		w.WriteByte('^')
+		return w.WriteByte('?')
+	case b >= 128+32 && b < 255:
+		w.WriteByte('M')
+		w.WriteByte('-')
+		return w.WriteByte(b - 128)
+	case b >= 128 && b < 128+32:
+		w.WriteByte('M')
+		w.WriteByte('-')
+		w.WriteByte('^')
+		return w.WriteByte(b - 128 + 64)
+	case b == 255:
+		w.WriteByte('M')
+		w.WriteByte('-')
+		w.WriteByte('^')
+		return w.WriteByte('?')
+	default:
+		return w.WriteByte(b)
+	}
 }
 
 // isBlankLine returns true if line contains only a newline.
