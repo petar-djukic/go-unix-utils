@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd006-cat R1.1–R1.4: core file concatenation.
-// Implements prd006-cat R2.1–R2.4, R3.1, R4.1–R4.8: flag parsing and option handling.
+// Implements prd006-cat R1.1–R1.5: core file concatenation and stdin reading.
+// Implements prd006-cat R2.1–R2.4: line numbering (-n, -b).
+// Implements prd006-cat R3.1–R3.3: blank-line squeezing (-s).
+// Implements prd006-cat R4.1–R4.8: flag parsing and option handling.
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +28,15 @@ type options struct {
 	showTabs       bool // -T, --show-tabs (R4.4)
 }
 
+// lineState tracks processing state across lines and files.
+// R2.1: lineNum persists across files.
+// R3.2: lastWasBlank persists across file boundaries.
+type lineState struct {
+	lineNum      int  // running line number counter
+	lastWasBlank bool // previous line was blank (for -s)
+	atLineStart  bool // next output byte starts a new line
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
@@ -36,17 +48,26 @@ func main() {
 // R1.1: reads each named file in argument order.
 // R1.2: reads stdin when no args or "-" is given.
 // R1.3: concatenates with no separator.
-// R1.4: binary-safe via io.Copy.
+// R1.4: binary-safe via io.Copy when no flags active.
+// R1.5: preserves newlines in all modes.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, code := parseArgs(args, stdout, stderr)
 	if code >= 0 {
 		return code
 	}
-	_ = opts // flags parsed; behavior implemented in future tasks
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
-	return catFiles(files, stdin, stdout, stderr)
+	if !needsLineProcessing(opts) {
+		return catFiles(files, stdin, stdout, stderr)
+	}
+	return catFilesProcessed(files, opts, stdin, stdout, stderr)
+}
+
+// needsLineProcessing returns true when any flag requires line-by-line processing.
+func needsLineProcessing(opts options) bool {
+	return opts.numberAll || opts.numberNonblank || opts.squeezeBlanks ||
+		opts.showNonprint || opts.showEnds || opts.showTabs
 }
 
 // parseArgs separates flags from file arguments.
@@ -183,6 +204,7 @@ func printVersion(w io.Writer) {
 }
 
 // catFiles iterates over filenames, copying each to stdout.
+// Used when no transformation flags are active (R1.4: binary-safe).
 func catFiles(files []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	exitCode := 0
 	for _, name := range files {
@@ -207,6 +229,90 @@ func catOne(name string, stdin io.Reader, stdout io.Writer) error {
 	defer f.Close() // best-effort close on read-only file
 	_, err = io.Copy(stdout, f)
 	return err
+}
+
+// catFilesProcessed processes files with line-by-line transformations.
+// R3.2: state persists across files for cross-boundary squeezing.
+func catFilesProcessed(files []string, opts options, stdin io.Reader, stdout, stderr io.Writer) int {
+	w := bufio.NewWriter(stdout)
+	state := &lineState{atLineStart: true}
+	exitCode := 0
+	for _, name := range files {
+		if err := processOne(name, opts, state, stdin, w); err != nil {
+			fmt.Fprintf(stderr, "%s: %s: %s\n", progName, name, err)
+			exitCode = 1
+		}
+	}
+	if err := w.Flush(); err != nil {
+		exitCode = 1
+	}
+	return exitCode
+}
+
+// processOne opens a file (or stdin) and processes it line by line.
+func processOne(name string, opts options, state *lineState, stdin io.Reader, w *bufio.Writer) error {
+	if name == "-" {
+		return processReader(stdin, opts, state, w)
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return unwrapPathError(err)
+	}
+	defer f.Close() // best-effort close on read-only file
+	return processReader(f, opts, state, w)
+}
+
+// processReader reads from r line by line and applies transformations.
+func processReader(r io.Reader, opts options, state *lineState, w *bufio.Writer) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if werr := processLine(line, opts, state, w); werr != nil {
+				return werr
+			}
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// processLine applies transformations to a single line.
+// R4.9 order: squeeze(-s) → nonprint(-v/-T) → ends(-E) → number(-n/-b).
+func processLine(line []byte, opts options, state *lineState, w *bufio.Writer) error {
+	blank := isBlankLine(line)
+	// R3.1: suppress consecutive blank lines after the first.
+	if opts.squeezeBlanks && blank && state.lastWasBlank {
+		return nil
+	}
+	state.lastWasBlank = blank
+	// R2.1–R2.3: prepend line number at start of line.
+	if state.atLineStart && shouldNumber(opts, blank) {
+		state.lineNum++
+		fmt.Fprintf(w, "%6d\t", state.lineNum)
+	}
+	state.atLineStart = len(line) > 0 && line[len(line)-1] == '\n'
+	_, err := w.Write(line)
+	return err
+}
+
+// isBlankLine returns true if line contains only a newline.
+// R2.4: blank = only '\n'; lines with spaces or tabs are not blank.
+func isBlankLine(line []byte) bool {
+	return len(line) == 1 && line[0] == '\n'
+}
+
+// shouldNumber returns true if the current line should receive a number.
+// R2.2–R2.3: -b overrides -n (blank lines not numbered with -b).
+func shouldNumber(opts options, blank bool) bool {
+	if opts.numberNonblank {
+		return !blank
+	}
+	return opts.numberAll
 }
 
 // unwrapPathError extracts the inner error from *os.PathError for
