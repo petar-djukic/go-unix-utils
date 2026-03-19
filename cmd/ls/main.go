@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -56,10 +57,114 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
-	// TODO: implement listing logic for R1.1–R1.4
-	_ = opts
-	_ = paths
+	return listPaths(paths, opts, stdout, stderr)
+}
+
+// listPaths lists file and directory arguments in GNU ls order:
+// file arguments first (sorted), then each directory's contents.
+func listPaths(paths []string, opts options, stdout, stderr io.Writer) int {
+	files, dirs, exitCode := classifyArgs(paths, stderr)
+	sort.Strings(files)
+	sort.Strings(dirs)
+	needBlank := false
+	if len(files) > 0 {
+		printEntries(files, stdout)
+		needBlank = true
+	}
+	showHeader := len(dirs) > 1 || len(files) > 0
+	for _, d := range dirs {
+		if needBlank {
+			fmt.Fprintln(stdout)
+		}
+		ec := listOneDir(d, opts, stdout, stderr, showHeader)
+		if ec > exitCode {
+			exitCode = ec
+		}
+		needBlank = true
+	}
+	return exitCode
+}
+
+// classifyArgs separates paths into files and directories by stat.
+// Prints errors and sets exit code for inaccessible paths.
+func classifyArgs(paths []string, stderr io.Writer) ([]string, []string, int) {
+	var files, dirs []string
+	exitCode := 0
+	for _, p := range paths {
+		fi, err := os.Stat(p)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: cannot access '%s': %s\n",
+				progName, p, unwrapErr(err))
+			exitCode = 2
+			continue
+		}
+		if fi.IsDir() {
+			dirs = append(dirs, p)
+		} else {
+			files = append(files, p)
+		}
+	}
+	return files, dirs, exitCode
+}
+
+// listOneDir lists a single directory's entries with an optional header.
+// Returns a non-zero exit code on error.
+func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader bool) int {
+	if showHeader {
+		fmt.Fprintf(stdout, "%s:\n", dir)
+	}
+	entries, err := readEntries(dir, opts)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot open directory '%s': %s\n",
+			progName, dir, unwrapErr(err))
+		return 2
+	}
+	printEntries(entries, stdout)
 	return 0
+}
+
+// readEntries reads directory entries, applies dot-filtering (R1.4),
+// and sorts by name in C locale order (R1.3).
+func readEntries(dir string, opts options) ([]string, error) {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	if opts.showAll {
+		names = append(names, ".", "..")
+	}
+	for _, e := range dirEntries {
+		if shouldShow(e.Name(), opts) {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// shouldShow returns true if the entry should appear in the listing.
+// R1.4: dotfiles are hidden unless showAll or almostAll is set.
+func shouldShow(name string, opts options) bool {
+	if len(name) == 0 || name[0] != '.' {
+		return true
+	}
+	return opts.showAll || opts.almostAll
+}
+
+// printEntries writes each entry on its own line. R1.2: single-column format.
+func printEntries(entries []string, w io.Writer) {
+	for _, e := range entries {
+		fmt.Fprintln(w, e)
+	}
+}
+
+// unwrapErr extracts the underlying error message from *os.PathError.
+func unwrapErr(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // parseArgs separates flags from path arguments.
