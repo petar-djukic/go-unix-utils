@@ -4,7 +4,8 @@
 // Implements prd053-logname R1.1 (print login name with trailing newline),
 // R1.2 (login name from system login record),
 // R2.1 (extra operands produce error exit 1),
-// R2.2 (unknown flags produce error exit 1).
+// R2.2 (unknown flags produce error exit 1),
+// R2.3 (login name unavailable produces error exit 1).
 package main
 
 /*
