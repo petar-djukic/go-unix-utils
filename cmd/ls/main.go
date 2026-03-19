@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.8: directory listing with format modes
-// (-1, -l), C locale sorting, dot-file filtering, permission strings,
-// owner/group resolution, and file metadata via pkg/sys.
+// Implements prd008-ls R1.1–R1.12: directory listing with format modes
+// (-1, -l, -C), C locale sorting, dot-file filtering, permission strings,
+// owner/group resolution, file metadata via pkg/sys, modification time
+// formatting, total block count, symlink display, and multi-column output.
 package main
 
 import (
@@ -15,33 +16,42 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 const progName = "ls"
 
+// defaultTermWidth is the column width when stdout is not a TTY.
+// R1.11: -C uses 80 columns when stdout is not a TTY.
+const defaultTermWidth = 80
+
 // formatMode controls the output format.
 // R1.1: multi-column when TTY, R1.2: single-column when not TTY,
-// R1.5: -1 forces single-column, R1.6: -l forces long format.
+// R1.5: -1 forces single-column, R1.6: -l forces long format,
+// R1.11: -C forces multi-column.
 type formatMode int
 
 const (
-	formatColumns formatMode = iota // multi-column (default when TTY)
+	formatColumns formatMode = iota // multi-column (default when TTY, or -C)
 	formatSingle                    // one entry per line (-1 or non-TTY default)
 	formatLong                      // long format (-l)
 )
 
 // entry holds a directory entry's name and optional metadata.
 // R1.7: info is populated via pkg/sys.Lstat when long format is active.
+// R1.10: path is the full filesystem path for os.Readlink on symlinks.
 type entry struct {
 	name string
+	path string
 	info *sys.FileInfo
 }
 
 // options holds parsed flag values for prd008-ls.
 type options struct {
-	format    formatMode // R1.1, R1.2, R1.5, R1.6: output format
+	format    formatMode // R1.1, R1.2, R1.5, R1.6, R1.11: output format
 	showAll   bool       // -a: include dotfiles and . / .. (R1.4)
 	almostAll bool       // -A: include dotfiles except . / .. (R1.4)
 }
@@ -102,23 +112,21 @@ func listPaths(paths []string, opts options, stdout, stderr io.Writer) int {
 }
 
 // printFileArgs prints file arguments (non-directories).
-// R1.6: long format requires metadata for each file argument.
+// File argument listings do not include a "total" block line.
 func printFileArgs(files []string, opts options, w io.Writer) int {
-	if opts.format != formatLong {
-		for _, f := range files {
-			fmt.Fprintln(w, f)
-		}
-		return 0
-	}
 	entries := make([]entry, 0, len(files))
 	for _, f := range files {
-		fi, err := sys.Lstat(f)
-		if err != nil {
-			continue
+		ent := entry{name: f, path: f}
+		if opts.format == formatLong {
+			fi, err := sys.Lstat(f)
+			if err != nil {
+				continue
+			}
+			ent.info = fi
 		}
-		entries = append(entries, entry{name: f, info: fi})
+		entries = append(entries, ent)
 	}
-	printLong(entries, w)
+	outputEntries(entries, opts, w, false)
 	return 0
 }
 
@@ -156,7 +164,7 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 			progName, dir, unwrapErr(err))
 		return 2
 	}
-	printEntries(entries, opts, stdout)
+	outputEntries(entries, opts, stdout, true)
 	return 0
 }
 
@@ -175,9 +183,10 @@ func readEntries(dir string, opts options) ([]entry, error) {
 		if !shouldShow(e.Name(), opts) {
 			continue
 		}
-		ent := entry{name: e.Name()}
+		fullPath := filepath.Join(dir, e.Name())
+		ent := entry{name: e.Name(), path: fullPath}
 		if opts.format == formatLong {
-			fi, err := sys.Lstat(filepath.Join(dir, e.Name()))
+			fi, err := sys.Lstat(fullPath)
 			if err == nil {
 				ent.info = fi
 			}
@@ -193,15 +202,15 @@ func readEntries(dir string, opts options) ([]entry, error) {
 // makeDotEntries creates . and .. entries with metadata if needed.
 // R1.4: -a includes . and .. in the listing.
 func makeDotEntries(dir string, opts options) []entry {
-	dots := []entry{{name: "."}, {name: ".."}}
-	if opts.format != formatLong {
-		return dots
-	}
+	dots := make([]entry, 2)
 	for i, name := range []string{".", ".."} {
-		path := filepath.Join(dir, name)
-		fi, err := sys.Lstat(path)
-		if err == nil {
-			dots[i].info = fi
+		fullPath := filepath.Join(dir, name)
+		dots[i] = entry{name: name, path: fullPath}
+		if opts.format == formatLong {
+			fi, err := sys.Lstat(fullPath)
+			if err == nil {
+				dots[i].info = fi
+			}
 		}
 	}
 	return dots
@@ -216,20 +225,98 @@ func shouldShow(name string, opts options) bool {
 	return opts.showAll || opts.almostAll
 }
 
-// printEntries dispatches to the appropriate output format.
-func printEntries(entries []entry, opts options, w io.Writer) {
-	if opts.format == formatLong {
-		printLong(entries, w)
-		return
+// outputEntries dispatches to the appropriate output format.
+// showTotal controls whether the "total N" block line is printed in long format.
+func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
+	switch opts.format {
+	case formatLong:
+		printLong(entries, w, showTotal)
+	case formatColumns:
+		printColumnar(entries, w)
+	default:
+		printSingle(entries, w)
 	}
+}
+
+// printSingle outputs entries one per line.
+func printSingle(entries []entry, w io.Writer) {
 	for _, e := range entries {
 		fmt.Fprintln(w, e.name)
 	}
 }
 
+// printColumnar outputs entries in multi-column layout.
+// R1.11: uses pkg/format.Columns for column-first vertical fill.
+// R1.12: entries sort vertically (down columns, then across).
+func printColumnar(entries []entry, w io.Writer) {
+	if len(entries) == 0 {
+		return
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.name
+	}
+	tw := getTermWidth()
+	rows := format.Columns(names, tw)
+	colWidths := columnMaxWidths(rows)
+	for _, row := range rows {
+		printRow(row, colWidths, w)
+	}
+}
+
+// columnMaxWidths computes the max rune width per column from row data.
+func columnMaxWidths(rows [][]string) []int {
+	if len(rows) == 0 {
+		return nil
+	}
+	numCols := 0
+	for _, row := range rows {
+		if len(row) > numCols {
+			numCols = len(row)
+		}
+	}
+	widths := make([]int, numCols)
+	for _, row := range rows {
+		for c, s := range row {
+			w := utf8.RuneCountInString(s)
+			if w > widths[c] {
+				widths[c] = w
+			}
+		}
+	}
+	return widths
+}
+
+// printRow prints a single row of columnar output with 2-space gaps.
+func printRow(row []string, colWidths []int, w io.Writer) {
+	for c, s := range row {
+		if c < len(row)-1 {
+			// R1.11: pad to column width + 2-space gap between columns.
+			fmt.Fprint(w, format.PadRight(s, colWidths[c]+2))
+		} else {
+			fmt.Fprint(w, s)
+		}
+	}
+	fmt.Fprintln(w)
+}
+
+// getTermWidth returns the terminal width, defaulting to 80 for non-TTY.
+// R1.11: -C with non-TTY uses 80 columns.
+func getTermWidth() int {
+	w, err := sys.TerminalWidth()
+	if err != nil {
+		return defaultTermWidth
+	}
+	return w
+}
+
 // printLong outputs entries in long format with aligned columns.
 // R1.6: field order is permissions, nlink, owner, group, size, mtime, name.
-func printLong(entries []entry, w io.Writer) {
+// R1.10: prints "total N" block line when showTotal is true.
+func printLong(entries []entry, w io.Writer, showTotal bool) {
+	if showTotal {
+		printTotalBlocks(entries, w)
+	}
 	widths := computeWidths(entries)
 	for _, e := range entries {
 		if e.info == nil {
@@ -240,12 +327,26 @@ func printLong(entries []entry, w io.Writer) {
 	}
 }
 
+// printTotalBlocks prints the "total N" line before a directory listing.
+// R1.10: N = sum(fi.Blocks) / 2, converting 512-byte blocks to 1K blocks.
+func printTotalBlocks(entries []entry, w io.Writer) {
+	var total int64
+	for _, e := range entries {
+		if e.info != nil {
+			total += e.info.Blocks
+		}
+	}
+	fmt.Fprintf(w, "total %d\n", total/2)
+}
+
 // printLongEntry formats a single entry in long format.
 // R1.6: permissions, nlink (right-aligned), owner (left-aligned),
 // group (left-aligned), size (right-aligned), mtime, name.
+// R1.10: symlinks display " -> target" after the name.
 func printLongEntry(e entry, w longWidths, out io.Writer) {
 	owner := resolveUser(e.info.Uid)
 	group := resolveGroup(e.info.Gid)
+	name := formatName(e)
 	fmt.Fprintf(out, "%s %*d %-*s  %-*s  %*d %s %s\n",
 		permString(e.info.Mode),
 		w.nlink, e.info.Nlink,
@@ -253,8 +354,21 @@ func printLongEntry(e entry, w longWidths, out io.Writer) {
 		w.group, group,
 		w.size, e.info.Size,
 		formatMtime(e.info.ModTime),
-		e.name,
+		name,
 	)
+}
+
+// formatName returns the display name for an entry.
+// R1.10: appends " -> target" for symlinks.
+func formatName(e entry) string {
+	if e.info == nil || e.info.Mode&os.ModeSymlink == 0 {
+		return e.name
+	}
+	target, err := os.Readlink(e.path)
+	if err != nil {
+		return e.name
+	}
+	return e.name + " -> " + target
 }
 
 // computeWidths calculates the column widths for long format alignment.
@@ -455,6 +569,8 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.format = formatSingle
 	case 'l': // R1.6: long format
 		o.format = formatLong
+	case 'C': // R1.11: force multi-column output
+		o.format = formatColumns
 	default:
 		return false
 	}
@@ -496,6 +612,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  -a, --all                  do not ignore entries starting with .")
 	fmt.Fprintln(w, "  -A, --almost-all           do not list implied . and ..")
+	fmt.Fprintln(w, "  -C                         list entries by columns")
 	fmt.Fprintln(w, "  -1                         list one file per line")
 	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "      --help                 display this help and exit")
