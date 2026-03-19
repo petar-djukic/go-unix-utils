@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.4: default listing, single-column
-// output, C locale sorting, and dotfile filtering.
+// Differential tests for prd008-ls R1.1–R1.14, R2.1, R2.2: default listing,
+// single-column output, C locale sorting, dotfile filtering, horizontal
+// multi-column output, last-format-flag-wins, -a show all, -A almost all.
 package main_test
 
 import (
@@ -45,6 +46,14 @@ func TestDiff(t *testing.T) {
 	// R1.4 fixture: directory with dotfiles and regular files.
 	dirDot := t.TempDir()
 	makeFiles(t, dirDot, ".hidden", "visible", ".secret", "public")
+
+	// R1.13 fixture: many entries to exercise horizontal multi-column layout.
+	dirHoriz := t.TempDir()
+	makeFiles(t, dirHoriz, "aa", "bb", "cc", "dd", "ee", "ff", "gg", "hh")
+
+	// R1.14 fixture: entries for format flag override verification.
+	dirFmtOverride := t.TempDir()
+	makeFiles(t, dirFmtOverride, "alpha", "beta", "gamma")
 
 	tests := []testutils.DiffTest{
 		// R1.1: default directory listing with no arguments.
@@ -100,6 +109,75 @@ func TestDiff(t *testing.T) {
 		{
 			Name:    "r1.4_almost_all_with_A",
 			Args:    []string{"-A"},
+			WorkDir: dirDot,
+		},
+
+		// R1.13: -x produces horizontal multi-column output.
+		{
+			Name:    "r1.13_horizontal_x_flag",
+			Args:    []string{"-x"},
+			WorkDir: dirHoriz,
+		},
+		// R1.13: -x with explicit directory argument.
+		{
+			Name: "r1.13_horizontal_x_explicit_dir",
+			Args: []string{"-x", dirHoriz},
+		},
+		// R1.13: -x on a directory with few entries.
+		{
+			Name:    "r1.13_horizontal_x_few_entries",
+			Args:    []string{"-x"},
+			WorkDir: dirBasic,
+		},
+
+		// R1.14: -l after -C overrides to long format (last flag wins).
+		{
+			Name:    "r1.14_C_then_l_long_wins",
+			Args:    []string{"-Cl"},
+			WorkDir: dirFmtOverride,
+		},
+		// R1.14: -C after -l overrides to columnar format (last flag wins).
+		{
+			Name:    "r1.14_l_then_C_columns_wins",
+			Args:    []string{"-lC"},
+			WorkDir: dirFmtOverride,
+		},
+		// R1.14: -1 after -x overrides to single-column (last flag wins).
+		{
+			Name:    "r1.14_x_then_1_single_wins",
+			Args:    []string{"-x1"},
+			WorkDir: dirFmtOverride,
+		},
+		// R1.14: -x after -1 overrides to horizontal columns (last flag wins).
+		{
+			Name:    "r1.14_1_then_x_horiz_wins",
+			Args:    []string{"-1x"},
+			WorkDir: dirFmtOverride,
+		},
+
+		// R2.1: -a includes entries starting with . including . and ..
+		{
+			Name:    "r2.1_show_all_includes_dot_dotdot",
+			Args:    []string{"-a"},
+			WorkDir: dirDot,
+		},
+		// R2.1: -a with -1 for clear single-column verification.
+		{
+			Name:    "r2.1_show_all_single_column",
+			Args:    []string{"-a", "-1"},
+			WorkDir: dirDot,
+		},
+
+		// R2.2: -A includes dotfiles but excludes . and ..
+		{
+			Name:    "r2.2_almost_all_excludes_dot_dotdot",
+			Args:    []string{"-A"},
+			WorkDir: dirDot,
+		},
+		// R2.2: -A with -1 for clear single-column verification.
+		{
+			Name:    "r2.2_almost_all_single_column",
+			Args:    []string{"-A", "-1"},
 			WorkDir: dirDot,
 		},
 	}

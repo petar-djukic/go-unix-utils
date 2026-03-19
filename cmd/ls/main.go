@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.12: directory listing with format modes
-// (-1, -l, -C), C locale sorting, dot-file filtering, permission strings,
-// owner/group resolution, file metadata via pkg/sys, modification time
-// formatting, total block count, symlink display, and multi-column output.
+// Implements prd008-ls R1.1–R1.14, R2.1, R2.2: directory listing with format
+// modes (-1, -l, -C, -x), C locale sorting, dot-file filtering (-a, -A),
+// permission strings, owner/group resolution, file metadata via pkg/sys,
+// modification time formatting, total block count, symlink display,
+// multi-column output (vertical and horizontal), and last-format-flag-wins.
 package main
 
 import (
@@ -28,16 +29,21 @@ const progName = "ls"
 // R1.11: -C uses 80 columns when stdout is not a TTY.
 const defaultTermWidth = 80
 
+// tabSize is the tab-stop interval for column alignment.
+// GNU ls uses 8-character tab stops for multi-column output indentation.
+const tabSize = 8
+
 // formatMode controls the output format.
 // R1.1: multi-column when TTY, R1.2: single-column when not TTY,
 // R1.5: -1 forces single-column, R1.6: -l forces long format,
-// R1.11: -C forces multi-column.
+// R1.11: -C forces multi-column, R1.13: -x forces horizontal multi-column.
 type formatMode int
 
 const (
-	formatColumns formatMode = iota // multi-column (default when TTY, or -C)
-	formatSingle                    // one entry per line (-1 or non-TTY default)
-	formatLong                      // long format (-l)
+	formatColumns    formatMode = iota // multi-column vertical fill (default when TTY, or -C)
+	formatSingle                       // one entry per line (-1 or non-TTY default)
+	formatLong                         // long format (-l)
+	formatHorizontal                   // multi-column horizontal fill (-x)
 )
 
 // entry holds a directory entry's name and optional metadata.
@@ -51,9 +57,9 @@ type entry struct {
 
 // options holds parsed flag values for prd008-ls.
 type options struct {
-	format    formatMode // R1.1, R1.2, R1.5, R1.6, R1.11: output format
-	showAll   bool       // -a: include dotfiles and . / .. (R1.4)
-	almostAll bool       // -A: include dotfiles except . / .. (R1.4)
+	format    formatMode // R1.1, R1.2, R1.5, R1.6, R1.11, R1.13, R1.14: output format
+	showAll   bool       // R2.1: -a include dotfiles and . / ..
+	almostAll bool       // R2.2: -A include dotfiles except . / ..
 }
 
 // longWidths holds column widths for long format alignment.
@@ -168,7 +174,7 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 	return 0
 }
 
-// readEntries reads directory entries, applies dot-filtering (R1.4),
+// readEntries reads directory entries, applies dot-filtering (R1.4, R2.1, R2.2),
 // stats entries when needed (R1.7), and sorts by name in C locale order (R1.3).
 func readEntries(dir string, opts options) ([]entry, error) {
 	dirEntries, err := os.ReadDir(dir)
@@ -176,6 +182,7 @@ func readEntries(dir string, opts options) ([]entry, error) {
 		return nil, err
 	}
 	var entries []entry
+	// R2.1: -a includes . and .. entries.
 	if opts.showAll {
 		entries = append(entries, makeDotEntries(dir, opts)...)
 	}
@@ -200,7 +207,7 @@ func readEntries(dir string, opts options) ([]entry, error) {
 }
 
 // makeDotEntries creates . and .. entries with metadata if needed.
-// R1.4: -a includes . and .. in the listing.
+// R2.1: -a includes . and .. in the listing.
 func makeDotEntries(dir string, opts options) []entry {
 	dots := make([]entry, 2)
 	for i, name := range []string{".", ".."} {
@@ -217,7 +224,7 @@ func makeDotEntries(dir string, opts options) []entry {
 }
 
 // shouldShow returns true if the entry should appear in the listing.
-// R1.4: dotfiles are hidden unless showAll or almostAll is set.
+// R1.4: dotfiles hidden by default. R2.1: -a shows all. R2.2: -A shows dotfiles except . and ..
 func shouldShow(name string, opts options) bool {
 	if len(name) == 0 || name[0] != '.' {
 		return true
@@ -226,13 +233,15 @@ func shouldShow(name string, opts options) bool {
 }
 
 // outputEntries dispatches to the appropriate output format.
-// showTotal controls whether the "total N" block line is printed in long format.
+// R1.14: the format mode is determined by the last format flag on the command line.
 func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
 	switch opts.format {
 	case formatLong:
 		printLong(entries, w, showTotal)
 	case formatColumns:
 		printColumnar(entries, w)
+	case formatHorizontal:
+		printHorizontal(entries, w)
 	default:
 		printSingle(entries, w)
 	}
@@ -245,23 +254,88 @@ func printSingle(entries []entry, w io.Writer) {
 	}
 }
 
-// printColumnar outputs entries in multi-column layout.
+// entryNames extracts display names from entries.
+func entryNames(entries []entry) []string {
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.name
+	}
+	return names
+}
+
+// printColumnar outputs entries in multi-column layout with vertical fill.
 // R1.11: uses pkg/format.Columns for column-first vertical fill.
 // R1.12: entries sort vertically (down columns, then across).
 func printColumnar(entries []entry, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	names := make([]string, len(entries))
-	for i, e := range entries {
-		names[i] = e.name
-	}
+	names := entryNames(entries)
 	tw := getTermWidth()
 	rows := format.Columns(names, tw)
 	colWidths := columnMaxWidths(rows)
+	starts := colStartPositions(colWidths)
 	for _, row := range rows {
-		printRow(row, colWidths, w)
+		printRow(row, starts, w)
 	}
+}
+
+// printHorizontal outputs entries in multi-column layout with horizontal fill.
+// R1.13: entries fill across columns first, then down to the next row.
+func printHorizontal(entries []entry, w io.Writer) {
+	if len(entries) == 0 {
+		return
+	}
+	names := entryNames(entries)
+	tw := getTermWidth()
+	numCols := computeHorizCols(names, tw)
+	if numCols <= 1 {
+		printSingle(entries, w)
+		return
+	}
+	widths := horizColWidths(names, numCols)
+	starts := colStartPositions(widths)
+	for i := 0; i < len(names); i += numCols {
+		end := i + numCols
+		if end > len(names) {
+			end = len(names)
+		}
+		printRow(names[i:end], starts, w)
+	}
+}
+
+// computeHorizCols finds the maximum column count for horizontal fill layout.
+// R1.13: entries fill left-to-right; column c holds entries at indices c, c+numCols, etc.
+func computeHorizCols(names []string, termWidth int) int {
+	n := len(names)
+	for cols := n; cols > 1; cols-- {
+		widths := horizColWidths(names, cols)
+		total := 0
+		for i, w := range widths {
+			total += w
+			if i < cols-1 {
+				total += 2
+			}
+		}
+		if total <= termWidth {
+			return cols
+		}
+	}
+	return 1
+}
+
+// horizColWidths computes per-column max widths for horizontal fill.
+// Entry i is assigned to column i%numCols.
+func horizColWidths(names []string, numCols int) []int {
+	widths := make([]int, numCols)
+	for i, name := range names {
+		c := i % numCols
+		w := utf8.RuneCountInString(name)
+		if w > widths[c] {
+			widths[c] = w
+		}
+	}
+	return widths
 }
 
 // columnMaxWidths computes the max rune width per column from row data.
@@ -287,17 +361,54 @@ func columnMaxWidths(rows [][]string) []int {
 	return widths
 }
 
-// printRow prints a single row of columnar output with 2-space gaps.
-func printRow(row []string, colWidths []int, w io.Writer) {
+// colStartPositions computes the starting cursor position for each column.
+// Each column starts at the previous column's start + width + 2-char gap.
+func colStartPositions(widths []int) []int {
+	starts := make([]int, len(widths))
+	pos := 0
+	for i, w := range widths {
+		starts[i] = pos
+		pos += w + 2
+	}
+	return starts
+}
+
+// printRow prints a single row of columnar output using tab-aligned indentation.
+// Matches GNU ls indent() behavior: uses tabs to reach tab stops, spaces for remainder.
+func printRow(row []string, starts []int, w io.Writer) {
+	pos := 0
 	for c, s := range row {
-		if c < len(row)-1 {
-			// R1.11: pad to column width + 2-space gap between columns.
-			fmt.Fprint(w, format.PadRight(s, colWidths[c]+2))
-		} else {
-			fmt.Fprint(w, s)
+		fmt.Fprint(w, s)
+		pos += utf8.RuneCountInString(s)
+		if c < len(row)-1 && c+1 < len(starts) {
+			indent := indentString(pos, starts[c+1])
+			fmt.Fprint(w, indent)
+			pos = starts[c+1]
 		}
 	}
 	fmt.Fprintln(w)
+}
+
+// indentString returns tabs and spaces to advance from cursor position
+// 'from' to 'to', using tab stops for efficiency. Matches GNU ls indent().
+func indentString(from, to int) string {
+	if from >= to {
+		return ""
+	}
+	var buf []byte
+	for {
+		nextTab := from + tabSize - from%tabSize
+		if nextTab > to {
+			break
+		}
+		buf = append(buf, '\t')
+		from = nextTab
+	}
+	for from < to {
+		buf = append(buf, ' ')
+		from++
+	}
+	return string(buf)
 }
 
 // getTermWidth returns the terminal width, defaulting to 80 for non-TTY.
@@ -347,7 +458,7 @@ func printLongEntry(e entry, w longWidths, out io.Writer) {
 	owner := resolveUser(e.info.Uid)
 	group := resolveGroup(e.info.Gid)
 	name := formatName(e)
-	fmt.Fprintf(out, "%s %*d %-*s  %-*s  %*d %s %s\n",
+	fmt.Fprintf(out, "%s %*d %-*s %-*s %*d %s %s\n",
 		permString(e.info.Mode),
 		w.nlink, e.info.Nlink,
 		w.owner, owner,
@@ -558,19 +669,22 @@ func applyShortFlags(o *options, arg string, stderr io.Writer) int {
 }
 
 // applyShortFlag applies a single-character flag.
+// R1.14: format flags (-1, -l, -C, -x) all set opts.format; last one wins.
 // Returns false for unrecognized flags.
 func applyShortFlag(o *options, ch byte) bool {
 	switch ch {
-	case 'a': // R1.4: include all dotfiles including . and ..
+	case 'a': // R2.1: include all dotfiles including . and ..
 		o.showAll = true
-	case 'A': // R1.4: include dotfiles except . and ..
+	case 'A': // R2.2: include dotfiles except . and ..
 		o.almostAll = true
 	case '1': // R1.5: single-column output
 		o.format = formatSingle
 	case 'l': // R1.6: long format
 		o.format = formatLong
-	case 'C': // R1.11: force multi-column output
+	case 'C': // R1.11: force multi-column output (vertical fill)
 		o.format = formatColumns
+	case 'x': // R1.13: force multi-column output (horizontal fill)
+		o.format = formatHorizontal
 	default:
 		return false
 	}
@@ -613,6 +727,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -a, --all                  do not ignore entries starting with .")
 	fmt.Fprintln(w, "  -A, --almost-all           do not list implied . and ..")
 	fmt.Fprintln(w, "  -C                         list entries by columns")
+	fmt.Fprintln(w, "  -x                         list entries by lines instead of by columns")
 	fmt.Fprintln(w, "  -1                         list one file per line")
 	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "      --help                 display this help and exit")
