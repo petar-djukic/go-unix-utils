@@ -5,7 +5,7 @@
 // R1.2 (-L logical mode via PWD env var),
 // R1.3 (-P physical mode with symlinks resolved),
 // R1.4 (last of -L/-P wins),
-// R2.1 (extra operands produce error exit 1),
+// R2.1 (extra operands produce warning on stderr),
 // R2.2 (unknown flags produce error exit 1).
 package main
 
@@ -37,10 +37,15 @@ func main() {
 // run processes arguments and prints the working directory.
 // Returns the exit code.
 func run(args []string) int {
-	m, err := parseArgs(args)
+	m, extraOperands, err := parseArgs(args)
 	if err != nil {
 		printError(err.Error())
 		return 1
+	}
+	// R2.1: warn about extra operands but continue.
+	if extraOperands {
+		fmt.Fprintf(os.Stderr, "%s: ignoring non-option arguments\n",
+			programName)
 	}
 	dir, err := getWorkDir(m)
 	if err != nil {
@@ -116,30 +121,32 @@ func physicalDir() (string, error) {
 	return filepath.EvalSymlinks(dir)
 }
 
-// parseArgs validates arguments and returns the selected mode.
-// R1.4: last of -L/-P wins. R2.1: extra operands error.
-// R2.2: unknown flags error. Default is physical (R1.1).
-func parseArgs(args []string) (mode, error) {
+// parseArgs validates arguments and returns the selected mode
+// and whether extra operands were found. R1.4: last of -L/-P wins.
+// R2.1: extra operands set the flag. R2.2: unknown flags error.
+// Default is physical (R1.1).
+func parseArgs(args []string) (mode, bool, error) {
 	m := modePhysical
+	hasOperands := false
 	for i, arg := range args {
 		if arg == "--" {
 			if i+1 < len(args) {
-				return m, fmt.Errorf("extra operand '%s'", args[i+1])
+				hasOperands = true
 			}
 			break
 		}
 		var err error
-		m, err = handleArg(arg, m)
+		m, hasOperands, err = handleArg(arg, m, hasOperands)
 		if err != nil {
-			return m, err
+			return m, false, err
 		}
 	}
-	return m, nil
+	return m, hasOperands, nil
 }
 
 // handleArg processes a single argument, returning the updated
-// mode or an error for unrecognized input.
-func handleArg(arg string, m mode) (mode, error) {
+// mode, whether an operand was seen, or an error for unknown flags.
+func handleArg(arg string, m mode, hasOp bool) (mode, bool, error) {
 	switch arg {
 	case "--help":
 		fmt.Print(helpText())
@@ -148,25 +155,27 @@ func handleArg(arg string, m mode) (mode, error) {
 		fmt.Print(versionText())
 		os.Exit(0)
 	case "-L", "--logical":
-		return modeLogical, nil
+		return modeLogical, hasOp, nil
 	case "-P", "--physical":
-		return modePhysical, nil
+		return modePhysical, hasOp, nil
 	default:
-		return m, classifyBadArg(arg)
+		return classifyBadArg(arg, m, hasOp)
 	}
-	return m, nil // unreachable
+	return m, hasOp, nil // unreachable
 }
 
-// classifyBadArg returns the appropriate error for an
-// unrecognized argument: unknown flag or extra operand.
-func classifyBadArg(arg string) error {
+// classifyBadArg returns the appropriate result for an
+// unrecognized argument: unknown flag (error) or extra operand
+// (sets flag, no error). R2.1, R2.2.
+func classifyBadArg(arg string, m mode, hasOp bool) (mode, bool, error) {
 	if strings.HasPrefix(arg, "--") {
-		return fmt.Errorf("unrecognized option '%s'", arg)
+		return m, hasOp, fmt.Errorf("unrecognized option '%s'", arg)
 	}
 	if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-		return fmt.Errorf("invalid option -- '%c'", arg[1])
+		return m, hasOp, fmt.Errorf("invalid option -- '%c'", arg[1])
 	}
-	return fmt.Errorf("extra operand '%s'", arg)
+	// R2.1: extra operand — warn but do not fail.
+	return m, true, nil
 }
 
 // helpText returns the --help output.
