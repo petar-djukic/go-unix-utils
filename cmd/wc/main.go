@@ -3,7 +3,8 @@
 
 // Implements prd005-wc R1.1–R1.4: default wc behavior with line, word,
 // and byte counting from stdin or named files, with totals for multiple files.
-// Implements prd005-wc R2.1–R2.4: flag behavior for -l, -w, -c, -m.
+// Implements prd005-wc R2.1–R2.6: flag behavior for -l, -w, -c, -m, -L.
+// Implements prd005-wc R3.1–R3.2: multi-file column alignment and total line.
 package main
 
 import (
@@ -17,21 +18,24 @@ import (
 
 const progName = "wc"
 
-// counts holds line, word, byte, and character counts for a single input.
+// counts holds line, word, byte, character, and max-line-length counts
+// for a single input.
 type counts struct {
-	lines int64
-	words int64
-	bytes int64
-	chars int64
+	lines      int64
+	words      int64
+	bytes      int64
+	chars      int64
+	maxLineLen int64
 }
 
 // options controls which counts to print. R2.6: output order is fixed as
-// lines, words, chars/bytes regardless of flag order.
+// lines, words, chars/bytes, max-line-length regardless of flag order.
 type options struct {
-	printLines bool
-	printWords bool
-	printBytes bool
-	printChars bool
+	printLines      bool
+	printWords      bool
+	printBytes      bool
+	printChars      bool
+	printMaxLineLen bool
 }
 
 // defaultOptions returns default behavior: print lines, words, bytes. R1.1.
@@ -102,6 +106,8 @@ func setFlag(opts *options, ch rune) bool {
 		opts.printBytes = true
 	case 'm':
 		opts.printChars = true
+	case 'L':
+		opts.printMaxLineLen = true
 	default:
 		return false
 	}
@@ -109,7 +115,6 @@ func setFlag(opts *options, ch rune) bool {
 }
 
 // countFields returns the number of active count fields in opts.
-// When both -c and -m are given, both columns are printed (GNU wc behavior).
 func countFields(opts options) int {
 	n := 0
 	if opts.printLines {
@@ -124,11 +129,15 @@ func countFields(opts options) int {
 	if opts.printBytes {
 		n++
 	}
+	if opts.printMaxLineLen {
+		n++
+	}
 	return n
 }
 
 // processFiles counts and prints results for all files.
 // R1.4: prints a total line when more than one file is given.
+// R3.1: right-aligns counts in columns. R3.2: total line label is "total".
 func processFiles(files []string, opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
 	width := computeWidth(files)
@@ -209,21 +218,28 @@ func countFile(name string, stdin io.Reader) (counts, error) {
 	return countReader(f)
 }
 
-// countReader reads all data from r and returns line, word, byte, and char counts.
-// R1.1: counts newlines, words (maximal non-whitespace sequences), and bytes.
+// countReader reads all data from r and returns line, word, byte, char,
+// and max-line-length counts. R1.1: counts newlines, words, bytes.
 // R2.4: counts characters as non-continuation UTF-8 bytes.
+// R2.5: computes max display width with tab expansion.
 func countReader(r io.Reader) (counts, error) {
 	var c counts
 	buf := make([]byte, 32*1024)
 	inWord := false
+	var lineWidth int64
 	for {
 		n, err := r.Read(buf)
 		c.bytes += int64(n)
 		for _, b := range buf[:n] {
 			if b == '\n' {
 				c.lines++
+				if lineWidth > c.maxLineLen {
+					c.maxLineLen = lineWidth
+				}
+				lineWidth = 0
+			} else {
+				lineWidth = advanceLineWidth(lineWidth, b)
 			}
-			// R2.4: each non-continuation byte starts a new character.
 			if isCharStart(b) {
 				c.chars++
 			}
@@ -235,12 +251,39 @@ func countReader(r io.Reader) (counts, error) {
 			}
 		}
 		if err == io.EOF {
+			if lineWidth > c.maxLineLen {
+				c.maxLineLen = lineWidth
+			}
 			return c, nil
 		}
 		if err != nil {
 			return c, err
 		}
 	}
+}
+
+// advanceLineWidth returns the updated display column after processing
+// byte b. R2.5: tabs advance to the next multiple of 8. Under LC_ALL=C,
+// only ASCII printable characters (0x20–0x7E) have display width 1.
+func advanceLineWidth(width int64, b byte) int64 {
+	switch {
+	case b == '\t':
+		return width + int64(8-width%8)
+	case b == '\b':
+		if width > 0 {
+			return width - 1
+		}
+		return 0
+	case isPrintableByte(b):
+		return width + 1
+	default:
+		return width
+	}
+}
+
+// isPrintableByte returns true for C locale printable characters (0x20–0x7E).
+func isPrintableByte(b byte) bool {
+	return b >= 0x20 && b <= 0x7E
 }
 
 // isCharStart returns true if b is a UTF-8 character start byte.
@@ -257,7 +300,7 @@ func isSpaceByte(b byte) bool {
 }
 
 // printCounts writes a formatted counts line with only selected fields.
-// R2.6: output order is lines, words, chars/bytes.
+// R2.6: output order is lines, words, chars, bytes, max-line-length.
 // R1.3: counts followed by filename; no filename for implicit stdin (name="").
 func printCounts(w *bufio.Writer, c counts, width int, name string, opts options) {
 	first := true
@@ -268,8 +311,7 @@ func printCounts(w *bufio.Writer, c counts, width int, name string, opts options
 		fmt.Fprintf(w, "%*d", width, val)
 		first = false
 	}
-	// R2.6: fixed order — lines, words, chars, bytes.
-	// When both -c and -m are given, both columns appear (GNU wc behavior).
+	// R2.6: fixed order — lines, words, chars, bytes, max-line-length.
 	if opts.printLines {
 		printField(c.lines)
 	}
@@ -282,19 +324,24 @@ func printCounts(w *bufio.Writer, c counts, width int, name string, opts options
 	if opts.printBytes {
 		printField(c.bytes)
 	}
+	if opts.printMaxLineLen {
+		printField(c.maxLineLen)
+	}
 	if name != "" {
 		fmt.Fprintf(w, " %s", name)
 	}
 	w.WriteByte('\n')
 }
 
-// addCounts returns the element-wise sum of two counts.
+// addCounts returns the element-wise sum of two counts, except maxLineLen
+// which takes the maximum (matching GNU wc total behavior for -L).
 func addCounts(a, b counts) counts {
 	return counts{
-		lines: a.lines + b.lines,
-		words: a.words + b.words,
-		bytes: a.bytes + b.bytes,
-		chars: a.chars + b.chars,
+		lines:      a.lines + b.lines,
+		words:      a.words + b.words,
+		bytes:      a.bytes + b.bytes,
+		chars:      a.chars + b.chars,
+		maxLineLen: max(a.maxLineLen, b.maxLineLen),
 	}
 }
 

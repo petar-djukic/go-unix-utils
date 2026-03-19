@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd005-wc R1.1–R1.4 and R2.1–R2.4.
+// Differential tests for prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2.
 // All tests run with LC_ALL=C per R5.1.
 package main
 
@@ -38,6 +38,8 @@ func TestDiff(t *testing.T) {
 	oneline := writeTestFile(t, dir, "oneline.txt", "hello\n")
 	empty := writeTestFile(t, dir, "empty.txt", "")
 	multiword := writeTestFile(t, dir, "multiword.txt", "one two three\nfour five\n")
+	tabbed := writeTestFile(t, dir, "tabbed.txt", "a\tb\n")
+	longline := writeTestFile(t, dir, "longline.txt", "short\nthis is a much longer line here\nmed\n")
 
 	tests := []testutils.DiffTest{
 		// === R1.1–R1.4: default behavior ===
@@ -228,7 +230,93 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
-		// === R2 combined flags ===
+		// === R2.5: -L prints max line length ===
+
+		// R2.5: -L on stdin.
+		{
+			Name:  "r2.5_L_flag_stdin",
+			Args:  []string{"-L"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.5: -L on a file.
+		{
+			Name: "r2.5_L_flag_file",
+			Args: []string{"-L", simple},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.5: -L with tabs — tabs expand to next multiple of 8.
+		{
+			Name:  "r2.5_L_with_tabs_stdin",
+			Args:  []string{"-L"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.5: -L with tab file.
+		{
+			Name: "r2.5_L_with_tabs_file",
+			Args: []string{"-L", tabbed},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.5: -L on empty input.
+		{
+			Name:  "r2.5_L_empty_stdin",
+			Args:  []string{"-L"},
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.5: -L with varying line lengths.
+		{
+			Name: "r2.5_L_varying_lengths",
+			Args: []string{"-L", longline},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.5: -L with no trailing newline.
+		{
+			Name:  "r2.5_L_no_trailing_newline",
+			Args:  []string{"-L"},
+			Stdin: []byte("short\nthis is longer"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.5: -L with multiple files — total shows max across files.
+		{
+			Name: "r2.5_L_multiple_files",
+			Args: []string{"-L", simple, longline},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R2.6: combined flags with -L ===
+
+		// R2.6: -lL prints lines then max-line-length.
+		{
+			Name:  "r2.6_combined_lL",
+			Args:  []string{"-lL"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.6: -lwL prints lines, words, max-line-length.
+		{
+			Name:  "r2.6_combined_lwL",
+			Args:  []string{"-lwL"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.6: -cL prints bytes then max-line-length.
+		{
+			Name:  "r2.6_combined_cL",
+			Args:  []string{"-cL"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.6: all flags -lwcL.
+		{
+			Name:  "r2.6_combined_lwcL",
+			Args:  []string{"-lwcL"},
+			Stdin: []byte("foo\nbar baz\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R2 combined flags (existing) ===
 
 		// R2.6: combined -lw prints lines then words.
 		{
@@ -261,6 +349,42 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "r2_combined_lc_multiple_files",
 			Args: []string{"-lc", simple, oneline},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R3.1: multi-file column alignment ===
+
+		// R3.1: columns aligned for largest count across files.
+		{
+			Name: "r3.1_alignment_multifile",
+			Args: []string{simple, oneline, multiword},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: alignment with -L and multiple files.
+		{
+			Name: "r3.1_alignment_L_multifile",
+			Args: []string{"-L", simple, longline, empty},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R3.2: total line ===
+
+		// R3.2: total line with "total" label and summed counts.
+		{
+			Name: "r3.2_total_line_two_files",
+			Args: []string{simple, multiword},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: total line with -L (max, not sum).
+		{
+			Name: "r3.2_total_L_multifile",
+			Args: []string{"-L", simple, longline},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: total with all flags -lwcL.
+		{
+			Name: "r3.2_total_lwcL_multifile",
+			Args: []string{"-lwcL", simple, longline},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
