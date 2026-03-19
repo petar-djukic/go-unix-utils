@@ -1,16 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15: directory listing
-// with format modes (-1, -l, -C, -x), C locale sorting, dot-file filtering
-// (-a, -A), permission strings, owner/group resolution, file metadata via
-// pkg/sys, modification time formatting, total block count, symlink display,
-// multi-column output (vertical and horizontal), last-format-flag-wins,
-// long format link count, device major/minor, timestamps, total block header,
-// inode display (-i), block count display (-s), numeric UID/GID (-n),
-// combined -i -s prefix ordering, --color flag support, human-readable
-// size display (-h), -F classify indicator, -R recursive listing,
-// sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation.
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15, R4.1–R4.3:
+// directory listing with format modes (-1, -l, -C, -x), C locale sorting,
+// dot-file filtering (-a, -A), permission strings, owner/group resolution,
+// file metadata via pkg/sys, modification time formatting, total block count,
+// symlink display, multi-column output (vertical and horizontal),
+// last-format-flag-wins, long format link count, device major/minor,
+// timestamps, total block header, inode display (-i), block count display (-s),
+// numeric UID/GID (-n), combined -i -s prefix ordering, --color flag support,
+// human-readable size display (-h), -F classify indicator, -R recursive listing,
+// sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation,
+// exit codes (0 success, 1/2 failure), and SIGPIPE signal handling.
 package main
 
 import (
@@ -179,8 +180,9 @@ func listPaths(paths []string, opts options, stdout, stderr io.Writer) int {
 		}
 		needBlank = true
 	}
-	// R3.11: -R always shows directory headers.
-	showHeader := len(dirs) > 1 || len(files) > 0 || opts.recursive
+	// R4.2: show headers when multiple original args (including failed ones),
+	// or when recursive. Matches GNU ls n_files > 1 logic.
+	showHeader := len(paths) > 1 || opts.recursive
 	for _, d := range dirs {
 		if needBlank {
 			fmt.Fprintln(stdout)

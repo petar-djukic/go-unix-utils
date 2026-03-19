@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15:
-// default listing, single-column output, C locale sorting, dotfile filtering,
-// horizontal multi-column output, last-format-flag-wins, -a/-A show all,
-// long format owner, group, size, date field rendering, link count,
-// device major/minor, timestamps, total block count, inode display (-i),
-// block count display (-s), numeric UID/GID (-n), combined -i -s prefix
-// ordering, --color flag support, human-readable size display (-h),
-// -F classify indicator, -R recursive listing,
-// sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation.
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15,
+// R4.1–R4.3: default listing, single-column output, C locale sorting,
+// dotfile filtering, horizontal multi-column output, last-format-flag-wins,
+// -a/-A show all, long format owner, group, size, date field rendering,
+// link count, device major/minor, timestamps, total block count,
+// inode display (-i), block count display (-s), numeric UID/GID (-n),
+// combined -i -s prefix ordering, --color flag support, human-readable
+// size display (-h), -F classify indicator, -R recursive listing,
+// sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation,
+// exit codes (0 success, 1/2 failure), and invalid option handling.
 package main_test
 
 import (
@@ -17,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -1120,4 +1122,139 @@ func makePadding(n int) string {
 		b[i] = 'x'
 	}
 	return string(b)
+}
+
+// TestDiffExitCodes tests exit code behavior for R4.1, R4.2, R4.3.
+// R4.1: exit 0 on success. R4.2: exit non-zero for inaccessible entries.
+// R4.3: exit 2 for invalid command-line options.
+func TestDiffExitCodes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R4.1 fixture: basic directory for successful listing.
+	dirSuccess := t.TempDir()
+	makeFiles(t, dirSuccess, "file1", "file2")
+
+	// R4.2 fixture: nonexistent path.
+	nonexistent := filepath.Join(t.TempDir(), "does_not_exist")
+
+	// R4.2 fixture: valid dir plus nonexistent path for partial listing.
+	dirPartial := t.TempDir()
+	makeFiles(t, dirPartial, "exists")
+	nonexistent2 := filepath.Join(t.TempDir(), "also_missing")
+
+	norm := []testutils.NormalizeFunc{normalizeErrorOutput}
+
+	tests := []testutils.DiffTest{
+		// R4.1: successful listing exits 0.
+		{
+			Name:      "r4.1_exit_0_success",
+			Args:      []string{dirSuccess},
+			Normalize: norm,
+		},
+		// R4.1: empty directory listing exits 0.
+		{
+			Name:      "r4.1_exit_0_empty_dir",
+			Args:      []string{t.TempDir()},
+			Normalize: norm,
+		},
+		// R4.2: nonexistent file produces error and non-zero exit.
+		{
+			Name:      "r4.2_nonexistent_file",
+			Args:      []string{nonexistent},
+			Normalize: norm,
+		},
+		// R4.2: mix of valid and invalid paths, partial listing succeeds.
+		{
+			Name:      "r4.2_partial_listing",
+			Args:      []string{nonexistent2, dirPartial},
+			Normalize: norm,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestExitCodeInvalidOption verifies R4.3: exit 2 for invalid command-line
+// options. Uses direct subprocess testing because error message format
+// (program name, path prefix) differs between our binary and gls.
+func TestExitCodeInvalidOption(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("r4.3_invalid_short_option", func(t *testing.T) {
+		cmd := exec.Command(goBin, "-j")
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %v", err)
+		}
+		if exitErr.ExitCode() != 2 {
+			t.Errorf("expected exit code 2, got %d", exitErr.ExitCode())
+		}
+		if !bytes.Contains(stderr.Bytes(), []byte("invalid option")) {
+			t.Errorf("expected 'invalid option' in stderr, got: %q",
+				stderr.String())
+		}
+	})
+
+	t.Run("r4.3_invalid_long_option", func(t *testing.T) {
+		cmd := exec.Command(goBin, "--foobar-invalid")
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %v", err)
+		}
+		if exitErr.ExitCode() != 2 {
+			t.Errorf("expected exit code 2, got %d", exitErr.ExitCode())
+		}
+		if !bytes.Contains(stderr.Bytes(), []byte("unrecognized option")) {
+			t.Errorf("expected 'unrecognized option' in stderr, got: %q",
+				stderr.String())
+		}
+	})
+}
+
+// normalizeErrorOutput normalizes program names and error message case
+// for differential comparison. The Go binary reports as "ls" while the
+// reference binary may report as "gls" or its full path. Go also uses
+// lowercase system error strings while GNU uses capitalized ones.
+func normalizeErrorOutput(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		lines[i] = normalizeErrorLine(line)
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// normalizeErrorLine normalizes a single line of output for comparison.
+func normalizeErrorLine(line []byte) []byte {
+	s := string(line)
+	// Normalize program name at start of error lines.
+	// Handles "gls:", "ls:", "/path/to/ls:", "/path/to/gls:".
+	if colonIdx := strings.Index(s, ": "); colonIdx >= 0 {
+		prefix := s[:colonIdx]
+		baseName := filepath.Base(prefix)
+		if baseName == "ls" || baseName == "gls" {
+			s = "ls" + s[colonIdx:]
+		}
+	}
+	// Normalize "Try 'PROG --help'" lines. The program path differs.
+	if strings.Contains(s, "--help'") && strings.HasPrefix(s, "Try '") {
+		s = "Try 'ls --help' for more information."
+	}
+	// Lowercase for case-insensitive error message comparison.
+	// Go uses lowercase system error strings; GNU uses capitalized.
+	s = strings.ToLower(s)
+	return []byte(s)
 }
