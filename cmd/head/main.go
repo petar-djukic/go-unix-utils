@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.2:
+// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.3:
 // line-count mode, byte-count mode with suffix parsing, multi-file headers,
-// header controls, error handling, and exit code behavior.
+// header controls, error handling, exit code behavior, and version/help output.
 package main
 
 import (
@@ -63,6 +63,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // processFiles iterates over each file and prints content.
 // R3.1: prints headers when multiple files are given.
 // R3.5: skips header for files that cannot be opened and continues.
+// R3.5: tracks output even when a file opens but reading fails.
 // R4.2: sets exit code 1 on any error but processes remaining files.
 func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
@@ -71,13 +72,14 @@ func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int 
 	hadOutput := false
 
 	for _, name := range opts.files {
-		err := processOneFile(name, opts, stdin, w, showHeaders, hadOutput)
+		produced, err := processOneFile(name, opts, stdin, w, showHeaders, hadOutput)
+		if produced {
+			hadOutput = true
+		}
 		if err != nil {
 			flushAndReport(w, stderr, err)
 			exitCode = 1
-			continue
 		}
-		hadOutput = true
 	}
 	if err := w.Flush(); err != nil {
 		exitCode = 1
@@ -86,11 +88,13 @@ func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int 
 }
 
 // processOneFile opens a single file, prints its header if needed, and
-// writes the head output. Returns nil on success or a formatted error.
-func processOneFile(name string, opts headOpts, stdin io.Reader, w *bufio.Writer, showHeaders, hadOutput bool) error {
+// writes the head output. Returns (outputProduced, error).
+// R3.5: when a file cannot be opened, no header is printed (false, err).
+// When a file opens but reading fails, the header was already printed (true, err).
+func processOneFile(name string, opts headOpts, stdin io.Reader, w *bufio.Writer, showHeaders, hadOutput bool) (bool, error) {
 	r, closer, err := openInput(name, stdin)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if closer != nil {
 		defer closer.Close() // best-effort close on read-only file
@@ -102,9 +106,9 @@ func processOneFile(name string, opts headOpts, stdin io.Reader, w *bufio.Writer
 		printHeader(w, name)
 	}
 	if err := headContent(r, opts, w); err != nil {
-		return formatReadError(name, err)
+		return true, formatReadError(name, err)
 	}
-	return nil
+	return true, nil
 }
 
 // flushAndReport flushes buffered output then writes the error to stderr.

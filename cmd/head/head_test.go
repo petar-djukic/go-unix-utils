@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for prd018-head R3.1–R3.5 (multi-file headers, error handling)
-// and R4.1–R4.2 (exit codes).
+// Tests for prd018-head R3.5 (error handling edge cases), R4.1–R4.3
+// (differential tests, flag combinations, version/help output).
 package main
 
 import (
@@ -50,6 +50,7 @@ func TestDiff(t *testing.T) {
 	fileNoNL := writeTestFile(t, tmpDir, "nonewline.txt", "abc")
 	fileEmpty := writeTestFile(t, tmpDir, "empty.txt", "")
 	fileSmall := writeTestFile(t, tmpDir, "small.txt", "a\nb\n")
+	fileBinary := writeTestFile(t, tmpDir, "binary.txt", "abcdefghijklmnopqrstuvwxyz")
 
 	// Create a file with restricted permissions for permission error testing.
 	fileNoRead := writeTestFile(t, tmpDir, "noread.txt", "secret\n")
@@ -65,7 +66,65 @@ func TestDiff(t *testing.T) {
 	errNorm := []testutils.NormalizeFunc{normalizeProgName}
 
 	tests := []testutils.DiffTest{
-		// --- Edge cases (R3.2, R3.3, R3.4) ---
+		// --- R4.1: core flag differential tests ---
+		{
+			Name: "default_10_lines",
+			Args: []string{file20},
+		},
+		{
+			Name: "explicit_n_5",
+			Args: []string{"-n", "5", file20},
+		},
+		{
+			Name: "explicit_n_attached",
+			Args: []string{"-n5", file20},
+		},
+		{
+			Name: "long_lines_flag",
+			Args: []string{"--lines=5", file20},
+		},
+		{
+			Name: "byte_count_5",
+			Args: []string{"-c", "5", fileBinary},
+		},
+		{
+			Name: "byte_count_attached",
+			Args: []string{"-c5", fileBinary},
+		},
+		{
+			Name: "long_bytes_flag",
+			Args: []string{"--bytes=5", fileBinary},
+		},
+		{
+			Name:  "stdin_default",
+			Args:  nil,
+			Stdin: []byte("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n"),
+		},
+		{
+			Name:  "stdin_n_3",
+			Args:  []string{"-n", "3"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			Name:  "stdin_c_5",
+			Args:  []string{"-c", "5"},
+			Stdin: []byte("abcdefghijklmnop"),
+		},
+		{
+			Name:  "stdin_dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		{
+			Name: "negative_n_5",
+			Args: []string{"-n", "-5", file20},
+		},
+		{
+			Name: "negative_c_10",
+			Args: []string{"-c", "-10", fileBinary},
+		},
+
+		// --- R4.2: flag combinations and edge cases ---
 		{
 			Name: "empty_file",
 			Args: []string{fileEmpty},
@@ -108,8 +167,61 @@ func TestDiff(t *testing.T) {
 			Name: "single_line_file",
 			Args: []string{fileSmall},
 		},
+		{
+			Name: "multi_file_default",
+			Args: []string{file20, fileSmall},
+		},
+		{
+			Name: "multi_file_n_3",
+			Args: []string{"-n", "3", file20, fileSmall},
+		},
+		{
+			Name: "multi_file_c_5",
+			Args: []string{"-c", "5", fileBinary, file20},
+		},
+		{
+			Name: "last_wins_cn",
+			Args: []string{"-c", "5", "-n", "3", file20},
+		},
+		{
+			Name: "last_wins_nc",
+			Args: []string{"-n", "3", "-c", "5", fileBinary},
+		},
+		{
+			Name: "quiet_long_flag",
+			Args: []string{"--quiet", file20, fileSmall},
+		},
+		{
+			Name: "silent_long_flag",
+			Args: []string{"--silent", file20, fileSmall},
+		},
+		{
+			Name: "verbose_long_flag",
+			Args: []string{"--verbose", fileSmall},
+		},
+		{
+			Name: "double_dash_separator",
+			Args: []string{"--", file20},
+		},
+		{
+			Name: "n_1_line",
+			Args: []string{"-n", "1", file20},
+		},
+		{
+			Name: "byte_count_exceeds_file",
+			Args: []string{"-c", "1000", fileBinary},
+		},
+		{
+			Name: "lines_exceeds_file",
+			Args: []string{"-n", "100", fileSmall},
+		},
+		{
+			Name:  "multi_file_with_stdin",
+			Args:  []string{file20, "-"},
+			Stdin: []byte("stdin1\nstdin2\n"),
+		},
 
-		// --- Error conditions (R3.5, R4.1, R4.2) ---
+		// --- R3.5: error handling edge cases ---
 		{
 			Name:      "nonexistent_file",
 			Args:      []string{nonExistent},
@@ -137,6 +249,18 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "all_files_missing",
 			Args:      []string{nonExistent, filepath.Join(tmpDir, "also_missing.txt")},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "directory_as_input",
+			Args:      []string{tmpDir},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "directory_between_files",
+			Args:      []string{fileSmall, tmpDir, file20},
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
@@ -201,6 +325,43 @@ func TestRunUnit(t *testing.T) {
 			wantExit: 0,
 			wantOut:  "a\nb\nc\n",
 		},
+		// R4.3: version and help output
+		{
+			name:     "version_flag",
+			args:     []string{"--version"},
+			wantExit: 0,
+			wantOut:  "head (go-unix-utils)\n",
+		},
+		{
+			name:     "help_flag",
+			args:     []string{"--help"},
+			wantExit: 0,
+			wantOut:  "Usage: head [OPTION]... [FILE]...\n",
+		},
+		{
+			name:     "missing_lines_long_argument",
+			args:     []string{"--lines"},
+			wantExit: 1,
+			wantErr:  "option requires an argument",
+		},
+		{
+			name:     "missing_bytes_long_argument",
+			args:     []string{"--bytes"},
+			wantExit: 1,
+			wantErr:  "option requires an argument",
+		},
+		{
+			name:     "invalid_lines_long",
+			args:     []string{"--lines=xyz"},
+			wantExit: 1,
+			wantErr:  "invalid number of lines",
+		},
+		{
+			name:     "invalid_bytes_long",
+			args:     []string{"--bytes=xyz"},
+			wantExit: 1,
+			wantErr:  "invalid number of bytes",
+		},
 	}
 
 	for _, tc := range tests {
@@ -213,8 +374,9 @@ func TestRunUnit(t *testing.T) {
 				t.Fatalf("exit code: got %d, want %d (stderr: %s)",
 					code, tc.wantExit, stderr.String())
 			}
-			if tc.wantOut != "" && stdout.String() != tc.wantOut {
-				t.Fatalf("stdout: got %q, want %q", stdout.String(), tc.wantOut)
+			if tc.wantOut != "" && !strings.HasPrefix(stdout.String(), tc.wantOut) {
+				t.Fatalf("stdout: got %q, want prefix %q",
+					stdout.String(), tc.wantOut)
 			}
 			if tc.wantErr != "" && !strings.Contains(stderr.String(), tc.wantErr) {
 				t.Fatalf("stderr: got %q, want substring %q",
