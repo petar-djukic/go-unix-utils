@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.14: directory listing with format
-// modes (-1, -l, -C, -x), C locale sorting, dot-file filtering (-a, -A),
-// permission strings, owner/group resolution, file metadata via pkg/sys,
-// modification time formatting, total block count, symlink display,
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.3: directory listing
+// with format modes (-1, -l, -C, -x), C locale sorting, dot-file filtering
+// (-a, -A), permission strings, owner/group resolution, file metadata via
+// pkg/sys, modification time formatting, total block count, symlink display,
 // multi-column output (vertical and horizontal), last-format-flag-wins,
 // long format link count, device major/minor, timestamps, total block header,
-// inode display (-i), block count display (-s), and numeric UID/GID (-n).
+// inode display (-i), block count display (-s), numeric UID/GID (-n),
+// combined -i -s prefix ordering, and --color flag support.
 package main
 
 import (
@@ -18,6 +19,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -36,9 +38,6 @@ const defaultTermWidth = 80
 const tabSize = 8
 
 // formatMode controls the output format.
-// R1.1: multi-column when TTY, R1.2: single-column when not TTY,
-// R1.5: -1 forces single-column, R1.6: -l forces long format,
-// R1.11: -C forces multi-column, R1.13: -x forces horizontal multi-column.
 type formatMode int
 
 const (
@@ -48,9 +47,17 @@ const (
 	formatHorizontal                   // multi-column horizontal fill (-x)
 )
 
+// colorMode controls the --color flag behavior.
+// R3.1: supports always, auto, never.
+type colorMode int
+
+const (
+	colorNever  colorMode = iota // default: no color output
+	colorAuto                    // R3.2: colorize only when stdout is a TTY
+	colorAlways                  // always colorize output
+)
+
 // entry holds a directory entry's name and optional metadata.
-// R1.7: info is populated via pkg/sys.Lstat when long format is active.
-// R1.10: path is the full filesystem path for os.Readlink on symlinks.
 type entry struct {
 	name string
 	path string
@@ -59,25 +66,23 @@ type entry struct {
 
 // options holds parsed flag values for prd008-ls.
 type options struct {
-	format     formatMode // R1.1, R1.2, R1.5, R1.6, R1.11, R1.13, R1.14: output format
+	format     formatMode // output format
 	showAll    bool       // R2.1: -a include dotfiles and . / ..
 	almostAll  bool       // R2.2: -A include dotfiles except . / ..
 	showInode  bool       // R2.11: -i prepend inode number
 	showBlocks bool       // R2.12: -s prepend block count
 	numericIDs bool       // R2.14: -n numeric UID/GID (implies -l)
+	color      colorMode  // R3.1: color output mode
 }
 
 // needsStat returns true when entries require metadata beyond just the name.
-// R2.11: -i needs Ino. R2.12: -s needs Blocks. Long format needs all fields.
+// R3.3: color needs the file mode to determine color.
 func needsStat(opts options) bool {
-	return opts.format == formatLong || opts.showInode || opts.showBlocks
+	return opts.format == formatLong || opts.showInode ||
+		opts.showBlocks || opts.color != colorNever
 }
 
 // longWidths holds column widths for long format alignment.
-// R1.6: nlink and size are right-aligned to the widest value.
-// R1.8: owner and group are left-aligned to the widest value.
-// R2.8: major/minor device number widths for device files.
-// R2.11: inode column width. R2.12: block count column width.
 type longWidths struct {
 	nlink  int
 	owner  int
@@ -91,7 +96,6 @@ type longWidths struct {
 }
 
 // sizeFieldWidth returns the column width for the size/device field.
-// When devices are present, the width accommodates both size and major,minor.
 func (w longWidths) sizeFieldWidth() int {
 	if !w.hasDev {
 		return w.size
@@ -114,10 +118,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if code >= 0 {
 		return code
 	}
+	setupColor(opts)
+	defer format.ResetColorEnabled()
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
 	return listPaths(paths, opts, stdout, stderr)
+}
+
+// setupColor sets the process-global color mode based on the --color flag.
+// R3.1: --color=always enables, --color=never disables.
+// R3.2: --color=auto enables only when stdout is a TTY.
+// R3.3: calls format.SetColorEnabled to control FileTypeColor/Reset output.
+func setupColor(opts options) {
+	switch opts.color {
+	case colorAlways:
+		format.SetColorEnabled(true)
+	case colorAuto:
+		format.SetColorEnabled(sys.IsTerminal(os.Stdout.Fd()))
+	default:
+		format.SetColorEnabled(false)
+	}
 }
 
 // listPaths lists file and directory arguments in GNU ls order:
@@ -206,7 +227,7 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 }
 
 // readEntries reads directory entries, applies dot-filtering (R1.4, R2.1, R2.2),
-// stats entries when needed (R1.7, R2.11, R2.12), and sorts by name in C locale order (R1.3).
+// stats entries when needed, and sorts by name in C locale order (R1.3).
 func readEntries(dir string, opts options) ([]entry, error) {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
@@ -265,7 +286,6 @@ func shouldShow(name string, opts options) bool {
 
 // outputEntries dispatches to the appropriate output format.
 // R1.14: the format mode is determined by the last format flag on the command line.
-// R2.12/R2.13: total line shown for directory listings when -l or -s is active.
 func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
 	if showTotal && (opts.format == formatLong || opts.showBlocks) {
 		printTotalBlocks(entries, w)
@@ -283,17 +303,16 @@ func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
 }
 
 // printSingle outputs entries one per line.
-// R2.11/R2.12: entries include inode/block prefix when active.
+// R3.3: entry names are colorized when color is active.
 func printSingle(entries []entry, opts options, w io.Writer) {
-	names := displayNames(entries, opts)
+	names := colorizedDisplayNames(entries, opts)
 	for _, n := range names {
 		fmt.Fprintln(w, n)
 	}
 }
 
-// displayNames returns entry display strings for non-long formats.
-// R2.11: prepends inode when -i is active.
-// R2.12: prepends block count when -s is active.
+// displayNames returns entry display strings for non-long formats (plain, no color).
+// Used for column width calculation in multi-column modes.
 func displayNames(entries []entry, opts options) []string {
 	if !opts.showInode && !opts.showBlocks {
 		return entryNames(entries)
@@ -306,7 +325,22 @@ func displayNames(entries []entry, opts options) []string {
 	return names
 }
 
-// entryNames extracts display names from entries.
+// colorizedDisplayNames returns display strings with colorized entry names.
+// R3.3: wraps entry names with ANSI color codes when color is active.
+func colorizedDisplayNames(entries []entry, opts options) []string {
+	if !opts.showInode && !opts.showBlocks {
+		return colorizedEntryNames(entries)
+	}
+	inodeW, blockW := maxPrefixWidths(entries, opts)
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = nonLongPrefix(e, opts, inodeW, blockW) +
+			colorEntryName(e.name, e.info)
+	}
+	return names
+}
+
+// entryNames extracts display names from entries (no color).
 func entryNames(entries []entry) []string {
 	names := make([]string, len(entries))
 	for i, e := range entries {
@@ -315,8 +349,32 @@ func entryNames(entries []entry) []string {
 	return names
 }
 
+// colorizedEntryNames extracts display names with color codes.
+// R3.3: wraps names with ANSI codes based on file type.
+func colorizedEntryNames(entries []entry) []string {
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = colorEntryName(e.name, e.info)
+	}
+	return names
+}
+
+// colorEntryName wraps a name with ANSI color codes based on file type.
+// R3.3: colorCode + name + resetCode. Returns plain name when color is off.
+func colorEntryName(name string, info *sys.FileInfo) string {
+	if info == nil {
+		return name
+	}
+	c := format.FileTypeColor(info.Mode)
+	if c == "" {
+		return name
+	}
+	return c + name + format.Reset()
+}
+
 // nonLongPrefix formats the inode/blocks prefix for non-long format entries.
 // R2.11: inode right-aligned. R2.12: blocks right-aligned in 1K units.
+// R2.15: when both are given, inode is printed first, then block count.
 func nonLongPrefix(e entry, opts options, inodeW, blockW int) string {
 	prefix := ""
 	if opts.showInode {
@@ -354,45 +412,67 @@ func maxPrefixWidths(entries []entry, opts options) (int, int) {
 }
 
 // printColumnar outputs entries in multi-column layout with vertical fill.
-// R1.11: uses pkg/format.Columns for column-first vertical fill.
-// R1.12: entries sort vertically (down columns, then across).
+// R3.3: uses plain names for width calculation, colored names for output.
 func printColumnar(entries []entry, opts options, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	names := displayNames(entries, opts)
+	plainNames := displayNames(entries, opts)
 	tw := getTermWidth()
-	rows := format.Columns(names, tw)
+	rows := format.Columns(plainNames, tw)
 	colWidths := columnMaxWidths(rows)
 	starts := colStartPositions(colWidths)
-	for _, row := range rows {
-		printRow(row, starts, w)
+	coloredNames := colorizedDisplayNames(entries, opts)
+	numRows := len(rows)
+	coloredRows := buildVerticalRows(coloredNames, numRows)
+	for i, row := range coloredRows {
+		printRowColored(row, rows[i], starts, w)
 	}
+}
+
+// buildVerticalRows distributes names into rows using vertical fill order.
+// Entry i goes to row i%numRows, column i/numRows.
+func buildVerticalRows(names []string, numRows int) [][]string {
+	if numRows == 0 {
+		return nil
+	}
+	rows := make([][]string, numRows)
+	for i, name := range names {
+		r := i % numRows
+		rows[r] = append(rows[r], name)
+	}
+	return rows
 }
 
 // printHorizontal outputs entries in multi-column layout with horizontal fill.
 // R1.13: entries fill across columns first, then down to the next row.
+// R3.3: uses plain names for width calculation, colored names for output.
 func printHorizontal(entries []entry, opts options, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	names := displayNames(entries, opts)
+	plainNames := displayNames(entries, opts)
 	tw := getTermWidth()
-	numCols := computeHorizCols(names, tw)
+	numCols := computeHorizCols(plainNames, tw)
+	coloredNames := colorizedDisplayNames(entries, opts)
 	if numCols <= 1 {
-		for _, n := range names {
+		for _, n := range coloredNames {
 			fmt.Fprintln(w, n)
 		}
 		return
 	}
-	widths := horizColWidths(names, numCols)
+	widths := horizColWidths(plainNames, numCols)
 	starts := colStartPositions(widths)
-	for i := 0; i < len(names); i += numCols {
-		end := i + numCols
-		if end > len(names) {
-			end = len(names)
+	for i := 0; i < len(coloredNames); i += numCols {
+		cEnd := i + numCols
+		if cEnd > len(coloredNames) {
+			cEnd = len(coloredNames)
 		}
-		printRow(names[i:end], starts, w)
+		pEnd := i + numCols
+		if pEnd > len(plainNames) {
+			pEnd = len(plainNames)
+		}
+		printRowColored(coloredNames[i:cEnd], plainNames[i:pEnd], starts, w)
 	}
 }
 
@@ -465,14 +545,16 @@ func colStartPositions(widths []int) []int {
 	return starts
 }
 
-// printRow prints a single row of columnar output using tab-aligned indentation.
-// Matches GNU ls indent() behavior: uses tabs to reach tab stops, spaces for remainder.
-func printRow(row []string, starts []int, w io.Writer) {
+// printRowColored prints a row where coloredRow may contain ANSI codes and
+// plainRow contains the corresponding plain text for cursor position tracking.
+func printRowColored(coloredRow, plainRow []string, starts []int, w io.Writer) {
 	pos := 0
-	for c, s := range row {
+	for c, s := range coloredRow {
 		fmt.Fprint(w, s)
-		pos += utf8.RuneCountInString(s)
-		if c < len(row)-1 && c+1 < len(starts) {
+		if c < len(plainRow) {
+			pos += utf8.RuneCountInString(plainRow[c])
+		}
+		if c < len(coloredRow)-1 && c+1 < len(starts) {
 			indent := indentString(pos, starts[c+1])
 			fmt.Fprint(w, indent)
 			pos = starts[c+1]
@@ -540,11 +622,7 @@ func printLongLines(entries []entry, opts options, w io.Writer) {
 }
 
 // printLongEntry formats a single entry in long format.
-// R1.6: permissions, nlink (right-aligned), owner (left-aligned),
-// group (left-aligned), size (right-aligned), mtime, name.
-// R1.10: symlinks display " -> target" after the name.
-// R2.8: device files show major,minor instead of size.
-// R2.11: -i prepends inode. R2.12: -s prepends blocks. R2.14: -n numeric IDs.
+// R3.3: name field is colorized when color is active.
 func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
 	prefix := longPrefix(e, opts, w)
 	owner := ownerString(e.info.Uid, opts.numericIDs)
@@ -565,6 +643,7 @@ func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
 // longPrefix formats the inode/blocks prefix for long format entries.
 // R2.11: inode right-aligned before permissions.
 // R2.12: block count right-aligned before permissions (after inode if both).
+// R2.15: when both are given, inode is printed first, then block count.
 func longPrefix(e entry, opts options, w longWidths) string {
 	prefix := ""
 	if opts.showInode {
@@ -609,21 +688,20 @@ func formatSizeField(fi *sys.FileInfo, w longWidths) string {
 
 // formatName returns the display name for an entry.
 // R1.10: appends " -> target" for symlinks.
+// R3.3: entry name is wrapped with ANSI color codes when color is active.
 func formatName(e entry) string {
+	name := colorEntryName(e.name, e.info)
 	if e.info == nil || e.info.Mode&os.ModeSymlink == 0 {
-		return e.name
+		return name
 	}
 	target, err := os.Readlink(e.path)
 	if err != nil {
-		return e.name
+		return name
 	}
-	return e.name + " -> " + target
+	return name + " -> " + target
 }
 
 // computeWidths calculates the column widths for long format alignment.
-// R1.6: nlink and size columns sized to the widest value.
-// R2.8: tracks device major/minor widths separately.
-// R2.11: inode width. R2.12: block width. R2.14: numeric IDs affect owner/group width.
 func computeWidths(entries []entry, opts options) longWidths {
 	var w longWidths
 	for _, e := range entries {
@@ -658,7 +736,6 @@ func updateWidth(current *int, val int) {
 }
 
 // isDevice returns true if the mode indicates a character or block device.
-// R2.8: device files display major,minor instead of size.
 func isDevice(mode os.FileMode) bool {
 	return mode&os.ModeDevice != 0
 }
@@ -709,7 +786,6 @@ func fileTypeChar(mode os.FileMode) byte {
 
 // fillRWX fills 3 bytes with r/w/x characters for a permission triplet.
 // shift is the bit position of the read bit (8=owner, 5=group, 2=other).
-// R1.6: setuid/setgid/sticky modify the execute position character.
 func fillRWX(buf []byte, mode os.FileMode, shift uint,
 	specialBit os.FileMode, execSpec, noExecSpec byte) {
 	perm := uint32(mode.Perm())
@@ -729,7 +805,6 @@ func rwChar(perm uint32, bit uint, ch byte) byte {
 }
 
 // execChar returns the execute position character considering special bits.
-// R1.6: setuid→s/S, setgid→s/S, sticky→t/T.
 func execChar(hasExec, hasSpecial bool, execSpec, noExecSpec byte) byte {
 	switch {
 	case hasSpecial && hasExec:
@@ -840,7 +915,6 @@ func applyShortFlags(o *options, arg string, stderr io.Writer) int {
 
 // applyShortFlag applies a single-character flag.
 // R1.14: format flags (-1, -l, -C, -x) all set opts.format; last one wins.
-// R2.11: -i shows inode. R2.12: -s shows blocks. R2.14: -n implies -l with numeric IDs.
 // Returns false for unrecognized flags.
 func applyShortFlag(o *options, ch byte) bool {
 	switch ch {
@@ -870,8 +944,12 @@ func applyShortFlag(o *options, ch byte) bool {
 }
 
 // applyLongFlag handles --long-name flags.
+// R3.1: handles --color=always, --color=auto, --color=never, bare --color.
 // Returns exit code >= 0 for terminal flags, -1 to continue.
 func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
+	if arg == "--color" || strings.HasPrefix(arg, "--color=") {
+		return applyColorFlag(o, arg, stderr)
+	}
 	switch arg {
 	case "--all":
 		o.showAll = true
@@ -891,6 +969,30 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 	return -1
 }
 
+// applyColorFlag parses the --color flag value.
+// R3.1: bare --color defaults to "always". Accepts always, auto, never
+// and GNU ls aliases (yes/force, tty/if-tty, none).
+func applyColorFlag(o *options, arg string, stderr io.Writer) int {
+	value := "always"
+	if i := strings.IndexByte(arg, '='); i >= 0 {
+		value = arg[i+1:]
+	}
+	switch value {
+	case "always", "yes", "force":
+		o.color = colorAlways
+	case "auto", "tty", "if-tty":
+		o.color = colorAuto
+	case "never", "none":
+		o.color = colorNever
+	default:
+		fmt.Fprintf(stderr, "%s: invalid argument '%s' for '--color'\n",
+			progName, value)
+		printTryHelp(stderr)
+		return 2
+	}
+	return -1
+}
+
 // printTryHelp writes the "Try --help" hint to stderr.
 func printTryHelp(w io.Writer) {
 	fmt.Fprintf(w, "Try '%s --help' for more information.\n", progName)
@@ -905,6 +1007,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -a, --all                  do not ignore entries starting with .")
 	fmt.Fprintln(w, "  -A, --almost-all           do not list implied . and ..")
 	fmt.Fprintln(w, "  -C                         list entries by columns")
+	fmt.Fprintln(w, "      --color[=WHEN]         colorize the output; WHEN can be 'always'")
+	fmt.Fprintln(w, "                               (default if omitted), 'auto', or 'never'")
 	fmt.Fprintln(w, "  -i                         print the index number of each file")
 	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "  -n                         like -l, but list numeric user and group IDs")

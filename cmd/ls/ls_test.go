@@ -1,15 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.14:
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.3:
 // default listing, single-column output, C locale sorting, dotfile filtering,
 // horizontal multi-column output, last-format-flag-wins, -a/-A show all,
 // long format owner, group, size, date field rendering, link count,
 // device major/minor, timestamps, total block count, inode display (-i),
-// block count display (-s), and numeric UID/GID (-n).
+// block count display (-s), numeric UID/GID (-n), combined -i -s prefix
+// ordering, and --color flag support.
 package main_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -313,8 +315,6 @@ func TestDiffLongFormat(t *testing.T) {
 
 // TestDiffLongFormatExtended tests long format link count, device major/minor,
 // timestamps, and total block count.
-// Implements prd008-ls R2.7 (link count), R2.8 (device major/minor),
-// R2.9 (timestamps), R2.10 (total block count) per task description.
 func TestDiffLongFormatExtended(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -382,8 +382,6 @@ func TestDiffLongFormatExtended(t *testing.T) {
 
 // TestDiffInodeBlocksNumeric tests inode display (-i), block count display (-s),
 // and numeric UID/GID (-n).
-// Implements prd008-ls R2.11 (inode), R2.12 (blocks), R2.13 (total with -s),
-// R2.14 (numeric IDs).
 func TestDiffInodeBlocksNumeric(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -493,6 +491,180 @@ func TestDiffInodeBlocksNumeric(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorFlags tests --color flag support and combined -i -s ordering.
+// Implements prd008-ls R2.15, R3.1, R3.2, R3.3.
+func TestDiffColorFlags(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// Fixture: directory with varied file types for color tests.
+	dirColor := t.TempDir()
+	makeFiles(t, dirColor, "plain.txt")
+	if err := os.Mkdir(filepath.Join(dirColor, "subdir"), 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+	makeFiles(t, dirColor, "runme")
+	if err := os.Chmod(filepath.Join(dirColor, "runme"), 0o755); err != nil {
+		t.Fatalf("chmod runme: %v", err)
+	}
+	if err := os.Symlink("plain.txt", filepath.Join(dirColor, "link")); err != nil {
+		t.Fatalf("creating symlink: %v", err)
+	}
+
+	// Fixture: directory for combined -i -s ordering test.
+	dirCombined := t.TempDir()
+	makeFiles(t, dirCombined, "aaa", "bbb")
+	makeFileWithContent(t, dirCombined, "ccc", makePadding(2048))
+
+	tests := []testutils.DiffTest{
+		// R2.15: -i and -s combined, inode first then blocks.
+		{
+			Name:    "r2.15_combined_is",
+			Args:    []string{"-is"},
+			WorkDir: dirCombined,
+		},
+		// R2.15: -i -s -l combined in long format.
+		{
+			Name:    "r2.15_combined_isl",
+			Args:    []string{"-isl"},
+			WorkDir: dirCombined,
+		},
+		// R2.15: -s -i order (same output as -is, both accepted).
+		{
+			Name:    "r2.15_combined_si",
+			Args:    []string{"-si"},
+			WorkDir: dirCombined,
+		},
+		// R3.1: --color=never produces no ANSI sequences.
+		{
+			Name:    "r3.1_color_never",
+			Args:    []string{"-1", "--color=never"},
+			WorkDir: dirColor,
+		},
+		// R3.1: --color=never with -l produces no ANSI sequences.
+		{
+			Name:    "r3.1_color_never_long",
+			Args:    []string{"-l", "--color=never"},
+			WorkDir: dirColor,
+		},
+		// R3.2: --color=auto piped (no TTY) produces no ANSI.
+		{
+			Name:    "r3.2_color_auto_piped",
+			Args:    []string{"-1", "--color=auto"},
+			WorkDir: dirColor,
+		},
+		// R3.2: --color=auto with -l piped produces no ANSI.
+		{
+			Name:    "r3.2_color_auto_piped_long",
+			Args:    []string{"-l", "--color=auto"},
+			WorkDir: dirColor,
+		},
+		// R3.3: --color=always with -1 (ANSI stripped for comparison).
+		{
+			Name:      "r3.3_color_always_single",
+			Args:      []string{"-1", "--color=always"},
+			WorkDir:   dirColor,
+			Normalize: []testutils.NormalizeFunc{stripANSI},
+		},
+		// R3.3: --color=always with -l (ANSI stripped for comparison).
+		{
+			Name:      "r3.3_color_always_long",
+			Args:      []string{"-l", "--color=always"},
+			WorkDir:   dirColor,
+			Normalize: []testutils.NormalizeFunc{stripANSI},
+		},
+		// R3.1: bare --color defaults to always (ANSI stripped for comparison).
+		{
+			Name:      "r3.1_bare_color_flag",
+			Args:      []string{"-1", "--color"},
+			WorkDir:   dirColor,
+			Normalize: []testutils.NormalizeFunc{stripANSI},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestColorAlwaysProducesANSI verifies that --color=always emits ANSI codes.
+// This is a unit test (not differential) to verify R3.3 color output presence.
+func TestColorAlwaysProducesANSI(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+
+	cmd := exec.Command(goBin, "-1", "--color=always", dir)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running ls: %v", err)
+	}
+	if !bytes.Contains(out, []byte("\033[")) {
+		t.Errorf("--color=always should contain ANSI escape sequences, got: %q", out)
+	}
+}
+
+// TestColorNeverNoANSI verifies that --color=never emits no ANSI codes.
+// R3.1/R3.4: when color is suppressed, no ANSI sequences in output.
+func TestColorNeverNoANSI(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+	makeFiles(t, dir, "runme")
+	if err := os.Chmod(filepath.Join(dir, "runme"), 0o755); err != nil {
+		t.Fatalf("chmod runme: %v", err)
+	}
+
+	cmd := exec.Command(goBin, "-1", "--color=never", dir)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running ls: %v", err)
+	}
+	if bytes.Contains(out, []byte("\033[")) {
+		t.Errorf("--color=never should not contain ANSI sequences, got: %q", out)
+	}
+}
+
+// stripANSI removes ANSI escape sequences for differential test normalization.
+// Used with --color=always tests where exact color codes may differ between
+// our implementation and gls due to LS_COLORS settings.
+func stripANSI(b []byte) []byte {
+	var result []byte
+	i := 0
+	for i < len(b) {
+		if i+1 < len(b) && b[i] == '\033' && b[i+1] == '[' {
+			j := i + 2
+			for j < len(b) && !isANSITerminator(b[j]) {
+				j++
+			}
+			if j < len(b) {
+				i = j + 1
+				continue
+			}
+		}
+		result = append(result, b[i])
+		i++
+	}
+	return result
+}
+
+// isANSITerminator returns true for the final byte of an ANSI CSI sequence.
+func isANSITerminator(b byte) bool {
+	return b >= 0x40 && b <= 0x7E
 }
 
 // makeFiles creates empty regular files in dir.
