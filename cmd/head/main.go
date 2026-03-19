@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.4: line-count mode,
-// byte-count mode with suffix parsing, multi-file headers, and header controls.
+// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.2:
+// line-count mode, byte-count mode with suffix parsing, multi-file headers,
+// header controls, error handling, and exit code behavior.
 package main
 
 import (
@@ -61,28 +62,55 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // processFiles iterates over each file and prints content.
 // R3.1: prints headers when multiple files are given.
+// R3.5: skips header for files that cannot be opened and continues.
+// R4.2: sets exit code 1 on any error but processes remaining files.
 func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
 	exitCode := 0
 	showHeaders := shouldShowHeaders(opts)
+	hadOutput := false
 
-	for i, name := range opts.files {
-		if showHeaders {
-			if i > 0 {
-				fmt.Fprint(w, "\n")
-			}
-			printHeader(w, name)
-		}
-		if err := headOne(name, opts, stdin, w); err != nil {
-			w.Flush() // best-effort flush before writing to stderr
-			fmt.Fprintf(stderr, "%s: %s\n", progName, err)
+	for _, name := range opts.files {
+		err := processOneFile(name, opts, stdin, w, showHeaders, hadOutput)
+		if err != nil {
+			flushAndReport(w, stderr, err)
 			exitCode = 1
+			continue
 		}
+		hadOutput = true
 	}
 	if err := w.Flush(); err != nil {
 		exitCode = 1
 	}
 	return exitCode
+}
+
+// processOneFile opens a single file, prints its header if needed, and
+// writes the head output. Returns nil on success or a formatted error.
+func processOneFile(name string, opts headOpts, stdin io.Reader, w *bufio.Writer, showHeaders, hadOutput bool) error {
+	r, closer, err := openInput(name, stdin)
+	if err != nil {
+		return err
+	}
+	if closer != nil {
+		defer closer.Close() // best-effort close on read-only file
+	}
+	if showHeaders {
+		if hadOutput {
+			fmt.Fprint(w, "\n")
+		}
+		printHeader(w, name)
+	}
+	if err := headContent(r, opts, w); err != nil {
+		return formatReadError(name, err)
+	}
+	return nil
+}
+
+// flushAndReport flushes buffered output then writes the error to stderr.
+func flushAndReport(w *bufio.Writer, stderr io.Writer, err error) {
+	w.Flush() // best-effort flush before writing to stderr
+	fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 }
 
 // printHeader writes the GNU-format file header.
@@ -106,18 +134,6 @@ func shouldShowHeaders(opts headOpts) bool {
 		return true
 	}
 	return len(opts.files) > 1
-}
-
-// headOne opens one file and dispatches to the appropriate reader.
-func headOne(name string, opts headOpts, stdin io.Reader, w *bufio.Writer) error {
-	r, closer, err := openInput(name, stdin)
-	if err != nil {
-		return err
-	}
-	if closer != nil {
-		defer closer.Close() // best-effort close on read-only file
-	}
-	return headContent(r, opts, w)
 }
 
 // openInput returns a reader for the named file or stdin.
@@ -411,11 +427,39 @@ func applyShortFlags(arg string, opts *headOpts, stderr io.Writer) (int, int) {
 }
 
 // formatError formats a file open error for GNU-compatible output.
+// R3.5: error message matches GNU head format with capitalized system error.
 func formatError(name string, err error) error {
-	if pe, ok := err.(*os.PathError); ok {
-		return fmt.Errorf("cannot open '%s' for reading: %s", name, pe.Err)
+	return fmt.Errorf("cannot open '%s' for reading: %s", name, sysErrMsg(err))
+}
+
+// formatReadError formats a read error for GNU-compatible output.
+// R3.5: used when a file opens successfully but reading fails (e.g., directory).
+func formatReadError(name string, err error) error {
+	displayName := name
+	if name == "-" {
+		displayName = "standard input"
 	}
-	return fmt.Errorf("cannot open '%s' for reading: %s", name, err)
+	return fmt.Errorf("error reading '%s': %s", displayName, sysErrMsg(err))
+}
+
+// sysErrMsg extracts and capitalizes the system error message to match GNU format.
+// Go returns lowercase syscall errors; GNU coreutils uses capitalized messages.
+func sysErrMsg(err error) string {
+	var msg string
+	if pe, ok := err.(*os.PathError); ok {
+		msg = pe.Err.Error()
+	} else {
+		msg = err.Error()
+	}
+	return capitalizeFirst(msg)
+}
+
+// capitalizeFirst uppercases the first byte of s.
+func capitalizeFirst(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // printHelp writes usage information to w.
