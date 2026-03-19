@@ -101,6 +101,35 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
+// TestSIGPIPEExitCode verifies that yes exits 0 when stdout is closed
+// early by a pipe consumer. R4.3.
+func TestSIGPIPEExitCode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, goBin)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Read one line then close the pipe to trigger SIGPIPE.
+	buf := make([]byte, 64)
+	_, _ = stdout.Read(buf) // best-effort read to let the process start writing
+	stdout.Close()
+
+	err = cmd.Wait()
+	if err != nil {
+		t.Fatalf("expected exit code 0 on SIGPIPE, got error: %v", err)
+	}
+}
+
 // buildEnv returns the current environment with LC_ALL=C set.
 func buildEnv() []string {
 	env := os.Environ()

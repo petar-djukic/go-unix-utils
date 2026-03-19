@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd012-yes R1.1-R1.4: core yes output loop,
-// R2.1-R2.2: buffered output, R3.1-R3.2: exit codes and signal handling.
+// R2.1-R2.2: buffered output, R3.1-R3.3: exit codes and signal handling.
 package main
 
 import (
@@ -58,7 +58,7 @@ func writeLoop(line string) {
 }
 
 // exitOnWriteError exits 0 for EPIPE (normal pipe close) or 1 for
-// other write errors. R3.1, R3.2.
+// other write errors. R3.1, R3.2, R3.3: no error message is printed to stderr.
 func exitOnWriteError(err error) {
 	if errors.Is(err, syscall.EPIPE) {
 		os.Exit(0)
