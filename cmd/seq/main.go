@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd019-seq R1.1–R1.4: numeric sequence generation with
-// single, two, and three argument forms, including floating-point support.
+// Implements prd019-seq R1.1–R1.5, R2.1–R2.3: numeric sequence generation with
+// single, two, and three argument forms, floating-point support, custom
+// separators, and integer/float format selection.
 package main
 
 import (
@@ -48,11 +49,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 // parseArgs separates flags from numeric arguments.
 // Returns opts and exit code (-1 = continue).
 func parseArgs(args []string, stdout, stderr io.Writer) (seqOpts, int) {
-	numStrs, code := extractNums(args, stdout, stderr)
+	sep, numStrs, code := extractNums(args, stdout, stderr)
 	if code >= 0 {
 		return seqOpts{}, code
 	}
-	opts, err := buildOpts(numStrs)
+	opts, err := buildOpts(numStrs, sep)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		if strings.Contains(err.Error(), "operand") {
@@ -63,12 +64,15 @@ func parseArgs(args []string, stdout, stderr io.Writer) (seqOpts, int) {
 	return opts, -1
 }
 
-// extractNums filters args into numeric strings, handling --help and --version.
-// Returns (numStrs, exit code). Exit code -1 means continue.
-func extractNums(args []string, stdout, stderr io.Writer) ([]string, int) {
+// extractNums filters args into numeric strings, handling flags.
+// Returns (separator, numStrs, exit code). Exit code -1 means continue.
+// R2.2: parses -s STRING and --separator=STRING.
+func extractNums(args []string, stdout, stderr io.Writer) (string, []string, int) {
 	var numStrs []string
+	separator := "\n" // R2.1: default separator is newline
 	flagsDone := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if flagsDone {
 			numStrs = append(numStrs, arg)
 			continue
@@ -79,20 +83,43 @@ func extractNums(args []string, stdout, stderr io.Writer) ([]string, int) {
 		}
 		if arg == "--help" {
 			printHelp(stdout)
-			return nil, 0
+			return "", nil, 0
 		}
 		if arg == "--version" {
 			printVersion(stdout)
-			return nil, 0
+			return "", nil, 0
+		}
+		// R2.2: --separator=STRING
+		if strings.HasPrefix(arg, "--separator=") {
+			separator = arg[len("--separator="):]
+			continue
+		}
+		if arg == "--separator" || arg == "-s" {
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr,
+					"%s: option '%s' requires an argument\n",
+					progName, arg)
+				printTryHelp(stderr)
+				return "", nil, 1
+			}
+			i++
+			separator = args[i]
+			continue
+		}
+		// R2.2: -sSTRING (no space)
+		if strings.HasPrefix(arg, "-s") && len(arg) > 2 {
+			separator = arg[2:]
+			continue
 		}
 		if isFlag(arg) {
-			fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n", progName, arg)
+			fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n",
+				progName, arg)
 			printTryHelp(stderr)
-			return nil, 1
+			return "", nil, 1
 		}
 		numStrs = append(numStrs, arg)
 	}
-	return numStrs, -1
+	return separator, numStrs, -1
 }
 
 // isFlag returns true if arg looks like a flag (starts with - but is not a number).
@@ -105,7 +132,8 @@ func isFlag(arg string) bool {
 
 // buildOpts validates numeric strings and constructs seqOpts.
 // R1.1: supports 1, 2, or 3 positional numeric arguments.
-func buildOpts(numStrs []string) (seqOpts, error) {
+// R1.5: rejects zero step with an error.
+func buildOpts(numStrs []string, separator string) (seqOpts, error) {
 	if len(numStrs) == 0 {
 		return seqOpts{}, fmt.Errorf("missing operand")
 	}
@@ -117,15 +145,17 @@ func buildOpts(numStrs []string) (seqOpts, error) {
 		return seqOpts{}, err
 	}
 	first, step, last := assignArgs(values)
+	// R1.5: STEP must not be zero.
 	if step == 0 {
-		return seqOpts{}, fmt.Errorf("invalid Zero increment value: '%s'", numStrs[1])
+		return seqOpts{}, fmt.Errorf(
+			"invalid Zero increment value: '%s'", numStrs[1])
 	}
 	return seqOpts{
 		first:     first,
 		step:      step,
 		last:      last,
 		format:    computeFormat(numStrs),
-		separator: "\n",
+		separator: separator,
 	}, nil
 }
 
@@ -135,7 +165,8 @@ func parseValues(numStrs []string) ([]float64, error) {
 	for i, s := range numStrs {
 		v, err := strconv.ParseFloat(s, 64)
 		if err != nil || math.IsNaN(v) {
-			return nil, fmt.Errorf("invalid floating point argument: '%s'", s)
+			return nil, fmt.Errorf(
+				"invalid floating point argument: '%s'", s)
 		}
 		values[i] = v
 	}
@@ -199,7 +230,8 @@ func sequenceCount(first, step, last float64) int {
 }
 
 // printSequence generates and writes the numeric sequence to w.
-// R2.1: numbers separated by newline, trailing newline after last.
+// R2.1: numbers separated by separator, trailing newline after last.
+// R2.2: custom separator replaces newline between numbers.
 func printSequence(w io.Writer, opts seqOpts) {
 	bw := bufio.NewWriter(w)
 	count := sequenceCount(opts.first, opts.step, opts.last)
@@ -223,6 +255,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "  or:  %s [OPTION]... FIRST INCREMENT LAST\n", progName)
 	fmt.Fprintln(w, "Print numbers from FIRST to LAST, in steps of INCREMENT.")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -s, --separator=STRING  use STRING to separate numbers (default: \\n)")
 	fmt.Fprintln(w, "      --help     display this help and exit")
 	fmt.Fprintln(w, "      --version  output version information and exit")
 }
