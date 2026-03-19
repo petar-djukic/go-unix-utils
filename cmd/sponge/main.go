@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd007-sponge R1.1–R1.5, R2.1–R2.3: core stdin-to-file behavior
-// with signal cleanup, atomic rename, rename fallback, and permission preservation.
+// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.2: core stdin-to-file
+// behavior with signal cleanup, atomic rename, rename fallback, permission
+// preservation, lstat-based output checks, and append mode.
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 
@@ -35,6 +37,13 @@ type soakedInput struct {
 	buf     []byte   // in-memory data (nil when spilled)
 	tmpFile *os.File // spill file (nil when in-memory)
 	tmpPath string   // spill file path for cleanup
+}
+
+// outputInfo holds lstat results for the output path (R2.4).
+type outputInfo struct {
+	mode      os.FileMode
+	exists    bool
+	isRegular bool
 }
 
 func main() {
@@ -204,36 +213,40 @@ func copySpillToWriter(s *soakedInput, w io.Writer, stderr io.Writer) int {
 	return 0
 }
 
+// checkOutputPath uses lstat to determine output file state (R2.4).
+func checkOutputPath(path string) outputInfo {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return outputInfo{mode: 0o666, exists: false, isRegular: false}
+	}
+	return outputInfo{
+		mode:      info.Mode().Perm(),
+		exists:    true,
+		isRegular: info.Mode().IsRegular(),
+	}
+}
+
 // writeFile writes soaked data to the named output file using atomic
-// rename with copy fallback. Implements R2.1, R2.2, R2.3.
+// rename with copy fallback. Implements R2.1–R2.5, R3.1–R3.2.
 func writeFile(s *soakedInput, path string, appendMode bool, stderr io.Writer) int {
-	mode := existingFileMode(path)
-	tmpPath, err := writeOutputTemp(s, path, appendMode)
+	outInfo := checkOutputPath(path)
+	tmpPath, err := writeOutputTemp(s, path, appendMode, outInfo)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		return 1
 	}
 	registerCleanup(tmpPath)
 	defer unregisterCleanup(tmpPath)
-	if err := installOutput(tmpPath, path, mode); err != nil {
+	if err := installOutput(tmpPath, path, outInfo); err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		return 1
 	}
 	return 0
 }
 
-// existingFileMode returns the permission mode of the file at path,
-// or 0666 if the file does not exist. Uses Lstat per R2.4.
-func existingFileMode(path string) os.FileMode {
-	if info, err := os.Lstat(path); err == nil {
-		return info.Mode().Perm()
-	}
-	return 0o666
-}
-
 // writeOutputTemp creates a temp file with the final content and returns
 // its path. Implements R1.4 (temp file location).
-func writeOutputTemp(s *soakedInput, path string, appendMode bool) (string, error) {
+func writeOutputTemp(s *soakedInput, path string, appendMode bool, info outputInfo) (string, error) {
 	dir := os.Getenv("TMPDIR") // R1.4: platform context variable
 	if dir == "" {
 		dir = "/tmp"
@@ -243,7 +256,7 @@ func writeOutputTemp(s *soakedInput, path string, appendMode bool) (string, erro
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
 	tmpPath := f.Name()
-	if err := writeOutputContent(f, s, path, appendMode); err != nil {
+	if err := writeOutputContent(f, s, path, appendMode, info); err != nil {
 		f.Close()
 		os.Remove(tmpPath) // best-effort cleanup
 		return "", err
@@ -256,9 +269,10 @@ func writeOutputTemp(s *soakedInput, path string, appendMode bool) (string, erro
 }
 
 // writeOutputContent writes the final output to f: optional existing file
-// content (append mode) followed by soaked stdin data.
-func writeOutputContent(f *os.File, s *soakedInput, path string, appendMode bool) error {
-	if appendMode {
+// content (append mode, R3.1) followed by soaked stdin data.
+// R3.2: append only prepends when the file exists and is a regular file.
+func writeOutputContent(f *os.File, s *soakedInput, path string, appendMode bool, info outputInfo) error {
+	if appendMode && info.exists && info.isRegular {
 		if data, err := os.ReadFile(path); err == nil {
 			if _, err := f.Write(data); err != nil {
 				return fmt.Errorf("writing prepend data: %w", err)
@@ -281,23 +295,83 @@ func writeSoakedTo(w io.Writer, s *soakedInput) error {
 	return err
 }
 
-// installOutput renames tmpPath to path atomically (R2.1), falling back
-// to copy on failure (R2.2), and preserves permissions (R2.3).
-func installOutput(tmpPath, path string, mode os.FileMode) error {
-	if err := os.Rename(tmpPath, path); err == nil {
-		os.Chmod(path, mode) // R2.3: best-effort permission preservation
-		return nil
+// installOutput installs the temp file as the output file.
+// R2.4: only attempt rename for regular files or non-existent paths.
+// R2.5: copy path uses temp-in-target-dir + rename for atomicity.
+func installOutput(tmpPath, path string, info outputInfo) error {
+	if !info.exists || info.isRegular {
+		if err := os.Rename(tmpPath, path); err == nil {
+			os.Chmod(path, info.mode) // R2.3: best-effort permission preservation
+			return nil
+		}
+		// R2.2, R2.5: rename failed (cross-device), atomic copy fallback
+		return atomicCopyAndCleanup(tmpPath, path, info.mode)
 	}
-	if err := fallbackCopy(tmpPath, path, mode); err != nil {
+	// R2.4: non-regular file (e.g., symlink), direct copy follows the path
+	return directCopyAndCleanup(tmpPath, path, info.mode)
+}
+
+// atomicCopyAndCleanup copies src to a temp file in dst's directory, then
+// renames atomically to dst. Removes src on success. Implements R2.5.
+func atomicCopyAndCleanup(src, dst string, mode os.FileMode) error {
+	if err := atomicCopy(src, dst, mode); err != nil {
 		return err
 	}
-	os.Remove(tmpPath) // best-effort cleanup of temp after copy
+	os.Remove(src) // best-effort cleanup of original temp
 	return nil
 }
 
-// fallbackCopy copies src to dst when rename fails (R2.2), then applies
-// the specified permission mode (R2.3).
-func fallbackCopy(src, dst string, mode os.FileMode) error {
+// atomicCopy copies src content to a temp file in dst's directory, then
+// renames it to dst for atomic replacement. Implements R2.5.
+func atomicCopy(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("opening temp file for copy: %w", err)
+	}
+	defer in.Close()
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, ".sponge-copy.")
+	if err != nil {
+		return fmt.Errorf("creating copy temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if err := copyCloseAndRename(in, tmp, tmpName, dst, mode); err != nil {
+		os.Remove(tmpName) // best-effort cleanup
+		return err
+	}
+	return nil
+}
+
+// copyCloseAndRename copies data from in to tmp, closes tmp, sets mode,
+// and renames tmpName to dst.
+func copyCloseAndRename(in io.Reader, tmp *os.File, tmpName, dst string, mode os.FileMode) error {
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
+		return fmt.Errorf("copying to output file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing copy temp: %w", err)
+	}
+	os.Chmod(tmpName, mode) // R2.3: best-effort permission preservation
+	if err := os.Rename(tmpName, dst); err != nil {
+		return fmt.Errorf("installing output file: %w", err)
+	}
+	return nil
+}
+
+// directCopyAndCleanup copies src to dst directly and removes src.
+// Used for non-regular output paths (e.g., symlinks) per R2.4.
+func directCopyAndCleanup(src, dst string, mode os.FileMode) error {
+	if err := directCopy(src, dst, mode); err != nil {
+		return err
+	}
+	os.Remove(src) // best-effort cleanup of original temp
+	return nil
+}
+
+// directCopy copies src to dst by opening dst directly. When dst is a
+// symlink, the OS follows it to the target. Used for R2.4 non-regular paths.
+func directCopy(src, dst string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("opening temp file for copy: %w", err)

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.3.
+// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.2.
 package main_test
 
 import (
@@ -141,6 +141,61 @@ func TestDiff(t *testing.T) {
 				writeTestFile(t, p, "old exec\n")
 				if err := os.Chmod(p, 0o755); err != nil {
 					t.Fatalf("chmod: %v", err)
+				}
+			},
+		},
+		// R2.4: output via symlink writes through to symlink target.
+		{
+			name:    "symlink_output",
+			stdin:   []byte("symlink content\n"),
+			outFile: "link.txt",
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				target := filepath.Join(dir, "target.txt")
+				writeTestFile(t, target, "original target\n")
+				link := filepath.Join(dir, "link.txt")
+				if err := os.Symlink(target, link); err != nil {
+					t.Fatalf("creating symlink: %v", err)
+				}
+			},
+		},
+		// R2.5: overwrite existing file verifies atomic write produces
+		// complete output (no partial state observable).
+		{
+			name:    "overwrite_existing_file",
+			stdin:   generateSeq(1, 500),
+			outFile: "overwrite.txt",
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeTestFile(t, filepath.Join(dir, "overwrite.txt"), "old data\n")
+			},
+		},
+		// R3.1: append mode with multi-line existing content and multi-line
+		// stdin verifies correct concatenation order.
+		{
+			name:      "append_multiline",
+			stdin:     []byte("new1\nnew2\nnew3\n"),
+			outFile:   "multi.txt",
+			extraArgs: []string{"-a"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeTestFile(t, filepath.Join(dir, "multi.txt"), "old1\nold2\nold3\n")
+			},
+		},
+		// R3.2: append mode with symlink output does not prepend because
+		// lstat shows the path is not a regular file.
+		{
+			name:      "append_symlink",
+			stdin:     []byte("appended\n"),
+			outFile:   "alink.txt",
+			extraArgs: []string{"-a"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				target := filepath.Join(dir, "atarget.txt")
+				writeTestFile(t, target, "existing\n")
+				link := filepath.Join(dir, "alink.txt")
+				if err := os.Symlink(target, link); err != nil {
+					t.Fatalf("creating symlink: %v", err)
 				}
 			},
 		},
