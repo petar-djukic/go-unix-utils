@@ -41,7 +41,7 @@ project:
         - "08.1"
 generation:
     prefix: generation-
-    cycles: 6
+    cycles: 100
 cobbler:
     dir: .cobbler/
     max_stitch_issues_per_cycle: 3
