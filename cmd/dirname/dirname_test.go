@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd016-dirname R1.5, R2.1, R2.2, R4.1–R4.3:
-// compare Go dirname against gdirname reference binary.
+// Differential tests for prd016-dirname R1.5, R2.1, R2.2, R3.1–R3.3,
+// R4.1–R4.3: compare Go dirname against gdirname reference binary.
 package main
 
 import (

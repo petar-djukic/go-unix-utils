@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd016-dirname R1.1–R1.5, R2.1–R2.2: strip last component
-// from file paths with multiple-argument and NUL-delimited output modes.
+// Implements prd016-dirname R1.1–R1.5, R2.1–R2.2, R3.1–R3.3: strip last
+// component from file paths with error handling and edge cases.
 package main
 
 import (
@@ -21,6 +21,7 @@ type options struct {
 func main() {
 	sys.InstallSIGPIPEHandler()
 	opts, names := parseArgs(os.Args[1:])
+	// R3.2: exit 1 with error to stderr when no arguments given.
 	if len(names) == 0 {
 		printError("missing operand")
 		os.Exit(1)
@@ -30,8 +31,11 @@ func main() {
 		terminator = "\x00"
 	}
 	// R1.5, R2.2: process multiple arguments in order.
+	// R3.1: exit 0 on success. R3.3: exit 1 on stdout write error.
 	for _, name := range names {
-		fmt.Print(dirname(name) + terminator)
+		if _, err := fmt.Print(dirname(name) + terminator); err != nil {
+			os.Exit(1)
+		}
 	}
 }
 
