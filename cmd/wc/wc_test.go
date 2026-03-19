@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3,
-// R4.1–R4.4, R5.1–R5.2. All tests run with LC_ALL=C per R5.1.
+// R4.1–R4.4, R5.1–R5.2, R6.1–R6.3. All tests run with LC_ALL=C per R5.1.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,15 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeErrorMsg normalizes stderr error messages between GNU wc and our
+// implementation. R6.2: GNU wc uses argv[0] ("gwc") as program name and C's
+// strerror() capitalizes error strings; Go uses lowercase syscall errors.
+func normalizeErrorMsg(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("gwc: "), []byte("wc: "))
+	data = bytes.ToLower(data)
+	return data
+}
 
 // writeTestFile creates a file with the given content in dir.
 func writeTestFile(t *testing.T, dir, name, content string) string {
@@ -511,6 +521,58 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("caf\xc3\xa9\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+
+		// === R6.1: exit 0 on success ===
+		// R6.1 is implicitly verified by all tests above (default ExitCode=0).
+		// Explicit single-file and multi-file success cases.
+		{
+			Name: "r6.1_exit_0_single_file",
+			Args: []string{simple},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "r6.1_exit_0_multi_file",
+			Args: []string{simple, oneline},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R6.2: exit 1 on file error, continue processing ===
+
+		// R6.2: nonexistent file alone exits 1 with error on stderr.
+		{
+			Name:      "r6.2_nonexistent_file",
+			Args:      []string{filepath.Join(dir, "no_such_file.txt")},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeErrorMsg},
+		},
+		// R6.2: nonexistent file with -l flag.
+		{
+			Name:      "r6.2_nonexistent_file_l_flag",
+			Args:      []string{"-l", filepath.Join(dir, "no_such_file.txt")},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeErrorMsg},
+		},
+		// R6.2: nonexistent file mixed with valid files — still prints
+		// counts for valid files and total, exits 1.
+		{
+			Name:      "r6.2_nonexistent_mixed_with_valid",
+			Args:      []string{simple, filepath.Join(dir, "no_such_file.txt"), oneline},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeErrorMsg},
+		},
+		// R6.2: nonexistent file first, then valid file.
+		{
+			Name:      "r6.2_nonexistent_then_valid",
+			Args:      []string{filepath.Join(dir, "no_such_file.txt"), simple},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizeErrorMsg},
+		},
+
+		// === R6.3: exit 1 on stdout write error ===
+		// R6.3: stdout write errors are handled by the flush check in
+		// processFiles (line 297). Differential testing cannot reliably
+		// trigger identical write errors on both binaries, so R6.3 is
+		// verified by code inspection of the flush error path.
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
