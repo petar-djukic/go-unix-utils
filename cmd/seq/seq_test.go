@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for prd019-seq R1.1–R1.4, R2.4, R3.1–R3.4, R4.1–R4.3: numeric sequence
+// Tests for prd019-seq R1.1–R1.4, R2.4, R3.1–R3.4, R4.1–R4.4: numeric sequence
 // generation, large integers, format strings, format validation, equal-width
 // padding, -f/-w mutual exclusivity, exit codes, and differential tests.
+// R4.4: comprehensive edge case coverage for all argument forms and options.
 package main
 
 import (
@@ -112,6 +113,14 @@ func TestDiff(t *testing.T) {
 		{Name: "custom-separator-comma", Args: []string{"-s", ", ", "1", "5"}},
 		{Name: "custom-separator-tab", Args: []string{"-s", "\t", "1", "3"}},
 		{Name: "format-f-default", Args: []string{"-f", "%f", "1", "3"}},
+		// R4.4: final edge cases — comprehensive differential coverage
+		{Name: "single-arg-0-empty", Args: []string{"0"}},
+		{Name: "single-arg-neg-empty", Args: []string{"-1"}},
+		{Name: "equal-width-single-element", Args: []string{"-w", "5", "5"}},
+		{Name: "separator-empty-string", Args: []string{"-s", "", "1", "3"}},
+		{Name: "double-dash-negative", Args: []string{"--", "-5", "-1", "-1"}},
+		{Name: "float-precision-two-args", Args: []string{"1.0", "3.0"}},
+		{Name: "descending-float", Args: []string{"2.5", "-0.5", "0.5"}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -145,6 +154,13 @@ func TestSequenceOutput(t *testing.T) {
 			"01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n"},
 		// R4.1: empty sequence exits 0
 		{"empty-seq-exit-0", []string{"5", "1", "1"}, ""},
+		// R4.4: final edge cases
+		{"single-arg-0-empty", []string{"0"}, ""},
+		{"single-arg-neg-empty", []string{"-1"}, ""},
+		{"equal-width-single", []string{"-w", "5", "5"}, "5\n"},
+		{"float-precision-two-args", []string{"1.0", "3.0"}, "1.0\n2.0\n3.0\n"},
+		{"descending-float", []string{"2.5", "-0.5", "0.5"},
+			"2.5\n2.0\n1.5\n1.0\n0.5\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

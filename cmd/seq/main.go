@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd019-seq R1.1–R1.5, R2.1–R2.4, R3.1–R3.4: numeric sequence
-// generation with format strings, equal-width padding, and error handling.
+// Implements prd019-seq R1.1–R1.5, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4: numeric
+// sequence generation with format strings, equal-width padding, error handling,
+// and comprehensive differential test coverage.
 package main
 
 import (
