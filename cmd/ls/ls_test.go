@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1, R2.2: default listing,
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.6: default listing,
 // single-column output, C locale sorting, dotfile filtering, horizontal
-// multi-column output, last-format-flag-wins, -a show all, -A almost all.
+// multi-column output, last-format-flag-wins, -a/-A show all, and long format
+// owner, group, size, and date field rendering.
 package main_test
 
 import (
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -185,6 +187,128 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffLongFormat tests long format owner, group, size, and date fields.
+// Implements prd008-ls R2.3 (owner), R2.4 (group), R2.5 (size), R2.6 (mtime).
+func TestDiffLongFormat(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// Fixture: directory with files of varying sizes.
+	dirSizes := t.TempDir()
+	makeFileWithContent(t, dirSizes, "empty", "")
+	makeFileWithContent(t, dirSizes, "small", "hello\n")
+	makeFileWithContent(t, dirSizes, "medium", makePadding(1024))
+
+	// Fixture: directory with a single file for simple long-format verification.
+	dirSingle := t.TempDir()
+	makeFiles(t, dirSingle, "onefile")
+
+	// Fixture: directory with multiple files for column alignment verification.
+	dirAlign := t.TempDir()
+	makeFileWithContent(t, dirAlign, "tiny", "x")
+	makeFileWithContent(t, dirAlign, "bigger", makePadding(10000))
+
+	// Fixture: directory with a symlink for symlink display in long format.
+	dirSymlink := t.TempDir()
+	makeFiles(t, dirSymlink, "target")
+	if err := os.Symlink("target", filepath.Join(dirSymlink, "link")); err != nil {
+		t.Fatalf("creating symlink: %v", err)
+	}
+
+	// Fixture: directory with an old file (mtime > 6 months ago) for year display.
+	dirOldFile := t.TempDir()
+	makeFiles(t, dirOldFile, "oldfile")
+	oldTime := time.Now().Add(-8 * 30 * 24 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dirOldFile, "oldfile"), oldTime, oldTime); err != nil {
+		t.Fatalf("setting old mtime: %v", err)
+	}
+
+	// Fixture: mixed recent and old files for date format variation.
+	dirMixed := t.TempDir()
+	makeFiles(t, dirMixed, "recent", "ancient")
+	ancientTime := time.Now().Add(-400 * 24 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dirMixed, "ancient"), ancientTime, ancientTime); err != nil {
+		t.Fatalf("setting ancient mtime: %v", err)
+	}
+
+	// Fixture: directory with dotfiles for -la combination.
+	dirDotLong := t.TempDir()
+	makeFiles(t, dirDotLong, ".hidden", "visible")
+
+	tests := []testutils.DiffTest{
+		// R2.3/R2.4: -l shows owner and group fields.
+		{
+			Name:    "long_format_basic",
+			Args:    []string{"-l"},
+			WorkDir: dirSingle,
+		},
+		// R2.5: -l shows correct file sizes for varying file sizes.
+		{
+			Name:    "long_format_sizes",
+			Args:    []string{"-l"},
+			WorkDir: dirSizes,
+		},
+		// R2.5: size column alignment with different-width sizes.
+		{
+			Name:    "long_format_size_alignment",
+			Args:    []string{"-l"},
+			WorkDir: dirAlign,
+		},
+		// R2.6: recent file shows HH:MM format.
+		{
+			Name:    "long_format_recent_mtime",
+			Args:    []string{"-l"},
+			WorkDir: dirSingle,
+		},
+		// R2.6: old file shows year format.
+		{
+			Name:    "long_format_old_mtime",
+			Args:    []string{"-l"},
+			WorkDir: dirOldFile,
+		},
+		// R2.6: mixed recent and old files show different date formats.
+		{
+			Name:    "long_format_mixed_dates",
+			Args:    []string{"-l"},
+			WorkDir: dirMixed,
+		},
+		// Long format with symlink display.
+		{
+			Name:    "long_format_symlink",
+			Args:    []string{"-l"},
+			WorkDir: dirSymlink,
+		},
+		// Long format with -a flag shows . and .. with correct fields.
+		{
+			Name:    "long_format_with_all",
+			Args:    []string{"-la"},
+			WorkDir: dirDotLong,
+		},
+		// Long format with -A flag shows dotfiles except . and ..
+		{
+			Name:    "long_format_with_almost_all",
+			Args:    []string{"-lA"},
+			WorkDir: dirDotLong,
+		},
+		// Long format file argument (no total line).
+		{
+			Name: "long_format_file_arg",
+			Args: []string{"-l", filepath.Join(dirSingle, "onefile")},
+		},
+		// Long format with explicit directory argument.
+		{
+			Name: "long_format_explicit_dir",
+			Args: []string{"-l", dirSizes},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // makeFiles creates empty regular files in dir.
 func makeFiles(t *testing.T, dir string, names ...string) {
 	t.Helper()
@@ -193,4 +317,21 @@ func makeFiles(t *testing.T, dir string, names ...string) {
 			t.Fatalf("creating fixture file %s: %v", n, err)
 		}
 	}
+}
+
+// makeFileWithContent creates a file with the given content.
+func makeFileWithContent(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("creating fixture file %s: %v", name, err)
+	}
+}
+
+// makePadding returns a string of n 'x' characters.
+func makePadding(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = 'x'
+	}
+	return string(b)
 }
