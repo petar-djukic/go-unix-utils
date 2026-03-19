@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd009-du R1.1–R1.5, R2.1–R2.7.
+// Implements prd009-du R1.1–R1.5, R2.1–R2.8, R3.1–R3.3, R4.1–R4.2.
 package main
 
 import (
@@ -18,12 +18,20 @@ const progName = "du"
 
 // config holds parsed command-line options.
 type config struct {
-	summary    bool // R2.2: -s, print only total per argument
-	human      bool // R2.1: -h, human-readable 1024-based output
-	allFiles   bool // R2.3: -a, print entries for all files
-	maxDepth   int  // R2.4: -d N / --max-depth=N, -1 = unlimited
-	megaBlocks bool // R2.6: -m, report in 1M blocks
-	grandTotal bool // R2.7: -c, print grand total
+	summary      bool // R2.2: -s, print only total per argument
+	human        bool // R2.1: -h, human-readable 1024-based output
+	allFiles     bool // R2.3: -a, print entries for all files
+	maxDepth     int  // R2.4: -d N / --max-depth=N, -1 = unlimited
+	megaBlocks   bool // R2.6: -m, report in 1M blocks
+	grandTotal   bool // R2.7: -c, print grand total
+	apparentSize bool // R2.8: --apparent-size, use st_size instead of st_blocks
+}
+
+// inodeKey identifies a unique file by device and inode number.
+// R3.2: used as the deduplication key for hard-link tracking.
+type inodeKey struct {
+	Dev uint64
+	Ino uint64
 }
 
 func main() {
@@ -35,6 +43,7 @@ func main() {
 // R1.1: defaults to "." when no arguments are given.
 // R1.5: processes multiple arguments in order.
 // R2.7: prints grand total when -c is given.
+// R3.3: inode tracking is shared across all arguments.
 func run(args []string, stdout, stderr io.Writer) int {
 	cfg, paths := parseFlags(args, stderr)
 	if len(paths) == 0 {
@@ -42,8 +51,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	exitCode := 0
 	var cumulative int64
+	seen := make(map[inodeKey]bool) // R3.3: shared across arguments
 	for _, p := range paths {
-		total, err := duPath(p, cfg, stdout, stderr)
+		total, err := duPath(p, cfg, seen, stdout, stderr)
 		if err != nil {
 			exitCode = 1
 		}
@@ -71,9 +81,14 @@ func parseFlags(args []string, stderr io.Writer) (config, []string) {
 	fs.BoolVar(&kFlag, "k", false, "count in 1024-byte blocks (default)")
 	fs.BoolVar(&cfg.megaBlocks, "m", false, "count in 1048576-byte blocks")
 	fs.BoolVar(&cfg.grandTotal, "c", false, "produce a grand total")
+	// R2.8: --apparent-size uses file size instead of block allocation.
+	fs.BoolVar(&cfg.apparentSize, "apparent-size", false,
+		"print apparent sizes rather than disk usage")
+	// TODO: --exclude is listed in prd009-du non_goals (E6). Not implemented.
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	_ = kFlag // suppress unused warning
 	// R2.2: -s is equivalent to --max-depth=0.
 	if cfg.summary {
 		cfg.maxDepth = 0
@@ -87,58 +102,88 @@ func shouldPrint(cfg config, depth int) bool {
 	return cfg.maxDepth < 0 || depth <= cfg.maxDepth
 }
 
-// duPath handles a single path argument. Returns total blocks (512-byte).
+// fileBytes returns the size contribution of a file in bytes.
+// R2.8: uses apparent size (st_size) when enabled, otherwise block allocation.
+func fileBytes(fi *sys.FileInfo, cfg config) int64 {
+	if cfg.apparentSize {
+		return fi.Size
+	}
+	return fi.Blocks * 512
+}
+
+// trackInode checks whether a file has already been counted via hard-link
+// deduplication. Returns 0 if the inode was already seen; otherwise records
+// it and returns the file's byte count.
+// R3.1: tracks files by dev+ino across the entire invocation.
+func trackInode(fi *sys.FileInfo, cfg config, seen map[inodeKey]bool) int64 {
+	key := inodeKey{Dev: fi.Dev, Ino: fi.Ino}
+	if fi.Nlink > 1 && seen[key] {
+		return 0
+	}
+	if fi.Nlink > 1 {
+		seen[key] = true
+	}
+	return fileBytes(fi, cfg)
+}
+
+// duPath handles a single path argument. Returns total bytes.
 // R1.4: uses Lstat to avoid following symbolic links.
-func duPath(path string, cfg config, stdout, stderr io.Writer) (int64, error) {
+// R4.2: prints diagnostic on error and continues.
+func duPath(path string, cfg config, seen map[inodeKey]bool, stdout, stderr io.Writer) (int64, error) {
 	fi, err := sys.Lstat(path)
 	if err != nil {
 		reportErr(stderr, path, err)
 		return 0, err
 	}
 	if !fi.Mode.IsDir() {
-		printEntry(stdout, cfg, fi.Blocks, path)
-		return fi.Blocks, nil
+		bytes := trackInode(fi, cfg, seen)
+		printEntry(stdout, cfg, bytes, path)
+		return bytes, nil
 	}
-	return walkDir(path, fi.Blocks, 0, cfg, stdout, stderr)
+	dirBytes := trackInode(fi, cfg, seen)
+	return walkDir(path, dirBytes, 0, cfg, seen, stdout, stderr)
 }
 
 // walkDir recursively accumulates disk usage for a directory.
-// Returns total in 512-byte blocks. R1.1: prints each subdirectory
-// after its children (depth-first order) when within maxDepth.
-func walkDir(dirPath string, dirBlocks int64, depth int, cfg config, stdout, stderr io.Writer) (int64, error) {
+// Returns total in bytes. R1.1: prints each subdirectory after its
+// children (depth-first order) when within maxDepth.
+func walkDir(dirPath string, dirBytes int64, depth int, cfg config, seen map[inodeKey]bool, stdout, stderr io.Writer) (int64, error) {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		reportErr(stderr, dirPath, err)
+		reportReadDirErr(stderr, dirPath, err)
 		if shouldPrint(cfg, depth) {
-			printEntry(stdout, cfg, dirBlocks, dirPath)
+			printEntry(stdout, cfg, dirBytes, dirPath)
 		}
-		return dirBlocks, err
+		return dirBytes, err
 	}
-	childBlocks, walkErr := processEntries(dirPath, entries, depth, cfg, stdout, stderr)
-	total := dirBlocks + childBlocks
+	childBytes, walkErr := processEntries(
+		dirPath, entries, depth, cfg, seen, stdout, stderr)
+	total := dirBytes + childBytes
 	if shouldPrint(cfg, depth) {
 		printEntry(stdout, cfg, total, dirPath)
 	}
 	return total, walkErr
 }
 
-// processEntries iterates directory entries and accumulates block counts.
-func processEntries(dirPath string, entries []os.DirEntry, depth int, cfg config, stdout, stderr io.Writer) (int64, error) {
+// processEntries iterates directory entries and accumulates byte counts.
+func processEntries(dirPath string, entries []os.DirEntry, depth int, cfg config, seen map[inodeKey]bool, stdout, stderr io.Writer) (int64, error) {
 	var total int64
 	var hadErr error
 	for _, entry := range entries {
-		blocks, err := processOneEntry(dirPath, entry, depth, cfg, stdout, stderr)
+		b, err := processOneEntry(
+			dirPath, entry, depth, cfg, seen, stdout, stderr)
 		if err != nil {
 			hadErr = err
 		}
-		total += blocks
+		total += b
 	}
 	return total, hadErr
 }
 
-// processOneEntry handles a single directory entry, returning its block count.
+// processOneEntry handles a single directory entry, returning its byte count.
 // R2.3: prints file entries when allFiles is enabled and within maxDepth.
-func processOneEntry(dirPath string, entry os.DirEntry, parentDepth int, cfg config, stdout, stderr io.Writer) (int64, error) {
+// R3.1: deduplicates hard-linked files via inode tracking.
+func processOneEntry(dirPath string, entry os.DirEntry, parentDepth int, cfg config, seen map[inodeKey]bool, stdout, stderr io.Writer) (int64, error) {
 	entryPath := joinPath(dirPath, entry.Name())
 	fi, err := sys.Lstat(entryPath) // R1.4: do not follow symlinks
 	if err != nil {
@@ -147,12 +192,15 @@ func processOneEntry(dirPath string, entry os.DirEntry, parentDepth int, cfg con
 	}
 	childDepth := parentDepth + 1
 	if fi.Mode.IsDir() {
-		return walkDir(entryPath, fi.Blocks, childDepth, cfg, stdout, stderr)
+		dirBytes := trackInode(fi, cfg, seen)
+		return walkDir(entryPath, dirBytes, childDepth, cfg, seen,
+			stdout, stderr)
 	}
+	b := trackInode(fi, cfg, seen)
 	if cfg.allFiles && shouldPrint(cfg, childDepth) {
-		printEntry(stdout, cfg, fi.Blocks, entryPath)
+		printEntry(stdout, cfg, b, entryPath)
 	}
-	return fi.Blocks, nil
+	return b, nil
 }
 
 // humanSuffixes for binary (1024-based) mode, matching GNU du -h.
@@ -180,20 +228,21 @@ func formatHuman(bytes int64) string {
 // printEntry outputs one du line. R1.3: format is "SIZE\tPATH\n".
 // R2.1: uses human-readable format when enabled.
 // R2.6: uses 1M blocks when megaBlocks is enabled.
-func printEntry(w io.Writer, cfg config, blocks512 int64, path string) {
+// Internal representation is bytes; converted to display units here.
+func printEntry(w io.Writer, cfg config, bytes int64, path string) {
 	if cfg.human {
-		fmt.Fprintf(w, "%s\t%s\n", formatHuman(blocks512*512), path)
+		fmt.Fprintf(w, "%s\t%s\n", formatHuman(bytes), path)
 		return
 	}
 	if cfg.megaBlocks {
-		fmt.Fprintf(w, "%d\t%s\n", ceilDiv(blocks512, 2048), path)
+		fmt.Fprintf(w, "%d\t%s\n", ceilDiv(bytes, 1048576), path)
 		return
 	}
-	fmt.Fprintf(w, "%d\t%s\n", blocks512/2, path)
+	// Default: 1K blocks.
+	fmt.Fprintf(w, "%d\t%s\n", bytes/1024, path)
 }
 
 // ceilDiv returns the ceiling division of a by b.
-// R2.6: used to convert 512-byte blocks to 1M blocks, rounding up.
 func ceilDiv(a, b int64) int64 {
 	return (a + b - 1) / b
 }
@@ -205,10 +254,24 @@ func joinPath(dir, name string) string {
 }
 
 // reportErr writes a diagnostic to stderr for a path error.
+// R4.2: prints diagnostic and continues processing.
 func reportErr(w io.Writer, path string, err error) {
 	var pathErr *os.PathError
 	if errors.As(err, &pathErr) {
-		fmt.Fprintf(w, "%s: cannot access '%s': %s\n", progName, path, pathErr.Err)
+		fmt.Fprintf(w, "%s: cannot access '%s': %s\n",
+			progName, path, pathErr.Err)
+		return
+	}
+	fmt.Fprintf(w, "%s: %s: %s\n", progName, path, err)
+}
+
+// reportReadDirErr writes a diagnostic for directory read errors.
+// R4.2: uses "cannot read directory" to match GNU du format.
+func reportReadDirErr(w io.Writer, path string, err error) {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		fmt.Fprintf(w, "%s: cannot read directory '%s': %s\n",
+			progName, path, pathErr.Err)
 		return
 	}
 	fmt.Fprintf(w, "%s: %s: %s\n", progName, path, err)
