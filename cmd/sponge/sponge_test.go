@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.2.
+// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3.
 package main_test
 
 import (
@@ -40,6 +40,21 @@ func TestDiff(t *testing.T) {
 		{
 			Name:  "passthrough_multiline",
 			Stdin: []byte("line1\nline2\nline3\n"),
+		},
+		// R4.1: passthrough mode writes buffered content to stdout.
+		{
+			Name:  "passthrough_single_line",
+			Stdin: []byte("single line no newline"),
+		},
+		// R4.3: small in-memory buffer written directly to stdout.
+		{
+			Name:  "passthrough_small_binary",
+			Stdin: []byte{0x00, 0x01, 0x02, 0xFF, 0xFE},
+		},
+		// R4.1, R4.3: passthrough with moderate multi-line input.
+		{
+			Name:  "passthrough_moderate",
+			Stdin: generateSeq(1, 1000),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, passthroughTests)
@@ -197,6 +212,30 @@ func TestDiff(t *testing.T) {
 				if err := os.Symlink(target, link); err != nil {
 					t.Fatalf("creating symlink: %v", err)
 				}
+			},
+		},
+		// R3.3: append mode reads original file content into temp file
+		// before appending stdin, preserving original before rename.
+		{
+			name:      "append_large_existing",
+			stdin:     []byte("appended data\n"),
+			outFile:   "large_existing.txt",
+			extraArgs: []string{"-a"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeTestFile(t, filepath.Join(dir, "large_existing.txt"),
+					string(generateSeq(1, 500)))
+			},
+		},
+		// R3.3: append with empty stdin appends nothing to existing content.
+		{
+			name:      "append_empty_stdin",
+			stdin:     []byte{},
+			outFile:   "append_empty.txt",
+			extraArgs: []string{"-a"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeTestFile(t, filepath.Join(dir, "append_empty.txt"), "keep this\n")
 			},
 		},
 	}

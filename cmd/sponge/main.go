@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.2: core stdin-to-file
-// behavior with signal cleanup, atomic rename, rename fallback, permission
-// preservation, lstat-based output checks, and append mode.
+// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3:
+// core stdin-to-file behavior with signal cleanup, atomic rename, rename
+// fallback, permission preservation, lstat-based output checks, append mode
+// error handling, and passthrough mode.
 package main
 
 import (
@@ -189,6 +190,9 @@ func cleanupSoak(s *soakedInput) {
 }
 
 // writeStdout writes soaked data to stdout (passthrough mode).
+// R4.1: writes buffered stdin to stdout when no output filename given.
+// R4.2: seeks spill file to start and copies to stdout for large input.
+// R4.3: writes in-memory buffer directly for small input.
 func writeStdout(s *soakedInput, stdout io.Writer, stderr io.Writer) int {
 	if s.tmpFile != nil {
 		return copySpillToWriter(s, stdout, stderr)
@@ -271,15 +275,27 @@ func writeOutputTemp(s *soakedInput, path string, appendMode bool, info outputIn
 // writeOutputContent writes the final output to f: optional existing file
 // content (append mode, R3.1) followed by soaked stdin data.
 // R3.2: append only prepends when the file exists and is a regular file.
+// R3.3: reads original file before writing stdin, propagates read errors.
 func writeOutputContent(f *os.File, s *soakedInput, path string, appendMode bool, info outputInfo) error {
 	if appendMode && info.exists && info.isRegular {
-		if data, err := os.ReadFile(path); err == nil {
-			if _, err := f.Write(data); err != nil {
-				return fmt.Errorf("writing prepend data: %w", err)
-			}
+		if err := prependOriginalFile(f, path); err != nil {
+			return err
 		}
 	}
 	return writeSoakedTo(f, s)
+}
+
+// prependOriginalFile reads the original file and writes its content to f.
+// Implements R3.3: original file must be read before the temp file is renamed.
+func prependOriginalFile(f *os.File, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading original file for append: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("writing prepend data: %w", err)
+	}
+	return nil
 }
 
 // writeSoakedTo writes the soaked stdin data to w.
