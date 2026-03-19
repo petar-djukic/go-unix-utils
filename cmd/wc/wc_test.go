@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3,
-// R4.1–R4.3. All tests run with LC_ALL=C per R5.1.
+// R4.1–R4.4, R5.1–R5.2. All tests run with LC_ALL=C per R5.1.
 package main
 
 import (
@@ -40,6 +40,10 @@ func TestDiff(t *testing.T) {
 	multiword := writeTestFile(t, dir, "multiword.txt", "one two three\nfour five\n")
 	tabbed := writeTestFile(t, dir, "tabbed.txt", "a\tb\n")
 	longline := writeTestFile(t, dir, "longline.txt", "short\nthis is a much longer line here\nmed\n")
+
+	// R4.4: NUL-delimited file lists for --files0-from tests.
+	fileListTwo := writeTestFile(t, dir, "filelist_two.txt", simple+"\x00"+oneline+"\x00")
+	fileListOne := writeTestFile(t, dir, "filelist_one.txt", simple+"\x00")
 
 	tests := []testutils.DiffTest{
 		// === R1.1–R1.4: default behavior ===
@@ -455,6 +459,57 @@ func TestDiff(t *testing.T) {
 			Name: "r4.3_empty_file_L",
 			Args: []string{"-L", empty},
 			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R4.4: --files0-from ===
+
+		// R4.4: read filenames from a NUL-delimited file (two files).
+		{
+			Name: "r4.4_files0_from_file_two",
+			Args: []string{"--files0-from=" + fileListTwo},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: read filenames from a NUL-delimited file (single file).
+		{
+			Name: "r4.4_files0_from_file_one",
+			Args: []string{"--files0-from=" + fileListOne},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: --files0-from=- reads filenames from stdin.
+		{
+			Name:  "r4.4_files0_from_stdin",
+			Args:  []string{"--files0-from=-"},
+			Stdin: []byte(simple + "\x00" + oneline + "\x00"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: --files0-from with -l flag.
+		{
+			Name: "r4.4_files0_from_with_l_flag",
+			Args: []string{"-l", "--files0-from=" + fileListTwo},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: --files0-from with -wc flags.
+		{
+			Name: "r4.4_files0_from_with_wc_flags",
+			Args: []string{"-wc", "--files0-from=" + fileListTwo},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R5.2: -m equals -c under LC_ALL=C ===
+
+		// R5.2: -m on multi-byte UTF-8 must produce byte count under LC_ALL=C.
+		{
+			Name:  "r5.2_m_multibyte_equals_bytes",
+			Args:  []string{"-m"},
+			Stdin: []byte("caf\xc3\xa9\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R5.2: -c on same multi-byte input for comparison.
+		{
+			Name:  "r5.2_c_multibyte_same_input",
+			Args:  []string{"-c"},
+			Stdin: []byte("caf\xc3\xa9\n"),
+			Env:   []string{"LC_ALL=C"},
 		},
 	}
 

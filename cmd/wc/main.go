@@ -6,11 +6,14 @@
 // Implements prd005-wc R2.1–R2.6: flag behavior for -l, -w, -c, -m, -L.
 // Implements prd005-wc R3.1–R3.3: multi-file column alignment, total line,
 // and --total=auto|always|only|never.
-// Implements prd005-wc R4.1–R4.3: dash as stdin, binary input, empty input.
+// Implements prd005-wc R4.1–R4.4: dash as stdin, binary input, empty input,
+// --files0-from.
+// Implements prd005-wc R5.1–R5.2: LC_ALL=C locale, -m/-c identity.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -50,6 +53,7 @@ type options struct {
 	printChars      bool
 	printMaxLineLen bool
 	total           totalMode
+	files0From      string // R4.4: read NUL-delimited filenames from this file
 }
 
 // defaultOptions returns default behavior: print lines, words, bytes. R1.1.
@@ -66,17 +70,91 @@ func main() {
 
 // run parses arguments and processes files, returning the exit code.
 // R1.2: reads stdin when no file args; reads named files in order.
+// R4.4: when --files0-from is set, reads filenames from the specified source.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files := parseArgs(args)
+
+	if opts.files0From != "" {
+		return runFiles0From(opts, files, stdin, stdout, stderr)
+	}
+
 	if len(files) == 0 {
 		// R1.3: implicit stdin, no filename printed.
 		files = []string{""}
 	}
-	return processFiles(files, opts, stdin, stdout, stderr)
+	return processFiles(files, opts, computeWidth(files), stdin, stdout, stderr)
+}
+
+// runFiles0From handles --files0-from mode. R4.4: reads NUL-delimited
+// filenames from the specified file and processes them.
+func runFiles0From(opts options, cmdFiles []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(cmdFiles) > 0 {
+		fmt.Fprintf(stderr, "%s: extra operand %q\n", progName, cmdFiles[0])
+		fmt.Fprintf(stderr, "file operands cannot be combined with --files0-from\n")
+		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName)
+		return 1
+	}
+	files, err := readFiles0From(opts.files0From, stdin, stderr)
+	if err != nil {
+		return 1
+	}
+	if len(files) == 0 {
+		return 0
+	}
+	// R4.4: when --files0-from=-, GNU wc does not pre-stat files for width.
+	width := 1
+	if opts.files0From != "-" {
+		width = computeWidth(files)
+	}
+	return processFiles(files, opts, width, stdin, stdout, stderr)
+}
+
+// readFiles0From reads NUL-delimited filenames from the specified source.
+// R4.4: when source is "-", reads from stdin.
+func readFiles0From(source string, stdin io.Reader, stderr io.Writer) ([]string, error) {
+	var r io.Reader
+	if source == "-" {
+		r = stdin
+	} else {
+		f, err := os.Open(source)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: cannot open %q for reading: %s\n",
+				progName, source, unwrapPathError(err))
+			return nil, err
+		}
+		defer f.Close() // best-effort close on read-only file
+		r = f
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
+		return nil, err
+	}
+	return splitNulFiles(data), nil
+}
+
+// splitNulFiles splits NUL-delimited data into filenames.
+// A trailing NUL is treated as a delimiter, not an empty filename.
+func splitNulFiles(data []byte) []string {
+	if len(data) == 0 {
+		return nil
+	}
+	parts := bytes.Split(data, []byte{0})
+	var files []string
+	for i, p := range parts {
+		s := string(p)
+		// Trailing NUL produces empty last element — skip it.
+		if i == len(parts)-1 && s == "" {
+			continue
+		}
+		files = append(files, s)
+	}
+	return files
 }
 
 // parseArgs extracts options and file arguments from the command line.
-// Handles "--" as end-of-flags, "-" as explicit stdin, and --total=MODE.
+// Handles "--" as end-of-flags, "-" as explicit stdin, --total=MODE,
+// and --files0-from=FILE.
 func parseArgs(args []string) (options, []string) {
 	var opts options
 	var files []string
@@ -108,29 +186,34 @@ func parseArgs(args []string) (options, []string) {
 	if !flagsSet {
 		defaults := defaultOptions()
 		defaults.total = opts.total
+		defaults.files0From = opts.files0From
 		return defaults, files
 	}
 	return opts, files
 }
 
 // parseLongOption handles GNU-style long options. R3.3: --total=MODE.
-// Returns true if the argument was consumed as a long option.
+// R4.4: --files0-from=FILE. Returns true if the argument was consumed.
 func parseLongOption(opts *options, arg string) bool {
-	if !strings.HasPrefix(arg, "--total=") {
-		return false
+	if strings.HasPrefix(arg, "--total=") {
+		val := arg[len("--total="):]
+		switch val {
+		case "auto":
+			opts.total = totalAuto
+		case "always":
+			opts.total = totalAlways
+		case "only":
+			opts.total = totalOnly
+		case "never":
+			opts.total = totalNever
+		}
+		return true
 	}
-	val := arg[len("--total="):]
-	switch val {
-	case "auto":
-		opts.total = totalAuto
-	case "always":
-		opts.total = totalAlways
-	case "only":
-		opts.total = totalOnly
-	case "never":
-		opts.total = totalNever
+	if strings.HasPrefix(arg, "--files0-from=") {
+		opts.files0From = arg[len("--files0-from="):]
+		return true
 	}
-	return true
+	return false
 }
 
 // setFlag sets the option corresponding to the flag character.
@@ -178,9 +261,8 @@ func countFields(opts options) int {
 // R1.4: prints a total line when more than one file is given.
 // R3.1: right-aligns counts in columns. R3.2: total line label is "total".
 // R3.3: --total mode controls when total line is printed.
-func processFiles(files []string, opts options, stdin io.Reader, stdout, stderr io.Writer) int {
+func processFiles(files []string, opts options, width int, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
-	width := computeWidth(files)
 	// GNU wc uses minimum width when single input with single count field.
 	if len(files) <= 1 && countFields(opts) == 1 {
 		width = 1
@@ -290,7 +372,7 @@ func countFile(name string, stdin io.Reader) (counts, error) {
 
 // countReader reads all data from r and returns line, word, byte, char,
 // and max-line-length counts. R1.1: counts newlines, words, bytes.
-// R2.4: counts characters as non-continuation UTF-8 bytes.
+// R5.2: under LC_ALL=C, chars == bytes (each byte is one character).
 // R2.5: computes max display width with tab expansion.
 func countReader(r io.Reader) (counts, error) {
 	var c counts
@@ -310,9 +392,6 @@ func countReader(r io.Reader) (counts, error) {
 			} else {
 				lineWidth = advanceLineWidth(lineWidth, b)
 			}
-			if isCharStart(b) {
-				c.chars++
-			}
 			if isSpaceByte(b) {
 				inWord = false
 			} else if !inWord {
@@ -324,6 +403,8 @@ func countReader(r io.Reader) (counts, error) {
 			if lineWidth > c.maxLineLen {
 				c.maxLineLen = lineWidth
 			}
+			// R5.2: under LC_ALL=C, each byte is one character.
+			c.chars = c.bytes
 			return c, nil
 		}
 		if err != nil {
@@ -354,12 +435,6 @@ func advanceLineWidth(width int64, b byte) int64 {
 // isPrintableByte returns true for C locale printable characters (0x20–0x7E).
 func isPrintableByte(b byte) bool {
 	return b >= 0x20 && b <= 0x7E
-}
-
-// isCharStart returns true if b is a UTF-8 character start byte.
-// Continuation bytes (10xxxxxx) return false. R2.4.
-func isCharStart(b byte) bool {
-	return b&0xC0 != 0x80
 }
 
 // isSpaceByte returns true for C locale whitespace characters.
