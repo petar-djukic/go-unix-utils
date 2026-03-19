@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd018-head R1.1–R1.4: core line-count mode with default 10 lines,
-// explicit -n count, multi-file headers, and stdin reading.
+// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.4: line-count mode,
+// byte-count mode with suffix parsing, multi-file headers, and header controls.
 package main
 
 import (
@@ -21,12 +21,22 @@ const (
 	defaultLines = 10
 )
 
+// countMode selects between line-counting and byte-counting.
+type countMode int
+
+const (
+	modeLines countMode = iota
+	modeBytes
+)
+
 // headOpts holds parsed command-line options.
 type headOpts struct {
-	lineCount int
-	files     []string
-	quiet     bool // R3.3: suppress headers
-	verbose   bool // R3.4: force headers
+	count    int
+	negative bool // true when count means "all except last N"
+	mode     countMode
+	files    []string
+	quiet    bool // R3.3: suppress headers
+	verbose  bool // R3.4: force headers
 }
 
 func main() {
@@ -36,7 +46,7 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// run parses arguments and prints the first N lines of each file.
+// run parses arguments and prints the first N lines/bytes of each file.
 // Returns 0 on success, 1 on any error.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, code := parseArgs(args, stdout, stderr)
@@ -49,8 +59,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return processFiles(opts, stdin, stdout, stderr)
 }
 
-// processFiles iterates over each file and prints the first N lines.
-// R1.3/R3.1: prints headers when multiple files are given.
+// processFiles iterates over each file and prints content.
+// R3.1: prints headers when multiple files are given.
 func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
 	exitCode := 0
@@ -61,15 +71,10 @@ func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int 
 			if i > 0 {
 				fmt.Fprint(w, "\n")
 			}
-			displayName := name
-			if name == "-" {
-				displayName = "standard input"
-			}
-			fmt.Fprintf(w, "==> %s <==\n", displayName)
+			printHeader(w, name)
 		}
-		if err := headOne(name, opts.lineCount, stdin, w); err != nil {
-			// flush before writing to stderr so output order is correct
-			w.Flush() // best-effort flush
+		if err := headOne(name, opts, stdin, w); err != nil {
+			w.Flush() // best-effort flush before writing to stderr
 			fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 			exitCode = 1
 		}
@@ -78,6 +83,15 @@ func processFiles(opts headOpts, stdin io.Reader, stdout, stderr io.Writer) int 
 		exitCode = 1
 	}
 	return exitCode
+}
+
+// printHeader writes the GNU-format file header.
+func printHeader(w *bufio.Writer, name string) {
+	displayName := name
+	if name == "-" {
+		displayName = "standard input"
+	}
+	fmt.Fprintf(w, "==> %s <==\n", displayName)
 }
 
 // shouldShowHeaders determines whether to print file headers.
@@ -94,23 +108,48 @@ func shouldShowHeaders(opts headOpts) bool {
 	return len(opts.files) > 1
 }
 
-// headOne prints the first lineCount lines from a file or stdin.
-func headOne(name string, lineCount int, stdin io.Reader, w *bufio.Writer) error {
+// headOne opens one file and dispatches to the appropriate reader.
+func headOne(name string, opts headOpts, stdin io.Reader, w *bufio.Writer) error {
+	r, closer, err := openInput(name, stdin)
+	if err != nil {
+		return err
+	}
+	if closer != nil {
+		defer closer.Close() // best-effort close on read-only file
+	}
+	return headContent(r, opts, w)
+}
+
+// openInput returns a reader for the named file or stdin.
+func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	if name == "-" {
-		return headReader(stdin, lineCount, w)
+		return stdin, nil, nil
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		return formatError(name, err)
+		return nil, nil, formatError(name, err)
 	}
-	defer f.Close() // best-effort close on read-only file
-	return headReader(f, lineCount, w)
+	return f, f, nil
 }
 
-// headReader reads up to lineCount lines from r and writes them to w.
+// headContent dispatches to line or byte mode.
+func headContent(r io.Reader, opts headOpts, w *bufio.Writer) error {
+	if opts.mode == modeBytes {
+		if opts.negative {
+			return headBytesNegative(r, opts.count, w)
+		}
+		return headBytes(r, opts.count, w)
+	}
+	if opts.negative {
+		return headLinesNegative(r, opts.count, w)
+	}
+	return headLines(r, opts.count, w)
+}
+
+// headLines reads up to lineCount lines from r.
 // R1.1: default is 10 lines. R1.2: -n overrides.
 // R1.5: a line is terminated by newline; unterminated final line counts.
-func headReader(r io.Reader, lineCount int, w *bufio.Writer) error {
+func headLines(r io.Reader, lineCount int, w *bufio.Writer) error {
 	br := bufio.NewReader(r)
 	printed := 0
 
@@ -132,10 +171,64 @@ func headReader(r io.Reader, lineCount int, w *bufio.Writer) error {
 	return nil
 }
 
+// headLinesNegative prints all lines except the last count lines.
+// R1.3: -n -NUM prints all except last NUM lines.
+func headLinesNegative(r io.Reader, count int, w *bufio.Writer) error {
+	br := bufio.NewReader(r)
+	var lines [][]byte
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			lines = append(lines, line)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	end := len(lines) - count
+	if end < 0 {
+		end = 0
+	}
+	for _, line := range lines[:end] {
+		if _, err := w.Write(line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// headBytes reads up to byteCount bytes from r.
+// R2.1: -c NUM prints first NUM bytes.
+func headBytes(r io.Reader, byteCount int, w *bufio.Writer) error {
+	_, err := io.CopyN(w, r, int64(byteCount))
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
+// headBytesNegative prints all bytes except the last count bytes.
+// R2.2: -c -NUM prints all except last NUM bytes.
+func headBytesNegative(r io.Reader, count int, w *bufio.Writer) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	end := len(data) - count
+	if end < 0 {
+		end = 0
+	}
+	_, werr := w.Write(data[:end])
+	return werr
+}
+
 // parseArgs separates flags from file arguments.
 // Returns opts and exit code (-1 = continue).
 func parseArgs(args []string, stdout, stderr io.Writer) (headOpts, int) {
-	opts := headOpts{lineCount: defaultLines}
+	opts := headOpts{count: defaultLines, mode: modeLines}
 	flagsDone := false
 
 	for i := 0; i < len(args); i++ {
@@ -179,46 +272,124 @@ func applyFlag(args []string, i int, opts *headOpts, stdout, stderr io.Writer) (
 		opts.verbose = true
 		return 0, -1
 	case strings.HasPrefix(arg, "--lines="):
-		return parseLinesValue(arg[len("--lines="):], opts, stderr)
+		return parseCountValue(arg[len("--lines="):], modeLines, opts, stderr)
 	case arg == "--lines":
-		return parseLinesNextArg(args, i, opts, stderr)
+		return parseCountNextArg(args, i, 'n', modeLines, opts, stderr)
+	case strings.HasPrefix(arg, "--bytes="):
+		return parseCountValue(arg[len("--bytes="):], modeBytes, opts, stderr)
+	case arg == "--bytes":
+		return parseCountNextArg(args, i, 'c', modeBytes, opts, stderr)
 	case strings.HasPrefix(arg, "-n"):
-		return parseShortN(args, i, arg, opts, stderr)
+		return parseShortCount(args, i, arg, 'n', modeLines, opts, stderr)
+	case strings.HasPrefix(arg, "-c"):
+		return parseShortCount(args, i, arg, 'c', modeBytes, opts, stderr)
 	default:
 		return applyShortFlags(arg, opts, stderr)
 	}
 }
 
-// parseShortN handles -n NUM or -nNUM forms.
-func parseShortN(args []string, i int, arg string, opts *headOpts, stderr io.Writer) (int, int) {
+// parseShortCount handles -n NUM, -nNUM, -c NUM, -cNUM forms.
+func parseShortCount(args []string, i int, arg string, flag byte, mode countMode, opts *headOpts, stderr io.Writer) (int, int) {
 	if len(arg) > 2 {
-		// -nNUM form
-		return parseLinesValue(arg[2:], opts, stderr)
+		return parseCountValue(arg[2:], mode, opts, stderr)
 	}
-	// -n NUM form
-	return parseLinesNextArg(args, i, opts, stderr)
+	return parseCountNextArg(args, i, flag, mode, opts, stderr)
 }
 
-// parseLinesValue parses a line count value string and sets opts.lineCount.
-func parseLinesValue(val string, opts *headOpts, stderr io.Writer) (int, int) {
-	n, err := strconv.Atoi(val)
+// parseCountValue parses a count value with optional suffix and sets opts.
+// R2.1: -c and -n are mutually exclusive; last one given takes precedence.
+func parseCountValue(val string, mode countMode, opts *headOpts, stderr io.Writer) (int, int) {
+	n, negative, err := parseNumWithSuffix(val, mode)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: invalid number of lines: '%s'\n", progName, val)
+		label := "lines"
+		if mode == modeBytes {
+			label = "bytes"
+		}
+		fmt.Fprintf(stderr, "%s: invalid number of %s: '%s'\n", progName, label, val)
 		return 0, 1
 	}
-	opts.lineCount = n
+	opts.mode = mode
+	opts.count = n
+	opts.negative = negative
 	return 0, -1
 }
 
-// parseLinesNextArg reads the line count from the next argument.
-func parseLinesNextArg(args []string, i int, opts *headOpts, stderr io.Writer) (int, int) {
+// parseCountNextArg reads the count from the next argument.
+func parseCountNextArg(args []string, i int, flag byte, mode countMode, opts *headOpts, stderr io.Writer) (int, int) {
 	if i+1 >= len(args) {
-		fmt.Fprintf(stderr, "%s: option requires an argument -- 'n'\n", progName)
+		fmt.Fprintf(stderr, "%s: option requires an argument -- '%c'\n", progName, flag)
 		printTryHelp(stderr)
 		return 0, 1
 	}
-	consumed, code := parseLinesValue(args[i+1], opts, stderr)
+	consumed, code := parseCountValue(args[i+1], mode, opts, stderr)
 	return consumed + 1, code
+}
+
+// parseNumWithSuffix parses an integer with optional negative prefix and
+// byte-count suffix. For line mode, no suffix is allowed.
+func parseNumWithSuffix(val string, mode countMode) (int, bool, error) {
+	negative := false
+	s := val
+	if strings.HasPrefix(s, "-") {
+		negative = true
+		s = s[1:]
+	}
+	if len(s) == 0 {
+		return 0, false, fmt.Errorf("invalid number: '%s'", val)
+	}
+	numEnd := findNumEnd(s)
+	if numEnd == 0 {
+		return 0, false, fmt.Errorf("invalid number: '%s'", val)
+	}
+	n, err := strconv.Atoi(s[:numEnd])
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid number: '%s'", val)
+	}
+	suffix := s[numEnd:]
+	if mode == modeLines && suffix != "" {
+		return 0, false, fmt.Errorf("invalid number: '%s'", val)
+	}
+	multiplier, err := suffixMultiplier(suffix, val)
+	if err != nil {
+		return 0, false, err
+	}
+	return n * multiplier, negative, nil
+}
+
+// findNumEnd returns the index where digits end in s.
+func findNumEnd(s string) int {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	return i
+}
+
+// suffixMultiplier returns the byte multiplier for a suffix string.
+// R2.3: supports b (512), K/KiB (1024), M/MiB, G/GiB, T/TiB, P/PiB, E/EiB.
+// TODO: R2.3 task requests KB, MB, GB (powers of 1000) but prd018-head
+// non_goals excludes decimal multiplier suffixes.
+func suffixMultiplier(suffix, original string) (int, error) {
+	switch suffix {
+	case "":
+		return 1, nil
+	case "b":
+		return 512, nil
+	case "K", "KiB":
+		return 1024, nil
+	case "M", "MiB":
+		return 1024 * 1024, nil
+	case "G", "GiB":
+		return 1024 * 1024 * 1024, nil
+	case "T", "TiB":
+		return 1024 * 1024 * 1024 * 1024, nil
+	case "P", "PiB":
+		return 1024 * 1024 * 1024 * 1024 * 1024, nil
+	case "E", "EiB":
+		return 1024 * 1024 * 1024 * 1024 * 1024 * 1024, nil
+	default:
+		return 0, fmt.Errorf("invalid number of bytes: '%s'", original)
+	}
 }
 
 // applyShortFlags processes short flag clusters like -q, -v, or -qv.
@@ -255,6 +426,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "With no FILE, or when FILE is -, read standard input.")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -c, --bytes=NUM      print the first NUM bytes of each file")
 	fmt.Fprintln(w, "  -n, --lines=NUM      print the first NUM lines instead of the first 10")
 	fmt.Fprintln(w, "  -q, --quiet, --silent never print headers giving file names")
 	fmt.Fprintln(w, "  -v, --verbose        always print headers giving file names")
