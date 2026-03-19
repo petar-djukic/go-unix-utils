@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3,
-// R4.1–R4.3, R5.1–R5.4.
+// R4.1–R4.3, R5.1–R5.4, R6.1–R6.2.
 package main_test
 
 import (
@@ -72,6 +72,22 @@ func TestDiff(t *testing.T) {
 			Name:      "error_nonexistent_parent",
 			Args:      []string{"nodir/file.txt"},
 			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{ignoreOutput},
+		},
+		// R6.1: --version prints version information and exits 0.
+		// Output content differs between implementations; compare exit code only.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Stdin:     []byte{},
+			Normalize: []testutils.NormalizeFunc{ignoreOutput},
+		},
+		// R6.2: --help prints usage information and exits 0.
+		// Output content differs between implementations; compare exit code only.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Stdin:     []byte{},
 			Normalize: []testutils.NormalizeFunc{ignoreOutput},
 		},
 	}

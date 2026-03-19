@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3, R5.1–R5.4:
-// core stdin-to-file behavior with signal cleanup, atomic rename, rename
+// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3, R5.1–R5.4,
+// R6.1–R6.2: core stdin-to-file behavior with signal cleanup, atomic rename, rename
 // fallback, permission preservation, lstat-based output checks, append mode
-// error handling, and passthrough mode.
+// error handling, passthrough mode, version output, and help output.
 package main
 
 import (
@@ -88,9 +88,17 @@ func unregisterCleanup(path string) {
 	cleanupMu.Unlock()
 }
 
+// versionStr is printed by --version. R6.1.
+const versionStr = "sponge (go-unix-utils)"
+
+// usageStr is printed by --help. R6.2.
+const usageStr = "Usage: sponge [-a] [file]\n\nSoak stdin and write to file or stdout.\n\nOptions:\n  -a        append to file instead of overwriting\n  --help    display this help and exit\n  --version output version information and exit\n"
+
 // run parses arguments, soaks stdin, and writes output. Returns exit code.
 // R5.1: returns 0 on success. R5.2: returns 1 on all error paths.
 // R5.3: recovers from allocation panics and exits 1 instead of crashing.
+// R6.1: --version prints version and exits 0.
+// R6.2: --help prints usage and exits 0.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (exitCode int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -98,6 +106,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (exitCode int
 			exitCode = 1
 		}
 	}()
+	if handled, code := handleInfoFlags(args, stdout); handled {
+		return code
+	}
 	appendMode, outFile := parseArgs(args)
 	soak, err := soakStdin(stdin)
 	if err != nil {
@@ -118,6 +129,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (exitCode int
 		return writeStdout(soak, stdout, stderr)
 	}
 	return writeFile(soak, outFile, appendMode, stderr)
+}
+
+// handleInfoFlags checks for --version and --help flags. Returns true and
+// exit code if a flag was handled, false otherwise. R6.1, R6.2.
+func handleInfoFlags(args []string, stdout io.Writer) (bool, int) {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Fprintln(stdout, versionStr)
+			return true, 0
+		case "--help":
+			fmt.Fprint(stdout, usageStr)
+			return true, 0
+		}
+	}
+	return false, 0
 }
 
 // parseArgs extracts the -a flag and optional output filename.
