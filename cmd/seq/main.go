@@ -66,12 +66,17 @@ func parseArgs(args []string, stdout, stderr io.Writer) (seqOpts, int) {
 			return seqOpts{}, 1
 		}
 	}
+	// R3.4: -f and -w are mutually exclusive; error when both given.
+	if flags.format != "" && flags.equalWidth {
+		fmt.Fprintf(stderr, "%s: format string may not be specified"+
+			" when printing equal width strings\n", progName)
+		printTryHelp(stderr)
+		return seqOpts{}, 1
+	}
 	opts, err := buildOpts(numStrs, flags)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
-		if strings.Contains(err.Error(), "operand") {
-			printTryHelp(stderr)
-		}
+		printTryHelp(stderr)
 		return seqOpts{}, 1
 	}
 	return opts, -1
@@ -219,13 +224,18 @@ func buildOpts(numStrs []string, flags parsedFlags) (seqOpts, error) {
 }
 
 // parseValues converts string arguments to float64 values.
+// R4.2: rejects non-numeric and NaN arguments with distinct messages.
 func parseValues(numStrs []string) ([]float64, error) {
 	values := make([]float64, len(numStrs))
 	for i, s := range numStrs {
 		v, err := strconv.ParseFloat(s, 64)
-		if err != nil || math.IsNaN(v) {
+		if err != nil {
 			return nil, fmt.Errorf(
 				"invalid floating point argument: '%s'", s)
+		}
+		if math.IsNaN(v) {
+			return nil, fmt.Errorf(
+				"invalid 'not-a-number' argument: '%s'", s)
 		}
 		values[i] = v
 	}
@@ -246,7 +256,7 @@ func assignArgs(values []float64) (float64, float64, float64) {
 }
 
 // resolveFormat determines the output format based on flags and arguments.
-// R3.4: -f overrides -w.
+// R3.4: -f and -w mutual exclusivity is enforced in parseArgs.
 func resolveFormat(numStrs []string, flags parsedFlags, first, last float64) string {
 	if flags.format != "" {
 		return translateFormat(flags.format)

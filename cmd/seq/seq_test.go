@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for prd019-seq R1.1–R1.4, R2.4, R3.1–R3.3: numeric sequence generation,
-// large integers, format strings, format validation, and equal-width padding.
+// Tests for prd019-seq R1.1–R1.4, R2.4, R3.1–R3.4, R4.1–R4.3: numeric sequence
+// generation, large integers, format strings, format validation, equal-width
+// padding, -f/-w mutual exclusivity, exit codes, and differential tests.
 package main
 
 import (
@@ -18,6 +19,24 @@ import (
 // "gseq:" and "seq:" compare equal in differential tests.
 func normProgName(b []byte) []byte {
 	return bytes.ReplaceAll(b, []byte("gseq:"), []byte("seq:"))
+}
+
+// normTryHelp normalizes the "Try '...' --help" line in stderr so that
+// different binary paths compare equal in differential tests.
+func normTryHelp(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		if bytes.HasPrefix(line, []byte("Try '")) &&
+			bytes.HasSuffix(line, []byte("' for more information.")) {
+			lines[i] = []byte("Try 'seq --help' for more information.")
+		}
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// normErr combines program name and try-help normalization.
+func normErr(b []byte) []byte {
+	return normTryHelp(normProgName(b))
 }
 
 func TestDiff(t *testing.T) {
@@ -57,17 +76,42 @@ func TestDiff(t *testing.T) {
 		{Name: "format-e-notation", Args: []string{"-f", "%e", "1", "3"}},
 		{Name: "format-g", Args: []string{"-f", "%g", "1", "5"}},
 		// R3.2: invalid format strings (exit code 1)
-		// Normalize program name: gseq → seq in stderr.
+		// Normalize program name and try-help paths in stderr.
 		{Name: "format-no-specifier", Args: []string{"-f", "hello", "1", "3"}, ExitCode: 1,
-			Normalize: []testutils.NormalizeFunc{normProgName}},
+			Normalize: []testutils.NormalizeFunc{normErr}},
 		{Name: "format-unknown-d", Args: []string{"-f", "%d", "1", "3"}, ExitCode: 1,
-			Normalize: []testutils.NormalizeFunc{normProgName}},
+			Normalize: []testutils.NormalizeFunc{normErr}},
 		{Name: "format-too-many", Args: []string{"-f", "%f%f", "1", "3"}, ExitCode: 1,
-			Normalize: []testutils.NormalizeFunc{normProgName}},
+			Normalize: []testutils.NormalizeFunc{normErr}},
 		// R3.3: equal-width
 		{Name: "equal-width-8-12", Args: []string{"-w", "8", "12"}},
 		{Name: "equal-width-1-10", Args: []string{"-w", "1", "10"}},
 		{Name: "equal-width-neg", Args: []string{"-w", "-5", "5"}},
+		// R3.4: -f and -w are mutually exclusive (exit 1)
+		{Name: "format-and-equal-width", Args: []string{"-f", "%.2f", "-w", "1", "10"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{normErr}},
+		{Name: "equal-width-before-format", Args: []string{"-w", "-f", "%g", "1", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{normErr}},
+		{Name: "format-with-equal-width-descend", Args: []string{"-f", "%.1f", "-w", "5", "-1", "1"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{normErr}},
+		// R4.1: exit 0 on empty sequence
+		{Name: "empty-seq-exit-0-pos", Args: []string{"5", "1", "1"}},
+		{Name: "empty-seq-exit-0-neg", Args: []string{"1", "-1", "5"}},
+		// R4.2: exit 1 on errors
+		{Name: "error-zero-step", Args: []string{"1", "0", "5"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{normErr}},
+		{Name: "error-non-numeric", Args: []string{"abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{normErr}},
+		{Name: "error-nan", Args: []string{"nan"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{normErr}},
+		{Name: "error-no-args", Args: []string{}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{normErr}},
+		{Name: "error-extra-operand", Args: []string{"1", "2", "3", "4"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{normErr}},
+		// R4.3: additional differential coverage
+		{Name: "custom-separator-comma", Args: []string{"-s", ", ", "1", "5"}},
+		{Name: "custom-separator-tab", Args: []string{"-s", "\t", "1", "3"}},
+		{Name: "format-f-default", Args: []string{"-f", "%f", "1", "3"}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -99,6 +143,8 @@ func TestSequenceOutput(t *testing.T) {
 		{"equal-width-8-12", []string{"-w", "8", "12"}, "08\n09\n10\n11\n12\n"},
 		{"equal-width-1-10", []string{"-w", "1", "10"},
 			"01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n"},
+		// R4.1: empty sequence exits 0
+		{"empty-seq-exit-0", []string{"5", "1", "1"}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,6 +173,11 @@ func TestErrors(t *testing.T) {
 		{"zero-step", []string{"1", "0", "5"}, 1},
 		{"too-many-args", []string{"1", "2", "3", "4"}, 1},
 		{"unrecognized-flag", []string{"-x"}, 1},
+		// R3.4: -f and -w mutually exclusive
+		{"format-and-ew", []string{"-f", "%.2f", "-w", "1", "3"}, 1},
+		{"ew-and-format", []string{"-w", "-f", "%g", "1", "3"}, 1},
+		// R4.2: NaN argument
+		{"nan-arg", []string{"nan"}, 1},
 		// R3.2: format validation errors
 		{"format-no-specifier", []string{"-f", "hello", "1", "3"}, 1},
 		{"format-too-many", []string{"-f", "%f%f", "1", "3"}, 1},
