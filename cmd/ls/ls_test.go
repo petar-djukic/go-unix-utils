@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15,
-// R4.1–R4.7: default listing, single-column output, C locale sorting,
+// R4.1–R4.9: default listing, single-column output, C locale sorting,
 // dotfile filtering, horizontal multi-column output, last-format-flag-wins,
 // -a/-A show all, long format owner, group, size, date field rendering,
 // link count, device major/minor, timestamps, total block count,
@@ -1346,6 +1346,118 @@ func TestSIGPIPEHandling(t *testing.T) {
 		t.Errorf("R4.4: SIGPIPE should not produce broken pipe error, got: %q",
 			stderr.String())
 	}
+}
+
+// TestDiffRecursiveTotalAndMetadata tests R4.8 and R4.9:
+// R4.8: -R with -l produces a "total N" block line per subdirectory.
+// R4.9: -i, -s, -F all combine with -R, propagating to each subdirectory listing.
+func TestDiffRecursiveTotalAndMetadata(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R4.8 fixture: directory with subdirs and files for total-line verification.
+	dirTotal := t.TempDir()
+	makeFileWithContent(t, dirTotal, "root_file", makePadding(512))
+	subA := filepath.Join(dirTotal, "aaa")
+	if err := os.Mkdir(subA, 0o755); err != nil {
+		t.Fatalf("creating aaa: %v", err)
+	}
+	makeFileWithContent(t, subA, "a1", makePadding(1024))
+	makeFileWithContent(t, subA, "a2", makePadding(2048))
+	subB := filepath.Join(dirTotal, "bbb")
+	if err := os.Mkdir(subB, 0o755); err != nil {
+		t.Fatalf("creating bbb: %v", err)
+	}
+	makeFileWithContent(t, subB, "b1", makePadding(4096))
+
+	// R4.9 fixture: directory with varied file types for metadata propagation.
+	dirMeta := t.TempDir()
+	makeFiles(t, dirMeta, "plain.txt")
+	if err := os.Mkdir(filepath.Join(dirMeta, "sub"), 0o755); err != nil {
+		t.Fatalf("creating sub: %v", err)
+	}
+	makeFiles(t, filepath.Join(dirMeta, "sub"), "inner.txt")
+	makeFiles(t, dirMeta, "runme")
+	if err := os.Chmod(filepath.Join(dirMeta, "runme"), 0o755); err != nil {
+		t.Fatalf("chmod runme: %v", err)
+	}
+	if err := os.Symlink("plain.txt", filepath.Join(dirMeta, "link")); err != nil {
+		t.Fatalf("creating symlink: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.8: -lR produces total block line per subdirectory.
+		{
+			Name:    "r4.8_lR_total_per_subdir",
+			Args:    []string{"-lR"},
+			WorkDir: dirTotal,
+		},
+		// R4.8: -lRh produces human-readable total per subdirectory.
+		{
+			Name:    "r4.8_lRh_human_total_per_subdir",
+			Args:    []string{"-lRh"},
+			WorkDir: dirTotal,
+		},
+		// R4.8: -lR with explicit dir arg.
+		{
+			Name: "r4.8_lR_explicit_dir",
+			Args: []string{"-lR", dirTotal},
+		},
+		// R4.9: -iR propagates inode display to subdirectories.
+		{
+			Name:    "r4.9_iR_inode_recursive",
+			Args:    []string{"-iR1"},
+			WorkDir: dirMeta,
+		},
+		// R4.9: -sR propagates block count to subdirectories.
+		{
+			Name:    "r4.9_sR_blocks_recursive",
+			Args:    []string{"-sR1"},
+			WorkDir: dirMeta,
+		},
+		// R4.9: -FR propagates classify indicators to subdirectories.
+		{
+			Name:    "r4.9_FR_classify_recursive",
+			Args:    []string{"-FR1"},
+			WorkDir: dirMeta,
+		},
+		// R4.9: -isR combined inode+blocks in recursive.
+		{
+			Name:    "r4.9_isR_combined_recursive",
+			Args:    []string{"-isR1"},
+			WorkDir: dirMeta,
+		},
+		// R4.9: -ilR inode in long recursive (includes total lines).
+		{
+			Name:    "r4.9_ilR_inode_long_recursive",
+			Args:    []string{"-ilR"},
+			WorkDir: dirTotal,
+		},
+		// R4.9: -slR blocks in long recursive (includes total lines).
+		{
+			Name:    "r4.9_slR_blocks_long_recursive",
+			Args:    []string{"-slR"},
+			WorkDir: dirTotal,
+		},
+		// R4.9: -FlR classify in long recursive.
+		{
+			Name:    "r4.9_FlR_classify_long_recursive",
+			Args:    []string{"-FlR"},
+			WorkDir: dirMeta,
+		},
+		// R4.9: -isFR all metadata flags combined with recursive.
+		{
+			Name:    "r4.9_isFR_all_meta_recursive",
+			Args:    []string{"-isFR1"},
+			WorkDir: dirMeta,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 // normalizeErrorOutput normalizes program names and error message case

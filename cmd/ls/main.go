@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15, R4.1–R4.7:
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15, R4.1–R4.9:
 // directory listing with format modes (-1, -l, -C, -x), C locale sorting,
 // dot-file filtering (-a, -A), permission strings, owner/group resolution,
 // file metadata via pkg/sys, modification time formatting, total block count,
@@ -12,7 +12,9 @@
 // human-readable size display (-h), -F classify indicator, -R recursive listing,
 // sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation,
 // exit codes (0 success, 1/2 failure), SIGPIPE signal handling,
-// SIGWINCH terminal resize handling, -n implies -l, and format flag precedence.
+// SIGWINCH terminal resize handling, -n implies -l, format flag precedence,
+// R4.8 recursive total block line per subdirectory in -lR,
+// R4.9 -i/-s/-F combination with -R propagated to subdirectory listings.
 package main
 
 import (
@@ -283,6 +285,7 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 
 // recurseSubdirs lists each subdirectory found in entries.
 // R3.11: each subdirectory is preceded by a blank line and a header.
+// R4.9: opts (including -i, -s, -F) is passed unchanged to each subdir listing.
 func recurseSubdirs(entries []entry, opts options, stdout, stderr io.Writer) int {
 	exitCode := 0
 	for _, e := range entries {
@@ -951,6 +954,7 @@ func getTermWidth() int {
 // printTotalBlocks prints the "total N" line before a directory listing.
 // R1.10/R2.13: N = sum(fi.Blocks) / 2, converting 512-byte blocks to 1K blocks.
 // R3.6: when -h is active, convert total to human-readable form.
+// R4.8: called for each subdirectory listing in -lR mode.
 func printTotalBlocks(entries []entry, opts options, w io.Writer) {
 	var total int64
 	for _, e := range entries {
