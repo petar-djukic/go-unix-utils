@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.11: directory listing
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15: directory listing
 // with format modes (-1, -l, -C, -x), C locale sorting, dot-file filtering
 // (-a, -A), permission strings, owner/group resolution, file metadata via
 // pkg/sys, modification time formatting, total block count, symlink display,
@@ -9,7 +9,8 @@
 // long format link count, device major/minor, timestamps, total block header,
 // inode display (-i), block count display (-s), numeric UID/GID (-n),
 // combined -i -s prefix ordering, --color flag support, human-readable
-// size display (-h), -F classify indicator, and -R recursive listing.
+// size display (-h), -F classify indicator, -R recursive listing,
+// sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation.
 package main
 
 import (
@@ -58,6 +59,18 @@ const (
 	colorAlways                  // always colorize output
 )
 
+// sortMode controls the entry sort order.
+// R2.5-R2.10: sort mode selection for -t, -S, -v, -U flags.
+type sortMode int
+
+const (
+	sortName    sortMode = iota // default: alphabetical by name
+	sortTime                   // R2.5: -t sort by modification time
+	sortSize                   // R2.6: -S sort by file size
+	sortVersion                // R2.9: -v natural version sort
+	sortNone                   // R2.8: -U no sorting, directory order
+)
+
 // entry holds a directory entry's name and optional metadata.
 type entry struct {
 	name string
@@ -77,6 +90,8 @@ type options struct {
 	humanReadable bool       // R3.5: -h human-readable sizes
 	classify      bool       // R3.8: -F append type indicator
 	recursive     bool       // R3.11: -R list subdirectories recursively
+	sortBy        sortMode   // R2.5-R2.10: sort mode
+	reverse       bool       // R2.7: -r reverse sort order
 }
 
 // needsStat returns true when entries require metadata beyond just the name.
@@ -86,7 +101,8 @@ type options struct {
 func needsStat(opts options) bool {
 	return opts.format == formatLong || opts.showInode ||
 		opts.showBlocks || opts.color != colorNever ||
-		opts.classify || opts.recursive
+		opts.classify || opts.recursive ||
+		opts.sortBy == sortTime || opts.sortBy == sortSize
 }
 
 // longWidths holds column widths for long format alignment.
@@ -297,9 +313,7 @@ func readEntries(dir string, opts options) ([]entry, error) {
 		}
 		entries = append(entries, ent)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].name < entries[j].name
-	})
+	sortEntries(entries, opts)
 	return entries, nil
 }
 
@@ -327,6 +341,177 @@ func shouldShow(name string, opts options) bool {
 		return true
 	}
 	return opts.showAll || opts.almostAll
+}
+
+// sortEntries sorts entries according to the active sort mode and reverse flag.
+// R2.5-R2.10: sort mode selection. R2.8: -U skips sorting.
+// R3.15: recursive listing uses the same sort order.
+func sortEntries(entries []entry, opts options) {
+	if opts.sortBy == sortNone {
+		return
+	}
+	less := nameLess
+	switch opts.sortBy {
+	case sortTime:
+		less = timeLess
+	case sortSize:
+		less = sizeLess
+	case sortVersion:
+		less = versionLess
+	}
+	if opts.reverse {
+		orig := less
+		less = func(a, b entry) bool { return orig(b, a) }
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return less(entries[i], entries[j])
+	})
+}
+
+// nameLess compares entries by name in C locale order.
+func nameLess(a, b entry) bool {
+	return a.name < b.name
+}
+
+// timeLess compares entries by modification time, newest first.
+// R2.5: entries with the same mtime use name as tiebreaker.
+func timeLess(a, b entry) bool {
+	ta, tb := entryModTime(a), entryModTime(b)
+	if !ta.Equal(tb) {
+		return ta.After(tb)
+	}
+	return a.name < b.name
+}
+
+// entryModTime returns the modification time for an entry.
+func entryModTime(e entry) time.Time {
+	if e.info != nil {
+		return e.info.ModTime
+	}
+	return time.Time{}
+}
+
+// sizeLess compares entries by file size, largest first.
+// R2.6: entries with the same size use name as tiebreaker.
+func sizeLess(a, b entry) bool {
+	sa, sb := entrySize(a), entrySize(b)
+	if sa != sb {
+		return sa > sb
+	}
+	return a.name < b.name
+}
+
+// entrySize returns the file size for an entry.
+func entrySize(e entry) int64 {
+	if e.info != nil {
+		return e.info.Size
+	}
+	return 0
+}
+
+// versionLess compares entries using natural version sort.
+// R2.9: digit runs are compared numerically.
+func versionLess(a, b entry) bool {
+	return strverscmp(a.name, b.name) < 0
+}
+
+// strverscmp implements GNU strverscmp natural version comparison.
+// Digit runs are compared numerically; other characters byte-by-byte.
+func strverscmp(a, b string) int {
+	ai, bi := 0, 0
+	for ai < len(a) && bi < len(b) {
+		ca, cb := a[ai], b[bi]
+		if isDigitByte(ca) && isDigitByte(cb) {
+			cmp := cmpDigitRuns(a, b, &ai, &bi)
+			if cmp != 0 {
+				return cmp
+			}
+			continue
+		}
+		if ca != cb {
+			return int(ca) - int(cb)
+		}
+		ai++
+		bi++
+	}
+	return (len(a) - ai) - (len(b) - bi)
+}
+
+// cmpDigitRuns compares two digit runs starting at *ai and *bi.
+// Advances both indices past the digit runs.
+func cmpDigitRuns(a, b string, ai, bi *int) int {
+	if a[*ai] == '0' || b[*bi] == '0' {
+		return cmpFractionalRun(a, b, ai, bi)
+	}
+	return cmpIntegralRun(a, b, ai, bi)
+}
+
+// cmpFractionalRun compares digit runs with leading zeros digit-by-digit.
+func cmpFractionalRun(a, b string, ai, bi *int) int {
+	for *ai < len(a) && *bi < len(b) &&
+		isDigitByte(a[*ai]) && isDigitByte(b[*bi]) {
+		if a[*ai] != b[*bi] {
+			r := int(a[*ai]) - int(b[*bi])
+			advanceDigits(a, ai)
+			advanceDigits(b, bi)
+			return r
+		}
+		(*ai)++
+		(*bi)++
+	}
+	aHas := *ai < len(a) && isDigitByte(a[*ai])
+	bHas := *bi < len(b) && isDigitByte(b[*bi])
+	advanceDigits(a, ai)
+	advanceDigits(b, bi)
+	if aHas && !bHas {
+		return 1
+	}
+	if bHas && !aHas {
+		return -1
+	}
+	return 0
+}
+
+// cmpIntegralRun compares digit runs without leading zeros as integers.
+func cmpIntegralRun(a, b string, ai, bi *int) int {
+	aLen := countDigits(a, *ai)
+	bLen := countDigits(b, *bi)
+	firstDiff := 0
+	for *ai < len(a) && *bi < len(b) &&
+		isDigitByte(a[*ai]) && isDigitByte(b[*bi]) {
+		if firstDiff == 0 && a[*ai] != b[*bi] {
+			firstDiff = int(a[*ai]) - int(b[*bi])
+		}
+		(*ai)++
+		(*bi)++
+	}
+	advanceDigits(a, ai)
+	advanceDigits(b, bi)
+	if aLen != bLen {
+		return aLen - bLen
+	}
+	return firstDiff
+}
+
+// countDigits returns the number of consecutive digit bytes from start.
+func countDigits(s string, start int) int {
+	n := 0
+	for i := start; i < len(s) && isDigitByte(s[i]); i++ {
+		n++
+	}
+	return n
+}
+
+// advanceDigits moves *idx past any remaining digit bytes.
+func advanceDigits(s string, idx *int) {
+	for *idx < len(s) && isDigitByte(s[*idx]) {
+		(*idx)++
+	}
+}
+
+// isDigitByte returns true if b is an ASCII digit.
+func isDigitByte(b byte) bool {
+	return b >= '0' && b <= '9'
 }
 
 // outputEntries dispatches to the appropriate output format.
@@ -1130,6 +1315,16 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.classify = true
 	case 'R': // R3.11: list subdirectories recursively
 		o.recursive = true
+	case 't': // R2.5: sort by modification time
+		o.sortBy = sortTime
+	case 'S': // R2.6: sort by file size
+		o.sortBy = sortSize
+	case 'r': // R2.7: reverse sort order
+		o.reverse = true
+	case 'U': // R2.8: no sorting, directory order
+		o.sortBy = sortNone
+	case 'v': // R2.9: natural version sort
+		o.sortBy = sortVersion
 	default:
 		return false
 	}
@@ -1154,6 +1349,8 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 		o.classify = true
 	case "--recursive":
 		o.recursive = true
+	case "--reverse":
+		o.reverse = true
 	case "--help":
 		printHelp(stdout)
 		return 0
@@ -1213,8 +1410,13 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -i                         print the index number of each file")
 	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "  -n                         like -l, but list numeric user and group IDs")
+	fmt.Fprintln(w, "  -r, --reverse              reverse order while sorting")
 	fmt.Fprintln(w, "  -R, --recursive            list subdirectories recursively")
 	fmt.Fprintln(w, "  -s                         print the allocated size of each file, in blocks")
+	fmt.Fprintln(w, "  -S                         sort by file size, largest first")
+	fmt.Fprintln(w, "  -t                         sort by time, newest first")
+	fmt.Fprintln(w, "  -U                         do not sort; list entries in directory order")
+	fmt.Fprintln(w, "  -v                         natural sort of (version) numbers within text")
 	fmt.Fprintln(w, "  -x                         list entries by lines instead of by columns")
 	fmt.Fprintln(w, "  -1                         list one file per line")
 	fmt.Fprintln(w, "      --help                 display this help and exit")

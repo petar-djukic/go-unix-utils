@@ -1,14 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.11:
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15:
 // default listing, single-column output, C locale sorting, dotfile filtering,
 // horizontal multi-column output, last-format-flag-wins, -a/-A show all,
 // long format owner, group, size, date field rendering, link count,
 // device major/minor, timestamps, total block count, inode display (-i),
 // block count display (-s), numeric UID/GID (-n), combined -i -s prefix
 // ordering, --color flag support, human-readable size display (-h),
-// -F classify indicator, and -R recursive listing.
+// -F classify indicator, -R recursive listing,
+// sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation.
 package main_test
 
 import (
@@ -908,6 +909,159 @@ func TestDiffClassifyRecursive(t *testing.T) {
 			Args:    []string{"-F1"},
 			WorkDir: dirClassify,
 		})
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveDisplay tests R3.12-R3.15: recursive format mode,
+// symlink non-following, filter flags in subdirs, and sort order in recursion.
+func TestDiffRecursiveDisplay(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R3.12 fixture: directory with subdirs for format mode verification.
+	dirFormat := t.TempDir()
+	makeFiles(t, dirFormat, "file1", "file2")
+	subFmt := filepath.Join(dirFormat, "subdir")
+	if err := os.Mkdir(subFmt, 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+	makeFiles(t, subFmt, "inner1", "inner2")
+
+	// R3.13 fixture: symlink to directory should not be followed.
+	dirSym := t.TempDir()
+	makeFiles(t, dirSym, "file")
+	realSub := filepath.Join(dirSym, "realsub")
+	if err := os.Mkdir(realSub, 0o755); err != nil {
+		t.Fatalf("creating realsub: %v", err)
+	}
+	makeFiles(t, realSub, "inside")
+	if err := os.Symlink("realsub", filepath.Join(dirSym, "linksub")); err != nil {
+		t.Fatalf("creating symlink dir: %v", err)
+	}
+
+	// R3.14 fixture: subdirs with dotfiles for filter verification.
+	dirFilter := t.TempDir()
+	makeFiles(t, dirFilter, "visible")
+	subFilter := filepath.Join(dirFilter, "sub")
+	if err := os.Mkdir(subFilter, 0o755); err != nil {
+		t.Fatalf("creating sub: %v", err)
+	}
+	makeFiles(t, subFilter, ".hidden", "shown")
+
+	// R3.15 fixture: subdirs with different mtimes for sort order verification.
+	dirSort := t.TempDir()
+	makeFiles(t, dirSort, "zfile")
+	subA := filepath.Join(dirSort, "aaa")
+	if err := os.Mkdir(subA, 0o755); err != nil {
+		t.Fatalf("creating aaa: %v", err)
+	}
+	makeFiles(t, subA, "a_inner")
+	subB := filepath.Join(dirSort, "bbb")
+	if err := os.Mkdir(subB, 0o755); err != nil {
+		t.Fatalf("creating bbb: %v", err)
+	}
+	makeFiles(t, subB, "b_inner")
+	// Set aaa to older mtime so -t sorts bbb before aaa.
+	oldTime := time.Now().Add(-24 * time.Hour)
+	if err := os.Chtimes(subA, oldTime, oldTime); err != nil {
+		t.Fatalf("setting old mtime: %v", err)
+	}
+
+	// R3.15 fixture: files with different sizes for -S sort.
+	dirSizeSort := t.TempDir()
+	makeFileWithContent(t, dirSizeSort, "small", "x")
+	makeFileWithContent(t, dirSizeSort, "big", makePadding(4096))
+	subSz := filepath.Join(dirSizeSort, "sub")
+	if err := os.Mkdir(subSz, 0o755); err != nil {
+		t.Fatalf("creating sub: %v", err)
+	}
+	makeFiles(t, subSz, "inner")
+
+	tests := []testutils.DiffTest{
+		// R3.12: -R with -l includes total line for each subdir.
+		{
+			Name:    "r3.12_recursive_long_format",
+			Args:    []string{"-Rl"},
+			WorkDir: dirFormat,
+		},
+		// R3.12: -R with default format (piped = single-column).
+		{
+			Name:    "r3.12_recursive_default_format",
+			Args:    []string{"-R"},
+			WorkDir: dirFormat,
+		},
+		// R3.12: -R with -1 single-column.
+		{
+			Name:    "r3.12_recursive_single_column",
+			Args:    []string{"-R1"},
+			WorkDir: dirFormat,
+		},
+		// R3.12: -R with -l and -s shows blocks in each subdir.
+		{
+			Name:    "r3.12_recursive_long_blocks",
+			Args:    []string{"-Rls"},
+			WorkDir: dirFormat,
+		},
+		// R3.13: -R does not follow symlinks to directories.
+		{
+			Name:    "r3.13_no_symlink_follow",
+			Args:    []string{"-R1"},
+			WorkDir: dirSym,
+		},
+		// R3.13: -R with -l does not follow symlinks.
+		{
+			Name:    "r3.13_no_symlink_follow_long",
+			Args:    []string{"-Rl"},
+			WorkDir: dirSym,
+		},
+		// R3.14: -R without filter hides dotfiles in subdirs.
+		{
+			Name:    "r3.14_recursive_no_filter",
+			Args:    []string{"-R1"},
+			WorkDir: dirFilter,
+		},
+		// R3.14: -R with -A shows dotfiles except . and .. in subdirs.
+		{
+			Name:    "r3.14_recursive_almost_all",
+			Args:    []string{"-RA1"},
+			WorkDir: dirFilter,
+		},
+		// R3.14: -R with -a shows all dotfiles including . and .. in subdirs.
+		{
+			Name:    "r3.14_recursive_all",
+			Args:    []string{"-Ra1"},
+			WorkDir: dirFilter,
+		},
+		// R3.15: -R with -t recurses subdirs in modification-time order.
+		{
+			Name:    "r3.15_recursive_time_sort",
+			Args:    []string{"-Rt1"},
+			WorkDir: dirSort,
+		},
+		// R3.15: -R with -S recurses subdirs in size order.
+		{
+			Name:    "r3.15_recursive_size_sort",
+			Args:    []string{"-RS1"},
+			WorkDir: dirSizeSort,
+		},
+		// R3.15: -R with -r reverses default name sort order.
+		{
+			Name:    "r3.15_recursive_reverse",
+			Args:    []string{"-Rr1"},
+			WorkDir: dirSort,
+		},
+		// R3.15: -R with -t -r reverses time sort.
+		{
+			Name:    "r3.15_recursive_time_reverse",
+			Args:    []string{"-Rtr1"},
+			WorkDir: dirSort,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
