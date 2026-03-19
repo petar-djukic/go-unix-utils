@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd016-dirname R4.1–R4.3: compare Go dirname
-// against gdirname reference binary.
+// Differential tests for prd016-dirname R1.5, R2.1, R2.2, R4.1–R4.3:
+// compare Go dirname against gdirname reference binary.
 package main
 
 import (
@@ -82,6 +82,28 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "deeply_nested_trailing",
 			Args: []string{"/a/b/c///"},
+		},
+		// R1.5: multiple NAME arguments produce one result per argument.
+		{
+			Name: "multiple_two_args",
+			Args: []string{"/usr/bin", "/etc/hosts"},
+		},
+		{
+			Name: "multiple_mixed_types",
+			Args: []string{"/", ".", "..", "foo", "/a/b/c/"},
+		},
+		// R2.1: NUL-delimited output with -z flag.
+		{
+			Name: "zero_flag_short",
+			Args: []string{"-z", "/usr/bin/sort"},
+		},
+		{
+			Name: "zero_flag_long",
+			Args: []string{"--zero", "/usr/bin/sort", "stdio.h"},
+		},
+		{
+			Name: "zero_flag_multiple",
+			Args: []string{"-z", "/a/b/c", ".", "/usr/bin/"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

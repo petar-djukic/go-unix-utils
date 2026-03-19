@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd016-dirname R1.1–R1.4: strip last component from
-// file paths, outputting the directory portion.
+// Implements prd016-dirname R1.1–R1.5, R2.1–R2.2: strip last component
+// from file paths with multiple-argument and NUL-delimited output modes.
 package main
 
 import (
@@ -13,29 +13,68 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// options holds parsed command-line flags.
+type options struct {
+	zero bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	args := os.Args[1:]
-	if len(args) > 0 && args[0] == "--help" {
-		printUsage()
-		return
-	}
-	if len(args) == 0 {
+	opts, names := parseArgs(os.Args[1:])
+	if len(names) == 0 {
 		printError("missing operand")
 		os.Exit(1)
 	}
-	for _, name := range args {
-		fmt.Println(dirname(name))
+	terminator := "\n"
+	if opts.zero {
+		terminator = "\x00"
+	}
+	// R1.5, R2.2: process multiple arguments in order.
+	for _, name := range names {
+		fmt.Print(dirname(name) + terminator)
 	}
 }
 
-// printUsage writes usage information to stdout. Implements R1.4.
+// parseArgs splits raw arguments into options and positional names.
+// Supports -z, --zero, --help, and -- to end option parsing.
+func parseArgs(args []string) (options, []string) {
+	var opts options
+	var names []string
+	for i := range len(args) {
+		arg := args[i]
+		if arg == "--" {
+			names = append(names, args[i+1:]...)
+			break
+		}
+		if arg == "--help" {
+			printUsage()
+			os.Exit(0)
+		}
+		if arg == "--zero" {
+			opts.zero = true
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--") {
+			for j := 1; j < len(arg); j++ {
+				if arg[j] == 'z' {
+					opts.zero = true
+				}
+			}
+			continue
+		}
+		names = append(names, arg)
+	}
+	return opts, names
+}
+
+// printUsage writes usage information to stdout.
 func printUsage() {
 	fmt.Print("Usage: dirname [OPTION] NAME...\n" +
 		"Output each NAME with its last non-slash component " +
 		"and trailing slashes removed;\n" +
 		"if NAME contains no /'s, output '.' " +
 		"(meaning the current directory).\n\n" +
+		"  -z, --zero     end each output line with NUL, not newline\n" +
 		"      --help     display this help and exit\n")
 }
 
@@ -46,7 +85,7 @@ func printError(msg string) {
 }
 
 // dirname extracts the directory component from name, matching GNU
-// coreutils behavior. Implements R1.1–R1.3.
+// coreutils behavior. Implements R1.1–R1.4.
 func dirname(name string) string {
 	if name == "" {
 		return "."
@@ -54,14 +93,14 @@ func dirname(name string) string {
 	if allSlashes(name) {
 		return "/"
 	}
-	// R1.2: strip trailing slashes before extracting directory.
+	// R1.1: strip trailing slashes before extracting directory.
 	name = strings.TrimRight(name, "/")
 	i := strings.LastIndex(name, "/")
 	if i < 0 {
-		// R1.3: no slash means current directory.
+		// R1.2: no slash means current directory.
 		return "."
 	}
-	// Strip trailing slashes from the result.
+	// R1.4: strip trailing slashes from the result.
 	dir := strings.TrimRight(name[:i], "/")
 	if dir == "" {
 		return "/"
