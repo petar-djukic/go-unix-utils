@@ -4,7 +4,8 @@
 // Implements prd048-hostid R1.1 (print host identifier as 8-digit hex),
 // R1.2 (value derived from gethostid(3)),
 // R2.1 (extra operands produce error exit 1),
-// R2.2 (unknown flags produce error exit 1).
+// R2.2 (unknown flags produce error exit 1),
+// R3.1–R3.3 (differential testing against ghostid).
 package main
 
 /*

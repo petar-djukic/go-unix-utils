@@ -68,6 +68,28 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
+		// R3.2: double-dash separator alone — succeeds, prints hostid.
+		{
+			Name: "double_dash_only",
+			Args: []string{"--"},
+			Env:  env,
+		},
+		// R3.2, R2.1: double-dash followed by extra operand — error exit 1.
+		{
+			Name:      "double_dash_extra_operand",
+			Args:      []string{"--", "extraarg"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.2, R2.1: multiple extra operands — error on first.
+		{
+			Name:      "multiple_extra_operands",
+			Args:      []string{"foo", "bar"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
