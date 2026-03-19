@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.7:
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.11:
 // default listing, single-column output, C locale sorting, dotfile filtering,
 // horizontal multi-column output, last-format-flag-wins, -a/-A show all,
 // long format owner, group, size, date field rendering, link count,
 // device major/minor, timestamps, total block count, inode display (-i),
 // block count display (-s), numeric UID/GID (-n), combined -i -s prefix
-// ordering, --color flag support, and human-readable size display (-h).
+// ordering, --color flag support, human-readable size display (-h),
+// -F classify indicator, and -R recursive listing.
 package main_test
 
 import (
@@ -15,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -741,6 +743,174 @@ func TestColorNeverNoANSI(t *testing.T) {
 	if bytes.Contains(out, []byte("\033[")) {
 		t.Errorf("--color=never should not contain ANSI sequences, got: %q", out)
 	}
+}
+
+// TestDiffClassifyRecursive tests -F (classify) and -R (recursive) flags.
+// Implements prd008-ls R3.8, R3.9, R3.10, R3.11.
+func TestDiffClassifyRecursive(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R3.8 fixture: directory with various file types.
+	dirClassify := t.TempDir()
+	makeFiles(t, dirClassify, "regular.txt")
+	if err := os.Mkdir(filepath.Join(dirClassify, "subdir"), 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+	makeFiles(t, dirClassify, "executable")
+	if err := os.Chmod(filepath.Join(dirClassify, "executable"), 0o755); err != nil {
+		t.Fatalf("chmod executable: %v", err)
+	}
+	if err := os.Symlink("regular.txt", filepath.Join(dirClassify, "link")); err != nil {
+		t.Fatalf("creating symlink: %v", err)
+	}
+	// Best-effort FIFO creation; skip FIFO tests if not supported.
+	fifoPath := filepath.Join(dirClassify, "mypipe")
+	fifoErr := syscall.Mkfifo(fifoPath, 0o644)
+
+	// R3.11 fixture: directory with subdirectories for recursion.
+	dirRecurse := t.TempDir()
+	makeFiles(t, dirRecurse, "file1")
+	if err := os.Mkdir(filepath.Join(dirRecurse, "subA"), 0o755); err != nil {
+		t.Fatalf("creating subA: %v", err)
+	}
+	makeFiles(t, filepath.Join(dirRecurse, "subA"), "fileA")
+	if err := os.Mkdir(filepath.Join(dirRecurse, "subB"), 0o755); err != nil {
+		t.Fatalf("creating subB: %v", err)
+	}
+	makeFiles(t, filepath.Join(dirRecurse, "subB"), "fileB")
+
+	// R3.11 fixture: deeper nesting for multi-level recursion.
+	dirDeep := t.TempDir()
+	makeFiles(t, dirDeep, "top")
+	if err := os.Mkdir(filepath.Join(dirDeep, "level1"), 0o755); err != nil {
+		t.Fatalf("creating level1: %v", err)
+	}
+	makeFiles(t, filepath.Join(dirDeep, "level1"), "mid")
+	deep2 := filepath.Join(dirDeep, "level1", "level2")
+	if err := os.Mkdir(deep2, 0o755); err != nil {
+		t.Fatalf("creating level2: %v", err)
+	}
+	makeFiles(t, deep2, "bottom")
+
+	// R3.11 fixture: directory with symlink to dir (should not be followed).
+	dirSymRecurse := t.TempDir()
+	makeFiles(t, dirSymRecurse, "file")
+	realSub := filepath.Join(dirSymRecurse, "realsub")
+	if err := os.Mkdir(realSub, 0o755); err != nil {
+		t.Fatalf("creating realsub: %v", err)
+	}
+	makeFiles(t, realSub, "inside")
+	if err := os.Symlink("realsub", filepath.Join(dirSymRecurse, "linksub")); err != nil {
+		t.Fatalf("creating symlink dir: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.8: -F appends type indicators in single-column.
+		{
+			Name:    "r3.8_classify_single",
+			Args:    []string{"-F1"},
+			WorkDir: dirClassify,
+		},
+		// R3.8: -F with default format.
+		{
+			Name:    "r3.8_classify_default",
+			Args:    []string{"-F"},
+			WorkDir: dirClassify,
+		},
+		// R3.10: -F with -l long format.
+		{
+			Name:    "r3.10_classify_long",
+			Args:    []string{"-Fl"},
+			WorkDir: dirClassify,
+		},
+		// R3.10: -F with -x horizontal layout.
+		{
+			Name:    "r3.10_classify_horizontal",
+			Args:    []string{"-Fx"},
+			WorkDir: dirClassify,
+		},
+		// R3.10: -F with --color=never (no ANSI).
+		{
+			Name:    "r3.10_classify_no_color",
+			Args:    []string{"-F1", "--color=never"},
+			WorkDir: dirClassify,
+		},
+		// R3.10: -F with --color=always (ANSI stripped for comparison).
+		{
+			Name:      "r3.10_classify_color_always",
+			Args:      []string{"-F1", "--color=always"},
+			WorkDir:   dirClassify,
+			Normalize: []testutils.NormalizeFunc{stripANSI},
+		},
+		// R3.8: -F on a file argument (shows indicator).
+		{
+			Name: "r3.8_classify_file_arg",
+			Args: []string{"-F", filepath.Join(dirClassify, "executable")},
+		},
+		// R3.8: -F on a directory argument with -d-like behavior (just the path).
+		{
+			Name: "r3.8_classify_dir_arg",
+			Args: []string{"-F", dirClassify},
+		},
+		// R3.11: -R basic recursion with single-column.
+		{
+			Name:    "r3.11_recursive_single",
+			Args:    []string{"-R1"},
+			WorkDir: dirRecurse,
+		},
+		// R3.11: -R basic recursion with default format.
+		{
+			Name:    "r3.11_recursive_default",
+			Args:    []string{"-R"},
+			WorkDir: dirRecurse,
+		},
+		// R3.11: -R with -l long format.
+		{
+			Name:    "r3.11_recursive_long",
+			Args:    []string{"-Rl"},
+			WorkDir: dirRecurse,
+		},
+		// R3.11: -R with deeper nesting.
+		{
+			Name:    "r3.11_recursive_deep",
+			Args:    []string{"-R1"},
+			WorkDir: dirDeep,
+		},
+		// R3.11: -R does not follow symlinks to directories.
+		{
+			Name:    "r3.11_recursive_no_symlink_follow",
+			Args:    []string{"-R1"},
+			WorkDir: dirSymRecurse,
+		},
+		// R3.8 + R3.11: -FR combined.
+		{
+			Name:    "r3.8_r3.11_classify_recursive",
+			Args:    []string{"-FR1"},
+			WorkDir: dirRecurse,
+		},
+		// R3.11: -R with -a shows dotfiles in subdirectories.
+		{
+			Name:    "r3.11_recursive_with_all",
+			Args:    []string{"-Ra1"},
+			WorkDir: dirRecurse,
+		},
+	}
+
+	// R3.8: add FIFO test if mkfifo succeeded.
+	if fifoErr == nil {
+		tests = append(tests, testutils.DiffTest{
+			Name:    "r3.8_classify_with_fifo",
+			Args:    []string{"-F1"},
+			WorkDir: dirClassify,
+		})
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 // stripANSI removes ANSI escape sequences for differential test normalization.

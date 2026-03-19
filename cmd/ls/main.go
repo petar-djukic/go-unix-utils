@@ -1,15 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.7: directory listing
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.11: directory listing
 // with format modes (-1, -l, -C, -x), C locale sorting, dot-file filtering
 // (-a, -A), permission strings, owner/group resolution, file metadata via
 // pkg/sys, modification time formatting, total block count, symlink display,
 // multi-column output (vertical and horizontal), last-format-flag-wins,
 // long format link count, device major/minor, timestamps, total block header,
 // inode display (-i), block count display (-s), numeric UID/GID (-n),
-// combined -i -s prefix ordering, --color flag support, and human-readable
-// size display (-h) for long format sizes, total blocks, and -s block counts.
+// combined -i -s prefix ordering, --color flag support, human-readable
+// size display (-h), -F classify indicator, and -R recursive listing.
 package main
 
 import (
@@ -18,7 +18,6 @@ import (
 	"math"
 	"os"
 	"os/user"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,13 +75,18 @@ type options struct {
 	numericIDs    bool       // R2.14: -n numeric UID/GID (implies -l)
 	color         colorMode  // R3.1: color output mode
 	humanReadable bool       // R3.5: -h human-readable sizes
+	classify      bool       // R3.8: -F append type indicator
+	recursive     bool       // R3.11: -R list subdirectories recursively
 }
 
 // needsStat returns true when entries require metadata beyond just the name.
 // R3.3: color needs the file mode to determine color.
+// R3.8: -F needs mode for type indicators.
+// R3.11: -R needs mode to identify subdirectories.
 func needsStat(opts options) bool {
 	return opts.format == formatLong || opts.showInode ||
-		opts.showBlocks || opts.color != colorNever
+		opts.showBlocks || opts.color != colorNever ||
+		opts.classify || opts.recursive
 }
 
 // longWidths holds column widths for long format alignment.
@@ -159,7 +163,8 @@ func listPaths(paths []string, opts options, stdout, stderr io.Writer) int {
 		}
 		needBlank = true
 	}
-	showHeader := len(dirs) > 1 || len(files) > 0
+	// R3.11: -R always shows directory headers.
+	showHeader := len(dirs) > 1 || len(files) > 0 || opts.recursive
 	for _, d := range dirs {
 		if needBlank {
 			fmt.Fprintln(stdout)
@@ -215,7 +220,7 @@ func classifyArgs(paths []string, stderr io.Writer) ([]string, []string, int) {
 }
 
 // listOneDir lists a single directory's entries with an optional header.
-// Returns a non-zero exit code on error.
+// R3.11: when recursive, subdirectories are listed after the parent.
 func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader bool) int {
 	if showHeader {
 		fmt.Fprintf(stdout, "%s:\n", dir)
@@ -227,7 +232,43 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 		return 2
 	}
 	outputEntries(entries, opts, stdout, true)
+	if opts.recursive {
+		return recurseSubdirs(entries, opts, stdout, stderr)
+	}
 	return 0
+}
+
+// recurseSubdirs lists each subdirectory found in entries.
+// R3.11: each subdirectory is preceded by a blank line and a header.
+func recurseSubdirs(entries []entry, opts options, stdout, stderr io.Writer) int {
+	exitCode := 0
+	for _, e := range entries {
+		if !isRecursibleDir(e) {
+			continue
+		}
+		fmt.Fprintln(stdout)
+		ec := listOneDir(e.path, opts, stdout, stderr, true)
+		if ec > exitCode {
+			exitCode = ec
+		}
+	}
+	return exitCode
+}
+
+// isRecursibleDir returns true if the entry is a real subdirectory to recurse.
+// Excludes "." and ".." to prevent infinite recursion.
+// Does not follow symlinks to directories (R3.13 implicit).
+func isRecursibleDir(e entry) bool {
+	if e.name == "." || e.name == ".." {
+		return false
+	}
+	if e.info == nil {
+		return false
+	}
+	if e.info.Mode&os.ModeSymlink != 0 {
+		return false
+	}
+	return e.info.Mode&os.ModeDir != 0
 }
 
 // readEntries reads directory entries, applies dot-filtering (R1.4, R2.1, R2.2),
@@ -246,7 +287,7 @@ func readEntries(dir string, opts options) ([]entry, error) {
 		if !shouldShow(e.Name(), opts) {
 			continue
 		}
-		fullPath := filepath.Join(dir, e.Name())
+		fullPath := joinPath(dir, e.Name())
 		ent := entry{name: e.Name(), path: fullPath}
 		if needsStat(opts) {
 			fi, err := sys.Lstat(fullPath)
@@ -267,7 +308,7 @@ func readEntries(dir string, opts options) ([]entry, error) {
 func makeDotEntries(dir string, opts options) []entry {
 	dots := make([]entry, 2)
 	for i, name := range []string{".", ".."} {
-		fullPath := filepath.Join(dir, name)
+		fullPath := joinPath(dir, name)
 		dots[i] = entry{name: name, path: fullPath}
 		if needsStat(opts) {
 			fi, err := sys.Lstat(fullPath)
@@ -308,6 +349,7 @@ func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
 
 // printSingle outputs entries one per line.
 // R3.3: entry names are colorized when color is active.
+// R3.8: -F appends type indicators.
 func printSingle(entries []entry, opts options, w io.Writer) {
 	names := colorizedDisplayNames(entries, opts)
 	for _, n := range names {
@@ -317,63 +359,102 @@ func printSingle(entries []entry, opts options, w io.Writer) {
 
 // displayNames returns entry display strings for non-long formats (plain, no color).
 // Used for column width calculation in multi-column modes.
+// R3.8: includes type indicator when -F is active.
 func displayNames(entries []entry, opts options) []string {
 	if !opts.showInode && !opts.showBlocks {
-		return entryNames(entries)
+		return plainNames(entries, opts.classify)
 	}
 	inodeW, blockW := maxPrefixWidths(entries, opts)
 	names := make([]string, len(entries))
 	for i, e := range entries {
-		names[i] = nonLongPrefix(e, opts, inodeW, blockW) + e.name
+		names[i] = nonLongPrefix(e, opts, inodeW, blockW) +
+			plainEntryName(e, opts.classify)
 	}
 	return names
 }
 
 // colorizedDisplayNames returns display strings with colorized entry names.
 // R3.3: wraps entry names with ANSI color codes when color is active.
+// R3.8/R3.10: includes type indicator after ANSI reset when -F is active.
 func colorizedDisplayNames(entries []entry, opts options) []string {
 	if !opts.showInode && !opts.showBlocks {
-		return colorizedEntryNames(entries)
+		return colorizedNames(entries, opts.classify)
 	}
 	inodeW, blockW := maxPrefixWidths(entries, opts)
 	names := make([]string, len(entries))
 	for i, e := range entries {
 		names[i] = nonLongPrefix(e, opts, inodeW, blockW) +
-			colorEntryName(e.name, e.info)
+			colorEntryName(e.name, e.info, opts.classify)
 	}
 	return names
 }
 
-// entryNames extracts display names from entries (no color).
-func entryNames(entries []entry) []string {
+// plainNames returns plain entry names with optional type indicators.
+// R3.8: when classify is true, appends type indicator character.
+func plainNames(entries []entry, classify bool) []string {
 	names := make([]string, len(entries))
 	for i, e := range entries {
-		names[i] = e.name
+		names[i] = plainEntryName(e, classify)
 	}
 	return names
 }
 
-// colorizedEntryNames extracts display names with color codes.
+// plainEntryName returns the plain display name for an entry.
+// R3.8: appends type indicator when classify is true.
+func plainEntryName(e entry, classify bool) string {
+	if !classify || e.info == nil {
+		return e.name
+	}
+	return e.name + typeIndicator(e.info.Mode)
+}
+
+// colorizedNames returns colorized entry names with optional indicators.
 // R3.3: wraps names with ANSI codes based on file type.
-func colorizedEntryNames(entries []entry) []string {
+// R3.10: indicator appears after the ANSI reset code.
+func colorizedNames(entries []entry, classify bool) []string {
 	names := make([]string, len(entries))
 	for i, e := range entries {
-		names[i] = colorEntryName(e.name, e.info)
+		names[i] = colorEntryName(e.name, e.info, classify)
 	}
 	return names
 }
 
 // colorEntryName wraps a name with ANSI color codes based on file type.
 // R3.3: colorCode + name + resetCode. Returns plain name when color is off.
-func colorEntryName(name string, info *sys.FileInfo) string {
+// R3.8/R3.10: when classify is true, indicator is appended after reset code.
+func colorEntryName(name string, info *sys.FileInfo, classify bool) string {
+	indicator := ""
+	if classify && info != nil {
+		indicator = typeIndicator(info.Mode)
+	}
 	if info == nil {
-		return name
+		return name + indicator
 	}
 	c := format.FileTypeColor(info.Mode)
 	if c == "" {
-		return name
+		return name + indicator
 	}
-	return c + name + format.Reset()
+	return c + name + format.Reset() + indicator
+}
+
+// typeIndicator returns the -F classify indicator for a file mode.
+// R3.8: "/" directory, "*" executable, "@" symlink, "|" pipe, "=" socket.
+// R3.9: executable is any execute bit set (mode & 0o111 != 0).
+func typeIndicator(mode os.FileMode) string {
+	switch {
+	case mode&os.ModeDir != 0:
+		return "/"
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.Perm()&0o111 != 0:
+		return "*"
+	default:
+		return ""
+	}
 }
 
 // nonLongPrefix formats the inode/blocks prefix for non-long format entries.
@@ -476,9 +557,9 @@ func printColumnar(entries []entry, opts options, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	plainNames := displayNames(entries, opts)
+	plainNms := displayNames(entries, opts)
 	tw := getTermWidth()
-	rows := format.Columns(plainNames, tw)
+	rows := format.Columns(plainNms, tw)
 	colWidths := columnMaxWidths(rows)
 	starts := colStartPositions(colWidths)
 	coloredNames := colorizedDisplayNames(entries, opts)
@@ -510,9 +591,9 @@ func printHorizontal(entries []entry, opts options, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	plainNames := displayNames(entries, opts)
+	plainNms := displayNames(entries, opts)
 	tw := getTermWidth()
-	numCols := computeHorizCols(plainNames, tw)
+	numCols := computeHorizCols(plainNms, tw)
 	coloredNames := colorizedDisplayNames(entries, opts)
 	if numCols <= 1 {
 		for _, n := range coloredNames {
@@ -520,7 +601,7 @@ func printHorizontal(entries []entry, opts options, w io.Writer) {
 		}
 		return
 	}
-	widths := horizColWidths(plainNames, numCols)
+	widths := horizColWidths(plainNms, numCols)
 	starts := colStartPositions(widths)
 	for i := 0; i < len(coloredNames); i += numCols {
 		cEnd := i + numCols
@@ -528,10 +609,10 @@ func printHorizontal(entries []entry, opts options, w io.Writer) {
 			cEnd = len(coloredNames)
 		}
 		pEnd := i + numCols
-		if pEnd > len(plainNames) {
-			pEnd = len(plainNames)
+		if pEnd > len(plainNms) {
+			pEnd = len(plainNms)
 		}
-		printRowColored(coloredNames[i:cEnd], plainNames[i:pEnd], starts, w)
+		printRowColored(coloredNames[i:cEnd], plainNms[i:pEnd], starts, w)
 	}
 }
 
@@ -688,11 +769,12 @@ func printLongLines(entries []entry, opts options, w io.Writer) {
 // printLongEntry formats a single entry in long format.
 // R3.3: name field is colorized when color is active.
 // R3.5: -h converts sizes to human-readable form.
+// R3.8/R3.10: -F appends type indicator.
 func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
 	prefix := longPrefix(e, opts, w)
 	owner := ownerString(e.info.Uid, opts.numericIDs)
 	group := groupString(e.info.Gid, opts.numericIDs)
-	name := formatName(e)
+	name := formatName(e, opts.classify)
 	fmt.Fprintf(out, "%s%s %*d %-*s %-*s %s %s %s\n",
 		prefix,
 		permString(e.info.Mode),
@@ -761,19 +843,22 @@ func formatSizeField(fi *sys.FileInfo, w longWidths, humanReadable bool) string 
 	return fmt.Sprintf("%*d", sw, fi.Size)
 }
 
-// formatName returns the display name for an entry.
+// formatName returns the display name for an entry in long format.
 // R1.10: appends " -> target" for symlinks.
 // R3.3: entry name is wrapped with ANSI color codes when color is active.
-func formatName(e entry) string {
-	name := colorEntryName(e.name, e.info)
-	if e.info == nil || e.info.Mode&os.ModeSymlink == 0 {
-		return name
+// R3.8/R3.10: -F appends type indicator (after reset code, before arrow).
+// Symlinks in long format do not get the @ indicator because the -> arrow
+// and the 'l' permission prefix already indicate the file type.
+func formatName(e entry, classify bool) string {
+	if e.info != nil && e.info.Mode&os.ModeSymlink != 0 {
+		name := colorEntryName(e.name, e.info, false)
+		target, err := os.Readlink(e.path)
+		if err != nil {
+			return name
+		}
+		return name + " -> " + target
 	}
-	target, err := os.Readlink(e.path)
-	if err != nil {
-		return name
-	}
-	return name + " -> " + target
+	return colorEntryName(e.name, e.info, classify)
 }
 
 // computeWidths calculates the column widths for long format alignment.
@@ -943,6 +1028,13 @@ func formatMtime(t time.Time) string {
 	return t.Format("Jan _2  2006")
 }
 
+// joinPath joins a directory and entry name, preserving the "./" prefix.
+// filepath.Join(".", "name") strips the "./" prefix, but recursive ls
+// headers must display "./subdir:" to match GNU ls output.
+func joinPath(dir, name string) string {
+	return dir + "/" + name
+}
+
 // unwrapErr extracts the underlying error message from *os.PathError.
 func unwrapErr(err error) string {
 	if pe, ok := err.(*os.PathError); ok {
@@ -1034,6 +1126,10 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.format = formatLong
 	case 'h': // R3.5: human-readable sizes
 		o.humanReadable = true
+	case 'F': // R3.8: append type indicator
+		o.classify = true
+	case 'R': // R3.11: list subdirectories recursively
+		o.recursive = true
 	default:
 		return false
 	}
@@ -1054,6 +1150,10 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 		o.almostAll = true
 	case "--human-readable":
 		o.humanReadable = true
+	case "--classify":
+		o.classify = true
+	case "--recursive":
+		o.recursive = true
 	case "--help":
 		printHelp(stdout)
 		return 0
@@ -1108,10 +1208,12 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -C                         list entries by columns")
 	fmt.Fprintln(w, "      --color[=WHEN]         colorize the output; WHEN can be 'always'")
 	fmt.Fprintln(w, "                               (default if omitted), 'auto', or 'never'")
+	fmt.Fprintln(w, "  -F, --classify             append indicator (one of */=>@|) to entries")
 	fmt.Fprintln(w, "  -h, --human-readable       with -l and/or -s, print human readable sizes")
 	fmt.Fprintln(w, "  -i                         print the index number of each file")
 	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "  -n                         like -l, but list numeric user and group IDs")
+	fmt.Fprintln(w, "  -R, --recursive            list subdirectories recursively")
 	fmt.Fprintln(w, "  -s                         print the allocated size of each file, in blocks")
 	fmt.Fprintln(w, "  -x                         list entries by lines instead of by columns")
 	fmt.Fprintln(w, "  -1                         list one file per line")
