@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3:
+// Implements prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3, R5.1–R5.4:
 // core stdin-to-file behavior with signal cleanup, atomic rename, rename
 // fallback, permission preservation, lstat-based output checks, append mode
 // error handling, and passthrough mode.
@@ -89,7 +89,15 @@ func unregisterCleanup(path string) {
 }
 
 // run parses arguments, soaks stdin, and writes output. Returns exit code.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+// R5.1: returns 0 on success. R5.2: returns 1 on all error paths.
+// R5.3: recovers from allocation panics and exits 1 instead of crashing.
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (exitCode int) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", progName, r)
+			exitCode = 1
+		}
+	}()
 	appendMode, outFile := parseArgs(args)
 	soak, err := soakStdin(stdin)
 	if err != nil {
@@ -240,7 +248,10 @@ func writeFile(s *soakedInput, path string, appendMode bool, stderr io.Writer) i
 		return 1
 	}
 	registerCleanup(tmpPath)
-	defer unregisterCleanup(tmpPath)
+	defer func() {
+		unregisterCleanup(tmpPath)
+		os.Remove(tmpPath) // R5.4: best-effort cleanup on all exit paths
+	}()
 	if err := installOutput(tmpPath, path, outInfo); err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		return 1

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3, R4.1–R4.3.
+// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.5, R3.1–R3.3,
+// R4.1–R4.3, R5.1–R5.4.
 package main_test
 
 import (
@@ -15,6 +16,10 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// ignoreOutput normalizes away content so only exit code is compared.
+// Used for error tests where stderr messages differ between implementations.
+func ignoreOutput(b []byte) []byte { return []byte{} }
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -55,6 +60,19 @@ func TestDiff(t *testing.T) {
 		{
 			Name:  "passthrough_moderate",
 			Stdin: generateSeq(1, 1000),
+		},
+		// R5.1: exit 0 on successful passthrough (explicit verification).
+		{
+			Name:  "exit_0_passthrough",
+			Stdin: []byte("success\n"),
+		},
+		// R5.2: exit 1 when output path has nonexistent parent directory.
+		// Both binaries fail identically; stderr messages ignored.
+		{
+			Name:      "error_nonexistent_parent",
+			Args:      []string{"nodir/file.txt"},
+			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{ignoreOutput},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, passthroughTests)
@@ -238,12 +256,78 @@ func TestDiff(t *testing.T) {
 				writeTestFile(t, filepath.Join(dir, "append_empty.txt"), "keep this\n")
 			},
 		},
+		// R5.1: exit 0 on successful file write (explicit verification).
+		{
+			name:    "exit_0_file_write",
+			stdin:   []byte("success content\n"),
+			outFile: "success.txt",
+		},
 	}
 	for _, tc := range fileTests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t, goBin, refBin)
 		})
+	}
+}
+
+// TestTempCleanupOnError verifies that sponge removes temp files even when
+// the output write fails. Implements R5.4.
+func TestTempCleanupOnError(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	tmpDir := t.TempDir()
+
+	// R5.4: force an error by writing to a path with nonexistent parent.
+	outPath := filepath.Join(t.TempDir(), "nodir", "file.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("test data for cleanup\n"))
+	env := buildTestEnv()
+	env = setTestEnv(env, "TMPDIR", tmpDir)
+	cmd.Env = env
+	_ = cmd.Run() // expect failure
+
+	// Verify no sponge temp files remain in TMPDIR.
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("reading TMPDIR: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "sponge.") {
+			t.Fatalf("R5.4: temp file %s not cleaned up after error exit", e.Name())
+		}
+	}
+}
+
+// TestErrorExitCode verifies that sponge exits 1 on output write failure.
+// Implements R5.2.
+func TestErrorExitCode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R5.2: output to nonexistent parent directory must exit 1.
+	outPath := filepath.Join(t.TempDir(), "nodir", "file.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("test\n"))
+	cmd.Env = buildTestEnv()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("R5.2: expected non-zero exit code for invalid output path")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("R5.2: unexpected error type: %v", err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("R5.2: expected exit code 1, got %d", exitErr.ExitCode())
+	}
+	// R5.2: must print a descriptive error message to stderr.
+	if stderr.Len() == 0 {
+		t.Fatal("R5.2: expected error message on stderr")
 	}
 }
 
