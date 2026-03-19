@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd009-du R1.1–R1.5, R2.1–R2.7.
+// Differential tests for prd009-du R1.1–R1.5, R2.1–R2.8, R3.1–R3.3, R4.1–R4.2, R5.1.
 package main_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,6 +39,9 @@ func TestDiff(t *testing.T) {
 		makeMegaBlocksTest(t),
 		makeGrandTotalTest(t),
 		makeGrandTotalHumanTest(t),
+		makeExitZeroTest(t),
+		makeExitOneNonexistentTest(t),
+		makeExitOneContinueTest(t),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -268,6 +272,56 @@ func makeGrandTotalHumanTest(t *testing.T) testutils.DiffTest {
 		Args:    []string{"-c", "-h", "d1", "d2"},
 		WorkDir: dir,
 	}
+}
+
+// makeExitZeroTest verifies R4.1: exit 0 when all arguments succeed.
+func makeExitZeroTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "sub"))
+	writeFile(t, filepath.Join(dir, "sub", "data.txt"), "content\n")
+	return testutils.DiffTest{
+		Name:     "R4.1_exit_zero_on_success",
+		Args:     []string{"-s", "."},
+		WorkDir:  dir,
+		ExitCode: 0,
+	}
+}
+
+// makeExitOneNonexistentTest verifies R4.2: exit 1 on nonexistent argument.
+func makeExitOneNonexistentTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	return testutils.DiffTest{
+		Name:      "R4.2_exit_one_nonexistent",
+		Args:      []string{"nonexistent_dir_xyz"},
+		WorkDir:   dir,
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+	}
+}
+
+// makeExitOneContinueTest verifies R4.2: exit 1 when one argument fails
+// but processing continues for valid arguments.
+func makeExitOneContinueTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "valid"))
+	writeFile(t, filepath.Join(dir, "valid", "f.txt"), "data\n")
+	return testutils.DiffTest{
+		Name:      "R4.2_exit_one_continue_processing",
+		Args:      []string{"-s", "nonexistent_dir_xyz", "valid"},
+		WorkDir:   dir,
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+	}
+}
+
+// stderrNormalizer normalizes program name (gdu: → du:) and lowercases
+// error messages to handle platform differences in errno string casing.
+func stderrNormalizer(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte("gdu: "), []byte("du: "))
+	return bytes.ToLower(b)
 }
 
 // mkdirAll creates a directory and its parents.
