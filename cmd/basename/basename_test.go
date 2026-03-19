@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd015-basename R3.1–R3.4: error handling,
-// exit codes, and output formatting edge cases.
+// Differential tests for prd015-basename R3.1–R3.4, R4.1–R4.3:
+// error handling, exit codes, output formatting, and differential
+// test coverage against gbasename reference binary.
 package main
 
 import (
@@ -89,7 +90,21 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// Edge cases from R1 exercised alongside R3 formatting
+		// R4.2: simple path (dir/file)
+		{
+			Name: "r4_simple_dir_file",
+			Args: []string{"dir/file"},
+		},
+		// R4.2: trailing slashes
+		{
+			Name: "trailing_slashes",
+			Args: []string{"/usr/bin/"},
+		},
+		{
+			Name: "trailing_multiple_slashes",
+			Args: []string{"/usr/bin///"},
+		},
+		// R4.2: root path
 		{
 			Name: "root_path",
 			Args: []string{"/"},
@@ -98,13 +113,63 @@ func TestDiff(t *testing.T) {
 			Name: "all_slashes",
 			Args: []string{"////"},
 		},
+		// R4.2: empty string
 		{
 			Name: "empty_string",
 			Args: []string{""},
 		},
+		// R4.2: suffix removal
 		{
-			Name: "trailing_slashes",
-			Args: []string{"/usr/bin/"},
+			Name: "r4_suffix_removal",
+			Args: []string{"archive.tar.gz", ".tar.gz"},
+		},
+		{
+			Name: "r4_suffix_no_match",
+			Args: []string{"file.txt", ".c"},
+		},
+		{
+			Name: "r4_suffix_equals_name",
+			Args: []string{".h", ".h"},
+		},
+		// R4.2: multi-argument mode (-a)
+		{
+			Name: "r4_multi_arg_a_flag",
+			Args: []string{"-a", "/usr/bin/sort", "/usr/bin/cat", "/tmp/file.txt"},
+		},
+		{
+			Name: "r4_multi_arg_long_flag",
+			Args: []string{"--multiple", "/usr/bin/sort", "/usr/bin/cat"},
+		},
+		// R4.2: suffix mode (-s)
+		{
+			Name: "r4_suffix_s_flag",
+			Args: []string{"-s", ".h", "include/stdio.h", "include/stdlib.h"},
+		},
+		{
+			Name: "r4_suffix_long_flag",
+			Args: []string{"--suffix=.h", "include/stdio.h", "include/stdlib.h"},
+		},
+		// R4.2: NUL-delimited output (-z)
+		{
+			Name: "r4_zero_single",
+			Args: []string{"-z", "dir/file"},
+		},
+		{
+			Name: "r4_zero_multi_suffix",
+			Args: []string{"-z", "-s", ".h", "stdio.h", "stdlib.h"},
+		},
+		// R4.3: error output and exit code for invalid argument counts
+		{
+			Name:      "r4_error_no_args",
+			Args:      []string{},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "r4_error_three_args_no_flag",
+			Args:      []string{"a", "b", "c"},
+			ExitCode:  1,
+			Normalize: errNorm,
 		},
 		{
 			Name: "suffix_with_zero",
