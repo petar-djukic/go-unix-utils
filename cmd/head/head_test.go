@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for prd018-head R3.5 (error handling edge cases), R4.1–R4.3
-// (differential tests, flag combinations, version/help output).
+// Tests for prd018-head R3.5 (error handling edge cases), R4.1–R4.4
+// (differential tests, flag combinations, version/help output, coverage suite).
 package main
 
 import (
@@ -219,6 +219,25 @@ func TestDiff(t *testing.T) {
 			Name:  "multi_file_with_stdin",
 			Args:  []string{file20, "-"},
 			Stdin: []byte("stdin1\nstdin2\n"),
+		},
+
+		// --- R4.4: coverage suite (specific scenarios from requirement) ---
+		{
+			Name: "r4_4_negative_c_100",
+			Args: []string{"-c", "-100", fileBinary},
+		},
+		{
+			Name:  "r4_4_stdin_with_n",
+			Args:  []string{"-n", "2", "-"},
+			Stdin: []byte("one\ntwo\nthree\nfour\n"),
+		},
+		{
+			Name: "r4_4_quiet_single_file",
+			Args: []string{"-q", file20},
+		},
+		{
+			Name: "r4_4_verbose_with_bytes",
+			Args: []string{"-v", "-c", "10", fileBinary},
 		},
 
 		// --- R3.5: error handling edge cases ---

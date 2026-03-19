@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.3:
+// Implements prd018-head R1.1–R1.5, R2.1–R2.3, R3.1–R3.5, R4.1–R4.4:
 // line-count mode, byte-count mode with suffix parsing, multi-file headers,
 // header controls, error handling, exit code behavior, and version/help output.
 package main
