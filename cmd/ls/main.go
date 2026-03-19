@@ -1,19 +1,21 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.3: directory listing
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.7: directory listing
 // with format modes (-1, -l, -C, -x), C locale sorting, dot-file filtering
 // (-a, -A), permission strings, owner/group resolution, file metadata via
 // pkg/sys, modification time formatting, total block count, symlink display,
 // multi-column output (vertical and horizontal), last-format-flag-wins,
 // long format link count, device major/minor, timestamps, total block header,
 // inode display (-i), block count display (-s), numeric UID/GID (-n),
-// combined -i -s prefix ordering, and --color flag support.
+// combined -i -s prefix ordering, --color flag support, and human-readable
+// size display (-h) for long format sizes, total blocks, and -s block counts.
 package main
 
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -66,13 +68,14 @@ type entry struct {
 
 // options holds parsed flag values for prd008-ls.
 type options struct {
-	format     formatMode // output format
-	showAll    bool       // R2.1: -a include dotfiles and . / ..
-	almostAll  bool       // R2.2: -A include dotfiles except . / ..
-	showInode  bool       // R2.11: -i prepend inode number
-	showBlocks bool       // R2.12: -s prepend block count
-	numericIDs bool       // R2.14: -n numeric UID/GID (implies -l)
-	color      colorMode  // R3.1: color output mode
+	format        formatMode // output format
+	showAll       bool       // R2.1: -a include dotfiles and . / ..
+	almostAll     bool       // R2.2: -A include dotfiles except . / ..
+	showInode     bool       // R2.11: -i prepend inode number
+	showBlocks    bool       // R2.12: -s prepend block count
+	numericIDs    bool       // R2.14: -n numeric UID/GID (implies -l)
+	color         colorMode  // R3.1: color output mode
+	humanReadable bool       // R3.5: -h human-readable sizes
 }
 
 // needsStat returns true when entries require metadata beyond just the name.
@@ -130,6 +133,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // R3.1: --color=always enables, --color=never disables.
 // R3.2: --color=auto enables only when stdout is a TTY.
 // R3.3: calls format.SetColorEnabled to control FileTypeColor/Reset output.
+// R3.4: --color=never suppresses all ANSI escape sequences.
 func setupColor(opts options) {
 	switch opts.color {
 	case colorAlways:
@@ -288,7 +292,7 @@ func shouldShow(name string, opts options) bool {
 // R1.14: the format mode is determined by the last format flag on the command line.
 func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
 	if showTotal && (opts.format == formatLong || opts.showBlocks) {
-		printTotalBlocks(entries, w)
+		printTotalBlocks(entries, opts, w)
 	}
 	switch opts.format {
 	case formatLong:
@@ -375,6 +379,7 @@ func colorEntryName(name string, info *sys.FileInfo) string {
 // nonLongPrefix formats the inode/blocks prefix for non-long format entries.
 // R2.11: inode right-aligned. R2.12: blocks right-aligned in 1K units.
 // R2.15: when both are given, inode is printed first, then block count.
+// R3.7: -h converts block counts to human-readable form.
 func nonLongPrefix(e entry, opts options, inodeW, blockW int) string {
 	prefix := ""
 	if opts.showInode {
@@ -385,13 +390,63 @@ func nonLongPrefix(e entry, opts options, inodeW, blockW int) string {
 		prefix += fmt.Sprintf("%*d ", inodeW, ino)
 	}
 	if opts.showBlocks {
-		blk := int64(0)
-		if e.info != nil {
-			blk = e.info.Blocks / 2
-		}
-		prefix += fmt.Sprintf("%*d ", blockW, blk)
+		prefix += formatBlockPrefix(e.info, opts.humanReadable, blockW)
 	}
 	return prefix
+}
+
+// formatBlockPrefix formats a single block count prefix with right alignment.
+// R3.7: when humanReadable, uses HumanSize; otherwise plain integer.
+func formatBlockPrefix(info *sys.FileInfo, humanReadable bool, width int) string {
+	if humanReadable {
+		s := "0"
+		if info != nil {
+			s = humanBlock(info.Blocks)
+		}
+		return fmt.Sprintf("%*s ", width, s)
+	}
+	blk := int64(0)
+	if info != nil {
+		blk = info.Blocks / 2
+	}
+	return fmt.Sprintf("%*d ", width, blk)
+}
+
+// humanBlock converts 512-byte block count to human-readable form.
+// R3.6/R3.7: consistent binary algorithm matching GNU coreutils ceiling rounding.
+func humanBlock(blocks int64) string {
+	return gnuHumanSize(blocks * 512)
+}
+
+// gnuHumanSize formats a byte count as a human-readable string matching
+// GNU coreutils conventions: ceiling-based rounding, single-decimal for
+// values < 10, integer for values >= 10. Uses 1024-based (binary) units.
+func gnuHumanSize(bytes int64) string {
+	if bytes == 0 {
+		return "0"
+	}
+	if bytes < 1024 {
+		return strconv.FormatInt(bytes, 10)
+	}
+	suffixes := [...]string{"K", "M", "G", "T", "P", "E"}
+	value := float64(bytes) / 1024
+	for i := 0; i < len(suffixes)-1; i++ {
+		if value < 1024 {
+			return formatGNUValue(value, suffixes[i])
+		}
+		value /= 1024
+	}
+	return formatGNUValue(value, suffixes[len(suffixes)-1])
+}
+
+// formatGNUValue formats a scaled value with its suffix using GNU conventions.
+// Values < 10 show one decimal (ceiling); values >= 10 show as integer (ceiling).
+func formatGNUValue(value float64, suffix string) string {
+	if value < 10 {
+		v := math.Ceil(value*10) / 10
+		return fmt.Sprintf("%.1f%s", v, suffix)
+	}
+	return fmt.Sprintf("%d%s", int64(math.Ceil(value)), suffix)
 }
 
 // maxPrefixWidths computes the maximum inode and block column widths.
@@ -405,7 +460,11 @@ func maxPrefixWidths(entries []entry, opts options) (int, int) {
 			updateWidth(&inodeW, len(strconv.FormatUint(e.info.Ino, 10)))
 		}
 		if opts.showBlocks {
-			updateWidth(&blockW, len(strconv.FormatInt(e.info.Blocks/2, 10)))
+			if opts.humanReadable {
+				updateWidth(&blockW, len(humanBlock(e.info.Blocks)))
+			} else {
+				updateWidth(&blockW, len(strconv.FormatInt(e.info.Blocks/2, 10)))
+			}
 		}
 	}
 	return inodeW, blockW
@@ -597,14 +656,19 @@ func getTermWidth() int {
 
 // printTotalBlocks prints the "total N" line before a directory listing.
 // R1.10/R2.13: N = sum(fi.Blocks) / 2, converting 512-byte blocks to 1K blocks.
-func printTotalBlocks(entries []entry, w io.Writer) {
+// R3.6: when -h is active, convert total to human-readable form.
+func printTotalBlocks(entries []entry, opts options, w io.Writer) {
 	var total int64
 	for _, e := range entries {
 		if e.info != nil {
 			total += e.info.Blocks
 		}
 	}
-	fmt.Fprintf(w, "total %d\n", total/2)
+	if opts.humanReadable {
+		fmt.Fprintf(w, "total %s\n", humanBlock(total))
+	} else {
+		fmt.Fprintf(w, "total %d\n", total/2)
+	}
 }
 
 // printLongLines outputs entries in long format with aligned columns.
@@ -623,6 +687,7 @@ func printLongLines(entries []entry, opts options, w io.Writer) {
 
 // printLongEntry formats a single entry in long format.
 // R3.3: name field is colorized when color is active.
+// R3.5: -h converts sizes to human-readable form.
 func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
 	prefix := longPrefix(e, opts, w)
 	owner := ownerString(e.info.Uid, opts.numericIDs)
@@ -634,7 +699,7 @@ func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
 		w.nlink, e.info.Nlink,
 		w.owner, owner,
 		w.group, group,
-		formatSizeField(e.info, w),
+		formatSizeField(e.info, w, opts.humanReadable),
 		formatMtime(e.info.ModTime),
 		name,
 	)
@@ -644,13 +709,19 @@ func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
 // R2.11: inode right-aligned before permissions.
 // R2.12: block count right-aligned before permissions (after inode if both).
 // R2.15: when both are given, inode is printed first, then block count.
+// R3.7: -h converts block counts to human-readable form.
 func longPrefix(e entry, opts options, w longWidths) string {
 	prefix := ""
 	if opts.showInode {
 		prefix += fmt.Sprintf("%*d ", w.inode, e.info.Ino)
 	}
 	if opts.showBlocks {
-		prefix += fmt.Sprintf("%*d ", w.blocks, e.info.Blocks/2)
+		if opts.humanReadable {
+			s := humanBlock(e.info.Blocks)
+			prefix += fmt.Sprintf("%*s ", w.blocks, s)
+		} else {
+			prefix += fmt.Sprintf("%*d ", w.blocks, e.info.Blocks/2)
+		}
 	}
 	return prefix
 }
@@ -675,13 +746,17 @@ func groupString(gid uint32, numeric bool) string {
 
 // formatSizeField returns the formatted size or device number field.
 // R2.8: device files display "major, minor" instead of size.
-func formatSizeField(fi *sys.FileInfo, w longWidths) string {
+// R3.5: -h converts sizes to human-readable form via format.HumanSize.
+func formatSizeField(fi *sys.FileInfo, w longWidths, humanReadable bool) string {
 	sw := w.sizeFieldWidth()
 	if isDevice(fi.Mode) {
 		maj := deviceMajor(fi.Rdev)
 		min := deviceMinor(fi.Rdev)
 		majorW := sw - 2 - w.minor
 		return fmt.Sprintf("%*d, %*d", majorW, maj, w.minor, min)
+	}
+	if humanReadable {
+		return fmt.Sprintf("%*s", sw, gnuHumanSize(fi.Size))
 	}
 	return fmt.Sprintf("%*d", sw, fi.Size)
 }
@@ -702,30 +777,50 @@ func formatName(e entry) string {
 }
 
 // computeWidths calculates the column widths for long format alignment.
+// R3.5: when -h, size widths are based on HumanSize output.
+// R3.7: when -h, block widths are based on humanBlock output.
 func computeWidths(entries []entry, opts options) longWidths {
 	var w longWidths
 	for _, e := range entries {
 		if e.info == nil {
 			continue
 		}
-		if opts.showInode {
-			updateWidth(&w.inode, len(strconv.FormatUint(e.info.Ino, 10)))
-		}
-		if opts.showBlocks {
-			updateWidth(&w.blocks, len(strconv.FormatInt(e.info.Blocks/2, 10)))
-		}
-		updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
-		updateWidth(&w.owner, len(ownerString(e.info.Uid, opts.numericIDs)))
-		updateWidth(&w.group, len(groupString(e.info.Gid, opts.numericIDs)))
-		if isDevice(e.info.Mode) {
-			w.hasDev = true
-			updateWidth(&w.major, len(strconv.FormatUint(deviceMajor(e.info.Rdev), 10)))
-			updateWidth(&w.minor, len(strconv.FormatUint(deviceMinor(e.info.Rdev), 10)))
-		} else {
-			updateWidth(&w.size, len(strconv.FormatInt(e.info.Size, 10)))
-		}
+		computeEntryWidths(e, opts, &w)
 	}
 	return w
+}
+
+// computeEntryWidths updates column widths for a single entry.
+func computeEntryWidths(e entry, opts options, w *longWidths) {
+	if opts.showInode {
+		updateWidth(&w.inode, len(strconv.FormatUint(e.info.Ino, 10)))
+	}
+	if opts.showBlocks {
+		if opts.humanReadable {
+			updateWidth(&w.blocks, len(humanBlock(e.info.Blocks)))
+		} else {
+			updateWidth(&w.blocks, len(strconv.FormatInt(e.info.Blocks/2, 10)))
+		}
+	}
+	updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
+	updateWidth(&w.owner, len(ownerString(e.info.Uid, opts.numericIDs)))
+	updateWidth(&w.group, len(groupString(e.info.Gid, opts.numericIDs)))
+	computeSizeWidth(e.info, opts.humanReadable, w)
+}
+
+// computeSizeWidth updates the size/device column widths for an entry.
+func computeSizeWidth(fi *sys.FileInfo, humanReadable bool, w *longWidths) {
+	if isDevice(fi.Mode) {
+		w.hasDev = true
+		updateWidth(&w.major, len(strconv.FormatUint(deviceMajor(fi.Rdev), 10)))
+		updateWidth(&w.minor, len(strconv.FormatUint(deviceMinor(fi.Rdev), 10)))
+		return
+	}
+	if humanReadable {
+		updateWidth(&w.size, len(gnuHumanSize(fi.Size)))
+	} else {
+		updateWidth(&w.size, len(strconv.FormatInt(fi.Size, 10)))
+	}
 }
 
 // updateWidth sets *current to val if val is larger.
@@ -937,6 +1032,8 @@ func applyShortFlag(o *options, ch byte) bool {
 	case 'n': // R2.14: numeric UID/GID, implies -l
 		o.numericIDs = true
 		o.format = formatLong
+	case 'h': // R3.5: human-readable sizes
+		o.humanReadable = true
 	default:
 		return false
 	}
@@ -955,6 +1052,8 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 		o.showAll = true
 	case "--almost-all":
 		o.almostAll = true
+	case "--human-readable":
+		o.humanReadable = true
 	case "--help":
 		printHelp(stdout)
 		return 0
@@ -1009,6 +1108,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -C                         list entries by columns")
 	fmt.Fprintln(w, "      --color[=WHEN]         colorize the output; WHEN can be 'always'")
 	fmt.Fprintln(w, "                               (default if omitted), 'auto', or 'never'")
+	fmt.Fprintln(w, "  -h, --human-readable       with -l and/or -s, print human readable sizes")
 	fmt.Fprintln(w, "  -i                         print the index number of each file")
 	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "  -n                         like -l, but list numeric user and group IDs")

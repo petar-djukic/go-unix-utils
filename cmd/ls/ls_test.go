@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.3:
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.7:
 // default listing, single-column output, C locale sorting, dotfile filtering,
 // horizontal multi-column output, last-format-flag-wins, -a/-A show all,
 // long format owner, group, size, date field rendering, link count,
 // device major/minor, timestamps, total block count, inode display (-i),
 // block count display (-s), numeric UID/GID (-n), combined -i -s prefix
-// ordering, and --color flag support.
+// ordering, --color flag support, and human-readable size display (-h).
 package main_test
 
 import (
@@ -585,6 +585,110 @@ func TestDiffColorFlags(t *testing.T) {
 			Args:      []string{"-1", "--color"},
 			WorkDir:   dirColor,
 			Normalize: []testutils.NormalizeFunc{stripANSI},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHumanReadable tests human-readable size display (-h).
+// Implements prd008-ls R3.4, R3.5, R3.6, R3.7.
+func TestDiffHumanReadable(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// Fixture: files with varying sizes for -lh testing.
+	dirSizes := t.TempDir()
+	makeFileWithContent(t, dirSizes, "empty", "")
+	makeFileWithContent(t, dirSizes, "small", "hello\n")
+	makeFileWithContent(t, dirSizes, "medium", makePadding(1024))
+	makeFileWithContent(t, dirSizes, "large", makePadding(1048576))
+
+	// Fixture: single file for file argument with -lh.
+	dirSingle := t.TempDir()
+	makeFileWithContent(t, dirSingle, "onefile", makePadding(2048))
+
+	// Fixture: files for -sh block count testing.
+	dirBlocks := t.TempDir()
+	makeFileWithContent(t, dirBlocks, "alpha", makePadding(512))
+	makeFileWithContent(t, dirBlocks, "beta", makePadding(4096))
+	makeFileWithContent(t, dirBlocks, "gamma", makePadding(65536))
+
+	// Fixture: directory for color suppression with -h (R3.4).
+	dirColor := t.TempDir()
+	makeFiles(t, dirColor, "plain.txt")
+	if err := os.Mkdir(filepath.Join(dirColor, "subdir"), 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.5: -lh shows human-readable file sizes.
+		{
+			Name:    "r3.5_long_human_sizes",
+			Args:    []string{"-lh"},
+			WorkDir: dirSizes,
+		},
+		// R3.5: -h without -l has no visible effect on output.
+		{
+			Name:    "r3.5_h_without_l_no_effect",
+			Args:    []string{"-h"},
+			WorkDir: dirSizes,
+		},
+		// R3.5: -h with -1 has no visible effect (not long format).
+		{
+			Name:    "r3.5_h_with_1_no_effect",
+			Args:    []string{"-1h"},
+			WorkDir: dirSizes,
+		},
+		// R3.5: -lh with file argument (no total line).
+		{
+			Name: "r3.5_lh_file_arg",
+			Args: []string{"-lh", filepath.Join(dirSingle, "onefile")},
+		},
+		// R3.6: -lh total block count line is human-readable.
+		{
+			Name:    "r3.6_lh_total_human",
+			Args:    []string{"-lh"},
+			WorkDir: dirBlocks,
+		},
+		// R3.7: -sh shows human-readable block counts.
+		{
+			Name:    "r3.7_sh_human_blocks",
+			Args:    []string{"-sh"},
+			WorkDir: dirBlocks,
+		},
+		// R3.7: -slh shows human-readable blocks in long format.
+		{
+			Name:    "r3.7_slh_human_blocks_long",
+			Args:    []string{"-slh"},
+			WorkDir: dirBlocks,
+		},
+		// R3.7: -sh with file argument (no total line).
+		{
+			Name: "r3.7_sh_file_arg",
+			Args: []string{"-sh", filepath.Join(dirSingle, "onefile")},
+		},
+		// R3.7: -ish shows inode and human-readable blocks.
+		{
+			Name:    "r3.7_ish_human_blocks_inode",
+			Args:    []string{"-ish"},
+			WorkDir: dirBlocks,
+		},
+		// R3.4: --color=never with -lh produces no ANSI sequences.
+		{
+			Name:    "r3.4_color_never_lh",
+			Args:    []string{"-lh", "--color=never"},
+			WorkDir: dirColor,
+		},
+		// R3.4: --color=auto piped with -lh produces no ANSI.
+		{
+			Name:    "r3.4_color_auto_piped_lh",
+			Args:    []string{"-lh", "--color=auto"},
+			WorkDir: dirColor,
 		},
 	}
 
