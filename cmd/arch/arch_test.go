@@ -46,30 +46,36 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary garch not in PATH: %v", err)
 	}
 	errNorm := []testutils.NormalizeFunc{binaryNameNormalizer}
+	// R3.3: all differential tests set LC_ALL=C.
+	env := []string{"LC_ALL=C"}
 	tests := []testutils.DiffTest{
-		// R1.1, R1.2: normal invocation prints machine hardware name.
+		// R3.1, R3.2: normal invocation prints machine hardware name.
 		{
 			Name: "no_args",
 			Args: []string{},
+			Env:  env,
 		},
-		// R2.1: extra operand produces error and exit 1.
+		// R3.2: extra operand produces error and exit 1.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"extraarg"},
+			Env:       env,
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// R2.2: unknown flag produces error and exit 1.
+		// R3.2: unknown flag produces error and exit 1.
 		{
 			Name:      "unknown_flag",
 			Args:      []string{"--unknown"},
+			Env:       env,
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// R2.2: unknown short flag.
+		// R3.2: unknown short flag.
 		{
 			Name:      "unknown_short_flag",
 			Args:      []string{"-x"},
+			Env:       env,
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
@@ -91,6 +97,7 @@ func TestVersion(t *testing.T) {
 		{
 			Name:      "version_flag",
 			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: verNorm,
 		},
@@ -111,6 +118,7 @@ func TestHelp(t *testing.T) {
 		{
 			Name:      "help_flag",
 			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: helpNorm,
 		},
