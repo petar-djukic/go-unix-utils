@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd013-true R1.1-R1.3, R2.1-R2.3.
+// Differential tests for prd013-true R1.1-R1.3, R2.1-R2.3, R3.1-R3.2, R4.1-R4.3.
 package main
 
 import (
@@ -24,10 +24,12 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// R4.1, R4.3: no arguments — exit 0, no stdout or stderr.
 		{
 			Name: "no_args",
 			Args: nil,
 		},
+		// R4.2: arbitrary arguments are ignored, exit 0.
 		{
 			Name: "single_arg_ignored",
 			Args: []string{"foo"},
@@ -36,11 +38,22 @@ func TestDiff(t *testing.T) {
 			Name: "multiple_args_ignored",
 			Args: []string{"foo", "bar", "--baz"},
 		},
+		// R4.2: flags that look like options are also ignored.
+		{
+			Name: "dash_dash_ignored",
+			Args: []string{"--"},
+		},
+		{
+			Name: "unknown_flag_ignored",
+			Args: []string{"--unknown"},
+		},
+		// R4.2: --help output — compare exit codes only (text differs).
 		{
 			Name: "help_flag",
 			Args:      []string{"--help"},
 			Normalize: []testutils.NormalizeFunc{normalizeHelpVersion},
 		},
+		// R4.2: --version output — compare exit codes only (text differs).
 		{
 			Name: "version_flag",
 			Args:      []string{"--version"},

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd013-true R1.1-R1.3: core true behavior (exit 0, no output),
-// R2.1-R2.3: --help and --version flag handling.
+// R2.1-R2.3: --help and --version flag handling,
+// R3.1-R3.2: exit code contracts (0 on success, 1 on write error only).
 package main
 
 import (
