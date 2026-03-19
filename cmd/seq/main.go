@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd019-seq R1.1–R1.5, R2.1–R2.3: numeric sequence generation with
-// single, two, and three argument forms, floating-point support, custom
-// separators, and integer/float format selection.
+// Implements prd019-seq R1.1–R1.5, R2.1–R2.4, R3.1–R3.4: numeric sequence
+// generation with format strings, equal-width padding, and error handling.
 package main
 
 import (
@@ -29,6 +28,13 @@ type seqOpts struct {
 	separator string
 }
 
+// parsedFlags holds extracted flag values from argument parsing.
+type parsedFlags struct {
+	separator  string
+	format     string
+	equalWidth bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	exitCode := run(os.Args[1:], os.Stdout, os.Stderr)
@@ -49,11 +55,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 // parseArgs separates flags from numeric arguments.
 // Returns opts and exit code (-1 = continue).
 func parseArgs(args []string, stdout, stderr io.Writer) (seqOpts, int) {
-	sep, numStrs, code := extractNums(args, stdout, stderr)
+	flags, numStrs, code := extractFlags(args, stdout, stderr)
 	if code >= 0 {
 		return seqOpts{}, code
 	}
-	opts, err := buildOpts(numStrs, sep)
+	// R3.2: validate format string if provided.
+	if flags.format != "" {
+		if err := validateFormat(flags.format); err != nil {
+			fmt.Fprintf(stderr, "%s: %s\n", progName, err)
+			return seqOpts{}, 1
+		}
+	}
+	opts, err := buildOpts(numStrs, flags)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		if strings.Contains(err.Error(), "operand") {
@@ -64,62 +77,108 @@ func parseArgs(args []string, stdout, stderr io.Writer) (seqOpts, int) {
 	return opts, -1
 }
 
-// extractNums filters args into numeric strings, handling flags.
-// Returns (separator, numStrs, exit code). Exit code -1 means continue.
-// R2.2: parses -s STRING and --separator=STRING.
-func extractNums(args []string, stdout, stderr io.Writer) (string, []string, int) {
+// extractFlags filters args into numeric strings, handling flags.
+// Returns (flags, numStrs, exit code). Exit code -1 means continue.
+func extractFlags(args []string, stdout, stderr io.Writer) (parsedFlags, []string, int) {
 	var numStrs []string
-	separator := "\n" // R2.1: default separator is newline
+	flags := parsedFlags{separator: "\n"} // R2.1: default separator
 	flagsDone := false
 	for i := 0; i < len(args); i++ {
-		arg := args[i]
 		if flagsDone {
-			numStrs = append(numStrs, arg)
+			numStrs = append(numStrs, args[i])
 			continue
 		}
-		if arg == "--" {
+		if args[i] == "--" {
 			flagsDone = true
 			continue
 		}
-		if arg == "--help" {
-			printHelp(stdout)
-			return "", nil, 0
+		handled, code := handleFlag(args, &i, &flags, stdout, stderr)
+		if code >= 0 {
+			return parsedFlags{}, nil, code
 		}
-		if arg == "--version" {
-			printVersion(stdout)
-			return "", nil, 0
-		}
-		// R2.2: --separator=STRING
-		if strings.HasPrefix(arg, "--separator=") {
-			separator = arg[len("--separator="):]
+		if handled {
 			continue
 		}
-		if arg == "--separator" || arg == "-s" {
-			if i+1 >= len(args) {
-				fmt.Fprintf(stderr,
-					"%s: option '%s' requires an argument\n",
-					progName, arg)
-				printTryHelp(stderr)
-				return "", nil, 1
-			}
-			i++
-			separator = args[i]
-			continue
-		}
-		// R2.2: -sSTRING (no space)
-		if strings.HasPrefix(arg, "-s") && len(arg) > 2 {
-			separator = arg[2:]
-			continue
-		}
-		if isFlag(arg) {
-			fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n",
-				progName, arg)
-			printTryHelp(stderr)
-			return "", nil, 1
-		}
-		numStrs = append(numStrs, arg)
+		numStrs = append(numStrs, args[i])
 	}
-	return separator, numStrs, -1
+	return flags, numStrs, -1
+}
+
+// handleFlag processes one potential flag at args[*i].
+// Returns (handled, exit code). code -1 means continue.
+func handleFlag(args []string, i *int, flags *parsedFlags, stdout, stderr io.Writer) (bool, int) {
+	arg := args[*i]
+	if arg == "--help" {
+		printHelp(stdout)
+		return true, 0
+	}
+	if arg == "--version" {
+		printVersion(stdout)
+		return true, 0
+	}
+	// R3.3: -w/--equal-width
+	if arg == "-w" || arg == "--equal-width" {
+		flags.equalWidth = true
+		return true, -1
+	}
+	if handled, code := handleValueFlag(args, i, flags, stderr); handled {
+		return true, code
+	}
+	if isFlag(arg) {
+		fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n", progName, arg)
+		printTryHelp(stderr)
+		return true, 1
+	}
+	return false, -1
+}
+
+// handleValueFlag handles flags that take a value: -s, -f, --separator, --format.
+// Returns (handled, exit code). R2.2, R3.1.
+func handleValueFlag(args []string, i *int, flags *parsedFlags, stderr io.Writer) (bool, int) {
+	arg := args[*i]
+	// Long form with =
+	if strings.HasPrefix(arg, "--separator=") {
+		flags.separator = arg[len("--separator="):]
+		return true, -1
+	}
+	if strings.HasPrefix(arg, "--format=") {
+		flags.format = arg[len("--format="):]
+		return true, -1
+	}
+	// Merged short form: -sSTRING, -fFORMAT
+	if len(arg) > 2 && arg[0] == '-' && (arg[1] == 's' || arg[1] == 'f') {
+		if arg[1] == 's' {
+			flags.separator = arg[2:]
+		} else {
+			flags.format = arg[2:]
+		}
+		return true, -1
+	}
+	// Separate value form: -s STRING, -f FORMAT, --separator STRING, --format FORMAT
+	return handleSplitValueFlag(args, i, flags, stderr)
+}
+
+// handleSplitValueFlag handles -s/-f/--separator/--format with separate value arg.
+func handleSplitValueFlag(args []string, i *int, flags *parsedFlags, stderr io.Writer) (bool, int) {
+	arg := args[*i]
+	isSep := arg == "-s" || arg == "--separator"
+	isFmt := arg == "-f" || arg == "--format"
+	if !isSep && !isFmt {
+		return false, -1
+	}
+	if *i+1 >= len(args) {
+		fmt.Fprintf(stderr, "%s: option '%s' requires an argument\n",
+			progName, arg)
+		printTryHelp(stderr)
+		return true, 1
+	}
+	*i++
+	if isSep {
+		flags.separator = args[*i]
+	} else {
+		flags.format = args[*i]
+	}
+	return true, -1
 }
 
 // isFlag returns true if arg looks like a flag (starts with - but is not a number).
@@ -133,7 +192,7 @@ func isFlag(arg string) bool {
 // buildOpts validates numeric strings and constructs seqOpts.
 // R1.1: supports 1, 2, or 3 positional numeric arguments.
 // R1.5: rejects zero step with an error.
-func buildOpts(numStrs []string, separator string) (seqOpts, error) {
+func buildOpts(numStrs []string, flags parsedFlags) (seqOpts, error) {
 	if len(numStrs) == 0 {
 		return seqOpts{}, fmt.Errorf("missing operand")
 	}
@@ -154,8 +213,8 @@ func buildOpts(numStrs []string, separator string) (seqOpts, error) {
 		first:     first,
 		step:      step,
 		last:      last,
-		format:    computeFormat(numStrs),
-		separator: separator,
+		format:    resolveFormat(numStrs, flags, first, last),
+		separator: flags.separator,
 	}, nil
 }
 
@@ -186,16 +245,30 @@ func assignArgs(values []float64) (float64, float64, float64) {
 	}
 }
 
-// computeFormat determines the printf format from input argument precision.
-// R2.3: integers produce integer output; floats use minimum precision.
-func computeFormat(args []string) string {
+// resolveFormat determines the output format based on flags and arguments.
+// R3.4: -f overrides -w.
+func resolveFormat(numStrs []string, flags parsedFlags, first, last float64) string {
+	if flags.format != "" {
+		return translateFormat(flags.format)
+	}
+	prec := maxPrecision(numStrs)
+	defaultFmt := fmt.Sprintf("%%.%df", prec)
+	if !flags.equalWidth {
+		return defaultFmt
+	}
+	return equalWidthFormat(first, last, prec)
+}
+
+// maxPrecision returns the maximum number of decimal places across args.
+// R2.3: determines minimum precision for floating-point sequences.
+func maxPrecision(args []string) int {
 	maxPrec := 0
 	for _, arg := range args {
 		if prec := decimalPlaces(arg); prec > maxPrec {
 			maxPrec = prec
 		}
 	}
-	return fmt.Sprintf("%%.%df", maxPrec)
+	return maxPrec
 }
 
 // decimalPlaces returns the number of digits after the decimal point.
@@ -206,6 +279,102 @@ func decimalPlaces(s string) int {
 		return 0
 	}
 	return len(s) - idx - 1
+}
+
+// equalWidthFormat computes a zero-padded format matching the widest endpoint.
+// R3.3: width determined by widest of FIRST and LAST.
+func equalWidthFormat(first, last float64, prec int) string {
+	defaultFmt := fmt.Sprintf("%%.%df", prec)
+	firstStr := fmt.Sprintf(defaultFmt, first)
+	lastStr := fmt.Sprintf(defaultFmt, last)
+	width := max(len(firstStr), len(lastStr))
+	return fmt.Sprintf("%%0%d.%df", width, prec)
+}
+
+// validateFormat checks that format has exactly one valid floating-point
+// conversion specifier from the set {a,e,f,g,A,E,F,G}. R3.1, R3.2.
+func validateFormat(format string) error {
+	count := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(format) {
+			break
+		}
+		if format[i] == '%' {
+			continue
+		}
+		i = skipFormatMods(format, i)
+		if i >= len(format) {
+			break
+		}
+		if !isValidSpecifier(format[i]) {
+			return fmt.Errorf("format '%s' has unknown %%%c directive",
+				format, format[i])
+		}
+		count++
+	}
+	return checkSpecifierCount(format, count)
+}
+
+// checkSpecifierCount validates the specifier count in a format string.
+func checkSpecifierCount(format string, count int) error {
+	if count == 0 {
+		return fmt.Errorf("format '%s' has no %% directive", format)
+	}
+	if count > 1 {
+		return fmt.Errorf("format '%s' has too many %% directives", format)
+	}
+	return nil
+}
+
+// skipFormatMods advances past flags (-+#0 space), width, and precision.
+func skipFormatMods(format string, i int) int {
+	for i < len(format) && strings.ContainsRune("-+#0 ", rune(format[i])) {
+		i++
+	}
+	for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+		i++
+	}
+	if i < len(format) && format[i] == '.' {
+		i++
+		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+			i++
+		}
+	}
+	return i
+}
+
+// isValidSpecifier returns true if ch is a valid seq format specifier.
+func isValidSpecifier(ch byte) bool {
+	return strings.ContainsRune("aefgAEFG", rune(ch))
+}
+
+// translateFormat converts %a/%A to %x/%X for Go's fmt package.
+func translateFormat(format string) string {
+	result := []byte(format)
+	for i := 0; i < len(result); i++ {
+		if result[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(result) || result[i] == '%' {
+			continue
+		}
+		i = skipFormatMods(string(result), i)
+		if i >= len(result) {
+			break
+		}
+		switch result[i] {
+		case 'a':
+			result[i] = 'x'
+		case 'A':
+			result[i] = 'X'
+		}
+	}
+	return string(result)
 }
 
 // sequenceCount computes how many values the sequence should produce.
@@ -255,7 +424,9 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "  or:  %s [OPTION]... FIRST INCREMENT LAST\n", progName)
 	fmt.Fprintln(w, "Print numbers from FIRST to LAST, in steps of INCREMENT.")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -f, --format=FORMAT  use printf style floating-point FORMAT")
 	fmt.Fprintln(w, "  -s, --separator=STRING  use STRING to separate numbers (default: \\n)")
+	fmt.Fprintln(w, "  -w, --equal-width    equalize width by padding with leading zeroes")
 	fmt.Fprintln(w, "      --help     display this help and exit")
 	fmt.Fprintln(w, "      --version  output version information and exit")
 }
