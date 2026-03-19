@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd017-tee R1.1–R1.5, R2.1–R2.3: tee copy behavior with
-// append mode (-a) and SIGINT suppression (-i).
+// Implements prd017-tee R1.1–R1.5, R2.1–R2.3, R3.1–R3.4: tee copy behavior
+// with append mode (-a), SIGINT suppression (-i), and fault-tolerant writes.
 // Reads stdin and writes to stdout and zero or more named files simultaneously.
 package main
 
@@ -127,14 +127,15 @@ func applyShortFlags(arg string, opts *teeOpts, stderr io.Writer) int {
 	return -1
 }
 
+// namedWriter pairs an io.Writer with its filename for error reporting.
+type namedWriter struct {
+	w    io.Writer
+	name string
+}
+
 // copyToAll opens output files and copies stdin to stdout and all files.
-// R1.1: writes same bytes to stdout and all named files.
-// R1.2: with no files, copies stdin to stdout only.
-// R1.3: creates files that do not exist; truncates or appends per mode.
-// R1.4: "-" is treated as an additional stdout reference (not duplicated).
-// R1.5: writes output in the order received from stdin.
+// R3.3: continues writing to remaining files when one fails.
 func copyToAll(opts teeOpts, stdin io.Reader, stdout, stderr io.Writer) int {
-	writers := []io.Writer{stdout}
 	exitCode := 0
 
 	openFiles, code := openOutputFiles(opts.files, opts.appendMode, stderr)
@@ -143,20 +144,65 @@ func copyToAll(opts teeOpts, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	defer closeFiles(openFiles)
 
-	for _, f := range openFiles {
-		writers = append(writers, f)
-	}
-
-	mw := io.MultiWriter(writers...)
-	if _, err := io.Copy(mw, stdin); err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
+	dests := buildDestinations(stdout, openFiles)
+	if writeErr := copyToDestinations(dests, stdin, stderr); writeErr {
 		exitCode = 1
 	}
 	return exitCode
 }
 
+// buildDestinations creates a slice of namedWriter from stdout and open files.
+func buildDestinations(stdout io.Writer, files []*os.File) []namedWriter {
+	dests := make([]namedWriter, 0, 1+len(files))
+	dests = append(dests, namedWriter{w: stdout, name: "standard output"})
+	for _, f := range files {
+		dests = append(dests, namedWriter{w: f, name: f.Name()})
+	}
+	return dests
+}
+
+// copyToDestinations reads from stdin and writes to all destinations.
+// R3.3: a write error on one destination does not stop writes to others.
+// Returns true if any write error occurred.
+func copyToDestinations(dests []namedWriter, stdin io.Reader, stderr io.Writer) bool {
+	buf := make([]byte, 32*1024)
+	hadError := false
+
+	for {
+		n, readErr := stdin.Read(buf)
+		if n > 0 {
+			if writeErr := writeAll(dests, buf[:n], stderr); writeErr {
+				hadError = true
+			}
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				fmt.Fprintf(stderr, "%s: read error: %s\n", progName, readErr)
+				hadError = true
+			}
+			break
+		}
+	}
+	return hadError
+}
+
+// writeAll writes data to every destination, reporting per-destination errors.
+// R3.1: success when all writes complete without error.
+// R3.3: continues writing to remaining destinations when one fails.
+// R3.4: reports stdout write errors.
+func writeAll(dests []namedWriter, data []byte, stderr io.Writer) bool {
+	hadError := false
+	for _, d := range dests {
+		if _, err := d.w.Write(data); err != nil {
+			fmt.Fprintf(stderr, "%s: %s: %s\n", progName, d.name, unwrapPathError(err))
+			hadError = true
+		}
+	}
+	return hadError
+}
+
 // openOutputFiles opens each named file for writing.
-// R1.3: truncates by default; R2.1: appends when appendMode is true.
+// R3.2: reports open errors to stderr with filename, sets exit code 1, continues.
 // R1.4: "-" maps to stdout (skipped, already in writer list).
 func openOutputFiles(files []string, appendMode bool, stderr io.Writer) ([]*os.File, int) {
 	var opened []*os.File
