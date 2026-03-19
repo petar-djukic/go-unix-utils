@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd044-uname R3.1, R3.2, R4.1, R4.2:
+// Differential tests for prd044-uname R3.1, R3.2, R4.1, R4.2, R4.3:
 // compare Go uname against guname reference binary for individual flags,
-// combined flags, -a, and error conditions.
+// combined flags, -a, and error conditions. All tests set LC_ALL=C (R4.3).
 package main
 
 import (
@@ -135,6 +135,32 @@ func TestDiff(t *testing.T) {
 			Env:       env,
 			ExitCode:  1,
 			Normalize: errNorm,
+		},
+		// R4.2, R4.3: error — extra positional operand (R3.1).
+		{
+			Name:      "extra_operand",
+			Args:      []string{"foo"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.2, R4.3: flag combination -mo (R2.2).
+		{
+			Name: "combined_mo",
+			Args: []string{"-mo"},
+			Env:  env,
+		},
+		// R4.2, R4.3: flag combination -pi (R2.2).
+		{
+			Name: "combined_pi",
+			Args: []string{"-pi"},
+			Env:  env,
+		},
+		// R4.2, R4.3: all individual flags as separate args (R2.2).
+		{
+			Name: "all_flags_separate",
+			Args: []string{"-s", "-n", "-r", "-v", "-m", "-p", "-i", "-o"},
+			Env:  env,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
