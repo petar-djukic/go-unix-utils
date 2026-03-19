@@ -1,16 +1,20 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.4: basic directory listing with default format
-// selection (multi-column when TTY, single-column otherwise), C locale sorting,
-// and dot-file filtering via -a and -A flags.
+// Implements prd008-ls R1.1–R1.8: directory listing with format modes
+// (-1, -l), C locale sorting, dot-file filtering, permission strings,
+// owner/group resolution, and file metadata via pkg/sys.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -18,27 +22,38 @@ import (
 const progName = "ls"
 
 // formatMode controls the output format.
-// R1.1: multi-column when stdout is a TTY.
-// R1.2: single-column when stdout is not a TTY.
+// R1.1: multi-column when TTY, R1.2: single-column when not TTY,
+// R1.5: -1 forces single-column, R1.6: -l forces long format.
 type formatMode int
 
 const (
 	formatColumns formatMode = iota // multi-column (default when TTY)
-	formatSingle                    // one entry per line (default when not TTY)
+	formatSingle                    // one entry per line (-1 or non-TTY default)
+	formatLong                      // long format (-l)
 )
 
-// entry holds a directory entry's name and metadata.
-// R1.1: suitable for basic directory listing through R1.4.
+// entry holds a directory entry's name and optional metadata.
+// R1.7: info is populated via pkg/sys.Lstat when long format is active.
 type entry struct {
 	name string
-	info os.FileInfo
+	info *sys.FileInfo
 }
 
-// options holds parsed flag values for prd008-ls R1.1–R1.4.
+// options holds parsed flag values for prd008-ls.
 type options struct {
-	format    formatMode // R1.1, R1.2: output format
-	showAll   bool       // -a, --all: include dotfiles and . / .. (R1.4)
-	almostAll bool       // -A, --almost-all: include dotfiles except . / .. (R1.4)
+	format    formatMode // R1.1, R1.2, R1.5, R1.6: output format
+	showAll   bool       // -a: include dotfiles and . / .. (R1.4)
+	almostAll bool       // -A: include dotfiles except . / .. (R1.4)
+}
+
+// longWidths holds column widths for long format alignment.
+// R1.6: nlink and size are right-aligned to the widest value.
+// R1.8: owner and group are left-aligned to the widest value.
+type longWidths struct {
+	nlink int
+	owner int
+	group int
+	size  int
 }
 
 func main() {
@@ -47,8 +62,6 @@ func main() {
 }
 
 // run parses flags and lists directory entries, returning the exit code.
-// R1.3: entries are sorted in C locale order.
-// R1.4: dotfiles are excluded unless -a or -A is given.
 func run(args []string, stdout, stderr io.Writer) int {
 	opts, paths, code := parseArgs(args, stdout, stderr)
 	if code >= 0 {
@@ -68,7 +81,10 @@ func listPaths(paths []string, opts options, stdout, stderr io.Writer) int {
 	sort.Strings(dirs)
 	needBlank := false
 	if len(files) > 0 {
-		printEntries(files, stdout)
+		ec := printFileArgs(files, opts, stdout)
+		if ec > exitCode {
+			exitCode = ec
+		}
 		needBlank = true
 	}
 	showHeader := len(dirs) > 1 || len(files) > 0
@@ -83,6 +99,27 @@ func listPaths(paths []string, opts options, stdout, stderr io.Writer) int {
 		needBlank = true
 	}
 	return exitCode
+}
+
+// printFileArgs prints file arguments (non-directories).
+// R1.6: long format requires metadata for each file argument.
+func printFileArgs(files []string, opts options, w io.Writer) int {
+	if opts.format != formatLong {
+		for _, f := range files {
+			fmt.Fprintln(w, f)
+		}
+		return 0
+	}
+	entries := make([]entry, 0, len(files))
+	for _, f := range files {
+		fi, err := sys.Lstat(f)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, entry{name: f, info: fi})
+	}
+	printLong(entries, w)
+	return 0
 }
 
 // classifyArgs separates paths into files and directories by stat.
@@ -119,28 +156,55 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 			progName, dir, unwrapErr(err))
 		return 2
 	}
-	printEntries(entries, stdout)
+	printEntries(entries, opts, stdout)
 	return 0
 }
 
 // readEntries reads directory entries, applies dot-filtering (R1.4),
-// and sorts by name in C locale order (R1.3).
-func readEntries(dir string, opts options) ([]string, error) {
+// stats entries when needed (R1.7), and sorts by name in C locale order (R1.3).
+func readEntries(dir string, opts options) ([]entry, error) {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	var names []string
+	var entries []entry
 	if opts.showAll {
-		names = append(names, ".", "..")
+		entries = append(entries, makeDotEntries(dir, opts)...)
 	}
 	for _, e := range dirEntries {
-		if shouldShow(e.Name(), opts) {
-			names = append(names, e.Name())
+		if !shouldShow(e.Name(), opts) {
+			continue
+		}
+		ent := entry{name: e.Name()}
+		if opts.format == formatLong {
+			fi, err := sys.Lstat(filepath.Join(dir, e.Name()))
+			if err == nil {
+				ent.info = fi
+			}
+		}
+		entries = append(entries, ent)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].name < entries[j].name
+	})
+	return entries, nil
+}
+
+// makeDotEntries creates . and .. entries with metadata if needed.
+// R1.4: -a includes . and .. in the listing.
+func makeDotEntries(dir string, opts options) []entry {
+	dots := []entry{{name: "."}, {name: ".."}}
+	if opts.format != formatLong {
+		return dots
+	}
+	for i, name := range []string{".", ".."} {
+		path := filepath.Join(dir, name)
+		fi, err := sys.Lstat(path)
+		if err == nil {
+			dots[i].info = fi
 		}
 	}
-	sort.Strings(names)
-	return names, nil
+	return dots
 }
 
 // shouldShow returns true if the entry should appear in the listing.
@@ -152,11 +216,166 @@ func shouldShow(name string, opts options) bool {
 	return opts.showAll || opts.almostAll
 }
 
-// printEntries writes each entry on its own line. R1.2: single-column format.
-func printEntries(entries []string, w io.Writer) {
-	for _, e := range entries {
-		fmt.Fprintln(w, e)
+// printEntries dispatches to the appropriate output format.
+func printEntries(entries []entry, opts options, w io.Writer) {
+	if opts.format == formatLong {
+		printLong(entries, w)
+		return
 	}
+	for _, e := range entries {
+		fmt.Fprintln(w, e.name)
+	}
+}
+
+// printLong outputs entries in long format with aligned columns.
+// R1.6: field order is permissions, nlink, owner, group, size, mtime, name.
+func printLong(entries []entry, w io.Writer) {
+	widths := computeWidths(entries)
+	for _, e := range entries {
+		if e.info == nil {
+			fmt.Fprintln(w, e.name)
+			continue
+		}
+		printLongEntry(e, widths, w)
+	}
+}
+
+// printLongEntry formats a single entry in long format.
+// R1.6: permissions, nlink (right-aligned), owner (left-aligned),
+// group (left-aligned), size (right-aligned), mtime, name.
+func printLongEntry(e entry, w longWidths, out io.Writer) {
+	owner := resolveUser(e.info.Uid)
+	group := resolveGroup(e.info.Gid)
+	fmt.Fprintf(out, "%s %*d %-*s  %-*s  %*d %s %s\n",
+		permString(e.info.Mode),
+		w.nlink, e.info.Nlink,
+		w.owner, owner,
+		w.group, group,
+		w.size, e.info.Size,
+		formatMtime(e.info.ModTime),
+		e.name,
+	)
+}
+
+// computeWidths calculates the column widths for long format alignment.
+// R1.6: nlink and size columns sized to the widest value.
+func computeWidths(entries []entry) longWidths {
+	var w longWidths
+	for _, e := range entries {
+		if e.info == nil {
+			continue
+		}
+		updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
+		updateWidth(&w.owner, len(resolveUser(e.info.Uid)))
+		updateWidth(&w.group, len(resolveGroup(e.info.Gid)))
+		updateWidth(&w.size, len(strconv.FormatInt(e.info.Size, 10)))
+	}
+	return w
+}
+
+// updateWidth sets *current to val if val is larger.
+func updateWidth(current *int, val int) {
+	if val > *current {
+		*current = val
+	}
+}
+
+// permString returns the 10-character permission string for a file mode.
+// R1.6: permission string algorithm.
+func permString(mode os.FileMode) string {
+	var buf [10]byte
+	buf[0] = fileTypeChar(mode)
+	fillRWX(buf[1:4], mode, 8, os.ModeSetuid, 's', 'S')
+	fillRWX(buf[4:7], mode, 5, os.ModeSetgid, 's', 'S')
+	fillRWX(buf[7:10], mode, 2, os.ModeSticky, 't', 'T')
+	return string(buf[:])
+}
+
+// fileTypeChar returns the single character for the file type indicator.
+// R1.6: position 0 of the permission string.
+func fileTypeChar(mode os.FileMode) byte {
+	switch {
+	case mode&os.ModeDir != 0:
+		return 'd'
+	case mode&os.ModeSymlink != 0:
+		return 'l'
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
+		return 'c'
+	case mode&os.ModeDevice != 0:
+		return 'b'
+	case mode&os.ModeNamedPipe != 0:
+		return 'p'
+	case mode&os.ModeSocket != 0:
+		return 's'
+	default:
+		return '-'
+	}
+}
+
+// fillRWX fills 3 bytes with r/w/x characters for a permission triplet.
+// shift is the bit position of the read bit (8=owner, 5=group, 2=other).
+// R1.6: setuid/setgid/sticky modify the execute position character.
+func fillRWX(buf []byte, mode os.FileMode, shift uint,
+	specialBit os.FileMode, execSpec, noExecSpec byte) {
+	perm := uint32(mode.Perm())
+	buf[0] = rwChar(perm, shift, 'r')
+	buf[1] = rwChar(perm, shift-1, 'w')
+	hasExec := perm&(1<<(shift-2)) != 0
+	hasSpecial := mode&specialBit != 0
+	buf[2] = execChar(hasExec, hasSpecial, execSpec, noExecSpec)
+}
+
+// rwChar returns the character for a read or write permission bit.
+func rwChar(perm uint32, bit uint, ch byte) byte {
+	if perm&(1<<bit) != 0 {
+		return ch
+	}
+	return '-'
+}
+
+// execChar returns the execute position character considering special bits.
+// R1.6: setuid→s/S, setgid→s/S, sticky→t/T.
+func execChar(hasExec, hasSpecial bool, execSpec, noExecSpec byte) byte {
+	switch {
+	case hasSpecial && hasExec:
+		return execSpec
+	case hasSpecial:
+		return noExecSpec
+	case hasExec:
+		return 'x'
+	default:
+		return '-'
+	}
+}
+
+// resolveUser returns the username for a UID, falling back to numeric string.
+// R1.8: owner name resolution via os/user.LookupId.
+func resolveUser(uid uint32) string {
+	u, err := user.LookupId(strconv.Itoa(int(uid)))
+	if err != nil {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return u.Username
+}
+
+// resolveGroup returns the group name for a GID, falling back to numeric string.
+// R1.8: group name resolution via os/user.LookupGroupId.
+func resolveGroup(gid uint32) string {
+	g, err := user.LookupGroupId(strconv.Itoa(int(gid)))
+	if err != nil {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	return g.Name
+}
+
+// formatMtime formats the modification time for long format display.
+// R1.9: recent files show "Jan _2 15:04", older files show "Jan _2  2006".
+func formatMtime(t time.Time) string {
+	sixMonths := 6 * 30 * 24 * time.Hour
+	if time.Since(t) < sixMonths {
+		return t.Format("Jan _2 15:04")
+	}
+	return t.Format("Jan _2  2006")
 }
 
 // unwrapErr extracts the underlying error message from *os.PathError.
@@ -211,7 +430,7 @@ func defaultOptions() options {
 	return opts
 }
 
-// applyShortFlags applies all short flags in a combined argument (e.g., -aA).
+// applyShortFlags applies all short flags in a combined argument (e.g., -la).
 // Returns exit code >= 0 on error, -1 to continue.
 func applyShortFlags(o *options, arg string, stderr io.Writer) int {
 	for j := 1; j < len(arg); j++ {
@@ -232,6 +451,10 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.showAll = true
 	case 'A': // R1.4: include dotfiles except . and ..
 		o.almostAll = true
+	case '1': // R1.5: single-column output
+		o.format = formatSingle
+	case 'l': // R1.6: long format
+		o.format = formatLong
 	default:
 		return false
 	}
@@ -273,6 +496,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  -a, --all                  do not ignore entries starting with .")
 	fmt.Fprintln(w, "  -A, --almost-all           do not list implied . and ..")
+	fmt.Fprintln(w, "  -1                         list one file per line")
+	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "      --help                 display this help and exit")
 	fmt.Fprintln(w, "      --version              output version information and exit")
 }
