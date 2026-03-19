@@ -4,7 +4,9 @@
 // Implements prd005-wc R1.1–R1.4: default wc behavior with line, word,
 // and byte counting from stdin or named files, with totals for multiple files.
 // Implements prd005-wc R2.1–R2.6: flag behavior for -l, -w, -c, -m, -L.
-// Implements prd005-wc R3.1–R3.2: multi-file column alignment and total line.
+// Implements prd005-wc R3.1–R3.3: multi-file column alignment, total line,
+// and --total=auto|always|only|never.
+// Implements prd005-wc R4.1–R4.3: dash as stdin, binary input, empty input.
 package main
 
 import (
@@ -12,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -28,6 +31,16 @@ type counts struct {
 	maxLineLen int64
 }
 
+// totalMode controls when the total line is printed. R3.3.
+type totalMode int
+
+const (
+	totalAuto   totalMode = iota // print total when >1 file (default)
+	totalAlways                  // always print total
+	totalOnly                    // print only the total, not per-file lines
+	totalNever                   // never print total
+)
+
 // options controls which counts to print. R2.6: output order is fixed as
 // lines, words, chars/bytes, max-line-length regardless of flag order.
 type options struct {
@@ -36,6 +49,7 @@ type options struct {
 	printBytes      bool
 	printChars      bool
 	printMaxLineLen bool
+	total           totalMode
 }
 
 // defaultOptions returns default behavior: print lines, words, bytes. R1.1.
@@ -62,7 +76,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 // parseArgs extracts options and file arguments from the command line.
-// Handles "--" as end-of-flags and "-" as explicit stdin.
+// Handles "--" as end-of-flags, "-" as explicit stdin, and --total=MODE.
 func parseArgs(args []string) (options, []string) {
 	var opts options
 	var files []string
@@ -78,6 +92,9 @@ func parseArgs(args []string) (options, []string) {
 			flagsDone = true
 			continue
 		}
+		if parseLongOption(&opts, arg) {
+			continue
+		}
 		if len(arg) > 1 && arg[0] == '-' {
 			for _, ch := range arg[1:] {
 				if setFlag(&opts, ch) {
@@ -89,9 +106,31 @@ func parseArgs(args []string) (options, []string) {
 		files = append(files, arg)
 	}
 	if !flagsSet {
-		return defaultOptions(), files
+		defaults := defaultOptions()
+		defaults.total = opts.total
+		return defaults, files
 	}
 	return opts, files
+}
+
+// parseLongOption handles GNU-style long options. R3.3: --total=MODE.
+// Returns true if the argument was consumed as a long option.
+func parseLongOption(opts *options, arg string) bool {
+	if !strings.HasPrefix(arg, "--total=") {
+		return false
+	}
+	val := arg[len("--total="):]
+	switch val {
+	case "auto":
+		opts.total = totalAuto
+	case "always":
+		opts.total = totalAlways
+	case "only":
+		opts.total = totalOnly
+	case "never":
+		opts.total = totalNever
+	}
+	return true
 }
 
 // setFlag sets the option corresponding to the flag character.
@@ -138,11 +177,16 @@ func countFields(opts options) int {
 // processFiles counts and prints results for all files.
 // R1.4: prints a total line when more than one file is given.
 // R3.1: right-aligns counts in columns. R3.2: total line label is "total".
+// R3.3: --total mode controls when total line is printed.
 func processFiles(files []string, opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
 	width := computeWidth(files)
 	// GNU wc uses minimum width when single input with single count field.
 	if len(files) <= 1 && countFields(opts) == 1 {
+		width = 1
+	}
+	// R3.3: --total=only prints a single line; use minimum width.
+	if opts.total == totalOnly {
 		width = 1
 	}
 	exitCode := 0
@@ -157,10 +201,16 @@ func processFiles(files []string, opts options, stdin io.Reader, stdout, stderr 
 			continue
 		}
 		total = addCounts(total, c)
-		printCounts(w, c, width, name, opts)
+		if opts.total != totalOnly {
+			printCounts(w, c, width, name, opts)
+		}
 	}
-	if len(files) > 1 {
-		printCounts(w, total, width, "total", opts)
+	if shouldPrintTotal(opts.total, len(files)) {
+		label := "total"
+		if opts.total == totalOnly {
+			label = ""
+		}
+		printCounts(w, total, width, label, opts)
 	}
 	if err := w.Flush(); err != nil {
 		exitCode = 1
@@ -168,13 +218,29 @@ func processFiles(files []string, opts options, stdin io.Reader, stdout, stderr 
 	return exitCode
 }
 
+// shouldPrintTotal returns true when the total line should be printed.
+// R3.3: auto (>1 file), always, only (always), never.
+func shouldPrintTotal(mode totalMode, nfiles int) bool {
+	switch mode {
+	case totalAlways, totalOnly:
+		return true
+	case totalNever:
+		return false
+	default: // totalAuto
+		return nfiles > 1
+	}
+}
+
 // computeWidth determines the column width for count formatting.
 // Uses fstat on files to match GNU wc's pre-processing width calculation.
 // When no files can be statted (stdin-only), defaults to 7 matching GNU wc.
+// When stdin is mixed with files, uses at least 7 (GNU wc behavior).
 func computeWidth(files []string) int {
 	maxSize := int64(-1)
+	hasStdin := false
 	for _, name := range files {
 		if name == "" || name == "-" {
+			hasStdin = true
 			continue
 		}
 		fi, err := os.Stat(name)
@@ -188,7 +254,11 @@ func computeWidth(files []string) int {
 	if maxSize < 0 {
 		return 7 // no statable files; GNU wc default for stdin/pipes
 	}
-	return numDigits(maxSize)
+	w := numDigits(maxSize)
+	if hasStdin && w < 7 {
+		return 7
+	}
+	return w
 }
 
 // numDigits returns the number of decimal digits in n.

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2.
-// All tests run with LC_ALL=C per R5.1.
+// Differential tests for prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.3,
+// R4.1–R4.3. All tests run with LC_ALL=C per R5.1.
 package main
 
 import (
@@ -385,6 +385,75 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "r3.2_total_lwcL_multifile",
 			Args: []string{"-lwcL", simple, longline},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R3.3: --total mode ===
+
+		// R3.3: --total=always prints total even for one file.
+		{
+			Name: "r3.3_total_always_single_file",
+			Args: []string{"--total=always", simple},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=never suppresses total for multiple files.
+		{
+			Name: "r3.3_total_never_multifile",
+			Args: []string{"--total=never", simple, oneline},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=only prints only the total line.
+		{
+			Name: "r3.3_total_only_multifile",
+			Args: []string{"--total=only", simple, oneline},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --total=auto (explicit default) with multiple files.
+		{
+			Name: "r3.3_total_auto_multifile",
+			Args: []string{"--total=auto", simple, oneline},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// === R4.1: "-" as stdin filename ===
+
+		// R4.1: "-" mixed with a regular file.
+		{
+			Name:  "r4.1_dash_stdin_with_file",
+			Args:  []string{"-", simple},
+			Stdin: []byte("from stdin\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R4.2: binary input ===
+
+		// R4.2: arbitrary binary data does not corrupt output.
+		{
+			Name:  "r4.2_binary_input",
+			Args:  []string{"-c"},
+			Stdin: []byte{0x00, 0x01, 0xFF, 0xFE, 0x80, 0x7F},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.2: binary input with default flags.
+		{
+			Name:  "r4.2_binary_input_default",
+			Stdin: []byte{0x00, 0x01, 0x0A, 0xFF, 0x20, 0x41, 0x0A},
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// === R4.3: empty input ===
+
+		// R4.3: empty stdin with specific flags.
+		{
+			Name:  "r4.3_empty_stdin_lwc",
+			Args:  []string{"-lwc"},
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.3: empty file with -L flag.
+		{
+			Name: "r4.3_empty_file_L",
+			Args: []string{"-L", empty},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
