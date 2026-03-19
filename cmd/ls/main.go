@@ -1,14 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.6: directory listing with format
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.14: directory listing with format
 // modes (-1, -l, -C, -x), C locale sorting, dot-file filtering (-a, -A),
 // permission strings, owner/group resolution, file metadata via pkg/sys,
 // modification time formatting, total block count, symlink display,
-// multi-column output (vertical and horizontal), and last-format-flag-wins.
-//
-// R2.7–R2.10 (task): long format link count, device major/minor numbers,
-// timestamp formatting, and total block count header line.
+// multi-column output (vertical and horizontal), last-format-flag-wins,
+// long format link count, device major/minor, timestamps, total block header,
+// inode display (-i), block count display (-s), and numeric UID/GID (-n).
 package main
 
 import (
@@ -60,15 +59,25 @@ type entry struct {
 
 // options holds parsed flag values for prd008-ls.
 type options struct {
-	format    formatMode // R1.1, R1.2, R1.5, R1.6, R1.11, R1.13, R1.14: output format
-	showAll   bool       // R2.1: -a include dotfiles and . / ..
-	almostAll bool       // R2.2: -A include dotfiles except . / ..
+	format     formatMode // R1.1, R1.2, R1.5, R1.6, R1.11, R1.13, R1.14: output format
+	showAll    bool       // R2.1: -a include dotfiles and . / ..
+	almostAll  bool       // R2.2: -A include dotfiles except . / ..
+	showInode  bool       // R2.11: -i prepend inode number
+	showBlocks bool       // R2.12: -s prepend block count
+	numericIDs bool       // R2.14: -n numeric UID/GID (implies -l)
+}
+
+// needsStat returns true when entries require metadata beyond just the name.
+// R2.11: -i needs Ino. R2.12: -s needs Blocks. Long format needs all fields.
+func needsStat(opts options) bool {
+	return opts.format == formatLong || opts.showInode || opts.showBlocks
 }
 
 // longWidths holds column widths for long format alignment.
 // R1.6: nlink and size are right-aligned to the widest value.
 // R1.8: owner and group are left-aligned to the widest value.
-// R2.8 (task): major/minor device number widths for device files.
+// R2.8: major/minor device number widths for device files.
+// R2.11: inode column width. R2.12: block count column width.
 type longWidths struct {
 	nlink  int
 	owner  int
@@ -77,6 +86,8 @@ type longWidths struct {
 	major  int  // max width of major device number
 	minor  int  // max width of minor device number
 	hasDev bool // true if any device files in listing
+	inode  int  // R2.11: max width of inode number
+	blocks int  // R2.12: max width of block count
 }
 
 // sizeFieldWidth returns the column width for the size/device field.
@@ -143,7 +154,7 @@ func printFileArgs(files []string, opts options, w io.Writer) int {
 	entries := make([]entry, 0, len(files))
 	for _, f := range files {
 		ent := entry{name: f, path: f}
-		if opts.format == formatLong {
+		if needsStat(opts) {
 			fi, err := sys.Lstat(f)
 			if err != nil {
 				continue
@@ -195,7 +206,7 @@ func listOneDir(dir string, opts options, stdout, stderr io.Writer, showHeader b
 }
 
 // readEntries reads directory entries, applies dot-filtering (R1.4, R2.1, R2.2),
-// stats entries when needed (R1.7), and sorts by name in C locale order (R1.3).
+// stats entries when needed (R1.7, R2.11, R2.12), and sorts by name in C locale order (R1.3).
 func readEntries(dir string, opts options) ([]entry, error) {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
@@ -212,7 +223,7 @@ func readEntries(dir string, opts options) ([]entry, error) {
 		}
 		fullPath := filepath.Join(dir, e.Name())
 		ent := entry{name: e.Name(), path: fullPath}
-		if opts.format == formatLong {
+		if needsStat(opts) {
 			fi, err := sys.Lstat(fullPath)
 			if err == nil {
 				ent.info = fi
@@ -233,7 +244,7 @@ func makeDotEntries(dir string, opts options) []entry {
 	for i, name := range []string{".", ".."} {
 		fullPath := filepath.Join(dir, name)
 		dots[i] = entry{name: name, path: fullPath}
-		if opts.format == formatLong {
+		if needsStat(opts) {
 			fi, err := sys.Lstat(fullPath)
 			if err == nil {
 				dots[i].info = fi
@@ -254,24 +265,45 @@ func shouldShow(name string, opts options) bool {
 
 // outputEntries dispatches to the appropriate output format.
 // R1.14: the format mode is determined by the last format flag on the command line.
+// R2.12/R2.13: total line shown for directory listings when -l or -s is active.
 func outputEntries(entries []entry, opts options, w io.Writer, showTotal bool) {
+	if showTotal && (opts.format == formatLong || opts.showBlocks) {
+		printTotalBlocks(entries, w)
+	}
 	switch opts.format {
 	case formatLong:
-		printLong(entries, w, showTotal)
+		printLongLines(entries, opts, w)
 	case formatColumns:
-		printColumnar(entries, w)
+		printColumnar(entries, opts, w)
 	case formatHorizontal:
-		printHorizontal(entries, w)
+		printHorizontal(entries, opts, w)
 	default:
-		printSingle(entries, w)
+		printSingle(entries, opts, w)
 	}
 }
 
 // printSingle outputs entries one per line.
-func printSingle(entries []entry, w io.Writer) {
-	for _, e := range entries {
-		fmt.Fprintln(w, e.name)
+// R2.11/R2.12: entries include inode/block prefix when active.
+func printSingle(entries []entry, opts options, w io.Writer) {
+	names := displayNames(entries, opts)
+	for _, n := range names {
+		fmt.Fprintln(w, n)
 	}
+}
+
+// displayNames returns entry display strings for non-long formats.
+// R2.11: prepends inode when -i is active.
+// R2.12: prepends block count when -s is active.
+func displayNames(entries []entry, opts options) []string {
+	if !opts.showInode && !opts.showBlocks {
+		return entryNames(entries)
+	}
+	inodeW, blockW := maxPrefixWidths(entries, opts)
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = nonLongPrefix(e, opts, inodeW, blockW) + e.name
+	}
+	return names
 }
 
 // entryNames extracts display names from entries.
@@ -283,14 +315,52 @@ func entryNames(entries []entry) []string {
 	return names
 }
 
+// nonLongPrefix formats the inode/blocks prefix for non-long format entries.
+// R2.11: inode right-aligned. R2.12: blocks right-aligned in 1K units.
+func nonLongPrefix(e entry, opts options, inodeW, blockW int) string {
+	prefix := ""
+	if opts.showInode {
+		ino := uint64(0)
+		if e.info != nil {
+			ino = e.info.Ino
+		}
+		prefix += fmt.Sprintf("%*d ", inodeW, ino)
+	}
+	if opts.showBlocks {
+		blk := int64(0)
+		if e.info != nil {
+			blk = e.info.Blocks / 2
+		}
+		prefix += fmt.Sprintf("%*d ", blockW, blk)
+	}
+	return prefix
+}
+
+// maxPrefixWidths computes the maximum inode and block column widths.
+func maxPrefixWidths(entries []entry, opts options) (int, int) {
+	inodeW, blockW := 0, 0
+	for _, e := range entries {
+		if e.info == nil {
+			continue
+		}
+		if opts.showInode {
+			updateWidth(&inodeW, len(strconv.FormatUint(e.info.Ino, 10)))
+		}
+		if opts.showBlocks {
+			updateWidth(&blockW, len(strconv.FormatInt(e.info.Blocks/2, 10)))
+		}
+	}
+	return inodeW, blockW
+}
+
 // printColumnar outputs entries in multi-column layout with vertical fill.
 // R1.11: uses pkg/format.Columns for column-first vertical fill.
 // R1.12: entries sort vertically (down columns, then across).
-func printColumnar(entries []entry, w io.Writer) {
+func printColumnar(entries []entry, opts options, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	names := entryNames(entries)
+	names := displayNames(entries, opts)
 	tw := getTermWidth()
 	rows := format.Columns(names, tw)
 	colWidths := columnMaxWidths(rows)
@@ -302,15 +372,17 @@ func printColumnar(entries []entry, w io.Writer) {
 
 // printHorizontal outputs entries in multi-column layout with horizontal fill.
 // R1.13: entries fill across columns first, then down to the next row.
-func printHorizontal(entries []entry, w io.Writer) {
+func printHorizontal(entries []entry, opts options, w io.Writer) {
 	if len(entries) == 0 {
 		return
 	}
-	names := entryNames(entries)
+	names := displayNames(entries, opts)
 	tw := getTermWidth()
 	numCols := computeHorizCols(names, tw)
 	if numCols <= 1 {
-		printSingle(entries, w)
+		for _, n := range names {
+			fmt.Fprintln(w, n)
+		}
 		return
 	}
 	widths := horizColWidths(names, numCols)
@@ -441,25 +513,8 @@ func getTermWidth() int {
 	return w
 }
 
-// printLong outputs entries in long format with aligned columns.
-// R1.6: field order is permissions, nlink, owner, group, size, mtime, name.
-// R1.10: prints "total N" block line when showTotal is true.
-func printLong(entries []entry, w io.Writer, showTotal bool) {
-	if showTotal {
-		printTotalBlocks(entries, w)
-	}
-	widths := computeWidths(entries)
-	for _, e := range entries {
-		if e.info == nil {
-			fmt.Fprintln(w, e.name)
-			continue
-		}
-		printLongEntry(e, widths, w)
-	}
-}
-
 // printTotalBlocks prints the "total N" line before a directory listing.
-// R1.10: N = sum(fi.Blocks) / 2, converting 512-byte blocks to 1K blocks.
+// R1.10/R2.13: N = sum(fi.Blocks) / 2, converting 512-byte blocks to 1K blocks.
 func printTotalBlocks(entries []entry, w io.Writer) {
 	var total int64
 	for _, e := range entries {
@@ -470,16 +525,33 @@ func printTotalBlocks(entries []entry, w io.Writer) {
 	fmt.Fprintf(w, "total %d\n", total/2)
 }
 
+// printLongLines outputs entries in long format with aligned columns.
+// R1.6: field order is permissions, nlink, owner, group, size, mtime, name.
+// R2.11: -i prepends inode. R2.12: -s prepends block count.
+func printLongLines(entries []entry, opts options, w io.Writer) {
+	widths := computeWidths(entries, opts)
+	for _, e := range entries {
+		if e.info == nil {
+			fmt.Fprintln(w, e.name)
+			continue
+		}
+		printLongEntry(e, widths, opts, w)
+	}
+}
+
 // printLongEntry formats a single entry in long format.
 // R1.6: permissions, nlink (right-aligned), owner (left-aligned),
 // group (left-aligned), size (right-aligned), mtime, name.
 // R1.10: symlinks display " -> target" after the name.
-// R2.8 (task): device files show major,minor instead of size.
-func printLongEntry(e entry, w longWidths, out io.Writer) {
-	owner := resolveUser(e.info.Uid)
-	group := resolveGroup(e.info.Gid)
+// R2.8: device files show major,minor instead of size.
+// R2.11: -i prepends inode. R2.12: -s prepends blocks. R2.14: -n numeric IDs.
+func printLongEntry(e entry, w longWidths, opts options, out io.Writer) {
+	prefix := longPrefix(e, opts, w)
+	owner := ownerString(e.info.Uid, opts.numericIDs)
+	group := groupString(e.info.Gid, opts.numericIDs)
 	name := formatName(e)
-	fmt.Fprintf(out, "%s %*d %-*s %-*s %s %s %s\n",
+	fmt.Fprintf(out, "%s%s %*d %-*s %-*s %s %s %s\n",
+		prefix,
 		permString(e.info.Mode),
 		w.nlink, e.info.Nlink,
 		w.owner, owner,
@@ -490,8 +562,40 @@ func printLongEntry(e entry, w longWidths, out io.Writer) {
 	)
 }
 
+// longPrefix formats the inode/blocks prefix for long format entries.
+// R2.11: inode right-aligned before permissions.
+// R2.12: block count right-aligned before permissions (after inode if both).
+func longPrefix(e entry, opts options, w longWidths) string {
+	prefix := ""
+	if opts.showInode {
+		prefix += fmt.Sprintf("%*d ", w.inode, e.info.Ino)
+	}
+	if opts.showBlocks {
+		prefix += fmt.Sprintf("%*d ", w.blocks, e.info.Blocks/2)
+	}
+	return prefix
+}
+
+// ownerString returns the owner display string.
+// R2.14: -n uses numeric UID instead of resolved name.
+func ownerString(uid uint32, numeric bool) string {
+	if numeric {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return resolveUser(uid)
+}
+
+// groupString returns the group display string.
+// R2.14: -n uses numeric GID instead of resolved name.
+func groupString(gid uint32, numeric bool) string {
+	if numeric {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	return resolveGroup(gid)
+}
+
 // formatSizeField returns the formatted size or device number field.
-// R2.8 (task): device files display "major, minor" instead of size.
+// R2.8: device files display "major, minor" instead of size.
 func formatSizeField(fi *sys.FileInfo, w longWidths) string {
 	sw := w.sizeFieldWidth()
 	if isDevice(fi.Mode) {
@@ -518,16 +622,23 @@ func formatName(e entry) string {
 
 // computeWidths calculates the column widths for long format alignment.
 // R1.6: nlink and size columns sized to the widest value.
-// R2.8 (task): tracks device major/minor widths separately.
-func computeWidths(entries []entry) longWidths {
+// R2.8: tracks device major/minor widths separately.
+// R2.11: inode width. R2.12: block width. R2.14: numeric IDs affect owner/group width.
+func computeWidths(entries []entry, opts options) longWidths {
 	var w longWidths
 	for _, e := range entries {
 		if e.info == nil {
 			continue
 		}
+		if opts.showInode {
+			updateWidth(&w.inode, len(strconv.FormatUint(e.info.Ino, 10)))
+		}
+		if opts.showBlocks {
+			updateWidth(&w.blocks, len(strconv.FormatInt(e.info.Blocks/2, 10)))
+		}
 		updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
-		updateWidth(&w.owner, len(resolveUser(e.info.Uid)))
-		updateWidth(&w.group, len(resolveGroup(e.info.Gid)))
+		updateWidth(&w.owner, len(ownerString(e.info.Uid, opts.numericIDs)))
+		updateWidth(&w.group, len(groupString(e.info.Gid, opts.numericIDs)))
 		if isDevice(e.info.Mode) {
 			w.hasDev = true
 			updateWidth(&w.major, len(strconv.FormatUint(deviceMajor(e.info.Rdev), 10)))
@@ -547,7 +658,7 @@ func updateWidth(current *int, val int) {
 }
 
 // isDevice returns true if the mode indicates a character or block device.
-// R2.8 (task): device files display major,minor instead of size.
+// R2.8: device files display major,minor instead of size.
 func isDevice(mode os.FileMode) bool {
 	return mode&os.ModeDevice != 0
 }
@@ -729,6 +840,7 @@ func applyShortFlags(o *options, arg string, stderr io.Writer) int {
 
 // applyShortFlag applies a single-character flag.
 // R1.14: format flags (-1, -l, -C, -x) all set opts.format; last one wins.
+// R2.11: -i shows inode. R2.12: -s shows blocks. R2.14: -n implies -l with numeric IDs.
 // Returns false for unrecognized flags.
 func applyShortFlag(o *options, ch byte) bool {
 	switch ch {
@@ -744,6 +856,13 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.format = formatColumns
 	case 'x': // R1.13: force multi-column output (horizontal fill)
 		o.format = formatHorizontal
+	case 'i': // R2.11: prepend inode number
+		o.showInode = true
+	case 's': // R2.12: prepend block count
+		o.showBlocks = true
+	case 'n': // R2.14: numeric UID/GID, implies -l
+		o.numericIDs = true
+		o.format = formatLong
 	default:
 		return false
 	}
@@ -786,9 +905,12 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -a, --all                  do not ignore entries starting with .")
 	fmt.Fprintln(w, "  -A, --almost-all           do not list implied . and ..")
 	fmt.Fprintln(w, "  -C                         list entries by columns")
+	fmt.Fprintln(w, "  -i                         print the index number of each file")
+	fmt.Fprintln(w, "  -l                         use a long listing format")
+	fmt.Fprintln(w, "  -n                         like -l, but list numeric user and group IDs")
+	fmt.Fprintln(w, "  -s                         print the allocated size of each file, in blocks")
 	fmt.Fprintln(w, "  -x                         list entries by lines instead of by columns")
 	fmt.Fprintln(w, "  -1                         list one file per line")
-	fmt.Fprintln(w, "  -l                         use a long listing format")
 	fmt.Fprintln(w, "      --help                 display this help and exit")
 	fmt.Fprintln(w, "      --version              output version information and exit")
 }

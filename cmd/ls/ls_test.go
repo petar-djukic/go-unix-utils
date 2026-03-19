@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.6, R2.7–R2.10 (task):
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.14:
 // default listing, single-column output, C locale sorting, dotfile filtering,
 // horizontal multi-column output, last-format-flag-wins, -a/-A show all,
 // long format owner, group, size, date field rendering, link count,
-// device major/minor, timestamps, and total block count.
+// device major/minor, timestamps, total block count, inode display (-i),
+// block count display (-s), and numeric UID/GID (-n).
 package main_test
 
 import (
@@ -310,6 +311,190 @@ func TestDiffLongFormat(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffLongFormatExtended tests long format link count, device major/minor,
+// timestamps, and total block count.
+// Implements prd008-ls R2.7 (link count), R2.8 (device major/minor),
+// R2.9 (timestamps), R2.10 (total block count) per task description.
+func TestDiffLongFormatExtended(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R2.7: hard link count display in long format.
+	dirLinks := t.TempDir()
+	makeFiles(t, dirLinks, "original")
+	src := filepath.Join(dirLinks, "original")
+	dst := filepath.Join(dirLinks, "hardlink")
+	if err := os.Link(src, dst); err != nil {
+		t.Fatalf("creating hard link: %v", err)
+	}
+
+	// R2.10: total block count header line.
+	dirTotal := t.TempDir()
+	makeFileWithContent(t, dirTotal, "file1", makePadding(512))
+	makeFileWithContent(t, dirTotal, "file2", makePadding(1024))
+
+	// R2.9: recent vs old timestamp formatting.
+	dirTimestamps := t.TempDir()
+	makeFiles(t, dirTimestamps, "recent_file", "old_file")
+	oldTime := time.Now().Add(-400 * 24 * time.Hour)
+	oldPath := filepath.Join(dirTimestamps, "old_file")
+	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
+		t.Fatalf("setting old mtime: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.7: link count shows nlink=2 for hard-linked files.
+		{
+			Name:    "long_format_hardlink_nlink",
+			Args:    []string{"-l"},
+			WorkDir: dirLinks,
+		},
+		// R2.8: device file shows major,minor instead of size.
+		{
+			Name: "long_format_device_null",
+			Args: []string{"-l", "/dev/null"},
+		},
+		// R2.8: multiple device files in one listing.
+		{
+			Name: "long_format_device_multiple",
+			Args: []string{"-l", "/dev/null", "/dev/zero"},
+		},
+		// R2.9: mixed recent and old timestamps.
+		{
+			Name:    "long_format_timestamp_mixed",
+			Args:    []string{"-l"},
+			WorkDir: dirTimestamps,
+		},
+		// R2.10: total block count header line.
+		{
+			Name:    "long_format_total_blocks",
+			Args:    []string{"-l"},
+			WorkDir: dirTotal,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInodeBlocksNumeric tests inode display (-i), block count display (-s),
+// and numeric UID/GID (-n).
+// Implements prd008-ls R2.11 (inode), R2.12 (blocks), R2.13 (total with -s),
+// R2.14 (numeric IDs).
+func TestDiffInodeBlocksNumeric(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// Fixture: directory with files for inode/block tests.
+	dirFiles := t.TempDir()
+	makeFiles(t, dirFiles, "alpha", "beta")
+	makeFileWithContent(t, dirFiles, "larger", makePadding(4096))
+
+	// Fixture: single file for file-argument tests.
+	dirSingle := t.TempDir()
+	makeFiles(t, dirSingle, "onefile")
+
+	// Fixture: directory with symlink for -il combination.
+	dirSymlink := t.TempDir()
+	makeFiles(t, dirSymlink, "target")
+	if err := os.Symlink("target", filepath.Join(dirSymlink, "link")); err != nil {
+		t.Fatalf("creating symlink: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.11: -i shows inode in single-column output.
+		{
+			Name:    "inode_single_column",
+			Args:    []string{"-i"},
+			WorkDir: dirFiles,
+		},
+		// R2.11: -i with -l shows inode before permissions in long format.
+		{
+			Name:    "inode_long_format",
+			Args:    []string{"-il"},
+			WorkDir: dirFiles,
+		},
+		// R2.11: -i with file argument (no total line).
+		{
+			Name: "inode_file_arg",
+			Args: []string{"-i", filepath.Join(dirSingle, "onefile")},
+		},
+		// R2.11: -i with symlink in long format.
+		{
+			Name:    "inode_long_symlink",
+			Args:    []string{"-il"},
+			WorkDir: dirSymlink,
+		},
+		// R2.12: -s shows block count in single-column output with total.
+		{
+			Name:    "blocks_single_column",
+			Args:    []string{"-s"},
+			WorkDir: dirFiles,
+		},
+		// R2.12: -s with -l shows blocks before permissions.
+		{
+			Name:    "blocks_long_format",
+			Args:    []string{"-sl"},
+			WorkDir: dirFiles,
+		},
+		// R2.12: -s with file argument (no total line).
+		{
+			Name: "blocks_file_arg",
+			Args: []string{"-s", filepath.Join(dirSingle, "onefile")},
+		},
+		// R2.13: -s -l total line includes block counts.
+		{
+			Name:    "blocks_long_total",
+			Args:    []string{"-sl"},
+			WorkDir: dirFiles,
+		},
+		// R2.11+R2.12: -i -s combined shows both inode and blocks.
+		{
+			Name:    "inode_and_blocks_combined",
+			Args:    []string{"-is"},
+			WorkDir: dirFiles,
+		},
+		// R2.11+R2.12: -i -s -l combined in long format.
+		{
+			Name:    "inode_and_blocks_long",
+			Args:    []string{"-isl"},
+			WorkDir: dirFiles,
+		},
+		// R2.14: -n shows numeric UID/GID in long format.
+		{
+			Name:    "numeric_ids",
+			Args:    []string{"-n"},
+			WorkDir: dirFiles,
+		},
+		// R2.14: -n with file argument.
+		{
+			Name: "numeric_ids_file_arg",
+			Args: []string{"-n", filepath.Join(dirSingle, "onefile")},
+		},
+		// R2.14: -n with -i shows inode and numeric IDs.
+		{
+			Name:    "numeric_ids_with_inode",
+			Args:    []string{"-ni"},
+			WorkDir: dirFiles,
+		},
+		// R2.14: -n with -s shows blocks and numeric IDs.
+		{
+			Name:    "numeric_ids_with_blocks",
+			Args:    []string{"-ns"},
+			WorkDir: dirFiles,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // makeFiles creates empty regular files in dir.
 func makeFiles(t *testing.T, dir string, names ...string) {
 	t.Helper()
@@ -335,73 +520,4 @@ func makePadding(n int) string {
 		b[i] = 'x'
 	}
 	return string(b)
-}
-
-// TestDiffLongFormatExtended tests long format link count, device major/minor,
-// timestamps, and total block count.
-// Implements prd008-ls R2.7 (link count), R2.8 (device major/minor),
-// R2.9 (timestamps), R2.10 (total block count) per task description.
-func TestDiffLongFormatExtended(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gls")
-	if err != nil {
-		t.Skipf("reference binary gls not in PATH: %v", err)
-	}
-
-	// R2.7 (task): hard link count display in long format.
-	dirLinks := t.TempDir()
-	makeFiles(t, dirLinks, "original")
-	src := filepath.Join(dirLinks, "original")
-	dst := filepath.Join(dirLinks, "hardlink")
-	if err := os.Link(src, dst); err != nil {
-		t.Fatalf("creating hard link: %v", err)
-	}
-
-	// R2.10 (task): total block count header line.
-	dirTotal := t.TempDir()
-	makeFileWithContent(t, dirTotal, "file1", makePadding(512))
-	makeFileWithContent(t, dirTotal, "file2", makePadding(1024))
-
-	// R2.9 (task): recent vs old timestamp formatting.
-	dirTimestamps := t.TempDir()
-	makeFiles(t, dirTimestamps, "recent_file", "old_file")
-	oldTime := time.Now().Add(-400 * 24 * time.Hour)
-	oldPath := filepath.Join(dirTimestamps, "old_file")
-	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
-		t.Fatalf("setting old mtime: %v", err)
-	}
-
-	tests := []testutils.DiffTest{
-		// R2.7 (task): link count shows nlink=2 for hard-linked files.
-		{
-			Name:    "long_format_hardlink_nlink",
-			Args:    []string{"-l"},
-			WorkDir: dirLinks,
-		},
-		// R2.8 (task): device file shows major,minor instead of size.
-		{
-			Name: "long_format_device_null",
-			Args: []string{"-l", "/dev/null"},
-		},
-		// R2.8 (task): multiple device files in one listing.
-		{
-			Name: "long_format_device_multiple",
-			Args: []string{"-l", "/dev/null", "/dev/zero"},
-		},
-		// R2.9 (task): mixed recent and old timestamps.
-		{
-			Name:    "long_format_timestamp_mixed",
-			Args:    []string{"-l"},
-			WorkDir: dirTimestamps,
-		},
-		// R2.10 (task): total block count header line.
-		{
-			Name:    "long_format_total_blocks",
-			Args:    []string{"-l"},
-			WorkDir: dirTotal,
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
