@@ -4,7 +4,8 @@
 // Implements prd052-tty R1.1 (print terminal device name),
 // R1.2 (exit 0 for terminal, exit 1 otherwise),
 // R1.3 (-s/--silent/--quiet suppresses output),
-// R2.1 (extra operands produce error exit 2).
+// R2.1 (extra operands produce error exit 2),
+// R2.2 (unknown flags produce error exit 2).
 package main
 
 /*

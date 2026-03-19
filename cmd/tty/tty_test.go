@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd052-tty R3.1 (compare Go vs gtty),
-// R3.2 (piped stdin, -s flag, error cases),
+// Differential tests for prd052-tty R2.2 (unknown flags error exit 2),
+// R3.1 (compare Go vs gtty via pkg/testutils),
+// R3.2 (piped stdin, -s flag, error cases, stdin from file),
 // R3.3 (LC_ALL=C in test environment).
 package main
 
@@ -97,6 +98,29 @@ func TestDiff(t *testing.T) {
 			Env:       env,
 			ExitCode:  2,
 			Normalize: errNorm,
+		},
+		// R3.2: stdin redirected from /dev/null (not a tty) — prints "not a tty", exit 1.
+		{
+			Name:     "stdin_from_devnull",
+			Stdin:    nil,
+			Env:      env,
+			ExitCode: 1,
+		},
+		// R2.2, R3.2: multiple unknown short flags — error, exit 2.
+		{
+			Name:      "unknown_combined_short_flags",
+			Args:      []string{"-xs"},
+			Env:       env,
+			ExitCode:  2,
+			Normalize: errNorm,
+		},
+		// R3.2: -s flag combined with piped stdin and input data.
+		{
+			Name:     "silent_with_stdin_data",
+			Args:     []string{"-s"},
+			Stdin:    []byte("hello\n"),
+			Env:      env,
+			ExitCode: 1,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
