@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd012-yes R1.1-R1.4: core yes output loop.
+// Implements prd012-yes R1.1-R1.4: core yes output loop,
+// R2.1-R2.2: buffered output, R3.1-R3.2: exit codes and signal handling.
 package main
 
 import (
@@ -13,6 +14,10 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// outputBufSize is the minimum buffer size for stdout writes.
+// R2.1: at least 8192 bytes to avoid per-line write syscalls.
+const outputBufSize = 8192
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -37,21 +42,23 @@ func buildLine(args []string) string {
 }
 
 // writeLoop writes the line repeatedly to stdout using buffered I/O.
-// R2.1: uses bufio.Writer for throughput.
+// R2.1: uses bufio.Writer with outputBufSize buffer for throughput.
+// R2.2: flushes buffer before exiting on write error.
 // R3.1: exits 0 on EPIPE (stdout closed by pipe consumer).
 // R3.2: exits 1 on other write errors.
 func writeLoop(line string) {
-	w := bufio.NewWriter(os.Stdout)
+	w := bufio.NewWriterSize(os.Stdout, outputBufSize)
 	for {
 		_, err := w.WriteString(line)
 		if err != nil {
+			_ = w.Flush() // R2.2: best-effort flush of partial buffer
 			exitOnWriteError(err)
 		}
 	}
 }
 
 // exitOnWriteError exits 0 for EPIPE (normal pipe close) or 1 for
-// other write errors.
+// other write errors. R3.1, R3.2.
 func exitOnWriteError(err error) {
 	if errors.Is(err, syscall.EPIPE) {
 		os.Exit(0)
