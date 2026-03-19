@@ -3,6 +3,7 @@
 
 // Implements prd005-wc R1.1–R1.4: default wc behavior with line, word,
 // and byte counting from stdin or named files, with totals for multiple files.
+// Implements prd005-wc R2.1–R2.4: flag behavior for -l, -w, -c, -m.
 package main
 
 import (
@@ -16,11 +17,26 @@ import (
 
 const progName = "wc"
 
-// counts holds line, word, and byte counts for a single input.
+// counts holds line, word, byte, and character counts for a single input.
 type counts struct {
 	lines int64
 	words int64
 	bytes int64
+	chars int64
+}
+
+// options controls which counts to print. R2.6: output order is fixed as
+// lines, words, chars/bytes regardless of flag order.
+type options struct {
+	printLines bool
+	printWords bool
+	printBytes bool
+	printChars bool
+}
+
+// defaultOptions returns default behavior: print lines, words, bytes. R1.1.
+func defaultOptions() options {
+	return options{printLines: true, printWords: true, printBytes: true}
 }
 
 func main() {
@@ -33,21 +49,24 @@ func main() {
 // run parses arguments and processes files, returning the exit code.
 // R1.2: reads stdin when no file args; reads named files in order.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	files := parseArgs(args)
+	opts, files := parseArgs(args)
 	if len(files) == 0 {
 		// R1.3: implicit stdin, no filename printed.
 		files = []string{""}
 	}
-	return processFiles(files, stdin, stdout, stderr)
+	return processFiles(files, opts, stdin, stdout, stderr)
 }
 
-// parseArgs extracts file arguments from the command line.
+// parseArgs extracts options and file arguments from the command line.
 // Handles "--" as end-of-flags and "-" as explicit stdin.
-func parseArgs(args []string) []string {
+func parseArgs(args []string) (options, []string) {
+	var opts options
 	var files []string
+	flagsSet := false
 	flagsDone := false
+
 	for _, arg := range args {
-		if flagsDone || arg == "-" || len(arg) == 0 || arg[0] != '-' {
+		if flagsDone || arg == "-" {
 			files = append(files, arg)
 			continue
 		}
@@ -55,16 +74,68 @@ func parseArgs(args []string) []string {
 			flagsDone = true
 			continue
 		}
+		if len(arg) > 1 && arg[0] == '-' {
+			for _, ch := range arg[1:] {
+				if setFlag(&opts, ch) {
+					flagsSet = true
+				}
+			}
+			continue
+		}
 		files = append(files, arg)
 	}
-	return files
+	if !flagsSet {
+		return defaultOptions(), files
+	}
+	return opts, files
+}
+
+// setFlag sets the option corresponding to the flag character.
+// Returns true if the character is a recognized flag.
+func setFlag(opts *options, ch rune) bool {
+	switch ch {
+	case 'l':
+		opts.printLines = true
+	case 'w':
+		opts.printWords = true
+	case 'c':
+		opts.printBytes = true
+	case 'm':
+		opts.printChars = true
+	default:
+		return false
+	}
+	return true
+}
+
+// countFields returns the number of active count fields in opts.
+// When both -c and -m are given, both columns are printed (GNU wc behavior).
+func countFields(opts options) int {
+	n := 0
+	if opts.printLines {
+		n++
+	}
+	if opts.printWords {
+		n++
+	}
+	if opts.printChars {
+		n++
+	}
+	if opts.printBytes {
+		n++
+	}
+	return n
 }
 
 // processFiles counts and prints results for all files.
 // R1.4: prints a total line when more than one file is given.
-func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func processFiles(files []string, opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
 	width := computeWidth(files)
+	// GNU wc uses minimum width when single input with single count field.
+	if len(files) <= 1 && countFields(opts) == 1 {
+		width = 1
+	}
 	exitCode := 0
 	var total counts
 
@@ -77,10 +148,10 @@ func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer) int
 			continue
 		}
 		total = addCounts(total, c)
-		printCounts(w, c, width, name)
+		printCounts(w, c, width, name, opts)
 	}
 	if len(files) > 1 {
-		printCounts(w, total, width, "total")
+		printCounts(w, total, width, "total", opts)
 	}
 	if err := w.Flush(); err != nil {
 		exitCode = 1
@@ -138,8 +209,9 @@ func countFile(name string, stdin io.Reader) (counts, error) {
 	return countReader(f)
 }
 
-// countReader reads all data from r and returns line, word, and byte counts.
+// countReader reads all data from r and returns line, word, byte, and char counts.
 // R1.1: counts newlines, words (maximal non-whitespace sequences), and bytes.
+// R2.4: counts characters as non-continuation UTF-8 bytes.
 func countReader(r io.Reader) (counts, error) {
 	var c counts
 	buf := make([]byte, 32*1024)
@@ -150,6 +222,10 @@ func countReader(r io.Reader) (counts, error) {
 		for _, b := range buf[:n] {
 			if b == '\n' {
 				c.lines++
+			}
+			// R2.4: each non-continuation byte starts a new character.
+			if isCharStart(b) {
+				c.chars++
 			}
 			if isSpaceByte(b) {
 				inWord = false
@@ -167,6 +243,12 @@ func countReader(r io.Reader) (counts, error) {
 	}
 }
 
+// isCharStart returns true if b is a UTF-8 character start byte.
+// Continuation bytes (10xxxxxx) return false. R2.4.
+func isCharStart(b byte) bool {
+	return b&0xC0 != 0x80
+}
+
 // isSpaceByte returns true for C locale whitespace characters.
 // Matches isspace() under LC_ALL=C: space, tab, newline, vtab, formfeed, cr.
 func isSpaceByte(b byte) bool {
@@ -174,10 +256,32 @@ func isSpaceByte(b byte) bool {
 		b == '\v' || b == '\f' || b == '\r'
 }
 
-// printCounts writes a formatted counts line.
+// printCounts writes a formatted counts line with only selected fields.
+// R2.6: output order is lines, words, chars/bytes.
 // R1.3: counts followed by filename; no filename for implicit stdin (name="").
-func printCounts(w *bufio.Writer, c counts, width int, name string) {
-	fmt.Fprintf(w, "%*d %*d %*d", width, c.lines, width, c.words, width, c.bytes)
+func printCounts(w *bufio.Writer, c counts, width int, name string, opts options) {
+	first := true
+	printField := func(val int64) {
+		if !first {
+			w.WriteByte(' ')
+		}
+		fmt.Fprintf(w, "%*d", width, val)
+		first = false
+	}
+	// R2.6: fixed order — lines, words, chars, bytes.
+	// When both -c and -m are given, both columns appear (GNU wc behavior).
+	if opts.printLines {
+		printField(c.lines)
+	}
+	if opts.printWords {
+		printField(c.words)
+	}
+	if opts.printChars {
+		printField(c.chars)
+	}
+	if opts.printBytes {
+		printField(c.bytes)
+	}
 	if name != "" {
 		fmt.Fprintf(w, " %s", name)
 	}
@@ -190,6 +294,7 @@ func addCounts(a, b counts) counts {
 		lines: a.lines + b.lines,
 		words: a.words + b.words,
 		bytes: a.bytes + b.bytes,
+		chars: a.chars + b.chars,
 	}
 }
 
