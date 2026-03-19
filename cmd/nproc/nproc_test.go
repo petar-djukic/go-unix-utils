@@ -3,7 +3,9 @@
 
 // Differential tests for prd046-nproc R2.1 (error on positional operands),
 // R2.2 (error on non-numeric --ignore), R2.3 (error on unknown flags),
-// R3.1 (differential tests comparing Go binary against gnproc).
+// R3.1 (differential tests comparing Go binary against gnproc),
+// R3.2 (covers default, --all, --ignore=1, --all --ignore=1, error cases),
+// R3.3 (all differential tests set LC_ALL=C).
 package main
 
 import (
@@ -43,48 +45,62 @@ func TestDiff(t *testing.T) {
 	env := []string{"LC_ALL=C"}
 	errNorm := []testutils.NormalizeFunc{stderrNormalizer}
 	tests := []testutils.DiffTest{
-		// R3.1, R3.2: default invocation — prints available CPU count.
+		// R3.2: default invocation — prints available CPU count.
 		{
 			Name: "default_no_flags",
 			Env:  env,
 		},
-		// R3.1, R3.2: --all — prints installed processor count.
+		// R3.2: --all — prints installed processor count.
 		{
 			Name: "flag_all",
 			Args: []string{"--all"},
 			Env:  env,
 		},
-		// R3.1, R3.2: --ignore=1 — subtracts 1 from count.
+		// R3.2: --ignore=1 — subtracts 1 from count.
 		{
 			Name: "ignore_equals_1",
 			Args: []string{"--ignore=1"},
 			Env:  env,
 		},
-		// R3.1, R3.2: --ignore 1 (space-separated form).
+		// R3.2: --ignore 1 (space-separated form).
 		{
 			Name: "ignore_space_1",
 			Args: []string{"--ignore", "1"},
 			Env:  env,
 		},
-		// R3.1, R3.2: --all --ignore=1 — combined flags.
+		// R3.2: --all --ignore=1 — combined flags.
 		{
 			Name: "all_ignore_1",
 			Args: []string{"--all", "--ignore=1"},
 			Env:  env,
 		},
-		// R3.1, R3.2: --ignore=0 — no subtraction.
+		// R3.2: reversed order --ignore=1 --all — combined flags.
+		{
+			Name: "ignore_1_then_all",
+			Args: []string{"--ignore=1", "--all"},
+			Env:  env,
+		},
+		// R3.2: --ignore=0 — no subtraction.
 		{
 			Name: "ignore_0",
 			Args: []string{"--ignore=0"},
 			Env:  env,
 		},
-		// R3.1: --ignore with large value — result clamped to 1.
+		// R3.2: --ignore with large value — result clamped to 1.
 		{
 			Name: "ignore_large_value",
 			Args: []string{"--ignore=99999"},
 			Env:  env,
 		},
-		// R2.1: extra positional operand — error exit 1.
+		// R3.2 error case: negative --ignore value — error exit 1.
+		{
+			Name:      "ignore_negative",
+			Args:      []string{"--ignore=-1"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.2 error case, R2.1: extra positional operand — error exit 1.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"foo"},
@@ -92,7 +108,15 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// R2.2: --ignore with non-numeric value — error exit 1.
+		// R3.2 error case, R2.1: operand after -- separator — error exit 1.
+		{
+			Name:      "operand_after_separator",
+			Args:      []string{"--", "foo"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.2 error case, R2.2: --ignore with non-numeric value — error exit 1.
 		{
 			Name:      "ignore_non_numeric",
 			Args:      []string{"--ignore=abc"},
@@ -100,7 +124,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// R2.3: unknown long flag — error exit 1.
+		// R3.2 error case, R2.3: unknown long flag — error exit 1.
 		{
 			Name:      "unknown_long_flag",
 			Args:      []string{"--unknown"},
@@ -108,7 +132,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// R2.3: unknown short flag — error exit 1.
+		// R3.2 error case, R2.3: unknown short flag — error exit 1.
 		{
 			Name:      "unknown_short_flag",
 			Args:      []string{"-x"},

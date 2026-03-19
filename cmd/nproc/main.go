@@ -5,7 +5,9 @@
 // R1.2 (--all prints installed processor count),
 // R1.3 (--ignore=N subtracts from count, minimum 1),
 // R1.4 (--all and --ignore=N may be combined),
-// R2.1-R2.3 (error handling for operands, bad --ignore, unknown flags).
+// R2.1-R2.3 (error handling for operands, bad --ignore, unknown flags),
+// R3.2 (test coverage for all flags and error cases),
+// R3.3 (LC_ALL=C in all differential tests).
 package main
 
 import (
@@ -106,9 +108,10 @@ func parseIgnore(arg string, args []string, i int, result *parsedArgs) (bool, er
 
 // setIgnore parses the ignore value and stores it in result.
 // R2.2: non-numeric value produces an error.
+// R3.2: negative values are rejected as invalid numbers.
 func setIgnore(val string, result *parsedArgs) error {
 	n, err := strconv.Atoi(val)
-	if err != nil {
+	if err != nil || n < 0 {
 		return fmt.Errorf("invalid number: '%s'", val)
 	}
 	result.ignore = n
