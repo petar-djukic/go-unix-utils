@@ -20,6 +20,24 @@ var binaryNameNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
 	return re.ReplaceAll(data, []byte("dirname"))
 }
 
+// versionNormalizer replaces all version output with a fixed string so
+// that GNU's multi-line copyright block and Go's single-line version match.
+var versionNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	if len(data) > 0 {
+		return []byte("VERSION OUTPUT")
+	}
+	return data
+}
+
+// helpNormalizer replaces all help output with a fixed string so that
+// structural differences between GNU and Go help text don't cause failures.
+var helpNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	if len(data) > 0 {
+		return []byte("HELP OUTPUT")
+	}
+	return data
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -29,46 +47,57 @@ func TestDiff(t *testing.T) {
 	}
 	errNorm := []testutils.NormalizeFunc{binaryNameNormalizer}
 	tests := []testutils.DiffTest{
+		// R4.2: simple path (dir/file).
 		{
 			Name: "simple_path",
 			Args: []string{"/usr/bin/sort"},
 		},
+		// R4.2: nested path (a/b/c).
 		{
 			Name: "nested_path",
 			Args: []string{"/a/b/c"},
 		},
+		// R4.2: trailing slashes.
 		{
 			Name: "trailing_slashes",
 			Args: []string{"/usr/bin/"},
 		},
+		// R4.2: root path (/).
 		{
 			Name: "root_path",
 			Args: []string{"/"},
 		},
+		// R4.2: all slashes.
 		{
 			Name: "all_slashes",
 			Args: []string{"////"},
 		},
+		// R4.2: relative path with no directory (file.txt -> '.').
 		{
 			Name: "relative_no_dir",
 			Args: []string{"stdio.h"},
 		},
+		// R4.2: dot path (.).
 		{
 			Name: "dot",
 			Args: []string{"."},
 		},
+		// R4.2: double-dot path (..).
 		{
 			Name: "dotdot",
 			Args: []string{".."},
 		},
+		// R4.2: multiple arguments.
 		{
 			Name: "multiple_args",
 			Args: []string{"/usr/bin/sort", "stdio.h", "/a/b/c"},
 		},
+		// R4.2: empty string argument.
 		{
 			Name: "empty_string",
 			Args: []string{""},
 		},
+		// R4.3: no arguments — error output and exit code 1.
 		{
 			Name:      "no_args",
 			Args:      []string{},
@@ -104,6 +133,48 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "zero_flag_multiple",
 			Args: []string{"-z", "/a/b/c", ".", "/usr/bin/"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersion verifies that --version prints version info to stdout
+// and exits 0. Implements R4.1.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdirname")
+	if err != nil {
+		t.Skipf("reference binary gdirname not in PATH: %v", err)
+	}
+	verNorm := []testutils.NormalizeFunc{versionNormalizer}
+	tests := []testutils.DiffTest{
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			ExitCode:  0,
+			Normalize: verNorm,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestHelp verifies that --help prints usage to stdout and exits 0.
+// Implements R4.2.
+func TestHelp(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdirname")
+	if err != nil {
+		t.Skipf("reference binary gdirname not in PATH: %v", err)
+	}
+	helpNorm := []testutils.NormalizeFunc{helpNormalizer}
+	tests := []testutils.DiffTest{
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: helpNorm,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd016-dirname R1.1–R1.5, R2.1–R2.2, R3.1–R3.3: strip last
-// component from file paths with error handling and edge cases.
+// Implements prd016-dirname R1.1–R1.5, R2.1–R2.2, R3.1–R3.3, R4.1–R4.2:
+// strip last component from file paths with error handling, edge cases,
+// and --version/--help support.
 package main
 
 import (
@@ -13,14 +14,23 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// version is set via ldflags at build time.
+var version = "unknown"
+
 // options holds parsed command-line flags.
 type options struct {
-	zero bool
+	zero    bool
+	version bool
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 	opts, names := parseArgs(os.Args[1:])
+	// R4.1: --version prints version information and exits 0.
+	if opts.version {
+		fmt.Printf("dirname (go-unix-utils) %s\n", version)
+		return
+	}
 	// R3.2: exit 1 with error to stderr when no arguments given.
 	if len(names) == 0 {
 		printError("missing operand")
@@ -40,7 +50,7 @@ func main() {
 }
 
 // parseArgs splits raw arguments into options and positional names.
-// Supports -z, --zero, --help, and -- to end option parsing.
+// Supports -z, --zero, --version, --help, and -- to end option parsing.
 func parseArgs(args []string) (options, []string) {
 	var opts options
 	var names []string
@@ -53,6 +63,10 @@ func parseArgs(args []string) (options, []string) {
 		if arg == "--help" {
 			printUsage()
 			os.Exit(0)
+		}
+		if arg == "--version" {
+			opts.version = true
+			return opts, nil
 		}
 		if arg == "--zero" {
 			opts.zero = true
@@ -71,7 +85,7 @@ func parseArgs(args []string) (options, []string) {
 	return opts, names
 }
 
-// printUsage writes usage information to stdout.
+// printUsage writes usage information to stdout. Implements R4.2.
 func printUsage() {
 	fmt.Print("Usage: dirname [OPTION] NAME...\n" +
 		"Output each NAME with its last non-slash component " +
@@ -79,7 +93,8 @@ func printUsage() {
 		"if NAME contains no /'s, output '.' " +
 		"(meaning the current directory).\n\n" +
 		"  -z, --zero     end each output line with NUL, not newline\n" +
-		"      --help     display this help and exit\n")
+		"      --help     display this help and exit\n" +
+		"      --version  output version information and exit\n")
 }
 
 // printError writes a formatted error message to stderr.
