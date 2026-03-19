@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd009-du R1.1–R1.5, R2.1–R2.3.
+// Implements prd009-du R1.1–R1.5, R2.1–R2.7.
 package main
 
 import (
@@ -18,13 +18,13 @@ const progName = "du"
 
 // config holds parsed command-line options.
 type config struct {
-	summary  bool // R2.2: -s, print only total per argument
-	human    bool // R2.1: -h, human-readable 1024-based output
-	allFiles bool // R2.3: -a, print entries for all files
+	summary    bool // R2.2: -s, print only total per argument
+	human      bool // R2.1: -h, human-readable 1024-based output
+	allFiles   bool // R2.3: -a, print entries for all files
+	maxDepth   int  // R2.4: -d N / --max-depth=N, -1 = unlimited
+	megaBlocks bool // R2.6: -m, report in 1M blocks
+	grandTotal bool // R2.7: -c, print grand total
 }
-
-// TODO: --si (prd009-du non_goals) conflicts with task R3 text; not implemented per E6.
-// TODO: -B/--block-size (prd009-du non_goals) conflicts with task R4 text; not implemented per E6.
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -34,16 +34,23 @@ func main() {
 // run processes path arguments and returns the exit code.
 // R1.1: defaults to "." when no arguments are given.
 // R1.5: processes multiple arguments in order.
+// R2.7: prints grand total when -c is given.
 func run(args []string, stdout, stderr io.Writer) int {
 	cfg, paths := parseFlags(args, stderr)
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
 	exitCode := 0
+	var cumulative int64
 	for _, p := range paths {
-		if err := duPath(p, cfg, stdout, stderr); err != nil {
+		total, err := duPath(p, cfg, stdout, stderr)
+		if err != nil {
 			exitCode = 1
 		}
+		cumulative += total
+	}
+	if cfg.grandTotal {
+		printEntry(stdout, cfg, cumulative, "total")
 	}
 	return exitCode
 }
@@ -53,62 +60,74 @@ func parseFlags(args []string, stderr io.Writer) (config, []string) {
 	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var cfg config
+	cfg.maxDepth = -1
 	fs.BoolVar(&cfg.summary, "s", false, "display only a total for each argument")
 	fs.BoolVar(&cfg.human, "h", false, "print sizes in human readable format")
 	fs.BoolVar(&cfg.allFiles, "a", false, "write counts for all files")
+	fs.IntVar(&cfg.maxDepth, "d", -1, "max depth of entries to display")
+	fs.IntVar(&cfg.maxDepth, "max-depth", -1, "max depth of entries to display")
+	// R2.5: -k is accepted for compatibility but has no visible effect.
+	var kFlag bool
+	fs.BoolVar(&kFlag, "k", false, "count in 1024-byte blocks (default)")
+	fs.BoolVar(&cfg.megaBlocks, "m", false, "count in 1048576-byte blocks")
+	fs.BoolVar(&cfg.grandTotal, "c", false, "produce a grand total")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
+	}
+	// R2.2: -s is equivalent to --max-depth=0.
+	if cfg.summary {
+		cfg.maxDepth = 0
 	}
 	return cfg, fs.Args()
 }
 
-// duPath handles a single path argument.
+// shouldPrint returns true if an entry at the given depth should be printed.
+// R2.4: entries deeper than maxDepth are accumulated but not printed.
+func shouldPrint(cfg config, depth int) bool {
+	return cfg.maxDepth < 0 || depth <= cfg.maxDepth
+}
+
+// duPath handles a single path argument. Returns total blocks (512-byte).
 // R1.4: uses Lstat to avoid following symbolic links.
-// R2.2: prints only the total when summary mode is enabled.
-func duPath(path string, cfg config, stdout, stderr io.Writer) error {
+func duPath(path string, cfg config, stdout, stderr io.Writer) (int64, error) {
 	fi, err := sys.Lstat(path)
 	if err != nil {
 		reportErr(stderr, path, err)
-		return err
+		return 0, err
 	}
 	if !fi.Mode.IsDir() {
 		printEntry(stdout, cfg, fi.Blocks, path)
-		return nil
+		return fi.Blocks, nil
 	}
-	total, walkErr := walkDir(path, fi.Blocks, cfg, stdout, stderr)
-	if cfg.summary {
-		printEntry(stdout, cfg, total, path)
-	}
-	return walkErr
+	return walkDir(path, fi.Blocks, 0, cfg, stdout, stderr)
 }
 
 // walkDir recursively accumulates disk usage for a directory.
 // Returns total in 512-byte blocks. R1.1: prints each subdirectory
-// after its children (depth-first order) unless summary mode.
-func walkDir(dirPath string, dirBlocks int64, cfg config, stdout, stderr io.Writer) (int64, error) {
+// after its children (depth-first order) when within maxDepth.
+func walkDir(dirPath string, dirBlocks int64, depth int, cfg config, stdout, stderr io.Writer) (int64, error) {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		reportErr(stderr, dirPath, err)
-		if !cfg.summary {
+		if shouldPrint(cfg, depth) {
 			printEntry(stdout, cfg, dirBlocks, dirPath)
 		}
 		return dirBlocks, err
 	}
-	childBlocks, walkErr := processEntries(dirPath, entries, cfg, stdout, stderr)
+	childBlocks, walkErr := processEntries(dirPath, entries, depth, cfg, stdout, stderr)
 	total := dirBlocks + childBlocks
-	if !cfg.summary {
+	if shouldPrint(cfg, depth) {
 		printEntry(stdout, cfg, total, dirPath)
 	}
 	return total, walkErr
 }
 
 // processEntries iterates directory entries and accumulates block counts.
-// R2.3: prints file entries when allFiles is enabled.
-func processEntries(dirPath string, entries []os.DirEntry, cfg config, stdout, stderr io.Writer) (int64, error) {
+func processEntries(dirPath string, entries []os.DirEntry, depth int, cfg config, stdout, stderr io.Writer) (int64, error) {
 	var total int64
 	var hadErr error
 	for _, entry := range entries {
-		blocks, err := processOneEntry(dirPath, entry, cfg, stdout, stderr)
+		blocks, err := processOneEntry(dirPath, entry, depth, cfg, stdout, stderr)
 		if err != nil {
 			hadErr = err
 		}
@@ -118,17 +137,19 @@ func processEntries(dirPath string, entries []os.DirEntry, cfg config, stdout, s
 }
 
 // processOneEntry handles a single directory entry, returning its block count.
-func processOneEntry(dirPath string, entry os.DirEntry, cfg config, stdout, stderr io.Writer) (int64, error) {
+// R2.3: prints file entries when allFiles is enabled and within maxDepth.
+func processOneEntry(dirPath string, entry os.DirEntry, parentDepth int, cfg config, stdout, stderr io.Writer) (int64, error) {
 	entryPath := joinPath(dirPath, entry.Name())
 	fi, err := sys.Lstat(entryPath) // R1.4: do not follow symlinks
 	if err != nil {
 		reportErr(stderr, entryPath, err)
 		return 0, err
 	}
+	childDepth := parentDepth + 1
 	if fi.Mode.IsDir() {
-		return walkDir(entryPath, fi.Blocks, cfg, stdout, stderr)
+		return walkDir(entryPath, fi.Blocks, childDepth, cfg, stdout, stderr)
 	}
-	if cfg.allFiles && !cfg.summary {
+	if cfg.allFiles && shouldPrint(cfg, childDepth) {
 		printEntry(stdout, cfg, fi.Blocks, entryPath)
 	}
 	return fi.Blocks, nil
@@ -139,8 +160,6 @@ var humanSuffixes = []string{"", "K", "M", "G", "T", "P", "E"}
 
 // formatHuman formats bytes as a human-readable string matching GNU du -h.
 // Uses 1024-based units with one decimal place for values with a suffix.
-// pkg/format.HumanSize uses integer formatting for whole values (e.g., "4K")
-// while GNU du always uses one decimal place (e.g., "4.0K").
 func formatHuman(bytes int64) string {
 	if bytes == 0 {
 		return "0"
@@ -158,15 +177,25 @@ func formatHuman(bytes int64) string {
 	return fmt.Sprintf("%.1f%s", value, humanSuffixes[len(humanSuffixes)-1])
 }
 
-// printEntry outputs one du line. R1.2: converts 512-byte blocks to 1K
-// blocks. R1.3: format is "SIZE\tPATH\n".
+// printEntry outputs one du line. R1.3: format is "SIZE\tPATH\n".
 // R2.1: uses human-readable format when enabled.
+// R2.6: uses 1M blocks when megaBlocks is enabled.
 func printEntry(w io.Writer, cfg config, blocks512 int64, path string) {
 	if cfg.human {
 		fmt.Fprintf(w, "%s\t%s\n", formatHuman(blocks512*512), path)
 		return
 	}
+	if cfg.megaBlocks {
+		fmt.Fprintf(w, "%d\t%s\n", ceilDiv(blocks512, 2048), path)
+		return
+	}
 	fmt.Fprintf(w, "%d\t%s\n", blocks512/2, path)
+}
+
+// ceilDiv returns the ceiling division of a by b.
+// R2.6: used to convert 512-byte blocks to 1M blocks, rounding up.
+func ceilDiv(a, b int64) int64 {
+	return (a + b - 1) / b
 }
 
 // joinPath joins a directory and entry name without cleaning the path,

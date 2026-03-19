@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd009-du R1.1–R1.5, R2.1–R2.3.
+// Differential tests for prd009-du R1.1–R1.5, R2.1–R2.7.
 package main_test
 
 import (
@@ -32,6 +32,12 @@ func TestDiff(t *testing.T) {
 		makeSummaryHumanTest(t),
 		makeAllFilesTest(t),
 		makeMultipleArgsTest(t),
+		makeDepthLimitTest(t),
+		makeDepthZeroTest(t),
+		makeKiloBlocksTest(t),
+		makeMegaBlocksTest(t),
+		makeGrandTotalTest(t),
+		makeGrandTotalHumanTest(t),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -175,6 +181,91 @@ func makeMultipleArgsTest(t *testing.T) testutils.DiffTest {
 	return testutils.DiffTest{
 		Name:    "R1.5_multiple_arguments",
 		Args:    []string{"d1", "d2"},
+		WorkDir: dir,
+	}
+}
+
+// makeDepthLimitTest verifies R2.4: -d 1 limits output to depth 1.
+// Depth 0 is the argument itself, depth 1 is its immediate children.
+func makeDepthLimitTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "a", "b"))
+	writeFile(t, filepath.Join(dir, "a", "f1.txt"), "hello world\n")
+	writeFile(t, filepath.Join(dir, "a", "b", "f2.txt"), "nested content\n")
+	return testutils.DiffTest{
+		Name:    "R2.4_max_depth_1",
+		Args:    []string{"-d", "1", "."},
+		WorkDir: dir,
+	}
+}
+
+// makeDepthZeroTest verifies R2.4: -d 0 is equivalent to -s.
+func makeDepthZeroTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "sub"))
+	writeFile(t, filepath.Join(dir, "sub", "data.txt"), "content\n")
+	return testutils.DiffTest{
+		Name:    "R2.4_max_depth_0",
+		Args:    []string{"-d", "0", "."},
+		WorkDir: dir,
+	}
+}
+
+// makeKiloBlocksTest verifies R2.5: -k is accepted without error.
+// Output should be identical to default since 1K is already the default.
+func makeKiloBlocksTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "sub"))
+	writeFile(t, filepath.Join(dir, "sub", "data.txt"), "content\n")
+	return testutils.DiffTest{
+		Name:    "R2.5_kilo_blocks",
+		Args:    []string{"-k", "."},
+		WorkDir: dir,
+	}
+}
+
+// makeMegaBlocksTest verifies R2.6: -m reports sizes in 1M blocks.
+func makeMegaBlocksTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "sub"))
+	writeFile(t, filepath.Join(dir, "sub", "data.txt"), "content\n")
+	return testutils.DiffTest{
+		Name:    "R2.6_mega_blocks",
+		Args:    []string{"-m", "."},
+		WorkDir: dir,
+	}
+}
+
+// makeGrandTotalTest verifies R2.7: -c prints a grand total line.
+func makeGrandTotalTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "d1"))
+	mkdirAll(t, filepath.Join(dir, "d2"))
+	writeFile(t, filepath.Join(dir, "d1", "a.txt"), "aaa\n")
+	writeFile(t, filepath.Join(dir, "d2", "b.txt"), "bbb\n")
+	return testutils.DiffTest{
+		Name:    "R2.7_grand_total",
+		Args:    []string{"-c", "d1", "d2"},
+		WorkDir: dir,
+	}
+}
+
+// makeGrandTotalHumanTest verifies R2.7 + R2.1: -c -h combined.
+func makeGrandTotalHumanTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "d1"))
+	mkdirAll(t, filepath.Join(dir, "d2"))
+	writeFile(t, filepath.Join(dir, "d1", "a.txt"), "aaa\n")
+	writeFile(t, filepath.Join(dir, "d2", "b.txt"), "bbb\n")
+	return testutils.DiffTest{
+		Name:    "R2.7_R2.1_grand_total_human",
+		Args:    []string{"-c", "-h", "d1", "d2"},
 		WorkDir: dir,
 	}
 }
