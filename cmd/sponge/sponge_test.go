@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd007-sponge R1.1–R1.4.
+// Differential tests for prd007-sponge R1.1–R1.5, R2.1–R2.3.
 package main_test
 
 import (
@@ -72,9 +72,9 @@ func TestDiff(t *testing.T) {
 		},
 		// R3.1: append mode prepends existing content before stdin.
 		{
-			name:    "append_mode",
-			stdin:   []byte("appended line\n"),
-			outFile: "existing.txt",
+			name:      "append_mode",
+			stdin:     []byte("appended line\n"),
+			outFile:   "existing.txt",
 			extraArgs: []string{"-a"},
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
@@ -94,6 +94,56 @@ func TestDiff(t *testing.T) {
 			stdin:   generateSeq(1, 50000),
 			outFile: "large.txt",
 		},
+		// R1.5: temp files are cleaned up on normal successful exit.
+		{
+			name:    "temp_cleanup_on_success",
+			stdin:   []byte("cleanup test\n"),
+			outFile: "cleanup.txt",
+		},
+		// R2.1: atomic rename to a file that does not yet exist.
+		{
+			name:    "atomic_rename_new_file",
+			stdin:   []byte("atomic content\n"),
+			outFile: "atomic.txt",
+		},
+		// R2.2: rename fallback with explicit TMPDIR setting.
+		// Both binaries use the same TMPDIR, so behavior matches.
+		{
+			name:    "rename_fallback_tmpdir",
+			stdin:   []byte("tmpdir test\n"),
+			outFile: "tmpdir.txt",
+			env:     []string{"TMPDIR=" + os.TempDir()},
+		},
+		// R2.3: permission preservation on existing file with 0600 mode.
+		{
+			name:      "preserve_permissions_0600",
+			stdin:     []byte("new content\n"),
+			outFile:   "perms.txt",
+			checkMode: true,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				p := filepath.Join(dir, "perms.txt")
+				writeTestFile(t, p, "old content\n")
+				if err := os.Chmod(p, 0o600); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+			},
+		},
+		// R2.3: permission preservation on existing file with 0755 mode.
+		{
+			name:      "preserve_permissions_0755",
+			stdin:     []byte("executable content\n"),
+			outFile:   "exec.txt",
+			checkMode: true,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				p := filepath.Join(dir, "exec.txt")
+				writeTestFile(t, p, "old exec\n")
+				if err := os.Chmod(p, 0o755); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+			},
+		},
 	}
 	for _, tc := range fileTests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,6 +160,8 @@ type fileOutputTest struct {
 	outFile   string
 	extraArgs []string
 	setup     func(t *testing.T, dir string)
+	env       []string // additional KEY=VALUE env vars
+	checkMode bool     // if true, compare file permissions between ref and Go
 }
 
 // run executes both binaries in separate temp dirs and compares file content.
@@ -123,12 +175,16 @@ func (ft fileOutputTest) run(t *testing.T, goBin, refBin string) {
 	}
 	refArgs := ft.buildArgs(refDir)
 	goArgs := ft.buildArgs(goDir)
-	refContent := runAndReadFile(t, refBin, refArgs, ft.stdin, refDir, ft.outFile)
-	goContent := runAndReadFile(t, goBin, goArgs, ft.stdin, goDir, ft.outFile)
+	env := ft.buildEnv()
+	refContent := runAndReadFile(t, refBin, refArgs, ft.stdin, refDir, ft.outFile, env)
+	goContent := runAndReadFile(t, goBin, goArgs, ft.stdin, goDir, ft.outFile, env)
 	if !bytes.Equal(refContent, goContent) {
 		t.Fatalf("file content divergence\nref (%d bytes): %s\ngo  (%d bytes): %s",
 			len(refContent), truncate(refContent, 256),
 			len(goContent), truncate(goContent, 256))
+	}
+	if ft.checkMode {
+		compareFileModes(t, refDir, goDir, ft.outFile)
 	}
 }
 
@@ -139,13 +195,25 @@ func (ft fileOutputTest) buildArgs(dir string) []string {
 	return append(args, filepath.Join(dir, ft.outFile))
 }
 
+// buildEnv constructs the test environment with LC_ALL=C and any extra vars.
+func (ft fileOutputTest) buildEnv() []string {
+	env := buildTestEnv()
+	for _, e := range ft.env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			env = setTestEnv(env, parts[0], parts[1])
+		}
+	}
+	return env
+}
+
 // runAndReadFile executes a binary and reads the specified output file.
-func runAndReadFile(t *testing.T, binary string, args []string, stdin []byte, dir, outFile string) []byte {
+func runAndReadFile(t *testing.T, binary string, args []string, stdin []byte, dir, outFile string, env []string) []byte {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = dir
 	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.Env = buildTestEnv()
+	cmd.Env = env
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -158,16 +226,39 @@ func runAndReadFile(t *testing.T, binary string, args []string, stdin []byte, di
 	return data
 }
 
+// compareFileModes compares file permissions between ref and Go output (R2.3).
+func compareFileModes(t *testing.T, refDir, goDir, outFile string) {
+	t.Helper()
+	refInfo, err := os.Lstat(filepath.Join(refDir, outFile))
+	if err != nil {
+		t.Fatalf("stat ref file: %v", err)
+	}
+	goInfo, err := os.Lstat(filepath.Join(goDir, outFile))
+	if err != nil {
+		t.Fatalf("stat go file: %v", err)
+	}
+	if refInfo.Mode().Perm() != goInfo.Mode().Perm() {
+		t.Fatalf("mode divergence: ref=%o go=%o",
+			refInfo.Mode().Perm(), goInfo.Mode().Perm())
+	}
+}
+
 // buildTestEnv constructs test environment with LC_ALL=C.
 func buildTestEnv() []string {
 	env := os.Environ()
+	return setTestEnv(env, "LC_ALL", "C")
+}
+
+// setTestEnv sets or replaces a key=value in the env slice.
+func setTestEnv(env []string, key, value string) []string {
+	prefix := key + "="
 	for i, e := range env {
-		if strings.HasPrefix(e, "LC_ALL=") {
-			env[i] = "LC_ALL=C"
+		if strings.HasPrefix(e, prefix) {
+			env[i] = prefix + value
 			return env
 		}
 	}
-	return append(env, "LC_ALL=C")
+	return append(env, prefix+value)
 }
 
 // generateSeq generates "1\n2\n...\nN\n" matching seq output.
