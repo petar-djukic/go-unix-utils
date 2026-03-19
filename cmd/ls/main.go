@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1, R2.2: directory listing with format
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.6: directory listing with format
 // modes (-1, -l, -C, -x), C locale sorting, dot-file filtering (-a, -A),
 // permission strings, owner/group resolution, file metadata via pkg/sys,
 // modification time formatting, total block count, symlink display,
 // multi-column output (vertical and horizontal), and last-format-flag-wins.
+//
+// R2.7–R2.10 (task): long format link count, device major/minor numbers,
+// timestamp formatting, and total block count header line.
 package main
 
 import (
@@ -65,11 +68,28 @@ type options struct {
 // longWidths holds column widths for long format alignment.
 // R1.6: nlink and size are right-aligned to the widest value.
 // R1.8: owner and group are left-aligned to the widest value.
+// R2.8 (task): major/minor device number widths for device files.
 type longWidths struct {
-	nlink int
-	owner int
-	group int
-	size  int
+	nlink  int
+	owner  int
+	group  int
+	size   int  // max width of size for non-device files
+	major  int  // max width of major device number
+	minor  int  // max width of minor device number
+	hasDev bool // true if any device files in listing
+}
+
+// sizeFieldWidth returns the column width for the size/device field.
+// When devices are present, the width accommodates both size and major,minor.
+func (w longWidths) sizeFieldWidth() int {
+	if !w.hasDev {
+		return w.size
+	}
+	devWidth := w.major + 2 + w.minor
+	if devWidth > w.size {
+		return devWidth
+	}
+	return w.size
 }
 
 func main() {
@@ -454,19 +474,33 @@ func printTotalBlocks(entries []entry, w io.Writer) {
 // R1.6: permissions, nlink (right-aligned), owner (left-aligned),
 // group (left-aligned), size (right-aligned), mtime, name.
 // R1.10: symlinks display " -> target" after the name.
+// R2.8 (task): device files show major,minor instead of size.
 func printLongEntry(e entry, w longWidths, out io.Writer) {
 	owner := resolveUser(e.info.Uid)
 	group := resolveGroup(e.info.Gid)
 	name := formatName(e)
-	fmt.Fprintf(out, "%s %*d %-*s %-*s %*d %s %s\n",
+	fmt.Fprintf(out, "%s %*d %-*s %-*s %s %s %s\n",
 		permString(e.info.Mode),
 		w.nlink, e.info.Nlink,
 		w.owner, owner,
 		w.group, group,
-		w.size, e.info.Size,
+		formatSizeField(e.info, w),
 		formatMtime(e.info.ModTime),
 		name,
 	)
+}
+
+// formatSizeField returns the formatted size or device number field.
+// R2.8 (task): device files display "major, minor" instead of size.
+func formatSizeField(fi *sys.FileInfo, w longWidths) string {
+	sw := w.sizeFieldWidth()
+	if isDevice(fi.Mode) {
+		maj := deviceMajor(fi.Rdev)
+		min := deviceMinor(fi.Rdev)
+		majorW := sw - 2 - w.minor
+		return fmt.Sprintf("%*d, %*d", majorW, maj, w.minor, min)
+	}
+	return fmt.Sprintf("%*d", sw, fi.Size)
 }
 
 // formatName returns the display name for an entry.
@@ -484,6 +518,7 @@ func formatName(e entry) string {
 
 // computeWidths calculates the column widths for long format alignment.
 // R1.6: nlink and size columns sized to the widest value.
+// R2.8 (task): tracks device major/minor widths separately.
 func computeWidths(entries []entry) longWidths {
 	var w longWidths
 	for _, e := range entries {
@@ -493,7 +528,13 @@ func computeWidths(entries []entry) longWidths {
 		updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
 		updateWidth(&w.owner, len(resolveUser(e.info.Uid)))
 		updateWidth(&w.group, len(resolveGroup(e.info.Gid)))
-		updateWidth(&w.size, len(strconv.FormatInt(e.info.Size, 10)))
+		if isDevice(e.info.Mode) {
+			w.hasDev = true
+			updateWidth(&w.major, len(strconv.FormatUint(deviceMajor(e.info.Rdev), 10)))
+			updateWidth(&w.minor, len(strconv.FormatUint(deviceMinor(e.info.Rdev), 10)))
+		} else {
+			updateWidth(&w.size, len(strconv.FormatInt(e.info.Size, 10)))
+		}
 	}
 	return w
 }
@@ -503,6 +544,24 @@ func updateWidth(current *int, val int) {
 	if val > *current {
 		*current = val
 	}
+}
+
+// isDevice returns true if the mode indicates a character or block device.
+// R2.8 (task): device files display major,minor instead of size.
+func isDevice(mode os.FileMode) bool {
+	return mode&os.ModeDevice != 0
+}
+
+// deviceMajor extracts the major device number from a raw device ID.
+// Uses Darwin major() macro: (rdev >> 24) & 0xff.
+func deviceMajor(rdev uint64) uint64 {
+	return (rdev >> 24) & 0xff
+}
+
+// deviceMinor extracts the minor device number from a raw device ID.
+// Uses Darwin minor() macro: rdev & 0xffffff.
+func deviceMinor(rdev uint64) uint64 {
+	return rdev & 0xffffff
 }
 
 // permString returns the 10-character permission string for a file mode.

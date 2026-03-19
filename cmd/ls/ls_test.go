@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.6: default listing,
-// single-column output, C locale sorting, dotfile filtering, horizontal
-// multi-column output, last-format-flag-wins, -a/-A show all, and long format
-// owner, group, size, and date field rendering.
+// Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.6, R2.7–R2.10 (task):
+// default listing, single-column output, C locale sorting, dotfile filtering,
+// horizontal multi-column output, last-format-flag-wins, -a/-A show all,
+// long format owner, group, size, date field rendering, link count,
+// device major/minor, timestamps, and total block count.
 package main_test
 
 import (
@@ -334,4 +335,73 @@ func makePadding(n int) string {
 		b[i] = 'x'
 	}
 	return string(b)
+}
+
+// TestDiffLongFormatExtended tests long format link count, device major/minor,
+// timestamps, and total block count.
+// Implements prd008-ls R2.7 (link count), R2.8 (device major/minor),
+// R2.9 (timestamps), R2.10 (total block count) per task description.
+func TestDiffLongFormatExtended(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R2.7 (task): hard link count display in long format.
+	dirLinks := t.TempDir()
+	makeFiles(t, dirLinks, "original")
+	src := filepath.Join(dirLinks, "original")
+	dst := filepath.Join(dirLinks, "hardlink")
+	if err := os.Link(src, dst); err != nil {
+		t.Fatalf("creating hard link: %v", err)
+	}
+
+	// R2.10 (task): total block count header line.
+	dirTotal := t.TempDir()
+	makeFileWithContent(t, dirTotal, "file1", makePadding(512))
+	makeFileWithContent(t, dirTotal, "file2", makePadding(1024))
+
+	// R2.9 (task): recent vs old timestamp formatting.
+	dirTimestamps := t.TempDir()
+	makeFiles(t, dirTimestamps, "recent_file", "old_file")
+	oldTime := time.Now().Add(-400 * 24 * time.Hour)
+	oldPath := filepath.Join(dirTimestamps, "old_file")
+	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
+		t.Fatalf("setting old mtime: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.7 (task): link count shows nlink=2 for hard-linked files.
+		{
+			Name:    "long_format_hardlink_nlink",
+			Args:    []string{"-l"},
+			WorkDir: dirLinks,
+		},
+		// R2.8 (task): device file shows major,minor instead of size.
+		{
+			Name: "long_format_device_null",
+			Args: []string{"-l", "/dev/null"},
+		},
+		// R2.8 (task): multiple device files in one listing.
+		{
+			Name: "long_format_device_multiple",
+			Args: []string{"-l", "/dev/null", "/dev/zero"},
+		},
+		// R2.9 (task): mixed recent and old timestamps.
+		{
+			Name:    "long_format_timestamp_mixed",
+			Args:    []string{"-l"},
+			WorkDir: dirTimestamps,
+		},
+		// R2.10 (task): total block count header line.
+		{
+			Name:    "long_format_total_blocks",
+			Args:    []string{"-l"},
+			WorkDir: dirTotal,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
