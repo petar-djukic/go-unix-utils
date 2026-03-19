@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15, R4.1–R4.3:
+// Implements prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15, R4.1–R4.7:
 // directory listing with format modes (-1, -l, -C, -x), C locale sorting,
 // dot-file filtering (-a, -A), permission strings, owner/group resolution,
 // file metadata via pkg/sys, modification time formatting, total block count,
@@ -11,7 +11,8 @@
 // numeric UID/GID (-n), combined -i -s prefix ordering, --color flag support,
 // human-readable size display (-h), -F classify indicator, -R recursive listing,
 // sort modes (-t, -S, -r, -U, -v), recursive format/filter/sort propagation,
-// exit codes (0 success, 1/2 failure), and SIGPIPE signal handling.
+// exit codes (0 success, 1/2 failure), SIGPIPE signal handling,
+// SIGWINCH terminal resize handling, -n implies -l, and format flag precedence.
 package main
 
 import (
@@ -23,12 +24,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// cachedTermWidth holds the terminal width, updated on SIGWINCH.
+// R4.5: SIGWINCH handler re-queries terminal width for column layout.
+var cachedTermWidth atomic.Int32
 
 const progName = "ls"
 
@@ -144,10 +150,29 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	setupColor(opts)
 	defer format.ResetColorEnabled()
+	initTermWidth()
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
 	return listPaths(paths, opts, stdout, stderr)
+}
+
+// initTermWidth caches the terminal width and registers a SIGWINCH handler.
+// R4.5: on SIGWINCH, re-queries width via sys.OnTerminalResize callback.
+func initTermWidth() {
+	cachedTermWidth.Store(int32(getTermWidthDirect()))
+	sys.OnTerminalResize(func(width int) {
+		cachedTermWidth.Store(int32(width))
+	})
+}
+
+// getTermWidthDirect queries the terminal width without using the cache.
+func getTermWidthDirect() int {
+	w, err := sys.TerminalWidth()
+	if err != nil {
+		return defaultTermWidth
+	}
+	return w
 }
 
 // setupColor sets the process-global color mode based on the --color flag.
@@ -912,11 +937,12 @@ func indentString(from, to int) string {
 	return string(buf)
 }
 
-// getTermWidth returns the terminal width, defaulting to 80 for non-TTY.
+// getTermWidth returns the cached terminal width, defaulting to 80 for non-TTY.
 // R1.11: -C with non-TTY uses 80 columns.
+// R4.5: uses the cached value updated by SIGWINCH handler.
 func getTermWidth() int {
-	w, err := sys.TerminalWidth()
-	if err != nil {
+	w := int(cachedTermWidth.Load())
+	if w <= 0 {
 		return defaultTermWidth
 	}
 	return w
@@ -1257,6 +1283,10 @@ func parseArgs(args []string, stdout, stderr io.Writer) (options, []string, int)
 		if code >= 0 {
 			return opts, nil, code
 		}
+	}
+	// R4.6: -n implies -l unconditionally; cannot be overridden by -1 or -C.
+	if opts.numericIDs {
+		opts.format = formatLong
 	}
 	return opts, paths, -1
 }

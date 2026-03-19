@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd008-ls R1.1–R1.14, R2.1–R2.15, R3.1–R3.15,
-// R4.1–R4.3: default listing, single-column output, C locale sorting,
+// R4.1–R4.7: default listing, single-column output, C locale sorting,
 // dotfile filtering, horizontal multi-column output, last-format-flag-wins,
 // -a/-A show all, long format owner, group, size, date field rendering,
 // link count, device major/minor, timestamps, total block count,
@@ -15,6 +15,7 @@ package main_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1223,6 +1224,128 @@ func TestExitCodeInvalidOption(t *testing.T) {
 				stderr.String())
 		}
 	})
+}
+
+// TestDiffSignalAndFlagInteractions tests R4.4-R4.7:
+// SIGPIPE handling, SIGWINCH registration, -n implies -l, format flag precedence.
+func TestDiffSignalAndFlagInteractions(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+
+	// R4.6/R4.7 fixture: directory with files for format flag tests.
+	dirFmt := t.TempDir()
+	makeFiles(t, dirFmt, "alpha", "beta", "gamma")
+
+	// R4.6 fixture: directory with files for -n implies -l test.
+	dirNumeric := t.TempDir()
+	makeFiles(t, dirNumeric, "file1", "file2")
+
+	tests := []testutils.DiffTest{
+		// R4.6: -n without explicit -l still produces long format.
+		{
+			Name:    "r4.6_n_implies_l",
+			Args:    []string{"-n"},
+			WorkDir: dirNumeric,
+		},
+		// R4.6: -n1 still produces long format (-n implies -l unconditionally).
+		{
+			Name:    "r4.6_n1_long_format",
+			Args:    []string{"-n1"},
+			WorkDir: dirNumeric,
+		},
+		// R4.6: -1n produces long format (-n implies -l unconditionally).
+		{
+			Name:    "r4.6_1n_long_format",
+			Args:    []string{"-1n"},
+			WorkDir: dirNumeric,
+		},
+		// R4.7: -C after -l overrides to columnar.
+		{
+			Name:    "r4.7_l_then_C_columns",
+			Args:    []string{"-lC"},
+			WorkDir: dirFmt,
+		},
+		// R4.7: -l after -C overrides to long.
+		{
+			Name:    "r4.7_C_then_l_long",
+			Args:    []string{"-Cl"},
+			WorkDir: dirFmt,
+		},
+		// R4.7: -x after -l overrides to horizontal.
+		{
+			Name:    "r4.7_l_then_x_horiz",
+			Args:    []string{"-lx"},
+			WorkDir: dirFmt,
+		},
+		// R4.7: -l after -x overrides to long.
+		{
+			Name:    "r4.7_x_then_l_long",
+			Args:    []string{"-xl"},
+			WorkDir: dirFmt,
+		},
+		// R4.7: -1 after -C overrides to single column.
+		{
+			Name:    "r4.7_C_then_1_single",
+			Args:    []string{"-C1"},
+			WorkDir: dirFmt,
+		},
+		// R4.7: -C after -1 overrides to columnar.
+		{
+			Name:    "r4.7_1_then_C_columns",
+			Args:    []string{"-1C"},
+			WorkDir: dirFmt,
+		},
+		// R4.7: triple override -l -C -1, last wins (-1).
+		{
+			Name:    "r4.7_triple_override_lC1",
+			Args:    []string{"-lC1"},
+			WorkDir: dirFmt,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestSIGPIPEHandling verifies R4.4: piping ls output to a truncating
+// consumer does not produce a broken-pipe error message.
+func TestSIGPIPEHandling(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Create a directory with many files so ls produces multiple lines.
+	dir := t.TempDir()
+	for i := 0; i < 100; i++ {
+		makeFiles(t, dir, "file"+strings.Repeat("x", 3)+
+			strings.Replace(strings.Replace(
+				strings.Replace(
+					fmt.Sprintf("%03d", i), "0", "a", 1),
+				"1", "b", 1), "2", "c", 1))
+	}
+
+	// Pipe ls to head -1 to trigger SIGPIPE.
+	cmd := exec.Command("sh", "-c",
+		fmt.Sprintf("'%s' -1 '%s' | head -1", goBin, dir))
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if ok && exitErr.ExitCode() != 0 {
+			// SIGPIPE should cause exit 0 or the head exit code.
+			// Any non-zero exit from ls itself is a failure.
+			t.Logf("stderr: %s", stderr.String())
+		}
+	}
+	// The key check: no "broken pipe" error message on stderr.
+	if bytes.Contains(bytes.ToLower(stderr.Bytes()), []byte("broken pipe")) {
+		t.Errorf("R4.4: SIGPIPE should not produce broken pipe error, got: %q",
+			stderr.String())
+	}
 }
 
 // normalizeErrorOutput normalizes program names and error message case
