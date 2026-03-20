@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd027-paste R1.1–R1.4, R2.1–R2.3.
+// Implements prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3.
 // R1.1: Open all files and merge lines side by side with tab delimiter.
 // R1.2: Unequal file lengths produce empty fields for exhausted files.
 // R1.3: "-" refers to stdin; multiple "-" read stdin sequentially.
@@ -9,6 +9,9 @@
 // R2.1: -d DELIM configures the separator; delimiter list cycles across fields.
 // R2.2: Escape sequences \n, \t, \\, \0 are recognized in DELIM.
 // R2.3: Delimiter cycling resets from the first delimiter for each new output line.
+// R3.1: -s processes files one at a time, joining all lines with delimiter.
+// R3.2: Delimiter list cycles across fields within each serial output line.
+// R3.3: -s overrides parallel mode.
 package main
 
 import (
@@ -55,12 +58,14 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-// run parses flags and dispatches to passthrough or parallel merge.
+// run parses flags and dispatches to passthrough, serial, or parallel merge.
 func run(args []string) int {
-	delims, remaining := parseArgs(args)
+	delims, serial, remaining := parseArgs(args)
 	w := bufio.NewWriter(os.Stdout)
 	var exitCode int
-	if len(remaining) == 0 {
+	if serial {
+		exitCode = pasteSerial(w, remaining, delims)
+	} else if len(remaining) == 0 {
 		exitCode = pastePassthrough(w, os.Stdin)
 	} else {
 		exitCode = pasteParallel(w, remaining, delims)
@@ -72,14 +77,19 @@ func run(args []string) int {
 	return exitCode
 }
 
-// parseArgs extracts -d flag and returns parsed delimiters and remaining args.
-func parseArgs(args []string) ([]string, []string) {
+// parseArgs extracts -d and -s flags, returns delimiters, serial flag, and remaining args.
+func parseArgs(args []string) ([]string, bool, []string) {
 	delims := []string{defaultDelimiter}
+	serial := false
 	var remaining []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
 			remaining = append(remaining, args[i+1:]...)
 			break
+		}
+		if args[i] == "-s" {
+			serial = true
+			continue
 		}
 		if args[i] == "-d" && i+1 < len(args) {
 			i++
@@ -90,9 +100,34 @@ func parseArgs(args []string) ([]string, []string) {
 			delims = parseDelimList(args[i][2:])
 			continue
 		}
+		// Handle combined flags like -sd or -ds
+		if handleCombinedFlags(args[i], &delims, &serial, args, &i) {
+			continue
+		}
 		remaining = append(remaining, args[i])
 	}
-	return delims, remaining
+	return delims, serial, remaining
+}
+
+// handleCombinedFlags handles flags like -sd<delim> or -ds<delim>.
+// Returns true if the argument was consumed as a combined flag.
+func handleCombinedFlags(arg string, delims *[]string, serial *bool, args []string, i *int) bool {
+	if len(arg) < 2 || arg[0] != '-' {
+		return false
+	}
+	rest := arg[1:]
+	if rest == "sd" && *i+1 < len(args) {
+		*serial = true
+		*i++
+		*delims = parseDelimList(args[*i])
+		return true
+	}
+	if strings.HasPrefix(rest, "sd") && len(rest) > 2 {
+		*serial = true
+		*delims = parseDelimList(rest[2:])
+		return true
+	}
+	return false
 }
 
 // parseDelimList parses DELIM into a list of delimiter strings. R2.2.
@@ -137,6 +172,56 @@ func pastePassthrough(w *bufio.Writer, r io.Reader) int {
 		w.WriteString(scanner.Text())
 		w.WriteByte('\n')
 	}
+	return 0
+}
+
+// pasteSerial processes files one at a time, joining all lines of each file
+// with cycling delimiters into a single output line. R3.1, R3.2, R3.3.
+func pasteSerial(w *bufio.Writer, files []string, delims []string) int {
+	if len(files) == 0 {
+		return pasteSerialReader(w, os.Stdin, delims)
+	}
+	for _, name := range files {
+		var code int
+		if name == "-" {
+			code = pasteSerialReader(w, os.Stdin, delims)
+		} else {
+			code = pasteSerialFile(w, name, delims)
+		}
+		if code != 0 {
+			return code
+		}
+	}
+	return 0
+}
+
+// pasteSerialFile opens a file and joins all its lines on one output line.
+func pasteSerialFile(w *bufio.Writer, name string, delims []string) int {
+	f, err := os.Open(name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "paste: %s: %s\n", name, osErrorMessage(err))
+		return 1
+	}
+	defer f.Close() // best-effort cleanup, error ignored
+	return pasteSerialReader(w, f, delims)
+}
+
+// pasteSerialReader joins all lines from a reader into one output line. R3.2.
+func pasteSerialReader(w *bufio.Writer, r io.Reader, delims []string) int {
+	lr := newLineReader(r)
+	fieldIdx := 0
+	for {
+		line, ok := lr.readLine()
+		if !ok {
+			break
+		}
+		if fieldIdx > 0 {
+			w.WriteString(delims[(fieldIdx-1)%len(delims)])
+		}
+		w.WriteString(line)
+		fieldIdx++
+	}
+	w.WriteByte('\n')
 	return 0
 }
 

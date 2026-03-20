@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd027-paste R1.1–R1.4, R2.1–R2.3.
+// Differential tests for prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3.
 package main
 
 import (
@@ -133,6 +133,57 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "delim_list_unequal_three_files",
 			Args: []string{"-d", ":-", fshort, fb, fc},
+		},
+		// R3.1: serial mode — one file at a time
+		{
+			Name: "serial_single_file",
+			Args: []string{"-s", fa},
+		},
+		{
+			Name: "serial_two_files",
+			Args: []string{"-s", fa, fb},
+		},
+		{
+			Name: "serial_three_files",
+			Args: []string{"-s", fa, fb, fc},
+		},
+		{
+			Name: "serial_empty_file",
+			Args: []string{"-s", fempty},
+		},
+		{
+			Name: "serial_empty_and_nonempty",
+			Args: []string{"-s", fempty, fa},
+		},
+		// R3.1: serial mode with stdin
+		{
+			Name:  "serial_stdin",
+			Args:  []string{"-s", "-"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.2: serial mode with custom delimiter
+		{
+			Name: "serial_delim_colon",
+			Args: []string{"-s", "-d:", fa},
+		},
+		{
+			Name: "serial_delim_list_cycling",
+			Args: []string{"-s", "-d", ":,", fc},
+		},
+		// R3.2: serial mode with escape delimiter
+		{
+			Name: "serial_delim_escape_newline",
+			Args: []string{"-s", `-d\n`, fa},
+		},
+		// R3.3: -s overrides parallel (last flag wins is implicit)
+		{
+			Name: "serial_with_unequal_files",
+			Args: []string{"-s", fshort, fb},
+		},
+		// R3.1/R3.2: serial with combined -sd flag
+		{
+			Name: "serial_combined_sd_flag",
+			Args: []string{"-sd:", fa},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
