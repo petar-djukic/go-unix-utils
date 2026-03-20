@@ -3,16 +3,27 @@
 
 // Differential tests for prd021-tac R1.1–R1.4: core reversal behavior.
 // Differential tests for prd021-tac R2.1–R2.4: separator options (-s, -b, -r).
+// Differential tests for prd021-tac R3.1–R3.4: exit codes and SIGPIPE.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrErrorNormalizer strips stderr error lines that start with the
+// program name (tac or gtac). The error message format and binary name
+// differ between GNU and Go, but the exit code and stdout are what matter.
+var stderrErrorNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	re := regexp.MustCompile(`(?m)^g?tac: .*\n?`)
+	return re.ReplaceAll(data, nil)
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -34,6 +45,8 @@ func TestDiff(t *testing.T) {
 	colonFile := createTempFile(t, "a:b:c:")
 	// R2.2: file with separator-before pattern
 	beforeFile := createTempFile(t, ":a:b:c")
+	// R3.2: valid file for mixed-error test
+	validFile := createTempFile(t, "hello\nworld\n")
 
 	tests := []testutils.DiffTest{
 		{
@@ -146,9 +159,58 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-b", "-r", "-s", "[0-9]+"},
 			Stdin: []byte("1a2b3c"),
 		},
+		{
+			// R3.1: successful processing exits 0
+			Name:  "exit_zero_on_success",
+			Stdin: []byte("line1\nline2\n"),
+		},
+		{
+			// R3.2: nonexistent file exits 1
+			Name:      "nonexistent_file_exit_one",
+			Args:      []string{"/nonexistent/path/file.txt"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrErrorNormalizer},
+		},
+		{
+			// R3.2: nonexistent file + valid file; exits 1 but
+			// still produces reversed output for the valid file
+			Name:      "nonexistent_then_valid_file",
+			Args:      []string{"/nonexistent/path/file.txt", validFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrErrorNormalizer},
+		},
+		{
+			// R3.2: valid file + nonexistent file; exits 1 but
+			// still produces reversed output for the valid file
+			Name:      "valid_then_nonexistent_file",
+			Args:      []string{validFile, "/nonexistent/path/file.txt"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrErrorNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestWriteError verifies R3.3: exit 1 when a write error occurs on stdout.
+// This is a unit test because write errors (other than SIGPIPE) cannot be
+// reliably simulated in a cross-binary differential test.
+func TestWriteError(t *testing.T) {
+	t.Parallel()
+
+	w := &failWriter{}
+	var stderr bytes.Buffer
+	code := run(nil, bytes.NewReader([]byte("a\nb\n")), w, &stderr)
+	if code != 1 {
+		t.Fatalf("expected exit code 1 on write error, got %d", code)
+	}
+}
+
+// failWriter is an io.Writer that always returns an error.
+type failWriter struct{}
+
+func (f *failWriter) Write([]byte) (int, error) {
+	return 0, os.ErrClosed
 }
 
 // createTempFile writes content to a temporary file and returns its path.
