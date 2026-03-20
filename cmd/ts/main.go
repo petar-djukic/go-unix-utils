@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.2: timestamp stdin lines
-// with default and custom strftime format support, subsecond extensions, and
-// incremental mode.
+// Implements prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.2:
+// timestamp stdin lines with default and custom strftime format support,
+// subsecond extensions, incremental mode, and elapsed-since-start mode.
 package main
 
 import (
@@ -23,10 +23,14 @@ const defaultStrftimeFormat = "%b %d %H:%M:%S"
 // defaultIncrementalFormat is the strftime format for -i mode per R3.2.
 const defaultIncrementalFormat = "%H:%M:%S"
 
+// defaultElapsedFormat is the strftime format for -s mode per R4.2.
+const defaultElapsedFormat = "%H:%M:%S"
+
 // tsConfig holds parsed command-line configuration.
 type tsConfig struct {
 	format      string
 	incremental bool
+	elapsed     bool
 }
 
 func main() {
@@ -41,33 +45,56 @@ func main() {
 // parseArgs parses command-line arguments into tsConfig.
 // R2.1: optional positional argument for custom format.
 // R3.1: -i flag for incremental mode.
-func parseArgs(args []string) tsConfig {
+// R3.4: -i and -s are mutually exclusive.
+// R4.1: -s flag for elapsed-since-start mode.
+func parseArgs(args []string) (tsConfig, error) {
 	cfg := tsConfig{}
 	for _, arg := range args {
-		if arg == "-i" {
+		switch arg {
+		case "-i":
 			cfg.incremental = true
-		} else {
+		case "-s":
+			cfg.elapsed = true
+		default:
 			cfg.format = arg
 		}
 	}
-	if cfg.format == "" {
-		cfg.format = defaultStrftimeFormat
-		if cfg.incremental {
-			cfg.format = defaultIncrementalFormat
-		}
+	// R3.4: -i and -s are mutually exclusive.
+	if cfg.incremental && cfg.elapsed {
+		return tsConfig{}, fmt.Errorf("-i and -s are mutually exclusive")
 	}
-	return cfg
+	if cfg.format == "" {
+		cfg.format = selectDefaultFormat(cfg)
+	}
+	return cfg, nil
+}
+
+// selectDefaultFormat returns the appropriate default format based on mode.
+// R1.2: default "%b %d %H:%M:%S". R3.2: -i default "%H:%M:%S".
+// R4.2: -s default "%H:%M:%S".
+func selectDefaultFormat(cfg tsConfig) string {
+	if cfg.incremental {
+		return defaultIncrementalFormat
+	}
+	if cfg.elapsed {
+		return defaultElapsedFormat
+	}
+	return defaultStrftimeFormat
 }
 
 // run parses arguments and processes stdin.
 func run(args []string) error {
-	cfg := parseArgs(args)
+	cfg, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
 	return processStdin(cfg)
 }
 
 // processStdin reads stdin and writes timestamped lines to stdout.
 // R1.1: line-by-line. R1.5: partial lines at EOF. R1.6: exit 0 on EOF.
 // R3.1: incremental mode tracks time between lines.
+// R4.1: elapsed mode tracks time since start.
 func processStdin(cfg tsConfig) error {
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
@@ -93,14 +120,19 @@ func processStdin(cfg tsConfig) error {
 // formatTimestamp produces the timestamp string for a line.
 // R2.4: uses a single time sample (now) for both second and subsecond.
 // R3.1: in incremental mode, formats delta since previous line.
-// R3.2: in incremental mode, uses UTC (GMT) for delta formatting.
+// R3.2, R3.3: in incremental mode, uses UTC (GMT) for delta formatting.
+// R4.1: in elapsed mode, formats delta since start (lastTime is not updated).
+// R4.2: in elapsed mode, uses UTC (GMT) for delta formatting.
 func formatTimestamp(cfg tsConfig, now time.Time, lastTime *time.Time) string {
-	if !cfg.incremental {
+	if !cfg.incremental && !cfg.elapsed {
 		return strftime(cfg.format, now)
 	}
 	delta := now.Sub(*lastTime)
-	*lastTime = now
-	// R3.2: Convert delta to time at Unix epoch in UTC for strftime formatting.
+	// R3.1: incremental updates lastTime; R4.1: elapsed does not.
+	if cfg.incremental {
+		*lastTime = now
+	}
+	// R3.2, R4.2: Convert delta to time at Unix epoch in UTC for strftime.
 	deltaTime := time.Unix(0, 0).Add(delta).UTC()
 	return strftime(cfg.format, deltaTime)
 }

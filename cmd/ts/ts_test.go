@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.2.
+// Differential tests for prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.2.
 package main
 
 import (
@@ -144,7 +144,70 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-i"},
 			Stdin: []byte(""),
 		},
+		// R3.3: Custom format overrides -i default; TZ=GMT still applies.
+		{
+			Name:      "incremental_custom_hm_format",
+			Args:      []string{"-i", "%H:%M"},
+			Stdin:     []byte("line1\nline2\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1, R4.2: Elapsed-since-start mode with default format.
+		{
+			Name:      "elapsed_default_format",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1: Elapsed mode with single line.
+		{
+			Name:      "elapsed_single_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("only\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1: Elapsed mode with empty stdin.
+		{
+			Name:  "elapsed_empty_stdin",
+			Args:  []string{"-s"},
+			Stdin: []byte(""),
+		},
+		// R4.1: Elapsed mode with custom subsecond format.
+		{
+			Name:      "elapsed_custom_subsecond",
+			Args:      []string{"-s", "%.T"},
+			Stdin:     []byte("a\nb\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R4.1: Elapsed mode with partial last line.
+		{
+			Name:      "elapsed_partial_last_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("full\npartial"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestMutualExclusivity verifies R3.4: -i and -s together produce an error.
+// This is a standalone test because the Perl reference binary does not enforce
+// this constraint, so differential testing cannot verify it.
+func TestMutualExclusivity(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-i", "-s")
+	cmd.Stdin = nil
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for -i -s, got 0; output: %s", out)
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() == 0 {
+		t.Fatalf("expected non-zero exit code, got 0")
+	}
 }
