@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.3, R5.1–R5.3:
-// timestamp stdin lines with default and custom strftime format support,
-// subsecond extensions, incremental mode, elapsed-since-start mode, and
-// monotonic clock mode.
+// Implements prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.3, R5.1–R5.3,
+// R6.1–R6.5: timestamp stdin lines with default and custom strftime format support,
+// subsecond extensions, incremental mode, elapsed-since-start mode, monotonic clock
+// mode, and relative-time conversion mode.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,12 +28,16 @@ const defaultIncrementalFormat = "%H:%M:%S"
 // defaultElapsedFormat is the strftime format for -s mode per R4.2.
 const defaultElapsedFormat = "%H:%M:%S"
 
+// syslogLayout is the time.Parse layout for syslog timestamps (no year).
+const syslogLayout = "Jan _2 15:04:05"
+
 // tsConfig holds parsed command-line configuration.
 type tsConfig struct {
 	format      string
 	incremental bool
 	elapsed     bool
-	monotonic   bool // R5.1: use monotonic clock (Go's time.Now() already includes monotonic reading)
+	monotonic   bool // R5.1: use monotonic clock
+	relative    bool // R6.1: relative-time conversion mode
 }
 
 func main() {
@@ -46,10 +51,7 @@ func main() {
 
 // parseArgs parses command-line arguments into tsConfig.
 // R2.1: optional positional argument for custom format.
-// R3.1: -i flag for incremental mode.
-// R3.4: -i and -s are mutually exclusive.
-// R4.1: -s flag for elapsed-since-start mode.
-// R5.1: -m flag for monotonic clock mode.
+// R3.1: -i flag. R4.1: -s flag. R5.1: -m flag. R6.1: -r flag.
 func parseArgs(args []string) (tsConfig, error) {
 	cfg := tsConfig{}
 	for _, arg := range args {
@@ -60,18 +62,35 @@ func parseArgs(args []string) (tsConfig, error) {
 			cfg.elapsed = true
 		case "-m":
 			cfg.monotonic = true
+		case "-r":
+			cfg.relative = true
 		default:
 			cfg.format = arg
 		}
 	}
-	// R3.4: -i and -s are mutually exclusive.
-	if cfg.incremental && cfg.elapsed {
-		return tsConfig{}, fmt.Errorf("-i and -s are mutually exclusive")
+	if err := validateFlags(cfg); err != nil {
+		return tsConfig{}, err
 	}
-	if cfg.format == "" {
+	if cfg.format == "" && !cfg.relative {
 		cfg.format = selectDefaultFormat(cfg)
 	}
 	return cfg, nil
+}
+
+// validateFlags checks for mutually exclusive flag combinations.
+// R3.4: -i and -s are mutually exclusive.
+// R6.5: -r is mutually exclusive with -i and -s.
+func validateFlags(cfg tsConfig) error {
+	if cfg.incremental && cfg.elapsed {
+		return fmt.Errorf("-i and -s are mutually exclusive")
+	}
+	if cfg.relative && cfg.incremental {
+		return fmt.Errorf("-r and -i are mutually exclusive")
+	}
+	if cfg.relative && cfg.elapsed {
+		return fmt.Errorf("-r and -s are mutually exclusive")
+	}
+	return nil
 }
 
 // selectDefaultFormat returns the appropriate default format based on mode.
@@ -92,6 +111,9 @@ func run(args []string) error {
 	cfg, err := parseArgs(args)
 	if err != nil {
 		return err
+	}
+	if cfg.relative {
+		return processRelativeStdin(cfg)
 	}
 	return processStdin(cfg)
 }
@@ -150,6 +172,159 @@ func writeTimestampedLine(w *bufio.Writer, ts string, line []byte) error {
 	w.Write(line)
 	return w.Flush()
 }
+
+// --- Relative-time conversion mode (R6.1–R6.5) ---
+
+// relativeTimestampRE matches timestamp patterns for -r mode (R6.2).
+// Ordered from most specific to least specific via alternation.
+var relativeTimestampRE = regexp.MustCompile(
+	// ISO-8601: 2024-01-05T14:30:00.000Z or 2024-01-05T14:30:00+05:30
+	`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?` +
+		// RFC 2822 with day name: Thu, 16 Jun 94 07:29:35 GMT
+		`|[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2} \d{2,4} \d{2}:\d{2}:\d{2} [A-Z]+` +
+		// RFC 2822 without day name: 16 Jun 94 07:29:35 GMT
+		`|\d{1,2} [A-Z][a-z]{2} \d{2,4} \d{2}:\d{2}:\d{2} [A-Z]+` +
+		// Lastlog: Mon Jan  5 14:30
+		`|[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}` +
+		// Syslog: Jan  5 14:30:00
+		`|[A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2}`,
+)
+
+// parseLayouts are time.Parse layouts for -r mode, most specific first.
+var parseLayouts = []string{
+	time.RFC3339Nano,                    // 2006-01-02T15:04:05.999999999Z07:00
+	time.RFC3339,                        // 2006-01-02T15:04:05Z07:00
+	"2006-01-02T15:04:05",              // ISO-8601 without timezone
+	time.RFC1123,                        // Mon, 02 Jan 2006 15:04:05 MST
+	"Mon, 2 Jan 2006 15:04:05 MST",     // RFC 1123 non-padded day
+	"Mon, 2 Jan 06 15:04:05 MST",       // 2-digit year
+	"Mon, 02 Jan 06 15:04:05 MST",      // 2-digit year, padded day
+	"2 Jan 2006 15:04:05 MST",          // no day name, 4-digit year
+	"2 Jan 06 15:04:05 MST",            // no day name, 2-digit year
+	"02 Jan 2006 15:04:05 MST",         // padded day, 4-digit year
+	"02 Jan 06 15:04:05 MST",           // padded day, 2-digit year
+	syslogLayout,                        // Jan _2 15:04:05
+}
+
+// processRelativeStdin reads stdin and replaces timestamps in each line.
+// R6.1: replace timestamps with relative age strings.
+// R6.4: lines with no recognizable timestamp pass through unchanged.
+func processRelativeStdin(cfg tsConfig) error {
+	reader := bufio.NewReader(os.Stdin)
+	writer := bufio.NewWriter(os.Stdout)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			modified := replaceTimestampInLine(cfg, line, time.Now())
+			if _, writeErr := writer.Write(modified); writeErr != nil {
+				return writeErr
+			}
+			if flushErr := writer.Flush(); flushErr != nil {
+				return flushErr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+// replaceTimestampInLine finds a timestamp in line and replaces it.
+// R6.1: replace with relative age. R6.3: replace with reformatted time.
+// R6.4: return line unchanged if no timestamp found.
+func replaceTimestampInLine(cfg tsConfig, line []byte, now time.Time) []byte {
+	loc := relativeTimestampRE.FindIndex(line)
+	if loc == nil {
+		return line
+	}
+	matched := string(line[loc[0]:loc[1]])
+	parsed, ok := tryParseTimestamp(matched, now)
+	if !ok {
+		return line
+	}
+	replacement := buildReplacement(cfg, parsed, now)
+	var buf []byte
+	buf = append(buf, line[:loc[0]]...)
+	buf = append(buf, []byte(replacement)...)
+	buf = append(buf, line[loc[1]:]...)
+	return buf
+}
+
+// buildReplacement formats the parsed timestamp for -r mode output.
+// R6.1: relative age string. R6.3: strftime with custom format.
+func buildReplacement(cfg tsConfig, parsed, now time.Time) string {
+	if cfg.format != "" {
+		return strftime(cfg.format, parsed)
+	}
+	return formatRelativeAge(now.Sub(parsed))
+}
+
+// tryParseTimestamp attempts to parse a matched timestamp string.
+// Uses time.ParseInLocation with local timezone for formats without
+// explicit timezone information, matching Perl Date::Parse behavior.
+func tryParseTimestamp(s string, now time.Time) (time.Time, bool) {
+	for _, layout := range parseLayouts {
+		t, err := time.ParseInLocation(layout, s, time.Local)
+		if err != nil {
+			continue
+		}
+		if layout == syslogLayout {
+			t = t.AddDate(now.Year(), 0, 0)
+		}
+		return t, true
+	}
+	// R6.2: lastlog format — strip weekday prefix to avoid Go's
+	// weekday-date consistency validation.
+	return tryParseLastlog(s, now)
+}
+
+// tryParseLastlog parses "Mon Jan  5 14:30" lastlog format.
+// Strips the 3-letter weekday prefix before parsing to avoid
+// Go's weekday validation against year 0.
+func tryParseLastlog(s string, now time.Time) (time.Time, bool) {
+	if len(s) < 4 || s[3] != ' ' {
+		return time.Time{}, false
+	}
+	t, err := time.ParseInLocation("Jan _2 15:04", s[4:], time.Local)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.AddDate(now.Year(), 0, 0), true
+}
+
+// formatRelativeAge converts a duration to a human-readable age string.
+// R6.1: format like "5d12h3m2s ago" with only non-zero components.
+func formatRelativeAge(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	total := int(d.Seconds())
+	days := total / 86400
+	hours := (total % 86400) / 3600
+	mins := (total % 3600) / 60
+	secs := total % 60
+	var buf strings.Builder
+	writeAgeComponent(&buf, days, "d")
+	writeAgeComponent(&buf, hours, "h")
+	writeAgeComponent(&buf, mins, "m")
+	if secs > 0 || buf.Len() == 0 {
+		fmt.Fprintf(&buf, "%ds", secs)
+	}
+	buf.WriteString(" ago")
+	return buf.String()
+}
+
+// writeAgeComponent appends a non-zero age component to the builder.
+func writeAgeComponent(buf *strings.Builder, value int, unit string) {
+	if value > 0 {
+		fmt.Fprintf(buf, "%d%s", value, unit)
+	}
+}
+
+// --- strftime formatting ---
 
 // strftime formats a time.Time using a strftime(3) format string.
 // R2.2: supports all standard strftime conversion specifications.
