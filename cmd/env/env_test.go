@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd039-env R1.1, R1.2, R1.3, R2.1:
-// compares stdout, stderr, exit codes via pkg/testutils.
+// Differential tests for prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3,
+// R3.1, R3.2: compares stdout, stderr, exit codes via pkg/testutils.
 package main_test
 
 import (
@@ -41,16 +41,16 @@ func TestDiff(t *testing.T) {
 		// R2.1: --ignore-environment long form.
 		{Name: "ignore_env_long",
 			Args: []string{"--ignore-environment", "A=1"}},
-		// NAME=VALUE without command, adds to current env.
+		// R2.3: NAME=VALUE without command, adds to current env.
 		{Name: "set_var_no_cmd",
 			Args: []string{"TESTVAR_ENV_XYZ=hello"}},
 		// R1.2: execute command.
 		{Name: "run_echo",
 			Args: []string{echoBin, "hello", "world"}},
-		// R1.2/R1.3: command exit code passthrough.
+		// R1.2/R3.2: command exit code passthrough.
 		{Name: "exit_code_false",
 			Args: []string{falseBin}, ExitCode: 1},
-		// R2.1 + NAME=VALUE + command: set var and verify via printenv.
+		// R2.1 + R2.3 + command: set var and verify via printenv.
 		{Name: "set_var_with_cmd",
 			Args: []string{"-i", "MYVAR=test_value", printenvBin, "MYVAR"}},
 		// R1.3: command not found, exit 127.
@@ -64,6 +64,41 @@ func TestDiff(t *testing.T) {
 		// --help prints usage info.
 		{Name: "help", Args: []string{"--help"},
 			Normalize: []testutils.NormalizeFunc{helpNormalizer}},
+		// R2.2: -u unsets a variable, printenv exits 1 when not found.
+		{Name: "unset_var",
+			Args:     []string{"-u", "HOME", printenvBin, "HOME"},
+			ExitCode: 1},
+		// R2.2: --unset=NAME long form.
+		{Name: "unset_long_form",
+			Args:     []string{"--unset=HOME", printenvBin, "HOME"},
+			ExitCode: 1},
+		// R2.2: -uNAME short form without space.
+		{Name: "unset_short_no_space",
+			Args:     []string{"-uHOME", printenvBin, "HOME"},
+			ExitCode: 1},
+		// R2.2: multiple -u flags.
+		{Name: "unset_multiple",
+			Args:     []string{"-u", "HOME", "-u", "USER", printenvBin, "HOME"},
+			ExitCode: 1},
+		// R2.2: -u with -i (no-op since env is already empty).
+		{Name: "unset_with_ignore",
+			Args: []string{"-i", "-u", "HOME", "FOO=bar"}},
+		// R2.3: NAME=VALUE overrides existing variable.
+		{Name: "override_existing_var",
+			Args: []string{"HOME=/tmp/override_test", printenvBin, "HOME"}},
+		// R2.3: multiple NAME=VALUE pairs with command.
+		{Name: "multiple_assignments",
+			Args: []string{"-i", "A=1", "B=2", "C=3", printenvBin, "A"}},
+		// R3.1: -0 NUL-delimited output.
+		{Name: "null_output",
+			Args: []string{"-i", "-0", "A=1", "B=2"}},
+		// R3.1: --null long form.
+		{Name: "null_long_form",
+			Args: []string{"-i", "--null", "X=y"}},
+		// R3.2: exit code passthrough with specific code via sh -c.
+		{Name: "exit_code_passthrough_42",
+			Args:     []string{"sh", "-c", "exit 42"},
+			ExitCode: 42},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd039-env R1.1, R1.2, R1.3, R2.1: env basic environment display,
-// variable assignment, and command execution with -i/--ignore-environment flag.
+// Implements prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2:
+// env basic environment display, variable assignment, command execution,
+// -i/--ignore-environment, -u/--unset, -0/--null, and exit code passthrough.
 package main
 
 import (
@@ -23,6 +24,8 @@ const helpText = `Usage: env [OPTION]... [-] [NAME=VALUE]... [COMMAND [ARG]...]
 Set each NAME to VALUE in the environment and run COMMAND.
 
   -i, --ignore-environment  start with an empty environment
+  -0, --null           end each output line with NUL, not newline
+  -u, --unset=NAME     remove variable from the environment
       --help        display this help and exit
       --version     output version information and exit
 
@@ -33,38 +36,58 @@ A mere - implies -i.  If no COMMAND, print the resulting environment.
 const versionText = `env (go-unix-utils) 1.0
 `
 
+// envOptions holds parsed command-line options.
+type envOptions struct {
+	ignoreEnv bool
+	useNull   bool
+	unsetVars []string
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	args := os.Args[1:]
-	ignoreEnv, remaining := parseOptions(args)
-	env := buildEnvironment(ignoreEnv)
+	opts, remaining := parseOptions(args)
+	env := buildEnvironment(opts.ignoreEnv)
+	env = removeUnsetVars(env, opts.unsetVars)
 	env, cmdStart := applyAssignments(remaining, env)
 	if cmdStart >= len(remaining) {
-		printEnvironment(env)
+		printEnvironment(env, opts.useNull)
 		return
 	}
 	executeCommand(remaining[cmdStart:], env)
 }
 
-// parseOptions processes option flags, returning whether -i was set and
-// the remaining arguments after options. Handles --help and --version.
-func parseOptions(args []string) (bool, []string) {
-	ignoreEnv := false
+// parseOptions processes option flags, returning parsed options and
+// remaining arguments. Handles --help, --version, -i, -u, -0.
+func parseOptions(args []string) (envOptions, []string) {
+	opts := envOptions{}
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--help":
+		arg := args[i]
+		switch {
+		case arg == "--help":
 			printAndExit(helpText)
-		case "--version":
+		case arg == "--version":
 			printAndExit(versionText)
-		case "-i", "--ignore-environment", "-":
-			ignoreEnv = true
-		case "--":
-			return ignoreEnv, args[i+1:]
+		case arg == "-i" || arg == "--ignore-environment" || arg == "-":
+			opts.ignoreEnv = true
+		case arg == "-0" || arg == "--null":
+			opts.useNull = true
+		case arg == "-u" || arg == "--unset":
+			if i+1 < len(args) {
+				i++
+				opts.unsetVars = append(opts.unsetVars, args[i])
+			}
+		case strings.HasPrefix(arg, "--unset="):
+			opts.unsetVars = append(opts.unsetVars, arg[len("--unset="):])
+		case strings.HasPrefix(arg, "-u") && len(arg) > 2:
+			opts.unsetVars = append(opts.unsetVars, arg[2:])
+		case arg == "--":
+			return opts, args[i+1:]
 		default:
-			return ignoreEnv, args[i:]
+			return opts, args[i:]
 		}
 	}
-	return ignoreEnv, nil
+	return opts, nil
 }
 
 // buildEnvironment returns the starting environment: empty slice for -i,
@@ -76,8 +99,32 @@ func buildEnvironment(ignoreEnv bool) []string {
 	return os.Environ()
 }
 
+// removeUnsetVars removes specified variables from the environment. R2.2.
+func removeUnsetVars(env []string, names []string) []string {
+	if len(names) == 0 {
+		return env
+	}
+	result := make([]string, 0, len(env))
+	for _, e := range env {
+		if !shouldUnset(e, names) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// shouldUnset checks if an env entry matches any of the unset names.
+func shouldUnset(entry string, names []string) bool {
+	for _, name := range names {
+		if strings.HasPrefix(entry, name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 // applyAssignments processes NAME=VALUE arguments, adding them to env.
-// Returns the updated env and the index of the first non-assignment arg.
+// Returns the updated env and the index of the first non-assignment arg. R2.3.
 func applyAssignments(args []string, env []string) ([]string, int) {
 	i := 0
 	for i < len(args) && strings.Contains(args[i], "=") {
@@ -101,10 +148,14 @@ func setOrAppendEnv(env []string, assignment string) []string {
 	return append([]string{assignment}, env...)
 }
 
-// printEnvironment writes each env entry to stdout. R1.1.
-func printEnvironment(env []string) {
+// printEnvironment writes each env entry to stdout. R1.1, R3.1.
+func printEnvironment(env []string, useNull bool) {
+	terminator := "\n"
+	if useNull {
+		terminator = "\x00"
+	}
 	for _, e := range env {
-		fmt.Println(e)
+		fmt.Print(e + terminator)
 	}
 }
 
@@ -117,7 +168,7 @@ func printAndExit(text string) {
 }
 
 // executeCommand runs the command with the modified environment.
-// R1.2 (command execution) and R1.3 (exit code 127/126).
+// R1.2 (command execution), R1.3 (exit code 127/126), R3.2 (exit passthrough).
 func executeCommand(cmdArgs []string, env []string) {
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Env = env
@@ -130,7 +181,7 @@ func executeCommand(cmdArgs []string, env []string) {
 }
 
 // handleExecError processes command execution errors, setting the
-// appropriate exit code: 127 for not found, 126 for not executable.
+// appropriate exit code: 127 for not found, 126 for not executable. R3.2.
 func handleExecError(name string, err error) {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		os.Exit(exitErr.ExitCode())
