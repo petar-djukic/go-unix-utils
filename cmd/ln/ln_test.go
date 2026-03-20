@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ln covering prd037-ln R1.1–R1.4 (hard links),
-// R2.1–R2.4 (symbolic links), R3.1 (force), R3.3 (interactive), R3.5 (backup).
+// R2.1–R2.4 (symbolic links), R3.1 (force), R3.3 (interactive), R3.4 (verbose),
+// R3.5 (backup), R4.1–R4.2 (error diagnostics).
 package main_test
 
 import (
@@ -75,6 +76,20 @@ func runSharedTests(t *testing.T, goBin, refBin string, normBin testutils.Normal
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normBin},
 		},
+		// R4.1: error diagnostic for nonexistent source (hard link).
+		{
+			Name:      "hard_link_nonexistent_source",
+			Args:      []string{filepath.Join(dirWithFile, "no_such_file"), filepath.Join(dirWithFile, "newlink")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normBin},
+		},
+		// R4.2: error diagnostic for nonexistent parent directory.
+		{
+			Name:      "link_nonexistent_parent_dir",
+			Args:      []string{"-s", "target", filepath.Join(dirWithFile, "no_such_dir", "link")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normBin},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -93,7 +108,26 @@ type isolatedCase struct {
 // because both create links.
 func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.NormalizeFunc) {
 	t.Helper()
-	cases := []isolatedCase{
+	cases := buildIsolatedCases(normBin)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.name == "symlink_relative_flag" {
+				runRelativeSymlinkTest(t, goBin, refBin, normBin)
+				return
+			}
+			if tc.name == "symlink_combined_sr_subdir" {
+				runRelativeSubdirTest(t, goBin, refBin, normBin)
+				return
+			}
+			compareIsolated(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// buildIsolatedCases returns all isolated test cases.
+func buildIsolatedCases(normBin testutils.NormalizeFunc) []isolatedCase {
+	return []isolatedCase{
 		// R1.1: create a hard link.
 		{
 			name: "hard_link_single",
@@ -326,20 +360,75 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
 			},
 		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if tc.name == "symlink_relative_flag" {
-				runRelativeSymlinkTest(t, goBin, refBin, normBin)
-				return
-			}
-			if tc.name == "symlink_combined_sr_subdir" {
-				runRelativeSubdirTest(t, goBin, refBin, normBin)
-				return
-			}
-			compareIsolated(t, goBin, refBin, tc)
-		})
+		// R3.4: -v prints verbose for hard link.
+		{
+			name: "verbose_hard_link",
+			args: []string{"-v", "source.txt", "link.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "link.txt"))
+			},
+		},
+		// R3.4: -sv prints verbose for symlink.
+		{
+			name: "verbose_symlink",
+			args: []string{"-sv", "target.txt", "slink"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "target.txt", "data")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifySymlink(t, filepath.Join(dir, "slink"), "target.txt")
+			},
+		},
+		// R3.4: -vf verbose with force overwrite.
+		{
+			name: "verbose_force_overwrite",
+			args: []string{"-vf", "source.txt", "existing.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+			},
+		},
+		// R3.4: --verbose long form.
+		{
+			name: "verbose_long_flag",
+			args: []string{"--verbose", "-s", "target.txt", "slink"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "target.txt", "data")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifySymlink(t, filepath.Join(dir, "slink"), "target.txt")
+			},
+		},
+		// R3.4: -v with multiple targets into directory.
+		{
+			name: "verbose_multiple_into_dir",
+			args: []string{"-v", "a.txt", "b.txt", "dest"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "a.txt", "aaa")
+				setupFile(t, dir, "b.txt", "bbb")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "a.txt"), filepath.Join(dir, "dest", "a.txt"))
+				verifyHardLink(t, filepath.Join(dir, "b.txt"), filepath.Join(dir, "dest", "b.txt"))
+			},
+		},
 	}
 }
 

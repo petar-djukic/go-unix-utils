@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd037-ln R1.1–R1.4: hard link creation, R2.1–R2.4: symbolic
-// link creation, R3.1: force mode, R3.3: interactive mode, R3.5: backup mode.
+// link creation, R3.1: force mode, R3.3: interactive mode, R3.4: verbose mode,
+// R3.5: backup mode, R4.1–R4.2: error diagnostics.
+// TODO: R3.6 (-t DIRECTORY) is a non-goal per prd037-ln non_goals; not implemented.
 package main
 
 import (
@@ -32,7 +34,6 @@ const versionText = `ln (go-unix-utils) 1.0
 `
 
 // errDeclined is a sentinel error indicating the user declined an interactive prompt.
-// The caller should treat this as a failure (exit 1) but not print an error message.
 var errDeclined = fmt.Errorf("declined")
 
 // overwriteMode determines behavior when the destination already exists.
@@ -50,6 +51,7 @@ type options struct {
 	relative  bool          // -r, --relative: create relative symlinks
 	overwrite overwriteMode // -f or -i, last flag on command line wins
 	backup    bool          // -b, --backup: create backup before removing
+	verbose   bool          // -v, --verbose: print each link created (R3.4)
 }
 
 func main() {
@@ -122,6 +124,8 @@ func parseLongFlag(arg string, opts *options) bool {
 		opts.overwrite = overwriteForce
 	case "--interactive":
 		opts.overwrite = overwriteInteractive
+	case "--verbose":
+		opts.verbose = true
 	default:
 		if arg == "--backup" || strings.HasPrefix(arg, "--backup=") {
 			opts.backup = true
@@ -147,17 +151,18 @@ func parseShortFlags(flags string, opts *options) {
 			opts.overwrite = overwriteInteractive
 		case 'b':
 			opts.backup = true
+		case 'v':
+			opts.verbose = true
 		}
 	}
 }
 
 // linkSingle creates a link from source to dest. If dest is an existing
 // directory, the link is created inside it with the source's basename.
-// Implements R1.1, R1.3, R1.4, R2.1–R2.4, R3.1, R3.3, R3.5.
+// Implements R1.1, R1.3, R1.4, R2.1–R2.4, R3.1, R3.3, R3.4, R3.5.
 func linkSingle(source, dest string, opts options) {
-	if !opts.symbolic && isDirectory(source) {
-		// R1.3: reject hard links to directories.
-		fmt.Fprintf(os.Stderr, "%s: %s: hard link not allowed for directory\n", progName, source)
+	if err := checkSource(source, opts.symbolic); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		os.Exit(1)
 	}
 
@@ -176,10 +181,15 @@ func linkSingle(source, dest string, opts options) {
 		}
 	}
 
-	if err := createLink(source, dest, opts); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: failed to create %s '%s' => '%s': %s\n",
-			progName, linkTypeName(opts.symbolic), dest, source, unwrapErr(err))
+	target, err := createLink(source, dest, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: failed to create %s '%s': %s\n",
+			progName, linkTypeName(opts.symbolic), dest, unwrapErr(err))
 		os.Exit(1)
+	}
+
+	if opts.verbose {
+		printVerbose(dest, target, opts.symbolic)
 	}
 }
 
@@ -205,9 +215,8 @@ func linkMultipleIntoDir(sources []string, dir string, opts options) {
 
 // linkIntoDir creates a single link for source inside dir.
 func linkIntoDir(source, dir string, opts options) error {
-	if !opts.symbolic && isDirectory(source) {
-		// R1.3: reject hard links to directories.
-		return fmt.Errorf("%s: hard link not allowed for directory", source)
+	if err := checkSource(source, opts.symbolic); err != nil {
+		return err
 	}
 
 	dest := filepath.Join(dir, filepath.Base(source))
@@ -222,9 +231,31 @@ func linkIntoDir(source, dir string, opts options) error {
 		}
 	}
 
-	if err := createLink(source, dest, opts); err != nil {
-		return fmt.Errorf("failed to create %s '%s' => '%s': %s",
-			linkTypeName(opts.symbolic), dest, source, unwrapErr(err))
+	target, err := createLink(source, dest, opts)
+	if err != nil {
+		return fmt.Errorf("failed to create %s '%s': %s",
+			linkTypeName(opts.symbolic), dest, unwrapErr(err))
+	}
+
+	if opts.verbose {
+		printVerbose(dest, target, opts.symbolic)
+	}
+	return nil
+}
+
+// checkSource validates the source operand before linking.
+// R1.3: rejects hard links to directories. R4.1: reports access errors
+// with GNU-compatible format: "failed to access 'SOURCE': error".
+func checkSource(source string, symbolic bool) error {
+	if symbolic {
+		return nil // symlinks don't require source to exist
+	}
+	info, err := os.Stat(source)
+	if err != nil {
+		return fmt.Errorf("failed to access '%s': %s", source, unwrapErr(err))
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s: hard link not allowed for directory", source)
 	}
 	return nil
 }
@@ -252,7 +283,6 @@ func resolveExisting(dest string, opts options) bool {
 // R3.5: -b creates a backup with ~ suffix before removal.
 func removeDest(dest string, backup bool) {
 	if backup {
-		// Rename to backup path; moves the file away from dest.
 		os.Rename(dest, dest+"~") // best-effort backup
 		return
 	}
@@ -271,10 +301,11 @@ func promptReplace(dest string) bool {
 	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
-// createLink creates a hard or symbolic link based on opts.
+// createLink creates a hard or symbolic link based on opts. Returns the
+// actual target value stored in the link (may differ from source when -r is used).
 // R2.1: -s creates symbolic link. R2.3: target stored as-is.
 // R2.4: -r computes relative path from link location to target.
-func createLink(source, dest string, opts options) error {
+func createLink(source, dest string, opts options) (string, error) {
 	if opts.symbolic {
 		target := source
 		if opts.relative {
@@ -282,13 +313,13 @@ func createLink(source, dest string, opts options) error {
 			var err error
 			target, err = computeRelative(source, dest)
 			if err != nil {
-				return err
+				return "", err
 			}
 		}
 		// R2.3: target stored as-is in the symlink.
-		return os.Symlink(target, dest)
+		return target, os.Symlink(target, dest)
 	}
-	return os.Link(source, dest)
+	return source, os.Link(source, dest)
 }
 
 // computeRelative computes a relative path from the directory containing
@@ -309,6 +340,16 @@ func computeRelative(source, dest string) (string, error) {
 		return "", fmt.Errorf("computing relative path: %w", err)
 	}
 	return rel, nil
+}
+
+// printVerbose prints the verbose message for a created link to stdout.
+// R3.4: format matches GNU ln -v output. Hard links use =>, symlinks use ->.
+func printVerbose(dest, target string, symbolic bool) {
+	arrow := " => "
+	if symbolic {
+		arrow = " -> "
+	}
+	fmt.Printf("'%s'%s'%s'\n", dest, arrow, target)
 }
 
 // linkTypeName returns "hard link" or "symbolic link" for error messages.
