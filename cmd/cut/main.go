@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd026-cut R1.1–R1.4, R2.1–R2.4.
+// Implements prd026-cut R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
 // R1.1: -b LIST extracts byte positions using range syntax.
 // R1.2: -c LIST extracts character positions (equivalent to -b under LC_ALL=C).
 // R1.3: Newlines pass through unchanged; not counted as line content.
@@ -10,6 +10,9 @@
 // R2.2: -d DELIM sets input field delimiter (single byte).
 // R2.3: -s suppresses lines without the delimiter character.
 // R2.4: --output-delimiter STRING replaces the input delimiter in output.
+// R3.1: --complement inverts the selection (output what was NOT selected).
+// R3.2: --complement is compatible with -b, -c, and -f.
+// R3.3: With --complement and -f, unselected fields output in original order.
 package main
 
 import (
@@ -48,6 +51,7 @@ type cutConfig struct {
 	outputDelim    string // R2.4: output delimiter; empty means use input delimiter
 	outputDelimSet bool   // whether --output-delimiter was explicitly provided
 	suppress       bool   // R2.3: suppress lines without delimiter
+	complement     bool   // R3.1: invert the selection
 }
 
 func main() {
@@ -119,11 +123,20 @@ func processReader(w *bufio.Writer, r io.Reader, cfg cutConfig) {
 		line := scanner.Bytes()
 		switch cfg.mode {
 		case modeBytes:
-			cutBytes(w, line, cfg.ranges)
+			cutBytesLine(w, line, cfg)
 			w.WriteByte('\n')
 		case modeFields:
 			cutFields(w, line, cfg)
 		}
+	}
+}
+
+// cutBytesLine dispatches byte cutting, handling complement. R1.1, R3.1.
+func cutBytesLine(w *bufio.Writer, line []byte, cfg cutConfig) {
+	if cfg.complement {
+		cutBytesComplement(w, line, cfg.ranges)
+	} else {
+		cutBytes(w, line, cfg.ranges)
 	}
 }
 
@@ -146,7 +159,37 @@ func cutBytes(w *bufio.Writer, line []byte, ranges []byteRange) {
 	}
 }
 
-// cutFields extracts selected fields from a line. R2.1, R2.3.
+// cutBytesComplement outputs bytes NOT in the selected ranges. R3.1.
+func cutBytesComplement(w *bufio.Writer, line []byte, ranges []byteRange) {
+	lineLen := len(line)
+	selected := buildSelectedSet(ranges, lineLen)
+	for i := 0; i < lineLen; i++ {
+		if !selected[i] {
+			w.WriteByte(line[i])
+		}
+	}
+}
+
+// buildSelectedSet returns a boolean slice marking selected 0-indexed positions.
+func buildSelectedSet(ranges []byteRange, length int) []bool {
+	selected := make([]bool, length)
+	for _, r := range ranges {
+		lo := r.low - 1
+		hi := r.high
+		if lo < 0 {
+			lo = 0
+		}
+		if hi > length {
+			hi = length
+		}
+		for i := lo; i < hi; i++ {
+			selected[i] = true
+		}
+	}
+	return selected
+}
+
+// cutFields extracts selected fields from a line. R2.1, R2.3, R3.1.
 func cutFields(w *bufio.Writer, line []byte, cfg cutConfig) {
 	delim := cfg.delimiter
 	if !containsByte(line, delim) {
@@ -158,7 +201,11 @@ func cutFields(w *bufio.Writer, line []byte, cfg cutConfig) {
 	}
 	fields := splitFields(line, delim)
 	outDelim := cfg.effectiveOutputDelim()
-	writeSelectedFields(w, fields, cfg.ranges, outDelim)
+	if cfg.complement {
+		writeComplementFields(w, fields, cfg.ranges, outDelim)
+	} else {
+		writeSelectedFields(w, fields, cfg.ranges, outDelim)
+	}
 	w.WriteByte('\n')
 }
 
@@ -202,6 +249,44 @@ func writeSelectedFields(
 	}
 }
 
+// writeComplementFields writes fields NOT in the range list. R3.1, R3.3.
+func writeComplementFields(
+	w *bufio.Writer, fields []string, ranges []byteRange, outDelim string,
+) {
+	nFields := len(fields)
+	selected := buildFieldSelectedSet(ranges, nFields)
+	first := true
+	for i := 0; i < nFields; i++ {
+		if selected[i] {
+			continue
+		}
+		if !first {
+			w.WriteString(outDelim)
+		}
+		w.WriteString(fields[i])
+		first = false
+	}
+}
+
+// buildFieldSelectedSet returns a boolean slice for selected 0-indexed fields.
+func buildFieldSelectedSet(ranges []byteRange, nFields int) []bool {
+	selected := make([]bool, nFields)
+	for _, r := range ranges {
+		lo := r.low - 1
+		hi := r.high
+		if lo < 0 {
+			lo = 0
+		}
+		if hi > nFields {
+			hi = nFields
+		}
+		for i := lo; i < hi; i++ {
+			selected[i] = true
+		}
+	}
+	return selected
+}
+
 // effectiveOutputDelim returns the output delimiter string. R2.2, R2.4.
 func (c cutConfig) effectiveOutputDelim() string {
 	if c.outputDelimSet {
@@ -228,6 +313,7 @@ type parsedFlags struct {
 	outputDelim    string
 	outputDelimSet bool
 	suppress       bool
+	complement     bool
 	files          []string
 }
 
@@ -248,7 +334,7 @@ func parseAllFlags(args []string, cfg *parsedFlags) {
 	}
 }
 
-// parseSingleFlag handles one flag argument. R1, R2.
+// parseSingleFlag handles one flag argument. R1, R2, R3.
 func parseSingleFlag(
 	arg string, args []string, i *int, cfg *parsedFlags,
 ) {
@@ -273,9 +359,17 @@ func parseSingleFlag(
 		cfg.outputDelimSet = true
 		return
 	}
+	parseBooleanFlags(arg, cfg)
+}
+
+// parseBooleanFlags handles boolean flag arguments (-s, --complement). R2.3, R3.1.
+func parseBooleanFlags(arg string, cfg *parsedFlags) {
 	if arg == "-s" || arg == "--only-delimited" {
 		cfg.suppress = true
 		return
+	}
+	if arg == "--complement" {
+		cfg.complement = true
 	}
 }
 
@@ -333,6 +427,7 @@ func buildConfig(cfg parsedFlags) (cutConfig, error) {
 		outputDelim:    cfg.outputDelim,
 		outputDelimSet: cfg.outputDelimSet,
 		suppress:       cfg.suppress,
+		complement:     cfg.complement,
 	}, nil
 }
 

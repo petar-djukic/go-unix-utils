@@ -4,6 +4,7 @@
 // Differential tests for cmd/cut against gcut (GNU coreutils).
 // Covers prd026-cut R1.1–R1.4: byte and character selection.
 // Covers prd026-cut R2.1–R2.4: field selection, delimiter, suppress, output delimiter.
+// Covers prd026-cut R3.1–R3.3: complement mode for bytes, characters, and fields.
 package main
 
 import (
@@ -22,6 +23,7 @@ func TestDiff(t *testing.T) {
 	}
 	tests := buildByteTests()
 	tests = append(tests, buildFieldTests()...)
+	tests = append(tests, buildComplementTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -236,6 +238,100 @@ func buildFieldTests() []testutils.DiffTest {
 			Name:  "field_long_form",
 			Args:  []string{"-d:", "--fields=1,3"},
 			Stdin: []byte("a:b:c\n"),
+		},
+	}
+}
+
+// buildComplementTests returns differential tests for R3.1–R3.3.
+func buildComplementTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		// R3.1: --complement with -b inverts byte selection
+		{
+			Name:  "complement_bytes_single",
+			Args:  []string{"-b", "2", "--complement"},
+			Stdin: []byte("abcdef\n"),
+		},
+		{
+			Name:  "complement_bytes_range",
+			Args:  []string{"-b", "2-4", "--complement"},
+			Stdin: []byte("abcdef\n"),
+		},
+		{
+			Name:  "complement_bytes_open_start",
+			Args:  []string{"-b", "-3", "--complement"},
+			Stdin: []byte("abcdef\n"),
+		},
+		{
+			Name:  "complement_bytes_open_end",
+			Args:  []string{"-b", "4-", "--complement"},
+			Stdin: []byte("abcdef\n"),
+		},
+		{
+			Name:  "complement_bytes_comma_list",
+			Args:  []string{"-b", "1,3,5", "--complement"},
+			Stdin: []byte("abcdef\n"),
+		},
+		{
+			Name:  "complement_bytes_multiple_lines",
+			Args:  []string{"-b", "2-3", "--complement"},
+			Stdin: []byte("abcdef\nghijkl\n"),
+		},
+		// R3.2: --complement with -c
+		{
+			Name:  "complement_chars_range",
+			Args:  []string{"-c", "2-4", "--complement"},
+			Stdin: []byte("abcdef\n"),
+		},
+		// R3.1, R3.3: --complement with -f inverts field selection
+		{
+			Name:  "complement_field_single",
+			Args:  []string{"-d:", "-f", "2", "--complement"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "complement_field_range",
+			Args:  []string{"-d:", "-f", "1-2", "--complement"},
+			Stdin: []byte("a:b:c:d\n"),
+		},
+		{
+			Name:  "complement_field_comma_list",
+			Args:  []string{"-d:", "-f", "1,3", "--complement"},
+			Stdin: []byte("a:b:c:d\n"),
+		},
+		{
+			Name:  "complement_field_all_selected",
+			Args:  []string{"-d:", "-f", "1-3", "--complement"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R3.3: --complement with -f and --output-delimiter
+		{
+			Name:  "complement_field_output_delim",
+			Args:  []string{"-d:", "-f", "2", "--complement", "--output-delimiter=|"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R3.1: --complement with -f, line without delimiter passes through
+		{
+			Name:  "complement_field_no_delim_line",
+			Args:  []string{"-d:", "-f", "2", "--complement"},
+			Stdin: []byte("no-delimiter\n"),
+		},
+		// R3.2: --complement with -f on multiple lines
+		{
+			Name:  "complement_field_multiple_lines",
+			Args:  []string{"-d:", "-f", "2", "--complement"},
+			Stdin: []byte("a:b:c\nx:y:z\n"),
+		},
+		// R3.1: --complement with -b on empty line
+		{
+			Name:  "complement_bytes_empty_line",
+			Args:  []string{"-b", "1", "--complement"},
+			Stdin: []byte("\n"),
+		},
+		// R3.1: --complement with -b short line
+		{
+			Name:  "complement_bytes_short_line",
+			Args:  []string{"-b", "5-10", "--complement"},
+			Stdin: []byte("abc\n"),
 		},
 	}
 }
