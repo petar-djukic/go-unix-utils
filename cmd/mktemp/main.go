@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.6: temporary file and
-// directory creation with template validation, directory mode, suffix mode,
-// quiet flag, and --tmpdir/-p directory override.
+// Implements prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.6, R4.3, R4.4:
+// temporary file and directory creation with template validation, directory
+// mode, suffix mode, quiet flag, --tmpdir/-p directory override, -t legacy
+// mode, and -u/--dry-run.
 package main
 
 import (
@@ -26,12 +27,14 @@ const (
 	randCharset     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	maxAttempts     = 100
 	tmpdirPrefix    = "--tmpdir"
+	dryRunWarning   = "warning: --dry-run is discouraged"
 )
 
 // config holds parsed command-line options for mktemp.
 type config struct {
 	dirMode   bool
 	quiet     bool
+	dryRun    bool
 	suffix    string
 	hasSuffix bool
 	template  string
@@ -61,6 +64,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
+	if cfg.dryRun {
+		return handleDryRun(cfg, prefix, xCount, suffix, stdout, stderr)
+	}
 	path, err := create(cfg, prefix, xCount, suffix)
 	if err != nil {
 		if !cfg.quiet {
@@ -68,6 +74,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
+	fmt.Fprintln(stdout, path)
+	return 0
+}
+
+// handleDryRun generates and prints a path without creating the file or
+// directory. R3.5: prints a warning that -u is discouraged.
+func handleDryRun(cfg config, prefix string, xCount int, suffix string, stdout, stderr io.Writer) int {
+	name, err := buildRandomName(prefix, xCount, suffix)
+	if err != nil {
+		if !cfg.quiet {
+			printError(stderr, cfg, err)
+		}
+		return 1
+	}
+	path := filepath.Join(cfg.parentDir, name)
+	fmt.Fprintf(stderr, "%s: %s\n", progName, dryRunWarning)
 	fmt.Fprintln(stdout, path)
 	return 0
 }
@@ -87,19 +109,23 @@ func validateTemplate(template string, xCount int, suffix string) error {
 
 // parseArgs extracts flags and the optional template from args.
 // R2.1: -d/--directory enables directory mode.
-// R3.2: --suffix specifies an explicit suffix.
-// R3.5: --tmpdir[=DIR] sets parent directory.
+// R3.3: --suffix specifies an explicit suffix.
+// R3.4: -t treats template as name in TMPDIR.
+// R3.5: -u/--dry-run generates name without creating.
 // R3.6: -q/--quiet suppresses error diagnostics.
 func parseArgs(args []string, stderr io.Writer) (config, error) {
 	args, tmpdirSet, tmpdirDir := prescanTmpdir(args)
 	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	var dirMode, quiet bool
+	var dirMode, quiet, dryRun, tFlag bool
 	var suffix, pDir string
 	fs.BoolVar(&dirMode, "d", false, "create a directory, not a file")
 	fs.BoolVar(&dirMode, "directory", false, "")
 	fs.BoolVar(&quiet, "q", false, "suppress error messages")
 	fs.BoolVar(&quiet, "quiet", false, "")
+	fs.BoolVar(&dryRun, "u", false, "dry run, do not create")
+	fs.BoolVar(&dryRun, "dry-run", false, "")
+	fs.BoolVar(&tFlag, "t", false, "interpret template as name in TMPDIR")
 	fs.StringVar(&suffix, "suffix", "", "append SUFF to template")
 	fs.StringVar(&pDir, "p", "", "use DIR as parent directory")
 	if err := fs.Parse(args); err != nil {
@@ -107,11 +133,14 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	}
 	hasSuffix := flagWasSet(fs, "suffix")
 	pDirSet := flagWasSet(fs, "p")
+	if tFlag && !tmpdirSet && !pDirSet {
+		tmpdirSet = true
+	}
 	template, dir := resolveLocation(
 		fs.Args(), tmpdirSet, tmpdirDir, pDirSet, pDir,
 	)
 	return config{
-		dirMode: dirMode, quiet: quiet,
+		dirMode: dirMode, quiet: quiet, dryRun: dryRun,
 		suffix: suffix, hasSuffix: hasSuffix,
 		template: template, parentDir: dir,
 	}, nil

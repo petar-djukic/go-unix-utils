@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R4.1–R4.3: differential and structural tests for
+// Implements prd036-mktemp R4.1–R4.4: differential and structural tests for
 // mktemp R1.1–R1.5 (core behavior, template validation), R2.1–R2.3
-// (directory mode), R3.1–R3.6 (suffix mode, quiet flag, tmpdir mode).
+// (directory mode), R3.1–R3.6 (suffix mode, quiet flag, tmpdir mode,
+// -t legacy mode, -u dry-run).
 package main
 
 import (
@@ -358,6 +359,129 @@ func TestStructuralTmpdir(t *testing.T) {
 	})
 }
 
+// TestStructuralTFlag verifies -t legacy mode behavior.
+// R3.4: -t treats template as a filename prefix in TMPDIR. R4.3 coverage.
+func TestStructuralTFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("t_flag_default_template", func(t *testing.T) {
+		t.Parallel()
+		path := runAndCaptureWithFlags(t, goBin, "-t")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, os.TempDir())
+		verifyDefaultPattern(t, filepath.Base(path))
+		verifyPermissions(t, path, 0o600)
+	})
+
+	t.Run("t_flag_custom_template", func(t *testing.T) {
+		t.Parallel()
+		path := runAndCaptureWithFlags(t, goBin, "-t", "myapp.XXXXXX")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, os.TempDir())
+		verifyPatternWithSuffix(t, filepath.Base(path), "myapp.", 6, "")
+	})
+
+	t.Run("t_flag_with_d_flag", func(t *testing.T) {
+		t.Parallel()
+		path := runAndCaptureWithFlags(t, goBin, "-t", "-d")
+		defer os.RemoveAll(path)
+		verifyDirExists(t, path)
+		verifyPathPrefix(t, path, os.TempDir())
+		verifyPermissions(t, path, 0o700)
+	})
+
+	t.Run("t_flag_with_suffix", func(t *testing.T) {
+		t.Parallel()
+		path := runAndCaptureWithFlags(t, goBin,
+			"-t", "--suffix=.log", "app.XXXXXX")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, os.TempDir())
+		verifyPatternWithSuffix(t, filepath.Base(path), "app.", 6, ".log")
+	})
+}
+
+// TestStructuralDryRun verifies -u/--dry-run mode behavior.
+// R3.5: prints name without creating, with warning. R4.3 coverage.
+func TestStructuralDryRun(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("u_flag_prints_path_no_file", func(t *testing.T) {
+		t.Parallel()
+		code, stdout, _ := runBinary(t, goBin, "", "-u")
+		if code != 0 {
+			t.Fatalf("expected exit 0, got %d", code)
+		}
+		path := strings.TrimSpace(stdout)
+		if path == "" {
+			t.Fatal("expected path on stdout")
+		}
+		verifyNotExists(t, path)
+		verifyPathPrefix(t, path, os.TempDir())
+		verifyDefaultPattern(t, filepath.Base(path))
+	})
+
+	t.Run("dry_run_long_flag", func(t *testing.T) {
+		t.Parallel()
+		code, stdout, _ := runBinary(t, goBin, "", "--dry-run")
+		if code != 0 {
+			t.Fatalf("expected exit 0, got %d", code)
+		}
+		path := strings.TrimSpace(stdout)
+		verifyNotExists(t, path)
+	})
+
+	t.Run("u_flag_with_d_flag_no_dir", func(t *testing.T) {
+		t.Parallel()
+		code, stdout, _ := runBinary(t, goBin, "", "-u", "-d")
+		if code != 0 {
+			t.Fatalf("expected exit 0, got %d", code)
+		}
+		path := strings.TrimSpace(stdout)
+		verifyNotExists(t, path)
+	})
+
+	t.Run("u_flag_custom_template", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "app.XXXXXX")
+		code, stdout, _ := runBinary(t, goBin, "", "-u", template)
+		if code != 0 {
+			t.Fatalf("expected exit 0, got %d", code)
+		}
+		path := strings.TrimSpace(stdout)
+		verifyNotExists(t, path)
+		verifyPathPrefix(t, path, tmpDir)
+		verifyPatternWithSuffix(t, filepath.Base(path), "app.", 6, "")
+	})
+
+	t.Run("u_flag_prints_warning", func(t *testing.T) {
+		t.Parallel()
+		code, _, stderr := runBinary(t, goBin, "", "-u")
+		if code != 0 {
+			t.Fatalf("expected exit 0, got %d", code)
+		}
+		if !strings.Contains(stderr, "dry-run") {
+			t.Fatalf("expected dry-run warning on stderr, got: %s", stderr)
+		}
+	})
+
+	t.Run("u_flag_error_too_few_xs", func(t *testing.T) {
+		t.Parallel()
+		code, _, stderr := runBinary(t, goBin, os.TempDir(), "-u", "foo.XX")
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d", code)
+		}
+		if !strings.Contains(stderr, "too few X's") {
+			t.Fatalf("expected 'too few X's' in stderr, got: %s", stderr)
+		}
+	})
+}
+
 // TestDiff runs differential tests against gmktemp for error cases where
 // exit codes should match. Success cases use structural comparison (R4.4).
 func TestDiff(t *testing.T) {
@@ -477,6 +601,36 @@ func TestDiff(t *testing.T) {
 		verifyBothFail(t, goBin, refBin,
 			[]string{"-q", "--tmpdir=" + badDir})
 	})
+
+	// R4.3: differential tests for -t legacy mode.
+	t.Run("t_flag_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		verifyBothSucceedFile(t, goBin, refBin, []string{"-t", "app.XXXXXX"})
+	})
+
+	t.Run("t_flag_with_d_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		verifyBothSucceedDir(t, goBin, refBin,
+			[]string{"-t", "-d", "app.XXXXXX"})
+	})
+
+	// R4.3: differential tests for -u dry-run mode.
+	t.Run("u_flag_both_succeed_no_file", func(t *testing.T) {
+		t.Parallel()
+		verifyBothSucceedDryRun(t, goBin, refBin, []string{"-u"})
+	})
+
+	t.Run("u_flag_with_template_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "dry.XXXXXX")
+		verifyBothSucceedDryRun(t, goBin, refBin, []string{"-u", template})
+	})
+
+	t.Run("u_flag_error_too_few_xs", func(t *testing.T) {
+		t.Parallel()
+		verifyBothFail(t, goBin, refBin, []string{"-u", "foo.XX"})
+	})
 }
 
 // runAndCapture runs the binary with no args and returns the trimmed stdout.
@@ -565,6 +719,18 @@ func verifyDirExists(t *testing.T, path string) {
 	}
 }
 
+// verifyNotExists checks that the path does not exist (for dry-run tests).
+func verifyNotExists(t *testing.T, path string) {
+	t.Helper()
+	_, err := os.Stat(path)
+	if err == nil {
+		t.Fatalf("expected path %s to not exist, but it does", path)
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("unexpected error checking path %s: %v", path, err)
+	}
+}
+
 // verifyPathPrefix checks that the path starts with the expected directory.
 func verifyPathPrefix(t *testing.T, path, expectedDir string) {
 	t.Helper()
@@ -649,6 +815,30 @@ func verifyBothSucceedDir(t *testing.T, goBin, refBin string, args []string) {
 	defer os.RemoveAll(refPath)
 	verifyDirExists(t, goPath)
 	verifyDirExists(t, refPath)
+}
+
+// verifyBothSucceedDryRun runs both binaries with -u and checks both exit 0
+// and produce stdout output without creating files. R4.3, R4.4.
+func verifyBothSucceedDryRun(t *testing.T, goBin, refBin string, args []string) {
+	t.Helper()
+	goCode, goStdout, goStderr := runBinary(t, goBin, "", args...)
+	refCode, refStdout, _ := runBinary(t, refBin, "", args...)
+	if refCode != 0 {
+		t.Skipf("reference binary failed with exit %d", refCode)
+	}
+	if goCode != 0 {
+		t.Fatalf("go binary failed with exit %d; stderr: %s", goCode, goStderr)
+	}
+	goPath := strings.TrimSpace(goStdout)
+	refPath := strings.TrimSpace(refStdout)
+	if goPath == "" {
+		t.Fatal("go binary produced no stdout for dry-run")
+	}
+	if refPath == "" {
+		t.Fatal("ref binary produced no stdout for dry-run")
+	}
+	verifyNotExists(t, goPath)
+	verifyNotExists(t, refPath)
 }
 
 // verifyBothFail runs both binaries and checks they both exit with non-zero.
