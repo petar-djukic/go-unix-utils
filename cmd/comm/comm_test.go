@@ -3,6 +3,7 @@
 
 // Differential tests for prd029-comm R1.1–R1.4: three-column comparison
 // of two sorted files with byte-for-byte comparison under LC_ALL=C.
+// R2.1–R2.4: column suppression flags (-1, -2, -3) with indentation adjustment.
 package main
 
 import (
@@ -47,6 +48,7 @@ func TestDiff(t *testing.T) {
 
 	type commTest struct {
 		name     string
+		args     []string // extra flags before file args
 		content1 string
 		content2 string
 	}
@@ -154,14 +156,109 @@ func TestDiff(t *testing.T) {
 			content1: "f\n",
 			content2: "a\nb\nc\nd\ne\nf\n",
 		},
+
+		// R2.1: -1 suppresses column 1 (file1-only lines)
+		{
+			name:     "suppress_col1",
+			args:     []string{"-1"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.2: -2 suppresses column 2 (file2-only lines)
+		{
+			name:     "suppress_col2",
+			args:     []string{"-2"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.3: -3 suppresses column 3 (common lines)
+		{
+			name:     "suppress_col3",
+			args:     []string{"-3"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.1, R2.2: -12 shows only common lines (col3)
+		{
+			name:     "suppress_col1_col2",
+			args:     []string{"-12"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.1, R2.3: -13 shows only file2-unique lines (col2)
+		{
+			name:     "suppress_col1_col3",
+			args:     []string{"-13"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.2, R2.3: -23 shows only file1-unique lines (col1)
+		{
+			name:     "suppress_col2_col3",
+			args:     []string{"-23"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.3: -123 suppresses all columns, no output
+		{
+			name:     "suppress_all",
+			args:     []string{"-123"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.4: -1 with no common lines, only col2 output
+		{
+			name:     "suppress_col1_no_common",
+			args:     []string{"-1"},
+			content1: "a\nc\n",
+			content2: "b\nd\n",
+		},
+		// R2.4: -2 with identical files, only col3 output
+		{
+			name:     "suppress_col2_identical",
+			args:     []string{"-2"},
+			content1: "a\nb\n",
+			content2: "a\nb\n",
+		},
+		// R2.1: -1 with file1 empty (no effect since no col1 lines)
+		{
+			name:     "suppress_col1_file1_empty",
+			args:     []string{"-1"},
+			content1: "",
+			content2: "a\nb\n",
+		},
+		// R2.2: -2 with file2 empty (no effect since no col2 lines)
+		{
+			name:     "suppress_col2_file2_empty",
+			args:     []string{"-2"},
+			content1: "a\nb\n",
+			content2: "",
+		},
+		// R2.1, R2.2: separate flags -1 -2
+		{
+			name:     "suppress_col1_col2_separate",
+			args:     []string{"-1", "-2"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R2.4: -3 indentation shift on interleaved data
+		{
+			name:     "suppress_col3_interleaved",
+			args:     []string{"-3"},
+			content1: "a\nc\ne\n",
+			content2: "b\nd\nf\n",
+		},
 	}
 
 	tests := make([]testutils.DiffTest, 0, len(cases))
 	for _, tc := range cases {
 		f1, f2, _ := setupFiles(t, tc.content1, tc.content2)
+		fullArgs := make([]string, 0, len(tc.args)+2)
+		fullArgs = append(fullArgs, tc.args...)
+		fullArgs = append(fullArgs, f1, f2)
 		tests = append(tests, testutils.DiffTest{
 			Name: tc.name,
-			Args: []string{f1, f2},
+			Args: fullArgs,
 		})
 	}
 
