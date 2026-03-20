@@ -3,6 +3,7 @@
 
 // Differential tests for cmd/cut against gcut (GNU coreutils).
 // Covers prd026-cut R1.1–R1.4: byte and character selection.
+// Covers prd026-cut R2.1–R2.4: field selection, delimiter, suppress, output delimiter.
 package main
 
 import (
@@ -19,7 +20,14 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary gcut not in PATH")
 	}
-	tests := []testutils.DiffTest{
+	tests := buildByteTests()
+	tests = append(tests, buildFieldTests()...)
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// buildByteTests returns differential tests for R1.1–R1.4.
+func buildByteTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
 		{
 			Name:  "byte_single_position",
 			Args:  []string{"-b", "2"},
@@ -101,5 +109,133 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("abcdef\n"),
 		},
 	}
-	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// buildFieldTests returns differential tests for R2.1–R2.4.
+func buildFieldTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		// R2.1: -f LIST field extraction with tab delimiter (default)
+		{
+			Name:  "field_tab_default_single",
+			Args:  []string{"-f", "2"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "field_tab_default_range",
+			Args:  []string{"-f", "1-2"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "field_tab_default_comma_list",
+			Args:  []string{"-f", "1,3"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "field_tab_open_end",
+			Args:  []string{"-f", "2-"},
+			Stdin: []byte("a\tb\tc\td\n"),
+		},
+		{
+			Name:  "field_tab_open_start",
+			Args:  []string{"-f", "-2"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		// R2.2: -d DELIM custom delimiter
+		{
+			Name:  "field_colon_delim",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "field_colon_delim_multi_field",
+			Args:  []string{"-d:", "-f", "1,3"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "field_pipe_delim",
+			Args:  []string{"-d|", "-f", "2"},
+			Stdin: []byte("a|b|c\n"),
+		},
+		{
+			Name:  "field_space_delim",
+			Args:  []string{"-d", " ", "-f", "2"},
+			Stdin: []byte("a b c\n"),
+		},
+		{
+			Name:  "field_delim_long_form",
+			Args:  []string{"--delimiter=:", "-f", "2"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R2.1: out-of-range fields produce nothing
+		{
+			Name:  "field_out_of_range",
+			Args:  []string{"-d:", "-f", "5"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R2.3: -s suppress lines without delimiter
+		{
+			Name:  "field_suppress_no_delim",
+			Args:  []string{"-d:", "-f", "2", "-s"},
+			Stdin: []byte("no-delimiter\n"),
+		},
+		{
+			Name:  "field_suppress_with_delim",
+			Args:  []string{"-d:", "-f", "2", "-s"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "field_suppress_mixed_lines",
+			Args:  []string{"-d:", "-f", "1", "-s"},
+			Stdin: []byte("a:b:c\nno-delim\nx:y:z\n"),
+		},
+		{
+			Name:  "field_no_suppress_no_delim",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("no-delimiter\n"),
+		},
+		{
+			Name:  "field_suppress_long_form",
+			Args:  []string{"-d:", "-f", "1", "--only-delimited"},
+			Stdin: []byte("no-delim\na:b\n"),
+		},
+		// R2.4: --output-delimiter
+		{
+			Name:  "field_output_delim",
+			Args:  []string{"-d:", "-f", "1,3", "--output-delimiter=|"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "field_output_delim_multi_char",
+			Args:  []string{"-d:", "-f", "1,2,3", "--output-delimiter=, "},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "field_output_delim_range",
+			Args:  []string{"-d:", "-f", "1-3", "--output-delimiter= -> "},
+			Stdin: []byte("a:b:c\n"),
+		},
+		{
+			Name:  "field_output_delim_empty",
+			Args:  []string{"-d:", "-f", "1,3", "--output-delimiter=_"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R2.1: multiple lines with fields
+		{
+			Name:  "field_multiple_lines",
+			Args:  []string{"-d:", "-f", "2"},
+			Stdin: []byte("a:b:c\nx:y:z\n"),
+		},
+		// R2.1: -f with attached value
+		{
+			Name:  "field_flag_attached",
+			Args:  []string{"-d:", "-f2"},
+			Stdin: []byte("a:b:c\n"),
+		},
+		// R2.1: fields long form
+		{
+			Name:  "field_long_form",
+			Args:  []string{"-d:", "--fields=1,3"},
+			Stdin: []byte("a:b:c\n"),
+		},
+	}
 }

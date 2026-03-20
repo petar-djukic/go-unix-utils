@@ -1,11 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd026-cut R1.1–R1.4: byte and character selection from lines.
+// Implements prd026-cut R1.1–R1.4, R2.1–R2.4.
 // R1.1: -b LIST extracts byte positions using range syntax.
 // R1.2: -c LIST extracts character positions (equivalent to -b under LC_ALL=C).
 // R1.3: Newlines pass through unchanged; not counted as line content.
 // R1.4: Out-of-range positions produce no output bytes.
+// R2.1: -f LIST extracts fields delimited by -d (default tab).
+// R2.2: -d DELIM sets input field delimiter (single byte).
+// R2.3: -s suppresses lines without the delimiter character.
+// R2.4: --output-delimiter STRING replaces the input delimiter in output.
 package main
 
 import (
@@ -21,7 +25,15 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// byteRange represents an inclusive 1-indexed range of bytes/characters.
+// cutMode distinguishes between byte/char and field selection.
+type cutMode int
+
+const (
+	modeBytes  cutMode = iota // -b or -c
+	modeFields                // -f
+)
+
+// byteRange represents an inclusive 1-indexed range of bytes/characters/fields.
 type byteRange struct {
 	low  int // 1-indexed inclusive start
 	high int // 1-indexed inclusive end; math.MaxInt for open-ended
@@ -29,8 +41,13 @@ type byteRange struct {
 
 // cutConfig holds the parsed flags for this invocation.
 type cutConfig struct {
-	ranges []byteRange
-	files  []string
+	mode           cutMode
+	ranges         []byteRange
+	files          []string
+	delimiter      byte   // R2.2: input delimiter (default '\t')
+	outputDelim    string // R2.4: output delimiter; empty means use input delimiter
+	outputDelimSet bool   // whether --output-delimiter was explicitly provided
+	suppress       bool   // R2.3: suppress lines without delimiter
 }
 
 func main() {
@@ -48,9 +65,9 @@ func run(cfg cutConfig) int {
 	w := bufio.NewWriter(os.Stdout)
 	exitCode := 0
 	if len(cfg.files) == 0 {
-		processReader(w, os.Stdin, cfg.ranges)
+		processReader(w, os.Stdin, cfg)
 	} else {
-		exitCode = processFiles(w, cfg.files, cfg.ranges)
+		exitCode = processFiles(w, cfg)
 	}
 	if err := w.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "cut: write error: %v\n", err)
@@ -60,10 +77,10 @@ func run(cfg cutConfig) int {
 }
 
 // processFiles iterates over file arguments and processes each.
-func processFiles(w *bufio.Writer, files []string, ranges []byteRange) int {
+func processFiles(w *bufio.Writer, cfg cutConfig) int {
 	exitCode := 0
-	for _, name := range files {
-		if err := processFile(w, name, ranges); err != nil {
+	for _, name := range cfg.files {
+		if err := processFile(w, name, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "cut: %v\n", err)
 			exitCode = 1
 		}
@@ -72,9 +89,9 @@ func processFiles(w *bufio.Writer, files []string, ranges []byteRange) int {
 }
 
 // processFile opens a single file (or stdin for "-") and processes it.
-func processFile(w *bufio.Writer, name string, ranges []byteRange) error {
+func processFile(w *bufio.Writer, name string, cfg cutConfig) error {
 	if name == "-" {
-		processReader(w, os.Stdin, ranges)
+		processReader(w, os.Stdin, cfg)
 		return nil
 	}
 	f, err := os.Open(name)
@@ -82,7 +99,7 @@ func processFile(w *bufio.Writer, name string, ranges []byteRange) error {
 		return fmt.Errorf("%s: %s", name, osErrorMessage(err))
 	}
 	defer f.Close()
-	processReader(w, f, ranges)
+	processReader(w, f, cfg)
 	return nil
 }
 
@@ -94,21 +111,25 @@ func osErrorMessage(err error) string {
 	return err.Error()
 }
 
-// processReader reads lines from r and extracts selected bytes. R1.3, R1.4.
-func processReader(w *bufio.Writer, r io.Reader, ranges []byteRange) {
+// processReader reads lines from r and dispatches to byte or field mode.
+func processReader(w *bufio.Writer, r io.Reader, cfg cutConfig) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		cutBytes(w, line, ranges)
-		w.WriteByte('\n')
+		switch cfg.mode {
+		case modeBytes:
+			cutBytes(w, line, cfg.ranges)
+			w.WriteByte('\n')
+		case modeFields:
+			cutFields(w, line, cfg)
+		}
 	}
 }
 
 // cutBytes extracts the selected byte ranges from a single line. R1.1, R1.4.
 func cutBytes(w *bufio.Writer, line []byte, ranges []byteRange) {
 	lineLen := len(line)
-	first := true
 	for _, r := range ranges {
 		lo := r.low - 1 // convert to 0-indexed
 		hi := r.high     // exclusive upper bound in 0-indexed
@@ -121,55 +142,161 @@ func cutBytes(w *bufio.Writer, line []byte, ranges []byteRange) {
 		if lo < 0 {
 			lo = 0
 		}
-		if !first {
-			// For byte/char mode, no separator between ranges
-		}
 		w.Write(line[lo:hi])
-		first = false
 	}
+}
+
+// cutFields extracts selected fields from a line. R2.1, R2.3.
+func cutFields(w *bufio.Writer, line []byte, cfg cutConfig) {
+	delim := cfg.delimiter
+	if !containsByte(line, delim) {
+		if !cfg.suppress {
+			w.Write(line)
+			w.WriteByte('\n')
+		}
+		return
+	}
+	fields := splitFields(line, delim)
+	outDelim := cfg.effectiveOutputDelim()
+	writeSelectedFields(w, fields, cfg.ranges, outDelim)
+	w.WriteByte('\n')
+}
+
+// containsByte checks whether b contains the byte c.
+func containsByte(b []byte, c byte) bool {
+	for _, v := range b {
+		if v == c {
+			return true
+		}
+	}
+	return false
+}
+
+// splitFields splits line by single-byte delimiter into fields.
+func splitFields(line []byte, delim byte) []string {
+	return strings.Split(string(line), string(delim))
+}
+
+// writeSelectedFields writes the fields at selected positions. R2.1, R2.4.
+func writeSelectedFields(
+	w *bufio.Writer, fields []string, ranges []byteRange, outDelim string,
+) {
+	nFields := len(fields)
+	first := true
+	for _, r := range ranges {
+		lo := r.low
+		hi := r.high
+		if hi > nFields {
+			hi = nFields
+		}
+		for idx := lo; idx <= hi; idx++ {
+			if idx < 1 || idx > nFields {
+				continue
+			}
+			if !first {
+				w.WriteString(outDelim)
+			}
+			w.WriteString(fields[idx-1])
+			first = false
+		}
+	}
+}
+
+// effectiveOutputDelim returns the output delimiter string. R2.2, R2.4.
+func (c cutConfig) effectiveOutputDelim() string {
+	if c.outputDelimSet {
+		return c.outputDelim
+	}
+	return string(c.delimiter)
 }
 
 // parseArgs extracts config from command-line arguments.
 func parseArgs(args []string) (cutConfig, error) {
-	var listStr string
-	var files []string
+	var cfg parsedFlags
+	cfg.delimiter = '\t' // R2.2: default is tab
+	parseAllFlags(args, &cfg)
+	return buildConfig(cfg)
+}
+
+// parsedFlags holds intermediate flag parsing state.
+type parsedFlags struct {
+	byteList       string
+	charList       string
+	fieldList      string
+	delimiter      byte
+	delimSet       bool
+	outputDelim    string
+	outputDelimSet bool
+	suppress       bool
+	files          []string
+}
+
+// parseAllFlags processes all command-line arguments into parsedFlags.
+func parseAllFlags(args []string, cfg *parsedFlags) {
 	endOfFlags := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if endOfFlags || (!strings.HasPrefix(arg, "-") || arg == "-") {
-			files = append(files, arg)
+			cfg.files = append(cfg.files, arg)
 			continue
 		}
 		if arg == "--" {
 			endOfFlags = true
 			continue
 		}
-		val, advanced := extractFlagValue(arg, args, &i, "-b", "--bytes=")
-		if advanced {
-			listStr = val
-			continue
-		}
-		val, advanced = extractFlagValue(arg, args, &i, "-c", "--characters=")
-		if advanced {
-			listStr = val
-			continue
-		}
-		// Unknown flags are ignored for forward compatibility
-		files = append(files, arg)
+		parseSingleFlag(arg, args, &i, cfg)
 	}
-	if listStr == "" {
-		return cutConfig{}, fmt.Errorf(
-			"you must specify a list of bytes, characters, or fields")
-	}
-	ranges, err := parseRangeList(listStr)
-	if err != nil {
-		return cutConfig{}, err
-	}
-	return cutConfig{ranges: ranges, files: files}, nil
 }
 
-// extractFlagValue checks if arg matches -X or --long= form and returns value.
-func extractFlagValue(
+// parseSingleFlag handles one flag argument. R1, R2.
+func parseSingleFlag(
+	arg string, args []string, i *int, cfg *parsedFlags,
+) {
+	if val, ok := extractFlagVal(arg, args, i, "-b", "--bytes="); ok {
+		cfg.byteList = val
+		return
+	}
+	if val, ok := extractFlagVal(arg, args, i, "-c", "--characters="); ok {
+		cfg.charList = val
+		return
+	}
+	if val, ok := extractFlagVal(arg, args, i, "-f", "--fields="); ok {
+		cfg.fieldList = val
+		return
+	}
+	if val, ok := extractFlagVal(arg, args, i, "-d", "--delimiter="); ok {
+		parseDelimiter(val, cfg)
+		return
+	}
+	if val, ok := extractLongFlag(arg, "--output-delimiter="); ok {
+		cfg.outputDelim = val
+		cfg.outputDelimSet = true
+		return
+	}
+	if arg == "-s" || arg == "--only-delimited" {
+		cfg.suppress = true
+		return
+	}
+}
+
+// parseDelimiter validates and sets the delimiter. R2.2.
+func parseDelimiter(val string, cfg *parsedFlags) {
+	if len(val) == 1 {
+		cfg.delimiter = val[0]
+		cfg.delimSet = true
+	}
+}
+
+// extractLongFlag checks for --long=VALUE form only.
+func extractLongFlag(arg, prefix string) (string, bool) {
+	if val, ok := strings.CutPrefix(arg, prefix); ok {
+		return val, true
+	}
+	return "", false
+}
+
+// extractFlagVal checks if arg matches -X or --long= form and returns value.
+func extractFlagVal(
 	arg string, args []string, i *int, short, long string,
 ) (string, bool) {
 	if val, ok := strings.CutPrefix(arg, long); ok {
@@ -186,6 +313,42 @@ func extractFlagValue(
 		return "", true
 	}
 	return "", false
+}
+
+// buildConfig validates parsed flags and constructs cutConfig.
+func buildConfig(cfg parsedFlags) (cutConfig, error) {
+	listStr, mode, err := selectMode(cfg)
+	if err != nil {
+		return cutConfig{}, err
+	}
+	ranges, err := parseRangeList(listStr)
+	if err != nil {
+		return cutConfig{}, err
+	}
+	return cutConfig{
+		mode:           mode,
+		ranges:         ranges,
+		files:          cfg.files,
+		delimiter:      cfg.delimiter,
+		outputDelim:    cfg.outputDelim,
+		outputDelimSet: cfg.outputDelimSet,
+		suppress:       cfg.suppress,
+	}, nil
+}
+
+// selectMode determines which mode (-b, -c, -f) was requested.
+func selectMode(cfg parsedFlags) (string, cutMode, error) {
+	if cfg.byteList != "" {
+		return cfg.byteList, modeBytes, nil
+	}
+	if cfg.charList != "" {
+		return cfg.charList, modeBytes, nil
+	}
+	if cfg.fieldList != "" {
+		return cfg.fieldList, modeFields, nil
+	}
+	return "", 0, fmt.Errorf(
+		"you must specify a list of bytes, characters, or fields")
 }
 
 // parseRangeList parses a comma-separated range list (e.g., "1,3-5,7-").
@@ -225,7 +388,8 @@ func parseSingleRange(s string) (byteRange, error) {
 func parseSingleValue(s string) (byteRange, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
-		return byteRange{}, fmt.Errorf("invalid byte/character position %q", s)
+		return byteRange{}, fmt.Errorf(
+			"invalid byte/character position %q", s)
 	}
 	return byteRange{low: n, high: n}, nil
 }
@@ -234,7 +398,8 @@ func parseSingleValue(s string) (byteRange, error) {
 func parseEndRange(s string) (byteRange, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
-		return byteRange{}, fmt.Errorf("invalid byte/character position %q", s)
+		return byteRange{}, fmt.Errorf(
+			"invalid byte/character position %q", s)
 	}
 	return byteRange{low: 1, high: n}, nil
 }
@@ -243,7 +408,8 @@ func parseEndRange(s string) (byteRange, error) {
 func parseStartRange(s string) (byteRange, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
-		return byteRange{}, fmt.Errorf("invalid byte/character position %q", s)
+		return byteRange{}, fmt.Errorf(
+			"invalid byte/character position %q", s)
 	}
 	return byteRange{low: n, high: math.MaxInt}, nil
 }
@@ -252,11 +418,13 @@ func parseStartRange(s string) (byteRange, error) {
 func parseFullRange(lo, hi string) (byteRange, error) {
 	n, err := strconv.Atoi(lo)
 	if err != nil || n <= 0 {
-		return byteRange{}, fmt.Errorf("invalid byte/character position %q", lo)
+		return byteRange{}, fmt.Errorf(
+			"invalid byte/character position %q", lo)
 	}
 	m, err := strconv.Atoi(hi)
 	if err != nil || m <= 0 {
-		return byteRange{}, fmt.Errorf("invalid byte/character position %q", hi)
+		return byteRange{}, fmt.Errorf(
+			"invalid byte/character position %q", hi)
 	}
 	if n > m {
 		return byteRange{}, fmt.Errorf(
