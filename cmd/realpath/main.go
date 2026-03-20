@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd049-realpath R1.1–R1.5, R2.1–R2.3, R3.1–R3.3, R4.1:
+// Implements prd049-realpath R1.1–R1.5, R2.1–R2.3, R3.1–R3.3, R4.1–R4.3:
 // resolve each path argument to its canonical absolute pathname, with
 // -e, -m, -s existence/symlink modes, --relative-to/--relative-base
 // relative output, and error handling for missing operands, unknown flags,
