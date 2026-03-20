@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd032-sha256sum R1.1, R1.2, R1.3, R1.4,
-// R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R4.3.
+// R2.1, R2.2, R2.3, R3.1, R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -45,10 +45,14 @@ func sha256hex(content string) string {
 // errLinePattern matches error lines from both gsha256sum and sha256sum.
 var errLinePattern = regexp.MustCompile(`(?:g?sha256sum): [^\n]*\n`)
 
+// tryLinePattern matches GNU "Try ..." help hint lines in stderr.
+var tryLinePattern = regexp.MustCompile(`Try '[^\n]*' for more information\.\n`)
+
 // stderrNormalizer replaces stderr error lines with a fixed placeholder
 // to account for binary name and message format differences.
 func stderrNormalizer(data []byte) []byte {
-	return errLinePattern.ReplaceAll(data, []byte("sha256sum: <ERROR>\n"))
+	data = errLinePattern.ReplaceAll(data, []byte("sha256sum: <ERROR>\n"))
+	return tryLinePattern.ReplaceAll(data, nil)
 }
 
 // warnLinePattern matches warning lines about improperly formatted lines.
@@ -110,6 +114,12 @@ func TestDiff(t *testing.T) {
 
 	// R2.1: BSD tag format check file.
 	dirCheckBSD := setupCheckBSDDir(t)
+
+	// R4.1: Check mode with multiple files all matching.
+	dirCheckMulti := setupCheckMultiDir(t)
+
+	// R4.2: Check mode referencing a file that does not exist.
+	dirCheckMissing := setupCheckMissingRefDir(t)
 
 	tests := []testutils.DiffTest{
 		// R1.1: Compute digest of a file in text mode (default).
@@ -315,6 +325,66 @@ func TestDiff(t *testing.T) {
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirSingle,
 		},
+		// R3.2: --tag rejects explicit -t (text mode).
+		{
+			Name:      "tag_rejects_text",
+			Args:      []string{"-t", "--tag", "input.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirSingle,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.2: --tag rejects explicit -t even with -b before it.
+		{
+			Name:      "tag_rejects_binary_text_combo",
+			Args:      []string{"-b", "-t", "--tag", "input.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirSingle,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.2: --tag with multiple files.
+		{
+			Name:    "tag_multiple_files",
+			Args:    []string{"--tag", "a.txt", "b.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirMulti,
+		},
+		// R4.1: Exit 0 when all files processed successfully (multiple).
+		{
+			Name:    "exit_zero_multiple_files",
+			Args:    []string{"a.txt", "b.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirMulti,
+		},
+		// R4.1: Exit 0 when all verified digests match in check mode.
+		{
+			Name:      "check_exit_zero_all_match",
+			Args:      []string{"--check", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheckMulti,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: Exit 1 when checksum file references a missing file.
+		{
+			Name:     "check_missing_referenced_file",
+			Args:     []string{"--check", "checksums.txt"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+			WorkDir:  dirCheckMissing,
+			Normalize: []testutils.NormalizeFunc{
+				stderrNormalizer, failedSummaryNormalizer,
+			},
+		},
+		// R4.2: Exit 1 when all named files are missing.
+		{
+			Name:      "exit_one_all_missing",
+			Args:      []string{"no1.txt", "no2.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirSingle,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -361,6 +431,31 @@ func setupCheckBSDDir(t *testing.T) string {
 	writeTestFile(t, dir, "input.txt", "hello world\n")
 	hash := sha256hex("hello world\n")
 	content := fmt.Sprintf("SHA256 (input.txt) = %s\n", hash)
+	writeTestFile(t, dir, "checksums.txt", content)
+	return dir
+}
+
+// setupCheckMultiDir creates a directory with multiple files and a valid checksum file.
+// R4.1: used to verify exit 0 when all digests match.
+func setupCheckMultiDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "a.txt", "aaa\n")
+	writeTestFile(t, dir, "b.txt", "bbb\n")
+	hashA := sha256hex("aaa\n")
+	hashB := sha256hex("bbb\n")
+	content := fmt.Sprintf("%s  a.txt\n%s  b.txt\n", hashA, hashB)
+	writeTestFile(t, dir, "checksums.txt", content)
+	return dir
+}
+
+// setupCheckMissingRefDir creates a checksum file referencing a nonexistent file.
+// R4.2: used to verify exit 1 when a referenced file cannot be opened.
+func setupCheckMissingRefDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	hash := sha256hex("anything\n")
+	content := fmt.Sprintf("%s  nonexistent.txt\n", hash)
 	writeTestFile(t, dir, "checksums.txt", content)
 	return dir
 }

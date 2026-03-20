@@ -31,13 +31,14 @@ var bsdPattern = regexp.MustCompile(`^SHA256 \((.+)\) = ([0-9a-fA-F]{64})$`)
 
 // options holds parsed command-line flags.
 type options struct {
-	binary bool
-	tag    bool
-	check  bool
-	warn   bool
-	quiet  bool
-	status bool
-	files  []string
+	binary       bool
+	textExplicit bool // true when -t/--text was explicitly passed
+	tag          bool
+	check        bool
+	warn         bool
+	quiet        bool
+	status       bool
+	files        []string
 }
 
 func main() {
@@ -47,6 +48,12 @@ func main() {
 
 	if len(opts.files) == 0 {
 		opts.files = []string{"-"}
+	}
+
+	// R3.2: --tag does not support explicit --text mode.
+	if opts.tag && opts.textExplicit {
+		fmt.Fprintf(os.Stderr, "sha256sum: --tag does not support --text mode\n")
+		os.Exit(1)
 	}
 
 	if opts.check {
@@ -66,6 +73,7 @@ func parseArgs(args []string) options {
 			opts.binary = true
 		case "-t", "--text":
 			opts.binary = false
+			opts.textExplicit = true
 		case "--tag":
 			opts.tag = true
 		case "-c", "--check":
