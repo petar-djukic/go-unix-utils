@@ -5,14 +5,31 @@
 // suppression, stdin/file input, case-sensitive comparison.
 // Differential tests for prd028-uniq R2.1–R2.4: -d, -D, -u, -c output selection.
 // Differential tests for prd028-uniq R3.1–R3.4: -i, -f, -s, -w comparison options.
+// Differential tests for prd028-uniq R4.1–R4.4: exit codes and SIGPIPE handling.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeErrMsg normalizes stderr error messages for differential comparison.
+// Strips the program name prefix (handles both "guniq:" and our binary path)
+// and lowercases to account for OS error string casing differences between
+// Go (lowercase) and C strerror (capitalized).
+func normalizeErrMsg(data []byte) []byte {
+	lower := bytes.ToLower(data)
+	lines := bytes.Split(lower, []byte("\n"))
+	for i, line := range lines {
+		if idx := bytes.Index(line, []byte(": ")); idx >= 0 {
+			lines[i] = line[idx+2:]
+		}
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -354,6 +371,26 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-i", "-f", "1", "-w", "2"},
 			Stdin: []byte("1 ABxx\n2 abxx\n3 CDyy\n"),
 		},
+
+		// R4.1: exit 0 when input is processed successfully
+		{
+			Name:  "exit_zero_on_success",
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R4.1: exit 0 on empty input
+		{
+			Name:  "exit_zero_empty_input",
+			Stdin: []byte(""),
+		},
+
+		// R4.2: exit 1 when input file cannot be opened
+		{
+			Name:      "nonexistent_input_file",
+			Args:      []string{"nonexistent_file_xyz_12345"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeErrMsg},
+		},
+
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

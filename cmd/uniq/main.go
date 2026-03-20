@@ -5,6 +5,7 @@
 // stdin/file input, optional output file, case-sensitive comparison.
 // Implements prd028-uniq R2.1–R2.4: -d, -D, -u, -c output selection flags.
 // Implements prd028-uniq R3.1–R3.4: -i, -f, -s, -w comparison option flags.
+// Implements prd028-uniq R4.1–R4.4: exit codes and SIGPIPE handling.
 package main
 
 import (
@@ -174,7 +175,7 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		return nil, nil, unwrapPathError(err)
+		return nil, nil, formatPathError(name, err)
 	}
 	return f, f, nil
 }
@@ -187,7 +188,7 @@ func openOutput(name string, stdout io.Writer) (io.Writer, io.Closer, error) {
 	}
 	f, err := os.Create(name)
 	if err != nil {
-		return nil, nil, unwrapPathError(err)
+		return nil, nil, formatPathError(name, err)
 	}
 	return f, f, nil
 }
@@ -368,11 +369,11 @@ func copyBytes(b []byte) []byte {
 	return c
 }
 
-// unwrapPathError extracts the inner error from *os.PathError for
-// GNU-compatible error messages.
-func unwrapPathError(err error) error {
+// formatPathError formats an error with the filename for GNU-compatible
+// error messages. R4.2: "uniq: filename: error message".
+func formatPathError(name string, err error) error {
 	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err
+		return fmt.Errorf("%s: %s", name, pe.Err)
 	}
-	return err
+	return fmt.Errorf("%s: %s", name, err)
 }
