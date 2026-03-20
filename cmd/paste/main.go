@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3.
+// Implements prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3, R4.1–R4.4.
 // R1.1: Open all files and merge lines side by side with tab delimiter.
 // R1.2: Unequal file lengths produce empty fields for exhausted files.
 // R1.3: "-" refers to stdin; multiple "-" read stdin sequentially.
@@ -12,6 +12,10 @@
 // R3.1: -s processes files one at a time, joining all lines with delimiter.
 // R3.2: Delimiter list cycles across fields within each serial output line.
 // R3.3: -s overrides parallel mode.
+// R4.1: Exit 0 on success.
+// R4.2: Exit 1 on file open error, print to stderr, halt on first error.
+// R4.3: Exit 1 on stdout write error (caught at flush).
+// R4.4: SIGPIPE handled via pkg/sys.InstallSIGPIPEHandler.
 package main
 
 import (

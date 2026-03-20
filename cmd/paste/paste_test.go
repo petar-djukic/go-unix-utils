@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3.
+// Differential tests for prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3, R4.1–R4.4.
 package main
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -185,6 +186,32 @@ func TestDiff(t *testing.T) {
 			Name: "serial_combined_sd_flag",
 			Args: []string{"-sd:", fa},
 		},
+		// R4.1: exit 0 on successful processing (implicit in all above tests)
+		// R4.2: exit 1 on file open error
+		{
+			Name:      "error_nonexistent_file",
+			Args:      []string{filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+		{
+			Name:      "error_nonexistent_parallel",
+			Args:      []string{fa, filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+		{
+			Name:      "error_nonexistent_serial",
+			Args:      []string{"-s", filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+		{
+			Name:      "error_nonexistent_serial_second",
+			Args:      []string{"-s", fa, filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -198,6 +225,18 @@ func setupTestFiles(t *testing.T, dir string) {
 	writeFile(t, filepath.Join(dir, "short.txt"), "s\n")
 	writeFile(t, filepath.Join(dir, "empty.txt"), "")
 }
+
+// normalizeStderr normalizes stderr by replacing program names and
+// error message capitalization to match across Go and GNU binaries.
+func normalizeStderr(data []byte) []byte {
+	s := string(data)
+	s = strings.ReplaceAll(s, "gpaste:", "paste:")
+	s = strings.ReplaceAll(s, "No such file or directory", "no such file or directory")
+	return []byte(s)
+}
+
+// stderrNormalizer is a NormalizeFunc slice for error tests.
+var stderrNormalizer = []testutils.NormalizeFunc{normalizeStderr}
 
 // writeFile writes content to a file, failing the test on error.
 func writeFile(t *testing.T, path, content string) {
