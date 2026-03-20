@@ -1,14 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd023-fold R1.1–R1.4, R2.1–R2.3.
-// R1.1: read files or stdin, wrap to at most W columns (default 80).
-// R1.2: lines at or under the width pass through unchanged.
-// R1.3: lines exceeding the width are split at exactly W columns, repeatedly.
-// R1.4: final segment preserves the original trailing newline (or lack thereof).
-// R2.1: -w N sets width; N must be positive, else exit 1 with error.
-// R2.2: default column mode; tabs expand to next tab stop (every 8 columns).
-// R2.3: -b counts bytes instead of columns, disabling tab expansion.
+// Implements prd023-fold R1.1–R1.4, R2.1–R2.3, R3.1–R3.4.
+// R1: core line wrapping to at most W columns (default 80).
+// R2: -w sets width, -b counts bytes instead of columns.
+// R3: -s breaks at last space at or before wrap column.
 package main
 
 import (
@@ -29,8 +25,9 @@ const (
 
 // config holds parsed command-line options.
 type config struct {
-	width    int
-	byteMode bool
+	width      int
+	byteMode   bool
+	spaceBreak bool
 }
 
 func main() {
@@ -78,8 +75,13 @@ func processFile(w *bufio.Writer, name string, cfg config) error {
 }
 
 // foldReader reads from r byte by byte and writes folded output to w.
+// R3.1–R3.4: when spaceBreak is true, buffers segments to find space breaks.
 func foldReader(w *bufio.Writer, r io.Reader, cfg config) {
 	br := bufio.NewReader(r)
+	if cfg.spaceBreak {
+		foldWithSpaceBreak(w, br, cfg)
+		return
+	}
 	col := 0
 	for {
 		b, err := br.ReadByte()
@@ -149,6 +151,121 @@ func processTab(w *bufio.Writer, col, width int) int {
 	return newCol
 }
 
+// segByte stores a byte and its column position after the byte is consumed.
+type segByte struct {
+	b   byte
+	col int
+}
+
+// foldWithSpaceBreak implements -s: buffer a segment of bytes up to width,
+// then break at the last space if possible. R3.1–R3.4.
+func foldWithSpaceBreak(w *bufio.Writer, br *bufio.Reader, cfg config) {
+	var buf []segByte
+	col := 0
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			flushBuf(w, buf)
+			return
+		}
+		if b == '\n' {
+			flushBuf(w, buf)
+			buf = buf[:0]
+			w.WriteByte('\n')
+			col = 0
+			continue
+		}
+		newCol := advanceCol(b, col, cfg)
+		if newCol <= cfg.width {
+			buf = append(buf, segByte{b: b, col: newCol})
+			col = newCol
+			continue
+		}
+		col = emitSegment(w, &buf, b, cfg)
+	}
+}
+
+// advanceCol computes the column position after consuming byte b. R3.4.
+func advanceCol(b byte, col int, cfg config) int {
+	if cfg.byteMode {
+		return col + 1
+	}
+	switch b {
+	case '\t':
+		return col + tabStop - col%tabStop
+	case '\b':
+		if col > 0 {
+			return col - 1
+		}
+		return 0
+	case '\r':
+		return 0
+	default:
+		return col + 1
+	}
+}
+
+// emitSegment writes the buffered segment, breaking at the last space if
+// possible, and returns the new column position. R3.1–R3.3.
+func emitSegment(w *bufio.Writer, buf *[]segByte, b byte, cfg config) int {
+	spaceIdx := lastBlankIndex(*buf)
+	if spaceIdx >= 0 {
+		return breakAtSpace(w, buf, b, spaceIdx, cfg)
+	}
+	// R3.2: no space found, hard break at width.
+	flushBuf(w, *buf)
+	*buf = (*buf)[:0]
+	w.WriteByte('\n')
+	startCol := colForByte(b, 0, cfg)
+	*buf = append(*buf, segByte{b: b, col: startCol})
+	return startCol
+}
+
+// breakAtSpace breaks the segment at the last space, writes up to and
+// including the space, then carries the remainder forward. R3.3.
+func breakAtSpace(w *bufio.Writer, buf *[]segByte, b byte, spaceIdx int, cfg config) int {
+	// Write up to and including the space.
+	for i := 0; i <= spaceIdx; i++ {
+		w.WriteByte((*buf)[i].b)
+	}
+	w.WriteByte('\n')
+	// Carry over bytes after the space, recomputing column positions.
+	remainder := (*buf)[spaceIdx+1:]
+	*buf = (*buf)[:0]
+	col := 0
+	for _, sb := range remainder {
+		col = colForByte(sb.b, col, cfg)
+		*buf = append(*buf, segByte{b: sb.b, col: col})
+	}
+	// Now add the new byte that caused the overflow.
+	col = colForByte(b, col, cfg)
+	*buf = append(*buf, segByte{b: b, col: col})
+	return col
+}
+
+// colForByte returns the column after consuming byte b at position col.
+func colForByte(b byte, col int, cfg config) int {
+	return advanceCol(b, col, cfg)
+}
+
+// lastBlankIndex returns the index of the last blank (space or tab) in buf,
+// or -1. GNU fold uses isblank() which matches both space and tab.
+func lastBlankIndex(buf []segByte) int {
+	for i := len(buf) - 1; i >= 0; i-- {
+		if buf[i].b == ' ' || buf[i].b == '\t' {
+			return i
+		}
+	}
+	return -1
+}
+
+// flushBuf writes all buffered bytes to w.
+func flushBuf(w *bufio.Writer, buf []segByte) {
+	for _, sb := range buf {
+		w.WriteByte(sb.b)
+	}
+}
+
 // parseArgs parses GNU-style command-line arguments into config and files.
 func parseArgs(args []string) (config, []string, error) {
 	cfg := config{width: defaultWidth}
@@ -180,6 +297,8 @@ func parseFlag(args []string, i int, cfg *config) (int, error) {
 		switch arg[j] {
 		case 'b':
 			cfg.byteMode = true
+		case 's':
+			cfg.spaceBreak = true
 		case 'w':
 			return parseWidthValue(args, i, j, cfg)
 		default:
