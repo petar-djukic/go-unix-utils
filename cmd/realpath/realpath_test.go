@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd049-realpath R1.1–R1.4, R4.1–R4.3:
-// default resolution, -e and -m existence modes, error handling,
+// Differential tests for prd049-realpath R1.1–R1.5, R2.1–R2.3, R4.1–R4.3:
+// default resolution, -e and -m existence modes, -s strip mode,
+// --relative-to, --relative-base, error handling,
 // and differential test coverage against grealpath reference binary.
 package main
 
@@ -120,6 +121,75 @@ func TestDiff(t *testing.T) {
 			Name: "canonicalize_missing_partial",
 			Args: []string{"-m", filepath.Join(canonTmpDir, "nonexistent", "deep")},
 			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -s does not resolve symlinks
+		{
+			Name: "strip_symlink_not_resolved",
+			Args: []string{"-s", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -s cleans .. components
+		{
+			Name: "strip_dot_dot",
+			Args: []string{"-s", filepath.Join(canonTmpDir, "sub", "..", "target")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -s with relative path prepends working dir
+		{
+			Name:    "strip_relative",
+			Args:    []string{"-s", "target"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: canonTmpDir,
+		},
+		// R1.5: --no-symlinks long form
+		{
+			Name: "no_symlinks_long",
+			Args: []string{"--no-symlinks", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: --relative-to
+		{
+			Name: "relative_to",
+			Args: []string{"--relative-to=" + canonTmpDir, filepath.Join(canonTmpDir, "target")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: --relative-to with deeper path
+		{
+			Name: "relative_to_deeper",
+			Args: []string{"--relative-to=" + canonTmpDir, filepath.Join(canonTmpDir, "sub")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: --relative-base with matching path
+		{
+			Name: "relative_base_match",
+			Args: []string{"--relative-base=" + canonTmpDir, filepath.Join(canonTmpDir, "target")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: --relative-base with non-matching path prints absolute
+		{
+			Name: "relative_base_no_match",
+			Args: []string{"--relative-base=" + canonTmpDir, "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.3: both --relative-to and --relative-base, path matches base
+		{
+			Name: "both_relative_match",
+			Args: []string{
+				"--relative-to=" + canonTmpDir,
+				"--relative-base=" + canonTmpDir,
+				filepath.Join(canonTmpDir, "target"),
+			},
+			Env: []string{"LC_ALL=C"},
+		},
+		// R2.3: both --relative-to and --relative-base, path does not match base
+		{
+			Name: "both_relative_no_match",
+			Args: []string{
+				"--relative-to=" + canonTmpDir,
+				"--relative-base=" + canonTmpDir,
+				"/tmp",
+			},
+			Env: []string{"LC_ALL=C"},
 		},
 		// R3.1: no operand
 		{
