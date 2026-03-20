@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd033-sha512sum R1.1, R1.2, R1.3, R1.4,
-// R2.1, R2.2, R2.3, R3.1.
+// R2.1, R2.2, R2.3, R3.1, R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -324,6 +324,31 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-t", "input.txt"},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirSingle,
+		},
+		// R3.2: --tag rejects explicit -t (text mode).
+		{
+			Name:      "tag_rejects_text",
+			Args:      []string{"-t", "--tag", "input.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirSingle,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.2: --tag rejects explicit -t even with -b before it.
+		{
+			Name:      "tag_rejects_binary_text_combo",
+			Args:      []string{"-b", "-t", "--tag", "input.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirSingle,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.2: --tag with multiple files.
+		{
+			Name:    "tag_multiple_files",
+			Args:    []string{"--tag", "a.txt", "b.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirMulti,
 		},
 		// R4.1: Exit 0 when all files processed successfully (multiple).
 		{
