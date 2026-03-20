@@ -4,9 +4,11 @@
 // Differential tests for prd029-comm R1.1–R1.4: three-column comparison
 // of two sorted files with byte-for-byte comparison under LC_ALL=C.
 // R2.1–R2.4: column suppression flags (-1, -2, -3) with indentation adjustment.
+// R3.1–R3.4: order checking (--check-order, --nocheck-order) and --output-delimiter.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +16,12 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normProgName normalizes the program name prefix in stderr so that
+// "gcomm:" and "comm:" both become "comm:" for comparison.
+func normProgName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gcomm:"), []byte("comm:"))
+}
 
 // writeFile creates a file with the given content in dir.
 func writeFile(t *testing.T, dir, name, content string) string {
@@ -43,14 +51,12 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gcomm not in PATH: %v", err)
 	}
 
-	// Each test creates files and passes absolute paths as args.
-	// We build tests dynamically since comm requires file arguments.
-
 	type commTest struct {
 		name     string
 		args     []string // extra flags before file args
 		content1 string
 		content2 string
+		exitCode int // expected exit code (default 0)
 	}
 
 	cases := []commTest{
@@ -248,8 +254,88 @@ func TestDiff(t *testing.T) {
 			content1: "a\nc\ne\n",
 			content2: "b\nd\nf\n",
 		},
+
+		// R3.1: default order checking warns on unsorted file1, exits 1
+		{
+			name:     "default_warn_unsorted_file1",
+			content1: "b\na\n",
+			content2: "a\nb\n",
+			exitCode: 1,
+		},
+		// R3.1: default order checking warns on unsorted file2, exits 1
+		{
+			name:     "default_warn_unsorted_file2",
+			content1: "a\nb\n",
+			content2: "b\na\n",
+			exitCode: 1,
+		},
+		// R3.1: sorted input produces no warning
+		{
+			name:     "sorted_no_warning",
+			content1: "a\nb\nc\n",
+			content2: "a\nb\nc\n",
+		},
+		// R3.2: --check-order exits non-zero on unsorted file1
+		{
+			name:     "check_order_fatal_file1",
+			args:     []string{"--check-order"},
+			content1: "b\na\n",
+			content2: "a\nb\n",
+			exitCode: 1,
+		},
+		// R3.2: --check-order exits non-zero on unsorted file2
+		{
+			name:     "check_order_fatal_file2",
+			args:     []string{"--check-order"},
+			content1: "a\nb\n",
+			content2: "b\na\n",
+			exitCode: 1,
+		},
+		// R3.2: --check-order with sorted input succeeds
+		{
+			name:     "check_order_sorted_ok",
+			args:     []string{"--check-order"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R3.3: --nocheck-order suppresses warning on unsorted file1
+		{
+			name:     "nocheck_order_unsorted_file1",
+			args:     []string{"--nocheck-order"},
+			content1: "b\na\n",
+			content2: "a\nb\n",
+		},
+		// R3.3: --nocheck-order suppresses warning on unsorted file2
+		{
+			name:     "nocheck_order_unsorted_file2",
+			args:     []string{"--nocheck-order"},
+			content1: "a\nb\n",
+			content2: "b\na\n",
+		},
+		// R3.4: --output-delimiter replaces tab with custom string
+		{
+			name:     "output_delimiter_pipe",
+			args:     []string{"--output-delimiter=|"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R3.4: --output-delimiter with -1 adjusts remaining columns
+		{
+			name:     "output_delimiter_with_suppress",
+			args:     []string{"--output-delimiter=,", "-1"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
+		// R3.4: --output-delimiter with multi-char string
+		{
+			name:     "output_delimiter_multi_char",
+			args:     []string{"--output-delimiter=<=>"},
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
 	}
 
+	stderrNorm := []testutils.NormalizeFunc{normProgName}
 	tests := make([]testutils.DiffTest, 0, len(cases))
 	for _, tc := range cases {
 		f1, f2, _ := setupFiles(t, tc.content1, tc.content2)
@@ -257,8 +343,10 @@ func TestDiff(t *testing.T) {
 		fullArgs = append(fullArgs, tc.args...)
 		fullArgs = append(fullArgs, f1, f2)
 		tests = append(tests, testutils.DiffTest{
-			Name: tc.name,
-			Args: fullArgs,
+			Name:      tc.name,
+			Args:      fullArgs,
+			ExitCode:  tc.exitCode,
+			Normalize: stderrNorm,
 		})
 	}
 
