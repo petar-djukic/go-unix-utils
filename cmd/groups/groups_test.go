@@ -72,6 +72,24 @@ func TestDiff(t *testing.T) {
 			Args:     []string{username, username},
 			ExitCode: 0,
 		},
+		{
+			// R3.3: verify "user :" prefix format with root user.
+			Name:     "prefix_format_root",
+			Args:     []string{"root"},
+			ExitCode: 0,
+		},
+		{
+			// R3.3: verify "user :" prefix format with daemon user.
+			Name:     "prefix_format_daemon",
+			Args:     []string{"daemon"},
+			ExitCode: 0,
+		},
+		{
+			// R3.3: verify "user :" prefix with mixed known system users.
+			Name:     "prefix_format_multiple_system_users",
+			Args:     []string{"root", "daemon"},
+			ExitCode: 0,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
