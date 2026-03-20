@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd023-fold R1.1–R1.4: core line wrapping.
+// Implements prd023-fold R1.1–R1.4, R2.1–R2.3.
 // R1.1: read files or stdin, wrap to at most W columns (default 80).
 // R1.2: lines at or under the width pass through unchanged.
 // R1.3: lines exceeding the width are split at exactly W columns, repeatedly.
 // R1.4: final segment preserves the original trailing newline (or lack thereof).
+// R2.1: -w N sets width; N must be positive, else exit 1 with error.
+// R2.2: default column mode; tabs expand to next tab stop (every 8 columns).
+// R2.3: -b counts bytes instead of columns, disabling tab expansion.
 package main
 
 import (
@@ -99,7 +102,7 @@ func processByte(w *bufio.Writer, b byte, col int, cfg config) int {
 	return processColumnMode(w, b, col, cfg.width)
 }
 
-// processByteMode wraps counting each byte as one unit.
+// processByteMode wraps counting each byte as one unit. R2.3.
 func processByteMode(w *bufio.Writer, b byte, col, width int) int {
 	col++
 	if col > width {
@@ -110,7 +113,7 @@ func processByteMode(w *bufio.Writer, b byte, col, width int) int {
 	return col
 }
 
-// processColumnMode wraps counting display columns with tab expansion.
+// processColumnMode wraps counting display columns with tab expansion. R2.2.
 func processColumnMode(w *bufio.Writer, b byte, col, width int) int {
 	switch b {
 	case '\t':
@@ -135,7 +138,7 @@ func processColumnMode(w *bufio.Writer, b byte, col, width int) int {
 	}
 }
 
-// processTab handles a tab character with tab-stop column expansion.
+// processTab handles a tab character with tab-stop column expansion. R2.2.
 func processTab(w *bufio.Writer, col, width int) int {
 	newCol := col + tabStop - col%tabStop
 	if newCol > width {
@@ -199,7 +202,7 @@ func parseWidthValue(args []string, i, j int, cfg *config) (int, error) {
 	return i, setWidth(cfg, args[i])
 }
 
-// setWidth validates and sets the width in config.
+// setWidth validates and sets the width in config. R2.1.
 func setWidth(cfg *config, s string) error {
 	w, err := strconv.Atoi(s)
 	if err != nil || w <= 0 {
