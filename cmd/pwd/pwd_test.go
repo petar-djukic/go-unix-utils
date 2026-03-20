@@ -39,70 +39,84 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gpwd not in PATH: %v", err)
 	}
 	normalize := binaryNameNormalizer(goBin, refBin)
+	// R3.3: all differential tests set LC_ALL=C explicitly.
+	lcEnv := []string{"LC_ALL=C"}
 	tests := []testutils.DiffTest{
 		{
 			Name:     "no_args",
 			Args:     nil,
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			Name:     "physical_flag",
 			Args:     []string{"-P"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			Name:     "logical_flag",
 			Args:     []string{"-L"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			Name:     "physical_long",
 			Args:     []string{"--physical"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			Name:     "logical_long",
 			Args:     []string{"--logical"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			// R1.4: last flag wins — -L then -P → physical
 			Name:     "logical_then_physical",
 			Args:     []string{"-L", "-P"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			// R1.4: last flag wins — -P then -L → logical
 			Name:     "physical_then_logical",
 			Args:     []string{"-P", "-L"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			Name:     "repeated_physical",
 			Args:     []string{"-P", "-P"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		{
 			Name:     "repeated_logical",
 			Args:     []string{"-L", "-L"},
+			Env:      lcEnv,
 			ExitCode: 0,
 		},
 		// R2.1: extra operands produce warning but exit 0.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"foo"},
+			Env:       lcEnv,
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{normalize},
 		},
 		{
 			Name:      "extra_operand_after_flags",
 			Args:      []string{"-P", "bar"},
+			Env:       lcEnv,
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{normalize},
 		},
 		{
 			Name:      "extra_operand_after_double_dash",
 			Args:      []string{"--", "baz"},
+			Env:       lcEnv,
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{normalize},
 		},
@@ -110,12 +124,14 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "unknown_short_flag",
 			Args:      []string{"-x"},
+			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalize},
 		},
 		{
 			Name:      "unknown_long_flag",
 			Args:      []string{"--unknown"},
+			Env:       lcEnv,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalize},
 		},
