@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd025-unexpand R1.1–R1.4, R2.1–R2.3: default leading
-// whitespace conversion and -a all-whitespace conversion against gunexpand.
+// Differential tests for prd025-unexpand R1.1–R1.4, R2.1–R2.3, R3.1–R3.3:
+// default leading whitespace conversion, -a all-whitespace conversion, and
+// custom tab stops (-t) against gunexpand.
 package main
 
 import (
@@ -148,6 +149,102 @@ func TestDiff(t *testing.T) {
 			Name:  "a_flag_whitespace_only",
 			Args:  []string{"-a"},
 			Stdin: []byte("        \n"),
+		},
+		// R3.1: -t N sets uniform tab stop interval.
+		{
+			Name:  "t_uniform_4",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    text\n"),
+		},
+		{
+			Name:  "t_uniform_4_eight_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "t_uniform_2",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("  text\n"),
+		},
+		{
+			Name:  "t_uniform_2_six_spaces",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("      text\n"),
+		},
+		{
+			Name:  "t_uniform_tabs_eq_form",
+			Args:  []string{"--tabs=4"},
+			Stdin: []byte("    text\n"),
+		},
+		{
+			Name:  "t_uniform_inline_form",
+			Args:  []string{"-t4"},
+			Stdin: []byte("    text\n"),
+		},
+		// R3.1: -t LIST sets absolute tab stop positions.
+		{
+			Name:  "t_list_4_8",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "t_list_3_6_9",
+			Args:  []string{"-t", "3,6,9"},
+			Stdin: []byte("   text\n"),
+		},
+		{
+			Name:  "t_list_tabs_eq_form",
+			Args:  []string{"--tabs=4,8"},
+			Stdin: []byte("        text\n"),
+		},
+		// R3.2: Past last explicit stop, spaces are kept as-is.
+		{
+			Name:  "t_list_past_last_stop_spaces_kept",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("            text\n"),
+		},
+		{
+			Name:  "t_list_past_last_stop_non_leading",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a            b\n"),
+		},
+		{
+			Name:  "t_list_past_last_stop_partial",
+			Args:  []string{"-t", "3"},
+			Stdin: []byte("     text\n"),
+		},
+		// R3.3: -t implies -a; non-leading whitespace is also converted.
+		{
+			Name:  "t_implies_a_non_leading",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a    b\n"),
+		},
+		{
+			Name:  "t_implies_a_multiple_groups",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a    b    c\n"),
+		},
+		{
+			Name:  "t_implies_a_list",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a    b    c\n"),
+		},
+		{
+			Name:  "t_implies_a_leading_and_non_leading",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    a    b\n"),
+		},
+		// R3.1/R3.3: Custom tab stops with existing tabs.
+		{
+			Name:  "t_uniform_existing_tab",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("\t    text\n"),
+		},
+		// R3.1: Multiple lines with custom tabs.
+		{
+			Name:  "t_uniform_multiple_lines",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    line1\n        line2\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
