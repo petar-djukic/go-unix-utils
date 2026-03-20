@@ -4,6 +4,7 @@
 // Implements prd028-uniq R1.1–R1.4: default adjacent-duplicate suppression,
 // stdin/file input, optional output file, case-sensitive comparison.
 // Implements prd028-uniq R2.1–R2.4: -d, -D, -u, -c output selection flags.
+// Implements prd028-uniq R3.1–R3.4: -i, -f, -s, -w comparison option flags.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -24,6 +26,10 @@ type options struct {
 	dupOnly    bool // R2.1: -d print only duplicate runs (one copy)
 	allDups    bool // R2.2: -D print all lines of duplicate runs
 	uniqueOnly bool // R2.3: -u print only unique lines
+	ignoreCase bool // R3.1: -i case-insensitive comparison
+	skipFields int  // R3.2: -f N skip first N fields
+	skipChars  int  // R3.3: -s N skip first N characters
+	checkChars int  // R3.4: -w N compare only first N chars; -1 = no limit
 	inputFile  string
 	outputFile string
 }
@@ -64,7 +70,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 
 // parseArgs extracts flags and input/output file arguments.
 func parseArgs(args []string) (options, error) {
-	var opts options
+	opts := options{checkChars: -1}
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -73,7 +79,7 @@ func parseArgs(args []string) (options, error) {
 			break
 		}
 		if len(arg) > 1 && arg[0] == '-' && arg != "-" {
-			if err := parseFlags(&opts, arg[1:]); err != nil {
+			if err := parseFlagGroup(&opts, arg[1:], args, &i); err != nil {
 				return options{}, err
 			}
 			continue
@@ -92,10 +98,11 @@ func parseArgs(args []string) (options, error) {
 	return opts, nil
 }
 
-// parseFlags processes a string of short flag characters (after the leading '-').
-func parseFlags(opts *options, flags string) error {
-	for _, ch := range flags {
-		switch ch {
+// parseFlagGroup processes a string of short flags, delegating to
+// parseNumericFlag when a flag requires a numeric argument.
+func parseFlagGroup(opts *options, flags string, args []string, idx *int) error {
+	for j := 0; j < len(flags); j++ {
+		switch flags[j] {
 		case 'c':
 			opts.countMode = true
 		case 'd':
@@ -104,11 +111,59 @@ func parseFlags(opts *options, flags string) error {
 			opts.allDups = true
 		case 'u':
 			opts.uniqueOnly = true
+		case 'i':
+			opts.ignoreCase = true
+		case 'f', 's', 'w':
+			return parseNumericFlag(opts, flags[j], flags[j+1:], args, idx)
 		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+			return fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
 	}
 	return nil
+}
+
+// parseNumericFlag parses a flag that takes a numeric argument. The value
+// is taken from rest (inline, e.g. -f3) or from the next argument (-f 3).
+func parseNumericFlag(opts *options, flag byte, rest string, args []string, idx *int) error {
+	val := rest
+	if val == "" {
+		if *idx+1 >= len(args) {
+			return fmt.Errorf("option requires an argument -- '%c'", flag)
+		}
+		*idx++
+		val = args[*idx]
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 0 {
+		return fmt.Errorf("invalid number of %s: '%s'", flagDesc(flag), val)
+	}
+	assignNumericOpt(opts, flag, n)
+	return nil
+}
+
+// flagDesc returns a human-readable description for a numeric flag.
+func flagDesc(flag byte) string {
+	switch flag {
+	case 'f':
+		return "fields to skip"
+	case 's':
+		return "bytes to skip"
+	case 'w':
+		return "bytes to compare"
+	}
+	return "unknown"
+}
+
+// assignNumericOpt sets the appropriate option field for the given flag.
+func assignNumericOpt(opts *options, flag byte, n int) {
+	switch flag {
+	case 'f':
+		opts.skipFields = n
+	case 's':
+		opts.skipChars = n
+	case 'w':
+		opts.checkChars = n
+	}
 }
 
 // openInput opens the input source. Returns the reader and an optional closer.
@@ -143,6 +198,7 @@ func openOutput(name string, stdout io.Writer) (io.Writer, io.Closer, error) {
 // R1.2: non-adjacent duplicates are unaffected.
 // R1.4: comparison is case-sensitive, includes newline.
 // R2.1–R2.4: output selection via -d, -D, -u, -c.
+// R3.1–R3.4: comparison via -i, -f, -s, -w.
 func processInput(reader io.Reader, writer io.Writer, stderr io.Writer, opts options) int {
 	scanner := bufio.NewScanner(reader)
 	w := bufio.NewWriter(writer)
@@ -157,7 +213,7 @@ func processInput(reader io.Reader, writer io.Writer, stderr io.Writer, opts opt
 			first = false
 			continue
 		}
-		if bytes.Equal(line, prevLine) {
+		if compareEqual(line, prevLine, opts) {
 			runLines = append(runLines, line)
 			continue
 		}
@@ -169,6 +225,11 @@ func processInput(reader io.Reader, writer io.Writer, stderr io.Writer, opts opt
 		runLines = append(runLines, line)
 		prevLine = line
 	}
+	return finishInput(scanner, w, stderr, runLines, opts)
+}
+
+// finishInput handles scanner errors and emits the final run.
+func finishInput(scanner *bufio.Scanner, w *bufio.Writer, stderr io.Writer, runLines [][]byte, opts options) int {
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		return 1
@@ -184,6 +245,61 @@ func processInput(reader io.Reader, writer io.Writer, stderr io.Writer, opts opt
 		return 1
 	}
 	return 0
+}
+
+// compareEqual returns true if two lines are equal under the active comparison
+// options. R3.1: -i case fold. R3.2–R3.4: key extraction via -f, -s, -w.
+func compareEqual(a, b []byte, opts options) bool {
+	ka := extractKey(a, opts)
+	kb := extractKey(b, opts)
+	if opts.ignoreCase {
+		return bytes.EqualFold(ka, kb)
+	}
+	return bytes.Equal(ka, kb)
+}
+
+// extractKey applies -f (skip fields), -s (skip chars), and -w (limit chars)
+// to produce the comparison key from a line.
+func extractKey(line []byte, opts options) []byte {
+	key := line
+	if opts.skipFields > 0 {
+		key = skipFieldsN(key, opts.skipFields)
+	}
+	if opts.skipChars > 0 {
+		key = skipBytesN(key, opts.skipChars)
+	}
+	if opts.checkChars >= 0 && len(key) > opts.checkChars {
+		key = key[:opts.checkChars]
+	}
+	return key
+}
+
+// skipFieldsN skips the first n whitespace-delimited fields in line.
+// R3.2: a field is a run of blanks followed by non-blanks.
+func skipFieldsN(line []byte, n int) []byte {
+	pos := 0
+	for i := 0; i < n && pos < len(line); i++ {
+		for pos < len(line) && isBlank(line[pos]) {
+			pos++
+		}
+		for pos < len(line) && !isBlank(line[pos]) {
+			pos++
+		}
+	}
+	return line[pos:]
+}
+
+// isBlank returns true if b is a space or tab (POSIX blank).
+func isBlank(b byte) bool {
+	return b == ' ' || b == '\t'
+}
+
+// skipBytesN skips the first n bytes of line. R3.3.
+func skipBytesN(line []byte, n int) []byte {
+	if n >= len(line) {
+		return nil
+	}
+	return line[n:]
 }
 
 // emitRun outputs a completed run of identical lines based on the active flags.
