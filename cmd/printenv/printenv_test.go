@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
+// Differential tests for prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -92,6 +92,29 @@ func TestDiff(t *testing.T) {
 			// R2.2, R3.1: -0 short flag with multiple variables
 			Name: "null_short_multiple_variables",
 			Args: []string{"-0", "HOME", "PATH"},
+		},
+		{
+			// R3.2: no-argument full dump with NUL-delimited output
+			Name: "null_no_args_full_dump",
+			Args: []string{"-0"},
+		},
+		{
+			// R3.2, R3.3: multiple missing variables, exit 1, no stderr
+			Name:     "multiple_missing_variables",
+			Args:     []string{"PRINTENV_TEST_MISSING_A", "PRINTENV_TEST_MISSING_B"},
+			ExitCode: 1,
+		},
+		{
+			// R3.2, R3.3: mix of existing and missing with NUL termination
+			Name:     "null_mix_existing_and_missing",
+			Args:     []string{"-0", "HOME", "PRINTENV_TEST_NONEXISTENT_VAR_XYZ"},
+			ExitCode: 1,
+		},
+		{
+			// R3.3: no stderr for mix of existing and missing variables
+			Name:     "no_stderr_mix_existing_missing",
+			Args:     []string{"HOME", "PATH", "PRINTENV_TEST_NONEXISTENT_VAR_XYZ"},
+			ExitCode: 1,
 		},
 		{
 			// R2.3: --version prints version info and exits 0
