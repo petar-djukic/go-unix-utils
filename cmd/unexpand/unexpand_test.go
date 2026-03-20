@@ -1,17 +1,27 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd025-unexpand R1.1–R1.4, R2.1–R2.3, R3.1–R3.3:
-// default leading whitespace conversion, -a all-whitespace conversion, and
-// custom tab stops (-t) against gunexpand.
+// Differential tests for prd025-unexpand R1.1–R1.4, R2.1–R2.3, R3.1–R3.3,
+// R4.1–R4.4: default leading whitespace conversion, -a all-whitespace
+// conversion, custom tab stops (-t), exit codes, and SIGPIPE against gunexpand.
 package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeErr replaces the reference binary name prefix (gunexpand:) with
+// unexpand: and lowercases error messages so that stderr compares equal
+// between the Go and GNU binaries. Go uses lowercase system error strings;
+// GNU uses capitalized.
+func normalizeErr(data []byte) []byte {
+	s := strings.ReplaceAll(string(data), "gunexpand: ", "unexpand: ")
+	return []byte(strings.ToLower(s))
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -245,6 +255,31 @@ func TestDiff(t *testing.T) {
 			Name:  "t_uniform_multiple_lines",
 			Args:  []string{"-t", "4"},
 			Stdin: []byte("    line1\n        line2\n"),
+		},
+		// R4.1: Exit 0 when all inputs processed successfully.
+		{
+			Name:  "exit_0_on_success_stdin",
+			Stdin: []byte("        text\n"),
+		},
+		// R4.2: Exit 1 when file cannot be opened; continue processing.
+		{
+			Name:      "exit_1_nonexistent_file",
+			Args:      []string{"nonexistent_file_does_not_exist"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeErr},
+		},
+		{
+			Name:      "exit_1_nonexistent_mixed_with_stdin",
+			Args:      []string{"-", "nonexistent_file_does_not_exist"},
+			Stdin:     []byte("        text\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeErr},
+		},
+		{
+			Name:      "exit_1_multiple_nonexistent",
+			Args:      []string{"no_such_file_a", "no_such_file_b"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeErr},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

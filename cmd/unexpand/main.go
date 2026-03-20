@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd025-unexpand R1.1–R1.4, R2.1–R2.3, R3.1–R3.3: space-to-tab
-// conversion for leading whitespace (default) or all whitespace (-a),
-// with custom tab stop support (-t).
+// Implements prd025-unexpand R1.1–R1.4, R2.1–R2.3, R3.1–R3.3, R4.1–R4.4:
+// space-to-tab conversion for leading whitespace (default) or all whitespace
+// (-a), with custom tab stop support (-t), exit codes, and SIGPIPE handling.
 // R1.1: Replace leading spaces with tabs where alignment reaches a tab stop.
 // R1.2: Non-leading whitespace passes through unchanged in default mode.
 // R1.3: Spaces not reaching a tab stop are kept as spaces.
@@ -14,6 +14,10 @@
 // R3.1: -t N sets uniform interval; -t LIST sets absolute positions.
 // R3.2: Past the last explicit tab stop in a LIST, spaces are kept as-is.
 // R3.3: -t implies -a; custom tab stops convert all whitespace.
+// R4.1: Exit 0 when all inputs processed successfully.
+// R4.2: Exit 1 when any input file cannot be opened; continue processing.
+// R4.3: Exit 1 when a write error occurs on stdout.
+// R4.4: Handle SIGPIPE gracefully via pkg/sys.InstallSIGPIPEHandler.
 package main
 
 import (
