@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd022-nl R1.1–R1.4: default line numbering.
+// Differential tests for prd022-nl R1.1–R1.4, R2.1–R2.4.
 package main
 
 import (
@@ -39,6 +39,7 @@ func TestDiff(t *testing.T) {
 	validFile := createTempFile(t, "hello\nworld\n")
 
 	tests := []testutils.DiffTest{
+		// === R1: Default line numbering ===
 		{
 			// R1.1, R1.2: non-empty lines numbered, empty lines passed through
 			Name:  "default_mixed_empty",
@@ -103,6 +104,94 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"/nonexistent/path/file.txt", validFile},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrErrorNormalizer},
+		},
+
+		// === R2.1: -b STYLE body numbering style ===
+		{
+			// R2.1: -b a numbers all lines including empty
+			Name:  "body_style_a",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("a\n\nb\n"),
+		},
+		{
+			// R2.1: -b t is explicit default (number non-empty)
+			Name:  "body_style_t_explicit",
+			Args:  []string{"-b", "t"},
+			Stdin: []byte("a\n\nb\n"),
+		},
+		{
+			// R2.1, R2.4: -b n numbers no lines
+			Name:  "body_style_n",
+			Args:  []string{"-b", "n"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R2.1: -b pRE numbers lines matching regex
+			Name:  "body_style_p_regex",
+			Args:  []string{"-b", "p^[ab]"},
+			Stdin: []byte("abc\ndef\naxy\n"),
+		},
+		{
+			// R2.1: combined -ba form
+			Name:  "body_style_combined_ba",
+			Args:  []string{"-ba"},
+			Stdin: []byte("x\n\ny\n"),
+		},
+		{
+			// R2.1: combined -bn form
+			Name:  "body_style_combined_bn",
+			Args:  []string{"-bn"},
+			Stdin: []byte("x\ny\n"),
+		},
+
+		// === R2.2: -h STYLE header numbering style ===
+		{
+			// R2.2: -h a numbers header section lines
+			Name:  "header_style_a",
+			Args:  []string{"-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nheader1\nheader2\n\\:\\:\nbody1\n"),
+		},
+		{
+			// R2.2: -h t numbers non-empty header lines
+			Name:  "header_style_t",
+			Args:  []string{"-h", "t"},
+			Stdin: []byte("\\:\\:\\:\nheader\n\n\\:\\:\nbody\n"),
+		},
+
+		// === R2.3: -f STYLE footer numbering style ===
+		{
+			// R2.3: -f a numbers footer section lines
+			Name:  "footer_style_a",
+			Args:  []string{"-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nheader\n\\:\\:\nbody\n\\:\nfooter1\nfooter2\n"),
+		},
+		{
+			// R2.3: -f t numbers non-empty footer lines
+			Name:  "footer_style_t",
+			Args:  []string{"-f", "t"},
+			Stdin: []byte("\\:\\:\\:\nheader\n\\:\\:\nbody\n\\:\nfooter\n\n"),
+		},
+
+		// === R2.4: style n produces no number and no separator ===
+		{
+			// R2.4: -b n with multiple lines, no numbers
+			Name:  "style_n_passthrough",
+			Args:  []string{"-b", "n"},
+			Stdin: []byte("hello\n\nworld\n"),
+		},
+
+		// === Combined section styles ===
+		{
+			// R2.1-R2.3: all sections with different styles
+			Name:  "all_sections_styled",
+			Args:  []string{"-h", "a", "-b", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nhdr\n\\:\\:\nbod\n\\:\nftr\n"),
+		},
+		{
+			// R2.1-R2.3: body a with default header/footer n
+			Name:  "body_a_default_hf",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("\\:\\:\\:\nhdr\n\\:\\:\nbod\n\\:\nftr\n"),
 		},
 	}
 
