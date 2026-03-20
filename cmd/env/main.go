@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2:
+// Implements prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3:
 // env basic environment display, variable assignment, command execution,
-// -i/--ignore-environment, -u/--unset, -0/--null, and exit code passthrough.
+// -i/--ignore-environment, -u/--unset, -0/--null, exit code passthrough,
+// and invalid option error handling.
 package main
 
 import (
@@ -58,36 +59,91 @@ func main() {
 }
 
 // parseOptions processes option flags, returning parsed options and
-// remaining arguments. Handles --help, --version, -i, -u, -0.
+// remaining arguments. Dispatches to long and short option parsers.
 func parseOptions(args []string) (envOptions, []string) {
 	opts := envOptions{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "--help":
-			printAndExit(helpText)
-		case arg == "--version":
-			printAndExit(versionText)
-		case arg == "-i" || arg == "--ignore-environment" || arg == "-":
-			opts.ignoreEnv = true
-		case arg == "-0" || arg == "--null":
-			opts.useNull = true
-		case arg == "-u" || arg == "--unset":
-			if i+1 < len(args) {
-				i++
-				opts.unsetVars = append(opts.unsetVars, args[i])
-			}
-		case strings.HasPrefix(arg, "--unset="):
-			opts.unsetVars = append(opts.unsetVars, arg[len("--unset="):])
-		case strings.HasPrefix(arg, "-u") && len(arg) > 2:
-			opts.unsetVars = append(opts.unsetVars, arg[2:])
 		case arg == "--":
 			return opts, args[i+1:]
+		case arg == "-":
+			opts.ignoreEnv = true
+		case strings.HasPrefix(arg, "--"):
+			i = parseLongOption(args, i, &opts)
+		case strings.HasPrefix(arg, "-"):
+			i = parseShortFlags(args, i, &opts)
 		default:
 			return opts, args[i:]
 		}
 	}
 	return opts, nil
+}
+
+// parseLongOption handles a single --xxx option. R3.3: exits 125 for unknown.
+func parseLongOption(args []string, i int, opts *envOptions) int {
+	arg := args[i]
+	switch {
+	case arg == "--help":
+		printAndExit(helpText)
+	case arg == "--version":
+		printAndExit(versionText)
+	case arg == "--ignore-environment":
+		opts.ignoreEnv = true
+	case arg == "--null":
+		opts.useNull = true
+	case arg == "--unset" && i+1 < len(args):
+		i++
+		opts.unsetVars = append(opts.unsetVars, args[i])
+	case strings.HasPrefix(arg, "--unset="):
+		opts.unsetVars = append(opts.unsetVars, arg[len("--unset="):])
+	default:
+		exitInvalidOption(arg)
+	}
+	return i
+}
+
+// parseShortFlags handles combined short flags like -i0 or -uNAME.
+// R3.3: exits 125 for unknown short flag characters.
+func parseShortFlags(args []string, i int, opts *envOptions) int {
+	chars := args[i][1:]
+	for j := 0; j < len(chars); j++ {
+		switch chars[j] {
+		case 'i':
+			opts.ignoreEnv = true
+		case '0':
+			opts.useNull = true
+		case 'u':
+			if j+1 < len(chars) {
+				opts.unsetVars = append(opts.unsetVars, chars[j+1:])
+			} else if i+1 < len(args) {
+				i++
+				opts.unsetVars = append(opts.unsetVars, args[i])
+			}
+			return i
+		default:
+			exitInvalidShortOption(chars[j])
+		}
+	}
+	return i
+}
+
+// exitInvalidOption prints an error for an unrecognized long option and
+// exits 125. R3.3.
+func exitInvalidOption(opt string) {
+	fmt.Fprintf(os.Stderr,
+		"%s: unrecognized option '%s'\nTry '%s --help' for more information.\n",
+		progName, opt, progName)
+	os.Exit(125)
+}
+
+// exitInvalidShortOption prints an error for an invalid short option
+// character and exits 125. R3.3.
+func exitInvalidShortOption(c byte) {
+	fmt.Fprintf(os.Stderr,
+		"%s: invalid option -- '%c'\nTry '%s --help' for more information.\n",
+		progName, c, progName)
+	os.Exit(125)
 }
 
 // buildEnvironment returns the starting environment: empty slice for -i,

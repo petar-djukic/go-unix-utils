@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3,
-// R3.1, R3.2: compares stdout, stderr, exit codes via pkg/testutils.
+// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3: compares stdout, stderr, exit codes
+// via pkg/testutils.
 package main_test
 
 import (
@@ -99,6 +100,24 @@ func TestDiff(t *testing.T) {
 		{Name: "exit_code_passthrough_42",
 			Args:     []string{"sh", "-c", "exit 42"},
 			ExitCode: 42},
+		// R3.3/R4.3: invalid long option exits 125.
+		{Name: "invalid_long_option",
+			Args:      []string{"--invalid-xyz"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normBin}},
+		// R3.3/R4.3: invalid short option exits 125.
+		{Name: "invalid_short_option",
+			Args:      []string{"-x"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normBin}},
+		// R3.3: combined flags with invalid char exits 125.
+		{Name: "combined_flags_invalid",
+			Args:      []string{"-ix"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normBin}},
+		// R4.2: combined short flags -i0 work together.
+		{Name: "combined_flags_i0",
+			Args: []string{"-i0", "A=1", "B=2"}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
