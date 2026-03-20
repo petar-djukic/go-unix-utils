@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd025-unexpand R1.1–R1.4: default leading whitespace
-// conversion against the GNU reference binary gunexpand.
+// Differential tests for prd025-unexpand R1.1–R1.4, R2.1–R2.3: default leading
+// whitespace conversion and -a all-whitespace conversion against gunexpand.
 package main
 
 import (
@@ -92,6 +92,62 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin_dash",
 			Args:  []string{"-"},
 			Stdin: []byte("        text\n"),
+		},
+		// R2.1: -a converts non-leading spaces where tabs align.
+		{
+			Name:  "a_flag_converts_non_leading_spaces",
+			Args:  []string{"-a"},
+			Stdin: []byte("a        b\n"),
+		},
+		{
+			Name:  "a_flag_leading_spaces_still_converted",
+			Args:  []string{"-a"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "a_flag_multiple_groups",
+			Args:  []string{"-a"},
+			Stdin: []byte("x        y        z\n"),
+		},
+		// R2.2: Single space kept as space even with -a.
+		{
+			Name:  "a_flag_single_space_kept",
+			Args:  []string{"-a"},
+			Stdin: []byte("a b\n"),
+		},
+		{
+			Name:  "a_flag_partial_spaces_kept",
+			Args:  []string{"-a"},
+			Stdin: []byte("a   b\n"),
+		},
+		// R2.3: -a processes the entire line past first non-whitespace.
+		{
+			Name:  "a_flag_processes_entire_line",
+			Args:  []string{"-a"},
+			Stdin: []byte("hello        world        end\n"),
+		},
+		{
+			Name:  "a_flag_multiple_lines",
+			Args:  []string{"-a"},
+			Stdin: []byte("a        b\nc        d\n"),
+		},
+		// --all is synonym for -a.
+		{
+			Name:  "all_flag_synonym",
+			Args:  []string{"--all"},
+			Stdin: []byte("a        b\n"),
+		},
+		// R2.1/R2.3: -a with tabs in non-leading position.
+		{
+			Name:  "a_flag_tab_in_middle",
+			Args:  []string{"-a"},
+			Stdin: []byte("a\t   b\n"),
+		},
+		// R2.1: -a with whitespace-only line.
+		{
+			Name:  "a_flag_whitespace_only",
+			Args:  []string{"-a"},
+			Stdin: []byte("        \n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
