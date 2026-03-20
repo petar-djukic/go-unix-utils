@@ -7,7 +7,8 @@
 // R2.3 (-G/--groups prints all group IDs), R2.4 (mutual exclusivity of -u/-g/-G),
 // R3.1 (-n/--name prints name instead of number),
 // R3.2 (-r/--real prints real UID/GID instead of effective),
-// R3.3 (USER operand queries named user identity).
+// R3.3 (USER operand queries named user identity),
+// R4.3 (error output and exit code for conflicting flags and invalid users).
 package main
 
 import (

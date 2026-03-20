@@ -8,6 +8,7 @@
 // R3.3 (USER operand named user lookup).
 // R4.1: compare Go vs gid reference binary.
 // R4.2: covers default, -u, -g, -G, -n, -r, named user, nonexistent user.
+// R4.3: error output and exit code for conflicting flags and invalid users.
 package main
 
 import (
@@ -23,10 +24,14 @@ import (
 // replaces binary name/path at the start of lines with "id" and strips
 // "Try ... for more information." lines.
 var stderrNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
-	nameRe := regexp.MustCompile(`(?m)^[^\s:]+`)
-	data = nameRe.ReplaceAll(data, []byte("id"))
+	// Strip "Try ..." lines first, before nameRe changes line starts.
 	tryRe := regexp.MustCompile(`(?m)^Try .* for more information\.\n`)
 	data = tryRe.ReplaceAll(data, nil)
+	nameRe := regexp.MustCompile(`(?m)^[^\s:]+`)
+	data = nameRe.ReplaceAll(data, []byte("id"))
+	// Normalize GNU getopt "invalid option -- 'X'" to Go format.
+	optRe := regexp.MustCompile(`invalid option -- '(.)'`)
+	data = optRe.ReplaceAll(data, []byte("unrecognized option '-$1'"))
 	// Strip system error suffix after "no such user" (e.g., ": Invalid argument").
 	suffixRe := regexp.MustCompile(`(no such user):[^\n]*`)
 	data = suffixRe.ReplaceAll(data, []byte("$1"))
@@ -249,6 +254,38 @@ func TestDiff(t *testing.T) {
 			Name: "flag_un_named_self",
 			Args: []string{"-un", currentUser.Username},
 			Env:  env,
+		},
+		// R4.3: unknown short flag — error, exit 1.
+		{
+			Name:      "unknown_short_flag",
+			Args:      []string{"-Q"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.3: unknown long flag — error, exit 1.
+		{
+			Name:      "unknown_long_flag",
+			Args:      []string{"--bogus"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.3: all three selection flags conflicting — error, exit 1.
+		{
+			Name:      "conflict_u_g_G",
+			Args:      []string{"-u", "-g", "-G"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.3: nonexistent user with selection flag — error, exit 1.
+		{
+			Name:      "nonexistent_user_with_flag",
+			Args:      []string{"-u", "no_such_user_12345"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

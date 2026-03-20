@@ -20,6 +20,9 @@ var stderrNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
 	data = tryRe.ReplaceAll(data, nil)
 	nameRe := regexp.MustCompile(`(?m)^[^\s:]+`)
 	data = nameRe.ReplaceAll(data, []byte("whoami"))
+	// Normalize GNU getopt "invalid option -- 'X'" to Go format.
+	optRe := regexp.MustCompile(`invalid option -- '(.)'`)
+	data = optRe.ReplaceAll(data, []byte("unrecognized option '-$1'"))
 	return data
 }
 
@@ -49,6 +52,13 @@ func TestDiff(t *testing.T) {
 			// R3.2: unknown flag error.
 			Name:      "unknown_flag",
 			Args:      []string{"--bogus"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			// R3.2: short unknown flag error.
+			Name:      "unknown_short_flag",
+			Args:      []string{"-x"},
 			ExitCode:  1,
 			Normalize: errNorm,
 		},

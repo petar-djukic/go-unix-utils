@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd042-whoami R1.1 (print effective username),
-// R1.2 (exit 0 on success), R2.1 (--help flag), R2.2 (--version flag).
+// R1.2 (effective UID not real UID),
+// R2.1 (extra operand error), R2.2 (unknown flag error),
+// R3.1 (differential testing via pkg/testutils),
+// R3.2 (test coverage for normal, extra operand, unknown flag),
+// R3.3 (output matches effective username).
 package main
 
 import (
