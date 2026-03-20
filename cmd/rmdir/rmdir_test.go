@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1.
+// Differential tests for prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4,
 // R4.1: compares stdout, stderr, exit codes via pkg/testutils.
 package main_test
 
@@ -52,9 +52,15 @@ func runSharedTests(t *testing.T, goBin, refBin string, normBin testutils.Normal
 		{Name: "ignore_nonempty", Args: []string{"--ignore-fail-on-non-empty", "nonempty"},
 			WorkDir:   nonEmptyBase,
 			Normalize: []testutils.NormalizeFunc{normBin}},
+		// R3.2: --ignore-fail-on-non-empty does NOT suppress non-existent.
+		{Name: "ignore_nonexistent", Args: []string{"--ignore-fail-on-non-empty", "no_such_dir"},
+			Normalize: []testutils.NormalizeFunc{normBin}},
 		// Missing operand.
 		{Name: "missing_operand",
 			Normalize: []testutils.NormalizeFunc{normBin}},
+		// R4.1: --version prints version info to stdout.
+		{Name: "version", Args: []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{versionNormalizer, normBin}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -105,6 +111,33 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 		// R3.1 + R2.1: -p --ignore-fail-on-non-empty suppresses parent error.
 		{name: "parents_ignore_nonempty",
 			args: []string{"-p", "--ignore-fail-on-non-empty", "a/b/c"},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "a/b/c")
+				writeFile(t, filepath.Join(dir, "a", "sibling.txt"))
+			}},
+		// R3.3: --verbose prints removal message for single dir.
+		{name: "verbose_single", args: []string{"-v", "emptydir"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "emptydir")
+			}},
+		// R3.3 + R3.4: --verbose with -p prints message for each dir.
+		{name: "verbose_parents", args: []string{"-pv", "a/b/c"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "a/b/c")
+			}},
+		// R3.3: --verbose with multiple dirs.
+		{name: "verbose_multiple", args: []string{"--verbose", "d1", "d2"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "d1")
+				mkdirAll(t, dir, "d2")
+			}},
+		// R3.4: --verbose + --ignore-fail-on-non-empty combined with -p.
+		{name: "verbose_parents_ignore",
+			args: []string{"-pv", "--ignore-fail-on-non-empty", "a/b/c"},
+			norm: []testutils.NormalizeFunc{normBin},
 			setup: func(t *testing.T, dir string) {
 				mkdirAll(t, dir, "a/b/c")
 				writeFile(t, filepath.Join(dir, "a", "sibling.txt"))
@@ -202,6 +235,16 @@ func makeBinaryNormalizer(refBin string) testutils.NormalizeFunc {
 		data = bytes.ReplaceAll(data, []byte("grmdir"), []byte("rmdir"))
 		return bytes.ToLower(data)
 	}
+}
+
+// versionNormalizer reduces version output to just the program name
+// on a single line. GNU outputs multi-line copyright info; we output
+// a single line. Both start with "rmdir" after binary name normalization.
+func versionNormalizer(data []byte) []byte {
+	if idx := bytes.IndexByte(data, ' '); idx >= 0 {
+		return data[:idx]
+	}
+	return data
 }
 
 // mkdirAll creates a nested directory structure inside base.

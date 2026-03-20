@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1: rmdir core,
-// parents mode, and ignore-fail-on-non-empty.
+// Implements prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1:
+// rmdir core, parents mode, ignore-fail-on-non-empty, verbose, version/help.
 package main
 
 import (
@@ -22,6 +22,7 @@ const progName = "rmdir"
 type options struct {
 	parents        bool // R2.1: -p, --parents
 	ignoreNonEmpty bool // R3.1: --ignore-fail-on-non-empty
+	verbose        bool // R3.3: -v, --verbose
 }
 
 func main() {
@@ -41,7 +42,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printTryHelp(stderr)
 		return 1
 	}
-	return removeDirs(dirs, opts, stderr)
+	return removeDirs(dirs, opts, stdout, stderr)
 }
 
 // parseArgs separates flags from directory arguments.
@@ -75,7 +76,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) ([]string, options, int)
 	return dirs, opts, -1
 }
 
-// applyShortFlags processes combined short flags (e.g., -p).
+// applyShortFlags processes combined short flags (e.g., -pv).
 // Returns exit code >= 0 for terminal flags, -1 to continue.
 func applyShortFlags(arg string, opts *options, stderr io.Writer) int {
 	for j := 1; j < len(arg); j++ {
@@ -83,6 +84,9 @@ func applyShortFlags(arg string, opts *options, stderr io.Writer) int {
 		case 'p':
 			// R2.1: enable parent removal mode.
 			opts.parents = true
+		case 'v':
+			// R3.3: enable verbose mode.
+			opts.verbose = true
 		default:
 			fmt.Fprintf(stderr, "%s: invalid option -- '%c'\n", progName, arg[j])
 			printTryHelp(stderr)
@@ -106,6 +110,9 @@ func applyLongFlag(arg string, opts *options, stdout, stderr io.Writer) int {
 		opts.parents = true
 	case "--ignore-fail-on-non-empty":
 		opts.ignoreNonEmpty = true
+	case "--verbose":
+		// R3.3: enable verbose mode.
+		opts.verbose = true
 	default:
 		fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n", progName, arg)
 		printTryHelp(stderr)
@@ -115,11 +122,11 @@ func applyLongFlag(arg string, opts *options, stdout, stderr io.Writer) int {
 }
 
 // removeDirs removes each directory independently, returning 0 or 1.
-// R1.2, R2.3: processes each directory argument independently.
-func removeDirs(dirs []string, opts options, stderr io.Writer) int {
+// R1.2, R2.3, R3.4: processes each directory argument independently.
+func removeDirs(dirs []string, opts options, stdout, stderr io.Writer) int {
 	exitCode := 0
 	for _, dir := range dirs {
-		if code := removeOne(dir, opts, stderr); code != 0 {
+		if code := removeOne(dir, opts, stdout, stderr); code != 0 {
 			exitCode = code
 		}
 	}
@@ -128,7 +135,9 @@ func removeDirs(dirs []string, opts options, stderr io.Writer) int {
 
 // removeOne removes a single directory, with optional parent removal.
 // R1.1: removes the target. R2.1: ascends to parents when -p is set.
-func removeOne(dir string, opts options, stderr io.Writer) int {
+// R3.3: prints verbose message before each removal attempt.
+func removeOne(dir string, opts options, stdout, stderr io.Writer) int {
+	printVerbose(opts, dir, stdout)
 	if err := os.Remove(dir); err != nil {
 		if shouldIgnore(err, opts) {
 			return 0
@@ -138,7 +147,7 @@ func removeOne(dir string, opts options, stderr io.Writer) int {
 		return 1
 	}
 	if opts.parents {
-		return removeParents(dir, opts, stderr)
+		return removeParents(dir, opts, stdout, stderr)
 	}
 	return 0
 }
@@ -146,13 +155,15 @@ func removeOne(dir string, opts options, stderr io.Writer) int {
 // removeParents removes successive empty parent directories after the
 // target has been removed. R2.1: ascends the path removing each parent.
 // R2.2: stops when a parent cannot be removed.
-func removeParents(dir string, opts options, stderr io.Writer) int {
+func removeParents(dir string, opts options, stdout, stderr io.Writer) int {
 	current := filepath.Clean(dir)
 	for {
 		parent := filepath.Dir(current)
 		if parent == current || parent == "." {
 			break
 		}
+		// R3.3: verbose message before each parent removal attempt.
+		printVerbose(opts, parent, stdout)
 		if err := os.Remove(parent); err != nil {
 			if shouldIgnore(err, opts) {
 				return 0
@@ -166,8 +177,17 @@ func removeParents(dir string, opts options, stderr io.Writer) int {
 	return 0
 }
 
+// printVerbose prints a removal message to stdout if verbose mode is on.
+// R3.3: matches GNU rmdir -v output format.
+func printVerbose(opts options, dir string, w io.Writer) {
+	if opts.verbose {
+		fmt.Fprintf(w, "%s: removing directory, '%s'\n", progName, dir)
+	}
+}
+
 // shouldIgnore returns true when the error should be suppressed by
 // --ignore-fail-on-non-empty. R3.1: suppresses only non-empty errors.
+// R3.2: does not suppress other errors (permission denied, non-existent).
 func shouldIgnore(err error, opts options) bool {
 	if !opts.ignoreNonEmpty {
 		return false
@@ -195,6 +215,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "                      is non-empty")
 	fmt.Fprintln(w, "  -p, --parents     remove DIRECTORY and its ancestors; e.g., 'rmdir -p a/b/c' is")
 	fmt.Fprintln(w, "                      similar to 'rmdir a/b/c a/b a'")
+	fmt.Fprintln(w, "  -v, --verbose     output a diagnostic for every directory processed")
 	fmt.Fprintln(w, "      --help        display this help and exit")
 	fmt.Fprintln(w, "      --version     output version information and exit")
 }
