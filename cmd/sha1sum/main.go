@@ -5,7 +5,9 @@
 // with GNU and BSD tag output formats.
 // Implements prd031-sha1sum R2.1, R2.2, R2.3: checksum verification
 // with --check, --warn, --quiet, --status.
-// Implements prd031-sha1sum R3.1: binary/text mode flags.
+// Implements prd031-sha1sum R3.1, R3.2: binary/text mode flags and
+// tag format interaction.
+// Implements prd031-sha1sum R4.1, R4.2, R4.3: exit codes and SIGPIPE handling.
 package main
 
 import (

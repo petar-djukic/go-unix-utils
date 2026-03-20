@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd031-sha1sum R1.1, R1.2, R1.3, R1.4,
-// R2.1, R2.2, R2.3, R3.1.
+// R2.1, R2.2, R2.3, R3.1, R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -269,6 +269,53 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-b", "a.txt", "b.txt"},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirMulti,
+		},
+		// R3.2: --tag with -b produces BSD format (mode has no effect on tag).
+		{
+			Name:    "tag_with_binary",
+			Args:    []string{"--tag", "-b", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.2: -b with --tag (reversed order).
+		{
+			Name:    "binary_with_tag",
+			Args:    []string{"-b", "--tag", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R4.1: Exit 0 when all files processed successfully.
+		{
+			Name:    "exit_zero_single_file",
+			Args:    []string{"input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R4.1: Exit 0 when all verified digests match.
+		{
+			Name:      "exit_zero_check_pass",
+			Args:      []string{"--check", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheck,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: Exit 1 when a file cannot be opened.
+		{
+			Name:      "exit_one_missing_file",
+			Args:      []string{"no_such_file.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirSingle,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: Exit 1 when a digest fails verification.
+		{
+			Name:      "exit_one_check_mismatch",
+			Args:      []string{"--check", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirCheckFail,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer, failedSummaryNormalizer},
 		},
 	}
 
