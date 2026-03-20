@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd030-md5sum R1.1, R1.2, R1.3, R1.4,
-// R2.1, R2.2, R2.3, R2.4.
+// R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -221,6 +221,76 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			WorkDir:   dirCheckBSD,
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.1: -b flag produces "HASH *FILENAME" format.
+		{
+			Name:    "binary_flag_short",
+			Args:    []string{"-b", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.1: --binary flag produces "HASH *FILENAME" format.
+		{
+			Name:    "binary_flag_long",
+			Args:    []string{"--binary", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.1: -b with stdin.
+		{
+			Name:  "binary_flag_stdin",
+			Args:  []string{"-b"},
+			Stdin: []byte("abc"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -t flag is default text mode, "HASH  FILENAME".
+		{
+			Name:    "text_flag_explicit",
+			Args:    []string{"-t", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.2: --text flag is default text mode.
+		{
+			Name:    "text_flag_long",
+			Args:    []string{"--text", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.2: -t overrides earlier -b.
+		{
+			Name:    "text_overrides_binary",
+			Args:    []string{"-b", "-t", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.1: -b overrides earlier -t.
+		{
+			Name:    "binary_overrides_text",
+			Args:    []string{"-t", "-b", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.3: --tag with -b produces BSD format (mode has no effect on tag).
+		{
+			Name:    "tag_with_binary",
+			Args:    []string{"--tag", "-b", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.3: -b with --tag (reversed order).
+		{
+			Name:    "binary_with_tag",
+			Args:    []string{"-b", "--tag", "input.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirSingle,
+		},
+		// R3.1: -b with multiple files.
+		{
+			Name:    "binary_multiple_files",
+			Args:    []string{"-b", "a.txt", "b.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirMulti,
 		},
 	}
 
