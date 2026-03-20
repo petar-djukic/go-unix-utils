@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd050-readlink R1.1–R1.6, R2.1, R2.2, R4.1–R4.3:
-// default symlink target, -f canonicalize, -e canonicalize-existing,
+// Differential tests for prd050-readlink R1.1–R1.6, R2.1, R2.2, R3.1, R3.2,
+// R4.1–R4.3: default symlink target, -f canonicalize, -e canonicalize-existing,
 // -m canonicalize-missing, -n no-newline, multiple operands,
-// error handling, and differential test coverage against greadlink.
+// error handling (missing operand, unknown flags), and differential test
+// coverage against greadlink.
 package main
 
 import (
@@ -31,6 +32,15 @@ var caseNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
 	return bytes.ToLower(data)
 }
 
+// quoteNormalizer normalizes locale-dependent quote characters to ASCII
+// single quotes so error messages match across GNU versions and locales.
+var quoteNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("\u2018"), []byte("'"))
+	data = bytes.ReplaceAll(data, []byte("\u2019"), []byte("'"))
+	data = bytes.ReplaceAll(data, []byte("`"), []byte("'"))
+	return data
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -48,7 +58,7 @@ func TestDiff(t *testing.T) {
 
 	symlink := filepath.Join(canonTmpDir, "link")
 	chainEnd := filepath.Join(canonTmpDir, "chain")
-	usageNorm := []testutils.NormalizeFunc{binaryNameNormalizer, caseNormalizer}
+	usageNorm := []testutils.NormalizeFunc{binaryNameNormalizer, caseNormalizer, quoteNormalizer}
 
 	tests := []testutils.DiffTest{
 		// R1.1: default — print symlink target
@@ -195,10 +205,26 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{binaryNameNormalizer},
 		},
-		// No operand — usage error to stderr
+		// R3.1: No operand — usage error to stderr
 		{
 			Name:      "no_operand",
 			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: usageNorm,
+		},
+		// R3.2: unknown long flag — error to stderr, exit 1
+		{
+			Name:      "unknown_long_flag",
+			Args:      []string{"--badopt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: usageNorm,
+		},
+		// R3.2: unknown long flag with operand — error to stderr, exit 1
+		{
+			Name:      "unknown_flag_with_operand",
+			Args:      []string{"--badopt", symlink},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: usageNorm,

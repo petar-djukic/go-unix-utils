@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd050-readlink R1.1–R1.6, R2.1, R2.2: print symlink target or
-// canonical path with -f, -e, -m modes, -n no-newline, and multi-operand support.
+// Implements prd050-readlink R1.1–R1.6, R2.1, R2.2, R3.1, R3.2: print symlink
+// target or canonical path with -f, -e, -m modes, -n no-newline, multi-operand
+// support, and error handling for missing operands and unknown flags.
 package main
 
 import (
