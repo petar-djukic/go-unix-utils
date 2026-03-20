@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/ln covering prd037-ln R1.1–R1.4 (hard links)
-// and R2.1–R2.4 (symbolic links).
+// Differential tests for cmd/ln covering prd037-ln R1.1–R1.4 (hard links),
+// R2.1–R2.4 (symbolic links), R3.1 (force), R3.3 (interactive), R3.5 (backup).
 package main_test
 
 import (
@@ -81,12 +81,12 @@ func runSharedTests(t *testing.T, goBin, refBin string, normBin testutils.Normal
 
 // isolatedCase defines a test where each binary runs in its own temp dir.
 type isolatedCase struct {
-	name  string
-	args  []string // uses placeholder paths; setup provides the real files
-	setup func(t *testing.T, dir string)
-	norm  []testutils.NormalizeFunc
-	// verify runs after both binaries complete; checks filesystem state.
-	verify func(t *testing.T, goDir string)
+	name   string
+	args   []string // uses placeholder paths; setup provides the real files
+	stdin  []byte   // stdin to send to both binaries; nil = no stdin
+	setup  func(t *testing.T, dir string)
+	norm   []testutils.NormalizeFunc
+	verify func(t *testing.T, goDir string) // checks filesystem state after Go binary runs
 }
 
 // runIsolatedTests runs tests where each binary needs its own WorkDir
@@ -206,6 +206,126 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 				setupFile(t, dir, "sub/deep.txt", "deep")
 			},
 		},
+		// R3.1: -f overwrites existing hard link destination.
+		{
+			name: "force_hard_link",
+			args: []string{"-f", "source.txt", "existing.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+			},
+		},
+		// R3.1: -sf overwrites existing with symlink.
+		{
+			name: "force_symlink",
+			args: []string{"-sf", "target.txt", "slink"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "target.txt", "content")
+				setupFile(t, dir, "slink", "old")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifySymlink(t, filepath.Join(dir, "slink"), "target.txt")
+			},
+		},
+		// R3.5: -b with -f creates backup before overwriting.
+		{
+			name: "backup_force_hard_link",
+			args: []string{"-bf", "source.txt", "existing.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+				verifyFileContent(t, filepath.Join(dir, "existing.txt~"), "old")
+			},
+		},
+		// R3.5: --backup long form with force.
+		{
+			name: "backup_long_flag",
+			args: []string{"--backup", "-f", "source.txt", "existing.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+				verifyFileContent(t, filepath.Join(dir, "existing.txt~"), "old")
+			},
+		},
+		// R3.3: -i with "y" response replaces destination.
+		{
+			name: "interactive_yes",
+			args:  []string{"-i", "source.txt", "existing.txt"},
+			stdin: []byte("y\n"),
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+			},
+		},
+		// R3.3: -i with "n" response preserves destination.
+		{
+			name: "interactive_no",
+			args:  []string{"-i", "source.txt", "existing.txt"},
+			stdin: []byte("n\n"),
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "existing.txt"), "old")
+			},
+		},
+		// R3.1+R3.3: -if means force wins (last flag), no prompt.
+		{
+			name: "force_after_interactive",
+			args: []string{"-if", "source.txt", "existing.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+			},
+		},
+		// R3.1+R3.3: -fi means interactive wins (last flag), prompts.
+		{
+			name: "interactive_after_force",
+			args:  []string{"-fi", "source.txt", "existing.txt"},
+			stdin: []byte("y\n"),
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "source.txt", "hello")
+				setupFile(t, dir, "existing.txt", "old")
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyHardLink(t, filepath.Join(dir, "source.txt"), filepath.Join(dir, "existing.txt"))
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -234,8 +354,8 @@ func runRelativeSymlinkTest(t *testing.T, goBin, refBin string, normBin testutil
 	refArgs := []string{"-sr", filepath.Join(refDir, "target.txt"), filepath.Join(refDir, "rlink")}
 	goArgs := []string{"-sr", filepath.Join(goDir, "target.txt"), filepath.Join(goDir, "rlink")}
 
-	refOut, refErr, refCode := execBinary(t, refBin, refArgs, refDir)
-	goOut, goErr, goCode := execBinary(t, goBin, goArgs, goDir)
+	refOut, refErr, refCode := execBinaryStdin(t, refBin, refArgs, refDir, nil)
+	goOut, goErr, goCode := execBinaryStdin(t, goBin, goArgs, goDir, nil)
 
 	refOut, goOut, refErr, goErr = applyNorm(
 		[]testutils.NormalizeFunc{normBin}, refOut, goOut, refErr, goErr)
@@ -256,8 +376,8 @@ func runRelativeSubdirTest(t *testing.T, goBin, refBin string, normBin testutils
 	refArgs := []string{"-sr", filepath.Join(refDir, "sub", "deep.txt"), filepath.Join(refDir, "toplink")}
 	goArgs := []string{"-sr", filepath.Join(goDir, "sub", "deep.txt"), filepath.Join(goDir, "toplink")}
 
-	refOut, refErr, refCode := execBinary(t, refBin, refArgs, refDir)
-	goOut, goErr, goCode := execBinary(t, goBin, goArgs, goDir)
+	refOut, refErr, refCode := execBinaryStdin(t, refBin, refArgs, refDir, nil)
+	goOut, goErr, goCode := execBinaryStdin(t, goBin, goArgs, goDir, nil)
 
 	refOut, goOut, refErr, goErr = applyNorm(
 		[]testutils.NormalizeFunc{normBin}, refOut, goOut, refErr, goErr)
@@ -274,8 +394,8 @@ func compareIsolated(t *testing.T, goBin, refBin string, tc isolatedCase) {
 		tc.setup(t, refDir)
 		tc.setup(t, goDir)
 	}
-	refOut, refErr, refCode := execBinary(t, refBin, tc.args, refDir)
-	goOut, goErr, goCode := execBinary(t, goBin, tc.args, goDir)
+	refOut, refErr, refCode := execBinaryStdin(t, refBin, tc.args, refDir, tc.stdin)
+	goOut, goErr, goCode := execBinaryStdin(t, goBin, tc.args, goDir, tc.stdin)
 	refOut, goOut, refErr, goErr = applyNorm(tc.norm, refOut, goOut, refErr, goErr)
 	assertMatch(t, tc.args, refOut, goOut, refErr, goErr, refCode, goCode)
 	if tc.verify != nil {
@@ -295,15 +415,18 @@ func assertMatch(t *testing.T, args []string, refOut, goOut, refErr, goErr []byt
 	}
 }
 
-// execBinary runs a binary with args in dir, returning stdout, stderr,
-// and exit code.
-func execBinary(t *testing.T, bin string, args []string, dir string) ([]byte, []byte, int) {
+// execBinaryStdin runs a binary with args and optional stdin in dir,
+// returning stdout, stderr, and exit code.
+func execBinaryStdin(t *testing.T, bin string, args []string, dir string, stdin []byte) ([]byte, []byte, int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = buildTestEnv()
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -389,6 +512,18 @@ func verifyHardLink(t *testing.T, source, link string) {
 	}
 	if !os.SameFile(srcInfo, lnkInfo) {
 		t.Fatalf("hard link %s and %s do not share inode", source, link)
+	}
+}
+
+// verifyFileContent checks that a file exists with the expected content.
+func verifyFileContent(t *testing.T, path, want string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(data) != want {
+		t.Fatalf("file %s content = %q, want %q", path, string(data), want)
 	}
 }
 

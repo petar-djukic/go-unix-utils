@@ -1,13 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd037-ln R1.1–R1.4: hard link creation with single target,
-// multi-target directory mode, directory rejection, and existing destination
-// error handling. R2.1–R2.4: symbolic link creation with -s, directory
-// support, as-is target storage, and -r relative path computation.
+// Implements prd037-ln R1.1–R1.4: hard link creation, R2.1–R2.4: symbolic
+// link creation, R3.1: force mode, R3.3: interactive mode, R3.5: backup mode.
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,10 +31,25 @@ Create hard links (by default) or symbolic links to files.
 const versionText = `ln (go-unix-utils) 1.0
 `
 
+// errDeclined is a sentinel error indicating the user declined an interactive prompt.
+// The caller should treat this as a failure (exit 1) but not print an error message.
+var errDeclined = fmt.Errorf("declined")
+
+// overwriteMode determines behavior when the destination already exists.
+type overwriteMode int
+
+const (
+	overwriteNone        overwriteMode = iota // default: error on existing
+	overwriteForce                             // -f: remove without prompting
+	overwriteInteractive                       // -i: prompt before removing
+)
+
 // options holds parsed command-line flags.
 type options struct {
-	symbolic bool // -s, --symbolic: create symbolic links
-	relative bool // -r, --relative: create relative symlinks
+	symbolic  bool          // -s, --symbolic: create symbolic links
+	relative  bool          // -r, --relative: create relative symlinks
+	overwrite overwriteMode // -f or -i, last flag on command line wins
+	backup    bool          // -b, --backup: create backup before removing
 }
 
 func main() {
@@ -70,8 +84,7 @@ func parseArgs(args []string) (options, []string) {
 	var opts options
 	var operands []string
 
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
+	for i, arg := range args {
 		if arg == "--" {
 			operands = append(operands, args[i+1:]...)
 			break
@@ -82,12 +95,7 @@ func parseArgs(args []string) (options, []string) {
 		if arg == "--version" {
 			printAndExit(versionText)
 		}
-		if arg == "--symbolic" {
-			opts.symbolic = true
-			continue
-		}
-		if arg == "--relative" {
-			opts.relative = true
+		if parseLongFlag(arg, &opts) {
 			continue
 		}
 		if strings.HasPrefix(arg, "--") {
@@ -103,7 +111,29 @@ func parseArgs(args []string) (options, []string) {
 	return opts, operands
 }
 
-// parseShortFlags processes a cluster of short flags (e.g., "-sr").
+// parseLongFlag handles known long flags. Returns true if arg was consumed.
+func parseLongFlag(arg string, opts *options) bool {
+	switch arg {
+	case "--symbolic":
+		opts.symbolic = true
+	case "--relative":
+		opts.relative = true
+	case "--force":
+		opts.overwrite = overwriteForce
+	case "--interactive":
+		opts.overwrite = overwriteInteractive
+	default:
+		if arg == "--backup" || strings.HasPrefix(arg, "--backup=") {
+			opts.backup = true
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+// parseShortFlags processes a cluster of short flags (e.g., "-sf").
+// R3.1/R3.3: -f and -i overwrite each other; last flag wins.
 func parseShortFlags(flags string, opts *options) {
 	for _, ch := range flags {
 		switch ch {
@@ -111,13 +141,19 @@ func parseShortFlags(flags string, opts *options) {
 			opts.symbolic = true
 		case 'r':
 			opts.relative = true
+		case 'f':
+			opts.overwrite = overwriteForce
+		case 'i':
+			opts.overwrite = overwriteInteractive
+		case 'b':
+			opts.backup = true
 		}
 	}
 }
 
 // linkSingle creates a link from source to dest. If dest is an existing
 // directory, the link is created inside it with the source's basename.
-// Implements R1.1, R1.3, R1.4, R2.1–R2.4.
+// Implements R1.1, R1.3, R1.4, R2.1–R2.4, R3.1, R3.3, R3.5.
 func linkSingle(source, dest string, opts options) {
 	if !opts.symbolic && isDirectory(source) {
 		// R1.3: reject hard links to directories.
@@ -130,11 +166,14 @@ func linkSingle(source, dest string, opts options) {
 		dest = filepath.Join(dest, filepath.Base(source))
 	}
 
-	// R1.4: error when destination already exists.
 	if _, err := os.Lstat(dest); err == nil {
-		fmt.Fprintf(os.Stderr, "%s: failed to create %s '%s': File exists\n",
-			progName, linkTypeName(opts.symbolic), dest)
-		os.Exit(1)
+		if !resolveExisting(dest, opts) {
+			if opts.overwrite == overwriteNone {
+				fmt.Fprintf(os.Stderr, "%s: failed to create %s '%s': File exists\n",
+					progName, linkTypeName(opts.symbolic), dest)
+			}
+			os.Exit(1)
+		}
 	}
 
 	if err := createLink(source, dest, opts); err != nil {
@@ -155,7 +194,9 @@ func linkMultipleIntoDir(sources []string, dir string, opts options) {
 	exitCode := 0
 	for _, source := range sources {
 		if err := linkIntoDir(source, dir, opts); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+			if err != errDeclined {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+			}
 			exitCode = 1
 		}
 	}
@@ -171,10 +212,14 @@ func linkIntoDir(source, dir string, opts options) error {
 
 	dest := filepath.Join(dir, filepath.Base(source))
 
-	// R1.4: error when destination already exists.
 	if _, err := os.Lstat(dest); err == nil {
-		return fmt.Errorf("failed to create %s '%s': File exists",
-			linkTypeName(opts.symbolic), dest)
+		if !resolveExisting(dest, opts) {
+			if opts.overwrite == overwriteNone {
+				return fmt.Errorf("failed to create %s '%s': File exists",
+					linkTypeName(opts.symbolic), dest)
+			}
+			return errDeclined
+		}
 	}
 
 	if err := createLink(source, dest, opts); err != nil {
@@ -182,6 +227,48 @@ func linkIntoDir(source, dir string, opts options) error {
 			linkTypeName(opts.symbolic), dest, source, unwrapErr(err))
 	}
 	return nil
+}
+
+// resolveExisting handles an existing destination per overwrite mode.
+// Returns true if the destination was removed and linking should proceed.
+// R3.1: force removes without prompting. R3.3: interactive prompts first.
+func resolveExisting(dest string, opts options) bool {
+	switch opts.overwrite {
+	case overwriteForce:
+		removeDest(dest, opts.backup)
+		return true
+	case overwriteInteractive:
+		if !promptReplace(dest) {
+			return false
+		}
+		removeDest(dest, opts.backup)
+		return true
+	default:
+		return false
+	}
+}
+
+// removeDest removes the destination, optionally creating a backup first.
+// R3.5: -b creates a backup with ~ suffix before removal.
+func removeDest(dest string, backup bool) {
+	if backup {
+		// Rename to backup path; moves the file away from dest.
+		os.Rename(dest, dest+"~") // best-effort backup
+		return
+	}
+	os.Remove(dest) // best-effort removal
+}
+
+// promptReplace prompts the user on stderr before removing dest.
+// R3.3: reads one line from stdin; proceeds only if response starts with y/Y.
+func promptReplace(dest string) bool {
+	fmt.Fprintf(os.Stderr, "%s: replace '%s'? ", progName, dest)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		return false
+	}
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
 // createLink creates a hard or symbolic link based on opts.
