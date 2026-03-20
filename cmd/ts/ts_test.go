@@ -1,15 +1,23 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd004-ts R1.1–R1.6, R2.1, R2.2.
+// Differential tests for prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.2.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// subsecNormalizer replaces bare decimal number patterns (e.g. "21.924603")
+// that appear in %.S output but are not matched by TimestampNormalizer.
+var subsecNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	re := regexp.MustCompile(`\d+\.\d+`)
+	return re.ReplaceAll(data, []byte("<TIMESTAMP>"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -80,6 +88,61 @@ func TestDiff(t *testing.T) {
 			Name:  "format_literal_percent",
 			Args:  []string{"%%"},
 			Stdin: []byte("line\n"),
+		},
+		// R2.3: %.S subsecond extension (seconds with microseconds).
+		{
+			Name:      "subsecond_dot_S",
+			Args:      []string{"%.S"},
+			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R2.3: %.s subsecond extension (epoch with microseconds).
+		{
+			Name:      "subsecond_dot_s",
+			Args:      []string{"%.s"},
+			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R2.3: %.T subsecond extension (HH:MM:SS with microseconds).
+		{
+			Name:      "subsecond_dot_T",
+			Args:      []string{"%.T"},
+			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R2.3, R2.4: Custom format mixing standard and subsecond extensions.
+		{
+			Name:      "subsecond_mixed_format",
+			Args:      []string{"%Y-%m-%d %.T"},
+			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R3.1, R3.2: Incremental mode with default format.
+		{
+			Name:      "incremental_default_format",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1: Incremental mode with single line.
+		{
+			Name:      "incremental_single_line",
+			Args:      []string{"-i"},
+			Stdin:     []byte("only\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1, R3.2: Incremental mode with custom subsecond format.
+		{
+			Name:      "incremental_custom_format",
+			Args:      []string{"-i", "%.T"},
+			Stdin:     []byte("a\nb\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R3.1: Incremental mode with empty stdin.
+		{
+			Name:  "incremental_empty_stdin",
+			Args:  []string{"-i"},
+			Stdin: []byte(""),
 		},
 	}
 
