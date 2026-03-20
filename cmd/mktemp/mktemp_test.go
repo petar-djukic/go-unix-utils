@@ -3,7 +3,7 @@
 
 // Implements prd036-mktemp R4.1–R4.3: differential and structural tests for
 // mktemp R1.1–R1.5 (core behavior, template validation), R2.1–R2.3
-// (directory mode), and R3.1–R3.4 (suffix mode, quiet flag).
+// (directory mode), R3.1–R3.6 (suffix mode, quiet flag, tmpdir mode).
 package main
 
 import (
@@ -166,7 +166,7 @@ func TestStructuralDirMode(t *testing.T) {
 }
 
 // TestStructuralSuffix verifies suffix mode and --suffix flag behavior.
-// Covers R3.1–R3.3.
+// Covers R3.3.
 func TestStructuralSuffix(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -212,7 +212,7 @@ func TestStructuralSuffix(t *testing.T) {
 }
 
 // TestStructuralQuiet verifies -q/--quiet flag behavior.
-// Covers R3.4.
+// Covers R3.6.
 func TestStructuralQuiet(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -250,6 +250,110 @@ func TestStructuralQuiet(t *testing.T) {
 		}
 		if stderr != "" {
 			t.Fatalf("expected empty stderr with -q, got: %s", stderr)
+		}
+	})
+}
+
+// TestStructuralTmpdir verifies --tmpdir and -p flag behavior.
+// Covers R3.5 (--tmpdir without value) and R3.6 (--tmpdir=DIR).
+func TestStructuralTmpdir(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("tmpdir_no_value_uses_tmpdir_env", func(t *testing.T) {
+		t.Parallel()
+		path := runAndCaptureWithFlags(t, goBin, "--tmpdir")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, os.TempDir())
+		verifyDefaultPattern(t, filepath.Base(path))
+	})
+
+	t.Run("tmpdir_with_value_uses_dir", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin, "--tmpdir="+customDir)
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyDefaultPattern(t, filepath.Base(path))
+	})
+
+	t.Run("p_flag_uses_dir", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin, "-p", customDir)
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyDefaultPattern(t, filepath.Base(path))
+	})
+
+	t.Run("tmpdir_with_custom_template", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin,
+			"--tmpdir="+customDir, "myapp.XXXXXX")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyPatternWithSuffix(t, filepath.Base(path), "myapp.", 6, "")
+	})
+
+	t.Run("p_flag_with_custom_template", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin,
+			"-p", customDir, "myapp.XXXXXX")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyPatternWithSuffix(t, filepath.Base(path), "myapp.", 6, "")
+	})
+
+	t.Run("tmpdir_with_d_flag", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin,
+			"-d", "--tmpdir="+customDir)
+		defer os.RemoveAll(path)
+		verifyDirExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyPermissions(t, path, 0o700)
+	})
+
+	t.Run("p_flag_with_d_flag", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin,
+			"-d", "-p", customDir)
+		defer os.RemoveAll(path)
+		verifyDirExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyPermissions(t, path, 0o700)
+	})
+
+	t.Run("tmpdir_with_suffix_flag", func(t *testing.T) {
+		t.Parallel()
+		customDir := t.TempDir()
+		path := runAndCaptureWithFlags(t, goBin,
+			"--tmpdir="+customDir, "--suffix=.log")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPathPrefix(t, path, customDir)
+		verifyPatternWithSuffix(t, filepath.Base(path), "tmp.", 10, ".log")
+	})
+
+	t.Run("tmpdir_nonexistent_dir_fails", func(t *testing.T) {
+		t.Parallel()
+		badDir := filepath.Join(t.TempDir(), "nonexistent")
+		code, _, stderr := runBinary(t, goBin, "",
+			"--tmpdir="+badDir)
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d", code)
+		}
+		if stderr == "" {
+			t.Fatal("expected error on stderr, got empty")
 		}
 	})
 }
@@ -316,6 +420,62 @@ func TestDiff(t *testing.T) {
 	t.Run("quiet_error_both_fail", func(t *testing.T) {
 		t.Parallel()
 		verifyBothFail(t, goBin, refBin, []string{"-q", "foo.XX"})
+	})
+
+	// R4.1: differential tests for --tmpdir mode.
+	t.Run("tmpdir_no_value_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		verifyBothSucceedFile(t, goBin, refBin, []string{"--tmpdir"})
+	})
+
+	t.Run("tmpdir_with_dir_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		verifyBothSucceedFile(t, goBin, refBin,
+			[]string{"--tmpdir=" + tmpDir})
+	})
+
+	t.Run("p_flag_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		verifyBothSucceedFile(t, goBin, refBin,
+			[]string{"-p", tmpDir})
+	})
+
+	t.Run("tmpdir_with_template_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		verifyBothSucceedFile(t, goBin, refBin,
+			[]string{"--tmpdir=" + tmpDir, "app.XXXXXX"})
+	})
+
+	// R4.2: differential tests for flag combinations with --tmpdir.
+	t.Run("tmpdir_with_d_flag_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		verifyBothSucceedDir(t, goBin, refBin,
+			[]string{"-d", "--tmpdir=" + tmpDir})
+	})
+
+	t.Run("p_flag_with_d_flag_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		verifyBothSucceedDir(t, goBin, refBin,
+			[]string{"-d", "-p", tmpDir})
+	})
+
+	t.Run("tmpdir_with_suffix_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		verifyBothSucceedFile(t, goBin, refBin,
+			[]string{"--tmpdir=" + tmpDir, "--suffix=.log"})
+	})
+
+	t.Run("tmpdir_with_quiet_error_both_fail", func(t *testing.T) {
+		t.Parallel()
+		badDir := filepath.Join(t.TempDir(), "nonexistent")
+		verifyBothFail(t, goBin, refBin,
+			[]string{"-q", "--tmpdir=" + badDir})
 	})
 }
 

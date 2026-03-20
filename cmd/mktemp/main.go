@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.4: temporary file and
+// Implements prd036-mktemp R1.1–R1.5, R2.1–R2.3, R3.1–R3.6: temporary file and
 // directory creation with template validation, directory mode, suffix mode,
-// and quiet flag.
+// quiet flag, and --tmpdir/-p directory override.
 package main
 
 import (
@@ -25,6 +25,7 @@ const (
 	minXCount       = 3
 	randCharset     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	maxAttempts     = 100
+	tmpdirPrefix    = "--tmpdir"
 )
 
 // config holds parsed command-line options for mktemp.
@@ -87,35 +88,91 @@ func validateTemplate(template string, xCount int, suffix string) error {
 // parseArgs extracts flags and the optional template from args.
 // R2.1: -d/--directory enables directory mode.
 // R3.2: --suffix specifies an explicit suffix.
-// R3.4: -q/--quiet suppresses error diagnostics.
+// R3.5: --tmpdir[=DIR] sets parent directory.
+// R3.6: -q/--quiet suppresses error diagnostics.
 func parseArgs(args []string, stderr io.Writer) (config, error) {
+	args, tmpdirSet, tmpdirDir := prescanTmpdir(args)
 	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var dirMode, quiet bool
-	var suffix string
+	var suffix, pDir string
 	fs.BoolVar(&dirMode, "d", false, "create a directory, not a file")
 	fs.BoolVar(&dirMode, "directory", false, "")
 	fs.BoolVar(&quiet, "q", false, "suppress error messages")
 	fs.BoolVar(&quiet, "quiet", false, "")
 	fs.StringVar(&suffix, "suffix", "", "append SUFF to template")
+	fs.StringVar(&pDir, "p", "", "use DIR as parent directory")
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}
-	hasSuffix := false
+	hasSuffix := flagWasSet(fs, "suffix")
+	pDirSet := flagWasSet(fs, "p")
+	template, dir := resolveLocation(
+		fs.Args(), tmpdirSet, tmpdirDir, pDirSet, pDir,
+	)
+	return config{
+		dirMode: dirMode, quiet: quiet,
+		suffix: suffix, hasSuffix: hasSuffix,
+		template: template, parentDir: dir,
+	}, nil
+}
+
+// prescanTmpdir extracts --tmpdir[=DIR] from args before flag.Parse.
+// Go's flag package cannot handle optional-value long flags natively.
+// R3.5: --tmpdir without value uses TMPDIR or /tmp.
+// R3.6: --tmpdir=DIR uses DIR as parent directory.
+func prescanTmpdir(args []string) ([]string, bool, string) {
+	var filtered []string
+	var set bool
+	var dir string
+	for _, arg := range args {
+		if arg == tmpdirPrefix {
+			set = true
+		} else if strings.HasPrefix(arg, tmpdirPrefix+"=") {
+			set = true
+			dir = arg[len(tmpdirPrefix+"="):]
+		} else {
+			filtered = append(filtered, arg)
+		}
+	}
+	return filtered, set, dir
+}
+
+// flagWasSet returns whether a flag was explicitly provided on the command line.
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	set := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "suffix" {
-			hasSuffix = true
+		if f.Name == name {
+			set = true
 		}
 	})
-	template, dir := resolveTemplateAndDir(fs.Args())
-	return config{
-		dirMode:   dirMode,
-		quiet:     quiet,
-		suffix:    suffix,
-		hasSuffix: hasSuffix,
-		template:  template,
-		parentDir: dir,
-	}, nil
+	return set
+}
+
+// resolveLocation determines template and parent directory from positional
+// args and flag overrides. R3.5: --tmpdir overrides parent directory.
+// R3.1: -p DIR overrides parent directory.
+func resolveLocation(posArgs []string, tmpdirSet bool, tmpdirDir string, pDirSet bool, pDir string) (string, string) {
+	if tmpdirSet {
+		return resolveTmpdirMode(posArgs, tmpdirDir)
+	}
+	if pDirSet {
+		return resolveTmpdirMode(posArgs, pDir)
+	}
+	return resolveTemplateAndDir(posArgs)
+}
+
+// resolveTmpdirMode handles template resolution when --tmpdir or -p is active.
+// The template argument is treated as a name pattern in the specified directory.
+// An empty dir defaults to TMPDIR or /tmp.
+func resolveTmpdirMode(posArgs []string, dir string) (string, string) {
+	if dir == "" {
+		dir = os.TempDir()
+	}
+	if len(posArgs) == 0 {
+		return defaultTemplate, dir
+	}
+	return posArgs[0], dir
 }
 
 // resolveTemplateAndDir determines the template basename and parent directory.
