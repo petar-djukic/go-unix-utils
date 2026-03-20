@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -176,17 +177,140 @@ func createDirs(dirs []string, opts options, stdout, stderr io.Writer) int {
 	return exitCode
 }
 
-// resolveMode parses an octal mode string, defaulting to 0777.
+// resolveMode parses an octal or symbolic mode string, defaulting to 0777.
+// R3.1: supports octal values and symbolic mode strings.
 // R3.2: when -m is not given, directories use 0777 modified by umask.
 func resolveMode(modeStr string) (os.FileMode, error) {
 	if modeStr == "" {
 		return 0o777, nil
 	}
+	// Try octal first.
 	val, err := strconv.ParseUint(modeStr, 8, 32)
-	if err != nil {
-		return 0, err
+	if err == nil {
+		return os.FileMode(val), nil
 	}
-	return os.FileMode(val), nil
+	// Try symbolic mode.
+	return parseSymbolicMode(modeStr, 0o777)
+}
+
+// parseSymbolicMode evaluates a symbolic mode expression against a base mode.
+// R3.1: supports symbolic mode strings like "a=rwx", "u=rwx,go=rx", "u+x".
+func parseSymbolicMode(expr string, base os.FileMode) (os.FileMode, error) {
+	mode := base
+	for _, clause := range strings.Split(expr, ",") {
+		var err error
+		mode, err = applyModeClause(mode, clause)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return mode, nil
+}
+
+// applyModeClause applies a single symbolic mode clause (e.g., "u=rwx")
+// to the current mode and returns the updated mode.
+func applyModeClause(mode os.FileMode, clause string) (os.FileMode, error) {
+	if len(clause) == 0 {
+		return 0, fmt.Errorf("invalid mode")
+	}
+	i, whoMask := parseWho(clause)
+	if i >= len(clause) {
+		return 0, fmt.Errorf("invalid mode")
+	}
+	for i < len(clause) {
+		op := clause[i]
+		if op != '+' && op != '-' && op != '=' {
+			return 0, fmt.Errorf("invalid mode")
+		}
+		i++
+		var permBits uint
+		permBits, i = parsePermBits(clause, i)
+		mode = applyPermOp(mode, whoMask, op, permBits)
+	}
+	return mode, nil
+}
+
+// parseWho parses the who part of a symbolic mode clause (u, g, o, a).
+// Returns the index after the who characters and the who mask.
+func parseWho(clause string) (int, os.FileMode) {
+	var who os.FileMode
+	i := 0
+	for i < len(clause) {
+		switch clause[i] {
+		case 'u':
+			who |= 0o700
+		case 'g':
+			who |= 0o070
+		case 'o':
+			who |= 0o007
+		case 'a':
+			who |= 0o777
+		default:
+			if who == 0 {
+				who = 0o777
+			}
+			return i, who
+		}
+		i++
+	}
+	if who == 0 {
+		who = 0o777
+	}
+	return i, who
+}
+
+// parsePermBits parses permission characters (r, w, x, X) and returns
+// abstract permission bits (r=4, w=2, x=1) and the new index position.
+func parsePermBits(clause string, start int) (uint, int) {
+	var bits uint
+	i := start
+	for i < len(clause) {
+		switch clause[i] {
+		case 'r':
+			bits |= 4
+		case 'w':
+			bits |= 2
+		case 'x', 'X':
+			// X is conditional execute, but for mkdir (directories) it is
+			// equivalent to x since directories always get execute.
+			bits |= 1
+		default:
+			return bits, i
+		}
+		i++
+	}
+	return bits, i
+}
+
+// applyPermOp applies an operator (+, -, =) with the given permission bits
+// to the mode, scoped by the who mask.
+func applyPermOp(mode, whoMask os.FileMode, op byte, permBits uint) os.FileMode {
+	expanded := expandPerms(whoMask, permBits)
+	switch op {
+	case '+':
+		mode |= expanded
+	case '-':
+		mode &^= expanded
+	case '=':
+		mode = (mode &^ whoMask) | expanded
+	}
+	return mode
+}
+
+// expandPerms expands abstract permission bits (r=4, w=2, x=1) into the
+// positions specified by the who mask.
+func expandPerms(whoMask os.FileMode, permBits uint) os.FileMode {
+	var mode os.FileMode
+	if whoMask&0o700 != 0 {
+		mode |= os.FileMode(permBits << 6)
+	}
+	if whoMask&0o070 != 0 {
+		mode |= os.FileMode(permBits << 3)
+	}
+	if whoMask&0o007 != 0 {
+		mode |= os.FileMode(permBits)
+	}
+	return mode
 }
 
 // createOne dispatches to parent or single creation based on -p flag.
@@ -219,6 +343,7 @@ func createSingle(dir string, opts options, mode os.FileMode, stdout io.Writer) 
 // createWithParents creates a directory and any missing ancestors.
 // R2.1: creates intermediate directories as needed.
 // R2.2: no error if target already exists.
+// R2.3: no error if intermediate directories already exist.
 // R3.3: applies -m mode only to the final target.
 func createWithParents(dir string, opts options, mode os.FileMode, stdout io.Writer) error {
 	toCreate := dirsToCreate(dir)
