@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd022-nl R1.1–R1.4, R2.1–R2.4: line numbering with section styles.
+// Implements prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -31,6 +32,15 @@ const (
 	sectionFooter
 )
 
+// numberFormat represents the line number format (R3.1).
+type numberFormat int
+
+const (
+	formatRN numberFormat = iota // right-justified, no leading zeros (default)
+	formatLN                     // left-justified, no leading zeros
+	formatRZ                     // right-justified, leading zeros
+)
+
 // numberStyle represents a line numbering style (R2.1).
 type numberStyle struct {
 	mode  byte           // 'a', 't', 'n', 'p'
@@ -42,8 +52,11 @@ type config struct {
 	bodyStyle   numberStyle
 	headerStyle numberStyle
 	footerStyle numberStyle
-	width       int
-	sep         string
+	format      numberFormat // R3.1
+	width       int          // R3.2
+	sep         string       // R3.3
+	startNum    int          // R3.4: -v
+	increment   int          // R3.4: -i
 	delim       string
 	files       []string
 }
@@ -71,7 +84,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // processAll processes all files with continuous numbering.
 func processAll(cfg *config, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
-	lineNum := 1
+	lineNum := cfg.startNum // R3.4: start from -v value
 	curSection := sectionBody
 	exitCode := 0
 	for _, name := range cfg.files {
@@ -94,8 +107,11 @@ func defaultConfig() *config {
 		bodyStyle:   numberStyle{mode: 't'},
 		headerStyle: numberStyle{mode: 'n'},
 		footerStyle: numberStyle{mode: 'n'},
+		format:      formatRN,
 		width:       defaultWidth,
 		sep:         defaultSep,
+		startNum:    1,
+		increment:   1,
 		delim:       defaultDelim,
 	}
 }
@@ -166,17 +182,65 @@ func extractValue(rest string, args []string, nextIdx int, ch byte) (string, int
 	return "", 0, fmt.Errorf("option requires an argument -- '%c'", ch)
 }
 
-// applyFlag applies a parsed flag value to the config. R2.1–R2.3.
+// applyFlag applies a parsed flag value to the config. R2.1–R2.3, R3.1–R3.4.
 func applyFlag(cfg *config, ch byte, value string) error {
 	target := styleTarget(cfg, ch)
-	if target == nil {
-		return nil // flags not yet implemented (d, i, l, n, s, v, w)
+	if target != nil {
+		style, err := parseStyle(value)
+		if err != nil {
+			return err
+		}
+		*target = style
+		return nil
 	}
-	style, err := parseStyle(value)
+	return applyNonStyleFlag(cfg, ch, value)
+}
+
+// applyNonStyleFlag handles flags that are not style flags (R3.1–R3.4).
+func applyNonStyleFlag(cfg *config, ch byte, value string) error {
+	switch ch {
+	case 'n':
+		return applyFormatFlag(cfg, value)
+	case 'w':
+		return applyIntFlag(&cfg.width, value, "width")
+	case 's':
+		cfg.sep = value
+		return nil
+	case 'v':
+		return applyIntFlag(&cfg.startNum, value, "starting line number")
+	case 'i':
+		return applyIntFlag(&cfg.increment, value, "line number increment")
+	case 'd':
+		cfg.delim = value
+		return nil
+	case 'l':
+		return nil // R4.4: -l not in scope for R3
+	}
+	return nil
+}
+
+// applyFormatFlag parses and sets the -n FORMAT flag (R3.1).
+func applyFormatFlag(cfg *config, value string) error {
+	switch value {
+	case "ln":
+		cfg.format = formatLN
+	case "rn":
+		cfg.format = formatRN
+	case "rz":
+		cfg.format = formatRZ
+	default:
+		return fmt.Errorf("invalid line number format: %q", value)
+	}
+	return nil
+}
+
+// applyIntFlag parses an integer value and sets the target field.
+func applyIntFlag(target *int, value, name string) error {
+	n, err := strconv.Atoi(value)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid %s: %q", name, value)
 	}
-	*target = style
+	*target = n
 	return nil
 }
 
@@ -242,13 +306,12 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 // numberLines reads lines and writes them with section-aware numbering.
 func numberLines(r io.Reader, cfg *config, lineNum int, curSection section, w *bufio.Writer) (int, section, error) {
 	br := bufio.NewReader(r)
-	padding := strings.Repeat(" ", cfg.width+len(cfg.sep))
 	for {
 		line, err := br.ReadString('\n')
 		if len(line) > 0 {
 			content := strings.TrimSuffix(line, "\n")
 			var writeErr error
-			lineNum, curSection, writeErr = processLine(w, cfg, content, lineNum, curSection, padding)
+			lineNum, curSection, writeErr = processLine(w, cfg, content, lineNum, curSection)
 			if writeErr != nil {
 				return lineNum, curSection, writeErr
 			}
@@ -264,27 +327,41 @@ func numberLines(r io.Reader, cfg *config, lineNum int, curSection section, w *b
 }
 
 // processLine handles a single line: detects section delimiters or writes content.
-func processLine(w *bufio.Writer, cfg *config, content string, lineNum int, curSection section, padding string) (int, section, error) {
+func processLine(w *bufio.Writer, cfg *config, content string, lineNum int, curSection section) (int, section, error) {
 	newSec, isDelim := detectSection(content, cfg.delim)
 	if isDelim {
-		lineNum = 1 // R4.2: reset counter at section boundaries
+		lineNum = cfg.startNum // R4.2: reset counter to -v value
 		curSection = newSec
 		_, err := fmt.Fprint(w, "\n")
 		return lineNum, curSection, err
 	}
-	n, err := writeLine(w, cfg, curSection, content, lineNum, padding)
+	n, err := writeLine(w, cfg, curSection, content, lineNum)
 	return n, curSection, err
 }
 
-// writeLine writes a single output line, numbered or unnumbered. R2.4.
-func writeLine(w *bufio.Writer, cfg *config, sec section, content string, lineNum int, padding string) (int, error) {
+// writeLine writes a single output line, numbered or unnumbered. R2.4, R3.1–R3.4.
+func writeLine(w *bufio.Writer, cfg *config, sec section, content string, lineNum int) (int, error) {
 	style := styleForSection(cfg, sec)
 	if shouldNumber(style, content) {
-		_, err := fmt.Fprintf(w, "%*d%s%s\n", cfg.width, lineNum, cfg.sep, content)
-		return lineNum + 1, err
+		numStr := formatNumber(lineNum, cfg.format, cfg.width)
+		_, err := fmt.Fprintf(w, "%s%s%s\n", numStr, cfg.sep, content)
+		return lineNum + cfg.increment, err
 	}
+	padding := strings.Repeat(" ", cfg.width+len(cfg.sep))
 	_, err := fmt.Fprintf(w, "%s%s\n", padding, content)
 	return lineNum, err
+}
+
+// formatNumber formats a line number according to the format and width. R3.1.
+func formatNumber(n int, f numberFormat, width int) string {
+	switch f {
+	case formatLN:
+		return fmt.Sprintf("%-*d", width, n)
+	case formatRZ:
+		return fmt.Sprintf("%0*d", width, n)
+	default:
+		return fmt.Sprintf("%*d", width, n)
+	}
 }
 
 // styleForSection returns the numbering style for the given section. R2.1–R2.3.

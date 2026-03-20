@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd022-nl R1.1–R1.4, R2.1–R2.4.
+// Differential tests for prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
@@ -192,6 +192,154 @@ func TestDiff(t *testing.T) {
 			Name:  "body_a_default_hf",
 			Args:  []string{"-b", "a"},
 			Stdin: []byte("\\:\\:\\:\nhdr\n\\:\\:\nbod\n\\:\nftr\n"),
+		},
+
+		// === R3.1: -n FORMAT line number format ===
+		{
+			// R3.1: -n ln left-justified
+			Name:  "format_ln",
+			Args:  []string{"-n", "ln"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.1: -n rn right-justified (explicit default)
+			Name:  "format_rn_explicit",
+			Args:  []string{"-n", "rn"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.1: -n rz right-justified with leading zeros
+			Name:  "format_rz",
+			Args:  []string{"-n", "rz"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.1: -n ln with -b a to include empty lines
+			Name:  "format_ln_body_all",
+			Args:  []string{"-n", "ln", "-b", "a"},
+			Stdin: []byte("x\n\ny\n"),
+		},
+		{
+			// R3.1: combined -nln form
+			Name:  "format_ln_combined",
+			Args:  []string{"-nln"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.1: combined -nrz form
+			Name:  "format_rz_combined",
+			Args:  []string{"-nrz"},
+			Stdin: []byte("a\nb\n"),
+		},
+
+		// === R3.2: -w N field width ===
+		{
+			// R3.2: -w 3 narrow width
+			Name:  "width_3",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.2: -w 10 wide width
+			Name:  "width_10",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.2: -w 1 minimum width
+			Name:  "width_1",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
+		},
+		{
+			// R3.2: combined -w3 form
+			Name:  "width_combined",
+			Args:  []string{"-w3"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.2: -w with -n rz
+			Name:  "width_with_rz",
+			Args:  []string{"-w", "4", "-n", "rz"},
+			Stdin: []byte("a\nb\n"),
+		},
+
+		// === R3.3: -s SEP separator string ===
+		{
+			// R3.3: -s with colon-space separator
+			Name:  "sep_colon_space",
+			Args:  []string{"-s", ": "},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.3: -s with empty separator
+			Name:  "sep_empty",
+			Args:  []string{"-s", ""},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.3: -s with multi-char separator
+			Name:  "sep_multi_char",
+			Args:  []string{"-s", " | "},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.3: combined form -s with -n ln -w 3
+			Name:  "sep_with_format_width",
+			Args:  []string{"-n", "ln", "-w", "3", "-s", ": "},
+			Stdin: []byte("a\nb\n"),
+		},
+
+		// === R3.4: -v N start value and -i N increment ===
+		{
+			// R3.4: -v 10 start at 10
+			Name:  "start_value_10",
+			Args:  []string{"-v", "10"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R3.4: -i 5 increment by 5
+			Name:  "increment_5",
+			Args:  []string{"-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R3.4: -v 10 -i 5 combined
+			Name:  "start_10_increment_5",
+			Args:  []string{"-v", "10", "-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R3.4: -v 0 start at zero
+			Name:  "start_value_0",
+			Args:  []string{"-v", "0"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.4: -i 2 with empty lines (only non-empty incremented)
+			Name:  "increment_2_with_empty",
+			Args:  []string{"-i", "2"},
+			Stdin: []byte("a\n\nb\n"),
+		},
+		{
+			// R3.4: combined -v10 and -i5 forms
+			Name:  "combined_v_i",
+			Args:  []string{"-v10", "-i5"},
+			Stdin: []byte("a\nb\n"),
+		},
+
+		// === R3 combined: multiple R3 flags together ===
+		{
+			// R3.1-R3.4: all format options combined
+			Name:  "all_format_options",
+			Args:  []string{"-b", "a", "-n", "ln", "-w", "3", "-s", ": ", "-v", "10", "-i", "5"},
+			Stdin: []byte("a\nb\n"),
+		},
+		{
+			// R3.1-R3.4: rz format with custom width, start, increment
+			Name:  "rz_custom_all",
+			Args:  []string{"-n", "rz", "-w", "4", "-v", "100", "-i", "10"},
+			Stdin: []byte("a\nb\nc\n"),
 		},
 	}
 
