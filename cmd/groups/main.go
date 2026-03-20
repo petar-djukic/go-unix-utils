@@ -3,7 +3,8 @@
 
 // Implements prd043-groups R1.1 (current user groups), R1.2 (named user groups),
 // R1.3 (nonexistent user error handling), R2.1 (no-prefix current user output),
-// R2.2 ("user : groups" prefix format for named users).
+// R2.2 ("user : groups" prefix format for named users),
+// R2.3 (group names in system database order).
 package main
 
 import (

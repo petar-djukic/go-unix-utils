@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd043-groups R3.1–R3.3: differential tests for groups.
+// Implements prd043-groups R3.1 (differential test via pkg/testutils),
+// R3.2 (coverage: no-arg, single, multiple, nonexistent, mixed users),
+// R3.3 ("user :" prefix verification for named-user queries).
 package main
 
 import (
