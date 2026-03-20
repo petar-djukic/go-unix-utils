@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.2.
+// Differential tests for prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.3, R5.1–R5.3.
 package main
 
 import (
@@ -183,6 +183,48 @@ func TestDiff(t *testing.T) {
 			Name:      "elapsed_partial_last_line",
 			Args:      []string{"-s"},
 			Stdin:     []byte("full\npartial"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.3: Custom format argument overrides -s default format.
+		{
+			Name:      "elapsed_custom_hm_format",
+			Args:      []string{"-s", "%H:%M"},
+			Stdin:     []byte("line1\nline2\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.1: -m flag uses monotonic clock (Go's time.Now() already provides this).
+		{
+			Name:      "monotonic_default_format",
+			Args:      []string{"-m"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m combined with -i mode.
+		{
+			Name:      "monotonic_with_incremental",
+			Args:      []string{"-m", "-i"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m combined with -s mode.
+		{
+			Name:      "monotonic_with_elapsed",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m with custom subsecond format.
+		{
+			Name:      "monotonic_custom_subsecond",
+			Args:      []string{"-m", "%.T"},
+			Stdin:     []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R5.3: -m multi-line verifies timestamps do not jump backwards.
+		{
+			Name:      "monotonic_multi_line",
+			Args:      []string{"-m"},
+			Stdin:     []byte("a\nb\nc\nd\ne\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
 	}

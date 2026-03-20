@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.2:
+// Implements prd004-ts R1.1–R1.6, R2.1–R2.4, R3.1–R3.4, R4.1–R4.3, R5.1–R5.3:
 // timestamp stdin lines with default and custom strftime format support,
-// subsecond extensions, incremental mode, and elapsed-since-start mode.
+// subsecond extensions, incremental mode, elapsed-since-start mode, and
+// monotonic clock mode.
 package main
 
 import (
@@ -31,6 +32,7 @@ type tsConfig struct {
 	format      string
 	incremental bool
 	elapsed     bool
+	monotonic   bool // R5.1: use monotonic clock (Go's time.Now() already includes monotonic reading)
 }
 
 func main() {
@@ -47,6 +49,7 @@ func main() {
 // R3.1: -i flag for incremental mode.
 // R3.4: -i and -s are mutually exclusive.
 // R4.1: -s flag for elapsed-since-start mode.
+// R5.1: -m flag for monotonic clock mode.
 func parseArgs(args []string) (tsConfig, error) {
 	cfg := tsConfig{}
 	for _, arg := range args {
@@ -55,6 +58,8 @@ func parseArgs(args []string) (tsConfig, error) {
 			cfg.incremental = true
 		case "-s":
 			cfg.elapsed = true
+		case "-m":
+			cfg.monotonic = true
 		default:
 			cfg.format = arg
 		}
