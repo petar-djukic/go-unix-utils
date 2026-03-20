@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4,
-// R4.1: compares stdout, stderr, exit codes via pkg/testutils.
+// R4.1–R4.3: compares stdout, stderr, exit codes via pkg/testutils.
 package main_test
 
 import (
@@ -141,6 +141,62 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 			setup: func(t *testing.T, dir string) {
 				mkdirAll(t, dir, "a/b/c")
 				writeFile(t, filepath.Join(dir, "a", "sibling.txt"))
+			}},
+		// R4.2: multiple args with mixed success (empty) and failure (non-empty).
+		{name: "mixed_success_fail",
+			args: []string{"emptydir", "nonempty"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "emptydir")
+				mkdirAll(t, dir, "nonempty")
+				writeFile(t, filepath.Join(dir, "nonempty", "file.txt"))
+			}},
+		// R4.3: -p with single-component path (no parents to ascend).
+		{name: "parents_single_component",
+			args: []string{"-p", "justdir"},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "justdir")
+			}},
+		// R4.3: -p with trailing slash in path.
+		{name: "parents_trailing_slash",
+			args: []string{"-p", "a/b/c/"},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "a/b/c")
+			}},
+		// R4.3: -p stops at correct intermediate level (not just immediate parent).
+		{name: "parents_stop_intermediate",
+			args: []string{"-p", "a/b/c/d"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "a/b/c/d")
+				writeFile(t, filepath.Join(dir, "a", "b", "sibling.txt"))
+			}},
+		// R4.2: verbose with non-empty dir shows error without verbose removal msg.
+		{name: "verbose_nonempty_error",
+			args: []string{"-v", "nonempty"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				mkdirAll(t, dir, "nonempty")
+				writeFile(t, filepath.Join(dir, "nonempty", "file.txt"))
+			}},
+		// R4.2: verbose with non-existent dir.
+		{name: "verbose_nonexistent",
+			args: []string{"-v", "no_such_dir"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {}},
+		// R4.2: removing a regular file (not a directory) produces an error.
+		{name: "file_not_dir",
+			args: []string{"notadir"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				writeFile(t, filepath.Join(dir, "notadir"))
+			}},
+		// R4.2: --ignore-fail-on-non-empty does NOT suppress file-not-dir error.
+		{name: "ignore_file_not_dir",
+			args: []string{"--ignore-fail-on-non-empty", "notadir"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				writeFile(t, filepath.Join(dir, "notadir"))
 			}},
 	}
 	for _, tc := range cases {

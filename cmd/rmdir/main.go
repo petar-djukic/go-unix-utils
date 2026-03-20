@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1:
-// rmdir core, parents mode, ignore-fail-on-non-empty, verbose, version/help.
+// Implements prd035-rmdir R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.3:
+// rmdir core, parents mode, ignore-fail-on-non-empty, verbose, version/help,
+// error handling and edge cases.
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -138,12 +138,12 @@ func removeDirs(dirs []string, opts options, stdout, stderr io.Writer) int {
 // R3.3: prints verbose message before each removal attempt.
 func removeOne(dir string, opts options, stdout, stderr io.Writer) int {
 	printVerbose(opts, dir, stdout)
-	if err := os.Remove(dir); err != nil {
+	if err := syscall.Rmdir(dir); err != nil {
 		if shouldIgnore(err, opts) {
 			return 0
 		}
 		fmt.Fprintf(stderr, "%s: failed to remove '%s': %s\n",
-			progName, dir, unwrapPathError(err))
+			progName, dir, err)
 		return 1
 	}
 	if opts.parents {
@@ -164,12 +164,12 @@ func removeParents(dir string, opts options, stdout, stderr io.Writer) int {
 		}
 		// R3.3: verbose message before each parent removal attempt.
 		printVerbose(opts, parent, stdout)
-		if err := os.Remove(parent); err != nil {
+		if err := syscall.Rmdir(parent); err != nil {
 			if shouldIgnore(err, opts) {
 				return 0
 			}
 			fmt.Fprintf(stderr, "%s: failed to remove directory '%s': %s\n",
-				progName, parent, unwrapPathError(err))
+				progName, parent, err)
 			return 1
 		}
 		current = parent
@@ -197,7 +197,7 @@ func shouldIgnore(err error, opts options) bool {
 
 // isNotEmptyError reports whether err indicates a non-empty directory.
 func isNotEmptyError(err error) bool {
-	return errors.Is(err, syscall.ENOTEMPTY)
+	return err == syscall.ENOTEMPTY
 }
 
 // printTryHelp writes the "Try --help" hint to stderr.
@@ -225,11 +225,3 @@ func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "%s (go-unix-utils)\n", progName)
 }
 
-// unwrapPathError extracts the inner error from *os.PathError for
-// GNU-compatible error messages (e.g., "Directory not empty").
-func unwrapPathError(err error) error {
-	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err
-	}
-	return err
-}
