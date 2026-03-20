@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd023-fold R1.1–R1.4, R2.1–R2.3, R3.1–R3.4.
+// Implements prd023-fold R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4.
 // R1: core line wrapping to at most W columns (default 80).
 // R2: -w sets width, -b counts bytes instead of columns.
 // R3: -s breaks at last space at or before wrap column.
+// R4: exit codes (0 success, 1 file/write error) and SIGPIPE handling.
 package main
 
 import (
@@ -41,11 +42,15 @@ func main() {
 }
 
 // run processes all input sources and returns the exit code.
+// R4.1: exit 0 on success. R4.2: exit 1 on file error. R4.3: exit 1 on write error.
 func run(cfg config, files []string) int {
 	w := bufio.NewWriter(os.Stdout)
 	if len(files) == 0 {
 		foldReader(w, os.Stdin, cfg)
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			fmt.Fprintf(os.Stderr, "fold: write error: %v\n", err)
+			return 1
+		}
 		return 0
 	}
 	exitCode := 0
@@ -55,7 +60,10 @@ func run(cfg config, files []string) int {
 			exitCode = 1
 		}
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "fold: write error: %v\n", err)
+		return 1
+	}
 	return exitCode
 }
 

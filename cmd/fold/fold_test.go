@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd023-fold R1.1–R1.4, R2.1–R2.3, R3.1–R3.4.
+// Differential tests for prd023-fold R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
@@ -272,6 +273,57 @@ func TestDiff(t *testing.T) {
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestFileError tests R4.2: exit 1 when a file cannot be opened, processing
+// continues for remaining files. Tested directly since error message format
+// differs between GNU fold and this binary.
+func TestFileError(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	tests := []struct {
+		name     string
+		args     []string
+		stdin    []byte
+		exitCode int
+	}{
+		{
+			name:     "nonexistent_file",
+			args:     []string{"nonexistent_file_xyz"},
+			exitCode: 1,
+		},
+		{
+			name:     "nonexistent_among_stdin",
+			args:     []string{"-", "nonexistent_file_xyz"},
+			stdin:    []byte("hello\n"),
+			exitCode: 1,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			if tc.stdin != nil {
+				cmd.Stdin = bytes.NewReader(tc.stdin)
+			}
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if err == nil {
+				t.Fatalf("expected exit code %d, got 0", tc.exitCode)
+			}
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected ExitError, got %T: %v", err, err)
+			}
+			if exitErr.ExitCode() != tc.exitCode {
+				t.Fatalf("expected exit code %d, got %d", tc.exitCode, exitErr.ExitCode())
+			}
+			if stderr.Len() == 0 {
+				t.Fatalf("expected error message on stderr, got nothing")
+			}
+		})
+	}
 }
 
 // TestWidthValidation tests R2.1 error cases directly since error message
