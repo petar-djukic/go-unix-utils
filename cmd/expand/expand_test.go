@@ -1,15 +1,25 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd024-expand R1.1–R1.4, R2.1–R2.4 against gexpand.
+// Differential tests for prd024-expand R1.1–R1.4, R2.1–R2.4, R3.1–R3.4 against gexpand.
 package main
 
 import (
+	"bytes"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeExpandStderr normalizes stderr error messages to account for
+// program name differences (gexpand vs expand) and OS error message casing.
+func normalizeExpandStderr(b []byte) []byte {
+	s := string(b)
+	s = strings.ReplaceAll(s, "gexpand:", "expand:")
+	return bytes.ToLower([]byte(s))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -149,6 +159,28 @@ func TestDiff(t *testing.T) {
 			Name:  "expand_tabs_long_form_list",
 			Args:  []string{"--tabs=4,8,12"},
 			Stdin: []byte("a\tb\tc\td\n"),
+		},
+		// R3 tests: exit codes and error handling.
+		{
+			// R3.1: Successful processing exits 0.
+			Name:  "expand_exit_0_success",
+			Args:  []string{},
+			Stdin: []byte("hello\tworld\n"),
+		},
+		{
+			// R3.2: Nonexistent file exits 1.
+			Name:      "expand_nonexistent_file_exit_1",
+			Args:      []string{"/nonexistent/expand/test/file"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeExpandStderr},
+		},
+		{
+			// R3.2: Nonexistent file with stdin ("-") continues processing.
+			Name:      "expand_nonexistent_with_stdin",
+			Args:      []string{"-", "/nonexistent/expand/test/file2"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeExpandStderr},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

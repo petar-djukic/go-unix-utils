@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd024-expand R1.1–R1.4, R2.1–R2.4: tab-to-space expansion
-// with default and custom tab stop support.
+// Implements prd024-expand R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: tab-to-space
+// expansion with default and custom tab stop support, exit codes, and SIGPIPE.
 // R1.1: Default tab expansion with tab stops every 8 columns.
 // R1.2: Multiple consecutive tabs each advance independently.
 // R1.3: Non-tab characters pass through unchanged.
@@ -11,6 +11,10 @@
 // R2.2: -t LIST sets absolute tab stop positions.
 // R2.3: Last -t wins; replaces default of 8.
 // R2.4: Single-value LIST behaves as uniform interval.
+// R3.1: Exit 0 on success.
+// R3.2: Exit 1 on file open error; continue processing remaining files.
+// R3.3: Exit 1 on stdout write error.
+// R3.4: SIGPIPE handled via pkg/sys.InstallSIGPIPEHandler.
 package main
 
 import (
@@ -39,13 +43,25 @@ func main() {
 }
 
 // run processes all input sources and returns the exit code.
+// R3.1: Returns 0 on success. R3.2: Returns 1 on file open error.
+// R3.3: Returns 1 on stdout write error.
 func run(tc tabConfig, files []string) int {
 	w := bufio.NewWriter(os.Stdout)
-	defer w.Flush()
+	exitCode := 0
 	if len(files) == 0 {
 		expandReader(w, os.Stdin, tc)
-		return 0
+	} else {
+		exitCode = processFiles(w, files, tc)
 	}
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "expand: write error: %v\n", err)
+		return 1
+	}
+	return exitCode
+}
+
+// processFiles iterates over file arguments and expands each. R3.2.
+func processFiles(w *bufio.Writer, files []string, tc tabConfig) int {
 	exitCode := 0
 	for _, name := range files {
 		if err := processFile(w, name, tc); err != nil {
@@ -64,11 +80,19 @@ func processFile(w *bufio.Writer, name string, tc tabConfig) error {
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %s", name, osErrorMessage(err))
 	}
 	defer f.Close()
 	expandReader(w, f, tc)
 	return nil
+}
+
+// osErrorMessage extracts the OS-level error message, matching GNU style.
+func osErrorMessage(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // expandReader reads from r and replaces tabs with spaces.
