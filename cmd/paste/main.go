@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd027-paste R1.1–R1.4.
+// Implements prd027-paste R1.1–R1.4, R2.1–R2.3.
 // R1.1: Open all files and merge lines side by side with tab delimiter.
 // R1.2: Unequal file lengths produce empty fields for exhausted files.
 // R1.3: "-" refers to stdin; multiple "-" read stdin sequentially.
 // R1.4: No files reads from stdin (passthrough).
+// R2.1: -d DELIM configures the separator; delimiter list cycles across fields.
+// R2.2: Escape sequences \n, \t, \\, \0 are recognized in DELIM.
+// R2.3: Delimiter cycling resets from the first delimiter for each new output line.
 package main
 
 import (
@@ -52,20 +55,78 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-// run dispatches to passthrough or parallel merge based on arguments.
+// run parses flags and dispatches to passthrough or parallel merge.
 func run(args []string) int {
+	delims, remaining := parseArgs(args)
 	w := bufio.NewWriter(os.Stdout)
 	var exitCode int
-	if len(args) == 0 {
+	if len(remaining) == 0 {
 		exitCode = pastePassthrough(w, os.Stdin)
 	} else {
-		exitCode = pasteParallel(w, args)
+		exitCode = pasteParallel(w, remaining, delims)
 	}
 	if err := w.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "paste: write error: %v\n", err)
 		return 1
 	}
 	return exitCode
+}
+
+// parseArgs extracts -d flag and returns parsed delimiters and remaining args.
+func parseArgs(args []string) ([]string, []string) {
+	delims := []string{defaultDelimiter}
+	var remaining []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			remaining = append(remaining, args[i+1:]...)
+			break
+		}
+		if args[i] == "-d" && i+1 < len(args) {
+			i++
+			delims = parseDelimList(args[i])
+			continue
+		}
+		if strings.HasPrefix(args[i], "-d") && len(args[i]) > 2 {
+			delims = parseDelimList(args[i][2:])
+			continue
+		}
+		remaining = append(remaining, args[i])
+	}
+	return delims, remaining
+}
+
+// parseDelimList parses DELIM into a list of delimiter strings. R2.2.
+// Recognizes \n, \t, \\, and \0 (empty string).
+func parseDelimList(s string) []string {
+	var delims []string
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			delims = append(delims, parseEscape(s[i+1]))
+			i++
+			continue
+		}
+		delims = append(delims, string(s[i]))
+	}
+	if len(delims) == 0 {
+		return []string{""}
+	}
+	return delims
+}
+
+// parseEscape converts an escape character to its string value. R2.2.
+func parseEscape(c byte) string {
+	switch c {
+	case 'n':
+		return "\n"
+	case 't':
+		return "\t"
+	case '\\':
+		return "\\"
+	case '0':
+		return ""
+	default:
+		return string(c)
+	}
 }
 
 // pastePassthrough reads from stdin and writes each line to stdout. R1.4.
@@ -80,14 +141,14 @@ func pastePassthrough(w *bufio.Writer, r io.Reader) int {
 }
 
 // pasteParallel opens all files and merges lines side by side. R1.1–R1.3.
-func pasteParallel(w *bufio.Writer, files []string) int {
+func pasteParallel(w *bufio.Writer, files []string, delims []string) int {
 	readers, closers, err := openLineReaders(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "paste: %v\n", err)
 		return 1
 	}
 	defer closeAll(closers)
-	mergeLines(w, readers)
+	mergeLines(w, readers, delims)
 	return 0
 }
 
@@ -127,8 +188,8 @@ func openFileReader(name string) (*lineReader, io.Closer, error) {
 }
 
 // mergeLines reads one line from each reader per iteration and writes
-// merged output until all readers are exhausted. R1.1, R1.2.
-func mergeLines(w *bufio.Writer, readers []*lineReader) {
+// merged output until all readers are exhausted. R1.1, R1.2, R2.3.
+func mergeLines(w *bufio.Writer, readers []*lineReader, delims []string) {
 	for {
 		lines := make([]string, len(readers))
 		anyActive := false
@@ -141,15 +202,15 @@ func mergeLines(w *bufio.Writer, readers []*lineReader) {
 		if !anyActive {
 			break
 		}
-		writeMergedLine(w, lines)
+		writeMergedLine(w, lines, delims)
 	}
 }
 
-// writeMergedLine writes fields separated by the delimiter, followed by newline.
-func writeMergedLine(w *bufio.Writer, lines []string) {
+// writeMergedLine writes fields separated by cycling delimiters. R2.1, R2.3.
+func writeMergedLine(w *bufio.Writer, lines []string, delims []string) {
 	for i, line := range lines {
 		if i > 0 {
-			w.WriteString(defaultDelimiter)
+			w.WriteString(delims[(i-1)%len(delims)])
 		}
 		w.WriteString(line)
 	}

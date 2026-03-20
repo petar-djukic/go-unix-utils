@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd027-paste R1.1–R1.4.
+// Differential tests for prd027-paste R1.1–R1.4, R2.1–R2.3.
 package main
 
 import (
@@ -31,6 +31,7 @@ func TestDiff(t *testing.T) {
 	fempty := filepath.Join(dir, "empty.txt")
 
 	tests := []testutils.DiffTest{
+		// R1 tests
 		{
 			Name: "two_files_equal_length",
 			Args: []string{fa, fb},
@@ -82,6 +83,56 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin_and_file",
 			Args:  []string{"-", fa},
 			Stdin: []byte("X\nY\n"),
+		},
+		// R2.1: single custom delimiter
+		{
+			Name: "delim_colon_two_files",
+			Args: []string{"-d:", fa, fb},
+		},
+		{
+			Name: "delim_comma_three_files",
+			Args: []string{"-d,", fa, fb, fc},
+		},
+		// R2.1: delimiter list cycles across fields
+		{
+			Name: "delim_list_cycling",
+			Args: []string{"-d", ":,", fa, fb, fc},
+		},
+		// R2.2: escape sequences
+		{
+			Name: "delim_escape_tab",
+			Args: []string{`-d\t`, fa, fb},
+		},
+		{
+			Name: "delim_escape_newline",
+			Args: []string{`-d\n`, fa, fb},
+		},
+		{
+			Name: "delim_escape_backslash",
+			Args: []string{`-d\\`, fa, fb},
+		},
+		{
+			Name: "delim_escape_empty",
+			Args: []string{`-d\0`, fa, fb},
+		},
+		// R2.2: mixed escapes in delimiter list
+		{
+			Name: "delim_mixed_escapes",
+			Args: []string{`-d`, `:\0`, fa, fb, fc},
+		},
+		// R2.3: cycling resets per output line
+		{
+			Name: "delim_cycle_reset_per_line",
+			Args: []string{"-d", ":-", fa, fb, fc},
+		},
+		// R2.1/R2.3: with unequal file lengths
+		{
+			Name: "delim_custom_unequal_lengths",
+			Args: []string{"-d:", fshort, fb},
+		},
+		{
+			Name: "delim_list_unequal_three_files",
+			Args: []string{"-d", ":-", fshort, fb, fc},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
