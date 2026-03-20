@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd041-id R1.1 (default format), R1.2 (groups),
-// R1.3 (exit codes), R2.1 (-u/--user flag).
+// R1.3 (exit codes), R2.1 (-u/--user), R2.2 (-g/--group),
+// R2.3 (-G/--groups), R2.4 (conflicting selection flags),
+// R3.1 (-n/--name modifier).
 // R4.1: compare Go vs gid reference binary.
 package main
 
@@ -84,6 +86,104 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "flag_u_named_root",
 			Args: []string{"-u", "root"},
+			Env:  env,
+		},
+		// R2.2: -g flag — effective GID.
+		{
+			Name: "flag_g_short",
+			Args: []string{"-g"},
+			Env:  env,
+		},
+		// R2.2: --group long flag.
+		{
+			Name: "flag_group_long",
+			Args: []string{"--group"},
+			Env:  env,
+		},
+		// R2.2: -g with named user (root).
+		{
+			Name: "flag_g_named_root",
+			Args: []string{"-g", "root"},
+			Env:  env,
+		},
+		// R2.3: -G flag — all groups space-separated.
+		{
+			Name: "flag_G_short",
+			Args: []string{"-G"},
+			Env:  env,
+		},
+		// R2.3: --groups long flag.
+		{
+			Name: "flag_groups_long",
+			Args: []string{"--groups"},
+			Env:  env,
+		},
+		// R2.3: -G with named user (root).
+		{
+			Name: "flag_G_named_root",
+			Args: []string{"-G", "root"},
+			Env:  env,
+		},
+		// R2.4: conflicting -u and -g — error, exit 1.
+		{
+			Name:      "conflict_u_g",
+			Args:      []string{"-u", "-g"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R2.4: conflicting -u and -G — error, exit 1.
+		{
+			Name:      "conflict_u_G",
+			Args:      []string{"-u", "-G"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R2.4: conflicting -g and -G — error, exit 1.
+		{
+			Name:      "conflict_g_G",
+			Args:      []string{"-g", "-G"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.1: -un — effective user name.
+		{
+			Name: "flag_un",
+			Args: []string{"-un"},
+			Env:  env,
+		},
+		// R3.1: -gn — effective group name.
+		{
+			Name: "flag_gn",
+			Args: []string{"-gn"},
+			Env:  env,
+		},
+		// R3.1: -Gn — all group names.
+		{
+			Name: "flag_Gn",
+			Args: []string{"-Gn"},
+			Env:  env,
+		},
+		// R3.1: -n alone — error, exit 1.
+		{
+			Name:      "flag_n_alone",
+			Args:      []string{"-n"},
+			Env:       env,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.1: -gn with named user (root).
+		{
+			Name: "flag_gn_named_root",
+			Args: []string{"-gn", "root"},
+			Env:  env,
+		},
+		// R3.1: -Gn with named user (current user).
+		{
+			Name: "flag_Gn_named_self",
+			Args: []string{"-Gn", currentUser.Username},
 			Env:  env,
 		},
 	}
