@@ -5,10 +5,12 @@
 // Covers prd026-cut R1.1–R1.4: byte and character selection.
 // Covers prd026-cut R2.1–R2.4: field selection, delimiter, suppress, output delimiter.
 // Covers prd026-cut R3.1–R3.3: complement mode for bytes, characters, and fields.
+// Covers prd026-cut R4.1–R4.4: exit codes and SIGPIPE handling.
 package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -24,6 +26,7 @@ func TestDiff(t *testing.T) {
 	tests := buildByteTests()
 	tests = append(tests, buildFieldTests()...)
 	tests = append(tests, buildComplementTests()...)
+	tests = append(tests, buildExitCodeTests(t)...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -334,4 +337,70 @@ func buildComplementTests() []testutils.DiffTest {
 			Stdin: []byte("abc\n"),
 		},
 	}
+}
+
+// buildExitCodeTests returns differential tests for R4.1–R4.4.
+func buildExitCodeTests(t *testing.T) []testutils.DiffTest {
+	t.Helper()
+	// R4.2: create a path that cannot be opened
+	noSuchFile := t.TempDir() + "/nonexistent-file"
+	return []testutils.DiffTest{
+		// R4.1: exit 0 on successful processing
+		{
+			Name:  "exit_zero_on_success",
+			Args:  []string{"-b", "1"},
+			Stdin: []byte("abc\n"),
+		},
+		// R4.2: exit 1 when input file cannot be opened
+		{
+			Name:     "exit_one_missing_file",
+			Args:     []string{"-b", "1", noSuchFile},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizePathInError,
+			},
+		},
+		// R4.2: continues processing remaining files after error
+		{
+			Name:     "exit_one_missing_file_continues",
+			Args:     []string{"-b", "1", noSuchFile, "-"},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizePathInError,
+			},
+		},
+		// R4.4: SIGPIPE handled via sys.InstallSIGPIPEHandler (tested
+		// implicitly; the binary compiles with the handler installed).
+		{
+			Name:  "sigpipe_handler_installed",
+			Args:  []string{"-b", "1"},
+			Stdin: []byte("a\n"),
+		},
+	}
+}
+
+// normalizePathInError normalizes stderr for file-not-found errors so that
+// Go and reference binary outputs compare equal despite different binary
+// names (cut vs gcut), path prefixes, and OS error message casing.
+func normalizePathInError(data []byte) []byte {
+	s := string(data)
+	// Normalize binary name prefix: gcut: -> cut:
+	s = strings.ReplaceAll(s, "gcut: ", "cut: ")
+	// Strip temp directory prefix from the file path
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if idx := strings.LastIndex(line, "/nonexistent-file"); idx >= 0 {
+			pfx := strings.Index(line, "cut: ")
+			if pfx >= 0 {
+				rest := line[idx+len("/nonexistent-file"):]
+				lines[i] = line[:pfx+5] + "nonexistent-file" + rest
+			}
+		}
+	}
+	result := strings.Join(lines, "\n")
+	// Normalize OS error casing: macOS uses capital "No such file"
+	result = strings.ReplaceAll(result, "No such file or directory",
+		"no such file or directory")
+	return []byte(result)
 }

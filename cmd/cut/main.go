@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd026-cut R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
+// Implements prd026-cut R1.1–R1.4, R2.1–R2.4, R3.1–R3.3, R4.1–R4.4.
 // R1.1: -b LIST extracts byte positions using range syntax.
 // R1.2: -c LIST extracts character positions (equivalent to -b under LC_ALL=C).
 // R1.3: Newlines pass through unchanged; not counted as line content.
@@ -13,6 +13,10 @@
 // R3.1: --complement inverts the selection (output what was NOT selected).
 // R3.2: --complement is compatible with -b, -c, and -f.
 // R3.3: With --complement and -f, unselected fields output in original order.
+// R4.1: Exit 0 when all inputs processed successfully.
+// R4.2: Exit 1 when any input file cannot be opened; continue remaining files.
+// R4.3: Exit 1 when a write error occurs on stdout.
+// R4.4: Handle SIGPIPE gracefully via pkg/sys.InstallSIGPIPEHandler.
 package main
 
 import (
