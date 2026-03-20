@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd030-md5sum R1.1, R1.2, R1.3, R1.4.
+// Differential tests for prd030-md5sum R1.1, R1.2, R1.3, R1.4,
+// R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +38,35 @@ func stderrNormalizer(data []byte) []byte {
 	return errLinePattern.ReplaceAll(data, []byte("md5sum: <ERROR>\n"))
 }
 
+// warnLinePattern matches warning lines about improperly formatted lines.
+var warnLinePattern = regexp.MustCompile(`(?:g?md5sum): [^:]+: \d+: improperly formatted[^\n]*\n`)
+
+// warnNormalizer normalizes warning lines about malformed checksum lines.
+func warnNormalizer(data []byte) []byte {
+	return warnLinePattern.ReplaceAll(data, []byte("md5sum: WARN_LINE\n"))
+}
+
+// failedSummaryPattern matches the summary line printed after --check.
+var failedSummaryPattern = regexp.MustCompile(`(?:g?md5sum): WARNING: \d+ computed checksum[^\n]*\n`)
+
+// failedSummaryNormalizer normalizes the summary warning line.
+func failedSummaryNormalizer(data []byte) []byte {
+	return failedSummaryPattern.ReplaceAll(data, []byte("md5sum: WARNING_SUMMARY\n"))
+}
+
+// md5hex computes md5 hex of a string for building checksum files.
+func md5hex(content string) string {
+	// Known MD5 hashes for test data
+	switch content {
+	case "hello world\n":
+		return "6f5902ac237024bdd0c176cb93063dc4"
+	case "test data\n":
+		return "eb733a00c0c9d336e65691a37ab54293"
+	default:
+		return ""
+	}
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -58,6 +89,23 @@ func TestDiff(t *testing.T) {
 	dirMissing := setupFileDir(t, map[string]string{
 		"exists.txt": "data\n",
 	})
+
+	// R2.1/R2.2: Set up a directory with a valid checksum file.
+	dirCheck := setupCheckDir(t, "hello world\n")
+
+	// R2.1/R2.2: Checksum file with a mismatch.
+	dirCheckFail := setupCheckFailDir(t)
+
+	// R2.3: Checksum file with malformed lines.
+	dirCheckWarn := setupCheckWarnDir(t)
+
+	// R2.4: --quiet and --status test directories.
+	dirCheckQuiet := setupCheckDir(t, "hello world\n")
+	dirCheckStatus := setupCheckDir(t, "hello world\n")
+	dirCheckStatusFail := setupCheckFailDir(t)
+
+	// R2.1: BSD tag format check file.
+	dirCheckBSD := setupCheckBSDDir(t)
 
 	tests := []testutils.DiffTest{
 		// R1.1: Compute digest of a file in text mode (default).
@@ -116,7 +164,118 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte{},
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R2.1/R2.2: --check with valid checksum file, all pass.
+		{
+			Name:      "check_valid",
+			Args:      []string{"--check", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheck,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.1/R2.2: --check with a mismatch, exit 1.
+		{
+			Name:      "check_failed",
+			Args:      []string{"--check", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirCheckFail,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer, failedSummaryNormalizer},
+		},
+		// R2.3: --check --warn with malformed lines.
+		{
+			Name:      "check_warn",
+			Args:      []string{"--check", "--warn", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheckWarn,
+			Normalize: []testutils.NormalizeFunc{warnNormalizer, stderrNormalizer, failedSummaryNormalizer},
+		},
+		// R2.4: --check --quiet suppresses OK lines.
+		{
+			Name:      "check_quiet",
+			Args:      []string{"--check", "--quiet", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheckQuiet,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.4: --check --status suppresses all output.
+		{
+			Name:      "check_status_pass",
+			Args:      []string{"--check", "--status", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheckStatus,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R2.4: --check --status with failure, exit 1, no output.
+		{
+			Name:      "check_status_fail",
+			Args:      []string{"--check", "--status", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			WorkDir:   dirCheckStatusFail,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer, failedSummaryNormalizer},
+		},
+		// R2.1: --check with BSD tag format checksum file.
+		{
+			Name:      "check_bsd_format",
+			Args:      []string{"--check", "checksums.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheckBSD,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// setupCheckDir creates a directory with a file and valid checksum file.
+func setupCheckDir(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "input.txt", content)
+	hash := md5hex(content)
+	checksumLine := fmt.Sprintf("%s  input.txt\n", hash)
+	writeTestFile(t, dir, "checksums.txt", checksumLine)
+	return dir
+}
+
+// setupCheckFailDir creates a directory with a mismatched checksum.
+func setupCheckFailDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "input.txt", "hello world\n")
+	// Use wrong hash to trigger FAILED
+	checksumLine := "00000000000000000000000000000000  input.txt\n"
+	writeTestFile(t, dir, "checksums.txt", checksumLine)
+	return dir
+}
+
+// setupCheckWarnDir creates a directory with valid and malformed lines.
+func setupCheckWarnDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "input.txt", "hello world\n")
+	hash := md5hex("hello world\n")
+	content := fmt.Sprintf("this is not a valid line\n%s  input.txt\n", hash)
+	writeTestFile(t, dir, "checksums.txt", content)
+	return dir
+}
+
+// setupCheckBSDDir creates a directory with a BSD tag format checksum file.
+func setupCheckBSDDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "input.txt", "hello world\n")
+	hash := md5hex("hello world\n")
+	content := fmt.Sprintf("MD5 (input.txt) = %s\n", hash)
+	writeTestFile(t, dir, "checksums.txt", content)
+	return dir
+}
+
+// writeTestFile writes a file in the given directory.
+func writeTestFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)
+	if err != nil {
+		t.Fatalf("writing test file %s: %v", name, err)
+	}
 }
