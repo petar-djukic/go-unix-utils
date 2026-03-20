@@ -1,7 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd024-expand R1.1–R1.4, R2.1–R2.4, R3.1–R3.4 against gexpand.
+// Differential tests for prd024-expand R1.1–R1.4, R2.1–R2.4, R3.1–R3.4,
+// R4.1–R4.3 against gexpand.
+// R4.1: All tests compare Go expand output against gexpand via RunDiffTests.
+// R4.2: Tests cover default tab expansion, -t N, -t LIST, no-tabs passthrough,
+//        and multiple consecutive tabs.
+// R4.3: LC_ALL=C is set by RunDiffTests to eliminate locale-dependent divergence.
 package main
 
 import (
