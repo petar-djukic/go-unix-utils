@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd049-realpath R1.1–R1.5, R2.1–R2.3, R4.1–R4.3:
-// default resolution, -e and -m existence modes, -s strip mode,
-// --relative-to, --relative-base, error handling,
-// and differential test coverage against grealpath reference binary.
+// Differential tests for prd049-realpath R1.1–R1.5, R2.1–R2.3, R3.1–R3.3,
+// R4.1–R4.3: default resolution, -e and -m existence modes, -s strip mode,
+// --relative-to, --relative-base, error handling (missing operand, unknown
+// flags, mixed success/failure), and differential test coverage against
+// grealpath reference binary.
 package main
 
 import (
@@ -195,6 +196,22 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "no_operand",
 			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.2: unknown short flag
+		{
+			Name:      "unknown_short_flag",
+			Args:      []string{"-Z"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.2: unknown long flag
+		{
+			Name:      "unknown_long_flag",
+			Args:      []string{"--nonexistent-flag"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: errNorm,

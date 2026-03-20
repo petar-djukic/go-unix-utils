@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd049-realpath R1.1–R1.5, R2.1–R2.3: resolve each path argument
-// to its canonical absolute pathname, with -e, -m, -s existence/symlink modes
-// and --relative-to/--relative-base relative output.
+// Implements prd049-realpath R1.1–R1.5, R2.1–R2.3, R3.1–R3.3, R4.1:
+// resolve each path argument to its canonical absolute pathname, with
+// -e, -m, -s existence/symlink modes, --relative-to/--relative-base
+// relative output, and error handling for missing operands, unknown flags,
+// and mixed success/failure across multiple paths.
 package main
 
 import (
@@ -191,10 +193,14 @@ func parseEqualsFlag(arg, prefix string) (string, bool) {
 	return "", false
 }
 
-// handleUnknown rejects unknown flags, passes through positionals.
+// handleUnknown rejects unknown flags, passes through positionals. R3.2.
 func handleUnknown(arg string, opts *options) bool {
-	if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+	if strings.HasPrefix(arg, "--") && len(arg) > 2 {
 		opts.err = fmt.Errorf("unrecognized option '%s'", arg)
+		return true
+	}
+	if strings.HasPrefix(arg, "-") && len(arg) == 2 {
+		opts.err = fmt.Errorf("invalid option -- '%c'", arg[1])
 		return true
 	}
 	return false
