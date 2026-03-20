@@ -4,6 +4,7 @@
 // Implements prd034-mkdir R1.1–R1.4: basic directory creation and error handling.
 // Implements prd034-mkdir R2.1–R2.3: parent directory creation (-p).
 // Implements prd034-mkdir R3.1–R3.4: mode setting (-m) and verbose output (-v).
+// Implements prd034-mkdir R4.1–R4.3: differential testing, coverage, permission parity.
 package main
 
 import (

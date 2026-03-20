@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd034-mkdir R1.1–R1.4, R2.1–R2.3, R3.1, R3.4.
+// R4.1: compares stdout, stderr, exit codes via pkg/testutils.
+// R4.2: covers single, multiple, -p, -m, -v, and error cases.
+// R4.3: verifies permission bit parity for -m and -p combinations.
 package main_test
 
 import (
@@ -76,10 +79,11 @@ func prepareDir(t *testing.T, subdir string) string {
 // isolatedCase defines a test where each binary runs in its own temp dir
 // to avoid cross-contamination from directory creation side effects.
 type isolatedCase struct {
-	name  string
-	args  []string
-	setup func(t *testing.T, dir string)
-	norm  []testutils.NormalizeFunc
+	name       string
+	args       []string
+	setup      func(t *testing.T, dir string)
+	norm       []testutils.NormalizeFunc
+	checkPaths []string // R4.3: paths whose permissions must match between ref and go
 }
 
 // runIsolatedTests runs tests where each binary needs its own WorkDir
@@ -89,19 +93,35 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 	t.Helper()
 	cases := []isolatedCase{
 		// R1.1: create a single directory.
-		{name: "single_dir", args: []string{"newdir"}},
+		{name: "single_dir", args: []string{"newdir"},
+			checkPaths: []string{"newdir"}},
 		// R1.2: create multiple directories independently.
-		{name: "multiple_dirs", args: []string{"dir1", "dir2", "dir3"}},
+		{name: "multiple_dirs", args: []string{"dir1", "dir2", "dir3"},
+			checkPaths: []string{"dir1", "dir2", "dir3"}},
 		// R2.1: -p creates full parent chain.
-		{name: "parents_chain", args: []string{"-p", "a/b/c"}},
+		{name: "parents_chain", args: []string{"-p", "a/b/c"},
+			checkPaths: []string{"a", "a/b", "a/b/c"}},
 		// R3.4: -v prints a message for each created directory.
 		{name: "verbose_single", args: []string{"-v", "vdir"},
-			norm: []testutils.NormalizeFunc{normBin}},
+			norm:       []testutils.NormalizeFunc{normBin},
+			checkPaths: []string{"vdir"}},
 		// R3.4: -pv prints messages for all created directories.
 		{name: "verbose_parents", args: []string{"-pv", "x/y"},
-			norm: []testutils.NormalizeFunc{normBin}},
+			norm:       []testutils.NormalizeFunc{normBin},
+			checkPaths: []string{"x", "x/y"}},
 		// R3.1: -m sets permission mode (octal).
-		{name: "mode_octal", args: []string{"-m", "0755", "modedir"}},
+		// R4.3: verify permission bits match for -m.
+		{name: "mode_octal", args: []string{"-m", "0755", "modedir"},
+			checkPaths: []string{"modedir"}},
+		// R4.3: -m with restrictive mode.
+		{name: "mode_restrictive", args: []string{"-m", "0700", "restrictdir"},
+			checkPaths: []string{"restrictdir"}},
+		// R4.3: -p -m applies mode only to final target.
+		{name: "parents_with_mode", args: []string{"-p", "-m", "0750", "pm/sub/leaf"},
+			checkPaths: []string{"pm", "pm/sub", "pm/sub/leaf"}},
+		// R4.3: -p without -m uses default permissions for all dirs.
+		{name: "parents_default_perms", args: []string{"-p", "dp/sub/leaf"},
+			checkPaths: []string{"dp", "dp/sub", "dp/sub/leaf"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,7 +132,7 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 }
 
 // compareIsolated runs both binaries in separate temp dirs and compares
-// stdout, stderr, and exit code.
+// stdout, stderr, exit code, and optionally permission bits (R4.3).
 func compareIsolated(t *testing.T, goBin, refBin string, tc isolatedCase) {
 	t.Helper()
 	refDir := t.TempDir()
@@ -124,14 +144,41 @@ func compareIsolated(t *testing.T, goBin, refBin string, tc isolatedCase) {
 	refOut, refErr, refCode := execBinary(t, refBin, tc.args, refDir)
 	goOut, goErr, goCode := execBinary(t, goBin, tc.args, goDir)
 	refOut, goOut, refErr, goErr = applyNorm(tc.norm, refOut, goOut, refErr, goErr)
-	if bytes.Equal(refOut, goOut) && bytes.Equal(refErr, goErr) && refCode == goCode {
-		return
+	if !bytes.Equal(refOut, goOut) || !bytes.Equal(refErr, goErr) || refCode != goCode {
+		t.Fatalf("divergence\nargs:       %v\n"+
+			"ref stdout: %s\ngo  stdout: %s\n"+
+			"ref stderr: %s\ngo  stderr: %s\n"+
+			"ref exit:   %d\ngo  exit:   %d",
+			tc.args, refOut, goOut, refErr, goErr, refCode, goCode)
 	}
-	t.Fatalf("divergence\nargs:       %v\n"+
-		"ref stdout: %s\ngo  stdout: %s\n"+
-		"ref stderr: %s\ngo  stderr: %s\n"+
-		"ref exit:   %d\ngo  exit:   %d",
-		tc.args, refOut, goOut, refErr, goErr, refCode, goCode)
+	// R4.3: verify permission bits match for created directories.
+	comparePermissions(t, refDir, goDir, tc.checkPaths)
+}
+
+// comparePermissions verifies that directory permission bits match
+// between the reference and Go binary output directories.
+// R4.3: permission parity for all -m and -p combinations.
+func comparePermissions(t *testing.T, refDir, goDir string, paths []string) {
+	t.Helper()
+	for _, p := range paths {
+		refPath := filepath.Join(refDir, p)
+		goPath := filepath.Join(goDir, p)
+		refInfo, err := os.Stat(refPath)
+		if err != nil {
+			// Directory may not exist if both binaries failed.
+			continue
+		}
+		goInfo, err := os.Stat(goPath)
+		if err != nil {
+			t.Fatalf("permission check: %s exists in ref but not in go output: %v", p, err)
+			return
+		}
+		refPerm := refInfo.Mode().Perm()
+		goPerm := goInfo.Mode().Perm()
+		if refPerm != goPerm {
+			t.Fatalf("permission mismatch on %s: ref=%04o go=%04o", p, refPerm, goPerm)
+		}
+	}
 }
 
 // applyNorm applies normalizers to ref and go stdout/stderr pairs.
