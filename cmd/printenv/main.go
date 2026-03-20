@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd040-printenv R1.1, R1.2, R1.3, R2.1:
-// printenv basic variable display, NUL-delimited output, and exit codes.
+// Implements prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1:
+// printenv basic variable display, NUL-delimited output, exit codes,
+// --version, --help, and differential testing.
 package main
 
 import (

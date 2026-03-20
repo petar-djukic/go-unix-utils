@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd040-printenv R1.1, R1.2, R1.3, R2.1.
+// Differential tests for prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
 package main
 
 import (
@@ -10,6 +10,16 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// clearOutput returns a normalizer that replaces all output with a fixed
+// marker so only exit codes are compared. Used for --version and --help
+// where output text differs between Go and GNU binaries.
+func clearOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("OUTPUT_PRESENT\n")
+	}
+	return b
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -36,7 +46,7 @@ func TestDiff(t *testing.T) {
 			ExitCode: 1,
 		},
 		{
-			// R1.2, R1.3: mix of existing and missing, exit 1
+			// R1.2, R1.3, R2.3: mix of existing and missing, exit 1
 			Name:     "mix_existing_and_missing",
 			Args:     []string{"HOME", "PRINTENV_TEST_NONEXISTENT_VAR_XYZ"},
 			ExitCode: 1,
@@ -52,7 +62,7 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--null", "HOME"},
 		},
 		{
-			// R1.3: no stderr for missing variable
+			// R1.3, R3.3: no stderr for missing variable
 			Name:     "no_stderr_for_missing",
 			Args:     []string{"PRINTENV_TEST_NONEXISTENT_VAR_XYZ"},
 			ExitCode: 1,
@@ -62,6 +72,38 @@ func TestDiff(t *testing.T) {
 			Name: "empty_value_variable",
 			Args: []string{"PRINTENV_TEST_EMPTY_VAR"},
 			Env:  []string{"PRINTENV_TEST_EMPTY_VAR="},
+		},
+		{
+			// R2.2: exit 0 when all requested variables are found
+			Name: "exit_zero_all_found",
+			Args: []string{"HOME", "PATH"},
+		},
+		{
+			// R2.4: no arguments always exits 0
+			Name: "no_args_exit_zero",
+			Args: []string{},
+		},
+		{
+			// R2.2, R3.1: --null with multiple variables, each NUL-terminated
+			Name: "null_multiple_variables",
+			Args: []string{"--null", "HOME", "PATH"},
+		},
+		{
+			// R2.2, R3.1: -0 short flag with multiple variables
+			Name: "null_short_multiple_variables",
+			Args: []string{"-0", "HOME", "PATH"},
+		},
+		{
+			// R2.3: --version prints version info and exits 0
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			// R2.4: --help prints usage and exits 0
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
