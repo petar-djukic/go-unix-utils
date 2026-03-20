@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd036-mktemp R4.1–R4.3: differential and structural tests for
-// mktemp R1.1–R1.5 (core behavior, template validation) and R2.1–R2.3
-// (directory mode).
+// mktemp R1.1–R1.5 (core behavior, template validation), R2.1–R2.3
+// (directory mode), and R3.1–R3.4 (suffix mode, quiet flag).
 package main
 
 import (
@@ -43,7 +43,7 @@ func TestStructural(t *testing.T) {
 		defer os.Remove(path)
 		verifyFileExists(t, path)
 		verifyPathPrefix(t, path, tmpDir)
-		verifyPattern(t, filepath.Base(path), "myapp.", 5)
+		verifyPatternWithSuffix(t, filepath.Base(path), "myapp.", 5, "")
 		verifyPermissions(t, path, 0o600)
 	})
 
@@ -54,7 +54,7 @@ func TestStructural(t *testing.T) {
 		path := runAndCaptureInDir(t, goBin, tmpDir, template)
 		defer os.Remove(path)
 		verifyFileExists(t, path)
-		verifyPattern(t, filepath.Base(path), "test.", 10)
+		verifyPatternWithSuffix(t, filepath.Base(path), "test.", 10, "")
 	})
 
 	t.Run("error_too_few_xs", func(t *testing.T) {
@@ -125,7 +125,7 @@ func TestStructuralDirMode(t *testing.T) {
 		defer os.RemoveAll(path)
 		verifyDirExists(t, path)
 		verifyPathPrefix(t, path, tmpDir)
-		verifyPattern(t, filepath.Base(path), "mydir.", 6)
+		verifyPatternWithSuffix(t, filepath.Base(path), "mydir.", 6, "")
 		verifyPermissions(t, path, 0o700)
 	})
 
@@ -150,6 +150,106 @@ func TestStructuralDirMode(t *testing.T) {
 		}
 		if !strings.Contains(stderr, "too few X's") {
 			t.Fatalf("expected 'too few X's' in stderr, got: %s", stderr)
+		}
+	})
+
+	t.Run("d_flag_suffix_in_template", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "dir.XXXXXX.tmp")
+		path := runAndCaptureWithFlags(t, goBin, "-d", template)
+		defer os.RemoveAll(path)
+		verifyDirExists(t, path)
+		verifyPatternWithSuffix(t, filepath.Base(path), "dir.", 6, ".tmp")
+		verifyPermissions(t, path, 0o700)
+	})
+}
+
+// TestStructuralSuffix verifies suffix mode and --suffix flag behavior.
+// Covers R3.1–R3.3.
+func TestStructuralSuffix(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("suffix_in_template", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "tmp.XXXXXX.txt")
+		path := runAndCaptureWithFlags(t, goBin, template)
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPatternWithSuffix(t, filepath.Base(path), "tmp.", 6, ".txt")
+		verifyPermissions(t, path, 0o600)
+	})
+
+	t.Run("suffix_flag", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "tmp.XXXXXX")
+		path := runAndCaptureWithFlags(t, goBin, "--suffix=.log", template)
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPatternWithSuffix(t, filepath.Base(path), "tmp.", 6, ".log")
+	})
+
+	t.Run("suffix_flag_overrides_template", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "tmp.XXXXXX.txt")
+		path := runAndCaptureWithFlags(t, goBin, "--suffix=.log", template)
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPatternWithSuffix(t, filepath.Base(path), "tmp.", 6, ".log")
+	})
+
+	t.Run("suffix_flag_default_template", func(t *testing.T) {
+		t.Parallel()
+		path := runAndCaptureWithFlags(t, goBin, "--suffix=.dat")
+		defer os.Remove(path)
+		verifyFileExists(t, path)
+		verifyPatternWithSuffix(t, filepath.Base(path), "tmp.", 10, ".dat")
+	})
+}
+
+// TestStructuralQuiet verifies -q/--quiet flag behavior.
+// Covers R3.4.
+func TestStructuralQuiet(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("quiet_suppresses_stderr_on_bad_template", func(t *testing.T) {
+		t.Parallel()
+		code, _, stderr := runBinary(t, goBin, os.TempDir(), "-q", "foo.XX")
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d", code)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr with -q, got: %s", stderr)
+		}
+	})
+
+	t.Run("quiet_long_flag_suppresses_stderr", func(t *testing.T) {
+		t.Parallel()
+		code, _, stderr := runBinary(t, goBin, os.TempDir(),
+			"--quiet", "foo.XX")
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d", code)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr with --quiet, got: %s", stderr)
+		}
+	})
+
+	t.Run("quiet_suppresses_stderr_on_creation_failure", func(t *testing.T) {
+		t.Parallel()
+		badDir := filepath.Join(t.TempDir(), "nonexistent")
+		template := filepath.Join(badDir, "tmp.XXXXXXXXXX")
+		code, _, stderr := runBinary(t, goBin, "", "-q", template)
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d", code)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr with -q, got: %s", stderr)
 		}
 	})
 }
@@ -196,6 +296,26 @@ func TestDiff(t *testing.T) {
 	t.Run("d_flag_error_too_few_xs", func(t *testing.T) {
 		t.Parallel()
 		verifyBothFail(t, goBin, refBin, []string{"-d", "foo.XX"})
+	})
+
+	t.Run("suffix_in_template_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "app.XXXXXX.txt")
+		verifyBothSucceedFile(t, goBin, refBin, []string{template})
+	})
+
+	t.Run("suffix_flag_both_succeed", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		template := filepath.Join(tmpDir, "app.XXXXXX")
+		verifyBothSucceedFile(t, goBin, refBin,
+			[]string{"--suffix=.log", template})
+	})
+
+	t.Run("quiet_error_both_fail", func(t *testing.T) {
+		t.Parallel()
+		verifyBothFail(t, goBin, refBin, []string{"-q", "foo.XX"})
 	})
 }
 
@@ -299,15 +419,16 @@ func verifyPathPrefix(t *testing.T, path, expectedDir string) {
 // verifyDefaultPattern checks that the filename matches tmp.[a-zA-Z0-9]{10}.
 func verifyDefaultPattern(t *testing.T, basename string) {
 	t.Helper()
-	verifyPattern(t, basename, "tmp.", 10)
+	verifyPatternWithSuffix(t, basename, "tmp.", 10, "")
 }
 
-// verifyPattern checks that the filename has the expected prefix followed
-// by exactly n alphanumeric characters.
-func verifyPattern(t *testing.T, basename, prefix string, n int) {
+// verifyPatternWithSuffix checks that the filename has the expected prefix
+// followed by exactly n alphanumeric characters and then the suffix.
+func verifyPatternWithSuffix(t *testing.T, basename, prefix string, n int, suffix string) {
 	t.Helper()
 	pattern := "^" + regexp.QuoteMeta(prefix) +
-		fmt.Sprintf("[a-zA-Z0-9]{%d}", n) + "$"
+		fmt.Sprintf("[a-zA-Z0-9]{%d}", n) +
+		regexp.QuoteMeta(suffix) + "$"
 	matched, err := regexp.MatchString(pattern, basename)
 	if err != nil {
 		t.Fatalf("regex error: %v", err)
