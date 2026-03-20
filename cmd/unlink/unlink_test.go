@@ -3,6 +3,8 @@
 
 // Differential tests for prd038-unlink R1.1–R1.3, R2.1–R2.4, R3.1–R3.3:
 // compares stdout, stderr, exit codes via pkg/testutils.
+// R3.2: covers regular file, symbolic link, zero-arg, multi-arg, nonexistent, and directory cases.
+// R3.3: verifies target file no longer exists after successful invocation.
 package main_test
 
 import (
@@ -62,8 +64,10 @@ type isolatedCase struct {
 	args  []string
 	setup func(t *testing.T, dir string)
 	norm  []testutils.NormalizeFunc
-	// checkRemoved is the relative path to verify no longer exists after run.
+	// checkRemoved is the relative path to verify no longer exists after run (R3.3).
 	checkRemoved string
+	// checkPreserved is the relative path to verify still exists after run (R3.2).
+	checkPreserved string
 }
 
 // runIsolatedTests runs tests where each binary needs its own WorkDir
@@ -78,6 +82,7 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 				writeFile(t, filepath.Join(dir, "target.txt"))
 			}},
 		// R3.2: unlink a symbolic link (removes the link, not the target).
+		// R3.3: verify the symlink no longer exists and the target is preserved.
 		{name: "symlink", args: []string{"link"},
 			checkRemoved: "link",
 			setup: func(t *testing.T, dir string) {
@@ -85,7 +90,8 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 				if err := os.Symlink("real.txt", filepath.Join(dir, "link")); err != nil {
 					t.Fatalf("setup: creating symlink: %v", err)
 				}
-			}},
+			},
+			checkPreserved: "real.txt"},
 		// R2.4: directory argument produces an error.
 		{name: "directory_error", args: []string{"somedir"},
 			norm: []testutils.NormalizeFunc{normBin},
@@ -127,14 +133,29 @@ func compareIsolated(t *testing.T, goBin, refBin string, tc isolatedCase) {
 	if tc.checkRemoved != "" {
 		verifyRemoved(t, goDir, tc.checkRemoved)
 	}
+	// R3.2: verify that the original target is preserved (e.g., when unlinking a symlink).
+	if tc.checkPreserved != "" {
+		verifyPreserved(t, goDir, tc.checkPreserved)
+	}
 }
 
 // verifyRemoved checks that a file no longer exists in the given directory.
+// R3.3: confirms the target file is gone after a successful unlink.
 func verifyRemoved(t *testing.T, dir, relPath string) {
 	t.Helper()
 	fullPath := filepath.Join(dir, relPath)
 	if _, err := os.Lstat(fullPath); !os.IsNotExist(err) {
 		t.Fatalf("expected %s to be removed, but it still exists", relPath)
+	}
+}
+
+// verifyPreserved checks that a file still exists in the given directory.
+// R3.2: confirms the symlink target is preserved after unlinking the symlink.
+func verifyPreserved(t *testing.T, dir, relPath string) {
+	t.Helper()
+	fullPath := filepath.Join(dir, relPath)
+	if _, err := os.Lstat(fullPath); err != nil {
+		t.Fatalf("expected %s to still exist, but got: %v", relPath, err)
 	}
 }
 

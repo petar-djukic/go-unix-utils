@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/ln covering prd037-ln R1.1–R1.4 (hard links),
 // R2.1–R2.4 (symbolic links), R3.1 (force), R3.3 (interactive), R3.4 (verbose),
-// R3.5 (backup), R4.1–R4.2 (error diagnostics).
+// R3.5 (backup), R4.1–R4.3 (error diagnostics and link type/target verification).
 package main_test
 
 import (
@@ -577,8 +577,17 @@ func requireMkdir(t *testing.T, path string) {
 }
 
 // verifySymlink checks that path is a symlink pointing to wantTarget.
+// R4.3: verifies both the link type (symbolic) and target value.
 func verifySymlink(t *testing.T, path, wantTarget string) {
 	t.Helper()
+	// R4.3: verify link type is symbolic via Lstat.
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("expected %s to be a symlink, got mode %v", path, info.Mode())
+	}
 	got, err := os.Readlink(path)
 	if err != nil {
 		t.Fatalf("readlink %s: %v", path, err)
@@ -588,9 +597,19 @@ func verifySymlink(t *testing.T, path, wantTarget string) {
 	}
 }
 
-// verifyHardLink checks that two paths share the same inode.
+// verifyHardLink checks that two paths share the same inode and the link
+// is not a symbolic link.
+// R4.3: verifies both the link type (hard) and correct target.
 func verifyHardLink(t *testing.T, source, link string) {
 	t.Helper()
+	// R4.3: verify link is not a symlink via Lstat.
+	lnkLstat, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("lstat link %s: %v", link, err)
+	}
+	if lnkLstat.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("expected %s to be a hard link, but it is a symlink", link)
+	}
 	srcInfo, err := os.Stat(source)
 	if err != nil {
 		t.Fatalf("stat source %s: %v", source, err)
