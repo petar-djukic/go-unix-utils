@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Implements prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 package main
 
 import (
@@ -58,6 +58,8 @@ type config struct {
 	startNum    int          // R3.4: -v
 	increment   int          // R3.4: -i
 	delim       string
+	noReset     bool // R4.3: -p suppresses page reset
+	blankJoin   int  // R4.4: -l N consecutive empty lines as one
 	files       []string
 }
 
@@ -86,10 +88,13 @@ func processAll(cfg *config, stdin io.Reader, stdout, stderr io.Writer) int {
 	w := bufio.NewWriter(stdout)
 	lineNum := cfg.startNum // R3.4: start from -v value
 	curSection := sectionBody
+	blankCount := 0
 	exitCode := 0
 	for _, name := range cfg.files {
 		var procErr error
-		lineNum, curSection, procErr = processFile(name, cfg, lineNum, curSection, stdin, w)
+		lineNum, curSection, blankCount, procErr = processFile(
+			name, cfg, lineNum, curSection, blankCount, stdin, w,
+		)
 		if procErr != nil {
 			fmt.Fprintf(stderr, "%s: %s: %s\n", progName, name, unwrapPathError(procErr))
 			exitCode = 1
@@ -113,6 +118,7 @@ func defaultConfig() *config {
 		startNum:    1,
 		increment:   1,
 		delim:       defaultDelim,
+		blankJoin:   1, // R4.4: default, each empty line counted separately
 	}
 }
 
@@ -150,6 +156,10 @@ func scanFlags(cfg *config, chars string, args []string, idx int) (int, error) {
 	for j < len(chars) {
 		ch := chars[j]
 		if !isFlagWithArg(ch) {
+			// R4.3: -p is a boolean flag (no argument)
+			if ch == 'p' {
+				cfg.noReset = true
+			}
 			j++
 			continue
 		}
@@ -196,7 +206,7 @@ func applyFlag(cfg *config, ch byte, value string) error {
 	return applyNonStyleFlag(cfg, ch, value)
 }
 
-// applyNonStyleFlag handles flags that are not style flags (R3.1–R3.4).
+// applyNonStyleFlag handles flags that are not style flags (R3.1–R3.4, R4.4).
 func applyNonStyleFlag(cfg *config, ch byte, value string) error {
 	switch ch {
 	case 'n':
@@ -214,7 +224,8 @@ func applyNonStyleFlag(cfg *config, ch byte, value string) error {
 		cfg.delim = value
 		return nil
 	case 'l':
-		return nil // R4.4: -l not in scope for R3
+		// R4.4: -l N consecutive empty lines treated as one
+		return applyIntFlag(&cfg.blankJoin, value, "number of blank lines")
 	}
 	return nil
 }
@@ -280,15 +291,15 @@ func parseStyle(s string) (numberStyle, error) {
 }
 
 // processFile reads a single file and numbers its lines.
-func processFile(name string, cfg *config, lineNum int, curSection section, stdin io.Reader, w *bufio.Writer) (int, section, error) {
+func processFile(name string, cfg *config, lineNum int, curSection section, blankCount int, stdin io.Reader, w *bufio.Writer) (int, section, int, error) {
 	r, closer, err := openInput(name, stdin)
 	if err != nil {
-		return lineNum, curSection, err
+		return lineNum, curSection, blankCount, err
 	}
 	if closer != nil {
 		defer closer.Close() // best-effort close on read-only file
 	}
-	return numberLines(r, cfg, lineNum, curSection, w)
+	return numberLines(r, cfg, lineNum, curSection, blankCount, w)
 }
 
 // openInput returns a reader for the named file or stdin for "-".
@@ -304,52 +315,80 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 }
 
 // numberLines reads lines and writes them with section-aware numbering.
-func numberLines(r io.Reader, cfg *config, lineNum int, curSection section, w *bufio.Writer) (int, section, error) {
+func numberLines(r io.Reader, cfg *config, lineNum int, curSection section, blankCount int, w *bufio.Writer) (int, section, int, error) {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadString('\n')
 		if len(line) > 0 {
 			content := strings.TrimSuffix(line, "\n")
 			var writeErr error
-			lineNum, curSection, writeErr = processLine(w, cfg, content, lineNum, curSection)
+			lineNum, curSection, blankCount, writeErr = processLine(
+				w, cfg, content, lineNum, curSection, blankCount,
+			)
 			if writeErr != nil {
-				return lineNum, curSection, writeErr
+				return lineNum, curSection, blankCount, writeErr
 			}
 		}
 		if err != nil {
 			if err != io.EOF {
-				return lineNum, curSection, err
+				return lineNum, curSection, blankCount, err
 			}
 			break
 		}
 	}
-	return lineNum, curSection, nil
+	return lineNum, curSection, blankCount, nil
 }
 
 // processLine handles a single line: detects section delimiters or writes content.
-func processLine(w *bufio.Writer, cfg *config, content string, lineNum int, curSection section) (int, section, error) {
+// R4.1: delimiter lines replaced with empty output. R4.2: header resets counter.
+// R4.3: -p suppresses reset.
+func processLine(w *bufio.Writer, cfg *config, content string, lineNum int, curSection section, blankCount int) (int, section, int, error) {
 	newSec, isDelim := detectSection(content, cfg.delim)
 	if isDelim {
-		lineNum = cfg.startNum // R4.2: reset counter to -v value
+		// R4.2: delimiter resets counter to -v; R4.3: -p suppresses reset
+		if !cfg.noReset {
+			lineNum = cfg.startNum
+		}
 		curSection = newSec
+		blankCount = 0
 		_, err := fmt.Fprint(w, "\n")
-		return lineNum, curSection, err
+		return lineNum, curSection, blankCount, err
 	}
-	n, err := writeLine(w, cfg, curSection, content, lineNum)
-	return n, curSection, err
+	n, bc, err := writeLine(w, cfg, curSection, content, lineNum, blankCount)
+	return n, curSection, bc, err
 }
 
-// writeLine writes a single output line, numbered or unnumbered. R2.4, R3.1–R3.4.
-func writeLine(w *bufio.Writer, cfg *config, sec section, content string, lineNum int) (int, error) {
+// writeLine writes a single output line, numbered or unnumbered.
+// R2.4, R3.1–R3.4, R4.4.
+func writeLine(w *bufio.Writer, cfg *config, sec section, content string, lineNum int, blankCount int) (int, int, error) {
 	style := styleForSection(cfg, sec)
-	if shouldNumber(style, content) {
+	isEmpty := content == ""
+	if isEmpty {
+		blankCount++
+	} else {
+		blankCount = 0
+	}
+	doNumber := shouldNumber(style, content)
+	// R4.4: blank join — suppress numbering for empty lines within a group
+	if doNumber && isEmpty && blankCount < cfg.blankJoin {
+		doNumber = false
+	}
+	if doNumber && isEmpty {
+		blankCount = 0 // reset after numbering the N-th blank
+	}
+	return emitLine(w, cfg, content, lineNum, blankCount, doNumber)
+}
+
+// emitLine writes the formatted line to the writer.
+func emitLine(w *bufio.Writer, cfg *config, content string, lineNum int, blankCount int, doNumber bool) (int, int, error) {
+	if doNumber {
 		numStr := formatNumber(lineNum, cfg.format, cfg.width)
 		_, err := fmt.Fprintf(w, "%s%s%s\n", numStr, cfg.sep, content)
-		return lineNum + cfg.increment, err
+		return lineNum + cfg.increment, blankCount, err
 	}
 	padding := strings.Repeat(" ", cfg.width+len(cfg.sep))
 	_, err := fmt.Fprintf(w, "%s%s\n", padding, content)
-	return lineNum, err
+	return lineNum, blankCount, err
 }
 
 // formatNumber formats a line number according to the format and width. R3.1.
@@ -392,6 +431,7 @@ func shouldNumber(style numberStyle, content string) bool {
 }
 
 // detectSection checks if a line is a section delimiter.
+// R4.1: \:\:\: = header, \:\: = body, \: = footer.
 func detectSection(content string, delim string) (section, bool) {
 	hdr := delim + delim + delim
 	bod := delim + delim

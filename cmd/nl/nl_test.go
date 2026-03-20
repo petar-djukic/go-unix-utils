@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Differential tests for prd022-nl R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 package main
 
 import (
@@ -340,6 +340,104 @@ func TestDiff(t *testing.T) {
 			Name:  "rz_custom_all",
 			Args:  []string{"-n", "rz", "-w", "4", "-v", "100", "-i", "10"},
 			Stdin: []byte("a\nb\nc\n"),
+		},
+
+		// === R4.1: Section delimiters replaced with empty lines ===
+		{
+			// R4.1: delimiter lines not written to output (replaced with empty)
+			Name:  "section_delims_replaced",
+			Args:  []string{"-b", "a", "-h", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nhdr\n\\:\\:\nbod\n\\:\nftr\n"),
+		},
+
+		// === R4.2: Header delimiter resets counter ===
+		{
+			// R4.2: header resets line counter to -v
+			Name:  "header_resets_counter",
+			Args:  []string{"-b", "a", "-h", "a"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nhdr\n\\:\\:\nc\nd\n"),
+		},
+		{
+			// R4.2: header resets to custom -v value
+			Name:  "header_resets_to_v",
+			Args:  []string{"-b", "a", "-h", "a", "-v", "10"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nhdr\n\\:\\:\nc\n"),
+		},
+		{
+			// R4.2: body delimiter resets counter
+			Name:  "body_delim_resets",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("a\nb\n\\:\\:\nc\nd\n"),
+		},
+		{
+			// R4.2: footer delimiter resets counter
+			Name:  "footer_delim_resets",
+			Args:  []string{"-b", "a", "-f", "a"},
+			Stdin: []byte("a\nb\n\\:\nc\nd\n"),
+		},
+		{
+			// R4.2: multiple logical pages, each header resets
+			Name:  "multiple_pages_reset",
+			Args:  []string{"-b", "a", "-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nhdr1\n\\:\\:\nbod1\nbod2\n\\:\\:\\:\nhdr2\n\\:\\:\nbod3\n"),
+		},
+
+		// === R4.3: -p suppresses counter reset ===
+		{
+			// R4.3: -p continues numbering across logical pages
+			Name:  "p_no_reset",
+			Args:  []string{"-p", "-b", "a", "-h", "a"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\nhdr\n\\:\\:\nc\nd\n"),
+		},
+		{
+			// R4.3: -p with multiple pages
+			Name:  "p_multiple_pages",
+			Args:  []string{"-p", "-b", "a", "-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\n\\:\\:\\:\nh2\n\\:\\:\nb2\n"),
+		},
+		{
+			// R4.3: -p combined flag form
+			Name:  "p_combined_form",
+			Args:  []string{"-pba"},
+			Stdin: []byte("a\n\\:\\:\\:\nb\n\\:\\:\nc\n"),
+		},
+
+		// === R4.4: -l N blank join ===
+		{
+			// R4.4: -l 2 with -b a, two consecutive blanks as one
+			Name:  "blank_join_l2_ba",
+			Args:  []string{"-b", "a", "-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+		},
+		{
+			// R4.4: -l 1 default with -b a, each blank numbered
+			Name:  "blank_join_l1_ba",
+			Args:  []string{"-b", "a", "-l", "1"},
+			Stdin: []byte("a\n\n\nb\n"),
+		},
+		{
+			// R4.4: -l 3 with -b a, three consecutive blanks as one
+			Name:  "blank_join_l3_ba",
+			Args:  []string{"-b", "a", "-l", "3"},
+			Stdin: []byte("a\n\n\n\n\nb\n"),
+		},
+		{
+			// R4.4: -l 2 with -b t, empty lines not numbered regardless
+			Name:  "blank_join_l2_bt",
+			Args:  []string{"-b", "t", "-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+		},
+		{
+			// R4.4: -l 2 with more than 2 consecutive blanks
+			Name:  "blank_join_l2_extra_blanks",
+			Args:  []string{"-b", "a", "-l", "2"},
+			Stdin: []byte("a\n\n\n\n\nb\n"),
+		},
+		{
+			// R4.4: combined -l2 form
+			Name:  "blank_join_l2_combined",
+			Args:  []string{"-ba", "-l2"},
+			Stdin: []byte("a\n\n\nb\n"),
 		},
 	}
 
