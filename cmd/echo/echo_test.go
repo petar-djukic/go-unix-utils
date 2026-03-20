@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd020-echo R1.1–R1.4, R2.1–R2.4.
+// Differential tests for prd020-echo R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
 package main
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 
@@ -260,4 +261,63 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestExitCodeSuccess verifies R3.1: exit 0 on successful output.
+func TestExitCodeSuccess(t *testing.T) {
+	t.Parallel()
+	exitCode := run([]string{"hello"}, os.Stdout)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+}
+
+// TestExitCodeWriteError verifies R3.2: exit 1 when stdout write fails.
+func TestExitCodeWriteError(t *testing.T) {
+	t.Parallel()
+	f := createClosedFile(t)
+	exitCode := run([]string{"hello"}, f)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1 on write error, got %d", exitCode)
+	}
+}
+
+// createClosedFile returns an *os.File whose write end is broken,
+// causing any write to fail.
+func createClosedFile(t *testing.T) *os.File {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("creating pipe: %v", err)
+	}
+	r.Close()
+	w.Close()
+	return w
+}
+
+// TestSIGPIPE verifies R3.3: echo terminates cleanly on broken pipe.
+// The SIGPIPE handler (exit 0) races with the write error path (exit 1),
+// so we accept either exit code — the key property is no crash or hang.
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("creating pipe: %v", err)
+	}
+	r.Close() // close read end so write triggers SIGPIPE
+	cmd := exec.Command(goBin, "hello")
+	cmd.Stdout = w
+	err = cmd.Run()
+	w.Close() // best-effort cleanup
+	if err == nil {
+		return // exit 0: SIGPIPE handler won the race
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("unexpected error type: %v", err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("expected exit 0 or 1 on SIGPIPE, got %d", exitErr.ExitCode())
+	}
 }
