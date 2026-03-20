@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd020-echo R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
+// Differential tests for prd020-echo R1.1–R1.4, R2.1–R2.4, R3.1–R3.3, R4.1–R4.3.
+// R4.1: differential tests compare Go echo output against gecho via RunDiffTests.
+// R4.2: tests cover no args, single/multiple args, -n, -e escapes, -E, combined -n -e, dash args.
+// R4.3: LC_ALL=C set by default in testutils.RunDiffTests harness.
 package main
 
 import (

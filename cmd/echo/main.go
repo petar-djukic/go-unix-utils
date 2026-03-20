@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd020-echo R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
+// Implements prd020-echo R1.1–R1.4, R2.1–R2.4, R3.1–R3.3, R4.1–R4.3.
 // R1.1: arguments joined by spaces, followed by newline.
 // R1.2: no arguments outputs only a newline.
 // R1.3: -n suppresses trailing newline.
