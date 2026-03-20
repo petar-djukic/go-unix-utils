@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd020-echo R1.1–R1.4: core output behavior.
+// Differential tests for prd020-echo R1.1–R1.4, R2.1–R2.4.
 package main
 
 import (
@@ -115,6 +115,147 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "multiple_n_flags",
 			Args: []string{"-n", "-n", "hello"},
+		},
+
+		// R2.1: -e backslash (\\)
+		{
+			Name: "escape_backslash",
+			Args: []string{"-e", `a\\b`},
+		},
+		// R2.1: -e alert (\a)
+		{
+			Name: "escape_alert",
+			Args: []string{"-e", `\a`},
+		},
+		// R2.1: -e backspace (\b)
+		{
+			Name: "escape_backspace",
+			Args: []string{"-e", `\b`},
+		},
+		// R2.1: -e escape (\e)
+		{
+			Name: "escape_esc",
+			Args: []string{"-e", `\e`},
+		},
+		// R2.1: -e form feed (\f)
+		{
+			Name: "escape_formfeed",
+			Args: []string{"-e", `\f`},
+		},
+		// R2.1: -e newline (\n)
+		{
+			Name: "escape_newline",
+			Args: []string{"-e", `\n`},
+		},
+		// R2.1: -e carriage return (\r)
+		{
+			Name: "escape_cr",
+			Args: []string{"-e", `\r`},
+		},
+		// R2.1: -e horizontal tab (\t)
+		{
+			Name: "escape_tab",
+			Args: []string{"-e", `\t`},
+		},
+		// R2.1: -e vertical tab (\v)
+		{
+			Name: "escape_vtab",
+			Args: []string{"-e", `\v`},
+		},
+		// R2.1: -e octal (\0NNN)
+		{
+			Name: "escape_octal_041",
+			Args: []string{"-e", `\041`},
+		},
+		// R2.1: -e octal zero (\0)
+		{
+			Name: "escape_octal_zero",
+			Args: []string{"-e", `a\0b`},
+		},
+		// R2.1: -e octal three digits (\0101 = 'A')
+		{
+			Name: "escape_octal_101",
+			Args: []string{"-e", `\0101`},
+		},
+		// R2.1: -e hex (\xHH)
+		{
+			Name: "escape_hex_41",
+			Args: []string{"-e", `\x41`},
+		},
+		// R2.1: -e hex single digit
+		{
+			Name: "escape_hex_single",
+			Args: []string{"-e", `\x9`},
+		},
+		// R2.1: -e hex uppercase
+		{
+			Name: "escape_hex_upper",
+			Args: []string{"-e", `\x4F`},
+		},
+		// R2.2: \c terminates output
+		{
+			Name: "escape_c_truncate",
+			Args: []string{"-e", `before\cafter`},
+		},
+		// R2.2: \c suppresses trailing newline
+		{
+			Name: "escape_c_no_newline",
+			Args: []string{"-e", `hello\c`},
+		},
+		// R2.2: \c with multiple arguments suppresses remaining
+		{
+			Name: "escape_c_multi_args",
+			Args: []string{"-e", `first\c`, "second"},
+		},
+		// R2.3: -E disables escapes (literal backslash sequences)
+		{
+			Name: "flag_E_literal",
+			Args: []string{"-E", `hello\nworld`},
+		},
+		// R2.3: default behavior (no -e) treats escapes as literal
+		{
+			Name: "default_no_escapes",
+			Args: []string{`hello\nworld`},
+		},
+		// R2.4: -e then -E, last wins (escapes disabled)
+		{
+			Name: "flag_e_then_E",
+			Args: []string{"-e", "-E", `hello\nworld`},
+		},
+		// R2.4: -E then -e, last wins (escapes enabled)
+		{
+			Name: "flag_E_then_e",
+			Args: []string{"-E", "-e", `hello\nworld`},
+		},
+		// R2.4: combined -eE in single arg, last char wins
+		{
+			Name: "flag_eE_combined",
+			Args: []string{"-eE", `hello\nworld`},
+		},
+		// R2.4: combined -Ee in single arg, last char wins
+		{
+			Name: "flag_Ee_combined",
+			Args: []string{"-Ee", `hello\nworld`},
+		},
+		// R2.1+R1.3: -ne combined flags
+		{
+			Name: "flag_ne_combined",
+			Args: []string{"-ne", `hello\nworld`},
+		},
+		// R2.1: -e with multiple escape sequences
+		{
+			Name: "escape_multiple_sequences",
+			Args: []string{"-e", `\t\n\t`},
+		},
+		// R2.1: -e with unrecognized escape (literal passthrough)
+		{
+			Name: "escape_unrecognized",
+			Args: []string{"-e", `\q`},
+		},
+		// R2.1: -e trailing backslash
+		{
+			Name: "escape_trailing_backslash",
+			Args: []string{"-e", `hello\`},
 		},
 	}
 
