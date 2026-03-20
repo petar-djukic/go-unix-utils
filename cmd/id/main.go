@@ -5,7 +5,9 @@
 // R1.2 (supplementary groups in system order), R1.3 (exit 0 on success),
 // R2.1 (-u/--user prints effective UID), R2.2 (-g/--group prints effective GID),
 // R2.3 (-G/--groups prints all group IDs), R2.4 (mutual exclusivity of -u/-g/-G),
-// R3.1 (-n/--name prints name instead of number).
+// R3.1 (-n/--name prints name instead of number),
+// R3.2 (-r/--real prints real UID/GID instead of effective),
+// R3.3 (USER operand queries named user identity).
 package main
 
 import (
@@ -32,6 +34,7 @@ type config struct {
 	showGroup  bool   // -g/--group: print only effective GID
 	showGroups bool   // -G/--groups: print all group IDs
 	showName   bool   // -n/--name: print name instead of number
+	showReal   bool   // -r/--real: print real UID/GID instead of effective
 	username   string // positional USER operand
 }
 
@@ -71,11 +74,16 @@ func run(args []string) int {
 // validateConfig checks for conflicting flag combinations.
 // R2.4: only one of -u, -g, -G allowed.
 // R3.1: -n requires a selection flag.
+// R3.2: -r requires -u or -g.
 func validateConfig(cfg config) error {
 	if cfg.selectionCount() > 1 {
 		return fmt.Errorf("cannot print \"only\" of more than one choice")
 	}
 	if cfg.showName && cfg.selectionCount() == 0 {
+		return fmt.Errorf(
+			"printing only names or real IDs requires -u, -g, or -G")
+	}
+	if cfg.showReal && cfg.selectionCount() == 0 {
 		return fmt.Errorf(
 			"printing only names or real IDs requires -u, -g, or -G")
 	}
@@ -115,7 +123,7 @@ func parseFlag(cfg *config, arg string) error {
 	if strings.HasPrefix(arg, "--") {
 		return parseLongFlag(cfg, arg)
 	}
-	// Parse combined short flags (e.g., -gn, -Gn, -un).
+	// Parse combined short flags (e.g., -gn, -Gn, -un, -ru).
 	for _, ch := range arg[1:] {
 		if err := parseShortFlag(cfg, ch); err != nil {
 			return err
@@ -135,6 +143,8 @@ func parseLongFlag(cfg *config, arg string) error {
 		cfg.showGroups = true
 	case "--name":
 		cfg.showName = true
+	case "--real":
+		cfg.showReal = true
 	default:
 		return fmt.Errorf("unrecognized option '%s'", arg)
 	}
@@ -152,6 +162,8 @@ func parseShortFlag(cfg *config, ch rune) error {
 		cfg.showGroups = true
 	case 'n':
 		cfg.showName = true
+	case 'r':
+		cfg.showReal = true
 	default:
 		return fmt.Errorf("unrecognized option '-%c'", ch)
 	}
@@ -161,10 +173,10 @@ func parseShortFlag(cfg *config, ch rune) error {
 // handleCurrentUser prints identity for the current process user.
 func handleCurrentUser(cfg config) int {
 	if cfg.showUser {
-		return printCurrentUID(cfg.showName)
+		return printCurrentUID(cfg.showName, cfg.showReal)
 	}
 	if cfg.showGroup {
-		return printCurrentGID(cfg.showName)
+		return printCurrentGID(cfg.showName, cfg.showReal)
 	}
 	if cfg.showGroups {
 		return printCurrentGroups(cfg.showName)
@@ -172,31 +184,39 @@ func handleCurrentUser(cfg config) int {
 	return printDefaultCurrent()
 }
 
-// printCurrentUID prints the current user's effective UID.
-func printCurrentUID(showName bool) int {
-	euid := os.Geteuid()
+// printCurrentUID prints the current user's UID.
+// R3.2: uses real UID if showReal is true, effective UID otherwise.
+func printCurrentUID(showName, showReal bool) int {
+	uid := os.Geteuid()
+	if showReal {
+		uid = os.Getuid()
+	}
 	if showName {
-		u, err := user.LookupId(strconv.Itoa(euid))
+		u, err := user.LookupId(strconv.Itoa(uid))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: cannot find name for user ID %d\n",
-				programName, euid)
+				programName, uid)
 			return 1
 		}
 		fmt.Println(u.Username)
 		return 0
 	}
-	fmt.Println(euid)
+	fmt.Println(uid)
 	return 0
 }
 
-// printCurrentGID prints the current user's effective GID.
-func printCurrentGID(showName bool) int {
-	egid := os.Getegid()
+// printCurrentGID prints the current user's GID.
+// R3.2: uses real GID if showReal is true, effective GID otherwise.
+func printCurrentGID(showName, showReal bool) int {
+	gid := os.Getegid()
+	if showReal {
+		gid = os.Getgid()
+	}
 	if showName {
-		fmt.Println(lookupGroupName(strconv.Itoa(egid)))
+		fmt.Println(lookupGroupName(strconv.Itoa(gid)))
 		return 0
 	}
-	fmt.Println(egid)
+	fmt.Println(gid)
 	return 0
 }
 
@@ -226,6 +246,7 @@ func printGroupList(gids []int, showName bool) {
 }
 
 // handleNamedUser prints identity for a named user.
+// R3.3: queries named user's identity from the system.
 func handleNamedUser(cfg config) int {
 	u, err := user.Lookup(cfg.username)
 	if err != nil {
@@ -404,6 +425,7 @@ Print user and group information for USER or the current user.
   -g, --group    print only the effective group ID
   -G, --groups   print all group IDs
   -n, --name     print a name instead of a number, for -ugG
+  -r, --real     print the real ID instead of the effective ID, with -ug
       --help     display this help and exit
       --version  output version information and exit
 `
