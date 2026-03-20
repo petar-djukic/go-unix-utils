@@ -4,6 +4,10 @@
 // Differential tests for prd021-tac R1.1–R1.4: core reversal behavior.
 // Differential tests for prd021-tac R2.1–R2.4: separator options (-s, -b, -r).
 // Differential tests for prd021-tac R3.1–R3.4: exit codes and SIGPIPE.
+// Differential tests for prd021-tac R4.1–R4.3: differential testing coverage.
+// R4.1: tests compare against gtac via RunDiffTests.
+// R4.2: covers single-file, stdin, multi-file, -s, -b, no trailing newline.
+// R4.3: LC_ALL=C is set by RunDiffTests default environment.
 package main
 
 import (

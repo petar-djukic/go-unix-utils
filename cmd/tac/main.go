@@ -4,6 +4,7 @@
 // Implements prd021-tac R1.1–R1.4: core reversal behavior.
 // Implements prd021-tac R2.1–R2.4: separator options (-s, -b, -r).
 // Implements prd021-tac R3.1–R3.4: exit codes and SIGPIPE.
+// Implements prd021-tac R4.1–R4.3: differential testing (tests in tac_test.go).
 package main
 
 import (
