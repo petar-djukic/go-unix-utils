@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for prd021-tac R1.1–R1.4: core reversal behavior.
+// Differential tests for prd021-tac R2.1–R2.4: separator options (-s, -b, -r).
 package main
 
 import (
@@ -29,6 +30,10 @@ func TestDiff(t *testing.T) {
 	// R1.4: multi-file reversal
 	multiFile1 := createTempFile(t, "x\ny\n")
 	multiFile2 := createTempFile(t, "1\n2\n")
+	// R2.1: file with custom separator
+	colonFile := createTempFile(t, "a:b:c:")
+	// R2.2: file with separator-before pattern
+	beforeFile := createTempFile(t, ":a:b:c")
 
 	tests := []testutils.DiffTest{
 		{
@@ -43,12 +48,12 @@ func TestDiff(t *testing.T) {
 		},
 		{
 			// R1.3: stdin reversal
-			Name: "stdin_reversal",
+			Name:  "stdin_reversal",
 			Stdin: []byte("a\nb\nc\n"),
 		},
 		{
 			// R1.3: stdin with "-" argument
-			Name: "stdin_dash_arg",
+			Name:  "stdin_dash_arg",
 			Args:  []string{"-"},
 			Stdin: []byte("foo\nbar\n"),
 		},
@@ -76,6 +81,70 @@ func TestDiff(t *testing.T) {
 			// R1.2: multiple blank lines
 			Name:  "blank_lines",
 			Stdin: []byte("\n\n\n"),
+		},
+		{
+			// R2.1: -s with colon separator via stdin
+			Name:  "custom_sep_colon_stdin",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c:"),
+		},
+		{
+			// R2.1: -s with colon separator via file
+			Name: "custom_sep_colon_file",
+			Args: []string{"-s", ":", colonFile},
+		},
+		{
+			// R2.1: -s with no trailing separator
+			Name:  "custom_sep_no_trailing",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c"),
+		},
+		{
+			// R2.1: -s with multi-char separator
+			Name:  "custom_sep_multichar",
+			Args:  []string{"-s", "::"},
+			Stdin: []byte("a::b::c::"),
+		},
+		{
+			// R2.2: -b with default newline separator
+			Name:  "before_newline",
+			Args:  []string{"-b"},
+			Stdin: []byte("\na\nb\nc"),
+		},
+		{
+			// R2.2: -b with custom separator via stdin
+			Name:  "before_custom_sep_stdin",
+			Args:  []string{"-b", "-s", ":"},
+			Stdin: []byte(":a:b:c"),
+		},
+		{
+			// R2.2: -b with custom separator via file
+			Name: "before_custom_sep_file",
+			Args: []string{"-b", "-s", ":", beforeFile},
+		},
+		{
+			// R2.3: -r with simple regex separator
+			Name:  "regex_sep_digits",
+			Args:  []string{"-r", "-s", "[0-9]+"},
+			Stdin: []byte("a1b22c"),
+		},
+		{
+			// R2.4: -r and -s combined with quantifier
+			Name:  "regex_combined_quantifier",
+			Args:  []string{"-r", "-s", ":+"},
+			Stdin: []byte("a:b::c:::"),
+		},
+		{
+			// R2.3, R2.4: combined short flags -rs
+			Name:  "combined_flags_rs",
+			Args:  []string{"-rs", ":+"},
+			Stdin: []byte("a:b::c"),
+		},
+		{
+			// R2.2, R2.3: -b with regex separator
+			Name:  "before_regex",
+			Args:  []string{"-b", "-r", "-s", "[0-9]+"},
+			Stdin: []byte("1a2b3c"),
 		},
 	}
 
