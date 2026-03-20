@@ -230,6 +230,70 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
+		// R4.2: -e long form --canonicalize-existing
+		{
+			Name: "canonicalize_existing_long_form",
+			Args: []string{"--canonicalize-existing", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: -e long form with missing path
+		{
+			Name:      "canonicalize_existing_long_form_missing",
+			Args:      []string{"--canonicalize-existing", "/xyzzy_no_such_test_path"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.2: -m long form --canonicalize-missing
+		{
+			Name: "canonicalize_missing_long_form",
+			Args: []string{"--canonicalize-missing", "/xyzzy_no_such_test_path/deep/path"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: -e with symlink to existing target
+		{
+			Name: "canonicalize_existing_symlink",
+			Args: []string{"-e", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: -s with nonexistent path (does not error)
+		{
+			Name: "strip_nonexistent",
+			Args: []string{"-s", "/xyzzy_no_such_test_path/sub/deep"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: --strip long form
+		{
+			Name: "strip_long_form",
+			Args: []string{"--strip", filepath.Join(canonTmpDir, "sub", "..", "target")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: -- end-of-flags separator
+		{
+			Name: "end_of_flags_separator",
+			Args: []string{"--", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: -m with symlink in existing prefix
+		{
+			Name: "missing_mode_symlink_prefix",
+			Args: []string{"-m", filepath.Join(canonTmpDir, "link", "nonexistent")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: multiple operands with -e and mixed existence
+		{
+			Name:      "e_multiple_mixed",
+			Args:      []string{"-e", "/tmp", "/xyzzy_no_such_test_path"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.2: --relative-to with sibling directory
+		{
+			Name: "relative_to_sibling",
+			Args: []string{"--relative-to=/usr", "/tmp"},
+			Env:  []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
