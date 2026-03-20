@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd024-expand R1.1–R1.4: core tab-to-space expansion.
+// Implements prd024-expand R1.1–R1.4, R2.1–R2.4: tab-to-space expansion
+// with default and custom tab stop support.
 // R1.1: Default tab expansion with tab stops every 8 columns.
 // R1.2: Multiple consecutive tabs each advance independently.
 // R1.3: Non-tab characters pass through unchanged.
 // R1.4: Newline resets column position to 1.
+// R2.1: -t N sets uniform tab stop interval.
+// R2.2: -t LIST sets absolute tab stop positions.
+// R2.3: Last -t wins; replaces default of 8.
+// R2.4: Single-value LIST behaves as uniform interval.
 package main
 
 import (
@@ -13,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -20,23 +26,29 @@ import (
 
 const defaultTabStop = 8
 
+// tabConfig holds parsed tab stop configuration. R2.1–R2.4.
+type tabConfig struct {
+	interval int   // uniform interval; used when stops is nil
+	stops    []int // absolute 0-indexed positions; nil means uniform mode
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	files := parseArgs(os.Args[1:])
-	os.Exit(run(files))
+	tc, files := parseArgs(os.Args[1:])
+	os.Exit(run(tc, files))
 }
 
 // run processes all input sources and returns the exit code.
-func run(files []string) int {
+func run(tc tabConfig, files []string) int {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
 	if len(files) == 0 {
-		expandReader(w, os.Stdin)
+		expandReader(w, os.Stdin, tc)
 		return 0
 	}
 	exitCode := 0
 	for _, name := range files {
-		if err := processFile(w, name); err != nil {
+		if err := processFile(w, name, tc); err != nil {
 			fmt.Fprintf(os.Stderr, "expand: %v\n", err)
 			exitCode = 1
 		}
@@ -45,9 +57,9 @@ func run(files []string) int {
 }
 
 // processFile opens a file (or stdin for "-") and expands tabs.
-func processFile(w *bufio.Writer, name string) error {
+func processFile(w *bufio.Writer, name string, tc tabConfig) error {
 	if name == "-" {
-		expandReader(w, os.Stdin)
+		expandReader(w, os.Stdin, tc)
 		return nil
 	}
 	f, err := os.Open(name)
@@ -55,12 +67,12 @@ func processFile(w *bufio.Writer, name string) error {
 		return err
 	}
 	defer f.Close()
-	expandReader(w, f)
+	expandReader(w, f, tc)
 	return nil
 }
 
-// expandReader reads from r and replaces tabs with spaces. R1.1–R1.4.
-func expandReader(w *bufio.Writer, r io.Reader) {
+// expandReader reads from r and replaces tabs with spaces.
+func expandReader(w *bufio.Writer, r io.Reader, tc tabConfig) {
 	br := bufio.NewReader(r)
 	col := 0
 	for {
@@ -68,18 +80,15 @@ func expandReader(w *bufio.Writer, r io.Reader) {
 		if err != nil {
 			return
 		}
-		col = expandByte(w, b, col)
+		col = expandByte(w, b, col, tc)
 	}
 }
 
 // expandByte processes one byte and returns the updated column position.
-// R1.1: Tab advances to next multiple-of-8 column.
-// R1.3: Non-tab bytes pass through, each counting as one column.
-// R1.4: Newline resets column to 0 (0-indexed internally; column 1 externally).
-func expandByte(w *bufio.Writer, b byte, col int) int {
+func expandByte(w *bufio.Writer, b byte, col int, tc tabConfig) int {
 	switch b {
 	case '\t':
-		return expandTab(w, col)
+		return expandTab(w, col, tc)
 	case '\n':
 		w.WriteByte('\n')
 		return 0
@@ -89,17 +98,35 @@ func expandByte(w *bufio.Writer, b byte, col int) int {
 	}
 }
 
-// expandTab replaces a tab with spaces to reach the next tab stop. R1.1, R1.2.
-func expandTab(w *bufio.Writer, col int) int {
-	spaces := defaultTabStop - col%defaultTabStop
-	for i := 0; i < spaces; i++ {
+// expandTab replaces a tab with spaces to reach the next tab stop.
+func expandTab(w *bufio.Writer, col int, tc tabConfig) int {
+	spaces := computeSpaces(col, tc)
+	for range spaces {
 		w.WriteByte(' ')
 	}
 	return col + spaces
 }
 
-// parseArgs extracts file names from command-line arguments.
-func parseArgs(args []string) []string {
+// computeSpaces returns the number of spaces for a tab at the given column.
+// R2.1: Uniform interval uses modular arithmetic.
+// R2.2: Absolute stops finds the first stop past col; single space if past all.
+func computeSpaces(col int, tc tabConfig) int {
+	if tc.stops == nil {
+		return tc.interval - col%tc.interval
+	}
+	for _, stop := range tc.stops {
+		if stop > col {
+			return stop - col
+		}
+	}
+	// R2.2: Past the last explicit tab stop, replace with a single space.
+	return 1
+}
+
+// parseArgs extracts tab config and file names from arguments.
+// R2.3: -t replaces the default. Multiple -t values accumulate into a list.
+func parseArgs(args []string) (tabConfig, []string) {
+	var rawStops []int
 	var files []string
 	endOfFlags := false
 	for i := 0; i < len(args); i++ {
@@ -112,16 +139,54 @@ func parseArgs(args []string) []string {
 			endOfFlags = true
 			continue
 		}
-		// Skip unknown flags gracefully for forward compatibility.
+		if val, ok := strings.CutPrefix(arg, "--tabs="); ok {
+			rawStops = appendStops(rawStops, val)
+			continue
+		}
 		if strings.HasPrefix(arg, "-t") {
-			// -tN form: value is part of this arg, skip it.
-			if len(arg) > 2 {
-				continue
+			val := extractTabArg(arg, args, &i)
+			if val != "" {
+				rawStops = appendStops(rawStops, val)
 			}
-			// -t N form: skip the next arg too.
-			i++
 			continue
 		}
 	}
-	return files
+	return buildTabConfig(rawStops), files
+}
+
+// extractTabArg handles -tVAL and -t VAL forms, advancing i as needed.
+func extractTabArg(arg string, args []string, i *int) string {
+	if len(arg) > 2 {
+		return arg[2:]
+	}
+	if *i+1 < len(args) {
+		*i++
+		return args[*i]
+	}
+	return ""
+}
+
+// appendStops parses a comma-separated tab stop value and appends to stops.
+func appendStops(stops []int, val string) []int {
+	parts := strings.Split(val, ",")
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n <= 0 {
+			continue
+		}
+		stops = append(stops, n)
+	}
+	return stops
+}
+
+// buildTabConfig converts raw stop values into a tabConfig.
+// R2.4: Single value = uniform interval. Multiple values = absolute positions.
+func buildTabConfig(stops []int) tabConfig {
+	if len(stops) == 0 {
+		return tabConfig{interval: defaultTabStop}
+	}
+	if len(stops) == 1 {
+		return tabConfig{interval: stops[0]}
+	}
+	return tabConfig{stops: stops}
 }
