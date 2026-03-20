@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd050-readlink R1.1–R1.4, R4.1–R4.3:
+// Differential tests for prd050-readlink R1.1–R1.6, R2.1, R2.2, R4.1–R4.3:
 // default symlink target, -f canonicalize, -e canonicalize-existing,
+// -m canonicalize-missing, -n no-newline, multiple operands,
 // error handling, and differential test coverage against greadlink.
 package main
 
@@ -133,11 +134,66 @@ func TestDiff(t *testing.T) {
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 1,
 		},
-		// Multiple operands
+		// R1.5: -m canonicalize-missing with nonexistent path
+		{
+			Name: "canonicalize_missing_nonexistent",
+			Args: []string{"-m", filepath.Join(canonTmpDir, "no_such_file")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -m with nonexistent parent and child
+		{
+			Name: "canonicalize_missing_deep",
+			Args: []string{"-m", filepath.Join(canonTmpDir, "no_such_dir", "child")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: -m with existing symlink resolves it
+		{
+			Name: "canonicalize_missing_existing_symlink",
+			Args: []string{"-m", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.5: --canonicalize-missing long form
+		{
+			Name: "canonicalize_missing_long",
+			Args: []string{"--canonicalize-missing", filepath.Join(canonTmpDir, "no_such_file")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.6: -n suppresses trailing newline for single operand
+		{
+			Name: "no_newline_single",
+			Args: []string{"-n", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.6: --no-newline long form
+		{
+			Name: "no_newline_long",
+			Args: []string{"--no-newline", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R1.6: -n with -f
+		{
+			Name: "no_newline_with_canonicalize",
+			Args: []string{"-n", "-f", symlink},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: multiple operands print each on separate line
 		{
 			Name: "multiple_operands",
 			Args: []string{symlink, chainEnd},
 			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.1: multiple operands with -f
+		{
+			Name: "multiple_operands_canonicalize",
+			Args: []string{"-f", symlink, filepath.Join(canonTmpDir, "target")},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: -n ignored with multiple operands (warning to stderr)
+		{
+			Name:      "no_newline_multiple_ignored",
+			Args:      []string{"-n", symlink, chainEnd},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{binaryNameNormalizer},
 		},
 		// No operand — usage error to stderr
 		{

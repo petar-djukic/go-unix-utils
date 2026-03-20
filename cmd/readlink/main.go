@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd050-readlink R1.1–R1.4: print symlink target or canonical
-// path with -f (--canonicalize) and -e (--canonicalize-existing) modes.
+// Implements prd050-readlink R1.1–R1.6, R2.1, R2.2: print symlink target or
+// canonical path with -f, -e, -m modes, -n no-newline, and multi-operand support.
 package main
 
 import (
@@ -22,6 +22,7 @@ const (
 	modeReadlink resolveMode = iota // default: print symlink target
 	modeCanon                       // -f: canonicalize, last may be missing
 	modeExisting                    // -e: canonicalize, all must exist
+	modeMissing                     // -m: canonicalize, no component need exist
 )
 
 func main() {
@@ -40,23 +41,40 @@ func main() {
 
 // options holds parsed command-line flags.
 type options struct {
-	mode resolveMode
-	err  error
+	mode      resolveMode
+	noNewline bool
+	err       error
 }
 
 // processArgs processes each path argument and prints results.
 // GNU readlink silently exits 1 on path errors — no stderr output.
+// R2.2: -n is ignored when multiple operands are given.
 func processArgs(paths []string, opts options) int {
 	exitCode := 0
+	suppressNewline := opts.noNewline && len(paths) == 1
+	if opts.noNewline && len(paths) > 1 {
+		fmt.Fprintf(os.Stderr,
+			"%s: ignoring --no-newline with multiple arguments\n",
+			programName)
+	}
 	for _, p := range paths {
 		result, err := resolvePath(p, opts.mode)
 		if err != nil {
 			exitCode = 1
 			continue
 		}
-		fmt.Println(result)
+		printResult(result, suppressNewline)
 	}
 	return exitCode
+}
+
+// printResult writes a resolved path to stdout.
+func printResult(result string, suppressNewline bool) {
+	if suppressNewline {
+		fmt.Print(result)
+	} else {
+		fmt.Println(result)
+	}
 }
 
 // resolvePath dispatches to the appropriate resolver based on mode.
@@ -66,6 +84,8 @@ func resolvePath(path string, mode resolveMode) (string, error) {
 		return resolveCanon(path)
 	case modeExisting:
 		return resolveExisting(path)
+	case modeMissing:
+		return resolveMissing(path)
 	default:
 		return resolveReadlink(path)
 	}
@@ -117,6 +137,41 @@ func resolveExisting(path string) (string, error) {
 	return filepath.EvalSymlinks(absPath)
 }
 
+// resolveMissing resolves the canonical path, constructing missing
+// components. No component need exist. R1.5.
+func resolveMissing(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	absPath = filepath.Clean(absPath)
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		return resolved, nil
+	}
+	return resolvePartial(absPath)
+}
+
+// resolvePartial walks up the path until a real component is found,
+// then appends the unresolved tail.
+func resolvePartial(absPath string) (string, error) {
+	dir := filepath.Dir(absPath)
+	base := filepath.Base(absPath)
+	if dir == absPath {
+		// Reached root — return as-is.
+		return absPath, nil
+	}
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		// Parent doesn't exist either — recurse.
+		resolvedDir, err = resolvePartial(dir)
+		if err != nil {
+			return "", err
+		}
+	}
+	return filepath.Join(resolvedDir, base), nil
+}
+
 // parseArgs splits raw arguments into options and positional paths.
 func parseArgs(args []string) (options, []string) {
 	var opts options
@@ -150,6 +205,12 @@ func parseFlag(arg string, opts *options) bool {
 		return true
 	case "-e", "--canonicalize-existing":
 		opts.mode = modeExisting
+		return true
+	case "-m", "--canonicalize-missing":
+		opts.mode = modeMissing
+		return true
+	case "-n", "--no-newline":
+		opts.noNewline = true
 		return true
 	}
 	return handleUnknown(arg, opts)
