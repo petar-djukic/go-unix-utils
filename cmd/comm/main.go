@@ -5,6 +5,7 @@
 // files, byte-for-byte under LC_ALL=C, with proper exhaustion handling.
 // R2.1–R2.4: column suppression flags (-1, -2, -3) with indentation adjustment.
 // R3.1–R3.4: order checking (--check-order, --nocheck-order) and --output-delimiter.
+// R4.1–R4.4: exit codes (0 success, 1 error) and SIGPIPE handling.
 package main
 
 import (
@@ -384,7 +385,7 @@ func openFile(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		return nil, nil, unwrapPathError(err)
+		return nil, nil, formatFileError(err)
 	}
 	return f, f, nil
 }
@@ -395,11 +396,12 @@ func writeError(stderr io.Writer, err error) int {
 	return 1
 }
 
-// unwrapPathError extracts the inner error from *os.PathError for
-// GNU-compatible error messages.
-func unwrapPathError(err error) error {
+// formatFileError formats an os.PathError as "<path>: <err>" to match
+// GNU comm error message format (without the "open" verb prefix).
+// R4.2: used when input files cannot be opened.
+func formatFileError(err error) error {
 	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err
+		return fmt.Errorf("%s: %s", pe.Path, pe.Err)
 	}
 	return err
 }

@@ -5,6 +5,7 @@
 // of two sorted files with byte-for-byte comparison under LC_ALL=C.
 // R2.1–R2.4: column suppression flags (-1, -2, -3) with indentation adjustment.
 // R3.1–R3.4: order checking (--check-order, --nocheck-order) and --output-delimiter.
+// R4.1–R4.4: exit codes (0 success, 1 error) and SIGPIPE handling.
 package main
 
 import (
@@ -21,6 +22,12 @@ import (
 // "gcomm:" and "comm:" both become "comm:" for comparison.
 func normProgName(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gcomm:"), []byte("comm:"))
+}
+
+// normErrMsg normalizes system error message case differences between
+// GNU strerror() and Go syscall.Errno.Error().
+func normErrMsg(data []byte) []byte {
+	return bytes.ToLower(data)
 }
 
 // writeFile creates a file with the given content in dir.
@@ -333,6 +340,13 @@ func TestDiff(t *testing.T) {
 			content1: "a\nb\nc\n",
 			content2: "b\nc\nd\n",
 		},
+
+		// R4.1: exit 0 on successful sorted input
+		{
+			name:     "exit_0_success",
+			content1: "a\nb\nc\n",
+			content2: "b\nc\nd\n",
+		},
 	}
 
 	stderrNorm := []testutils.NormalizeFunc{normProgName}
@@ -349,6 +363,26 @@ func TestDiff(t *testing.T) {
 			Normalize: stderrNorm,
 		})
 	}
+
+	// R4.2: exit 1 when input file cannot be opened.
+	// Uses normErrMsg (ToLower) because GNU strerror() capitalizes
+	// "No such file or directory" while Go's Errno.Error() does not.
+	errDir := t.TempDir()
+	validFile := writeFile(t, errDir, "valid", "a\nb\n")
+	nonexistent := filepath.Join(errDir, "nonexistent")
+	errNorm := []testutils.NormalizeFunc{normProgName, normErrMsg}
+	tests = append(tests, testutils.DiffTest{
+		Name:      "nonexistent_file1",
+		Args:      []string{nonexistent, validFile},
+		ExitCode:  1,
+		Normalize: errNorm,
+	})
+	tests = append(tests, testutils.DiffTest{
+		Name:      "nonexistent_file2",
+		Args:      []string{validFile, nonexistent},
+		ExitCode:  1,
+		Normalize: errNorm,
+	})
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
