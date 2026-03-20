@@ -259,7 +259,7 @@ releases:
           status: spec_complete
     - version: "05.5"
       name: "Batch 5.5 — ts timestamp stdin lines"
-      status: spec_complete
+      status: code_complete
       depends_on: ["00.0"]
       description: |
         Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
@@ -267,9 +267,11 @@ releases:
         elapsed (-s), and incremental (-i) modes, monotonic clock (-m), and subsecond
         extensions (%.S, %.s, %.T). Originally deferred due to task complexity;
         promoted to rel05.5 after successful generation in run 19.
+        R6 (relative-time mode) skipped in run 37 due to repeated stitch timeouts.
+        See cobbler-scaffold#1697 and #1699.
       use_cases:
         - id: rel05.5-uc001-ts
-          status: spec_complete
+          status: code_complete
     - version: "06.0"
       name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
       status: spec_complete
