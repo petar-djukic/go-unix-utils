@@ -7,6 +7,7 @@
 // with --check, --warn, --quiet, --status.
 // Implements prd030-md5sum R3.1, R3.2, R3.3: binary/text mode flags and
 // tag format interaction.
+// Implements prd030-md5sum R4.1, R4.2, R4.3: exit codes and SIGPIPE handling.
 package main
 
 import (
