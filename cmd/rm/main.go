@@ -4,6 +4,10 @@
 // Implements prd058-rm R1.1–R1.4: basic file removal and argument handling.
 // Implements prd058-rm R2.1–R2.4: recursive removal, force mode, and -d flag.
 // Implements prd058-rm R3.1–R3.4: interactive modes and verbose output.
+// Implements prd058-rm R4.1–R4.4: exit codes and differential testing.
+//
+// Non-goals per PRD (E6): --preserve-root, --no-preserve-root, and
+// --one-file-system are not implemented.
 package main
 
 import (

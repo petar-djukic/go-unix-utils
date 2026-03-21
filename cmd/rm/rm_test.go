@@ -5,6 +5,7 @@
 // directory refusal, dot/dotdot refusal, and error continuation.
 // Tests for prd058-rm R2.1–R2.4: recursive removal, force mode, -d flag.
 // Tests for prd058-rm R3.1–R3.4: interactive modes and verbose output.
+// Tests for prd058-rm R4.1–R4.4: exit codes, error handling, and edge cases.
 package main
 
 import (
@@ -12,9 +13,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -48,6 +51,10 @@ func errorCaseNormalizer(b []byte) []byte {
 		[]byte("is a directory"))
 	b = bytes.ReplaceAll(b, []byte("Directory not empty"),
 		[]byte("directory not empty"))
+	b = bytes.ReplaceAll(b, []byte("Permission denied"),
+		[]byte("permission denied"))
+	b = bytes.ReplaceAll(b, []byte("Operation not permitted"),
+		[]byte("operation not permitted"))
 	return b
 }
 
@@ -84,6 +91,7 @@ func TestDiff(t *testing.T) {
 		interactiveIRecursiveDecline(t, normalizers),
 		interactiveAlwaysDecline(t, normalizers),
 		interactiveOnceDecline(t, normalizers),
+		permissionDenied(t, normalizers),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -287,6 +295,201 @@ func interactiveOnceDecline(t *testing.T, normalizers []testutils.NormalizeFunc)
 		ExitCode:  0,
 		Normalize: normalizers,
 	}
+}
+
+// permissionDenied tests removing a file from a read-only directory. R4.2, R4.4.
+func permissionDenied(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	if isRoot() {
+		t.Skip("cannot test permission denied as root")
+	}
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "readonly")
+	mkdirAll(t, sub)
+	f := filepath.Join(sub, "locked.txt")
+	writeTestFile(t, f, "data\n")
+	// Make parent dir read-only so unlink fails
+	if err := os.Chmod(sub, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore write permission for cleanup
+		_ = os.Chmod(sub, 0o755) // best-effort for t.TempDir cleanup
+	})
+	return testutils.DiffTest{
+		Name:      "permission_denied",
+		Args:      []string{f},
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// isRoot returns true if the current user is root.
+func isRoot() bool {
+	u, err := user.Current()
+	if err != nil {
+		return false
+	}
+	return u.Uid == "0"
+}
+
+// TestSpecialFiles tests removal of special file types. R4.2, R4.4.
+func TestSpecialFiles(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("fifo", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		fifo := filepath.Join(dir, "testfifo")
+		if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+			t.Skipf("cannot create FIFO: %v", err)
+		}
+		runExpectSuccess(t, goBin, fifo)
+		assertNotExists(t, fifo)
+	})
+
+	t.Run("socket", func(t *testing.T) {
+		t.Parallel()
+		// Use /tmp for short path — Unix sockets have ~104 char limit
+		dir, err := os.MkdirTemp("/tmp", "rm-sock-*")
+		if err != nil {
+			t.Fatalf("mkdirtemp: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) }) // best-effort cleanup
+		sock := filepath.Join(dir, "s")
+		fd, sErr := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+		if sErr != nil {
+			t.Skipf("cannot create socket fd: %v", sErr)
+		}
+		if bErr := syscall.Bind(fd, &syscall.SockaddrUnix{Name: sock}); bErr != nil {
+			syscall.Close(fd)
+			t.Skipf("cannot bind socket: %v", bErr)
+		}
+		syscall.Close(fd)
+		assertFileExists(t, sock) // verify socket file persists
+		runExpectSuccess(t, goBin, sock)
+		assertNotExists(t, sock)
+	})
+}
+
+// TestUnusualFilenames tests removal of files with unusual names. R4.2, R4.4.
+func TestUnusualFilenames(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("spaces_in_name", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "file with spaces.txt")
+		writeTestFile(t, f, "data\n")
+		runExpectSuccess(t, goBin, f)
+		assertNotExists(t, f)
+	})
+
+	t.Run("leading_dash", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "-dashfile")
+		writeTestFile(t, f, "data\n")
+		// Use -- to prevent flag parsing
+		runExpectSuccess(t, goBin, "--", f)
+		assertNotExists(t, f)
+	})
+
+	t.Run("unicode_name", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "archivo_\u00f1.txt")
+		writeTestFile(t, f, "data\n")
+		runExpectSuccess(t, goBin, f)
+		assertNotExists(t, f)
+	})
+}
+
+// TestExitCodes verifies exit code behavior per R4.1-R4.3.
+func TestExitCodes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("success_exit_0", func(t *testing.T) {
+		t.Parallel()
+		// R4.1: all files removed successfully -> exit 0
+		dir := t.TempDir()
+		f := filepath.Join(dir, "ok.txt")
+		writeTestFile(t, f, "data\n")
+		code, _ := runBinaryCmd(t, goBin, f)
+		requireExit(t, 0, code)
+	})
+
+	t.Run("failure_exit_1_continues", func(t *testing.T) {
+		t.Parallel()
+		// R4.2: first fails, second succeeds, exit 1
+		dir := t.TempDir()
+		missing := filepath.Join(dir, "missing.txt")
+		exists := filepath.Join(dir, "exists.txt")
+		writeTestFile(t, exists, "data\n")
+		code, _ := runBinaryCmd(t, goBin, missing, exists)
+		requireExit(t, 1, code)
+		assertNotExists(t, exists)
+	})
+
+	t.Run("force_nonexistent_exit_0", func(t *testing.T) {
+		t.Parallel()
+		// R4.3: -f on nonexistent exits 0
+		dir := t.TempDir()
+		code, _ := runBinaryCmd(t, goBin, "-f",
+			filepath.Join(dir, "ghost.txt"))
+		requireExit(t, 0, code)
+	})
+
+	t.Run("force_no_args_exit_0", func(t *testing.T) {
+		t.Parallel()
+		// R4.3: -f with no args exits 0
+		code, _ := runBinaryCmd(t, goBin, "-f")
+		requireExit(t, 0, code)
+	})
+
+	t.Run("no_args_exit_1", func(t *testing.T) {
+		t.Parallel()
+		// No args without -f exits 1
+		code, _ := runBinaryCmd(t, goBin)
+		requireExit(t, 1, code)
+	})
+}
+
+// TestPermissionDeniedOps tests permission denied error handling. R4.2, R4.4.
+func TestPermissionDeniedOps(t *testing.T) {
+	t.Parallel()
+	if isRoot() {
+		t.Skip("cannot test permission denied as root")
+	}
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("readonly_parent_continues", func(t *testing.T) {
+		t.Parallel()
+		// R4.2: permission denied on first file, still removes second
+		dir := t.TempDir()
+		roDir := filepath.Join(dir, "ro")
+		mkdirAll(t, roDir)
+		locked := filepath.Join(roDir, "locked.txt")
+		writeTestFile(t, locked, "data\n")
+		if err := os.Chmod(roDir, 0o555); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = os.Chmod(roDir, 0o755) // best-effort for cleanup
+		})
+		ok := filepath.Join(dir, "ok.txt")
+		writeTestFile(t, ok, "data\n")
+		code, _, stderr := runBinarySplit(t, goBin, locked, ok)
+		requireExit(t, 1, code)
+		assertNotExists(t, ok) // second file removed
+		if !strings.Contains(string(stderr), "Permission denied") &&
+			!strings.Contains(string(stderr), "permission denied") {
+			t.Fatalf("expected permission denied on stderr, got: %s", stderr)
+		}
+	})
 }
 
 // TestRemoveOps tests actual removal operations using only the Go binary,
