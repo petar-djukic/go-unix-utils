@@ -6,6 +6,9 @@
 // Implements prd057-mv R3.1: verbose mode.
 // Implements prd057-mv R3.2: target directory (-t/--target-directory).
 // Implements prd057-mv R3.3: no-target-directory (-T/--no-target-directory).
+// Implements prd057-mv R4.1: exit 0 on success.
+// Implements prd057-mv R4.2: exit 1 on failure.
+// Implements prd057-mv R4.3: continue on multi-file failure, exit 1.
 // TODO: Task requested --backup (R3.2) and --suffix (R3.3), but prd057-mv non_goals
 // explicitly exclude --backup and --suffix. Skipped per E6 non-goals enforcement.
 package main

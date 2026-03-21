@@ -8,6 +8,7 @@
 // Tests for prd057-mv R3.1: verbose mode.
 // Tests for prd057-mv R3.2: target directory (-t/--target-directory).
 // Tests for prd057-mv R3.3: no-target-directory (-T/--no-target-directory).
+// Tests for prd057-mv R4.1–R4.4: exit codes and error edge cases.
 package main
 
 import (
@@ -74,6 +75,8 @@ func TestDiff(t *testing.T) {
 		interactiveDeclineTest(t, normalizers),
 		verboseNoClobberTest(t, normalizers),
 		verboseMissingSourceTest(t, normalizers),
+		multiFileAllMissingTest(t, normalizers),
+		invalidOptionTest(normalizers),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -187,6 +190,100 @@ func verboseMissingSourceTest(t *testing.T, normalizers []testutils.NormalizeFun
 		ExitCode:  1,
 		Normalize: normalizers,
 	}
+}
+
+// multiFileAllMissingTest verifies that when multiple sources don't exist,
+// each error is reported and exit code is 1. R4.2, R4.3.
+// Non-destructive: no sources exist, no state change.
+func multiFileAllMissingTest(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	destDir := filepath.Join(dir, "dest")
+	mkdirAll(t, destDir)
+	return testutils.DiffTest{
+		Name: "multi_file_all_missing",
+		Args: []string{
+			filepath.Join(dir, "no1.txt"),
+			filepath.Join(dir, "no2.txt"),
+			destDir,
+		},
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// invalidOptionTest verifies unrecognized option exits 1 with error. R4.2.
+func invalidOptionTest(normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "invalid_option",
+		Args:      []string{"--bogus-flag"},
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// TestExitCodes tests R4.1–R4.3: exit code behavior for success and failure.
+func TestExitCodes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("exit_zero_on_success", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "data\n")
+		code, _ := runBinaryCmd(t, goBin, nil, src, dst)
+		requireExit(t, 0, code) // R4.1
+	})
+
+	t.Run("exit_one_source_not_found", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		code, _ := runBinaryCmd(t, goBin, nil,
+			filepath.Join(dir, "nonexistent.txt"),
+			filepath.Join(dir, "dst.txt"))
+		requireExit(t, 1, code) // R4.2
+	})
+
+	t.Run("exit_one_dest_parent_missing", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		writeTestFile(t, src, "data\n")
+		code, _ := runBinaryCmd(t, goBin, nil, src,
+			filepath.Join(dir, "nodir", "dst.txt"))
+		requireExit(t, 1, code) // R4.2
+	})
+
+	t.Run("multi_file_partial_failure", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		destDir := filepath.Join(dir, "dest")
+		mkdirAll(t, destDir)
+		existing := filepath.Join(dir, "exists.txt")
+		missing := filepath.Join(dir, "missing.txt")
+		writeTestFile(t, existing, "content\n")
+		// R4.3: one fails, one succeeds, exit 1
+		code, _ := runBinaryCmd(t, goBin, nil, missing, existing, destDir)
+		requireExit(t, 1, code)
+		// The existing file should still have been moved
+		assertFileContent(t, filepath.Join(destDir, "exists.txt"), "content\n")
+		assertNotExists(t, existing)
+	})
+
+	t.Run("multi_file_all_fail", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		destDir := filepath.Join(dir, "dest")
+		mkdirAll(t, destDir)
+		// R4.3: all fail, exit 1
+		code, _ := runBinaryCmd(t, goBin, nil,
+			filepath.Join(dir, "no1.txt"),
+			filepath.Join(dir, "no2.txt"),
+			destDir)
+		requireExit(t, 1, code)
+	})
 }
 
 // TestMoveOps tests actual move operations using only the Go binary,
