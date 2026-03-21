@@ -5,6 +5,10 @@
 // Implements prd056-cp R1.2: interactive mode (-i, --interactive).
 // Implements prd056-cp R1.3: force mode (-f, --force).
 // Implements prd056-cp R1.4: no-clobber mode (-n, --no-clobber).
+// Implements prd056-cp R2.1: recursive directory copy (-r, -R, --recursive).
+// Implements prd056-cp R2.2: refuse directory copy without -r.
+// Implements prd056-cp R2.3: dereference symlinks (-L, --dereference).
+// Implements prd056-cp R2.4: no-dereference symlinks (-P, --no-dereference).
 package main
 
 import (
@@ -19,11 +23,14 @@ import (
 
 const progName = "cp"
 
-// options holds parsed GNU cp flags for R1.1–R1.4.
+// options holds parsed GNU cp flags for R1.1–R1.4, R2.1–R2.4.
 type options struct {
-	interactive bool // -i, --interactive (R1.2)
-	force       bool // -f, --force (R1.3)
-	noClobber   bool // -n, --no-clobber (R1.4)
+	interactive   bool // -i, --interactive (R1.2)
+	force         bool // -f, --force (R1.3)
+	noClobber     bool // -n, --no-clobber (R1.4)
+	recursive     bool // -r, -R, --recursive (R2.1)
+	dereference   bool // -L, --dereference (R2.3)
+	noDereference bool // -P, --no-dereference (R2.4)
 }
 
 func main() {
@@ -84,19 +91,45 @@ func doCopy(opts options, files []string, stdin io.Reader, stderr io.Writer) int
 	return exitCode
 }
 
-// copySingle copies one source file to the target path, applying R1.2–R1.4.
+// lstatSource returns file info for src using the appropriate stat function.
+// R2.3: -L follows symlinks. R2.4: -P (default with -r) does not.
+func lstatSource(opts options, src string) (os.FileInfo, error) {
+	if opts.dereference {
+		return os.Stat(src)
+	}
+	return os.Lstat(src)
+}
+
+// copySingle copies one source to the target path, applying R1.2–R1.4, R2.1–R2.4.
 func copySingle(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
-	srcInfo, err := os.Stat(src)
+	srcInfo, err := lstatSource(opts, src)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: cannot stat '%s': %s\n",
 			progName, src, unwrapPathError(err))
 		return err
 	}
 	if srcInfo.IsDir() {
+		return handleDirSource(opts, src, dest, stdin, stderr)
+	}
+	if srcInfo.Mode()&os.ModeSymlink != 0 {
+		return copySymlink(opts, src, dest, stdin, stderr)
+	}
+	return copyRegularFile(opts, src, dest, stdin, stderr)
+}
+
+// handleDirSource handles when the source is a directory.
+// R2.2: without -r, refuses. R2.1: with -r, copies recursively.
+func handleDirSource(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+	if !opts.recursive {
 		fmt.Fprintf(stderr, "%s: -r not specified; omitting directory '%s'\n",
 			progName, src)
 		return fmt.Errorf("omitting directory")
 	}
+	return copyDir(opts, src, dest, stdin, stderr)
+}
+
+// copyRegularFile copies a regular file, checking same-file and skip rules.
+func copyRegularFile(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
 	if isSameFile(src, dest) {
 		fmt.Fprintf(stderr, "%s: '%s' and '%s' are the same file\n",
 			progName, src, dest)
@@ -107,6 +140,87 @@ func copySingle(opts options, src, dest string, stdin io.Reader, stderr io.Write
 		return skipErr
 	}
 	return performCopy(opts, src, dest, stderr)
+}
+
+// copyDir recursively copies a directory tree. R2.1.
+func copyDir(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		fmt.Fprintf(stderr, "%s: cannot create directory '%s': %s\n",
+			progName, dest, unwrapPathError(err))
+		return err
+	}
+	return copyDirEntries(opts, src, dest, stdin, stderr)
+}
+
+// copyDirEntries reads and copies each entry in a directory.
+func copyDirEntries(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot open directory '%s': %s\n",
+			progName, src, unwrapPathError(err))
+		return err
+	}
+	var firstErr error
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+		if err := copySingle(opts, srcPath, destPath, stdin, stderr); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return preserveDirMode(src, dest, firstErr)
+}
+
+// preserveDirMode copies the source directory's permission bits to dest.
+func preserveDirMode(src, dest string, prevErr error) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return prevErr
+	}
+	// best-effort: set dest mode to match source
+	_ = os.Chmod(dest, srcInfo.Mode().Perm())
+	return prevErr
+}
+
+// copySymlink copies a symlink as a symlink. R2.4: -P preserves symlinks.
+func copySymlink(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+	skip, skipErr := checkSkip(opts, dest, stdin, stderr)
+	if skip {
+		return skipErr
+	}
+	target, err := os.Readlink(src)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot read symlink '%s': %s\n",
+			progName, src, unwrapPathError(err))
+		return err
+	}
+	return createSymlink(opts, target, dest, stderr)
+}
+
+// createSymlink creates a symlink at dest pointing to target.
+func createSymlink(opts options, target, dest string, stderr io.Writer) error {
+	// Remove existing dest if present
+	if _, err := os.Lstat(dest); err == nil {
+		if opts.force {
+			if err := os.Remove(dest); err != nil {
+				fmt.Fprintf(stderr, "%s: cannot remove '%s': %s\n",
+					progName, dest, unwrapPathError(err))
+				return err
+			}
+		} else {
+			if err := os.Remove(dest); err != nil {
+				fmt.Fprintf(stderr, "%s: cannot create symlink '%s': %s\n",
+					progName, dest, unwrapPathError(err))
+				return err
+			}
+		}
+	}
+	if err := os.Symlink(target, dest); err != nil {
+		fmt.Fprintf(stderr, "%s: cannot create symlink '%s': %s\n",
+			progName, dest, unwrapPathError(err))
+		return err
+	}
+	return nil
 }
 
 // isSameFile returns true when src and dest refer to the same file.
@@ -221,7 +335,16 @@ func parseArgs(args []string, stdout, stderr io.Writer) (options, []string, int)
 			return opts, nil, code
 		}
 	}
+	applyDefaults(&opts)
 	return opts, files, -1
+}
+
+// applyDefaults sets default option values based on flag combinations.
+// R2.4: -P is the default with -r when neither -L nor -P is specified.
+func applyDefaults(o *options) {
+	if o.recursive && !o.dereference && !o.noDereference {
+		o.noDereference = true
+	}
 }
 
 // applyShortFlags processes combined short flags (e.g., -ifn).
@@ -245,6 +368,14 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.force = true
 	case 'n':
 		o.noClobber = true
+	case 'r', 'R':
+		o.recursive = true
+	case 'L':
+		o.dereference = true
+		o.noDereference = false
+	case 'P':
+		o.noDereference = true
+		o.dereference = false
 	default:
 		return false
 	}
@@ -261,6 +392,14 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 		o.force = true
 	case "--no-clobber":
 		o.noClobber = true
+	case "--recursive":
+		o.recursive = true
+	case "--dereference":
+		o.dereference = true
+		o.noDereference = false
+	case "--no-dereference":
+		o.noDereference = true
+		o.dereference = false
 	case "--help":
 		printHelp(stdout)
 		return 0
@@ -289,7 +428,10 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -f, --force           if an existing destination file cannot be")
 	fmt.Fprintln(w, "                          opened, remove it and try again")
 	fmt.Fprintln(w, "  -i, --interactive     prompt before overwrite")
+	fmt.Fprintln(w, "  -L, --dereference     always follow symbolic links in SOURCE")
 	fmt.Fprintln(w, "  -n, --no-clobber      do not overwrite an existing file")
+	fmt.Fprintln(w, "  -P, --no-dereference  never follow symbolic links in SOURCE")
+	fmt.Fprintln(w, "  -r, -R, --recursive   copy directories recursively")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")
 }

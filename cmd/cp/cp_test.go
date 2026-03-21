@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cp covering prd056-cp R1.1 (basic file copying),
-// R1.2 (interactive mode), R1.3 (force mode), R1.4 (no-clobber mode).
+// R1.2 (interactive mode), R1.3 (force mode), R1.4 (no-clobber mode),
+// R2.1 (recursive copy), R2.2 (directory without -r), R2.3 (dereference),
+// R2.4 (no-dereference/preserve symlinks).
 package main_test
 
 import (
@@ -63,7 +65,7 @@ func runSharedTests(t *testing.T, goBin, refBin string, normBin testutils.Normal
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normBin},
 		},
-		// R1.1: source is a directory without -r.
+		// R2.2: source is a directory without -r.
 		{
 			Name:      "directory_without_r",
 			Args:      []string{filepath.Join(dirWithDir, "subdir"), filepath.Join(dirWithDir, "copy")},
@@ -100,6 +102,7 @@ type isolatedCase struct {
 func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.NormalizeFunc) {
 	t.Helper()
 	cases := buildIsolatedCases(normBin)
+	cases = append(cases, buildR2IsolatedCases()...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -289,6 +292,169 @@ func buildIsolatedCases(normBin testutils.NormalizeFunc) []isolatedCase {
 	}
 }
 
+// buildR2IsolatedCases returns isolated test cases for R2.1–R2.4.
+func buildR2IsolatedCases() []isolatedCase {
+	return []isolatedCase{
+		// R2.1: recursive copy of directory with files.
+		{
+			name: "recursive_dir_copy",
+			args: []string{"-r", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "a.txt"), "aaa\n")
+				setupFile(t, dir, filepath.Join("srcdir", "b.txt"), "bbb\n")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "destdir", "a.txt"), "aaa\n")
+				verifyFileContent(t, filepath.Join(dir, "destdir", "b.txt"), "bbb\n")
+			},
+		},
+		// R2.1: recursive copy with nested subdirectories.
+		{
+			name: "recursive_nested_dirs",
+			args: []string{"-R", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdirAll(t, filepath.Join(dir, "srcdir", "sub1", "sub2"))
+				setupFile(t, dir, filepath.Join("srcdir", "top.txt"), "top\n")
+				setupFile(t, dir, filepath.Join("srcdir", "sub1", "mid.txt"), "mid\n")
+				setupFile(t, dir, filepath.Join("srcdir", "sub1", "sub2", "deep.txt"), "deep\n")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "destdir", "top.txt"), "top\n")
+				verifyFileContent(t, filepath.Join(dir, "destdir", "sub1", "mid.txt"), "mid\n")
+				verifyFileContent(t, filepath.Join(dir, "destdir", "sub1", "sub2", "deep.txt"), "deep\n")
+			},
+		},
+		// R2.1: recursive copy with --recursive long flag.
+		{
+			name: "recursive_long_flag",
+			args: []string{"--recursive", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "file.txt"), "content\n")
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "destdir", "file.txt"), "content\n")
+			},
+		},
+		// R2.1: recursive copy of empty directory.
+		{
+			name: "recursive_empty_dir",
+			args: []string{"-r", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				info, err := os.Stat(filepath.Join(dir, "destdir"))
+				if err != nil {
+					t.Fatalf("destdir not created: %v", err)
+				}
+				if !info.IsDir() {
+					t.Fatal("destdir is not a directory")
+				}
+			},
+		},
+		// R2.1: recursive copy into existing directory.
+		{
+			name: "recursive_into_existing_dir",
+			args: []string{"-r", "srcdir", "dest"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "f.txt"), "data\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "srcdir", "f.txt"), "data\n")
+			},
+		},
+		// R2.3: -L follows symlinks, copying the target file.
+		{
+			name: "dereference_symlink",
+			args: []string{"-rL", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "real.txt"), "real content\n")
+				requireSymlink(t, "real.txt",
+					filepath.Join(dir, "srcdir", "link.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				// With -L, link.txt should be a regular file copy
+				verifyFileContent(t, filepath.Join(dir, "destdir", "link.txt"), "real content\n")
+				verifyNotSymlink(t, filepath.Join(dir, "destdir", "link.txt"))
+			},
+		},
+		// R2.4: -P preserves symlinks (default with -r).
+		{
+			name: "no_dereference_symlink",
+			args: []string{"-r", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "real.txt"), "real content\n")
+				requireSymlink(t, "real.txt",
+					filepath.Join(dir, "srcdir", "link.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				// With -r (default -P), link.txt should be a symlink
+				verifyIsSymlink(t, filepath.Join(dir, "destdir", "link.txt"))
+				target, err := os.Readlink(filepath.Join(dir, "destdir", "link.txt"))
+				if err != nil {
+					t.Fatalf("readlink: %v", err)
+				}
+				if target != "real.txt" {
+					t.Fatalf("symlink target = %q, want %q", target, "real.txt")
+				}
+			},
+		},
+		// R2.4: explicit -P flag preserves symlinks.
+		{
+			name: "explicit_no_dereference",
+			args: []string{"-rP", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "target.txt"), "target\n")
+				requireSymlink(t, "target.txt",
+					filepath.Join(dir, "srcdir", "slink"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyIsSymlink(t, filepath.Join(dir, "destdir", "slink"))
+			},
+		},
+		// R2.3: --dereference long flag.
+		{
+			name: "dereference_long_flag",
+			args: []string{"-r", "--dereference", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "real.txt"), "data\n")
+				requireSymlink(t, "real.txt",
+					filepath.Join(dir, "srcdir", "link.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "destdir", "link.txt"), "data\n")
+				verifyNotSymlink(t, filepath.Join(dir, "destdir", "link.txt"))
+			},
+		},
+	}
+}
+
 // TestNoClobberOverridesInteractive verifies R1.4: -n takes precedence over -i.
 // This is a standalone test because GNU cp uses "last flag wins" semantics
 // while the PRD specifies -n always takes precedence.
@@ -412,6 +578,22 @@ func requireMkdir(t *testing.T, path string) {
 	}
 }
 
+// requireMkdirAll creates a directory tree, failing the test on error.
+func requireMkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdirall %s: %v", path, err)
+	}
+}
+
+// requireSymlink creates a symlink at path pointing to target.
+func requireSymlink(t *testing.T, target, path string) {
+	t.Helper()
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatalf("symlink %s -> %s: %v", path, target, err)
+	}
+}
+
 // verifyFileContent checks that a file exists with the expected content.
 func verifyFileContent(t *testing.T, path, want string) {
 	t.Helper()
@@ -421,6 +603,30 @@ func verifyFileContent(t *testing.T, path, want string) {
 	}
 	if string(data) != want {
 		t.Fatalf("file %s content = %q, want %q", path, string(data), want)
+	}
+}
+
+// verifyIsSymlink checks that the path is a symlink.
+func verifyIsSymlink(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is not a symlink (mode=%v)", path, info.Mode())
+	}
+}
+
+// verifyNotSymlink checks that the path is not a symlink.
+func verifyNotSymlink(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("%s is a symlink, expected regular file", path)
 	}
 }
 
