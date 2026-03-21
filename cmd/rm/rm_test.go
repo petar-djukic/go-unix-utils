@@ -4,7 +4,7 @@
 // Differential tests for prd058-rm R1.1–R1.4: basic file removal,
 // directory refusal, dot/dotdot refusal, and error continuation.
 // Tests for prd058-rm R2.1–R2.4: recursive removal, force mode, -d flag.
-// Tests for prd058-rm R3.3: -v/--verbose flag.
+// Tests for prd058-rm R3.1–R3.4: interactive modes and verbose output.
 package main
 
 import (
@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -27,6 +28,13 @@ func binaryNameNormalizer(b []byte) []byte {
 	reTry := regexp.MustCompile(`Try '[^']*' for more information\.`)
 	b = reTry.ReplaceAll(b, []byte("Try 'rm --help' for more information."))
 	return b
+}
+
+// promptNormalizer normalizes binary name in interactive prompts on stderr.
+// Prompts appear mid-line: "grm: remove regular file 'x'? "
+func promptNormalizer(b []byte) []byte {
+	re := regexp.MustCompile(`(?:(?:\S+/)?g?rm):`)
+	return re.ReplaceAll(b, []byte("rm:"))
 }
 
 // errorCaseNormalizer normalizes error message casing differences
@@ -52,6 +60,7 @@ func TestDiff(t *testing.T) {
 	}
 	normalizers := []testutils.NormalizeFunc{
 		binaryNameNormalizer,
+		promptNormalizer,
 		errorCaseNormalizer,
 	}
 	tests := []testutils.DiffTest{
@@ -69,6 +78,12 @@ func TestDiff(t *testing.T) {
 		removeDotDotDir(t, normalizers),
 		removeDirWithoutROrD(t, normalizers),
 		removeDNonEmptyDir(t, normalizers),
+		interactiveIDeclineFile(t, normalizers),
+		interactiveIDeclineRecursive(t, normalizers),
+		interactiveIManyDecline(t, normalizers),
+		interactiveIRecursiveDecline(t, normalizers),
+		interactiveAlwaysDecline(t, normalizers),
+		interactiveOnceDecline(t, normalizers),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -170,6 +185,106 @@ func removeDNonEmptyDir(t *testing.T, normalizers []testutils.NormalizeFunc) tes
 		Name:      "d_nonempty_dir",
 		Args:      []string{"-d", subdir},
 		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveIDeclineFile tests -i prompt format when declining a file. R3.1.
+func interactiveIDeclineFile(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	f := filepath.Join(dir, "file.txt")
+	writeTestFile(t, f, "content\n")
+	return testutils.DiffTest{
+		Name:      "interactive_i_decline_file",
+		Args:      []string{"-i", f},
+		Stdin:     []byte("n\n"),
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveIDeclineRecursive tests -i -r prompt for directory descent. R3.1.
+func interactiveIDeclineRecursive(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "mydir")
+	mkdirAll(t, sub)
+	writeTestFile(t, filepath.Join(sub, "f.txt"), "data\n")
+	return testutils.DiffTest{
+		Name:      "interactive_i_decline_recursive",
+		Args:      []string{"-i", "-r", sub},
+		Stdin:     []byte("n\n"),
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveIManyDecline tests -I prompt with >3 files. R3.2.
+func interactiveIManyDecline(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	files := make([]string, 4)
+	for i := range files {
+		files[i] = filepath.Join(dir, fmt.Sprintf("f%d.txt", i))
+		writeTestFile(t, files[i], "data\n")
+	}
+	args := append([]string{"-I"}, files...)
+	return testutils.DiffTest{
+		Name:      "interactive_I_many_decline",
+		Args:      args,
+		Stdin:     []byte("n\n"),
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveIRecursiveDecline tests -I -r prompt. R3.2.
+func interactiveIRecursiveDecline(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "d")
+	mkdirAll(t, sub)
+	writeTestFile(t, filepath.Join(sub, "f.txt"), "data\n")
+	return testutils.DiffTest{
+		Name:      "interactive_I_recursive_decline",
+		Args:      []string{"-I", "-r", sub},
+		Stdin:     []byte("n\n"),
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveAlwaysDecline tests --interactive=always prompt format. R3.4.
+func interactiveAlwaysDecline(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	f := filepath.Join(dir, "file.txt")
+	writeTestFile(t, f, "content\n")
+	return testutils.DiffTest{
+		Name:      "interactive_always_decline",
+		Args:      []string{"--interactive=always", f},
+		Stdin:     []byte("n\n"),
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveOnceDecline tests --interactive=once with >3 files. R3.4.
+func interactiveOnceDecline(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	files := make([]string, 4)
+	for i := range files {
+		files[i] = filepath.Join(dir, fmt.Sprintf("g%d.txt", i))
+		writeTestFile(t, files[i], "data\n")
+	}
+	args := append([]string{"--interactive=once"}, files...)
+	return testutils.DiffTest{
+		Name:      "interactive_once_decline",
+		Args:      args,
+		Stdin:     []byte("n\n"),
+		ExitCode:  0,
 		Normalize: normalizers,
 	}
 }
@@ -400,6 +515,167 @@ func TestVerbose(t *testing.T) {
 	})
 }
 
+// TestInteractiveOps tests -i interactive mode operations. R3.1.
+func TestInteractiveOps(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("i_accept_removes_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "file.txt")
+		writeTestFile(t, f, "content\n")
+		code, _, _ := runBinaryWithStdin(t, goBin, "y\n", "-i", f)
+		requireExit(t, 0, code)
+		assertNotExists(t, f)
+	})
+
+	t.Run("i_decline_keeps_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "file.txt")
+		writeTestFile(t, f, "content\n")
+		code, _, _ := runBinaryWithStdin(t, goBin, "n\n", "-i", f)
+		requireExit(t, 0, code)
+		assertFileExists(t, f) // file not removed
+	})
+
+	t.Run("i_accept_recursive", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "d")
+		mkdirAll(t, sub)
+		writeTestFile(t, filepath.Join(sub, "f.txt"), "data\n")
+		// "y" for descend, "y" for file, "y" for directory
+		code, _, _ := runBinaryWithStdin(t, goBin, "y\ny\ny\n", "-i", "-r", sub)
+		requireExit(t, 0, code)
+		assertNotExists(t, sub)
+	})
+
+	t.Run("f_overrides_i", func(t *testing.T) {
+		t.Parallel()
+		// -i -f: force wins (last flag)
+		dir := t.TempDir()
+		f := filepath.Join(dir, "file.txt")
+		writeTestFile(t, f, "content\n")
+		code, _, _ := runBinaryWithStdin(t, goBin, "", "-i", "-f", f)
+		requireExit(t, 0, code)
+		assertNotExists(t, f) // removed without prompting
+	})
+}
+
+// TestInteractiveOnceOps tests -I interactive once mode. R3.2.
+func TestInteractiveOnceOps(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("I_accept_many_files", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		files := make([]string, 4)
+		for i := range files {
+			files[i] = filepath.Join(dir, fmt.Sprintf("f%d.txt", i))
+			writeTestFile(t, files[i], "data\n")
+		}
+		args := append([]string{"-I"}, files...)
+		code, _, _ := runBinaryWithStdin(t, goBin, "y\n", args...)
+		requireExit(t, 0, code)
+		for _, f := range files {
+			assertNotExists(t, f)
+		}
+	})
+
+	t.Run("I_decline_keeps_all", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		files := make([]string, 4)
+		for i := range files {
+			files[i] = filepath.Join(dir, fmt.Sprintf("f%d.txt", i))
+			writeTestFile(t, files[i], "data\n")
+		}
+		args := append([]string{"-I"}, files...)
+		code, _, _ := runBinaryWithStdin(t, goBin, "n\n", args...)
+		requireExit(t, 0, code)
+		for _, f := range files {
+			assertFileExists(t, f) // none removed
+		}
+	})
+
+	t.Run("I_few_files_no_prompt", func(t *testing.T) {
+		t.Parallel()
+		// 2 files: no prompt, removes directly
+		dir := t.TempDir()
+		a := filepath.Join(dir, "a.txt")
+		b := filepath.Join(dir, "b.txt")
+		writeTestFile(t, a, "aaa\n")
+		writeTestFile(t, b, "bbb\n")
+		code, _, _ := runBinaryWithStdin(t, goBin, "", "-I", a, b)
+		requireExit(t, 0, code)
+		assertNotExists(t, a)
+		assertNotExists(t, b)
+	})
+
+	t.Run("I_recursive_accept", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "d")
+		mkdirAll(t, sub)
+		writeTestFile(t, filepath.Join(sub, "f.txt"), "data\n")
+		code, _, _ := runBinaryWithStdin(t, goBin, "y\n", "-I", "-r", sub)
+		requireExit(t, 0, code)
+		assertNotExists(t, sub)
+	})
+}
+
+// TestInteractiveWhen tests --interactive=WHEN flag. R3.4.
+func TestInteractiveWhen(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("interactive_never", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "file.txt")
+		writeTestFile(t, f, "content\n")
+		// No prompt, removes directly
+		code, _, _ := runBinaryWithStdin(t, goBin, "", "--interactive=never", f)
+		requireExit(t, 0, code)
+		assertNotExists(t, f)
+	})
+
+	t.Run("interactive_always_decline", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		f := filepath.Join(dir, "file.txt")
+		writeTestFile(t, f, "content\n")
+		code, _, _ := runBinaryWithStdin(t, goBin, "n\n", "--interactive=always", f)
+		requireExit(t, 0, code)
+		assertFileExists(t, f) // not removed
+	})
+
+	t.Run("interactive_once_many_decline", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		files := make([]string, 4)
+		for i := range files {
+			files[i] = filepath.Join(dir, fmt.Sprintf("h%d.txt", i))
+			writeTestFile(t, files[i], "data\n")
+		}
+		args := append([]string{"--interactive=once"}, files...)
+		code, _, _ := runBinaryWithStdin(t, goBin, "n\n", args...)
+		requireExit(t, 0, code)
+		for _, f := range files {
+			assertFileExists(t, f)
+		}
+	})
+
+	t.Run("interactive_invalid", func(t *testing.T) {
+		t.Parallel()
+		code, _ := runBinaryCmd(t, goBin, "--interactive=bogus", "file")
+		requireExit(t, 1, code)
+	})
+}
+
 // TestHelp verifies --help exits 0 with usage on stdout.
 func TestHelp(t *testing.T) {
 	t.Parallel()
@@ -457,6 +733,26 @@ func runBinaryCmd(t *testing.T, bin string, args ...string) (int, []byte) {
 func runBinarySplit(t *testing.T, bin string, args ...string) (int, []byte, []byte) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if err == nil {
+		return 0, outBuf.Bytes(), errBuf.Bytes()
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode(), outBuf.Bytes(), errBuf.Bytes()
+	}
+	t.Fatalf("failed to run binary: %v", err)
+	return 0, nil, nil // unreachable
+}
+
+// runBinaryWithStdin runs the binary with custom stdin, returning exit
+// code, stdout, and stderr.
+func runBinaryWithStdin(t *testing.T, bin, stdin string, args ...string) (int, []byte, []byte) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = strings.NewReader(stdin)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
