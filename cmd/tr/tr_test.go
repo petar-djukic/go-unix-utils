@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd054-tr R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
+// Differential tests for prd054-tr R1.1–R1.4, R2.1–R2.4, R3.1–R3.3, R4.1–R4.3.
 package main
 
 import (
@@ -258,6 +258,84 @@ func TestDiff(t *testing.T) {
 			Name:  "R3.3_squeeze_complement_C_translate",
 			Args:  []string{"-Cs", "[:digit:]\\n", " "},
 			Stdin: []byte("abc123def456ghi\n"),
+		},
+		// R4.1: octal escape for 'A' (0101) in SET1
+		{
+			Name:  "R4.1_octal_escape_A",
+			Args:  []string{"\\101", "X"},
+			Stdin: []byte("ABCABC\n"),
+		},
+		// R4.1: octal escape in both SET1 and SET2
+		{
+			Name:  "R4.1_octal_both_sets",
+			Args:  []string{"\\141", "\\132"},
+			Stdin: []byte("abc\n"),
+		},
+		// R4.1: octal escape for null byte (\\000)
+		{
+			Name:  "R4.1_octal_null",
+			Args:  []string{"-d", "\\000"},
+			Stdin: []byte("a\x00b\x00c\n"),
+		},
+		// R4.1: octal escape range
+		{
+			Name:  "R4.1_octal_range",
+			Args:  []string{"\\141-\\172", "A-Z"},
+			Stdin: []byte("hello world\n"),
+		},
+		// R4.2: backslash-a (bell)
+		{
+			Name:  "R4.2_backslash_a",
+			Args:  []string{"\\a", "X"},
+			Stdin: []byte("a\ab\n"),
+		},
+		// R4.2: backslash-b (backspace)
+		{
+			Name:  "R4.2_backslash_b",
+			Args:  []string{"\\b", "X"},
+			Stdin: []byte("a\bb\n"),
+		},
+		// R4.2: backslash-f (form feed)
+		{
+			Name:  "R4.2_backslash_f",
+			Args:  []string{"\\f", "X"},
+			Stdin: []byte("a\fb\n"),
+		},
+		// R4.2: backslash-r (carriage return)
+		{
+			Name:  "R4.2_backslash_r",
+			Args:  []string{"\\r", "X"},
+			Stdin: []byte("a\rb\n"),
+		},
+		// R4.2: backslash-v (vertical tab)
+		{
+			Name:  "R4.2_backslash_v",
+			Args:  []string{"\\v", "X"},
+			Stdin: []byte("a\vb\n"),
+		},
+		// R4.2: backslash-backslash (literal backslash)
+		{
+			Name:  "R4.2_backslash_backslash",
+			Args:  []string{"\\\\", "X"},
+			Stdin: []byte("a\\b\\c\n"),
+		},
+		// R4.3: equivalence class [=a=] as identity under LC_ALL=C
+		{
+			Name:  "R4.3_equiv_class_identity",
+			Args:  []string{"[=a=]", "X"},
+			Stdin: []byte("abcabc\n"),
+		},
+		// R4.3: equivalence class [=Z=] in SET1
+		{
+			Name:  "R4.3_equiv_class_upper",
+			Args:  []string{"[=Z=]", "X"},
+			Stdin: []byte("AZBZc\n"),
+		},
+		// R4.3: equivalence class with delete mode
+		{
+			Name:  "R4.3_equiv_class_delete",
+			Args:  []string{"-d", "[=x=]"},
+			Stdin: []byte("axbxcx\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

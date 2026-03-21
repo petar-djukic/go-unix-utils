@@ -5,6 +5,7 @@
 // SET specifications (ranges, escapes, repetition, POSIX character classes).
 // Implements prd054-tr R2.1–R2.4: delete, squeeze, combined, and complement modes.
 // Implements prd054-tr R3.1–R3.3: squeeze repeats, delete-complement, squeeze-complement.
+// Implements prd054-tr R4.1–R4.3: octal escapes, backslash escapes, equivalence classes.
 package main
 
 import (
@@ -372,6 +373,9 @@ func (p *setParser) tryBracket(currentLen int) ([]byte, bool, error) {
 	if p.spec[p.pos] == ':' {
 		return p.parseClass(saved)
 	}
+	if p.spec[p.pos] == '=' {
+		return p.parseEquiv(saved)
+	}
 	return p.parseRepeat(saved, p.fillLen-currentLen)
 }
 
@@ -391,6 +395,27 @@ func (p *setParser) parseClass(saved int) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	return chars, true, nil
+}
+
+// parseEquiv parses [=c=] equivalence class. Under LC_ALL=C, returns
+// only the literal character c. R4.3.
+func (p *setParser) parseEquiv(saved int) ([]byte, bool, error) {
+	p.pos++
+	if p.pos >= len(p.spec) {
+		p.pos = saved
+		return nil, false, nil
+	}
+	ch, err := p.nextChar()
+	if err != nil {
+		p.pos = saved
+		return nil, false, nil
+	}
+	if p.pos+1 >= len(p.spec) || p.spec[p.pos] != '=' || p.spec[p.pos+1] != ']' {
+		p.pos = saved
+		return nil, false, nil
+	}
+	p.pos += 2
+	return []byte{ch}, true, nil
 }
 
 // parseRepeat parses [c*N] or [c*] repetition constructs. R1.3.
