@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd069-join R1.1–R1.4, R2.1, R2.2, R2.4.
+// Differential tests for prd069-join R1.1–R1.4, R2.1–R2.4, R3.3.
 // R1.1: Join two sorted files on common field.
 // R1.2: Default whitespace splitting, single-space output separator.
 // R1.3: Unpaired lines suppressed by default.
 // R1.4: "-" reads from stdin.
 // R2.1: -1/-2 field selection.
 // R2.2: -j combined field selection.
+// R2.3: -o output format selection.
 // R2.4: -t custom separator.
+// R3.3: -e missing field replacement.
 package main
 
 import (
@@ -71,7 +73,38 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gjoin not in PATH: %v", err)
 	}
 
-	cases := []joinCase{
+	cases := buildTestCases()
+
+	stderrNorm := []testutils.NormalizeFunc{normProgName}
+	tests := make([]testutils.DiffTest, 0, len(cases)+2)
+	for _, tc := range cases {
+		dt := buildDiffTest(t, tc, stderrNorm)
+		tests = append(tests, dt)
+	}
+
+	// Error case: nonexistent file
+	errDir := t.TempDir()
+	validFile := writeFile(t, errDir, "valid", "a 1\nb 2\n")
+	nonexistent := filepath.Join(errDir, "nonexistent")
+	errNorm := []testutils.NormalizeFunc{normProgName, normErrMsg}
+	tests = append(tests, testutils.DiffTest{
+		Name:      "nonexistent_file",
+		Args:      []string{nonexistent, validFile},
+		ExitCode:  1,
+		Normalize: errNorm,
+	})
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// buildTestCases returns all joinCase entries for the differential test.
+func buildTestCases() []joinCase {
+	return append(buildR1Cases(), append(buildR2FieldCases(), buildR2FormatCases()...)...)
+}
+
+// buildR1Cases returns test cases for R1 (default join behavior).
+func buildR1Cases() []joinCase {
+	return []joinCase{
 		// R1.1: basic join on first field
 		{
 			name:     "basic_join_field1",
@@ -144,7 +177,26 @@ func TestDiff(t *testing.T) {
 			content1: "a 1\nb 2",
 			content2: "a X\nb Y",
 		},
+		// R1.4: stdin as file1
+		{
+			name:     "stdin_as_file1",
+			args:     []string{"-"},
+			content1: "", // unused, stdin from Stdin field
+			content2: "a X\nb Y\n",
+			stdin:    []byte("a 1\nb 2\n"),
+		},
+		// R1.1: case-sensitive join (LC_ALL=C)
+		{
+			name:     "case_sensitive",
+			content1: "A 1\na 2\n",
+			content2: "A X\na Y\n",
+		},
+	}
+}
 
+// buildR2FieldCases returns test cases for R2.1, R2.2, R2.4 (field/sep flags).
+func buildR2FieldCases() []joinCase {
+	return []joinCase{
 		// R2.1: -1 field selection (join on field 2 of file1)
 		{
 			name:     "field1_selection",
@@ -173,7 +225,6 @@ func TestDiff(t *testing.T) {
 			content1: "x a\ny b\n",
 			content2: "p a\nq b\n",
 		},
-
 		// R2.4: -t comma separator
 		{
 			name:     "sep_comma",
@@ -202,44 +253,90 @@ func TestDiff(t *testing.T) {
 			content1: "a:1\nb:2\n",
 			content2: "a:X\nb:Y\n",
 		},
+	}
+}
 
-		// R1.4: stdin as file1
+// buildR2FormatCases returns test cases for R2.3 (-o) and R3.3 (-e).
+func buildR2FormatCases() []joinCase {
+	return []joinCase{
+		// R2.3: -o with join field only
 		{
-			name:     "stdin_as_file1",
-			args:     []string{"-"},
-			content1: "", // unused, stdin from Stdin field
+			name:     "output_join_field_only",
+			args:     []string{"-o", "0"},
+			content1: "a 1\nb 2\n",
 			content2: "a X\nb Y\n",
-			stdin:    []byte("a 1\nb 2\n"),
 		},
-
-		// R1.1: case-sensitive join (LC_ALL=C)
+		// R2.3: -o with specific file fields
 		{
-			name:     "case_sensitive",
-			content1: "A 1\na 2\n",
-			content2: "A X\na Y\n",
+			name:     "output_specific_fields",
+			args:     []string{"-o", "1.2,2.2"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R2.3: -o reorder fields
+		{
+			name:     "output_reorder",
+			args:     []string{"-o", "2.2,0,1.2"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R2.3: -o all fields explicitly
+		{
+			name:     "output_all_explicit",
+			args:     []string{"-o", "0,1.2,2.2"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R2.3: -o with -t separator
+		{
+			name:     "output_with_sep",
+			args:     []string{"-o", "0,1.2,2.2", "-t", ","},
+			content1: "a,1\nb,2\n",
+			content2: "a,X\nb,Y\n",
+		},
+		// R2.3: -o with multiple fields from same file
+		{
+			name:     "output_multi_same_file",
+			args:     []string{"-o", "0,1.2,1.3"},
+			content1: "a 1 2\nb 3 4\n",
+			content2: "a X\nb Y\n",
+		},
+		// R2.3: -o space-separated specs across args
+		{
+			name:     "output_space_separated",
+			args:     []string{"-o", "0", "1.2", "2.2"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R3.3: -e replaces missing fields with -o
+		{
+			name:     "empty_replacement",
+			args:     []string{"-o", "0,1.2,1.3,2.2", "-e", "EMPTY"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R3.3: -e with -t separator
+		{
+			name:     "empty_replacement_with_sep",
+			args:     []string{"-o", "0,1.2,1.3,2.2", "-e", "---", "-t", ":"},
+			content1: "a:1\nb:2\n",
+			content2: "a:X\nb:Y\n",
+		},
+		// R2.3: -o with -1 -2 field selection
+		{
+			name:     "output_with_field_select",
+			args:     []string{"-1", "2", "-o", "0,1.1,2.2"},
+			content1: "x a\ny b\n",
+			content2: "a 1\nb 2\n",
+		},
+		// R2.3: -o with many-to-many cross join
+		{
+			name:     "output_many_to_many",
+			args:     []string{"-o", "0,1.2,2.2"},
+			content1: "a 1\na 2\n",
+			content2: "a X\na Y\n",
 		},
 	}
-
-	stderrNorm := []testutils.NormalizeFunc{normProgName}
-	tests := make([]testutils.DiffTest, 0, len(cases)+2)
-	for _, tc := range cases {
-		dt := buildDiffTest(t, tc, stderrNorm)
-		tests = append(tests, dt)
-	}
-
-	// Error case: nonexistent file
-	errDir := t.TempDir()
-	validFile := writeFile(t, errDir, "valid", "a 1\nb 2\n")
-	nonexistent := filepath.Join(errDir, "nonexistent")
-	errNorm := []testutils.NormalizeFunc{normProgName, normErrMsg}
-	tests = append(tests, testutils.DiffTest{
-		Name:      "nonexistent_file",
-		Args:      []string{nonexistent, validFile},
-		ExitCode:  1,
-		Normalize: errNorm,
-	})
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 // buildDiffTest converts a joinCase to a testutils.DiffTest,

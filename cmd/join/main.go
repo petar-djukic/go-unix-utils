@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd069-join R1.1–R1.4, R2.1, R2.2, R2.4.
+// Implements prd069-join R1.1–R1.4, R2.1–R2.4.
 // R1.1: Read two sorted files, join on common field (default: field 1).
 // R1.2: Default whitespace field splitting, single-space output separator.
 // R1.3: Unpaired lines are suppressed by default.
 // R1.4: "-" reads from stdin.
 // R2.1: -1 FIELD and -2 FIELD set join fields for each file.
 // R2.2: -j FIELD sets the join field for both files.
+// R2.3: -o FORMAT selects and orders output fields.
 // R2.4: -t CHAR sets both input and output field separator.
+// R3.3: -e STRING replaces missing input fields in -o output.
 package main
 
 import (
@@ -22,12 +24,22 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// outputSpec represents one element in a -o format specification.
+type outputSpec struct {
+	isJoinField bool // true when spec is "0"
+	fileNum     int  // 1 or 2
+	fieldIdx    int  // 0-indexed field number
+}
+
 // joinConfig holds parsed command-line options.
 type joinConfig struct {
-	field1 int    // join field for file 1 (0-indexed)
-	field2 int    // join field for file 2 (0-indexed)
-	sep    string // field separator; empty means whitespace
-	hasSep bool   // true if -t was specified
+	field1    int          // join field for file 1 (0-indexed)
+	field2    int          // join field for file 2 (0-indexed)
+	sep       string       // field separator; empty means whitespace
+	hasSep    bool         // true if -t was specified
+	outputFmt []outputSpec // -o format specs; nil means default output
+	empty     string       // -e replacement for missing fields
+	hasEmpty  bool         // true if -e was specified
 }
 
 // outputSep returns the output field separator.
@@ -134,26 +146,30 @@ func parseFlag(arg string, args []string, i *int, cfg *joinConfig) (bool, error)
 	rest := arg[2:]
 	switch flag {
 	case "-1":
-		n, err := parseFieldValue(rest, args, i, "1")
-		if err != nil {
-			return true, err
-		}
-		cfg.field1 = n
-		return true, nil
+		return parseFlagField(rest, args, i, "1", &cfg.field1)
 	case "-2":
-		n, err := parseFieldValue(rest, args, i, "2")
-		if err != nil {
-			return true, err
-		}
-		cfg.field2 = n
-		return true, nil
+		return parseFlagField(rest, args, i, "2", &cfg.field2)
 	case "-j":
 		return parseJFlag(rest, args, i, cfg)
 	case "-t":
 		return true, parseSepValue(rest, args, i, cfg)
+	case "-o":
+		return true, parseOValue(rest, args, i, cfg)
+	case "-e":
+		return true, parseEmptyValue(rest, args, i, cfg)
 	default:
 		return false, fmt.Errorf("invalid option -- '%c'", arg[1])
 	}
+}
+
+// parseFlagField parses -1 or -2 field selection flag.
+func parseFlagField(rest string, args []string, i *int, name string, dest *int) (bool, error) {
+	n, err := parseFieldValue(rest, args, i, name)
+	if err != nil {
+		return true, err
+	}
+	*dest = n
+	return true, nil
 }
 
 // parseJFlag handles -j FIELD, setting both join fields.
@@ -196,6 +212,94 @@ func parseSepValue(rest string, args []string, i *int, cfg *joinConfig) error {
 	}
 	cfg.sep = val
 	cfg.hasSep = true
+	return nil
+}
+
+// parseOValue parses -o FORMAT, consuming comma/space-separated specs.
+// R2.3: Supports both comma-separated and space-separated specifiers.
+func parseOValue(rest string, args []string, i *int, cfg *joinConfig) error {
+	val := rest
+	if val == "" {
+		if *i+1 >= len(args) {
+			return fmt.Errorf("option requires an argument -- 'o'")
+		}
+		*i++
+		val = args[*i]
+	}
+	if err := addOutputSpecs(val, cfg); err != nil {
+		return err
+	}
+	for *i+1 < len(args) && looksLikeSpec(args[*i+1]) {
+		*i++
+		if err := addOutputSpecs(args[*i], cfg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addOutputSpecs parses a comma/space-separated string of output specs.
+func addOutputSpecs(val string, cfg *joinConfig) error {
+	parts := strings.FieldsFunc(val, func(r rune) bool {
+		return r == ',' || r == ' '
+	})
+	for _, p := range parts {
+		spec, err := parseOneSpec(p)
+		if err != nil {
+			return err
+		}
+		cfg.outputFmt = append(cfg.outputFmt, spec)
+	}
+	return nil
+}
+
+// parseOneSpec parses a single output specifier: "0" or "FILENUM.FIELDNUM".
+func parseOneSpec(s string) (outputSpec, error) {
+	if s == "0" {
+		return outputSpec{isJoinField: true}, nil
+	}
+	before, after, found := strings.Cut(s, ".")
+	if !found {
+		return outputSpec{}, fmt.Errorf("invalid field specification: '%s'", s)
+	}
+	fileNum, err := strconv.Atoi(before)
+	if err != nil || (fileNum != 1 && fileNum != 2) {
+		return outputSpec{}, fmt.Errorf("invalid file number in field spec: '%s'", s)
+	}
+	fieldNum, err := strconv.Atoi(after)
+	if err != nil || fieldNum < 1 {
+		return outputSpec{}, fmt.Errorf("invalid field number in field spec: '%s'", s)
+	}
+	return outputSpec{fileNum: fileNum, fieldIdx: fieldNum - 1}, nil
+}
+
+// looksLikeSpec returns true if the string resembles an output spec
+// ("0" or "N.M" where N and M are integers).
+func looksLikeSpec(s string) bool {
+	if s == "0" {
+		return true
+	}
+	before, after, found := strings.Cut(s, ".")
+	if !found || before == "" || after == "" {
+		return false
+	}
+	_, err1 := strconv.Atoi(before)
+	_, err2 := strconv.Atoi(after)
+	return err1 == nil && err2 == nil
+}
+
+// parseEmptyValue parses -e STRING for missing field replacement.
+func parseEmptyValue(rest string, args []string, i *int, cfg *joinConfig) error {
+	val := rest
+	if val == "" {
+		if *i+1 >= len(args) {
+			return fmt.Errorf("option requires an argument -- 'e'")
+		}
+		*i++
+		val = args[*i]
+	}
+	cfg.empty = val
+	cfg.hasEmpty = true
 	return nil
 }
 
@@ -275,14 +379,56 @@ func joinGroup(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig, key string
 	}
 }
 
-// writeJoinLine writes one joined output line: join field, then remaining
-// fields from file1, then remaining fields from file2.
+// writeJoinLine writes one joined output line using either -o format
+// or the default layout (join field, then remaining fields from each file).
 func writeJoinLine(w *bufio.Writer, key string, f1, f2 []string, cfg joinConfig) {
+	if cfg.outputFmt != nil {
+		writeFormatLine(w, key, f1, f2, cfg)
+		return
+	}
+	writeDefaultLine(w, key, f1, f2, cfg)
+}
+
+// writeDefaultLine writes the default output: join field followed by
+// remaining fields from file1 then file2.
+func writeDefaultLine(w *bufio.Writer, key string, f1, f2 []string, cfg joinConfig) {
 	sep := cfg.outputSep()
 	w.WriteString(key)
 	writeRemainingFields(w, f1, cfg.field1, sep)
 	writeRemainingFields(w, f2, cfg.field2, sep)
 	w.WriteByte('\n')
+}
+
+// writeFormatLine writes output according to the -o format specification.
+// R2.3: Each spec is resolved and separated by the output separator.
+func writeFormatLine(w *bufio.Writer, key string, f1, f2 []string, cfg joinConfig) {
+	sep := cfg.outputSep()
+	for i, spec := range cfg.outputFmt {
+		if i > 0 {
+			w.WriteString(sep)
+		}
+		w.WriteString(resolveSpec(spec, key, f1, f2, cfg))
+	}
+	w.WriteByte('\n')
+}
+
+// resolveSpec returns the field value for a single output spec.
+// R3.3: Uses -e replacement when the field index is out of range.
+func resolveSpec(spec outputSpec, key string, f1, f2 []string, cfg joinConfig) string {
+	if spec.isJoinField {
+		return key
+	}
+	fields := f1
+	if spec.fileNum == 2 {
+		fields = f2
+	}
+	if spec.fieldIdx < len(fields) {
+		return fields[spec.fieldIdx]
+	}
+	if cfg.hasEmpty {
+		return cfg.empty
+	}
+	return ""
 }
 
 // writeRemainingFields writes all fields except the join field,
