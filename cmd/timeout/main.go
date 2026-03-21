@@ -3,7 +3,8 @@
 
 // Implements prd063-timeout R1.1-R1.4 (core timeout behavior),
 // R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status),
-// and R3.1-R3.4 (exit codes: command status, timeout 124, signal 128+N, errors 125-127).
+// R3.1-R3.4 (exit codes: command status, timeout 124, signal 128+N, errors 125-127),
+// and R4.1-R4.4 (differential testing, orphan cleanup verification).
 package main
 
 import (

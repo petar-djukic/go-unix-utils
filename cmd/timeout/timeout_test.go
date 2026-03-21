@@ -3,12 +3,18 @@
 
 // Tests for prd063-timeout R1.1-R1.4 (core timeout behavior),
 // R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status),
-// and R3.1-R3.4 (exit codes: command status, timeout 124, signal 128+N, errors 125-127).
+// R3.1-R3.4 (exit codes: command status, timeout 124, signal 128+N, errors 125-127),
+// and R4.1-R4.4 (differential testing, orphan cleanup verification).
 package main
 
 import (
+	"bytes"
 	"os/exec"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -55,6 +61,12 @@ func TestDiff(t *testing.T) {
 		{
 			Name:     "duration_zero_no_limit",
 			Args:     []string{"0", "true"},
+			ExitCode: 0,
+		},
+		// R1.4: duration 0 with sleep 0 completes immediately. R4.3: fast.
+		{
+			Name:     "duration_zero_sleep_zero",
+			Args:     []string{"0", "sleep", "0"},
 			ExitCode: 0,
 		},
 		// R1.3: suffix 's' for seconds.
@@ -203,6 +215,13 @@ func TestDiff(t *testing.T) {
 			ExitCode:  125,
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
+		// R4.2: no args at all → exit 125. Covers the "no args" error case.
+		{
+			Name:      "r4_2_no_args",
+			Args:      []string{},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
 		// R3.2 + R2.2: kill-after with timeout, exit 137 after SIGKILL escalation.
 		{
 			Name:     "r3_2_kill_after_exit_137",
@@ -211,4 +230,42 @@ func TestDiff(t *testing.T) {
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestOrphanCleanup verifies that the timed-out child process is actually
+// killed and does not remain as an orphan. R4.4.
+func TestOrphanCleanup(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	// Run timeout with a short duration. The child shell writes its PID
+	// to stdout, then exec's sleep to keep the same PID alive.
+	cmd := exec.Command(goBin, "0.1", "sh", "-c", "echo $$; exec sleep 60")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		// Expected: timeout exits non-zero (124).
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("unexpected error type: %v", err)
+		}
+		if exitErr.ExitCode() != 124 {
+			t.Fatalf("expected exit code 124, got %d", exitErr.ExitCode())
+		}
+	}
+	pidStr := strings.TrimSpace(stdout.String())
+	if pidStr == "" {
+		t.Fatal("child did not write PID to stdout")
+	}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		t.Fatalf("invalid PID %q: %v", pidStr, err)
+	}
+	// Brief pause to allow the OS to fully reap the process.
+	time.Sleep(100 * time.Millisecond)
+	// kill -0 checks if the process exists without sending a signal.
+	// ESRCH means the process is gone (expected). Any other result means
+	// the child survived the timeout and is an orphan.
+	err = syscall.Kill(pid, 0)
+	if err == nil {
+		t.Fatalf("R4.4: process %d still running after timeout — orphan detected", pid)
+	}
 }
