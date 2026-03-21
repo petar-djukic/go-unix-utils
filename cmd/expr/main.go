@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd066-expr R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: expr expression
-// evaluation with arithmetic, comparison, logical, string, and pattern
-// matching operators.
+// Implements prd066-expr R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4: expr
+// expression evaluation with arithmetic, comparison, logical, string, and
+// pattern matching operators, exit code handling, and differential testing.
 package main
 
 import (

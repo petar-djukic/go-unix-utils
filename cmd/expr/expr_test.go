@@ -1,16 +1,21 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd066-expr R1.1–R1.4, R2.1–R2.4, R3.1.
+// Differential tests for prd066-expr R1.1–R1.4, R2.1–R2.4, R3.1–R3.4,
+// R4.1–R4.4.
 package main
 
 import (
 	"bytes"
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// syntaxErrDetailRe matches "syntax error: <detail>" and strips the detail.
+var syntaxErrDetailRe = regexp.MustCompile(`syntax error[^\n]*`)
 
 // normalizeProgramName replaces "gexpr" with "expr" in output
 // so differential tests pass despite different binary names.
@@ -32,6 +37,12 @@ func normalizeTryHelp(data []byte) []byte {
 		result = append(result, line...)
 	}
 	return result
+}
+
+// normalizeSyntaxError strips the detailed suffix after "syntax error"
+// since GNU expr provides specific context that our implementation omits.
+func normalizeSyntaxError(data []byte) []byte {
+	return syntaxErrDetailRe.ReplaceAll(data, []byte("syntax error"))
 }
 
 func TestDiff(t *testing.T) {
@@ -197,6 +208,62 @@ func TestDiff(t *testing.T) {
 		{Name: "plus_escape_length", Args: []string{"+", "length"}},
 		// R3.1: + escapes operator
 		{Name: "plus_escape_operator", Args: []string{"+", "+"}},
+
+		// R4.1: non-null non-zero expression exits 0
+		{Name: "exit0_add_result", Args: []string{"2", "+", "3"}},
+		// R4.1: string comparison true exits 0
+		{Name: "exit0_cmp_true", Args: []string{"10", ">", "5"}},
+		// R4.1: non-empty string result exits 0
+		{Name: "exit0_nonempty_string", Args: []string{"abc"}},
+		// R4.1: match with group returns non-empty exits 0
+		{Name: "exit0_match_group", Args: []string{"abc", ":", `\(abc\)`}},
+
+		// R4.2: zero arithmetic result exits 1
+		{Name: "exit1_zero_arith", Args: []string{"3", "-", "3"}},
+		// R4.2: false comparison exits 1
+		{Name: "exit1_cmp_false", Args: []string{"5", ">", "10"}},
+		// R4.2: match no-group no-match returns "0" exits 1
+		{Name: "exit1_no_match", Args: []string{"abc", ":", "xyz"}},
+		// R4.2: empty string result exits 1
+		{Name: "exit1_empty_string", Args: []string{""}},
+		// R4.2: or both zero exits 1
+		{Name: "exit1_or_zeros", Args: []string{"0", "|", "0"}},
+		// R4.2: match with group no-match returns empty exits 1
+		{Name: "exit1_match_group_nomatch", Args: []string{"abc", ":", `xyz\(.*\)`}},
+
+		// R4.3: syntax error — unmatched left paren exits 2
+		{
+			Name:      "exit2_unmatched_paren",
+			Args:      []string{"(", "1", "+", "2"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeSyntaxError},
+		},
+		// R4.3: syntax error — missing right operand exits 2
+		{
+			Name:      "exit2_missing_operand",
+			Args:      []string{"1", "+"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeSyntaxError},
+		},
+		// R4.3: syntax error — extra arguments after expression exits 2
+		{
+			Name:      "exit2_extra_args",
+			Args:      []string{"1", "2"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeSyntaxError},
+		},
+		// R4.3: syntax error — non-integer in arithmetic exits 2
+		{
+			Name:      "exit2_non_integer_arith",
+			Args:      []string{"abc", "*", "2"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+
+		// R4.4: logical with strings
+		{Name: "or_string_first", Args: []string{"hello", "|", "world"}},
+		// R4.4: and with strings
+		{Name: "and_strings", Args: []string{"hello", "&", "world"}},
+		// R4.4: and with empty string
+		{Name: "and_empty_string", Args: []string{"", "&", "world"}},
+		// R4.4: complex mixed expression
+		{Name: "complex_mixed", Args: []string{"(", "1", "+", "2", ")", "*", "(", "3", "-", "1", ")"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
