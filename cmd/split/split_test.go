@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd067-split R1.1–R1.4, R2.1–R2.4.
+// Differential tests for prd067-split R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
@@ -241,6 +241,84 @@ func TestDiff(t *testing.T) {
 			args:  []string{"--number=2"},
 			stdin: repeatBytes(50),
 		},
+		// R3.1: -a suffix length
+		{
+			name:  "suffix_length_3",
+			args:  []string{"-a", "3", "-l", "2"},
+			stdin: seqLines(7),
+		},
+		// R3.1: --suffix-length= form
+		{
+			name:  "suffix_length_equals",
+			args:  []string{"--suffix-length=4", "-l", "3"},
+			stdin: seqLines(10),
+		},
+		// R3.1: -a with attached value
+		{
+			name:  "suffix_length_attached",
+			args:  []string{"-a3", "-l", "2"},
+			stdin: seqLines(5),
+		},
+		// R3.2: -d numeric suffixes
+		{
+			name:  "numeric_suffixes",
+			args:  []string{"-d", "-l", "3"},
+			stdin: seqLines(10),
+		},
+		// R3.2: --numeric-suffixes long form
+		{
+			name:  "numeric_suffixes_long",
+			args:  []string{"--numeric-suffixes", "-l", "5"},
+			stdin: seqLines(12),
+		},
+		// R3.2: -d with custom suffix length
+		{
+			name:  "numeric_suffix_length",
+			args:  []string{"-d", "-a", "3", "-l", "2"},
+			stdin: seqLines(7),
+		},
+		// R3.2: -d with custom prefix
+		{
+			name:  "numeric_prefix",
+			args:  []string{"-d", "-l", "3", "-", "chunk"},
+			stdin: seqLines(8),
+		},
+		// R3.3: --additional-suffix
+		{
+			name:  "additional_suffix",
+			args:  []string{"--additional-suffix=.txt", "-l", "3"},
+			stdin: seqLines(8),
+		},
+		// R3.3: --additional-suffix with numeric
+		{
+			name:  "additional_suffix_numeric",
+			args:  []string{"--additional-suffix=.dat", "-d", "-l", "5"},
+			stdin: seqLines(12),
+		},
+		// R3.3: --additional-suffix with custom prefix
+		{
+			name:  "additional_suffix_prefix",
+			args:  []string{"--additional-suffix=.log", "-l", "4", "-", "out_"},
+			stdin: seqLines(10),
+		},
+		// R3.1+R3.2+R3.3 combined
+		{
+			name:  "all_suffix_options",
+			args:  []string{"-d", "-a", "3", "--additional-suffix=.csv", "-l", "2"},
+			stdin: seqLines(7),
+		},
+		// R3.2: -d with byte splitting
+		{
+			name:  "numeric_bytes",
+			args:  []string{"-d", "-b", "50"},
+			stdin: repeatBytes(120),
+		},
+		// R3.1: suffix length with chunks
+		{
+			name:  "suffix_length_chunks",
+			args:  []string{"-a", "3", "-n", "3"},
+			stdin: repeatBytes(100),
+		},
 	}
 
 	for _, tc := range tests {
@@ -421,6 +499,39 @@ func compareFileContents(t *testing.T, dir1, dir2, name string) {
 	if !bytes.Equal(data1, data2) {
 		t.Fatalf("file %s content divergence\nref (%d bytes): %q\ngo  (%d bytes): %q",
 			name, len(data1), truncate(data1), len(data2), truncate(data2))
+	}
+}
+
+// TestFilter verifies R3.4: --filter pipes output to a shell command.
+func TestFilter(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsplit")
+	if err != nil {
+		t.Skipf("reference binary gsplit not in PATH: %v", err)
+	}
+
+	tests := []splitTest{
+		// R3.4: --filter with cat piping to file
+		{
+			name:  "filter_cat",
+			args:  []string{"--filter=cat > $FILE.filtered", "-l", "3"},
+			stdin: seqLines(7),
+		},
+		// R3.4: --filter with numeric suffix
+		{
+			name:  "filter_numeric",
+			args:  []string{"--filter=cat > $FILE.out", "-d", "-l", "4"},
+			stdin: seqLines(10),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareSplitOutput(t, goBin, refBin, tc)
+		})
 	}
 }
 

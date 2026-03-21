@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd067-split R1.1–R1.4: basic file splitting by line count,
-// R2.1–R2.4: byte-based, line-bytes, and chunk-based splitting modes.
+// R2.1–R2.4: byte-based, line-bytes, and chunk-based splitting modes,
+// R3.1–R3.4: suffix control, numeric suffixes, additional suffix, and filter.
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -44,15 +46,37 @@ const (
 
 // config holds parsed command-line options for split.
 type config struct {
-	mode      splitMode
-	lines     int
-	byteCount int64
-	chunks    int
-	chunkMode chunkStrategy
-	prefix    string
-	suffixLen int
-	inputFile string
-	modeSet   bool // true after first mode flag parsed
+	mode             splitMode
+	lines            int
+	byteCount        int64
+	chunks           int
+	chunkMode        chunkStrategy
+	prefix           string
+	suffixLen        int
+	numericSuffix    bool   // R3.2: use numeric suffixes
+	additionalSuffix string // R3.3: appended after suffix
+	filterCmd        string // R3.4: pipe output to command
+	inputFile        string
+	modeSet          bool // true after first mode flag parsed
+}
+
+// filterWriter pipes data to a shell command for filter mode. R3.4.
+type filterWriter struct {
+	pipe io.WriteCloser
+	cmd  *exec.Cmd
+}
+
+func (fw *filterWriter) Write(p []byte) (int, error) {
+	return fw.pipe.Write(p)
+}
+
+// Close closes the pipe and waits for the command to finish.
+func (fw *filterWriter) Close() error {
+	if err := fw.pipe.Close(); err != nil {
+		fw.cmd.Wait() // best-effort wait
+		return err
+	}
+	return fw.cmd.Wait()
 }
 
 func main() {
@@ -90,10 +114,14 @@ func printHelp(w io.Writer) int {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "With no FILE, or when FILE is -, read standard input.")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -a, --suffix-length=N  generate suffixes of length N (default 2)")
+	fmt.Fprintln(w, "  -d, --numeric-suffixes  use numeric suffixes starting at 0")
+	fmt.Fprintln(w, "      --additional-suffix=SUFF  append SUFF to output file names")
 	fmt.Fprintln(w, "  -l, --lines=NUMBER   put NUMBER lines/records per output file")
 	fmt.Fprintln(w, "  -b, --bytes=SIZE     put SIZE bytes per output file")
-	fmt.Fprintln(w, "  -C, --line-bytes=SIZE  put at most SIZE bytes per output file, breaking at line boundaries")
+	fmt.Fprintln(w, "  -C, --line-bytes=SIZE  put at most SIZE bytes, breaking at lines")
 	fmt.Fprintln(w, "  -n, --number=CHUNKS  generate CHUNKS output files")
+	fmt.Fprintln(w, "      --filter=COMMAND  write to shell COMMAND; $FILE is filename")
 	fmt.Fprintln(w, "      --help     display this help and exit")
 	fmt.Fprintln(w, "      --version  output version information and exit")
 	return 0
@@ -146,6 +174,23 @@ func parseOptions(args []string, cfg *config) ([]string, error) {
 // parseSingleOption handles one flag and returns extra args consumed.
 func parseSingleOption(args []string, i int, cfg *config) (int, error) {
 	arg := args[i]
+	if n, err := parseLongModeOption(args, i, cfg); err != nil || n >= 0 {
+		return n, err
+	}
+	if n, err := parseLongSuffixOption(args, i, cfg); err != nil || n >= 0 {
+		return n, err
+	}
+	if arg == "--numeric-suffixes" || strings.HasPrefix(arg, "--numeric-suffixes=") {
+		cfg.numericSuffix = true
+		return 0, nil
+	}
+	return parseShortFlags(args, i, cfg)
+}
+
+// parseLongModeOption handles long-form mode flags (--lines, --bytes, etc.).
+// Returns -1 if the flag was not matched.
+func parseLongModeOption(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
 	if strings.HasPrefix(arg, "--lines=") {
 		return 0, setModeLines(arg[len("--lines="):], cfg)
 	}
@@ -162,6 +207,13 @@ func parseSingleOption(args []string, i int, cfg *config) (int, error) {
 			return setModeBytes(v, cfg)
 		})
 	}
+	return parseLongModeOptionCont(args, i, cfg)
+}
+
+// parseLongModeOptionCont handles remaining long-form mode flags.
+// Returns -1 if the flag was not matched.
+func parseLongModeOptionCont(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
 	if strings.HasPrefix(arg, "--line-bytes=") {
 		return 0, setModeLineBytes(arg[len("--line-bytes="):], cfg)
 	}
@@ -178,7 +230,49 @@ func parseSingleOption(args []string, i int, cfg *config) (int, error) {
 			return setModeChunks(v, cfg)
 		})
 	}
-	return parseShortFlags(args, i, cfg)
+	return -1, nil
+}
+
+// parseLongSuffixOption handles long-form suffix and filter flags.
+// Returns -1 if the flag was not matched.
+func parseLongSuffixOption(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
+	if strings.HasPrefix(arg, "--suffix-length=") {
+		return 0, setSuffixLength(arg[len("--suffix-length="):], cfg)
+	}
+	if arg == "--suffix-length" {
+		return requireNextArg(args, i, "--suffix-length", func(v string) error {
+			return setSuffixLength(v, cfg)
+		})
+	}
+	if strings.HasPrefix(arg, "--additional-suffix=") {
+		cfg.additionalSuffix = arg[len("--additional-suffix="):]
+		return 0, nil
+	}
+	if arg == "--additional-suffix" {
+		return requireNextArg(args, i, "--additional-suffix", func(v string) error {
+			cfg.additionalSuffix = v
+			return nil
+		})
+	}
+	return parseLongFilterOption(args, i, cfg)
+}
+
+// parseLongFilterOption handles the --filter flag.
+// Returns -1 if the flag was not matched.
+func parseLongFilterOption(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
+	if strings.HasPrefix(arg, "--filter=") {
+		cfg.filterCmd = arg[len("--filter="):]
+		return 0, nil
+	}
+	if arg == "--filter" {
+		return requireNextArg(args, i, "--filter", func(v string) error {
+			cfg.filterCmd = v
+			return nil
+		})
+	}
+	return -1, nil
 }
 
 // requireNextArg validates that a next argument exists and calls the setter.
@@ -189,8 +283,23 @@ func requireNextArg(args []string, i int, name string, setter func(string) error
 	return 1, setter(args[i+1])
 }
 
-// parseShortFlags handles short-form flags (-l, -b, -C, -n).
+// parseShortFlags handles short-form flags (-l, -b, -C, -n, -a, -d).
 func parseShortFlags(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
+	if arg == "-d" {
+		cfg.numericSuffix = true
+		return 0, nil
+	}
+	if strings.HasPrefix(arg, "-a") {
+		return parseShortWithValue(args, i, 'a', func(v string) error {
+			return setSuffixLength(v, cfg)
+		})
+	}
+	return parseShortModeFlags(args, i, cfg)
+}
+
+// parseShortModeFlags handles short-form mode flags (-l, -b, -C, -n).
+func parseShortModeFlags(args []string, i int, cfg *config) (int, error) {
 	arg := args[i]
 	if strings.HasPrefix(arg, "-l") {
 		return parseShortWithValue(args, i, 'l', func(v string) error {
@@ -288,6 +397,16 @@ func setModeChunks(s string, cfg *config) error {
 	return nil
 }
 
+// setSuffixLength parses and sets the suffix length. R3.1.
+func setSuffixLength(s string, cfg *config) error {
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("invalid suffix length: '%s'", s)
+	}
+	cfg.suffixLen = n
+	return nil
+}
+
 // checkModeConflict returns an error if a different mode was already set.
 // R2.4: conflicting split options must produce an error.
 func checkModeConflict(cfg *config, newMode splitMode) error {
@@ -380,6 +499,75 @@ func applyPositional(cfg *config, positional []string) error {
 	return nil
 }
 
+// makeFilename constructs the output filename for the given index.
+// Applies prefix, suffix (alphabetic or numeric), and additional suffix.
+func makeFilename(index int, cfg *config) (string, error) {
+	suffix, err := generateSuffix(index, cfg.suffixLen, cfg.numericSuffix)
+	if err != nil {
+		return "", err
+	}
+	return cfg.prefix + suffix + cfg.additionalSuffix, nil
+}
+
+// generateSuffix returns a suffix for the given index.
+// R3.2: when numeric is true, produces "00", "01", etc.
+func generateSuffix(index, length int, numeric bool) (string, error) {
+	if numeric {
+		return generateNumericSuffix(index, length)
+	}
+	return generateAlphaSuffix(index, length)
+}
+
+// generateAlphaSuffix returns an alphabetic suffix for the given index.
+// R1.1: suffixes follow the pattern aa, ab, ..., az, ba, ..., zz.
+func generateAlphaSuffix(index, length int) (string, error) {
+	suffix := make([]byte, length)
+	n := index
+	for i := length - 1; i >= 0; i-- {
+		suffix[i] = 'a' + byte(n%26)
+		n /= 26
+	}
+	if n > 0 {
+		return "", fmt.Errorf("output file suffixes exhausted")
+	}
+	return string(suffix), nil
+}
+
+// generateNumericSuffix returns a zero-padded numeric suffix. R3.2.
+func generateNumericSuffix(index, length int) (string, error) {
+	s := fmt.Sprintf("%0*d", length, index)
+	if len(s) > length {
+		return "", fmt.Errorf("output file suffixes exhausted")
+	}
+	return s, nil
+}
+
+// openOutput creates an output writer for the given filename.
+// R3.4: when filterCmd is set, pipes to the shell command instead.
+func openOutput(filename string, cfg *config) (io.WriteCloser, error) {
+	if cfg.filterCmd != "" {
+		return openFilterOutput(filename, cfg.filterCmd)
+	}
+	return os.Create(filename)
+}
+
+// openFilterOutput starts a shell command and returns a writer to its stdin.
+// The filename is available as $FILE in the command. R3.4.
+func openFilterOutput(filename, filterCmd string) (io.WriteCloser, error) {
+	cmd := exec.Command("sh", "-c", filterCmd)
+	cmd.Env = append(os.Environ(), "FILE="+filename)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	pipe, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("filter pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("filter start: %w", err)
+	}
+	return &filterWriter{pipe: pipe, cmd: cmd}, nil
+}
+
 // executeSplit opens the input and dispatches to the appropriate mode.
 func executeSplit(cfg *config, stdin io.Reader) error {
 	reader, closer, err := openInput(cfg.inputFile, stdin)
@@ -417,11 +605,11 @@ func openInput(path string, stdin io.Reader) (io.Reader, func(), error) {
 func splitByLines(r io.Reader, cfg *config) error {
 	br := bufio.NewReader(r)
 	for fileIdx := 0; ; fileIdx++ {
-		suffix, err := generateSuffix(fileIdx, cfg.suffixLen)
+		filename, err := makeFilename(fileIdx, cfg)
 		if err != nil {
 			return err
 		}
-		wrote, writeErr := writeLineChunk(br, cfg.prefix+suffix, cfg.lines)
+		wrote, writeErr := writeLineChunk(br, filename, cfg.lines, cfg)
 		if writeErr != nil {
 			return writeErr
 		}
@@ -434,18 +622,18 @@ func splitByLines(r io.Reader, cfg *config) error {
 
 // writeLineChunk checks for remaining data and writes up to maxLines lines.
 // Returns false when input is exhausted.
-func writeLineChunk(br *bufio.Reader, filename string, maxLines int) (bool, error) {
+func writeLineChunk(br *bufio.Reader, filename string, maxLines int, cfg *config) (bool, error) {
 	if _, err := br.Peek(1); err == io.EOF {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	return writeLineChunkData(br, filename, maxLines)
+	return writeLineChunkData(br, filename, maxLines, cfg)
 }
 
 // writeLineChunkData creates a file and writes up to maxLines lines to it.
-func writeLineChunkData(br *bufio.Reader, filename string, maxLines int) (bool, error) {
-	f, err := os.Create(filename)
+func writeLineChunkData(br *bufio.Reader, filename string, maxLines int, cfg *config) (bool, error) {
+	f, err := openOutput(filename, cfg)
 	if err != nil {
 		return false, err
 	}
@@ -477,7 +665,7 @@ func splitByBytes(r io.Reader, cfg *config) error {
 	br := bufio.NewReader(r)
 	buf := make([]byte, cfg.byteCount)
 	for fileIdx := 0; ; fileIdx++ {
-		suffix, err := generateSuffix(fileIdx, cfg.suffixLen)
+		filename, err := makeFilename(fileIdx, cfg)
 		if err != nil {
 			return err
 		}
@@ -485,7 +673,7 @@ func splitByBytes(r io.Reader, cfg *config) error {
 		if n == 0 {
 			break
 		}
-		if writeErr := writeByteFile(cfg.prefix+suffix, buf[:n]); writeErr != nil {
+		if writeErr := writeByteOutput(filename, buf[:n], cfg); writeErr != nil {
 			return writeErr
 		}
 		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
@@ -498,9 +686,18 @@ func splitByBytes(r io.Reader, cfg *config) error {
 	return nil
 }
 
-// writeByteFile writes data to a new file.
-func writeByteFile(filename string, data []byte) error {
-	return os.WriteFile(filename, data, 0o666)
+// writeByteOutput writes data to a file or filter output.
+func writeByteOutput(filename string, data []byte, cfg *config) error {
+	w, err := openOutput(filename, cfg)
+	if err != nil {
+		return err
+	}
+	_, werr := w.Write(data)
+	cerr := w.Close()
+	if werr != nil {
+		return werr
+	}
+	return cerr
 }
 
 // splitByLineBytes reads from r and writes chunks of at most cfg.byteCount
@@ -517,12 +714,12 @@ func splitByLineBytes(r io.Reader, cfg *config) error {
 				return err
 			}
 		}
-		suffix, err := generateSuffix(fileIdx, cfg.suffixLen)
+		filename, err := makeFilename(fileIdx, cfg)
 		if err != nil {
 			return err
 		}
 		var writeErr error
-		pending, writeErr = writeLineBytesChunk(br, cfg.prefix+suffix, cfg.byteCount, pending)
+		pending, writeErr = writeLineBytesChunk(br, filename, cfg.byteCount, pending, cfg)
 		if writeErr != nil {
 			return writeErr
 		}
@@ -533,8 +730,8 @@ func splitByLineBytes(r io.Reader, cfg *config) error {
 // writeLineBytesChunk writes one chunk of at most maxBytes bytes, breaking
 // at line boundaries. Long lines are broken at the byte limit.
 // Returns any pending data that didn't fit.
-func writeLineBytesChunk(br *bufio.Reader, filename string, maxBytes int64, pending []byte) ([]byte, error) {
-	f, err := os.Create(filename)
+func writeLineBytesChunk(br *bufio.Reader, filename string, maxBytes int64, pending []byte, cfg *config) ([]byte, error) {
+	f, err := openOutput(filename, cfg)
 	if err != nil {
 		return pending, err
 	}
@@ -634,7 +831,7 @@ func splitChunksByBytes(r io.Reader, cfg *config) error {
 	remainder := totalSize % int64(cfg.chunks)
 	var offset int64
 	for i := 0; i < cfg.chunks; i++ {
-		suffix, serr := generateSuffix(i, cfg.suffixLen)
+		filename, serr := makeFilename(i, cfg)
 		if serr != nil {
 			return serr
 		}
@@ -643,7 +840,7 @@ func splitChunksByBytes(r io.Reader, cfg *config) error {
 			size++
 		}
 		chunk := data[offset : offset+size]
-		if err := writeByteFile(cfg.prefix+suffix, chunk); err != nil {
+		if err := writeByteOutput(filename, chunk, cfg); err != nil {
 			return err
 		}
 		offset += size
@@ -663,7 +860,7 @@ func splitChunksByLines(r io.Reader, cfg *config) error {
 	remainder := totalLines % cfg.chunks
 	lineIdx := 0
 	for i := 0; i < cfg.chunks; i++ {
-		suffix, serr := generateSuffix(i, cfg.suffixLen)
+		filename, serr := makeFilename(i, cfg)
 		if serr != nil {
 			return serr
 		}
@@ -671,7 +868,7 @@ func splitChunksByLines(r io.Reader, cfg *config) error {
 		if i < remainder {
 			count++
 		}
-		if err := writeLinesFile(cfg.prefix+suffix, lines, lineIdx, count); err != nil {
+		if err := writeLinesOutput(filename, lines, lineIdx, count, cfg); err != nil {
 			return err
 		}
 		lineIdx += count
@@ -686,7 +883,7 @@ func splitChunksByRoundRobin(r io.Reader, cfg *config) error {
 	if err != nil {
 		return err
 	}
-	writers, closers, err := openChunkFiles(cfg)
+	writers, closers, err := openChunkOutputs(cfg)
 	if err != nil {
 		return err
 	}
@@ -719,23 +916,23 @@ func readAllLines(r io.Reader) ([][]byte, error) {
 	return lines, nil
 }
 
-// openChunkFiles creates all chunk output files for round-robin mode.
-func openChunkFiles(cfg *config) ([]*bufio.Writer, []io.Closer, error) {
+// openChunkOutputs creates all chunk output writers for round-robin mode.
+func openChunkOutputs(cfg *config) ([]*bufio.Writer, []io.Closer, error) {
 	writers := make([]*bufio.Writer, cfg.chunks)
 	closers := make([]io.Closer, cfg.chunks)
 	for i := 0; i < cfg.chunks; i++ {
-		suffix, err := generateSuffix(i, cfg.suffixLen)
+		filename, err := makeFilename(i, cfg)
 		if err != nil {
 			closeAll(closers[:i])
 			return nil, nil, err
 		}
-		f, err := os.Create(cfg.prefix + suffix)
+		w, err := openOutput(filename, cfg)
 		if err != nil {
 			closeAll(closers[:i])
 			return nil, nil, err
 		}
-		writers[i] = bufio.NewWriter(f)
-		closers[i] = f
+		writers[i] = bufio.NewWriter(w)
+		closers[i] = w
 	}
 	return writers, closers, nil
 }
@@ -759,14 +956,14 @@ func flushAll(writers []*bufio.Writer) error {
 	return nil
 }
 
-// writeLinesFile writes count lines starting at startIdx to a file.
-func writeLinesFile(filename string, lines [][]byte, startIdx, count int) error {
-	f, err := os.Create(filename)
+// writeLinesOutput writes count lines starting at startIdx to an output.
+func writeLinesOutput(filename string, lines [][]byte, startIdx, count int, cfg *config) error {
+	w, err := openOutput(filename, cfg)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	bw := bufio.NewWriter(f)
+	defer w.Close()
+	bw := bufio.NewWriter(w)
 	end := min(startIdx+count, len(lines))
 	for i := startIdx; i < end; i++ {
 		if _, werr := bw.Write(lines[i]); werr != nil {
@@ -774,19 +971,4 @@ func writeLinesFile(filename string, lines [][]byte, startIdx, count int) error 
 		}
 	}
 	return bw.Flush()
-}
-
-// generateSuffix returns an alphabetic suffix for the given index.
-// R1.1: suffixes follow the pattern aa, ab, ..., az, ba, ..., zz.
-func generateSuffix(index, length int) (string, error) {
-	suffix := make([]byte, length)
-	n := index
-	for i := length - 1; i >= 0; i-- {
-		suffix[i] = 'a' + byte(n%26)
-		n /= 26
-	}
-	if n > 0 {
-		return "", fmt.Errorf("output file suffixes exhausted")
-	}
-	return string(suffix), nil
 }
