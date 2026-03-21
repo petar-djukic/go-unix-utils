@@ -5,6 +5,7 @@
 // stdin reading, and +NUM offset mode.
 // Implements prd055-tail R2.1–R2.3: byte-count mode (-c) with suffix multipliers.
 // Implements prd055-tail R3.1–R3.4: multi-file headers, -q/--quiet/--silent, -v/--verbose.
+// Implements prd055-tail R4.1–R4.4: exit codes, error reporting, and continued processing.
 package main
 
 import (

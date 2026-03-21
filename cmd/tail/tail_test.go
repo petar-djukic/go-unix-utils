@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd055-tail R1.1–R1.4, R2.1–R2.3, R3.1–R3.4 differential tests:
+// Implements prd055-tail R1.1–R1.4, R2.1–R2.3, R3.1–R3.4, R4.1–R4.4 differential tests:
 // line-count mode, byte-count mode, stdin reading, -n/-c flags,
-// +NUM offset, suffix multipliers, multi-file headers, -q, and -v.
+// +NUM offset, suffix multipliers, multi-file headers, -q, -v,
+// exit codes, error on non-existent file, and continued processing.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,12 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// progNameNormalizer replaces "gtail:" with "tail:" in output so that
+// stderr error messages from the reference binary match our binary.
+func progNameNormalizer(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gtail:"), []byte("tail:"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -282,6 +290,80 @@ func TestDiffHeaders(t *testing.T) {
 			// R3.1: multi-file with -c byte mode
 			Name: "multi_file_byte_mode",
 			Args: []string{"-c", "3", file1, file2},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodes tests prd055-tail R4.1–R4.4: exit codes, error reporting,
+// and continued processing on non-existent files.
+func TestDiffExitCodes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtail")
+	if err != nil {
+		t.Skipf("reference binary gtail not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	validFile := writeTestFile(t, dir, "valid.txt", "line1\nline2\nline3\nline4\nline5\n")
+	nonexistent := filepath.Join(dir, "nonexistent.txt")
+
+	norm := []testutils.NormalizeFunc{progNameNormalizer}
+
+	tests := []testutils.DiffTest{
+		{
+			// R4.1: exit 0 on successful single file
+			Name: "exit_0_single_file_success",
+			Args: []string{validFile},
+		},
+		{
+			// R4.1: exit 0 on successful stdin
+			Name:  "exit_0_stdin_success",
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R4.2, R4.4: exit 1 on non-existent file, error to stderr
+			Name:      "exit_1_nonexistent_file",
+			Args:      []string{nonexistent},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			// R4.2, R4.4: exit 1 when one file fails, still process valid file
+			Name:      "exit_1_mixed_valid_and_nonexistent",
+			Args:      []string{validFile, nonexistent},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			// R4.2, R4.4: nonexistent first, valid second — still outputs valid
+			Name:      "exit_1_nonexistent_then_valid",
+			Args:      []string{nonexistent, validFile},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			// R4.2: multiple non-existent files
+			Name:      "exit_1_multiple_nonexistent",
+			Args:      []string{nonexistent, filepath.Join(dir, "also_missing.txt")},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			// R4.2, R4.4: nonexistent with -q still reports error
+			Name:      "exit_1_nonexistent_quiet",
+			Args:      []string{"-q", nonexistent, validFile},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			// R4.2, R4.4: nonexistent with -c byte mode
+			Name:      "exit_1_nonexistent_byte_mode",
+			Args:      []string{"-c", "5", nonexistent},
+			ExitCode:  1,
+			Normalize: norm,
 		},
 	}
 
