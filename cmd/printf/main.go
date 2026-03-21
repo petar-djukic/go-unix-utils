@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd073-printf R1.1–R1.4: format string processing,
+// Implements prd073-printf R1.1–R1.4, R2.1–R2.4: format string processing,
 // conversion specifiers (integer, float, string, char, %b),
-// escape sequences, and argument recycling.
+// width/precision/flags, escape sequences, and argument recycling.
 package main
 
 import (
@@ -245,19 +245,19 @@ func formatVerb(d directive, width, prec, arg string, stderr io.Writer) (string,
 	case 'd', 'i':
 		return fmtIntVerb(d, width, prec, arg, 'd', stderr)
 	case 'o':
-		return fmtIntVerb(d, width, prec, arg, 'o', stderr)
+		return fmtUintVerb(d, width, prec, arg, 'o', stderr)
 	case 'u':
-		return fmtUintVerb(d, width, prec, arg, stderr)
+		return fmtUintVerb(d, width, prec, arg, 'd', stderr)
 	case 'x':
-		return fmtIntVerb(d, width, prec, arg, 'x', stderr)
+		return fmtUintVerb(d, width, prec, arg, 'x', stderr)
 	case 'X':
-		return fmtIntVerb(d, width, prec, arg, 'X', stderr)
+		return fmtUintVerb(d, width, prec, arg, 'X', stderr)
 	case 'f', 'F', 'e', 'E', 'g', 'G':
 		return fmtFloatVerb(d, width, prec, arg, stderr)
 	case 's':
 		return fmtStrVerb(d, width, prec, arg), 0
 	case 'c':
-		return fmtCharVerb(arg), 0
+		return fmtCharVerb(d, width, arg), 0
 	default:
 		return "", 0
 	}
@@ -273,14 +273,15 @@ func fmtIntVerb(d directive, width, prec, arg string, verb byte, stderr io.Write
 	return fmt.Sprintf(buildFmtStr(d, width, prec, verb), val), 0
 }
 
-// fmtUintVerb formats an unsigned integer conversion (%u).
-func fmtUintVerb(d directive, width, prec, arg string, stderr io.Writer) (string, int) {
+// fmtUintVerb formats an unsigned integer conversion (%u, %o, %x, %X).
+// Uses uint64 to match GNU printf unsigned behavior for negative inputs.
+func fmtUintVerb(d directive, width, prec, arg string, verb byte, stderr io.Writer) (string, int) {
 	val, err := parseIntArg(arg)
 	if err != nil {
 		reportNumericError(arg, stderr)
-		return fmt.Sprintf(buildFmtStr(d, width, prec, 'd'), uint64(0)), 1
+		return fmt.Sprintf(buildFmtStr(d, width, prec, verb), uint64(0)), 1
 	}
-	return fmt.Sprintf(buildFmtStr(d, width, prec, 'd'), uint64(val)), 0
+	return fmt.Sprintf(buildFmtStr(d, width, prec, verb), uint64(val)), 0
 }
 
 // fmtFloatVerb formats a floating-point conversion specifier.
@@ -308,13 +309,16 @@ func fmtStrVerb(d directive, width, prec, arg string) string {
 	return fmt.Sprintf(buildFmtStr(d, width, prec, 's'), arg)
 }
 
-// fmtCharVerb formats a %c conversion specifier.
-func fmtCharVerb(arg string) string {
+// fmtCharVerb formats a %c conversion specifier with width support.
+// R2.1: width specifies minimum field width for the character.
+func fmtCharVerb(d directive, width, arg string) string {
+	var r rune
 	if arg == "" {
-		return "\x00"
+		r = 0
+	} else {
+		r, _ = utf8.DecodeRuneInString(arg)
 	}
-	r, _ := utf8.DecodeRuneInString(arg)
-	return string(r)
+	return fmt.Sprintf(buildFmtStr(d, width, "", 'c'), r)
 }
 
 // reportNumericError writes a numeric conversion error to stderr.
