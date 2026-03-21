@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/touch against gtouch (GNU coreutils).
-// Implements prd062-touch R1.1–R1.4, R2.1–R2.4 test coverage.
+// Implements prd062-touch R1.1–R1.4, R2.1–R2.4, R3.1–R3.4 test coverage.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,13 @@ func binaryNameNormalizer(b []byte) []byte {
 	reTry := regexp.MustCompile(`Try '[^']*' for more information\.`)
 	b = reTry.ReplaceAll(b, []byte("Try 'touch --help' for more information."))
 	return b
+}
+
+// caseNormalizer lowercases output for comparing error messages
+// that may differ in capitalization between GNU and Go (e.g.,
+// "No such file or directory" vs "no such file or directory").
+func caseNormalizer(b []byte) []byte {
+	return bytes.ToLower(b)
 }
 
 func TestDiff(t *testing.T) {
@@ -83,6 +92,69 @@ func TestDiff(t *testing.T) {
 		{Name: "t_combined_value", Args: []string{"-t202401151030.00", "tcfile"}},
 		// R2.1, R2.4: combined -at with value.
 		{Name: "combined_at_value", Args: []string{"-at", "202401151030.00", "catfile"}},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffR3 runs differential tests for R3 requirements.
+func TestDiffR3(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skipf("reference binary gtouch not in PATH: %v", err)
+	}
+
+	norm := []testutils.NormalizeFunc{binaryNameNormalizer}
+	normCase := []testutils.NormalizeFunc{binaryNameNormalizer, caseNormalizer}
+
+	// Set up reference file for -r tests.
+	refDir := t.TempDir()
+	refFile := filepath.Join(refDir, "reffile")
+	if err := os.WriteFile(refFile, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refTime := time.Date(2023, 6, 15, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(refFile, refTime, refTime); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-create file for -h tests on existing files.
+	hDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hDir, "existfile"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.1: -r copies timestamps from reference file.
+		{Name: "r3_reference_short", Args: []string{"-r", refFile, "target1"}},
+		// R3.1: --reference=FILE long form.
+		{Name: "r3_reference_long", Args: []string{"--reference=" + refFile, "target2"}},
+		// R3.1: -r with -a (only change access time).
+		{Name: "r3_reference_access_only", Args: []string{"-a", "-r", refFile, "target3"}},
+		// R3.1: -r with -m (only change mod time).
+		{Name: "r3_reference_mod_only", Args: []string{"-m", "-r", refFile, "target4"}},
+		// R3.2: -d with ISO date string.
+		{Name: "r3_date_iso", Args: []string{"-d", "2024-01-15 10:30:30", "dfile1"}},
+		// R3.2: -d with epoch format.
+		{Name: "r3_date_epoch", Args: []string{"-d", "@1705312230", "dfile2"}},
+		// R3.2: --date=STRING long form.
+		{Name: "r3_date_long", Args: []string{"--date=2024-01-15 10:30:30", "dfile3"}},
+		// R3.2: -d with date only.
+		{Name: "r3_date_only", Args: []string{"-d", "2024-01-15", "dfile4"}},
+		// R3.3: missing reference file exits 1 with error.
+		{Name: "r3_missing_ref", Args: []string{"-r", "/nonexistent/ref", "target"}, ExitCode: 1, Normalize: normCase},
+		// R3.2: invalid date string exits 1 with error.
+		{Name: "r3_invalid_date", Args: []string{"-d", "not-a-date", "dfile5"}, ExitCode: 1, Normalize: norm},
+		// R3.4: -h on nonexistent file errors (utimensat cannot create).
+		{Name: "r3_no_deref_nonexistent", Args: []string{"-h", "hfile"}, ExitCode: 1, Normalize: normCase},
+		// R3.4: --no-dereference long form on nonexistent file.
+		{Name: "r3_no_deref_long_nonexist", Args: []string{"--no-dereference", "hfile2"}, ExitCode: 1, Normalize: normCase},
+		// R3.4: -h combined with -c on nonexistent file (silent skip).
+		{Name: "r3_no_deref_no_create", Args: []string{"-hc", "nonexistent_h"}},
+		// R3.4: -h on existing regular file works normally.
+		{Name: "r3_no_deref_existing", Args: []string{"-h", "existfile"}, WorkDir: hDir},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -311,5 +383,157 @@ func TestExplicitTimestampAccessOnly(t *testing.T) {
 	// Mod time must be preserved.
 	if fi.ModTime.Year() != 2020 {
 		t.Fatalf("mod time changed: got %v, want year 2020", fi.ModTime)
+	}
+}
+
+// TestReferenceFile verifies R3.1: -r copies timestamps from a reference file.
+func TestReferenceFile(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+
+	refFile := filepath.Join(dir, "reffile")
+	if err := os.WriteFile(refFile, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refTime := time.Date(2023, 6, 15, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(refFile, refTime, refTime); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(dir, "target")
+	cmd := exec.Command(goBin, "-r", refFile, target)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("touch -r failed: %v\n%s", err, out)
+	}
+
+	fi, err := sys.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fi.ModTime.Equal(refTime) {
+		t.Fatalf("mod time: got %v, want %v", fi.ModTime, refTime)
+	}
+	if !fi.AccessTime.Equal(refTime) {
+		t.Fatalf("access time: got %v, want %v", fi.AccessTime, refTime)
+	}
+}
+
+// TestDateString verifies R3.2: -d parses date string and sets timestamps.
+func TestDateString(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+
+	cmd := exec.Command(goBin, "-d", "2024-01-15 10:30:30", target)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("touch -d failed: %v\n%s", err, out)
+	}
+
+	fi, err := sys.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := time.Date(2024, 1, 15, 10, 30, 30, 0, time.Local)
+	if !fi.ModTime.Equal(expected) {
+		t.Fatalf("mod time: got %v, want %v", fi.ModTime, expected)
+	}
+	if !fi.AccessTime.Equal(expected) {
+		t.Fatalf("access time: got %v, want %v", fi.AccessTime, expected)
+	}
+}
+
+// TestDateStringEpoch verifies R3.2: -d with @epoch format.
+func TestDateStringEpoch(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+
+	cmd := exec.Command(goBin, "-d", "@1705312230", target)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("touch -d @epoch failed: %v\n%s", err, out)
+	}
+
+	fi, err := sys.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := time.Unix(1705312230, 0)
+	if !fi.ModTime.Equal(expected) {
+		t.Fatalf("mod time: got %v, want %v", fi.ModTime, expected)
+	}
+}
+
+// TestMissingReferenceFile verifies R3.3: error on missing reference file.
+func TestMissingReferenceFile(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+
+	cmd := exec.Command(goBin, "-r", "/nonexistent/reffile", target)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for missing reference file")
+	}
+	if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+		t.Fatalf("expected exit code 1, got %v", err)
+	}
+	if !strings.Contains(string(out), "failed to get attributes") {
+		t.Fatalf("expected 'failed to get attributes' in output: %s", out)
+	}
+	// R3.3: target should not be created when reference file is missing.
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("target should not have been created")
+	}
+}
+
+// TestNoDereferenceSymlink verifies R3.4: -h affects the symlink itself.
+func TestNoDereferenceSymlink(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+
+	// Create a regular file with old timestamps.
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(target, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a symlink pointing to the target.
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	// Touch the symlink with -h and an explicit timestamp.
+	cmd := exec.Command(goBin, "-h", "-t", "202401151030.00", link)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("touch -h failed: %v\n%s", err, out)
+	}
+
+	// R3.4: target's timestamps should be unchanged.
+	fi, err := sys.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.ModTime.Year() != 2020 {
+		t.Fatalf("target mtime changed: got %v, want year 2020", fi.ModTime)
+	}
+
+	// R3.4: symlink's own timestamps should be updated.
+	lfi, err := sys.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := time.Date(2024, 1, 15, 10, 30, 0, 0, time.Local)
+	if !lfi.ModTime.Equal(expected) {
+		t.Fatalf("symlink mtime: got %v, want %v", lfi.ModTime, expected)
 	}
 }
