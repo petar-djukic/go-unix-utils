@@ -3,6 +3,7 @@
 
 // Implements prd060-date R1.1–R1.4: default output, format strings,
 // strftime conversion specifications, and GNU padding extensions.
+// Implements prd060-date R2.1–R2.4: --date/-d flag input parsing.
 package main
 
 import (
@@ -22,6 +23,31 @@ const progName = "date"
 // R1.1: used when no +FORMAT argument is given.
 const defaultFormat = "%a %b %e %H:%M:%S %Z %Y"
 
+// dateLayouts lists time formats to try when parsing absolute date strings.
+// R2.3: ISO 8601 and common GNU-recognized formats. Tried in order;
+// more specific layouts come first to avoid ambiguous partial matches.
+var dateLayouts = []string{
+	time.RFC3339,
+	"2006-01-02 15:04:05 -0700",
+	"2006-01-02 15:04:05 MST",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02T15:04",
+	"2006-01-02",
+	time.RFC1123Z,
+	time.RFC1123,
+	time.RFC822Z,
+	time.RFC822,
+	"02 Jan 2006 15:04:05 -0700",
+	"02 Jan 2006 15:04:05",
+	"02 Jan 2006",
+	"Jan 02, 2006 15:04:05",
+	"Jan 02, 2006",
+	"January 02, 2006 15:04:05",
+	"January 02, 2006",
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, time.Now()))
@@ -30,30 +56,115 @@ func main() {
 // run parses arguments, formats the date, and prints the result.
 // R1.1: no arguments uses the default format.
 // R1.2: +FORMAT uses the specified format string.
+// R2.1: -d/--date uses the specified date string.
 func run(args []string, stdout, stderr io.Writer, now time.Time) int {
-	format, code := parseArgs(args, stdout, stderr)
+	format, dateStr, dateSet, code := parseArgs(args, stdout, stderr)
 	if code >= 0 {
 		return code
 	}
-	fmt.Fprintln(stdout, strftime(now, format))
+	t, err := resolveTime(now, dateStr, dateSet)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: invalid date '%s'\n", progName, dateStr)
+		return 1
+	}
+	fmt.Fprintln(stdout, strftime(t, format))
 	return 0
 }
 
-// parseArgs extracts the format string from arguments.
-// Returns (format, exitCode); exitCode -1 means continue.
-func parseArgs(args []string, stdout, stderr io.Writer) (string, int) {
-	var format string
+// resolveTime returns the parsed date from dateStr, or now if dateSet
+// is false. R2.1: -d STRING overrides the current time.
+func resolveTime(now time.Time, dateStr string, dateSet bool) (time.Time, error) {
+	if !dateSet {
+		return now, nil
+	}
+	if dateStr == "" {
+		// GNU date treats -d "" as midnight of the current day.
+		y, m, d := now.Date()
+		return time.Date(y, m, d, 0, 0, 0, 0, now.Location()), nil
+	}
+	return parseDate(dateStr)
+}
+
+// parseArgs extracts the format string and optional date string from args.
+// Returns (format, dateStr, dateSet, exitCode); exitCode -1 means continue.
+// R2.1: handles -d, --date, --date= for date string extraction.
+func parseArgs(args []string, stdout, stderr io.Writer) (string, string, bool, int) {
+	var format, dateStr string
 	formatSet := false
-	for _, arg := range args {
+	dateSet := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if consumed, ds, code := handleDateFlag(args, i, stderr); code == 0 {
+			dateStr = ds
+			dateSet = true
+			i += consumed
+			continue
+		} else if code > 0 {
+			return "", "", false, code
+		}
 		code := handleArg(arg, &format, &formatSet, stdout, stderr)
 		if code >= 0 {
-			return "", code
+			return "", "", false, code
 		}
 	}
 	if !formatSet {
-		return defaultFormat, -1
+		format = defaultFormat
 	}
-	return format, -1
+	return format, dateStr, dateSet, -1
+}
+
+// handleDateFlag checks if args[i] is a -d/--date flag and extracts
+// the date string. Returns (extra consumed, value, status).
+// Status: 0 = matched, >0 = matched with error exit code, -1 = not matched.
+// R2.1: supports -d STRING, -dSTRING, --date=STRING, --date STRING.
+func handleDateFlag(args []string, i int, stderr io.Writer) (int, string, int) {
+	arg := args[i]
+	if strings.HasPrefix(arg, "--date=") {
+		return 0, arg[7:], 0
+	}
+	if arg == "-d" || arg == "--date" {
+		if i+1 >= len(args) {
+			fmt.Fprintf(stderr, "%s: option requires an argument -- 'd'\n", progName)
+			printTryHelp(stderr)
+			return 0, "", 1
+		}
+		return 1, args[i+1], 0
+	}
+	if len(arg) > 2 && arg[:2] == "-d" {
+		return 0, arg[2:], 0
+	}
+	return 0, "", -1
+}
+
+// parseDate parses a date string into a time.Time.
+// R2.2: handles @EPOCH prefix. R2.3: tries ISO 8601 layouts.
+func parseDate(s string) (time.Time, error) {
+	if strings.HasPrefix(s, "@") {
+		return parseEpoch(s[1:])
+	}
+	return parseAbsoluteDate(s)
+}
+
+// parseEpoch parses a Unix epoch timestamp string.
+// R2.2: @EPOCH format (e.g., "@1234567890").
+func parseEpoch(s string) (time.Time, error) {
+	epoch, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid epoch: %w", err)
+	}
+	return time.Unix(epoch, 0), nil
+}
+
+// parseAbsoluteDate tries known date formats in order.
+// R2.3: ISO 8601 and common GNU-recognized formats.
+func parseAbsoluteDate(s string) (time.Time, error) {
+	for _, layout := range dateLayouts {
+		t, err := time.ParseInLocation(layout, s, time.Local)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unable to parse date")
 }
 
 // handleArg processes a single argument. Returns exit code >= 0
@@ -360,8 +471,9 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... [+FORMAT]\n", progName)
 	fmt.Fprintln(w, "Display the current time in the given FORMAT.")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "      --help        display this help and exit")
-	fmt.Fprintln(w, "      --version     output version information and exit")
+	fmt.Fprintln(w, "  -d, --date=STRING  display time described by STRING")
+	fmt.Fprintln(w, "      --help         display this help and exit")
+	fmt.Fprintln(w, "      --version      output version information and exit")
 }
 
 // printVersion writes version information to w.

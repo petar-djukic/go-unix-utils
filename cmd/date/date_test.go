@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd060-date R1.1–R1.4.
+// Differential tests for prd060-date R1.1–R1.4, R2.1–R2.4.
 package main
 
 import (
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,6 +88,80 @@ func TestDiff(t *testing.T) {
 			Name: "format_composite_F",
 			Args: []string{"+%F"},
 		},
+		{
+			// R2.1, R2.2: epoch zero via -d flag with format.
+			Name: "date_d_epoch_zero",
+			Args: []string{"-d", "@0", "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.2: large epoch timestamp.
+			Name: "date_d_epoch_large",
+			Args: []string{"-d", "@1234567890", "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.1: --date= long form with epoch.
+			Name: "date_long_flag_epoch",
+			Args: []string{"--date=@1700000000", "+%s"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.1: --date with space separator.
+			Name: "date_long_flag_space_epoch",
+			Args: []string{"--date", "@1700000000", "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.2: epoch with default format.
+			Name: "date_d_epoch_default_format",
+			Args: []string{"-d", "@0"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.2: negative epoch (before 1970).
+			Name: "date_d_epoch_negative",
+			Args: []string{"-d", "@-86400", "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.3: ISO 8601 date only.
+			Name: "date_d_iso_date",
+			Args: []string{"-d", "2024-01-15", "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.3: ISO 8601 date-time with space.
+			Name: "date_d_iso_datetime_space",
+			Args: []string{"-d", "2024-01-15 10:30:00", "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.3: ISO 8601 date-time with T separator.
+			Name: "date_d_iso_datetime_T",
+			Args: []string{"-d", "2024-06-15T14:30:00", "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.1: -d with concatenated value.
+			Name: "date_d_concat_epoch",
+			Args: []string{"-d@0", "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R2.4: invalid date string produces exit code 1.
+			Name:      "date_d_invalid",
+			Args:      []string{"-d", "not-a-date"},
+			ExitCode:  1,
+			Env:       []string{"TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgName},
+		},
+		{
+			// R2.1: empty date string treated as midnight today by GNU date.
+			Name:      "date_d_empty_string",
+			Args:      []string{"-d", "", "+%H:%M:%S"},
+			Env:       []string{"TZ=UTC"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -153,9 +228,81 @@ func TestStrftime(t *testing.T) {
 	}
 }
 
+// TestParseDate verifies date string parsing for R2.2 and R2.3.
+func TestParseDate(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+		wantSec int64 // expected Unix timestamp (only checked if !wantErr)
+	}{
+		{"epoch_zero", "@0", false, 0},
+		{"epoch_positive", "@1234567890", false, 1234567890},
+		{"epoch_negative", "@-86400", false, -86400},
+		{"epoch_invalid", "@notanumber", true, 0},
+		{"iso_date", "@1705276800", false, 1705276800},
+		{"empty_string", "", true, 0},
+		{"garbage", "not-a-date", true, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseDate(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("parseDate(%q) = %v, want error", tc.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseDate(%q) error: %v", tc.input, err)
+			}
+			if got.Unix() != tc.wantSec {
+				t.Errorf("parseDate(%q).Unix() = %d, want %d", tc.input, got.Unix(), tc.wantSec)
+			}
+		})
+	}
+}
+
+// TestRun verifies the run function for R2.1 and R2.4 integration.
+func TestRun(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode int
+	}{
+		{"d_epoch", []string{"-d", "@0", "+%Y"}, 0},
+		{"date_equals_epoch", []string{"--date=@0", "+%Y"}, 0},
+		{"d_invalid", []string{"-d", "garbage"}, 1},
+		{"d_missing_arg", []string{"-d"}, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr strings.Builder
+			code := run(tc.args, &stdout, &stderr, now)
+			if code != tc.wantCode {
+				t.Errorf("run(%v) = %d, want %d; stderr=%q",
+					tc.args, code, tc.wantCode, stderr.String())
+			}
+		})
+	}
+}
+
 // normalizeTimePortion replaces HH:MM:SS with a placeholder to avoid
 // flakiness when the two binaries execute across a second boundary.
 func normalizeTimePortion(data []byte) []byte {
 	re := regexp.MustCompile(`\d{2}:\d{2}:\d{2}`)
 	return re.ReplaceAll(data, []byte("HH:MM:SS"))
+}
+
+// normalizeProgName replaces the program name prefix to handle
+// differences between "date" and "gdate" in error messages.
+// R2.4: allows error message comparison across binary names.
+func normalizeProgName(data []byte) []byte {
+	re := regexp.MustCompile(`(?m)^g?date:`)
+	return re.ReplaceAll(data, []byte("DATE:"))
 }
