@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd073-printf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: format string
-// processing, conversion specifiers (integer, float, string, char, %b),
-// width/precision/flags, escape sequences, argument cycling, and missing
-// argument defaults.
+// Implements prd073-printf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4:
+// format string processing, conversion specifiers (integer, float, string,
+// char, %b), width/precision/flags, escape sequences, argument cycling,
+// missing argument defaults, exit codes, and error handling.
 package main
 
 import (
@@ -108,6 +108,8 @@ func processOnce(format string, args []string, argIdx *int, w *bufio.Writer, std
 
 // handlePercent processes a format directive starting at %.
 // Returns exit code, bytes consumed, and stop flag.
+// R4.2: invalid directives produce an error on stderr with no stdout output
+// for the invalid spec, and the remainder of the format is skipped.
 func handlePercent(format string, args []string, argIdx *int, w *bufio.Writer, stderr io.Writer) (int, int, bool) {
 	if len(format) > 1 && format[1] == '%' {
 		w.WriteByte('%')
@@ -115,29 +117,25 @@ func handlePercent(format string, args []string, argIdx *int, w *bufio.Writer, s
 	}
 	d, n := parseDirective(format)
 	if n == 0 {
-		fmt.Fprintf(stderr, "%s: '%%%c': invalid directive\n", progName, safeChar(format, 1))
-		consumed := minInt(2, len(format))
-		w.WriteString(format[:consumed])
-		return 1, consumed, false
+		spec := invalidSpec(format)
+		fmt.Fprintf(stderr, "%s: %s: invalid conversion specification\n", progName, spec)
+		return 1, len(format), false
 	}
 	code, stop := writeDirective(d, args, argIdx, w, stderr)
 	return code, n, stop
 }
 
-// safeChar returns the byte at pos or '?' if out of range.
-func safeChar(s string, pos int) byte {
-	if pos < len(s) {
-		return s[pos]
+// invalidSpec extracts the invalid conversion specification text from format.
+// GNU printf includes from % through the next non-flag/non-digit character.
+func invalidSpec(format string) string {
+	i := 1
+	for i < len(format) && (isFlagChar(format[i]) || (format[i] >= '0' && format[i] <= '9') || format[i] == '.' || format[i] == '*') {
+		i++
 	}
-	return '?'
-}
-
-// minInt returns the smaller of a and b.
-func minInt(a, b int) int {
-	if a < b {
-		return a
+	if i < len(format) {
+		i++
 	}
-	return b
+	return format[:i]
 }
 
 // directive represents a parsed conversion specifier.
@@ -286,6 +284,7 @@ func fmtUintVerb(d directive, width, prec, arg string, verb byte, stderr io.Writ
 }
 
 // fmtFloatVerb formats a floating-point conversion specifier.
+// R4.2: defaults precision to 6 for %g/%G when not specified, matching GNU.
 func fmtFloatVerb(d directive, width, prec, arg string, stderr io.Writer) (string, int) {
 	val, err := parseFloatArg(arg)
 	code := 0
@@ -294,15 +293,25 @@ func fmtFloatVerb(d directive, width, prec, arg string, stderr io.Writer) (strin
 		val = 0
 		code = 1
 	}
-	goVerb := d.verb
+	dd := d
+	if !dd.hasDot && isGVerb(dd.verb) {
+		dd.hasDot = true
+		prec = "6"
+	}
+	goVerb := dd.verb
 	if goVerb == 'F' {
 		goVerb = 'f'
 	}
-	result := fmt.Sprintf(buildFmtStr(d, width, prec, goVerb), val)
-	if d.verb == 'F' {
+	result := fmt.Sprintf(buildFmtStr(dd, width, prec, goVerb), val)
+	if dd.verb == 'F' {
 		result = strings.ToUpper(result)
 	}
 	return result, code
+}
+
+// isGVerb returns true for %g and %G verbs.
+func isGVerb(c byte) bool {
+	return c == 'g' || c == 'G'
 }
 
 // fmtStrVerb formats a %s conversion specifier.

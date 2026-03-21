@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd073-printf R3.1–R3.4, R4.3–R4.4: differential tests for format
-// string parsing, conversion specifiers, width/precision/flags, escape sequences,
-// argument cycling, and missing argument defaults.
+// Implements prd073-printf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4:
+// differential tests for format string parsing, conversion specifiers,
+// width/precision/flags, escape sequences, argument cycling, missing argument
+// defaults, exit codes, and error handling.
 package main
 
 import (
@@ -177,11 +178,47 @@ func TestDiff(t *testing.T) {
 		{Name: "string_precision", Args: []string{"%.3s\\n", "hello"}},
 		{Name: "precision_zero_d", Args: []string{"%.0d\\n", "0"}},
 
-		// Error cases (R4.2: partial output + exit 1)
+		// R4.1: exit 0 on successful formatting
+		{Name: "r4_exit0_simple_string", Args: []string{"%s\\n", "hello"}},
+		{Name: "r4_exit0_integer", Args: []string{"%d\\n", "42"}},
+		{Name: "r4_exit0_float", Args: []string{"%.2f\\n", "3.14"}},
+		{Name: "r4_exit0_literal_only", Args: []string{"hello world"}},
+		{Name: "r4_exit0_empty_format", Args: []string{""}},
+		{Name: "r4_exit0_multiple_args", Args: []string{"%s %d\\n", "hello", "42"}},
+
+		// R4.2: exit 1 on error with partial output
 		{Name: "non_numeric_d", Args: []string{"%d\\n", "abc"}, ExitCode: 1,
 			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
 		{Name: "non_numeric_f", Args: []string{"%f\\n", "abc"}, ExitCode: 1,
 			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_non_numeric_o", Args: []string{"%o\\n", "xyz"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_non_numeric_u", Args: []string{"%u\\n", "abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_non_numeric_x", Args: []string{"%x\\n", "not_a_num"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_partial_output_before_error", Args: []string{"hello %d\\n", "abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_error_then_valid", Args: []string{"%d %d\\n", "abc", "42"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_invalid_directive_z", Args: []string{"%z"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_invalid_directive_after_text", Args: []string{"hello%z"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+
+		// R4.3/R4.4: comprehensive coverage of all format types
+		{Name: "r4_cover_i_format", Args: []string{"%i\\n", "-10"}},
+		{Name: "r4_cover_u_large", Args: []string{"%u\\n", "4294967295"}},
+		{Name: "r4_cover_X_format", Args: []string{"%X\\n", "255"}},
+		{Name: "r4_cover_e_format", Args: []string{"%e\\n", "0.001"}},
+		{Name: "r4_cover_G_format", Args: []string{"%G\\n", "123456.789"}},
+		{Name: "r4_cover_b_with_escapes", Args: []string{"%b\\n", "a\\tb\\nc"}},
+		{Name: "r4_cover_c_format", Args: []string{"%c\\n", "Z"}},
+		{Name: "r4_cover_width_prec_star", Args: []string{"%*.*d\\n", "10", "5", "42"}},
+		{Name: "r4_cover_recycle_mixed", Args: []string{"%s\\n", "one", "two", "three"}},
+		{Name: "r4_cover_escape_mix", Args: []string{"\\t%s\\n", "val"}},
+		{Name: "r4_cover_char_value_quote", Args: []string{"%d\\n", "'Z"}},
+		{Name: "r4_cover_missing_args_multi", Args: []string{"%d %s %f\\n"}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
