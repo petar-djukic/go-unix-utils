@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd053-sort R1.1–R1.7.
+// Differential tests for prd053-sort R1.1–R1.7, R2.1, R3.1–R3.3.
 package main_test
 
 import (
@@ -184,6 +184,120 @@ func TestDiff(t *testing.T) {
 			Name:  "stable_unique",
 			Args:  []string{"-su"},
 			Stdin: []byte("b\na\nb\na\n"),
+		},
+		// R2.1: numeric sort.
+		{
+			Name:  "numeric_sort",
+			Args:  []string{"-n"},
+			Stdin: []byte("10\n2\n1\n20\n"),
+		},
+		// R2.1: numeric sort with negative numbers.
+		{
+			Name:  "numeric_negative",
+			Args:  []string{"-n"},
+			Stdin: []byte("3\n-1\n2\n-5\n"),
+		},
+		// R2.1: numeric sort with leading spaces.
+		{
+			Name:  "numeric_leading_spaces",
+			Args:  []string{"-n"},
+			Stdin: []byte("  10\n 2\n1\n"),
+		},
+		// R2.1: numeric with non-numeric lines.
+		{
+			Name:  "numeric_non_numeric",
+			Args:  []string{"-n"},
+			Stdin: []byte("abc\n10\n2\nxyz\n"),
+		},
+		// R2.1: numeric with reverse.
+		{
+			Name:  "numeric_reverse",
+			Args:  []string{"-nr"},
+			Stdin: []byte("10\n2\n1\n20\n"),
+		},
+		// R2.1: numeric unique.
+		{
+			Name:  "numeric_unique",
+			Args:  []string{"-nu"},
+			Stdin: []byte("3\n1\n2\n1\n3\n"),
+		},
+		// R3.2: sort by second whitespace-delimited field (AC1).
+		{
+			Name:  "key_field2",
+			Args:  []string{"-k2,2"},
+			Stdin: []byte("b 2\na 3\nc 1\n"),
+		},
+		// R3.1, R3.2: colon separator sort by second field (AC2).
+		{
+			Name:  "key_colon_sep",
+			Args:  []string{"-t:", "-k2,2"},
+			Stdin: []byte("root:0:root\nbin:1:bin\nnobody:99:nobody\n"),
+		},
+		// R3.1: colon separator, key from field 2 to end of line.
+		{
+			Name:  "key_colon_sep_open_end",
+			Args:  []string{"-t:", "-k2"},
+			Stdin: []byte("c:banana\na:cherry\nb:apple\n"),
+		},
+		// R3.3: multiple keys, alpha field 1 + numeric field 2 (AC3).
+		{
+			Name:  "multi_key_alpha_numeric",
+			Args:  []string{"-k1,1", "-k2,2n"},
+			Stdin: []byte("a 10\na 2\nb 1\na 3\n"),
+		},
+		// R3.3: multiple keys with all ties fall back to whole line.
+		{
+			Name:  "multi_key_all_tied",
+			Args:  []string{"-k1,1", "-k2,2"},
+			Stdin: []byte("a b\na b\nc d\n"),
+		},
+		// R3.2: character offsets within a field (AC4).
+		{
+			Name:  "key_char_offset",
+			Args:  []string{"-k1.2,1.3"},
+			Stdin: []byte("abc\nadc\naxc\naac\n"),
+		},
+		// R3.2: character offsets in second field.
+		{
+			Name:  "key_field2_char_offset",
+			Args:  []string{"-k2.3,2.5"},
+			Stdin: []byte("x abcde\ny abxyz\nz abaaa\n"),
+		},
+		// R3.2: key with reverse modifier per key.
+		{
+			Name:  "key_reverse_modifier",
+			Args:  []string{"-k2,2r"},
+			Stdin: []byte("a 2\nb 3\nc 1\n"),
+		},
+		// R3.2: key beyond available fields sorts as empty.
+		{
+			Name:  "key_beyond_fields",
+			Args:  []string{"-k5,5"},
+			Stdin: []byte("a b c\nd e f\ng h i\n"),
+		},
+		// R1.5 + R3.2: unique dedup by key.
+		{
+			Name:  "unique_with_key",
+			Args:  []string{"-u", "-k1,1"},
+			Stdin: []byte("a 2\na 1\nb 3\nb 4\n"),
+		},
+		// R3.2: key with --key= long form.
+		{
+			Name:  "key_long_flag",
+			Args:  []string{"--key=2,2"},
+			Stdin: []byte("b 2\na 3\nc 1\n"),
+		},
+		// R3.1: --field-separator= long form.
+		{
+			Name:  "sep_long_flag",
+			Args:  []string{"--field-separator=:", "--key=2,2"},
+			Stdin: []byte("root:0:root\nbin:1:bin\nnobody:99:nobody\n"),
+		},
+		// R3.3: three keys with mixed modifiers.
+		{
+			Name:  "three_keys",
+			Args:  []string{"-t:", "-k1,1", "-k2,2n", "-k3,3"},
+			Stdin: []byte("a:2:y\na:10:x\nb:1:z\na:2:x\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
