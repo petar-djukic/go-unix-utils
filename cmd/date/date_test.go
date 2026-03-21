@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd060-date R1.1–R1.4, R2.1–R2.4.
+// Differential tests for prd060-date R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -22,7 +24,20 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skipf("reference binary gdate not in PATH: %v", err)
 	}
-	tests := []testutils.DiffTest{
+
+	// R3.2: create a reference file with a known modification time.
+	refDir := t.TempDir()
+	refFile := filepath.Join(refDir, "reffile")
+	writeRefFile(t, refFile)
+
+	tests := buildR1R2Tests()
+	tests = append(tests, buildR3Tests(refFile)...)
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// buildR1R2Tests returns differential test cases for R1 and R2.
+func buildR1R2Tests() []testutils.DiffTest {
+	return []testutils.DiffTest{
 		{
 			// R1.1: default format with no arguments.
 			Name:      "default_format",
@@ -158,12 +173,88 @@ func TestDiff(t *testing.T) {
 		},
 		{
 			// R2.1: empty date string treated as midnight today by GNU date.
-			Name:      "date_d_empty_string",
-			Args:      []string{"-d", "", "+%H:%M:%S"},
-			Env:       []string{"TZ=UTC"},
+			Name: "date_d_empty_string",
+			Args: []string{"-d", "", "+%H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
 		},
 	}
-	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// buildR3Tests returns differential test cases for R3 requirements.
+func buildR3Tests(refFile string) []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			// R3.1: -u flag displays UTC.
+			Name: "utc_flag_u",
+			Args: []string{"-u", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"},
+		},
+		{
+			// R3.1: --utc long flag displays UTC.
+			Name: "utc_flag_long",
+			Args: []string{"--utc", "-d", "@1700000000", "+%Z"},
+		},
+		{
+			// R3.1: --universal long flag displays UTC.
+			Name: "utc_flag_universal",
+			Args: []string{"--universal", "-d", "@1700000000", "+%Z"},
+		},
+		{
+			// R3.1: -u combined with format string.
+			Name: "utc_with_epoch_seconds",
+			Args: []string{"-u", "-d", "@1700000000", "+%s"},
+		},
+		{
+			// R3.2: -r flag displays file modification time.
+			Name: "ref_file_short_flag",
+			Args: []string{"-r", refFile, "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R3.2: --reference= long form with file path.
+			Name: "ref_file_long_flag_equals",
+			Args: []string{"--reference=" + refFile, "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R3.2: --reference with space separator.
+			Name: "ref_file_long_flag_space",
+			Args: []string{"--reference", refFile, "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R3.2: -r with concatenated file path.
+			Name: "ref_file_concat",
+			Args: []string{"-r" + refFile, "+%Y-%m-%d"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R3.2, R3.1: -r combined with -u for UTC output.
+			Name: "ref_file_with_utc",
+			Args: []string{"-u", "-r", refFile, "+%Y-%m-%d %H:%M:%S %Z"},
+		},
+		{
+			// R3.3: missing reference file exits 1.
+			Name:      "ref_file_missing",
+			Args:      []string{"-r", "/nonexistent/path/to/file"},
+			ExitCode:  1,
+			Env:       []string{"TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgName, normalizeErrCase},
+		},
+	}
+}
+
+// writeRefFile creates a test file and sets its modification time to a
+// known epoch for deterministic differential testing.
+func writeRefFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("test\n"), 0o644); err != nil {
+		t.Fatalf("creating reference file: %v", err)
+	}
+	// Set mtime to 2024-06-15 12:00:00 UTC for deterministic output.
+	mtime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, mtime, mtime); err != nil {
+		t.Fatalf("setting reference file mtime: %v", err)
+	}
 }
 
 // TestStrftime verifies strftime formatting with a fixed time for
@@ -265,10 +356,16 @@ func TestParseDate(t *testing.T) {
 	}
 }
 
-// TestRun verifies the run function for R2.1 and R2.4 integration.
+// TestRun verifies the run function for R2.1, R2.4, R3.1–R3.3 integration.
 func TestRun(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Create a reference file for -r tests.
+	refDir := t.TempDir()
+	refFile := filepath.Join(refDir, "testfile")
+	writeRefFile(t, refFile)
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -278,6 +375,16 @@ func TestRun(t *testing.T) {
 		{"date_equals_epoch", []string{"--date=@0", "+%Y"}, 0},
 		{"d_invalid", []string{"-d", "garbage"}, 1},
 		{"d_missing_arg", []string{"-d"}, 1},
+		// R3.1: UTC mode.
+		{"utc_flag", []string{"-u", "-d", "@0", "+%Z"}, 0},
+		{"utc_long", []string{"--utc", "-d", "@0", "+%Z"}, 0},
+		{"universal_long", []string{"--universal", "-d", "@0", "+%Z"}, 0},
+		// R3.2: reference file.
+		{"ref_file", []string{"-r", refFile, "+%Y"}, 0},
+		{"ref_file_long", []string{"--reference=" + refFile, "+%Y"}, 0},
+		// R3.3: missing reference file.
+		{"ref_file_missing", []string{"-r", "/nonexistent/file"}, 1},
+		{"ref_missing_arg", []string{"-r"}, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,11 +399,51 @@ func TestRun(t *testing.T) {
 	}
 }
 
+// TestRunUTCOutput verifies that -u flag actually produces UTC output.
+func TestRunUTCOutput(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	var stdout, stderr strings.Builder
+	code := run([]string{"-u", "-d", "@0", "+%Z"}, &stdout, &stderr, now)
+	if code != 0 {
+		t.Fatalf("run returned %d; stderr=%q", code, stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != "UTC" {
+		t.Errorf("got timezone %q, want %q", got, "UTC")
+	}
+}
+
+// TestRunRefFileOutput verifies -r returns the file's modification time.
+func TestRunRefFileOutput(t *testing.T) {
+	t.Parallel()
+	refDir := t.TempDir()
+	refFile := filepath.Join(refDir, "testfile")
+	writeRefFile(t, refFile)
+
+	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	var stdout, stderr strings.Builder
+	code := run([]string{"-r", refFile, "+%Y-%m-%d"}, &stdout, &stderr, now)
+	if code != 0 {
+		t.Fatalf("run returned %d; stderr=%q", code, stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != "2024-06-15" {
+		t.Errorf("got %q, want %q", got, "2024-06-15")
+	}
+}
+
 // normalizeTimePortion replaces HH:MM:SS with a placeholder to avoid
 // flakiness when the two binaries execute across a second boundary.
 func normalizeTimePortion(data []byte) []byte {
 	re := regexp.MustCompile(`\d{2}:\d{2}:\d{2}`)
 	return re.ReplaceAll(data, []byte("HH:MM:SS"))
+}
+
+// normalizeErrCase lowercases stderr to handle casing differences
+// between Go ("no such file or directory") and GNU ("No such file or directory").
+func normalizeErrCase(data []byte) []byte {
+	return []byte(strings.ToLower(string(data)))
 }
 
 // normalizeProgName replaces the program name prefix to handle

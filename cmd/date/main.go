@@ -4,6 +4,8 @@
 // Implements prd060-date R1.1–R1.4: default output, format strings,
 // strftime conversion specifications, and GNU padding extensions.
 // Implements prd060-date R2.1–R2.4: --date/-d flag input parsing.
+// Implements prd060-date R3.1–R3.4: UTC mode, reference file time,
+// error handling for missing files, stdout-only output.
 package main
 
 import (
@@ -53,64 +55,153 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, time.Now()))
 }
 
+// dateOpts holds parsed command-line options for the date utility.
+type dateOpts struct {
+	format  string
+	dateStr string
+	dateSet bool
+	refFile string
+	refSet  bool
+	utc     bool
+}
+
 // run parses arguments, formats the date, and prints the result.
 // R1.1: no arguments uses the default format.
 // R1.2: +FORMAT uses the specified format string.
 // R2.1: -d/--date uses the specified date string.
+// R3.1: -u/--utc/--universal uses UTC.
+// R3.2: -r/--reference uses file modification time.
 func run(args []string, stdout, stderr io.Writer, now time.Time) int {
-	format, dateStr, dateSet, code := parseArgs(args, stdout, stderr)
+	opts, code := parseArgs(args, stdout, stderr)
 	if code >= 0 {
 		return code
 	}
-	t, err := resolveTime(now, dateStr, dateSet)
+	t, err := resolveTime(now, opts, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: invalid date '%s'\n", progName, dateStr)
 		return 1
 	}
-	fmt.Fprintln(stdout, strftime(t, format))
+	// R3.1: convert to UTC if requested.
+	if opts.utc {
+		t = t.UTC()
+	}
+	fmt.Fprintln(stdout, strftime(t, opts.format))
 	return 0
 }
 
-// resolveTime returns the parsed date from dateStr, or now if dateSet
-// is false. R2.1: -d STRING overrides the current time.
-func resolveTime(now time.Time, dateStr string, dateSet bool) (time.Time, error) {
-	if !dateSet {
-		return now, nil
+// resolveTime returns the time to display based on options.
+// R2.1: -d STRING overrides the current time.
+// R3.2: -r FILE uses the file's modification time.
+func resolveTime(now time.Time, opts dateOpts, stderr io.Writer) (time.Time, error) {
+	if opts.refSet {
+		return resolveRefFile(opts.refFile, stderr)
 	}
+	if opts.dateSet {
+		return resolveDateStr(now, opts.dateStr, stderr)
+	}
+	return now, nil
+}
+
+// resolveRefFile returns the modification time of the referenced file.
+// R3.2, R3.3: prints error and returns error if file does not exist.
+func resolveRefFile(path string, stderr io.Writer) (time.Time, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %s: %s\n", progName, path, stripPathError(err))
+		return time.Time{}, err
+	}
+	return info.ModTime(), nil
+}
+
+// stripPathError extracts the underlying message from a *os.PathError,
+// removing the duplicated path and operation prefix.
+func stripPathError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// resolveDateStr parses a date string or returns midnight for empty strings.
+// R2.1: -d STRING overrides the current time.
+func resolveDateStr(now time.Time, dateStr string, stderr io.Writer) (time.Time, error) {
 	if dateStr == "" {
 		// GNU date treats -d "" as midnight of the current day.
 		y, m, d := now.Date()
 		return time.Date(y, m, d, 0, 0, 0, 0, now.Location()), nil
 	}
-	return parseDate(dateStr)
+	t, err := parseDate(dateStr)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: invalid date '%s'\n", progName, dateStr)
+		return time.Time{}, err
+	}
+	return t, nil
 }
 
-// parseArgs extracts the format string and optional date string from args.
-// Returns (format, dateStr, dateSet, exitCode); exitCode -1 means continue.
-// R2.1: handles -d, --date, --date= for date string extraction.
-func parseArgs(args []string, stdout, stderr io.Writer) (string, string, bool, int) {
-	var format, dateStr string
+// parseArgs extracts options from args.
+// Returns (opts, exitCode); exitCode -1 means continue.
+func parseArgs(args []string, stdout, stderr io.Writer) (dateOpts, int) {
+	var opts dateOpts
 	formatSet := false
-	dateSet := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if consumed, ds, code := handleDateFlag(args, i, stderr); code == 0 {
-			dateStr = ds
-			dateSet = true
+			opts.dateStr = ds
+			opts.dateSet = true
 			i += consumed
 			continue
 		} else if code > 0 {
-			return "", "", false, code
+			return dateOpts{}, code
 		}
-		code := handleArg(arg, &format, &formatSet, stdout, stderr)
+		if consumed, rf, code := handleRefFlag(args, i, stderr); code == 0 {
+			opts.refFile = rf
+			opts.refSet = true
+			i += consumed
+			continue
+		} else if code > 0 {
+			return dateOpts{}, code
+		}
+		if handleUTCFlag(arg) {
+			opts.utc = true
+			continue
+		}
+		code := handleArg(arg, &opts.format, &formatSet, stdout, stderr)
 		if code >= 0 {
-			return "", "", false, code
+			return dateOpts{}, code
 		}
 	}
 	if !formatSet {
-		format = defaultFormat
+		opts.format = defaultFormat
 	}
-	return format, dateStr, dateSet, -1
+	return opts, -1
+}
+
+// handleUTCFlag returns true if arg is -u, --utc, or --universal.
+// R3.1: UTC display mode.
+func handleUTCFlag(arg string) bool {
+	return arg == "-u" || arg == "--utc" || arg == "--universal"
+}
+
+// handleRefFlag checks if args[i] is a -r/--reference flag and extracts
+// the file path. Returns (extra consumed, value, status).
+// Status: 0 = matched, >0 = matched with error exit code, -1 = not matched.
+// R3.2: supports -r FILE, -rFILE, --reference=FILE, --reference FILE.
+func handleRefFlag(args []string, i int, stderr io.Writer) (int, string, int) {
+	arg := args[i]
+	if strings.HasPrefix(arg, "--reference=") {
+		return 0, arg[len("--reference="):], 0
+	}
+	if arg == "-r" || arg == "--reference" {
+		if i+1 >= len(args) {
+			fmt.Fprintf(stderr, "%s: option requires an argument -- 'r'\n", progName)
+			printTryHelp(stderr)
+			return 0, "", 1
+		}
+		return 1, args[i+1], 0
+	}
+	if len(arg) > 2 && arg[:2] == "-r" {
+		return 0, arg[2:], 0
+	}
+	return 0, "", -1
 }
 
 // handleDateFlag checks if args[i] is a -d/--date flag and extracts
@@ -471,9 +562,11 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... [+FORMAT]\n", progName)
 	fmt.Fprintln(w, "Display the current time in the given FORMAT.")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  -d, --date=STRING  display time described by STRING")
-	fmt.Fprintln(w, "      --help         display this help and exit")
-	fmt.Fprintln(w, "      --version      output version information and exit")
+	fmt.Fprintln(w, "  -d, --date=STRING    display time described by STRING")
+	fmt.Fprintln(w, "  -r, --reference=FILE display the last modification time of FILE")
+	fmt.Fprintln(w, "  -u, --utc, --universal  print or set UTC")
+	fmt.Fprintln(w, "      --help           display this help and exit")
+	fmt.Fprintln(w, "      --version        output version information and exit")
 }
 
 // printVersion writes version information to w.
