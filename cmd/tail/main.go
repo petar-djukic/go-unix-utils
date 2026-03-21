@@ -3,6 +3,7 @@
 
 // Implements prd055-tail R1.1–R1.4: line-count mode (default and -n),
 // stdin reading, and +NUM offset mode.
+// Implements prd055-tail R2.1–R2.3: byte-count mode (-c) with suffix multipliers.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -23,11 +25,12 @@ const (
 
 // tailOpts holds parsed command-line options.
 type tailOpts struct {
-	count   int
-	fromTop bool // true when +NUM: start from line NUM
-	files   []string
-	quiet   bool // suppress headers
-	verbose bool // force headers
+	count    int64
+	fromTop  bool // true when +NUM: start from line/byte NUM
+	byteMode bool // R2.1: true when -c is used instead of -n
+	files    []string
+	quiet    bool // suppress headers
+	verbose  bool // force headers
 }
 
 func main() {
@@ -136,12 +139,29 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 }
 
 // tailContent dispatches to the appropriate tail mode.
-// R1.3: +NUM starts from line NUM. Otherwise, prints last N lines.
+// R1.3: +NUM starts from line NUM. R2.1: byteMode uses bytes.
 func tailContent(r io.Reader, opts tailOpts, w *bufio.Writer) error {
-	if opts.fromTop {
-		return tailLinesFromTop(r, opts.count, w)
+	if opts.byteMode {
+		return tailBytes(r, opts, w)
 	}
-	return tailLinesFromEnd(r, opts.count, w)
+	return tailLines(r, opts, w)
+}
+
+// tailLines dispatches line-based tail.
+func tailLines(r io.Reader, opts tailOpts, w *bufio.Writer) error {
+	if opts.fromTop {
+		return tailLinesFromTop(r, int(opts.count), w)
+	}
+	return tailLinesFromEnd(r, int(opts.count), w)
+}
+
+// tailBytes dispatches byte-based tail.
+// R2.1: -c NUM prints last NUM bytes. R2.2: -c +NUM from byte NUM.
+func tailBytes(r io.Reader, opts tailOpts, w *bufio.Writer) error {
+	if opts.fromTop {
+		return tailBytesFromTop(r, opts.count, w)
+	}
+	return tailBytesFromEnd(r, opts.count, w)
 }
 
 // tailLinesFromEnd reads all lines and prints the last count lines.
@@ -202,6 +222,39 @@ func tailLinesFromTop(r io.Reader, startLine int, w *bufio.Writer) error {
 	}
 }
 
+// tailBytesFromEnd reads all input and prints the last count bytes.
+// R2.1: -c NUM prints the last NUM bytes.
+func tailBytesFromEnd(r io.Reader, count int64, w *bufio.Writer) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	start := int64(len(data)) - count
+	if start < 0 {
+		start = 0
+	}
+	_, werr := w.Write(data[start:])
+	return werr
+}
+
+// tailBytesFromTop skips the first (startByte-1) bytes and prints the rest.
+// R2.2: -c +100 prints from byte 100 onward (1-indexed).
+func tailBytesFromTop(r io.Reader, startByte int64, w *bufio.Writer) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	skip := startByte - 1
+	if skip < 0 {
+		skip = 0
+	}
+	if skip >= int64(len(data)) {
+		return nil
+	}
+	_, werr := w.Write(data[skip:])
+	return werr
+}
+
 // parseArgs separates flags from file arguments.
 // Returns opts and exit code (-1 = continue).
 func parseArgs(args []string, stderr io.Writer) (tailOpts, int) {
@@ -243,52 +296,77 @@ func applyFlag(args []string, i int, opts *tailOpts, stderr io.Writer) (int, int
 		opts.verbose = true
 		return 0, -1
 	case strings.HasPrefix(arg, "--lines="):
-		return parseCountValue(arg[len("--lines="):], opts, stderr)
+		return parseLineCountValue(arg[len("--lines="):], opts, stderr)
 	case arg == "--lines":
-		return parseCountNextArg(args, i, 'n', opts, stderr)
+		return parseNextArg(args, i, 'n', false, opts, stderr)
+	case strings.HasPrefix(arg, "--bytes="):
+		return parseByteCountValue(arg[len("--bytes="):], opts, stderr)
+	case arg == "--bytes":
+		return parseNextArg(args, i, 'c', true, opts, stderr)
 	case strings.HasPrefix(arg, "-n"):
-		return parseShortCount(args, i, arg, opts, stderr)
+		return parseShortCount(args, i, arg, false, opts, stderr)
+	case strings.HasPrefix(arg, "-c"):
+		return parseShortCount(args, i, arg, true, opts, stderr)
 	default:
 		return applyShortFlags(arg, opts, stderr)
 	}
 }
 
-// parseShortCount handles -n NUM and -nNUM forms.
-func parseShortCount(args []string, i int, arg string, opts *tailOpts, stderr io.Writer) (int, int) {
-	if len(arg) > 2 {
-		return parseCountValue(arg[2:], opts, stderr)
+// parseShortCount handles -n NUM, -nNUM, -c NUM, -cNUM forms.
+func parseShortCount(args []string, i int, arg string, byteMode bool, opts *tailOpts, stderr io.Writer) (int, int) {
+	flag := byte('n')
+	if byteMode {
+		flag = 'c'
 	}
-	return parseCountNextArg(args, i, 'n', opts, stderr)
+	if len(arg) > 2 {
+		return parseCountValue(arg[2:], byteMode, opts, stderr)
+	}
+	return parseNextArg(args, i, flag, byteMode, opts, stderr)
 }
 
-// parseCountValue parses a count value and sets opts.
-// R1.2: -n NUM for last NUM lines.
-// R1.3: -n +NUM to start from line NUM.
-func parseCountValue(val string, opts *tailOpts, stderr io.Writer) (int, int) {
-	n, fromTop, err := parseNum(val)
+// parseLineCountValue parses a line count value and sets opts.
+func parseLineCountValue(val string, opts *tailOpts, stderr io.Writer) (int, int) {
+	return parseCountValue(val, false, opts, stderr)
+}
+
+// parseByteCountValue parses a byte count value and sets opts.
+func parseByteCountValue(val string, opts *tailOpts, stderr io.Writer) (int, int) {
+	return parseCountValue(val, true, opts, stderr)
+}
+
+// parseCountValue parses a count value with optional +prefix and suffixes.
+// R2.1: -c and -n set byteMode accordingly. R2.3: suffix multipliers.
+func parseCountValue(val string, byteMode bool, opts *tailOpts, stderr io.Writer) (int, int) {
+	n, fromTop, err := parseNum(val, byteMode)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: invalid number of lines: '%s'\n", progName, val)
+		label := "lines"
+		if byteMode {
+			label = "bytes"
+		}
+		fmt.Fprintf(stderr, "%s: invalid number of %s: '%s'\n", progName, label, val)
 		return 0, 1
 	}
 	opts.count = n
 	opts.fromTop = fromTop
+	opts.byteMode = byteMode
 	return 0, -1
 }
 
-// parseCountNextArg reads the count from the next argument.
-func parseCountNextArg(args []string, i int, flag byte, opts *tailOpts, stderr io.Writer) (int, int) {
+// parseNextArg reads the count from the next argument.
+func parseNextArg(args []string, i int, flag byte, byteMode bool, opts *tailOpts, stderr io.Writer) (int, int) {
 	if i+1 >= len(args) {
 		fmt.Fprintf(stderr, "%s: option requires an argument -- '%c'\n", progName, flag)
 		printTryHelp(stderr)
 		return 0, 1
 	}
-	consumed, code := parseCountValue(args[i+1], opts, stderr)
+	consumed, code := parseCountValue(args[i+1], byteMode, opts, stderr)
 	return consumed + 1, code
 }
 
-// parseNum parses an integer with optional + prefix.
-// R1.3: +NUM means start from line NUM (fromTop=true).
-func parseNum(val string) (int, bool, error) {
+// parseNum parses an integer with optional + prefix and suffix multipliers.
+// R1.3: +NUM means start from line/byte NUM (fromTop=true).
+// R2.3: suffix multipliers (b, K, M, G, etc.).
+func parseNum(val string, withSuffix bool) (int64, bool, error) {
 	fromTop := false
 	s := val
 	if strings.HasPrefix(s, "+") {
@@ -298,11 +376,74 @@ func parseNum(val string) (int, bool, error) {
 	if len(s) == 0 {
 		return 0, false, fmt.Errorf("invalid number: '%s'", val)
 	}
-	n, err := strconv.Atoi(s)
+	if withSuffix {
+		return parseNumWithSuffix(s, fromTop, val)
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0, false, fmt.Errorf("invalid number: '%s'", val)
 	}
 	return n, fromTop, nil
+}
+
+// parseNumWithSuffix parses the numeric part and applies suffix multiplier.
+// R2.3: b=512, kB=1000, K/KiB=1024, MB=1000000, M/MiB=1048576, etc.
+func parseNumWithSuffix(s string, fromTop bool, origVal string) (int64, bool, error) {
+	numEnd := findNumEnd(s)
+	if numEnd == 0 {
+		return 0, false, fmt.Errorf("invalid number: '%s'", origVal)
+	}
+	n, err := strconv.ParseInt(s[:numEnd], 10, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid number: '%s'", origVal)
+	}
+	suffix := s[numEnd:]
+	if suffix == "" {
+		return n, fromTop, nil
+	}
+	mult, ok := suffixMultiplier(suffix)
+	if !ok {
+		return 0, false, fmt.Errorf("invalid number: '%s'", origVal)
+	}
+	return n * mult, fromTop, nil
+}
+
+// findNumEnd returns the index where digits end in s.
+func findNumEnd(s string) int {
+	for i, ch := range s {
+		if !unicode.IsDigit(ch) {
+			return i
+		}
+	}
+	return len(s)
+}
+
+// suffixMultiplier returns the multiplier for a GNU coreutils suffix.
+// R2.3: b=512, kB=1000, K/KiB=1024, MB=10^6, M/MiB=2^20,
+// GB=10^9, G/GiB=2^30, TB=10^12, T/TiB=2^40.
+func suffixMultiplier(suffix string) (int64, bool) {
+	switch suffix {
+	case "b":
+		return 512, true
+	case "kB":
+		return 1000, true
+	case "K", "KiB":
+		return 1024, true
+	case "MB":
+		return 1000 * 1000, true
+	case "M", "MiB":
+		return 1024 * 1024, true
+	case "GB":
+		return 1000 * 1000 * 1000, true
+	case "G", "GiB":
+		return 1024 * 1024 * 1024, true
+	case "TB":
+		return 1000 * 1000 * 1000 * 1000, true
+	case "T", "TiB":
+		return 1024 * 1024 * 1024 * 1024, true
+	default:
+		return 0, false
+	}
 }
 
 // applyShortFlags processes short flag clusters like -q, -v.
