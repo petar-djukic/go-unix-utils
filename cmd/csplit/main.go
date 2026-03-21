@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd068-csplit R1.1–R1.4: pattern-based file splitting
-// with regex patterns, skip patterns, and line number patterns.
+// Implements prd068-csplit R1.1–R1.4: pattern-based file splitting,
+// R2.1–R2.4: repeat counts and offset patterns.
 package main
 
 import (
@@ -21,6 +21,7 @@ const (
 	progName      = "csplit"
 	defaultPrefix = "xx"
 	defaultDigits = 2
+	repeatForever = -1
 )
 
 // patternKind identifies the type of split pattern. R1.1.
@@ -32,11 +33,14 @@ const (
 	patternLineNum                    // INTEGER — R1.4
 )
 
-// pattern represents a single csplit pattern argument. R1.1.
+// pattern represents a single csplit pattern argument.
+// R1.1, R2.1 (repeat count), R2.2 (repeat star), R2.3 (offset).
 type pattern struct {
 	kind    patternKind
 	regex   *regexp.Regexp
 	lineNum int
+	offset  int // R2.3: +N or -N offset from match
+	repeat  int // R2.1/R2.2: 0=single, N=N more times, -1=forever
 	raw     string
 }
 
@@ -203,9 +207,15 @@ func setDigits(s string, cfg *config) error {
 	return nil
 }
 
-// parsePatternArgs parses pattern arguments into the config. R1.1.
+// parsePatternArgs parses pattern and repeat arguments. R1.1, R2.1, R2.2.
 func parsePatternArgs(cfg *config, args []string) error {
 	for _, arg := range args {
+		if isRepeatArg(arg) {
+			if err := attachRepeat(cfg, arg); err != nil {
+				return err
+			}
+			continue
+		}
 		p, err := parsePattern(arg)
 		if err != nil {
 			return err
@@ -216,6 +226,37 @@ func parsePatternArgs(cfg *config, args []string) error {
 		return fmt.Errorf("missing operand")
 	}
 	return nil
+}
+
+// attachRepeat parses a {N} or {*} arg and sets repeat on the last pattern.
+func attachRepeat(cfg *config, arg string) error {
+	if len(cfg.patterns) == 0 {
+		return fmt.Errorf("'%s': no preceding pattern", arg)
+	}
+	repeat, err := parseRepeatArg(arg)
+	if err != nil {
+		return err
+	}
+	cfg.patterns[len(cfg.patterns)-1].repeat = repeat
+	return nil
+}
+
+// isRepeatArg checks if arg is a {N} or {*} repeat count. R2.1, R2.2.
+func isRepeatArg(arg string) bool {
+	return len(arg) >= 3 && arg[0] == '{' && arg[len(arg)-1] == '}'
+}
+
+// parseRepeatArg parses a {N} or {*} argument. R2.1, R2.2.
+func parseRepeatArg(arg string) (int, error) {
+	inner := arg[1 : len(arg)-1]
+	if inner == "*" {
+		return repeatForever, nil
+	}
+	n, err := strconv.Atoi(inner)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid repeat count: '%s'", arg)
+	}
+	return n, nil
 }
 
 // parsePattern parses a single pattern argument. R1.1.
@@ -229,32 +270,60 @@ func parsePattern(arg string) (pattern, error) {
 	return parseLineNumPattern(arg)
 }
 
+// isRegexPattern checks if arg starts with / and contains a closing /.
 func isRegexPattern(arg string) bool {
-	return len(arg) >= 2 && arg[0] == '/' && arg[len(arg)-1] == '/'
+	if len(arg) < 2 || arg[0] != '/' {
+		return false
+	}
+	return findClosingDelim(arg, '/') > 0
 }
 
+// isSkipPattern checks if arg starts with % and contains a closing %.
 func isSkipPattern(arg string) bool {
-	return len(arg) >= 2 && arg[0] == '%' && arg[len(arg)-1] == '%'
+	if len(arg) < 2 || arg[0] != '%' {
+		return false
+	}
+	return findClosingDelim(arg, '%') > 0
 }
 
-// parseRegexPattern parses a /REGEXP/ pattern. R1.2.
+// findClosingDelim returns the index of the first closing delimiter after pos 0.
+func findClosingDelim(arg string, delim byte) int {
+	for i := 1; i < len(arg); i++ {
+		if arg[i] == delim {
+			return i
+		}
+	}
+	return -1
+}
+
+// parseRegexPattern parses a /REGEXP/ or /REGEXP/+N pattern. R1.2, R2.3.
 func parseRegexPattern(arg string) (pattern, error) {
-	expr := arg[1 : len(arg)-1]
+	closeIdx := findClosingDelim(arg, '/')
+	expr := arg[1:closeIdx]
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		return pattern{}, fmt.Errorf("invalid regular expression: %s", arg)
 	}
-	return pattern{kind: patternRegex, regex: re, raw: arg}, nil
+	offset, err := parseOffset(arg[closeIdx+1:])
+	if err != nil {
+		return pattern{}, err
+	}
+	return pattern{kind: patternRegex, regex: re, offset: offset, raw: arg}, nil
 }
 
-// parseSkipPattern parses a %REGEXP% pattern. R1.3.
+// parseSkipPattern parses a %REGEXP% or %REGEXP%+N pattern. R1.3, R2.3.
 func parseSkipPattern(arg string) (pattern, error) {
-	expr := arg[1 : len(arg)-1]
+	closeIdx := findClosingDelim(arg, '%')
+	expr := arg[1:closeIdx]
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		return pattern{}, fmt.Errorf("invalid regular expression: %s", arg)
 	}
-	return pattern{kind: patternSkip, regex: re, raw: arg}, nil
+	offset, err := parseOffset(arg[closeIdx+1:])
+	if err != nil {
+		return pattern{}, err
+	}
+	return pattern{kind: patternSkip, regex: re, offset: offset, raw: arg}, nil
 }
 
 // parseLineNumPattern parses an INTEGER pattern. R1.4.
@@ -266,17 +335,36 @@ func parseLineNumPattern(arg string) (pattern, error) {
 	return pattern{kind: patternLineNum, lineNum: n, raw: arg}, nil
 }
 
+// parseOffset parses an optional +N or -N offset suffix. R2.3.
+func parseOffset(s string) (int, error) {
+	if s == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid offset: '%s'", s)
+	}
+	return n, nil
+}
+
 // executeCsplit reads input, splits by patterns, and writes output files.
+// GNU csplit writes output even on split errors, then removes files.
 func executeCsplit(cfg *config, stdin io.Reader, stdout io.Writer) error {
 	lines, err := readLines(cfg.inputFile, stdin)
 	if err != nil {
 		return err
 	}
-	pieces, err := splitByPatterns(lines, cfg.patterns)
-	if err != nil {
-		return err
+	pieces, pos, splitErr := splitByPatterns(lines, cfg.patterns)
+	pieces = append(pieces, piece{start: pos, end: len(lines)})
+	created, writeErr := writeAndReport(lines, pieces, cfg, stdout)
+	if writeErr != nil {
+		return writeErr
 	}
-	return writePiecesAndReport(lines, pieces, cfg, stdout)
+	if splitErr != nil {
+		removeFiles(created)
+		return splitErr
+	}
+	return nil
 }
 
 // readLines reads all lines from the input file or stdin.
@@ -312,31 +400,57 @@ func scanLines(r io.Reader) ([][]byte, error) {
 }
 
 // splitByPatterns applies patterns in order to determine split pieces. R1.1.
-func splitByPatterns(lines [][]byte, patterns []pattern) ([]piece, error) {
+// On error, returns the pieces accumulated so far plus the current position.
+func splitByPatterns(lines [][]byte, patterns []pattern) ([]piece, int, error) {
 	var pieces []piece
 	pos := 0
 	for _, pat := range patterns {
-		p, newPos, err := applyPattern(lines, pos, pat)
+		newPieces, newPos, err := applyWithRepeat(lines, pos, pat)
+		pieces = append(pieces, newPieces...)
+		pos = newPos
 		if err != nil {
-			return nil, err
+			return pieces, pos, err
+		}
+	}
+	return pieces, pos, nil
+}
+
+// applyWithRepeat applies a pattern once or with repeats. R2.1, R2.2.
+func applyWithRepeat(lines [][]byte, pos int, pat pattern) ([]piece, int, error) {
+	total := pat.repeat + 1
+	if pat.repeat < 0 {
+		total = repeatForever
+	}
+	var pieces []piece
+	searchFrom := pos
+	for i := 0; total < 0 || i < total; i++ {
+		p, newPos, err := applyPatternFrom(lines, pos, searchFrom, pat)
+		if err != nil {
+			if pat.repeat < 0 {
+				break // R2.2: {*} exhaustion is always OK
+			}
+			return nil, pos, err // R2.4: no match is an error
 		}
 		if p != nil {
 			pieces = append(pieces, *p)
 		}
 		pos = newPos
+		nextSearch := pos + 1
+		if nextSearch <= searchFrom {
+			nextSearch = searchFrom + 1
+		}
+		searchFrom = nextSearch
 	}
-	pieces = append(pieces, piece{start: pos, end: len(lines)})
-	return pieces, nil
+	return pieces, pos, nil
 }
 
-// applyPattern applies a single pattern and returns the piece (if any)
-// and the new position. R1.2, R1.3, R1.4.
-func applyPattern(lines [][]byte, pos int, pat pattern) (*piece, int, error) {
+// applyPatternFrom dispatches to the appropriate pattern handler.
+func applyPatternFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, error) {
 	switch pat.kind {
 	case patternRegex:
-		return applyRegexPattern(lines, pos, pat)
+		return applyRegexFrom(lines, pos, searchFrom, pat)
 	case patternSkip:
-		return applySkipPattern(lines, pos, pat)
+		return applySkipFrom(lines, pos, searchFrom, pat)
 	case patternLineNum:
 		return applyLineNumPattern(lines, pos, pat)
 	default:
@@ -344,23 +458,25 @@ func applyPattern(lines [][]byte, pos int, pat pattern) (*piece, int, error) {
 	}
 }
 
-// applyRegexPattern splits at the next matching line. R1.2.
-func applyRegexPattern(lines [][]byte, pos int, pat pattern) (*piece, int, error) {
-	matchIdx := findMatch(lines, pos, pat.regex)
+// applyRegexFrom splits at the next matching line. R1.2, R2.3.
+func applyRegexFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, error) {
+	matchIdx := findMatch(lines, searchFrom, pat.regex)
 	if matchIdx < 0 {
 		return nil, pos, fmt.Errorf("'%s': match not found", pat.raw)
 	}
-	p := piece{start: pos, end: matchIdx}
-	return &p, matchIdx, nil
+	splitPoint := clampSplitPoint(matchIdx+pat.offset, pos, len(lines))
+	p := piece{start: pos, end: splitPoint}
+	return &p, splitPoint, nil
 }
 
-// applySkipPattern skips to the next matching line without output. R1.3.
-func applySkipPattern(lines [][]byte, pos int, pat pattern) (*piece, int, error) {
-	matchIdx := findMatch(lines, pos, pat.regex)
+// applySkipFrom skips to the next matching line without output. R1.3, R2.3.
+func applySkipFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, error) {
+	matchIdx := findMatch(lines, searchFrom, pat.regex)
 	if matchIdx < 0 {
 		return nil, pos, fmt.Errorf("'%s': match not found", pat.raw)
 	}
-	return nil, matchIdx, nil
+	skipPoint := clampSplitPoint(matchIdx+pat.offset, pos, len(lines))
+	return nil, skipPoint, nil
 }
 
 // applyLineNumPattern splits at the specified line number. R1.4.
@@ -387,8 +503,20 @@ func findMatch(lines [][]byte, pos int, re *regexp.Regexp) int {
 	return -1
 }
 
-// writePiecesAndReport writes output files and prints byte counts to stdout.
-func writePiecesAndReport(lines [][]byte, pieces []piece, cfg *config, stdout io.Writer) error {
+// clampSplitPoint constrains a split point to the valid range [min, max].
+func clampSplitPoint(point, minVal, maxVal int) int {
+	if point < minVal {
+		return minVal
+	}
+	if point > maxVal {
+		return maxVal
+	}
+	return point
+}
+
+// writeAndReport writes output files and prints byte counts to stdout.
+// Returns the list of created filenames for cleanup on error.
+func writeAndReport(lines [][]byte, pieces []piece, cfg *config, stdout io.Writer) ([]string, error) {
 	var created []string
 	fileIdx := 0
 	for _, p := range pieces {
@@ -399,13 +527,13 @@ func writePiecesAndReport(lines [][]byte, pieces []piece, cfg *config, stdout io
 		byteCount, err := writePiece(filename, lines, p)
 		if err != nil {
 			removeFiles(created)
-			return err
+			return nil, err
 		}
 		created = append(created, filename)
 		fmt.Fprintln(stdout, byteCount)
 		fileIdx++
 	}
-	return nil
+	return created, nil
 }
 
 // writePiece writes lines for a piece to the named file and returns byte count.
