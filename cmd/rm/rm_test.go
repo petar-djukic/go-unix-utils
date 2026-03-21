@@ -3,7 +3,7 @@
 
 // Differential tests for prd058-rm R1.1–R1.4: basic file removal,
 // directory refusal, dot/dotdot refusal, and error continuation.
-// Tests for prd058-rm R2.2: -f/--force flag.
+// Tests for prd058-rm R2.1–R2.4: recursive removal, force mode, -d flag.
 // Tests for prd058-rm R3.3: -v/--verbose flag.
 package main
 
@@ -38,6 +38,8 @@ func errorCaseNormalizer(b []byte) []byte {
 		[]byte("not a directory"))
 	b = bytes.ReplaceAll(b, []byte("Is a directory"),
 		[]byte("is a directory"))
+	b = bytes.ReplaceAll(b, []byte("Directory not empty"),
+		[]byte("directory not empty"))
 	return b
 }
 
@@ -65,6 +67,8 @@ func TestDiff(t *testing.T) {
 		removeDirWithoutR(t, normalizers),
 		removeDotDir(t, normalizers),
 		removeDotDotDir(t, normalizers),
+		removeDirWithoutROrD(t, normalizers),
+		removeDNonEmptyDir(t, normalizers),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -141,6 +145,35 @@ func removeDotDotDir(t *testing.T, normalizers []testutils.NormalizeFunc) testut
 	}
 }
 
+// removeDirWithoutROrD tests that a directory fails without -r or -d. R2.4.
+func removeDirWithoutROrD(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "emptydir")
+	mkdirAll(t, subdir)
+	return testutils.DiffTest{
+		Name:      "dir_without_r_or_d",
+		Args:      []string{subdir},
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// removeDNonEmptyDir tests -d on a non-empty directory (should fail). R2.4.
+func removeDNonEmptyDir(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "notempty")
+	mkdirAll(t, subdir)
+	writeTestFile(t, filepath.Join(subdir, "file.txt"), "data\n")
+	return testutils.DiffTest{
+		Name:      "d_nonempty_dir",
+		Args:      []string{"-d", subdir},
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
 // TestRemoveOps tests actual removal operations using only the Go binary,
 // since rm is destructive and the differential test framework runs
 // both binaries sequentially in the same working directory.
@@ -196,6 +229,130 @@ func TestRemoveOps(t *testing.T) {
 		code, _ := runBinaryCmd(t, goBin, subdir)
 		requireExit(t, 1, code)
 		assertFileExists(t, subdir) // directory still exists
+	})
+}
+
+// TestRecursiveOps tests -r recursive removal using only the Go binary. R2.1.
+func TestRecursiveOps(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("recursive_dir", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "top", "mid", "bot")
+		mkdirAll(t, sub)
+		writeTestFile(t, filepath.Join(sub, "file.txt"), "data\n")
+		writeTestFile(t, filepath.Join(dir, "top", "root.txt"), "root\n")
+		top := filepath.Join(dir, "top")
+		runExpectSuccess(t, goBin, "-r", top)
+		assertNotExists(t, top)
+	})
+
+	t.Run("recursive_uppercase_R", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "d1")
+		mkdirAll(t, sub)
+		writeTestFile(t, filepath.Join(sub, "f.txt"), "x\n")
+		runExpectSuccess(t, goBin, "-R", sub)
+		assertNotExists(t, sub)
+	})
+
+	t.Run("recursive_long_flag", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "d1")
+		mkdirAll(t, sub)
+		writeTestFile(t, filepath.Join(sub, "f.txt"), "x\n")
+		runExpectSuccess(t, goBin, "--recursive", sub)
+		assertNotExists(t, sub)
+	})
+
+	t.Run("recursive_force_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		// R2.3: -rf on nonexistent exits 0
+		dir := t.TempDir()
+		code, _ := runBinaryCmd(t, goBin, "-rf",
+			filepath.Join(dir, "nonexistent"))
+		requireExit(t, 0, code)
+	})
+
+	t.Run("recursive_force_tree", func(t *testing.T) {
+		t.Parallel()
+		// R2.3: -rf removes tree silently
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "tree")
+		mkdirAll(t, filepath.Join(sub, "a", "b"))
+		writeTestFile(t, filepath.Join(sub, "a", "b", "c.txt"), "c\n")
+		writeTestFile(t, filepath.Join(sub, "a", "x.txt"), "x\n")
+		code, out := runBinaryCmd(t, goBin, "-rf", sub)
+		requireExit(t, 0, code)
+		assertNotExists(t, sub)
+		if len(out) > 0 {
+			t.Fatalf("expected no output with -rf, got: %s", out)
+		}
+	})
+}
+
+// TestDirFlag tests -d/--dir empty directory removal. R2.4.
+func TestDirFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("empty_dir", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "empty")
+		mkdirAll(t, sub)
+		runExpectSuccess(t, goBin, "-d", sub)
+		assertNotExists(t, sub)
+	})
+
+	t.Run("nonempty_dir_fails", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "notempty")
+		mkdirAll(t, sub)
+		writeTestFile(t, filepath.Join(sub, "f.txt"), "data\n")
+		code, _ := runBinaryCmd(t, goBin, "-d", sub)
+		requireExit(t, 1, code)
+		assertFileExists(t, sub)
+	})
+
+	t.Run("long_flag_dir", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "empty2")
+		mkdirAll(t, sub)
+		runExpectSuccess(t, goBin, "--dir", sub)
+		assertNotExists(t, sub)
+	})
+}
+
+// TestVerboseRecursive tests -rv verbose output during recursive removal.
+func TestVerboseRecursive(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("recursive_verbose", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "d")
+		mkdirAll(t, sub)
+		f := filepath.Join(sub, "f.txt")
+		writeTestFile(t, f, "data\n")
+		code, stdout, stderr := runBinarySplit(t, goBin, "-rv", sub)
+		requireExit(t, 0, code)
+		assertNotExists(t, sub)
+		// Should mention both file and directory
+		wantFile := fmt.Sprintf("removed '%s'\n", f)
+		wantDir := fmt.Sprintf("removed directory '%s'\n", sub)
+		if string(stdout) != wantFile+wantDir {
+			t.Fatalf("verbose stdout: got %q, want %q",
+				string(stdout), wantFile+wantDir)
+		}
+		requireStrEqual(t, "", string(stderr), "verbose stderr")
 	})
 }
 

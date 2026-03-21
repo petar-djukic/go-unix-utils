@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd058-rm R1.1–R1.4: basic file removal and argument handling.
-// Implements prd058-rm R2.2: -f/--force flag (ignore nonexistent, never prompt).
+// Implements prd058-rm R2.1–R2.4: recursive removal, force mode, and -d flag.
 // Implements prd058-rm R3.3: -v/--verbose flag.
 package main
 
@@ -19,8 +19,10 @@ const progName = "rm"
 
 // rmConfig holds parsed flag state.
 type rmConfig struct {
-	force   bool // R2.2: ignore nonexistent, never prompt
-	verbose bool // R3.3: print each removal
+	force     bool // R2.2: ignore nonexistent, never prompt
+	recursive bool // R2.1: remove directories recursively
+	dir       bool // R2.4: remove empty directories
+	verbose   bool // R3.3: print each removal
 }
 
 func main() {
@@ -58,7 +60,7 @@ func removeAll(files []string, cfg rmConfig, stdout, stderr io.Writer) int {
 	return exitCode
 }
 
-// removeSingle removes one file. R1.1, R1.2, R1.3.
+// removeSingle removes one file or directory. R1.1, R1.2, R1.3, R2.1, R2.4.
 func removeSingle(path string, cfg rmConfig, stdout, stderr io.Writer) error {
 	// R1.3: refuse to remove "." or ".."
 	base := filepath.Base(path)
@@ -77,12 +79,65 @@ func removeSingle(path string, cfg rmConfig, stdout, stderr io.Writer) error {
 			progName, path, unwrapPathError(err))
 		return err
 	}
-	// R1.2: without -r, refuse to remove directories
 	if info.IsDir() {
-		fmt.Fprintf(stderr, "%s: cannot remove '%s': Is a directory\n",
-			progName, path)
-		return fmt.Errorf("is a directory")
+		return removeDirectory(path, cfg, stdout, stderr)
 	}
+	return removeFile(path, cfg, stdout, stderr)
+}
+
+// removeDirectory handles directory removal based on flags.
+// R2.1: -r removes recursively. R2.4: -d removes empty directories.
+// R1.2: without -r or -d, directory removal fails.
+func removeDirectory(path string, cfg rmConfig, stdout, stderr io.Writer) error {
+	if cfg.recursive {
+		return removeRecursive(path, cfg, stdout, stderr)
+	}
+	if cfg.dir {
+		return removeEmptyDir(path, cfg, stdout, stderr)
+	}
+	fmt.Fprintf(stderr, "%s: cannot remove '%s': Is a directory\n",
+		progName, path)
+	return fmt.Errorf("is a directory")
+}
+
+// removeRecursive removes a directory tree depth-first. R2.1, R2.3.
+func removeRecursive(path string, cfg rmConfig, stdout, stderr io.Writer) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot remove '%s': %s\n",
+			progName, path, unwrapPathError(err))
+		return err
+	}
+	var firstErr error
+	for _, entry := range entries {
+		child := filepath.Join(path, entry.Name())
+		if err := removeSingle(child, cfg, stdout, stderr); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+	return removeEmptyDir(path, cfg, stdout, stderr)
+}
+
+// removeEmptyDir removes a single empty directory. R2.4.
+func removeEmptyDir(path string, cfg rmConfig, stdout, stderr io.Writer) error {
+	if err := os.Remove(path); err != nil {
+		fmt.Fprintf(stderr, "%s: cannot remove '%s': %s\n",
+			progName, path, unwrapPathError(err))
+		return err
+	}
+	if cfg.verbose {
+		fmt.Fprintf(stdout, "removed directory '%s'\n", path)
+	}
+	return nil
+}
+
+// removeFile removes a regular file (or symlink). R1.1.
+func removeFile(path string, cfg rmConfig, stdout, stderr io.Writer) error {
 	if err := os.Remove(path); err != nil {
 		fmt.Fprintf(stderr, "%s: cannot remove '%s': %s\n",
 			progName, path, unwrapPathError(err))
@@ -132,6 +187,10 @@ func applyShortFlags(arg string, cfg *rmConfig, stderr io.Writer) int {
 		switch arg[j] {
 		case 'f':
 			cfg.force = true
+		case 'r', 'R':
+			cfg.recursive = true // R2.1
+		case 'd':
+			cfg.dir = true // R2.4
 		case 'v':
 			cfg.verbose = true
 		default:
@@ -156,6 +215,12 @@ func applyLongFlag(arg string, cfg *rmConfig, stdout, stderr io.Writer) int {
 	case "--force":
 		cfg.force = true
 		return -1
+	case "--recursive":
+		cfg.recursive = true // R2.1
+		return -1
+	case "--dir":
+		cfg.dir = true // R2.4
+		return -1
 	case "--verbose":
 		cfg.verbose = true
 		return -1
@@ -176,7 +241,9 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... [FILE]...\n", progName)
 	fmt.Fprintln(w, "Remove (unlink) the FILE(s).")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -d, --dir             remove empty directories")
 	fmt.Fprintln(w, "  -f, --force           ignore nonexistent files and arguments, never prompt")
+	fmt.Fprintln(w, "  -r, -R, --recursive   remove directories and their contents recursively")
 	fmt.Fprintln(w, "  -v, --verbose         explain what is being done")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")
