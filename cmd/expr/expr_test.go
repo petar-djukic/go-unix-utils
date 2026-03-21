@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd066-expr R1.1–R1.4.
+// Differential tests for prd066-expr R1.1–R1.4, R2.1–R2.4, R3.1.
 package main
 
 import (
@@ -143,6 +143,60 @@ func TestDiff(t *testing.T) {
 
 		// Complex expression: 1 + 2 * 3 - 1 = 6
 		{Name: "complex_expr", Args: []string{"1", "+", "2", "*", "3", "-", "1"}},
+
+		// R2.1: colon operator — match with group
+		{Name: "colon_match_group", Args: []string{"abcdef", ":", `abc\(.*\)`}},
+		// R2.1: colon operator — match count (no group)
+		{Name: "colon_match_count", Args: []string{"abcdef", ":", "abc"}},
+		// R2.1: colon operator — no match returns 0
+		{Name: "colon_no_match", Args: []string{"abcdef", ":", "xyz"}},
+		// R2.1: colon operator — no match with group returns empty
+		{Name: "colon_no_match_group", Args: []string{"abcdef", ":", `xyz\(.*\)`}},
+		// R2.1: colon operator — dot matches any char
+		{Name: "colon_dot_match", Args: []string{"abc", ":", "a.c"}},
+		// R2.1: colon operator — anchored at start
+		{Name: "colon_anchored", Args: []string{"xabc", ":", "abc"}},
+		// R2.1: colon operator — capture single char group
+		{Name: "colon_single_group", Args: []string{"abc", ":", `a\(.\)`}},
+
+		// R2.1: match keyword — with group
+		{Name: "match_group", Args: []string{"match", "abcdef", `abc\(.*\)`}},
+		// R2.1: match keyword — count (no group)
+		{Name: "match_count", Args: []string{"match", "abcdef", "abc"}},
+		// R2.1: match keyword — no match
+		{Name: "match_no_match", Args: []string{"match", "abcdef", "xyz"}},
+
+		// R2.2: substr — basic extraction
+		{Name: "substr_basic", Args: []string{"substr", "hello", "2", "3"}},
+		// R2.2: substr — full string
+		{Name: "substr_full", Args: []string{"substr", "hello", "1", "5"}},
+		// R2.2: substr — length exceeds string
+		{Name: "substr_overflow", Args: []string{"substr", "hello", "3", "10"}},
+		// R2.2: substr — pos zero (out of range)
+		{Name: "substr_zero_pos", Args: []string{"substr", "hello", "0", "3"}},
+		// R2.2: substr — negative length (out of range)
+		{Name: "substr_neg_len", Args: []string{"substr", "hello", "1", "-1"}},
+
+		// R2.3: index — found
+		{Name: "index_found", Args: []string{"index", "hello", "lo"}},
+		// R2.3: index — not found
+		{Name: "index_not_found", Args: []string{"index", "hello", "xyz"}},
+		// R2.3: index — first char
+		{Name: "index_first_char", Args: []string{"index", "hello", "h"}},
+
+		// R2.4: length — basic
+		{Name: "length_basic", Args: []string{"length", "hello"}},
+		// R2.4: length — empty string
+		{Name: "length_empty", Args: []string{"length", ""}},
+		// R2.4: length — single char
+		{Name: "length_single", Args: []string{"length", "x"}},
+
+		// R3.1: + escapes keyword match
+		{Name: "plus_escape_match", Args: []string{"+", "match"}},
+		// R3.1: + escapes keyword length
+		{Name: "plus_escape_length", Args: []string{"+", "length"}},
+		// R3.1: + escapes operator
+		{Name: "plus_escape_operator", Args: []string{"+", "+"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
