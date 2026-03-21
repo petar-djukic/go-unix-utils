@@ -4,6 +4,7 @@
 // Implements prd056-cp R1.1–R1.4: basic file copying.
 // Implements prd056-cp R2.1–R2.4: recursive copy and symlink handling.
 // Implements prd056-cp R3.1–R3.4: preservation and metadata handling.
+// Implements prd056-cp R4.1–R4.4: exit codes, target-directory flag, differential testing.
 package main
 
 import (
@@ -13,13 +14,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 const progName = "cp"
 
-// options holds parsed GNU cp flags for R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// options holds parsed GNU cp flags for R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.3.
 type options struct {
 	interactive   bool        // -i, --interactive (R1.2)
 	force         bool        // -f, --force (R1.3)
@@ -29,6 +31,7 @@ type options struct {
 	noDereference bool        // -P, --no-dereference (R2.4)
 	preserve      preserveSet // -p, --preserve, -a (R3.1–R3.3)
 	verbose       bool        // -v, --verbose (R3.4)
+	targetDir     string      // -t, --target-directory (R4.3)
 }
 
 func main() {
@@ -38,19 +41,28 @@ func main() {
 }
 
 // run parses flags and executes the copy operation, returning the exit code.
+// R4.1: returns 0 on success. R4.2: returns 1 on failure.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, code := parseArgs(args, stdout, stderr)
 	if code >= 0 {
 		return code
 	}
-	if err := validateOperands(files, stderr); err != nil {
+	if err := validateOperands(opts, files, stderr); err != nil {
 		return 1
 	}
 	return doCopy(opts, files, stdin, stdout, stderr)
 }
 
 // validateOperands checks that enough file arguments were provided.
-func validateOperands(files []string, stderr io.Writer) error {
+func validateOperands(opts options, files []string, stderr io.Writer) error {
+	if opts.targetDir != "" {
+		return validateTargetDirOperands(files, stderr)
+	}
+	return validateStandardOperands(files, stderr)
+}
+
+// validateStandardOperands validates operands for standard (non -t) mode.
+func validateStandardOperands(files []string, stderr io.Writer) error {
 	if len(files) == 0 {
 		fmt.Fprintf(stderr, "%s: missing file operand\n", progName)
 		printTryHelp(stderr)
@@ -65,17 +77,56 @@ func validateOperands(files []string, stderr io.Writer) error {
 	return nil
 }
 
+// validateTargetDirOperands validates operands when -t is used. R4.3.
+func validateTargetDirOperands(files []string, stderr io.Writer) error {
+	if len(files) == 0 {
+		fmt.Fprintf(stderr, "%s: missing file operand\n", progName)
+		printTryHelp(stderr)
+		return fmt.Errorf("missing operand")
+	}
+	return nil
+}
+
+// splitDestSources separates destination and sources based on -t flag. R4.3.
+func splitDestSources(opts options, files []string) (string, []string) {
+	if opts.targetDir != "" {
+		return opts.targetDir, files
+	}
+	return files[len(files)-1], files[:len(files)-1]
+}
+
 // doCopy copies each source to the destination. R1.1: single file copy and
-// multi-source copy into a directory.
+// multi-source copy into a directory. R4.3: -t uses targetDir as destination.
 func doCopy(opts options, files []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	dest := files[len(files)-1]
-	sources := files[:len(files)-1]
+	dest, sources := splitDestSources(opts, files)
 	destInfo, err := os.Stat(dest)
 	destIsDir := err == nil && destInfo.IsDir()
+	if opts.targetDir != "" && !destIsDir {
+		return reportTargetDirError(dest, err, stderr)
+	}
 	if len(sources) > 1 && !destIsDir {
 		fmt.Fprintf(stderr, "%s: target '%s': Not a directory\n", progName, dest)
 		return 1
 	}
+	return copyAllSources(opts, sources, dest, destIsDir, stdin, stdout, stderr)
+}
+
+// reportTargetDirError reports an error when -t target is not a directory. R4.3.
+// Matches GNU cp error format: "target directory 'DIR': error".
+func reportTargetDirError(dest string, statErr error, stderr io.Writer) int {
+	var msg error
+	if statErr != nil {
+		msg = unwrapPathError(statErr)
+	} else {
+		msg = syscall.ENOTDIR
+	}
+	fmt.Fprintf(stderr, "%s: target directory '%s': %s\n", progName, dest, msg)
+	return 1
+}
+
+// copyAllSources copies each source to the destination directory or file.
+func copyAllSources(opts options, sources []string, dest string, destIsDir bool,
+	stdin io.Reader, stdout, stderr io.Writer) int {
 	tracker := newTrackerIfNeeded(opts)
 	exitCode := 0
 	for _, src := range sources {
@@ -368,11 +419,14 @@ func createDest(opts options, dest string) (*os.File, error) {
 
 // parseArgs separates flags from file arguments.
 // Returns parsed options, file list, and exit code (-1 = continue).
+// R4.3: uses index-based loop to allow -t and --target-directory to consume
+// the next argument.
 func parseArgs(args []string, stdout, stderr io.Writer) (options, []string, int) {
 	var opts options
 	var files []string
 	flagsDone := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if flagsDone || len(arg) == 0 || arg[0] != '-' {
 			files = append(files, arg)
 			continue
@@ -382,19 +436,55 @@ func parseArgs(args []string, stdout, stderr io.Writer) (options, []string, int)
 			continue
 		}
 		if len(arg) > 2 && arg[1] == '-' {
-			code := applyLongFlag(&opts, arg, stdout, stderr)
+			skip, code := parseLongFlag(&opts, arg, args[i+1:], stdout, stderr)
 			if code >= 0 {
 				return opts, nil, code
 			}
+			i += skip
 			continue
 		}
-		code := applyShortFlags(&opts, arg, stderr)
+		skip, code := applyShortFlags(&opts, arg, args[i+1:], stderr)
 		if code >= 0 {
 			return opts, nil, code
 		}
+		i += skip
 	}
 	applyDefaults(&opts)
 	return opts, files, -1
+}
+
+// parseLongFlag dispatches long flag handling.
+// Returns (extra args consumed, exit code).
+func parseLongFlag(o *options, arg string, remaining []string,
+	stdout, stderr io.Writer) (int, int) {
+	if strings.HasPrefix(arg, "--target-directory") {
+		return handleTargetDirLong(o, arg, remaining, stderr)
+	}
+	code := applyLongFlag(o, arg, stdout, stderr)
+	return 0, code
+}
+
+// handleTargetDirLong parses --target-directory=DIR or --target-directory DIR.
+// R4.3.
+func handleTargetDirLong(o *options, arg string, remaining []string,
+	stderr io.Writer) (int, int) {
+	if strings.HasPrefix(arg, "--target-directory=") {
+		o.targetDir = arg[len("--target-directory="):]
+		return 0, -1
+	}
+	if arg == "--target-directory" {
+		if len(remaining) == 0 {
+			fmt.Fprintf(stderr,
+				"%s: option '--target-directory' requires an argument\n", progName)
+			printTryHelp(stderr)
+			return 0, 1
+		}
+		o.targetDir = remaining[0]
+		return 1, -1
+	}
+	fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n", progName, arg)
+	printTryHelp(stderr)
+	return 0, 1
 }
 
 // applyDefaults sets default option values based on flag combinations.
@@ -406,15 +496,38 @@ func applyDefaults(o *options) {
 }
 
 // applyShortFlags processes combined short flags (e.g., -ifn).
-func applyShortFlags(o *options, arg string, stderr io.Writer) int {
+// Returns (extra args consumed, exit code). R4.3: handles -t.
+func applyShortFlags(o *options, arg string, remaining []string,
+	stderr io.Writer) (int, int) {
 	for j := 1; j < len(arg); j++ {
-		if !applyShortFlag(o, arg[j]) {
-			fmt.Fprintf(stderr, "%s: invalid option -- '%c'\n", progName, arg[j])
+		ch := arg[j]
+		if ch == 't' {
+			return handleShortT(o, arg[j+1:], remaining, stderr)
+		}
+		if !applyShortFlag(o, ch) {
+			fmt.Fprintf(stderr, "%s: invalid option -- '%c'\n", progName, ch)
 			printTryHelp(stderr)
-			return 1
+			return 0, 1
 		}
 	}
-	return -1
+	return 0, -1
+}
+
+// handleShortT parses the -t flag value from the rest of the arg or next arg.
+// R4.3.
+func handleShortT(o *options, rest string, remaining []string,
+	stderr io.Writer) (int, int) {
+	if len(rest) > 0 {
+		o.targetDir = rest
+		return 0, -1
+	}
+	if len(remaining) > 0 {
+		o.targetDir = remaining[0]
+		return 1, -1
+	}
+	fmt.Fprintf(stderr, "%s: option requires an argument -- 't'\n", progName)
+	printTryHelp(stderr)
+	return 0, 1
 }
 
 // applyShortFlag applies a single-character flag. Returns false if unrecognized.
@@ -517,6 +630,7 @@ func printTryHelp(w io.Writer) {
 func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... SOURCE DEST\n", progName)
 	fmt.Fprintf(w, "  or:  %s [OPTION]... SOURCE... DIRECTORY\n", progName)
+	fmt.Fprintf(w, "  or:  %s [OPTION]... -t DIRECTORY SOURCE...\n", progName)
 	fmt.Fprintln(w, "Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY.")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  -a, --archive         same as -dR --preserve=all")
@@ -529,6 +643,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -P, --no-dereference  never follow symbolic links in SOURCE")
 	fmt.Fprintln(w, "      --preserve[=ATTR_LIST]  preserve the specified attributes")
 	fmt.Fprintln(w, "  -r, -R, --recursive   copy directories recursively")
+	fmt.Fprintln(w, "  -t, --target-directory=DIRECTORY  copy all SOURCE arguments into DIRECTORY")
 	fmt.Fprintln(w, "  -v, --verbose         explain what is being done")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")

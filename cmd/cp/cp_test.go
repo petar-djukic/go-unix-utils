@@ -5,7 +5,9 @@
 // R1.2 (interactive mode), R1.3 (force mode), R1.4 (no-clobber mode),
 // R2.1 (recursive copy), R2.2 (directory without -r), R2.3 (dereference),
 // R2.4 (no-dereference/preserve symlinks), R3.1 (preserve mode/timestamps),
-// R3.2 (archive mode), R3.3 (--preserve=ATTR_LIST), R3.4 (verbose output).
+// R3.2 (archive mode), R3.3 (--preserve=ATTR_LIST), R3.4 (verbose output),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on failure), R4.3 (-t target-directory),
+// R4.4 (comprehensive differential tests).
 package main_test
 
 import (
@@ -84,6 +86,26 @@ func runSharedTests(t *testing.T, goBin, refBin string, normBin testutils.Normal
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normBin},
 		},
+		// R4.3: -t with nonexistent target directory.
+		{
+			Name: "target_dir_not_found",
+			Args: []string{
+				"-t", "/nonexistent_target_dir_for_cp_test",
+				filepath.Join(dirWithFile, "src.txt"),
+			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normBin},
+		},
+		// R4.3: -t with target that is a regular file, not a directory.
+		{
+			Name: "target_dir_is_file",
+			Args: []string{
+				"--target-directory=" + filepath.Join(dirWithFile, "src.txt"),
+				filepath.Join(dirWithFile, "src.txt"),
+			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normBin},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -105,6 +127,7 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 	cases := buildIsolatedCases(normBin)
 	cases = append(cases, buildR2IsolatedCases()...)
 	cases = append(cases, buildR3IsolatedCases(normBin)...)
+	cases = append(cases, buildR4IsolatedCases(normBin)...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -848,6 +871,111 @@ func verifyTimestampMatch(t *testing.T, src, dest string) {
 	if !srcInfo.ModTime().Equal(destInfo.ModTime()) {
 		t.Fatalf("mtime mismatch: src=%v, dest=%v",
 			srcInfo.ModTime(), destInfo.ModTime())
+	}
+}
+
+// buildR4IsolatedCases returns isolated test cases for R4.1–R4.4.
+func buildR4IsolatedCases(normBin testutils.NormalizeFunc) []isolatedCase {
+	return []isolatedCase{
+		// R4.3: -t copies multiple files into target directory.
+		{
+			name: "target_dir_short_flag",
+			args: []string{"-t", "dest", "a.txt", "b.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "a.txt", "aaa\n")
+				setupFile(t, dir, "b.txt", "bbb\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "a.txt"), "aaa\n")
+				verifyFileContent(t, filepath.Join(dir, "dest", "b.txt"), "bbb\n")
+			},
+		},
+		// R4.3: --target-directory= long flag with equals.
+		{
+			name: "target_dir_long_equals",
+			args: []string{"--target-directory=dest", "src.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "data\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "src.txt"), "data\n")
+			},
+		},
+		// R4.3: --target-directory as separate argument.
+		{
+			name: "target_dir_long_separate",
+			args: []string{"--target-directory", "dest", "src.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "data\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "src.txt"), "data\n")
+			},
+		},
+		// R4.3: -t with single file copy.
+		{
+			name: "target_dir_single_file",
+			args: []string{"-t", "dest", "src.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "single\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "src.txt"), "single\n")
+			},
+		},
+		// R4.3: -t combined with other flags (-vt).
+		{
+			name: "target_dir_combined_flags",
+			args: []string{"-vt", "dest", "src.txt"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "combined\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "src.txt"), "combined\n")
+			},
+		},
+		// R4.2: permission denied on source file.
+		{
+			name: "permission_denied_source",
+			args: []string{"noperm.txt", "dest.txt"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "noperm.txt", "secret\n")
+				requireChmod(t, filepath.Join(dir, "noperm.txt"), 0o000)
+			},
+		},
+		// R4.1/R4.2: partial failure exits 1 (one good, one bad source).
+		{
+			name: "partial_failure_exit_code",
+			args: []string{"good.txt", "nonexistent.txt", "dest"},
+			norm: []testutils.NormalizeFunc{normBin},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "good.txt", "ok\n")
+				requireMkdir(t, filepath.Join(dir, "dest"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest", "good.txt"), "ok\n")
+			},
+		},
 	}
 }
 
