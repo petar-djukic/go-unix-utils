@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd063-timeout R1.1-R1.4: core timeout behavior including
-// command execution with time limit, fractional durations, suffix multipliers,
-// and zero-duration bypass.
+// Implements prd063-timeout R1.1-R1.4 (core timeout behavior) and
+// R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status).
 package main
 
 import (
@@ -12,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,11 +36,54 @@ DURATION is a floating point number with an optional suffix:
 's' for seconds (the default), 'm' for minutes, 'h' for hours or 'd' for days.
 A duration of 0 disables the associated timeout.
 
+  -s, --signal=SIGNAL    specify the signal to be sent on timeout;
+                           SIGNAL may be a name like 'HUP' or a number;
+                           see 'kill -l' for a list of signals
+  -k, --kill-after=DURATION
+                         also send a KILL signal if COMMAND is still running
+                           this long after the initial signal was sent
+      --foreground       when not running timeout directly from a shell prompt,
+                           allow COMMAND to read from the TTY and get TTY signals;
+                           in this mode, children of COMMAND will not be timed out
+      --preserve-status  exit with the same status as COMMAND, even when the
+                           command times out
       --help        display this help and exit
       --version     output version information and exit
 `
 
 const versionText = "timeout (go-unix-utils) 1.0\n"
+
+// signalMap maps uppercase signal names (without SIG prefix) to signals.
+var signalMap = map[string]syscall.Signal{
+	"HUP":  syscall.SIGHUP,
+	"INT":  syscall.SIGINT,
+	"QUIT": syscall.SIGQUIT,
+	"ILL":  syscall.SIGILL,
+	"TRAP": syscall.SIGTRAP,
+	"ABRT": syscall.SIGABRT,
+	"FPE":  syscall.SIGFPE,
+	"KILL": syscall.SIGKILL,
+	"BUS":  syscall.SIGBUS,
+	"SEGV": syscall.SIGSEGV,
+	"PIPE": syscall.SIGPIPE,
+	"ALRM": syscall.SIGALRM,
+	"TERM": syscall.SIGTERM,
+	"URG":  syscall.SIGURG,
+	"STOP": syscall.SIGSTOP,
+	"TSTP": syscall.SIGTSTP,
+	"CONT": syscall.SIGCONT,
+	"CHLD": syscall.SIGCHLD,
+	"USR1": syscall.SIGUSR1,
+	"USR2": syscall.SIGUSR2,
+}
+
+// timeoutConfig holds parsed command-line options.
+type timeoutConfig struct {
+	signal         syscall.Signal
+	killAfter      time.Duration
+	foreground     bool
+	preserveStatus bool
+}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -48,19 +91,52 @@ func main() {
 	if len(args) == 0 {
 		exitMissing("")
 	}
-	handleSpecialFlags(args[0])
-	if len(args) < 2 {
-		exitMissing(args[0])
+	cfg, positional := parseAllArgs(args)
+	if len(positional) == 0 {
+		exitMissing("")
 	}
-	dur, err := parseDuration(args[0])
+	if len(positional) < 2 {
+		exitMissing(positional[0])
+	}
+	dur, err := parseDuration(positional[0])
 	if err != nil {
-		exitInvalidInterval(args[0])
+		exitInvalidInterval(positional[0])
 	}
-	os.Exit(runWithTimeout(dur, args[1], args[2:]))
+	os.Exit(runWithTimeout(dur, positional[1], positional[2:], cfg))
 }
 
-// handleSpecialFlags checks for --help and --version, exiting if found.
-func handleSpecialFlags(arg string) {
+// parseAllArgs separates options from positional arguments.
+func parseAllArgs(args []string) (*timeoutConfig, []string) {
+	cfg := &timeoutConfig{signal: syscall.SIGTERM}
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			i++
+			break
+		}
+		if !isOption(arg) {
+			break
+		}
+		i += handleOption(cfg, args, i)
+	}
+	return cfg, args[i:]
+}
+
+// isOption returns true if the argument looks like a command-line option.
+func isOption(s string) bool {
+	if len(s) < 2 || s[0] != '-' {
+		return false
+	}
+	if s[1] == '-' {
+		return true
+	}
+	return (s[1] >= 'a' && s[1] <= 'z') || (s[1] >= 'A' && s[1] <= 'Z')
+}
+
+// handleOption dispatches a single option and returns the number of args consumed.
+func handleOption(cfg *timeoutConfig, args []string, i int) int {
+	arg := args[i]
 	switch arg {
 	case "--help":
 		fmt.Print(helpText)
@@ -69,35 +145,146 @@ func handleSpecialFlags(arg string) {
 		fmt.Print(versionText)
 		os.Exit(0)
 	}
+	if strings.HasPrefix(arg, "--") {
+		return handleLongOption(cfg, args, i)
+	}
+	return handleShortOption(cfg, args, i)
+}
+
+// handleLongOption parses a long option (--signal, --kill-after, etc.).
+func handleLongOption(cfg *timeoutConfig, args []string, i int) int {
+	arg := args[i]
+	switch {
+	case arg == "--foreground":
+		cfg.foreground = true
+		return 1
+	case arg == "--preserve-status":
+		cfg.preserveStatus = true
+		return 1
+	case arg == "--signal", strings.HasPrefix(arg, "--signal="):
+		return handleSignalFlag(cfg, arg, args, i)
+	case arg == "--kill-after", strings.HasPrefix(arg, "--kill-after="):
+		return handleKillAfterFlag(cfg, arg, args, i)
+	default:
+		exitUnknownOption(arg)
+		return 0
+	}
+}
+
+// handleSignalFlag parses --signal=VALUE or --signal VALUE. R2.1.
+func handleSignalFlag(cfg *timeoutConfig, arg string, args []string, i int) int {
+	val, consumed := extractLongValue(arg, "--signal=", args, i)
+	sig, err := parseSignal(val)
+	if err != nil {
+		exitInvalidSignal(val)
+	}
+	cfg.signal = sig
+	return consumed
+}
+
+// handleKillAfterFlag parses --kill-after=VALUE or --kill-after VALUE. R2.2.
+func handleKillAfterFlag(cfg *timeoutConfig, arg string, args []string, i int) int {
+	val, consumed := extractLongValue(arg, "--kill-after=", args, i)
+	dur, err := parseDuration(val)
+	if err != nil {
+		exitInvalidInterval(val)
+	}
+	cfg.killAfter = dur
+	return consumed
+}
+
+// extractLongValue extracts the value from a --key=value or --key value form.
+func extractLongValue(arg, eqPrefix string, args []string, i int) (string, int) {
+	if strings.HasPrefix(arg, eqPrefix) {
+		return arg[len(eqPrefix):], 1
+	}
+	if i+1 >= len(args) {
+		exitMissingOptArg(arg)
+	}
+	return args[i+1], 2
+}
+
+// handleShortOption parses a short option (-s, -k).
+func handleShortOption(cfg *timeoutConfig, args []string, i int) int {
+	arg := args[i]
+	switch arg[1] {
+	case 's':
+		val, consumed := extractShortValue(arg, args, i)
+		sig, err := parseSignal(val)
+		if err != nil {
+			exitInvalidSignal(val)
+		}
+		cfg.signal = sig
+		return consumed
+	case 'k':
+		val, consumed := extractShortValue(arg, args, i)
+		dur, err := parseDuration(val)
+		if err != nil {
+			exitInvalidInterval(val)
+		}
+		cfg.killAfter = dur
+		return consumed
+	default:
+		exitUnknownOption(arg)
+		return 0
+	}
+}
+
+// extractShortValue extracts the value from -Xvalue or -X value form.
+func extractShortValue(arg string, args []string, i int) (string, int) {
+	if len(arg) > 2 {
+		return arg[2:], 1
+	}
+	if i+1 >= len(args) {
+		exitMissingOptArg(arg)
+	}
+	return args[i+1], 2
+}
+
+// parseSignal parses a signal name or number string.
+// R2.1: accepts signal names (KILL, HUP, SIGKILL) and numeric values.
+func parseSignal(s string) (syscall.Signal, error) {
+	if num, err := strconv.Atoi(s); err == nil {
+		if num > 0 {
+			return syscall.Signal(num), nil
+		}
+		return 0, fmt.Errorf("invalid signal %q", s)
+	}
+	name := strings.TrimPrefix(s, "SIG")
+	if sig, ok := signalMap[name]; ok {
+		return sig, nil
+	}
+	return 0, fmt.Errorf("invalid signal %q", s)
 }
 
 // runWithTimeout executes a command and kills it if it exceeds dur.
 // R1.1: SIGTERM on timeout. R1.4: dur==0 means no limit.
-func runWithTimeout(dur time.Duration, command string, args []string) int {
-	cmd := buildCommand(command, args)
+func runWithTimeout(dur time.Duration, command string, args []string, cfg *timeoutConfig) int {
+	cmd := buildCommand(command, args, cfg.foreground)
 	if err := cmd.Start(); err != nil {
 		return handleStartError(err, command)
 	}
 	if dur == 0 {
 		return exitCodeFromError(cmd.Wait())
 	}
-	return waitWithTimeout(cmd, dur)
+	return waitWithTimeout(cmd, dur, cfg)
 }
 
-// buildCommand creates an exec.Cmd with stdio connected and a new
-// process group via Setpgid.
-func buildCommand(command string, args []string) *exec.Cmd {
+// buildCommand creates an exec.Cmd with stdio connected.
+// R2.3: --foreground skips Setpgid so the child shares the terminal.
+func buildCommand(command string, args []string, foreground bool) *exec.Cmd {
 	cmd := exec.Command(command, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if !foreground {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
 	return cmd
 }
 
 // waitWithTimeout waits for cmd to finish or kills it after dur.
-// R1.1: sends SIGTERM to the process group on timeout.
-func waitWithTimeout(cmd *exec.Cmd, dur time.Duration) int {
+func waitWithTimeout(cmd *exec.Cmd, dur time.Duration, cfg *timeoutConfig) int {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	timer := time.NewTimer(dur)
@@ -106,25 +293,83 @@ func waitWithTimeout(cmd *exec.Cmd, dur time.Duration) int {
 	case err := <-done:
 		return exitCodeFromError(err)
 	case <-timer.C:
-		killProcessGroup(cmd.Process.Pid)
-		<-done
-		return exitTimeout
+		sendSignalToCmd(cmd, cfg.signal, cfg.foreground)
+		return handleTimeoutExit(cmd, done, cfg)
 	}
 }
 
-// killProcessGroup sends SIGTERM to the process group led by pid.
-func killProcessGroup(pid int) {
-	// Negative pid targets the entire process group; best-effort.
-	syscall.Kill(-pid, syscall.SIGTERM) //nolint:errcheck // process may have exited
+// handleTimeoutExit waits for the child after sending the initial signal.
+// R2.2: if killAfter > 0, starts a kill-after escalation timer.
+func handleTimeoutExit(cmd *exec.Cmd, done <-chan error, cfg *timeoutConfig) int {
+	if cfg.killAfter > 0 {
+		return waitWithKillAfter(done, cmd, cfg)
+	}
+	waitErr := <-done
+	return resolveTimeoutExitCode(waitErr, cfg.preserveStatus)
+}
+
+// waitWithKillAfter waits for the child to exit, escalating to SIGKILL
+// if the child is still running after killAfter. R2.2.
+func waitWithKillAfter(done <-chan error, cmd *exec.Cmd, cfg *timeoutConfig) int {
+	killTimer := time.NewTimer(cfg.killAfter)
+	defer killTimer.Stop()
+	select {
+	case waitErr := <-done:
+		return resolveTimeoutExitCode(waitErr, cfg.preserveStatus)
+	case <-killTimer.C:
+		sendSignalToCmd(cmd, syscall.SIGKILL, cfg.foreground)
+		waitErr := <-done
+		return resolveTimeoutExitCode(waitErr, cfg.preserveStatus)
+	}
+}
+
+// resolveTimeoutExitCode returns the appropriate exit code after a timeout.
+// R2.4: --preserve-status returns the command's actual exit status.
+func resolveTimeoutExitCode(waitErr error, preserveStatus bool) int {
+	if preserveStatus {
+		return exitCodeFromError(waitErr)
+	}
+	return exitTimeout
+}
+
+// sendSignalToCmd sends a signal to the command process.
+// When foreground is false, sends to the child's process group via negative pid.
+// For SIGKILL, also sends to ourselves to match GNU timeout behavior where
+// timeout and child share a process group and both die on SIGKILL.
+func sendSignalToCmd(cmd *exec.Cmd, sig syscall.Signal, foreground bool) {
+	pid := cmd.Process.Pid
+	if foreground {
+		syscall.Kill(pid, sig) //nolint:errcheck // process may have exited
+		return
+	}
+	syscall.Kill(-pid, sig) //nolint:errcheck // process may have exited
+	if sig == syscall.SIGKILL {
+		syscall.Kill(os.Getpid(), syscall.SIGKILL) //nolint:errcheck // intentional self-kill
+	}
 }
 
 // exitCodeFromError extracts the exit code from a cmd.Wait() error.
+// Handles both normal exits and signal-killed processes (128+signum).
 func exitCodeFromError(err error) int {
 	if err == nil {
 		return 0
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.ExitCode()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		return exitInternalError
+	}
+	code := exitErr.ExitCode()
+	if code >= 0 {
+		return code
+	}
+	return signalExitCode(exitErr)
+}
+
+// signalExitCode extracts 128+signum from a signal-killed process.
+func signalExitCode(exitErr *exec.ExitError) int {
+	ws, ok := exitErr.Sys().(syscall.WaitStatus)
+	if ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
 	}
 	return exitInternalError
 }
@@ -204,6 +449,31 @@ func exitMissing(after string) {
 // exitInvalidInterval prints an invalid interval error and exits 125.
 func exitInvalidInterval(s string) {
 	fmt.Fprintf(os.Stderr, "%s: invalid time interval %q\n", programName, s)
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n",
+		programName)
+	os.Exit(exitInternalError)
+}
+
+// exitInvalidSignal prints an invalid signal error and exits 125.
+func exitInvalidSignal(s string) {
+	fmt.Fprintf(os.Stderr, "%s: invalid signal %q\n", programName, s)
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n",
+		programName)
+	os.Exit(exitInternalError)
+}
+
+// exitUnknownOption prints an unrecognized option error and exits 125.
+func exitUnknownOption(opt string) {
+	fmt.Fprintf(os.Stderr, "%s: unrecognized option %q\n", programName, opt)
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n",
+		programName)
+	os.Exit(exitInternalError)
+}
+
+// exitMissingOptArg prints a missing option argument error and exits 125.
+func exitMissingOptArg(opt string) {
+	fmt.Fprintf(os.Stderr, "%s: option %q requires an argument\n",
+		programName, opt)
 	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n",
 		programName)
 	os.Exit(exitInternalError)
