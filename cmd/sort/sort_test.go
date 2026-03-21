@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd053-sort R1.1–R1.7, R2.1, R3.1–R3.4.
+// Differential tests for prd053-sort R1.1–R1.7, R2.1, R3.1–R3.4, R4.1–R4.4.
 package main_test
 
 import (
@@ -423,6 +423,159 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffCheck tests -c/--check and -C/--check=quiet flags (R4.2).
+func TestDiffCheck(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skipf("reference binary gsort not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.1, R4.2: -c on sorted input exits 0.
+		{
+			Name:     "check_sorted",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c on unsorted input exits 1.
+		{
+			Name:      "check_unsorted",
+			Args:      []string{"-c"},
+			Stdin:     []byte("b\na\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
+		},
+		// R4.2: --check long flag on sorted input.
+		{
+			Name:     "check_long_flag_sorted",
+			Args:     []string{"--check"},
+			Stdin:    []byte("apple\nbanana\ncherry\n"),
+			ExitCode: 0,
+		},
+		// R4.2: --check long flag on unsorted input.
+		{
+			Name:      "check_long_flag_unsorted",
+			Args:      []string{"--check"},
+			Stdin:     []byte("cherry\napple\nbanana\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
+		},
+		// R4.2: -C quiet mode on unsorted input exits 1, no stderr.
+		{
+			Name:     "check_quiet_unsorted",
+			Args:     []string{"-C"},
+			Stdin:    []byte("b\na\nc\n"),
+			ExitCode: 1,
+		},
+		// R4.2: --check=quiet on unsorted input exits 1, no stderr.
+		{
+			Name:     "check_quiet_long_unsorted",
+			Args:     []string{"--check=quiet"},
+			Stdin:    []byte("z\na\nb\n"),
+			ExitCode: 1,
+		},
+		// R4.2: --check=silent on unsorted input exits 1, no stderr.
+		{
+			Name:     "check_silent_long_unsorted",
+			Args:     []string{"--check=silent"},
+			Stdin:    []byte("z\na\nb\n"),
+			ExitCode: 1,
+		},
+		// R4.2: -C on sorted input exits 0.
+		{
+			Name:     "check_quiet_sorted",
+			Args:     []string{"-C"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c on single line (trivially sorted).
+		{
+			Name:     "check_single_line",
+			Args:     []string{"-c"},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c on empty input (trivially sorted).
+		{
+			Name:     "check_empty",
+			Args:     []string{"-c"},
+			Stdin:    []byte(""),
+			ExitCode: 0,
+		},
+		// R4.2: -c with -n on numerically sorted input.
+		{
+			Name:     "check_numeric_sorted",
+			Args:     []string{"-c", "-n"},
+			Stdin:    []byte("1\n2\n10\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c with -n on numerically unsorted input.
+		{
+			Name:      "check_numeric_unsorted",
+			Args:      []string{"-c", "-n"},
+			Stdin:     []byte("1\n10\n2\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
+		},
+		// R4.2: -c with -r on reverse-sorted input.
+		{
+			Name:     "check_reverse_sorted",
+			Args:     []string{"-c", "-r"},
+			Stdin:    []byte("c\nb\na\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c with -r on non-reverse-sorted input.
+		{
+			Name:      "check_reverse_unsorted",
+			Args:      []string{"-c", "-r"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
+		},
+		// R4.2: -c with duplicate lines (sorted).
+		{
+			Name:     "check_duplicates_sorted",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\na\nb\nb\n"),
+			ExitCode: 0,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodes tests exit code behavior (R4.1, R4.3).
+func TestDiffExitCodes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skipf("reference binary gsort not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		// R4.3: invalid short flag exits 2.
+		{
+			Name:      "invalid_short_flag",
+			Args:      []string{"-Q"},
+			Stdin:     []byte("a\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
+		},
+		// R4.3: invalid long flag exits 2.
+		{
+			Name:      "invalid_long_flag",
+			Args:      []string{"--nonexistent"},
+			Stdin:     []byte("a\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryPrefix},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffOutput tests -o/--output flag (R1.6).
 func TestDiffOutput(t *testing.T) {
 	t.Parallel()
@@ -508,10 +661,18 @@ func verifyFileContent(t *testing.T, path, want string) {
 	}
 }
 
-// normalizeBinaryPrefix replaces "gsort: " with "sort: " in output so that
-// stderr error messages from the reference binary match our binary's output,
-// and lowercases the result to normalize strerror() capitalization differences.
+// normalizeBinaryPrefix normalizes the binary name prefix in stderr output.
+// The reference binary may identify itself by full path (e.g.,
+// "/opt/homebrew/bin/sort:") while our binary uses "sort:".
+// Also normalizes the "Try '...--help'" line which contains the binary path.
 func normalizeBinaryPrefix(data []byte) []byte {
-	data = bytes.ReplaceAll(data, []byte("gsort: "), []byte("sort: "))
-	return bytes.ToLower(data)
+	lines := bytes.Split(data, []byte("\n"))
+	for i, line := range lines {
+		if idx := bytes.Index(line, []byte(": ")); idx >= 0 {
+			lines[i] = append([]byte("sort"), line[idx:]...)
+		} else if bytes.Contains(line, []byte("--help'")) {
+			lines[i] = []byte("try 'sort --help' for more information.")
+		}
+	}
+	return bytes.ToLower(bytes.Join(lines, []byte("\n")))
 }

@@ -4,6 +4,7 @@
 // Implements prd053-sort R1.1–R1.7: basic sorting and output control.
 // Implements prd053-sort R2.1: numeric sort mode (-n).
 // Implements prd053-sort R3.1–R3.4: key fields, delimiters, and ignore-leading-blanks.
+// Implements prd053-sort R4.1–R4.3: exit codes and check mode.
 package main
 
 import (
@@ -46,6 +47,8 @@ type options struct {
 	stable       bool      // -s, --stable (R1.7)
 	numeric      bool      // -n, --numeric-sort (R2.1)
 	ignoreBlanks bool      // -b, --ignore-leading-blanks (R3.4)
+	check        bool      // -c, --check (R4.2)
+	checkQuiet   bool      // -C, --check=quiet (R4.2)
 	fieldSep     string    // -t, --field-separator (R3.1)
 	keys         []sortKey // -k, --key (R3.2, R3.3)
 }
@@ -66,6 +69,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		files = []string{"-"}
 	}
 	lines, readErr := readAllFiles(files, stdin, stderr)
+	if opts.check || opts.checkQuiet {
+		return checkSorted(lines, opts, files[0], stderr, readErr)
+	}
 	sortLines(lines, opts)
 	if opts.unique {
 		lines = dedupLines(lines, opts)
@@ -178,6 +184,10 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.numeric = true
 	case 'b':
 		o.ignoreBlanks = true
+	case 'c':
+		o.check = true
+	case 'C':
+		o.checkQuiet = true
 	default:
 		return false
 	}
@@ -198,6 +208,10 @@ func applyLongFlag(o *options, arg string, args []string, i int, stdout, stderr 
 		o.numeric = true
 	case arg == "--ignore-leading-blanks":
 		o.ignoreBlanks = true
+	case arg == "--check", arg == "--check=diagnose-first":
+		o.check = true
+	case arg == "--check=quiet", arg == "--check=silent":
+		o.checkQuiet = true
 	case arg == "--help":
 		printHelp(stdout)
 		return i, 0
@@ -375,6 +389,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Write sorted concatenation of all FILE(s) to standard output.")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  -b, --ignore-leading-blanks  ignore leading blanks")
+	fmt.Fprintln(w, "  -c, --check              check for sorted input; do not sort")
+	fmt.Fprintln(w, "  -C, --check=quiet        like -c, but do not report first bad line")
 	fmt.Fprintln(w, "  -k, --key=KEYDEF         sort via a key; KEYDEF gives location and type")
 	fmt.Fprintln(w, "  -n, --numeric-sort        compare according to string numerical value")
 	fmt.Fprintln(w, "  -o, --output=FILE         write result to FILE instead of standard output")
@@ -659,6 +675,65 @@ func linesEqualByKey(a, b string, opts options) bool {
 		}
 	}
 	return true
+}
+
+// checkSorted verifies that lines are in sorted order (R4.2).
+// Returns 0 if sorted, 1 if not. Prints diagnostic unless -C/--check=quiet.
+func checkSorted(lines []string, opts options, source string, stderr io.Writer, readErr int) int {
+	if readErr != 0 {
+		return readErr
+	}
+	for i := 1; i < len(lines); i++ {
+		if isOutOfOrder(lines[i-1], lines[i], opts) {
+			if !opts.checkQuiet {
+				fmt.Fprintf(stderr, "%s: %s:%d: disorder: %s\n",
+					progName, source, i+1, lines[i])
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// isOutOfOrder returns true if b should come before a under the active options.
+func isOutOfOrder(a, b string, opts options) bool {
+	if len(opts.keys) > 0 {
+		return isOutOfOrderByKeys(a, b, opts)
+	}
+	return isOutOfOrderWholeLine(a, b, opts)
+}
+
+// isOutOfOrderWholeLine checks whole-line ordering.
+func isOutOfOrderWholeLine(a, b string, opts options) bool {
+	ca, cb := a, b
+	if opts.ignoreBlanks {
+		ca = strings.TrimLeft(ca, " \t")
+		cb = strings.TrimLeft(cb, " \t")
+	}
+	var cmp int
+	if opts.numeric {
+		cmp = compareNumeric(ca, cb)
+	} else {
+		cmp = strings.Compare(ca, cb)
+	}
+	if opts.reverse {
+		return cmp < 0
+	}
+	return cmp > 0
+}
+
+// isOutOfOrderByKeys checks key-based ordering.
+func isOutOfOrderByKeys(a, b string, opts options) bool {
+	for ki := range opts.keys {
+		cmp := compareOneKey(a, b, opts.keys[ki], opts)
+		if cmp != 0 {
+			return cmp > 0
+		}
+	}
+	if opts.stable || opts.unique {
+		return false
+	}
+	return a > b
 }
 
 // writeOutput writes sorted lines to the appropriate destination.
