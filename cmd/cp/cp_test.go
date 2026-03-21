@@ -4,7 +4,8 @@
 // Differential tests for cmd/cp covering prd056-cp R1.1 (basic file copying),
 // R1.2 (interactive mode), R1.3 (force mode), R1.4 (no-clobber mode),
 // R2.1 (recursive copy), R2.2 (directory without -r), R2.3 (dereference),
-// R2.4 (no-dereference/preserve symlinks).
+// R2.4 (no-dereference/preserve symlinks), R3.1 (preserve mode/timestamps),
+// R3.2 (archive mode), R3.3 (--preserve=ATTR_LIST), R3.4 (verbose output).
 package main_test
 
 import (
@@ -103,6 +104,7 @@ func runIsolatedTests(t *testing.T, goBin, refBin string, normBin testutils.Norm
 	t.Helper()
 	cases := buildIsolatedCases(normBin)
 	cases = append(cases, buildR2IsolatedCases()...)
+	cases = append(cases, buildR3IsolatedCases(normBin)...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -627,6 +629,225 @@ func verifyNotSymlink(t *testing.T, path string) {
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		t.Fatalf("%s is a symlink, expected regular file", path)
+	}
+}
+
+// buildR3IsolatedCases returns isolated test cases for R3.1–R3.4.
+func buildR3IsolatedCases(normBin testutils.NormalizeFunc) []isolatedCase {
+	return []isolatedCase{
+		// R3.1: -p preserves mode and timestamps.
+		{
+			name: "preserve_p_flag",
+			args: []string{"-p", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "preserved\n")
+				requireChmod(t, filepath.Join(dir, "src.txt"), 0o755)
+				setOldTimestamps(t, filepath.Join(dir, "src.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest.txt"), "preserved\n")
+				verifyModeMatch(t, filepath.Join(dir, "src.txt"), filepath.Join(dir, "dest.txt"))
+				verifyTimestampMatch(t, filepath.Join(dir, "src.txt"), filepath.Join(dir, "dest.txt"))
+			},
+		},
+		// R3.1: --preserve long flag defaults to mode,ownership,timestamps.
+		{
+			name: "preserve_long_flag",
+			args: []string{"--preserve", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "long flag\n")
+				requireChmod(t, filepath.Join(dir, "src.txt"), 0o700)
+				setOldTimestamps(t, filepath.Join(dir, "src.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyModeMatch(t, filepath.Join(dir, "src.txt"), filepath.Join(dir, "dest.txt"))
+				verifyTimestampMatch(t, filepath.Join(dir, "src.txt"), filepath.Join(dir, "dest.txt"))
+			},
+		},
+		// R3.2: -a recursive with metadata preservation.
+		{
+			name: "archive_recursive",
+			args: []string{"-a", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "f.txt"), "archived\n")
+				requireChmod(t, filepath.Join(dir, "srcdir", "f.txt"), 0o755)
+				setOldTimestamps(t, filepath.Join(dir, "srcdir", "f.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				destFile := filepath.Join(dir, "destdir", "f.txt")
+				verifyFileContent(t, destFile, "archived\n")
+				verifyModeMatch(t, filepath.Join(dir, "srcdir", "f.txt"), destFile)
+				verifyTimestampMatch(t, filepath.Join(dir, "srcdir", "f.txt"), destFile)
+			},
+		},
+		// R3.2: --archive long flag.
+		{
+			name: "archive_long_flag",
+			args: []string{"--archive", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "f.txt"), "archive\n")
+				requireChmod(t, filepath.Join(dir, "srcdir", "f.txt"), 0o700)
+				setOldTimestamps(t, filepath.Join(dir, "srcdir", "f.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				destFile := filepath.Join(dir, "destdir", "f.txt")
+				verifyFileContent(t, destFile, "archive\n")
+				verifyModeMatch(t, filepath.Join(dir, "srcdir", "f.txt"), destFile)
+				verifyTimestampMatch(t, filepath.Join(dir, "srcdir", "f.txt"), destFile)
+			},
+		},
+		// R3.3: --preserve=timestamps preserves only timestamps.
+		{
+			name: "preserve_timestamps_only",
+			args: []string{"--preserve=timestamps", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "ts only\n")
+				setOldTimestamps(t, filepath.Join(dir, "src.txt"))
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyTimestampMatch(t, filepath.Join(dir, "src.txt"),
+					filepath.Join(dir, "dest.txt"))
+			},
+		},
+		// R3.3: --preserve=mode preserves only mode.
+		{
+			name: "preserve_mode_only",
+			args: []string{"--preserve=mode", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "mode only\n")
+				requireChmod(t, filepath.Join(dir, "src.txt"), 0o755)
+			},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyModeMatch(t, filepath.Join(dir, "src.txt"),
+					filepath.Join(dir, "dest.txt"))
+			},
+		},
+		// R3.4: -v verbose output.
+		{
+			name: "verbose_output",
+			args: []string{"-v", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "verbose\n")
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest.txt"), "verbose\n")
+			},
+		},
+		// R3.4: --verbose long flag.
+		{
+			name: "verbose_long_flag",
+			args: []string{"--verbose", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "verbose long\n")
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest.txt"), "verbose long\n")
+			},
+		},
+		// R3.4: -v with recursive copy.
+		{
+			name: "verbose_recursive",
+			args: []string{"-rv", "srcdir", "destdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				requireMkdir(t, filepath.Join(dir, "srcdir"))
+				setupFile(t, dir, filepath.Join("srcdir", "a.txt"), "aaa\n")
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "destdir", "a.txt"), "aaa\n")
+			},
+		},
+		// R3.1+R3.4: -pv combined flags.
+		{
+			name: "preserve_verbose_combined",
+			args: []string{"-pv", "src.txt", "dest.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				setupFile(t, dir, "src.txt", "pv combo\n")
+				requireChmod(t, filepath.Join(dir, "src.txt"), 0o755)
+				setOldTimestamps(t, filepath.Join(dir, "src.txt"))
+			},
+			norm: []testutils.NormalizeFunc{normBin},
+			verify: func(t *testing.T, dir string) {
+				t.Helper()
+				verifyFileContent(t, filepath.Join(dir, "dest.txt"), "pv combo\n")
+				verifyModeMatch(t, filepath.Join(dir, "src.txt"), filepath.Join(dir, "dest.txt"))
+				verifyTimestampMatch(t, filepath.Join(dir, "src.txt"), filepath.Join(dir, "dest.txt"))
+			},
+		},
+	}
+}
+
+// requireChmod sets the file mode, failing the test on error.
+func requireChmod(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("chmod %s: %v", path, err)
+	}
+}
+
+// setOldTimestamps sets mtime and atime to a fixed past date.
+func setOldTimestamps(t *testing.T, path string) {
+	t.Helper()
+	oldTime := time.Date(2020, 1, 15, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes %s: %v", path, err)
+	}
+}
+
+// verifyModeMatch checks that src and dest have the same permission bits.
+func verifyModeMatch(t *testing.T, src, dest string) {
+	t.Helper()
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		t.Fatalf("stat src %s: %v", src, err)
+	}
+	destInfo, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("stat dest %s: %v", dest, err)
+	}
+	if srcInfo.Mode().Perm() != destInfo.Mode().Perm() {
+		t.Fatalf("mode mismatch: src=%o, dest=%o",
+			srcInfo.Mode().Perm(), destInfo.Mode().Perm())
+	}
+}
+
+// verifyTimestampMatch checks that src and dest have the same modification time.
+func verifyTimestampMatch(t *testing.T, src, dest string) {
+	t.Helper()
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		t.Fatalf("stat src %s: %v", src, err)
+	}
+	destInfo, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("stat dest %s: %v", dest, err)
+	}
+	if !srcInfo.ModTime().Equal(destInfo.ModTime()) {
+		t.Fatalf("mtime mismatch: src=%v, dest=%v",
+			srcInfo.ModTime(), destInfo.ModTime())
 	}
 }
 

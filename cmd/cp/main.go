@@ -1,14 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd056-cp R1.1: basic file copying (single and multi-source).
-// Implements prd056-cp R1.2: interactive mode (-i, --interactive).
-// Implements prd056-cp R1.3: force mode (-f, --force).
-// Implements prd056-cp R1.4: no-clobber mode (-n, --no-clobber).
-// Implements prd056-cp R2.1: recursive directory copy (-r, -R, --recursive).
-// Implements prd056-cp R2.2: refuse directory copy without -r.
-// Implements prd056-cp R2.3: dereference symlinks (-L, --dereference).
-// Implements prd056-cp R2.4: no-dereference symlinks (-P, --no-dereference).
+// Implements prd056-cp R1.1–R1.4: basic file copying.
+// Implements prd056-cp R2.1–R2.4: recursive copy and symlink handling.
+// Implements prd056-cp R3.1–R3.4: preservation and metadata handling.
 package main
 
 import (
@@ -17,20 +12,23 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 const progName = "cp"
 
-// options holds parsed GNU cp flags for R1.1–R1.4, R2.1–R2.4.
+// options holds parsed GNU cp flags for R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 type options struct {
-	interactive   bool // -i, --interactive (R1.2)
-	force         bool // -f, --force (R1.3)
-	noClobber     bool // -n, --no-clobber (R1.4)
-	recursive     bool // -r, -R, --recursive (R2.1)
-	dereference   bool // -L, --dereference (R2.3)
-	noDereference bool // -P, --no-dereference (R2.4)
+	interactive   bool        // -i, --interactive (R1.2)
+	force         bool        // -f, --force (R1.3)
+	noClobber     bool        // -n, --no-clobber (R1.4)
+	recursive     bool        // -r, -R, --recursive (R2.1)
+	dereference   bool        // -L, --dereference (R2.3)
+	noDereference bool        // -P, --no-dereference (R2.4)
+	preserve      preserveSet // -p, --preserve, -a (R3.1–R3.3)
+	verbose       bool        // -v, --verbose (R3.4)
 }
 
 func main() {
@@ -48,7 +46,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := validateOperands(files, stderr); err != nil {
 		return 1
 	}
-	return doCopy(opts, files, stdin, stderr)
+	return doCopy(opts, files, stdin, stdout, stderr)
 }
 
 // validateOperands checks that enough file arguments were provided.
@@ -69,7 +67,7 @@ func validateOperands(files []string, stderr io.Writer) error {
 
 // doCopy copies each source to the destination. R1.1: single file copy and
 // multi-source copy into a directory.
-func doCopy(opts options, files []string, stdin io.Reader, stderr io.Writer) int {
+func doCopy(opts options, files []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	dest := files[len(files)-1]
 	sources := files[:len(files)-1]
 	destInfo, err := os.Stat(dest)
@@ -78,17 +76,26 @@ func doCopy(opts options, files []string, stdin io.Reader, stderr io.Writer) int
 		fmt.Fprintf(stderr, "%s: target '%s': Not a directory\n", progName, dest)
 		return 1
 	}
+	tracker := newTrackerIfNeeded(opts)
 	exitCode := 0
 	for _, src := range sources {
 		target := dest
 		if destIsDir {
 			target = filepath.Join(dest, filepath.Base(src))
 		}
-		if err := copySingle(opts, src, target, stdin, stderr); err != nil {
+		if err := copySingle(opts, src, target, stdin, stdout, stderr, tracker); err != nil {
 			exitCode = 1
 		}
 	}
 	return exitCode
+}
+
+// newTrackerIfNeeded creates an inode tracker when hard link preservation is on.
+func newTrackerIfNeeded(opts options) *inodeTracker {
+	if opts.preserve.links {
+		return newInodeTracker()
+	}
+	return nil
 }
 
 // lstatSource returns file info for src using the appropriate stat function.
@@ -100,8 +107,9 @@ func lstatSource(opts options, src string) (os.FileInfo, error) {
 	return os.Lstat(src)
 }
 
-// copySingle copies one source to the target path, applying R1.2–R1.4, R2.1–R2.4.
-func copySingle(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+// copySingle copies one source to the target path.
+func copySingle(opts options, src, dest string,
+	stdin io.Reader, stdout, stderr io.Writer, tracker *inodeTracker) error {
 	srcInfo, err := lstatSource(opts, src)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: cannot stat '%s': %s\n",
@@ -109,51 +117,41 @@ func copySingle(opts options, src, dest string, stdin io.Reader, stderr io.Write
 		return err
 	}
 	if srcInfo.IsDir() {
-		return handleDirSource(opts, src, dest, stdin, stderr)
+		return handleDirSource(opts, src, dest, stdin, stdout, stderr, tracker)
 	}
-	if srcInfo.Mode()&os.ModeSymlink != 0 {
-		return copySymlink(opts, src, dest, stdin, stderr)
-	}
-	return copyRegularFile(opts, src, dest, stdin, stderr)
+	return copyNonDir(opts, srcInfo, src, dest, stdin, stdout, stderr, tracker)
 }
 
 // handleDirSource handles when the source is a directory.
 // R2.2: without -r, refuses. R2.1: with -r, copies recursively.
-func handleDirSource(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+// R3.4: prints verbose before recursing.
+func handleDirSource(opts options, src, dest string,
+	stdin io.Reader, stdout, stderr io.Writer, tracker *inodeTracker) error {
 	if !opts.recursive {
 		fmt.Fprintf(stderr, "%s: -r not specified; omitting directory '%s'\n",
 			progName, src)
 		return fmt.Errorf("omitting directory")
 	}
-	return copyDir(opts, src, dest, stdin, stderr)
-}
-
-// copyRegularFile copies a regular file, checking same-file and skip rules.
-func copyRegularFile(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
-	if isSameFile(src, dest) {
-		fmt.Fprintf(stderr, "%s: '%s' and '%s' are the same file\n",
-			progName, src, dest)
-		return fmt.Errorf("same file")
+	if opts.verbose {
+		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest)
 	}
-	skip, skipErr := checkSkip(opts, dest, stdin, stderr)
-	if skip {
-		return skipErr
-	}
-	return performCopy(opts, src, dest, stderr)
+	return copyDir(opts, src, dest, stdin, stdout, stderr, tracker)
 }
 
 // copyDir recursively copies a directory tree. R2.1.
-func copyDir(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+func copyDir(opts options, src, dest string,
+	stdin io.Reader, stdout, stderr io.Writer, tracker *inodeTracker) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		fmt.Fprintf(stderr, "%s: cannot create directory '%s': %s\n",
 			progName, dest, unwrapPathError(err))
 		return err
 	}
-	return copyDirEntries(opts, src, dest, stdin, stderr)
+	return copyDirEntries(opts, src, dest, stdin, stdout, stderr, tracker)
 }
 
 // copyDirEntries reads and copies each entry in a directory.
-func copyDirEntries(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+func copyDirEntries(opts options, src, dest string,
+	stdin io.Reader, stdout, stderr io.Writer, tracker *inodeTracker) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: cannot open directory '%s': %s\n",
@@ -164,30 +162,68 @@ func copyDirEntries(opts options, src, dest string, stdin io.Reader, stderr io.W
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
-		if err := copySingle(opts, srcPath, destPath, stdin, stderr); err != nil && firstErr == nil {
+		if err := copySingle(opts, srcPath, destPath, stdin, stdout, stderr, tracker); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
-	return preserveDirMode(src, dest, firstErr)
+	preserveDirAttrs(opts, src, dest, stderr)
+	return firstErr
 }
 
-// preserveDirMode copies the source directory's permission bits to dest.
-func preserveDirMode(src, dest string, prevErr error) error {
+// preserveDirAttrs applies preservation or default mode copy to a directory.
+// When preservation is requested, applies all requested attributes.
+// Otherwise, copies the source directory's permission bits (default behavior).
+func preserveDirAttrs(opts options, src, dest string, stderr io.Writer) {
+	if opts.preserve.any() {
+		applyPreservation(opts.preserve, src, dest, stderr)
+		return
+	}
 	srcInfo, err := os.Stat(src)
 	if err != nil {
-		return prevErr
+		return
 	}
 	// best-effort: set dest mode to match source
 	_ = os.Chmod(dest, srcInfo.Mode().Perm())
-	return prevErr
 }
 
-// copySymlink copies a symlink as a symlink. R2.4: -P preserves symlinks.
-func copySymlink(opts options, src, dest string, stdin io.Reader, stderr io.Writer) error {
+// copyNonDir copies a non-directory file (regular or symlink) after
+// performing same-file and skip checks.
+func copyNonDir(opts options, srcInfo os.FileInfo, src, dest string,
+	stdin io.Reader, stdout, stderr io.Writer, tracker *inodeTracker) error {
+	isSymlink := srcInfo.Mode()&os.ModeSymlink != 0
+	if !isSymlink && isSameFile(src, dest) {
+		fmt.Fprintf(stderr, "%s: '%s' and '%s' are the same file\n",
+			progName, src, dest)
+		return fmt.Errorf("same file")
+	}
 	skip, skipErr := checkSkip(opts, dest, stdin, stderr)
 	if skip {
 		return skipErr
 	}
+	return copyAfterChecks(opts, isSymlink, src, dest, stdout, stderr, tracker)
+}
+
+// copyAfterChecks performs the actual copy after all precondition checks pass.
+// R3.4: prints verbose before the copy.
+func copyAfterChecks(opts options, isSymlink bool, src, dest string,
+	stdout, stderr io.Writer, tracker *inodeTracker) error {
+	if opts.verbose {
+		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest)
+	}
+	var err error
+	if isSymlink {
+		err = copySymlinkDirect(opts, src, dest, stderr)
+	} else {
+		err = copyOrLink(opts, src, dest, stderr, tracker)
+	}
+	if err == nil {
+		applyPreservation(opts.preserve, src, dest, stderr)
+	}
+	return err
+}
+
+// copySymlinkDirect copies a symlink as a symlink. R2.4.
+func copySymlinkDirect(opts options, src, dest string, stderr io.Writer) error {
 	target, err := os.Readlink(src)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: cannot read symlink '%s': %s\n",
@@ -199,7 +235,6 @@ func copySymlink(opts options, src, dest string, stdin io.Reader, stderr io.Writ
 
 // createSymlink creates a symlink at dest pointing to target.
 func createSymlink(opts options, target, dest string, stderr io.Writer) error {
-	// Remove existing dest if present
 	if _, err := os.Lstat(dest); err == nil {
 		if opts.force {
 			if err := os.Remove(dest); err != nil {
@@ -219,6 +254,29 @@ func createSymlink(opts options, target, dest string, stderr io.Writer) error {
 		fmt.Fprintf(stderr, "%s: cannot create symlink '%s': %s\n",
 			progName, dest, unwrapPathError(err))
 		return err
+	}
+	return nil
+}
+
+// copyOrLink copies a regular file, or creates a hard link if the inode
+// was already seen (when preserve.links is active). R3.3.
+func copyOrLink(opts options, src, dest string,
+	stderr io.Writer, tracker *inodeTracker) error {
+	if tracker == nil {
+		return performCopy(opts, src, dest, stderr)
+	}
+	var fi *sys.FileInfo
+	fi, _ = sys.Lstat(src)
+	if fi != nil && fi.Nlink > 1 {
+		if prev, ok := tracker.lookup(fi.Dev, fi.Ino); ok {
+			return os.Link(prev, dest)
+		}
+	}
+	if err := performCopy(opts, src, dest, stderr); err != nil {
+		return err
+	}
+	if fi != nil {
+		tracker.record(fi.Dev, fi.Ino, dest)
 	}
 	return nil
 }
@@ -376,6 +434,15 @@ func applyShortFlag(o *options, ch byte) bool {
 	case 'P':
 		o.noDereference = true
 		o.dereference = false
+	case 'p':
+		o.preserve = preserveDefault()
+	case 'a':
+		o.recursive = true
+		o.noDereference = true
+		o.dereference = false
+		o.preserve = preserveAll()
+	case 'v':
+		o.verbose = true
 	default:
 		return false
 	}
@@ -385,6 +452,9 @@ func applyShortFlag(o *options, ch byte) bool {
 // applyLongFlag handles --long-name flags.
 // Returns exit code >= 0 for terminal flags, -1 to continue.
 func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
+	if arg == "--preserve" || strings.HasPrefix(arg, "--preserve=") {
+		return handlePreserveFlag(o, arg, stderr)
+	}
 	switch arg {
 	case "--interactive":
 		o.interactive = true
@@ -400,6 +470,13 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 	case "--no-dereference":
 		o.noDereference = true
 		o.dereference = false
+	case "--archive":
+		o.recursive = true
+		o.noDereference = true
+		o.dereference = false
+		o.preserve = preserveAll()
+	case "--verbose":
+		o.verbose = true
 	case "--help":
 		printHelp(stdout)
 		return 0
@@ -414,6 +491,23 @@ func applyLongFlag(o *options, arg string, stdout, stderr io.Writer) int {
 	return -1
 }
 
+// handlePreserveFlag parses --preserve or --preserve=ATTR_LIST. R3.3.
+func handlePreserveFlag(o *options, arg string, stderr io.Writer) int {
+	if arg == "--preserve" {
+		o.preserve = preserveDefault()
+		return -1
+	}
+	list := arg[len("--preserve="):]
+	ps, err := parsePreserveList(list)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
+		printTryHelp(stderr)
+		return 1
+	}
+	o.preserve = ps
+	return -1
+}
+
 // printTryHelp writes the "Try --help" hint to stderr.
 func printTryHelp(w io.Writer) {
 	fmt.Fprintf(w, "Try '%s --help' for more information.\n", progName)
@@ -425,13 +519,17 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "  or:  %s [OPTION]... SOURCE... DIRECTORY\n", progName)
 	fmt.Fprintln(w, "Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY.")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -a, --archive         same as -dR --preserve=all")
 	fmt.Fprintln(w, "  -f, --force           if an existing destination file cannot be")
 	fmt.Fprintln(w, "                          opened, remove it and try again")
 	fmt.Fprintln(w, "  -i, --interactive     prompt before overwrite")
 	fmt.Fprintln(w, "  -L, --dereference     always follow symbolic links in SOURCE")
 	fmt.Fprintln(w, "  -n, --no-clobber      do not overwrite an existing file")
+	fmt.Fprintln(w, "  -p                    same as --preserve=mode,ownership,timestamps")
 	fmt.Fprintln(w, "  -P, --no-dereference  never follow symbolic links in SOURCE")
+	fmt.Fprintln(w, "      --preserve[=ATTR_LIST]  preserve the specified attributes")
 	fmt.Fprintln(w, "  -r, -R, --recursive   copy directories recursively")
+	fmt.Fprintln(w, "  -v, --verbose         explain what is being done")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")
 }
