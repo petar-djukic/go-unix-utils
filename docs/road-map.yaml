@@ -397,7 +397,7 @@ releases:
         - id: rel08.1-uc003-join
           status: spec_complete
         - id: rel08.1-uc004-fmt
-          status: spec_complete
+          status: code_complete  # R3 deferred to rel99.0, see GH-3108
         - id: rel08.1-uc005-numfmt
           status: spec_complete
         - id: rel08.1-uc006-od
