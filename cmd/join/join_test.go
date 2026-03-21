@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd069-join R1.1–R1.4, R2.1–R2.4, R3.3.
+// Differential tests for prd069-join R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 // R1.1: Join two sorted files on common field.
 // R1.2: Default whitespace splitting, single-space output separator.
 // R1.3: Unpaired lines suppressed by default.
@@ -10,7 +10,10 @@
 // R2.2: -j combined field selection.
 // R2.3: -o output format selection.
 // R2.4: -t custom separator.
+// R3.1: -a FILENUM prints unpairable lines.
+// R3.2: -v FILENUM prints only unpairable lines.
 // R3.3: -e missing field replacement.
+// R3.4: --header treats first line as header.
 package main
 
 import (
@@ -99,7 +102,12 @@ func TestDiff(t *testing.T) {
 
 // buildTestCases returns all joinCase entries for the differential test.
 func buildTestCases() []joinCase {
-	return append(buildR1Cases(), append(buildR2FieldCases(), buildR2FormatCases()...)...)
+	var all []joinCase
+	all = append(all, buildR1Cases()...)
+	all = append(all, buildR2FieldCases()...)
+	all = append(all, buildR2FormatCases()...)
+	all = append(all, buildR3Cases()...)
+	return all
 }
 
 // buildR1Cases returns test cases for R1 (default join behavior).
@@ -335,6 +343,145 @@ func buildR2FormatCases() []joinCase {
 			args:     []string{"-o", "0,1.2,2.2"},
 			content1: "a 1\na 2\n",
 			content2: "a X\na Y\n",
+		},
+	}
+}
+
+// buildR3Cases returns test cases for R3.1, R3.2, R3.3, R3.4.
+func buildR3Cases() []joinCase {
+	return []joinCase{
+		// R3.1: -a 1 prints unpairable lines from file 1
+		{
+			name:     "unpair_file1",
+			args:     []string{"-a", "1"},
+			content1: "a 1\nb 2\nc 3\n",
+			content2: "a X\nc Z\n",
+		},
+		// R3.1: -a 2 prints unpairable lines from file 2
+		{
+			name:     "unpair_file2",
+			args:     []string{"-a", "2"},
+			content1: "a 1\nc 3\n",
+			content2: "a X\nb Y\nc Z\n",
+		},
+		// R3.1: -a 1 -a 2 prints unpairable from both files
+		{
+			name:     "unpair_both",
+			args:     []string{"-a", "1", "-a", "2"},
+			content1: "a 1\nb 2\nd 4\n",
+			content2: "a X\nc Y\nd Z\n",
+		},
+		// R3.1: -a 1 with no unpairable lines in file 1
+		{
+			name:     "unpair_file1_all_paired",
+			args:     []string{"-a", "1"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R3.1: -a 2 with file2 exhausted early
+		{
+			name:     "unpair_file2_exhausted",
+			args:     []string{"-a", "2"},
+			content1: "a 1\nb 2\nc 3\n",
+			content2: "a X\n",
+		},
+		// R3.1: -a 1 with file1 having trailing unpairable
+		{
+			name:     "unpair_file1_trailing",
+			args:     []string{"-a", "1"},
+			content1: "a 1\nb 2\nc 3\nd 4\n",
+			content2: "a X\nb Y\n",
+		},
+		// R3.1: -a with -o format and -e replacement
+		{
+			name:     "unpair_with_format_and_empty",
+			args:     []string{"-a", "1", "-o", "0,1.2,2.2", "-e", "NA"},
+			content1: "a 1\nb 2\nc 3\n",
+			content2: "a X\nc Z\n",
+		},
+		// R3.2: -v 1 prints only unpairable lines from file 1
+		{
+			name:     "only_unpair_file1",
+			args:     []string{"-v", "1"},
+			content1: "a 1\nb 2\nc 3\n",
+			content2: "a X\nc Z\n",
+		},
+		// R3.2: -v 2 prints only unpairable lines from file 2
+		{
+			name:     "only_unpair_file2",
+			args:     []string{"-v", "2"},
+			content1: "a 1\nc 3\n",
+			content2: "a X\nb Y\nc Z\n",
+		},
+		// R3.2: -v 1 with all lines paired — no output
+		{
+			name:     "only_unpair_file1_none",
+			args:     []string{"-v", "1"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\nb Y\n",
+		},
+		// R3.2: -v 1 with -o format
+		{
+			name:     "only_unpair_with_format",
+			args:     []string{"-v", "1", "-o", "0,1.2"},
+			content1: "a 1\nb 2\nc 3\n",
+			content2: "a X\nc Z\n",
+		},
+		// R3.3: -e with -a and -o — missing file2 fields replaced
+		{
+			name:     "empty_with_unpair",
+			args:     []string{"-a", "1", "-o", "0,1.2,2.2", "-e", "NONE"},
+			content1: "a 1\nb 2\n",
+			content2: "a X\n",
+		},
+		// R3.4: --header joins first lines regardless of sort order
+		{
+			name:     "header_basic",
+			args:     []string{"--header"},
+			content1: "NAME VALUE\na 1\nb 2\n",
+			content2: "NAME DATA\na X\nb Y\n",
+		},
+		// R3.4: --header with unsorted header keys
+		{
+			name:     "header_unsorted_keys",
+			args:     []string{"--header"},
+			content1: "ZZZ col1\na 1\nb 2\n",
+			content2: "AAA col2\na X\nb Y\n",
+		},
+		// R3.4: --header with -t separator
+		{
+			name:     "header_with_sep",
+			args:     []string{"--header", "-t", ","},
+			content1: "NAME,VALUE\na,1\nb,2\n",
+			content2: "NAME,DATA\na,X\nb,Y\n",
+		},
+		// R3.4: --header with -a
+		{
+			name:     "header_with_unpair",
+			args:     []string{"--header", "-a", "1"},
+			content1: "NAME VALUE\na 1\nb 2\nc 3\n",
+			content2: "NAME DATA\na X\nc Z\n",
+		},
+		// R3.4: --header with -o format
+		{
+			name:     "header_with_format",
+			args:     []string{"--header", "-o", "0,1.2,2.2"},
+			content1: "NAME VALUE\na 1\nb 2\n",
+			content2: "NAME DATA\na X\nb Y\n",
+		},
+		// R3.1: -a with -t separator
+		{
+			name:     "unpair_with_sep",
+			args:     []string{"-a", "1", "-t", ","},
+			content1: "a,1\nb,2\nc,3\n",
+			content2: "a,X\nc,Z\n",
+		},
+		// R3.2: -v with both files
+		{
+			name:     "only_unpair_both",
+			args:     []string{"-v", "1", "-v", "2"},
+			content1: "a 1\nb 2\nd 4\n",
+			content2: "a X\nc Y\nd Z\n",
 		},
 	}
 }
