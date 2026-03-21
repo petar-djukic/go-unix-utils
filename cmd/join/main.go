@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd069-join R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Implements prd069-join R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 // R1.1: Read two sorted files, join on common field (default: field 1).
 // R1.2: Default whitespace field splitting, single-space output separator.
 // R1.3: Unpaired lines are suppressed by default.
@@ -14,6 +14,10 @@
 // R3.2: -v FILENUM prints only unpairable lines, suppressing paired output.
 // R3.3: -e STRING replaces missing input fields in -o output.
 // R3.4: --header treats first line of each file as header.
+// R4.1: Exit 0 on success.
+// R4.2: Exit 1 on invalid option, file error, or unsorted input with --check-order.
+// R4.3: Verified via differential testing against gjoin.
+// R4.4: Tests cover all flag combinations including --check-order.
 package main
 
 import (
@@ -48,6 +52,9 @@ type joinConfig struct {
 	onlyUnpair1 bool         // R3.2: -v 1 — print only unpairable lines from file 1
 	onlyUnpair2 bool         // R3.2: -v 2 — print only unpairable lines from file 2
 	header      bool         // R3.4: --header — treat first line as header
+	checkOrder  bool         // R4.2: --check-order — exit 1 on unsorted input
+	file1Name   string       // file1 operand for error messages
+	file2Name   string       // file2 operand for error messages
 }
 
 // outputSep returns the output field separator.
@@ -69,6 +76,7 @@ type lineReader struct {
 	scanner *bufio.Scanner
 	valid   bool
 	line    string
+	lineNum int // 1-based line number
 }
 
 func newLineReader(r io.Reader) *lineReader {
@@ -83,7 +91,34 @@ func (lr *lineReader) advance() {
 	lr.valid = lr.scanner.Scan()
 	if lr.valid {
 		lr.line = lr.scanner.Text()
+		lr.lineNum++
 	}
+}
+
+// orderChecker tracks sort order for one input file.
+// R4.2: Detects unsorted input when --check-order is set.
+type orderChecker struct {
+	name    string
+	prevKey string
+	started bool
+}
+
+// checkKey verifies that key is >= the previous key from this file.
+func (oc *orderChecker) checkKey(key string, lr *lineReader) error {
+	if oc.started && key < oc.prevKey {
+		return fmt.Errorf("%s:%d: is not sorted: %s", oc.name, lr.lineNum, lr.line)
+	}
+	oc.prevKey = key
+	oc.started = true
+	return nil
+}
+
+// checkFileOrder checks key order if the checker is non-nil.
+func checkFileOrder(oc *orderChecker, key string, lr *lineReader) error {
+	if oc == nil {
+		return nil
+	}
+	return oc.checkKey(key, lr)
 }
 
 func main() {
@@ -97,10 +132,13 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "join: %v\n", err)
 		return 1
 	}
+	cfg.file1Name = file1
+	cfg.file2Name = file2
 	return executeJoin(cfg, file1, file2)
 }
 
 // executeJoin opens both inputs, performs the join, and flushes output.
+// R4.1: Returns 0 on success. R4.2: Returns 1 on error.
 func executeJoin(cfg joinConfig, file1, file2 string) int {
 	r1, c1, err := openInput(file1)
 	if err != nil {
@@ -119,9 +157,14 @@ func executeJoin(cfg joinConfig, file1, file2 string) int {
 		defer c2.Close()
 	}
 	w := bufio.NewWriter(os.Stdout)
-	joinStreams(w, r1, r2, cfg)
-	if err := w.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "join: write error: %v\n", err)
+	joinErr := joinStreams(w, r1, r2, cfg)
+	flushErr := w.Flush()
+	if joinErr != nil {
+		fmt.Fprintf(os.Stderr, "join: %v\n", joinErr)
+		return 1
+	}
+	if flushErr != nil {
+		fmt.Fprintf(os.Stderr, "join: write error: %v\n", flushErr)
 		return 1
 	}
 	return 0
@@ -154,6 +197,10 @@ func parseArgs(args []string) (joinConfig, string, string, error) {
 func parseFlag(arg string, args []string, i *int, cfg *joinConfig) (bool, error) {
 	if arg == "--header" {
 		cfg.header = true
+		return true, nil
+	}
+	if arg == "--check-order" {
+		cfg.checkOrder = true
 		return true, nil
 	}
 	if arg == "-" || !strings.HasPrefix(arg, "-") || len(arg) < 2 {
@@ -396,14 +443,22 @@ func getKey(fields []string, fieldIdx int) string {
 
 // joinStreams performs the merge-join of two sorted inputs.
 // R3.4: When --header is set, consume and join the first lines as headers.
-func joinStreams(w *bufio.Writer, r1, r2 io.Reader, cfg joinConfig) {
+// R4.2: Returns error on unsorted input when --check-order is set.
+func joinStreams(w *bufio.Writer, r1, r2 io.Reader, cfg joinConfig) error {
 	lr1 := newLineReader(r1)
 	lr2 := newLineReader(r2)
 	if cfg.header {
 		writeHeaderLine(w, lr1, lr2, cfg)
 	}
-	mergeJoin(w, lr1, lr2, cfg)
-	drainRemaining(w, lr1, lr2, cfg)
+	var oc1, oc2 *orderChecker
+	if cfg.checkOrder {
+		oc1 = &orderChecker{name: cfg.file1Name}
+		oc2 = &orderChecker{name: cfg.file2Name}
+	}
+	if err := mergeJoin(w, lr1, lr2, cfg, oc1, oc2); err != nil {
+		return err
+	}
+	return drainRemaining(w, lr1, lr2, cfg, oc1, oc2)
 }
 
 // writeHeaderLine joins and prints the header lines from both files.
@@ -431,12 +486,19 @@ func headerKey(f1, f2 []string, cfg joinConfig) string {
 }
 
 // mergeJoin performs the core merge-join loop over two sorted readers.
-func mergeJoin(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig) {
+// R4.2: Checks key order when order checkers are non-nil.
+func mergeJoin(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig, oc1, oc2 *orderChecker) error {
 	for lr1.valid && lr2.valid {
 		f1 := splitLine(lr1.line, cfg)
 		f2 := splitLine(lr2.line, cfg)
 		key1 := getKey(f1, cfg.field1)
 		key2 := getKey(f2, cfg.field2)
+		if err := checkFileOrder(oc1, key1, lr1); err != nil {
+			return err
+		}
+		if err := checkFileOrder(oc2, key2, lr2); err != nil {
+			return err
+		}
 		cmp := strings.Compare(key1, key2)
 		if cmp < 0 {
 			writeUnpairable1(w, f1, key1, cfg)
@@ -448,40 +510,53 @@ func mergeJoin(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig) {
 			lr2.advance()
 			continue
 		}
-		joinGroup(w, lr1, lr2, cfg, key1)
+		if err := joinGroup(w, lr1, lr2, cfg, key1, oc1, oc2); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // drainRemaining outputs any remaining unpairable lines after merge.
-func drainRemaining(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig) {
-	drainUnpairable1(w, lr1, cfg)
-	drainUnpairable2(w, lr2, cfg)
+func drainRemaining(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig, oc1, oc2 *orderChecker) error {
+	if err := drainUnpairable1(w, lr1, cfg, oc1); err != nil {
+		return err
+	}
+	return drainUnpairable2(w, lr2, cfg, oc2)
 }
 
 // drainUnpairable1 outputs remaining file1 lines if -a 1 or -v 1.
-func drainUnpairable1(w *bufio.Writer, lr1 *lineReader, cfg joinConfig) {
+func drainUnpairable1(w *bufio.Writer, lr1 *lineReader, cfg joinConfig, oc *orderChecker) error {
 	if !cfg.unpairFile1 && !cfg.onlyUnpair1 {
-		return
+		return nil
 	}
 	for lr1.valid {
 		f1 := splitLine(lr1.line, cfg)
 		key1 := getKey(f1, cfg.field1)
+		if err := checkFileOrder(oc, key1, lr1); err != nil {
+			return err
+		}
 		writeUnpairableLine(w, f1, nil, key1, cfg)
 		lr1.advance()
 	}
+	return nil
 }
 
 // drainUnpairable2 outputs remaining file2 lines if -a 2 or -v 2.
-func drainUnpairable2(w *bufio.Writer, lr2 *lineReader, cfg joinConfig) {
+func drainUnpairable2(w *bufio.Writer, lr2 *lineReader, cfg joinConfig, oc *orderChecker) error {
 	if !cfg.unpairFile2 && !cfg.onlyUnpair2 {
-		return
+		return nil
 	}
 	for lr2.valid {
 		f2 := splitLine(lr2.line, cfg)
 		key2 := getKey(f2, cfg.field2)
+		if err := checkFileOrder(oc, key2, lr2); err != nil {
+			return err
+		}
 		writeUnpairableLine(w, nil, f2, key2, cfg)
 		lr2.advance()
 	}
+	return nil
 }
 
 // writeUnpairable1 outputs a file1 line that has no pair, if configured.
@@ -529,27 +604,54 @@ func writeDefaultUnpairLine(w *bufio.Writer, f1, f2 []string, key string, cfg jo
 // joinGroup joins all file1 and file2 lines sharing the current key.
 // Buffers file2 lines with the matching key, then cross-joins with
 // all file1 lines that also match.
-func joinGroup(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig, key string) {
-	var group2 [][]string
-	for lr2.valid {
-		f2 := splitLine(lr2.line, cfg)
-		if getKey(f2, cfg.field2) != key {
-			break
-		}
-		group2 = append(group2, f2)
-		lr2.advance()
+func joinGroup(w *bufio.Writer, lr1, lr2 *lineReader, cfg joinConfig, key string, oc1, oc2 *orderChecker) error {
+	group2, err := bufferGroup(lr2, cfg.field2, cfg, key, oc2)
+	if err != nil {
+		return err
 	}
-	for lr1.valid {
-		f1 := splitLine(lr1.line, cfg)
-		if getKey(f1, cfg.field1) != key {
+	return crossJoin(w, lr1, cfg, key, group2, oc1)
+}
+
+// bufferGroup collects all lines from the reader whose join field matches key.
+// R4.2: Checks order of the first non-matching line if checker is non-nil.
+func bufferGroup(lr *lineReader, fieldIdx int, cfg joinConfig, key string, oc *orderChecker) ([][]string, error) {
+	var group [][]string
+	for lr.valid {
+		fields := splitLine(lr.line, cfg)
+		k := getKey(fields, fieldIdx)
+		if k != key {
+			if err := checkFileOrder(oc, k, lr); err != nil {
+				return group, err
+			}
 			break
 		}
-		if !cfg.suppressPaired() {
-			for _, f2 := range group2 {
-				writeJoinLine(w, key, f1, f2, cfg)
-			}
+		group = append(group, fields)
+		lr.advance()
+	}
+	return group, nil
+}
+
+// crossJoin buffers file1 matching lines, checks order, then outputs
+// the cross product with group2.
+// R4.2: Checks order of the first non-matching line if checker is non-nil.
+func crossJoin(w *bufio.Writer, lr1 *lineReader, cfg joinConfig, key string, group2 [][]string, oc *orderChecker) error {
+	group1, err := bufferGroup(lr1, cfg.field1, cfg, key, oc)
+	if err != nil {
+		return err
+	}
+	if cfg.suppressPaired() {
+		return nil
+	}
+	writeCrossProduct(w, key, group1, group2, cfg)
+	return nil
+}
+
+// writeCrossProduct writes the cross product of two groups.
+func writeCrossProduct(w *bufio.Writer, key string, group1, group2 [][]string, cfg joinConfig) {
+	for _, f1 := range group1 {
+		for _, f2 := range group2 {
+			writeJoinLine(w, key, f1, f2, cfg)
 		}
-		lr1.advance()
 	}
 }
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd069-join R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Differential tests for prd069-join R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 // R1.1: Join two sorted files on common field.
 // R1.2: Default whitespace splitting, single-space output separator.
 // R1.3: Unpaired lines suppressed by default.
@@ -14,6 +14,10 @@
 // R3.2: -v FILENUM prints only unpairable lines.
 // R3.3: -e missing field replacement.
 // R3.4: --header treats first line as header.
+// R4.1: Exit 0 on success.
+// R4.2: Exit 1 on invalid option or unsorted input with --check-order.
+// R4.3: Differential tests via pkg/testutils.
+// R4.4: Full flag combination coverage.
 package main
 
 import (
@@ -85,7 +89,7 @@ func TestDiff(t *testing.T) {
 		tests = append(tests, dt)
 	}
 
-	// Error case: nonexistent file
+	// Error case: nonexistent file (R4.2)
 	errDir := t.TempDir()
 	validFile := writeFile(t, errDir, "valid", "a 1\nb 2\n")
 	nonexistent := filepath.Join(errDir, "nonexistent")
@@ -107,6 +111,7 @@ func buildTestCases() []joinCase {
 	all = append(all, buildR2FieldCases()...)
 	all = append(all, buildR2FormatCases()...)
 	all = append(all, buildR3Cases()...)
+	all = append(all, buildR4Cases()...)
 	return all
 }
 
@@ -482,6 +487,43 @@ func buildR3Cases() []joinCase {
 			args:     []string{"-v", "1", "-v", "2"},
 			content1: "a 1\nb 2\nd 4\n",
 			content2: "a X\nc Y\nd Z\n",
+		},
+	}
+}
+
+// buildR4Cases returns test cases for R4 (exit codes and error handling).
+func buildR4Cases() []joinCase {
+	return []joinCase{
+		// R4.1: successful join exits 0 (covered by all other tests, explicit here)
+		{
+			name:     "exit_0_success",
+			content1: "a 1\n",
+			content2: "a X\n",
+			exitCode: 0,
+		},
+		// R4.4: --check-order with sorted input — exits 0
+		{
+			name:     "check_order_sorted",
+			args:     []string{"--check-order"},
+			content1: "a 1\nb 2\nc 3\n",
+			content2: "a X\nb Y\nc Z\n",
+			exitCode: 0,
+		},
+		// R4.4: --check-order with unsorted file1 — exits 1
+		{
+			name:     "check_order_unsorted_file1",
+			args:     []string{"--check-order"},
+			content1: "b 2\na 1\n",
+			content2: "a X\nb Y\n",
+			exitCode: 1,
+		},
+		// R4.4: --check-order with unsorted file2 — exits 1
+		{
+			name:     "check_order_unsorted_file2",
+			args:     []string{"--check-order"},
+			content1: "a 1\nb 2\n",
+			content2: "b Y\na X\n",
+			exitCode: 1,
 		},
 	}
 }
