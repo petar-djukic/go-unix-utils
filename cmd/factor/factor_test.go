@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd065-factor R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Differential tests for prd065-factor R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 package main
 
 import (
@@ -161,6 +161,60 @@ func TestDiff(t *testing.T) {
 			Name:      "error_continues_processing",
 			Args:      []string{"abc", "12", "xyz", "97"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.1: exit 0 for single valid composite
+		{
+			Name: "r4_exit0_single",
+			Args: []string{"100"},
+		},
+		// R4.1: exit 0 for multiple valid inputs
+		{
+			Name: "r4_exit0_multiple",
+			Args: []string{"2", "4", "8", "16", "32"},
+		},
+		// R4.1: exit 0 for valid stdin input
+		{
+			Name:  "r4_exit0_stdin",
+			Stdin: []byte("50\n100\n"),
+		},
+		// R4.2: exit 1 for non-numeric argument
+		{
+			Name:      "r4_exit1_non_numeric_arg",
+			Args:      []string{"notanumber"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: exit 1 for empty string via stdin
+		{
+			Name:      "r4_exit1_stdin_non_numeric",
+			Stdin:     []byte("xyz\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: exit 1 for stdin with invalid input
+		{
+			Name:      "r4_exit1_stdin_invalid",
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.4: stdin with multiple valid and invalid lines
+		{
+			Name:      "r4_stdin_mixed_valid_invalid",
+			Stdin:     []byte("12\n-3\n97\nfoo\n1\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.4: large prime
+		{
+			Name: "r4_large_prime",
+			Args: []string{"999999999999999877"},
+		},
+		// R4.4: perfect square
+		{
+			Name: "r4_perfect_square",
+			Args: []string{"49"},
+		},
+		// R4.4: power of a prime
+		{
+			Name: "r4_prime_power",
+			Args: []string{"243"},
 		},
 	}
 
