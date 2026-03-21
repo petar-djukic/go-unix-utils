@@ -3,6 +3,8 @@
 
 // Differential tests for prd070-fmt R1.1–R1.4: basic paragraph filling
 // and argument parsing.
+// Differential tests for prd070-fmt R2.1–R2.4: width control, goal width,
+// word breaking, and space collapsing.
 package main_test
 
 import (
@@ -153,6 +155,98 @@ func TestDiff(t *testing.T) {
 		{
 			Name:  "at_width_boundary",
 			Stdin: []byte("aaaaaaaaa bbbbbbbbb ccccccccc ddddddddd eeeeeeeee fffffffff ggggggggg hh\n"),
+		},
+		// R2.1: -w sets custom width.
+		{
+			Name:  "width_w_flag",
+			Args:  []string{"-w", "40"},
+			Stdin: []byte("This is a paragraph that should be reformatted to fit within forty characters width.\n"),
+		},
+		// R2.1: -w with attached value.
+		{
+			Name:  "width_w_attached",
+			Args:  []string{"-w40"},
+			Stdin: []byte("This is a paragraph that should be reformatted to fit within forty characters width.\n"),
+		},
+		// R2.1: --width= long form.
+		{
+			Name:  "width_long_equals",
+			Args:  []string{"--width=40"},
+			Stdin: []byte("This is a paragraph that should be reformatted to fit within forty characters width.\n"),
+		},
+		// R2.1: -NUMBER shorthand.
+		{
+			Name:  "width_numeric_shorthand",
+			Args:  []string{"-40"},
+			Stdin: []byte("This is a paragraph that should be reformatted to fit within forty characters width.\n"),
+		},
+		// R2.1: very narrow width forces wrapping.
+		{
+			Name:  "width_narrow",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("short words here and there too\n"),
+		},
+		// R2.1: wide width keeps text on one line.
+		{
+			Name:  "width_wide",
+			Args:  []string{"-w", "200"},
+			Stdin: []byte("This is a paragraph that would normally wrap at 75 but should stay on one line with a very wide width setting.\n"),
+		},
+		// R2.2: -g sets goal width.
+		{
+			Name:  "goal_g_flag",
+			Args:  []string{"-w", "60", "-g", "30"},
+			Stdin: []byte("Words here that will be formatted with a narrow goal width for shorter lines.\n"),
+		},
+		// R2.2: --goal= long form.
+		{
+			Name:  "goal_long_equals",
+			Args:  []string{"-w", "60", "--goal=30"},
+			Stdin: []byte("Words here that will be formatted with a narrow goal width for shorter lines.\n"),
+		},
+		// R2.2: goal defaults to 93% of width.
+		{
+			Name:  "goal_default_93_percent",
+			Args:  []string{"-w", "50"},
+			Stdin: []byte("Testing that the goal defaults to ninety three percent of width when not explicitly set.\n"),
+		},
+		// R2.3: word boundary breaking at narrow width.
+		{
+			Name:  "word_boundary_narrow",
+			Args:  []string{"-w", "15"},
+			Stdin: []byte("one two three four five six\n"),
+		},
+		// R2.3: overlong word exceeding width gets its own line.
+		{
+			Name:  "overlong_word",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("a verylongwordthatexceedswidth b\n"),
+		},
+		// R2.3: multiple overlong words.
+		{
+			Name:  "multiple_overlong_words",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("longword1 longword2 ok\n"),
+		},
+		// R2.4: original spacing within a line is preserved.
+		{
+			Name:  "preserve_same_line_spacing",
+			Stdin: []byte("word1   word2     word3    word4\n"),
+		},
+		// R2.4: sentence-ending punctuation spacing.
+		{
+			Name:  "sentence_punctuation_spacing",
+			Stdin: []byte("End of sentence. Start of next.\nAnother line here.\n"),
+		},
+		// R2.4: mixed punctuation and multiple spaces.
+		{
+			Name:  "mixed_punctuation_spaces",
+			Stdin: []byte("Hello world.   This is a test!   And more?   Final words.\nNext line begins here.\n"),
+		},
+		// R2.1 + R2.2: width and goal together with file.
+		{
+			Name: "width_goal_with_file",
+			Args: []string{"-w", "50", "-g", "40", longPara},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
