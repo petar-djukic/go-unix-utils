@@ -5,13 +5,14 @@
 // and argument parsing.
 // Differential tests for prd070-fmt R2.1–R2.4: width control, goal width,
 // word breaking, and space collapsing.
+// Differential tests for prd070-fmt R4.1–R4.4: exit codes and error cases.
 package main_test
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -134,7 +135,7 @@ func TestDiff(t *testing.T) {
 			Name: "file_blank_lines",
 			Args: []string{blankLines},
 		},
-		// R1.4: missing file produces error and exit 1.
+		// R4.2: missing file produces error and exit 1.
 		{
 			Name:      "missing_file",
 			Args:      []string{filepath.Join(tmpDir, "nonexistent.txt")},
@@ -248,14 +249,47 @@ func TestDiff(t *testing.T) {
 			Name: "width_goal_with_file",
 			Args: []string{"-w", "50", "-g", "40", longPara},
 		},
+		// R4.1: successful formatting exits 0 (implicit via default ExitCode=0).
+		{
+			Name:  "exit_zero_on_success",
+			Stdin: []byte("A simple paragraph that formats successfully.\n"),
+		},
+		// R4.2: unrecognized long option produces error and exit 1.
+		{
+			Name:      "invalid_long_option",
+			Args:      []string{"--nonexistent-flag"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: invalid width value produces error and exit 1.
+		{
+			Name:      "invalid_width_value",
+			Args:      []string{"--width=abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: missing file with valid file produces partial output and exit 1.
+		{
+			Name:      "good_file_then_missing",
+			Args:      []string{fileA, filepath.Join(tmpDir, "missing.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// TODO: R4.4 requires tests for -s split-only, -u uniform-spacing,
+		// -p prefix, and -t tagged-paragraph. These flags are deferred to
+		// rel99.0 per non_goals (R3 deferred). See GH-2938.
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// normalizeProgramName replaces the reference binary name (gfmt) with fmt
-// in stderr output so that error messages can be compared.
+// progNameRe matches path-prefixed program names (/path/to/fmt, /path/to/gfmt)
+// and bare gfmt so they can be normalized to "fmt" for comparison.
+var progNameRe = regexp.MustCompile(`[^\s']+/g?fmt|gfmt`)
+
+// normalizeProgramName replaces the reference binary name (gfmt or
+// /path/to/fmt) with fmt in output so that error messages can be compared.
 func normalizeProgramName(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("gfmt:"), []byte("fmt:"))
+	return progNameRe.ReplaceAll(data, []byte("fmt"))
 }
 
 // writeTestFile writes content to a file, failing the test on error.

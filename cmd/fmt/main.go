@@ -3,6 +3,8 @@
 
 // Implements prd070-fmt R1.1–R1.4: basic paragraph filling and argument parsing.
 // Implements prd070-fmt R2.1–R2.4: width control, goal width, word breaking, space collapsing.
+// Implements prd070-fmt R4.1: exit 0 on success.
+// Implements prd070-fmt R4.2: exit 1 on invalid option or file open failure.
 package main
 
 import (
