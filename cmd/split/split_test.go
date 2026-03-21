@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd067-split R1.1–R1.4.
+// Differential tests for prd067-split R1.1–R1.4, R2.1–R2.4.
 package main
 
 import (
@@ -36,6 +36,11 @@ func seqLines(n int) []byte {
 		fmt.Fprintf(&buf, "%d\n", i)
 	}
 	return buf.Bytes()
+}
+
+// repeatBytes generates a byte slice of length n filled with 'A'.
+func repeatBytes(n int) []byte {
+	return bytes.Repeat([]byte("A"), n)
 }
 
 func TestDiff(t *testing.T) {
@@ -136,6 +141,106 @@ func TestDiff(t *testing.T) {
 			inputFile: "input.txt",
 			inputData: seqLines(12),
 		},
+		// R2.1: -b byte split
+		{
+			name:  "bytes_100",
+			args:  []string{"-b", "100"},
+			stdin: repeatBytes(350),
+		},
+		// R2.1: -b with attached value
+		{
+			name:  "bytes_attached",
+			args:  []string{"-b50"},
+			stdin: repeatBytes(120),
+		},
+		// R2.1: --bytes= form
+		{
+			name:  "bytes_equals",
+			args:  []string{"--bytes=75"},
+			stdin: repeatBytes(200),
+		},
+		// R2.1: -b with K suffix (1024)
+		{
+			name:      "bytes_K_suffix",
+			args:      []string{"-b", "1K", "input.bin"},
+			inputFile: "input.bin",
+			inputData: repeatBytes(3000),
+		},
+		// R2.1: -b exact fit
+		{
+			name:  "bytes_exact_fit",
+			args:  []string{"-b", "50"},
+			stdin: repeatBytes(100),
+		},
+		// R2.1: -b larger than input
+		{
+			name:  "bytes_larger_than_input",
+			args:  []string{"-b", "500"},
+			stdin: repeatBytes(100),
+		},
+		// R2.2: -C line-bytes basic
+		{
+			name:  "line_bytes_basic",
+			args:  []string{"-C", "20"},
+			stdin: []byte("short\nmedium line\nthis is a longer line\nend\n"),
+		},
+		// R2.2: -C with --line-bytes= form
+		{
+			name:  "line_bytes_equals",
+			args:  []string{"--line-bytes=15"},
+			stdin: []byte("hello\nworld\nfoo\nbar\nbaz\n"),
+		},
+		// R2.2: -C line longer than limit
+		{
+			name:  "line_bytes_long_line",
+			args:  []string{"-C", "5"},
+			stdin: []byte("abcdefghij\nxy\n"),
+		},
+		// R2.2: -C from file
+		{
+			name:      "line_bytes_file",
+			args:      []string{"-C", "30", "input.txt"},
+			inputFile: "input.txt",
+			inputData: seqLines(20),
+		},
+		// R2.3: -n N (split into N byte-based chunks)
+		{
+			name:  "chunks_bytes_3",
+			args:  []string{"-n", "3"},
+			stdin: repeatBytes(100),
+		},
+		// R2.3: -n N with file input
+		{
+			name:      "chunks_bytes_file",
+			args:      []string{"-n", "4", "input.bin"},
+			inputFile: "input.bin",
+			inputData: repeatBytes(100),
+		},
+		// R2.3: -n l/N (split by lines into N chunks)
+		{
+			name:  "chunks_lines_3",
+			args:  []string{"-n", "l/3"},
+			stdin: seqLines(10),
+		},
+		// R2.3: -n r/N (round-robin by lines)
+		{
+			name:  "chunks_roundrobin_3",
+			args:  []string{"-n", "r/3"},
+			stdin: seqLines(10),
+		},
+		// R2.3: -n r/N with file
+		{
+			name:      "chunks_roundrobin_file",
+			args:      []string{"-n", "r/2", "input.txt"},
+			inputFile: "input.txt",
+			inputData: seqLines(7),
+		},
+		// R2.3: --number= form
+		{
+			name:  "number_equals",
+			args:  []string{"--number=2"},
+			stdin: repeatBytes(50),
+		},
 	}
 
 	for _, tc := range tests {
@@ -143,6 +248,64 @@ func TestDiff(t *testing.T) {
 			t.Parallel()
 			compareSplitOutput(t, goBin, refBin, tc)
 		})
+	}
+}
+
+// TestConflictingModes verifies R2.4: conflicting split options produce error.
+func TestConflictingModes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsplit")
+	if err != nil {
+		t.Skipf("reference binary gsplit not in PATH: %v", err)
+	}
+
+	tests := []splitTest{
+		{
+			name:  "conflict_bytes_lines",
+			args:  []string{"-b", "100", "-l", "10"},
+			stdin: seqLines(20),
+		},
+		{
+			name:  "conflict_bytes_chunks",
+			args:  []string{"-b", "100", "-n", "3"},
+			stdin: seqLines(20),
+		},
+		{
+			name:  "conflict_linebytes_lines",
+			args:  []string{"-C", "100", "-l", "10"},
+			stdin: seqLines(20),
+		},
+		{
+			name:  "conflict_linebytes_chunks",
+			args:  []string{"-C", "100", "-n", "3"},
+			stdin: seqLines(20),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareExitCodes(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// compareExitCodes runs both binaries and verifies both exit non-zero.
+func compareExitCodes(t *testing.T, goBin, refBin string, tc splitTest) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	setupInputFile(t, refDir, tc)
+	setupInputFile(t, goDir, tc)
+	refExit := runSplitBinary(t, refBin, tc.args, tc.stdin, refDir)
+	goExit := runSplitBinary(t, goBin, tc.args, tc.stdin, goDir)
+	if refExit == 0 {
+		t.Skipf("reference binary did not fail for %s", tc.name)
+	}
+	if goExit == 0 {
+		t.Fatalf("expected non-zero exit, got 0")
 	}
 }
 
@@ -185,6 +348,8 @@ func runSplitBinary(t *testing.T, bin string, args []string, stdin []byte, dir s
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		t.Fatalf("binary %s timed out", bin)
@@ -195,7 +360,7 @@ func runSplitBinary(t *testing.T, bin string, args []string, stdin []byte, dir s
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		return exitErr.ExitCode()
 	}
-	t.Fatalf("binary %s failed: %v", bin, err)
+	t.Fatalf("binary %s failed: %v\nstderr: %s", bin, err, stderr.String())
 	return -1
 }
 

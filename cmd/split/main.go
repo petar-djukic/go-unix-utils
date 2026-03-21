@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd067-split R1.1–R1.4: basic file splitting by line count
-// with configurable prefix and stdin support.
+// Implements prd067-split R1.1–R1.4: basic file splitting by line count,
+// R2.1–R2.4: byte-based, line-bytes, and chunk-based splitting modes.
 package main
 
 import (
@@ -23,12 +23,36 @@ const (
 	defaultSuffixLen = 2
 )
 
+// splitMode identifies the active splitting strategy.
+type splitMode int
+
+const (
+	modeLines     splitMode = iota // -l / default
+	modeBytes                      // -b
+	modeLineBytes                  // -C
+	modeChunks                     // -n
+)
+
+// chunkStrategy identifies the sub-mode for -n CHUNKS.
+type chunkStrategy int
+
+const (
+	chunkBytes      chunkStrategy = iota // N — split by byte position
+	chunkLines                           // l/N — split by line count
+	chunkRoundRobin                      // r/N — round-robin lines
+)
+
 // config holds parsed command-line options for split.
 type config struct {
+	mode      splitMode
 	lines     int
+	byteCount int64
+	chunks    int
+	chunkMode chunkStrategy
 	prefix    string
 	suffixLen int
 	inputFile string
+	modeSet   bool // true after first mode flag parsed
 }
 
 func main() {
@@ -37,8 +61,6 @@ func main() {
 }
 
 // run parses arguments and executes the split operation.
-// R1.1: default 1000-line split. R1.2: custom prefix.
-// R1.3: -l/--lines option. R1.4: stdin or file input.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
@@ -69,6 +91,9 @@ func printHelp(w io.Writer) int {
 	fmt.Fprintln(w, "With no FILE, or when FILE is -, read standard input.")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  -l, --lines=NUMBER   put NUMBER lines/records per output file")
+	fmt.Fprintln(w, "  -b, --bytes=SIZE     put SIZE bytes per output file")
+	fmt.Fprintln(w, "  -C, --line-bytes=SIZE  put at most SIZE bytes per output file, breaking at line boundaries")
+	fmt.Fprintln(w, "  -n, --number=CHUNKS  generate CHUNKS output files")
 	fmt.Fprintln(w, "      --help     display this help and exit")
 	fmt.Fprintln(w, "      --version  output version information and exit")
 	return 0
@@ -83,6 +108,7 @@ func printVersion(w io.Writer) int {
 // parseArgs extracts configuration from command-line arguments.
 func parseArgs(args []string) (*config, error) {
 	cfg := &config{
+		mode:      modeLines,
 		lines:     defaultLines,
 		prefix:    defaultPrefix,
 		suffixLen: defaultSuffixLen,
@@ -121,40 +147,223 @@ func parseOptions(args []string, cfg *config) ([]string, error) {
 func parseSingleOption(args []string, i int, cfg *config) (int, error) {
 	arg := args[i]
 	if strings.HasPrefix(arg, "--lines=") {
-		return 0, parseLineCount(arg[len("--lines="):], cfg)
+		return 0, setModeLines(arg[len("--lines="):], cfg)
 	}
 	if arg == "--lines" {
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("option '--lines' requires an argument")
-		}
-		return 1, parseLineCount(args[i+1], cfg)
+		return requireNextArg(args, i, "--lines", func(v string) error {
+			return setModeLines(v, cfg)
+		})
 	}
+	if strings.HasPrefix(arg, "--bytes=") {
+		return 0, setModeBytes(arg[len("--bytes="):], cfg)
+	}
+	if arg == "--bytes" {
+		return requireNextArg(args, i, "--bytes", func(v string) error {
+			return setModeBytes(v, cfg)
+		})
+	}
+	if strings.HasPrefix(arg, "--line-bytes=") {
+		return 0, setModeLineBytes(arg[len("--line-bytes="):], cfg)
+	}
+	if arg == "--line-bytes" {
+		return requireNextArg(args, i, "--line-bytes", func(v string) error {
+			return setModeLineBytes(v, cfg)
+		})
+	}
+	if strings.HasPrefix(arg, "--number=") {
+		return 0, setModeChunks(arg[len("--number="):], cfg)
+	}
+	if arg == "--number" {
+		return requireNextArg(args, i, "--number", func(v string) error {
+			return setModeChunks(v, cfg)
+		})
+	}
+	return parseShortFlags(args, i, cfg)
+}
+
+// requireNextArg validates that a next argument exists and calls the setter.
+func requireNextArg(args []string, i int, name string, setter func(string) error) (int, error) {
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option '%s' requires an argument", name)
+	}
+	return 1, setter(args[i+1])
+}
+
+// parseShortFlags handles short-form flags (-l, -b, -C, -n).
+func parseShortFlags(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
 	if strings.HasPrefix(arg, "-l") {
-		return parseDashL(args, i, cfg)
+		return parseShortWithValue(args, i, 'l', func(v string) error {
+			return setModeLines(v, cfg)
+		})
+	}
+	if strings.HasPrefix(arg, "-b") {
+		return parseShortWithValue(args, i, 'b', func(v string) error {
+			return setModeBytes(v, cfg)
+		})
+	}
+	if strings.HasPrefix(arg, "-C") {
+		return parseShortWithValue(args, i, 'C', func(v string) error {
+			return setModeLineBytes(v, cfg)
+		})
+	}
+	if strings.HasPrefix(arg, "-n") {
+		return parseShortWithValue(args, i, 'n', func(v string) error {
+			return setModeChunks(v, cfg)
+		})
 	}
 	return 0, fmt.Errorf("unrecognized option '%s'", arg)
 }
 
-// parseDashL handles the -l flag with attached or separate value.
-func parseDashL(args []string, i int, cfg *config) (int, error) {
+// parseShortWithValue handles a short flag with attached or separate value.
+func parseShortWithValue(args []string, i int, flag byte, setter func(string) error) (int, error) {
 	val := args[i][2:]
 	if val == "" {
 		if i+1 >= len(args) {
-			return 0, fmt.Errorf("option requires an argument -- 'l'")
+			return 0, fmt.Errorf("option requires an argument -- '%c'", flag)
 		}
-		return 1, parseLineCount(args[i+1], cfg)
+		return 1, setter(args[i+1])
 	}
-	return 0, parseLineCount(val, cfg)
+	return 0, setter(val)
 }
 
-// parseLineCount parses and validates a line count string.
-func parseLineCount(s string, cfg *config) error {
+// setModeLines sets line-splitting mode. R2.4: conflicts checked.
+func setModeLines(s string, cfg *config) error {
+	if err := checkModeConflict(cfg, modeLines); err != nil {
+		return err
+	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
 		return fmt.Errorf("invalid number of lines: '%s'", s)
 	}
+	cfg.mode = modeLines
 	cfg.lines = n
+	cfg.modeSet = true
 	return nil
+}
+
+// setModeBytes sets byte-splitting mode. R2.1: parses size with suffixes.
+func setModeBytes(s string, cfg *config) error {
+	if err := checkModeConflict(cfg, modeBytes); err != nil {
+		return err
+	}
+	n, err := parseByteSize(s)
+	if err != nil {
+		return fmt.Errorf("invalid number of bytes: '%s'", s)
+	}
+	cfg.mode = modeBytes
+	cfg.byteCount = n
+	cfg.modeSet = true
+	return nil
+}
+
+// setModeLineBytes sets line-bytes mode. R2.2: parses size with suffixes.
+func setModeLineBytes(s string, cfg *config) error {
+	if err := checkModeConflict(cfg, modeLineBytes); err != nil {
+		return err
+	}
+	n, err := parseByteSize(s)
+	if err != nil {
+		return fmt.Errorf("invalid number of bytes: '%s'", s)
+	}
+	cfg.mode = modeLineBytes
+	cfg.byteCount = n
+	cfg.modeSet = true
+	return nil
+}
+
+// setModeChunks sets chunk-splitting mode. R2.3: parses N, l/N, r/N forms.
+func setModeChunks(s string, cfg *config) error {
+	if err := checkModeConflict(cfg, modeChunks); err != nil {
+		return err
+	}
+	strategy, n, err := parseChunkSpec(s)
+	if err != nil {
+		return err
+	}
+	cfg.mode = modeChunks
+	cfg.chunkMode = strategy
+	cfg.chunks = n
+	cfg.modeSet = true
+	return nil
+}
+
+// checkModeConflict returns an error if a different mode was already set.
+// R2.4: conflicting split options must produce an error.
+func checkModeConflict(cfg *config, newMode splitMode) error {
+	if cfg.modeSet && cfg.mode != newMode {
+		return fmt.Errorf("cannot split in more than one way")
+	}
+	return nil
+}
+
+// parseByteSize parses a byte count with optional suffix.
+// R2.1: K=1024, M=1024^2, etc. KB=1000, MB=1000^2, etc.
+func parseByteSize(s string) (int64, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	multiplier, numStr := extractSuffix(s)
+	if multiplier == 0 {
+		return 0, fmt.Errorf("invalid suffix")
+	}
+	n, err := strconv.ParseInt(numStr, 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid number")
+	}
+	return n * multiplier, nil
+}
+
+// extractSuffix separates the numeric part from the suffix and returns
+// the multiplier. Returns 0 multiplier for invalid suffixes.
+func extractSuffix(s string) (int64, string) {
+	suffixes := []struct {
+		suffix string
+		mult   int64
+	}{
+		{"KB", 1000},
+		{"MB", 1000 * 1000},
+		{"GB", 1000 * 1000 * 1000},
+		{"TB", 1000 * 1000 * 1000 * 1000},
+		{"PB", 1000 * 1000 * 1000 * 1000 * 1000},
+		{"EB", 1000 * 1000 * 1000 * 1000 * 1000 * 1000},
+		{"K", 1024},
+		{"M", 1024 * 1024},
+		{"G", 1024 * 1024 * 1024},
+		{"T", 1024 * 1024 * 1024 * 1024},
+		{"P", 1024 * 1024 * 1024 * 1024 * 1024},
+		{"E", 1024 * 1024 * 1024 * 1024 * 1024 * 1024},
+	}
+	for _, sf := range suffixes {
+		if strings.HasSuffix(s, sf.suffix) {
+			return sf.mult, s[:len(s)-len(sf.suffix)]
+		}
+	}
+	return 1, s
+}
+
+// parseChunkSpec parses a -n CHUNKS argument into strategy and count.
+// R2.3: supports N, l/N, and r/N forms.
+func parseChunkSpec(s string) (chunkStrategy, int, error) {
+	if strings.HasPrefix(s, "l/") {
+		n, err := parseChunkCount(s[2:])
+		return chunkLines, n, err
+	}
+	if strings.HasPrefix(s, "r/") {
+		n, err := parseChunkCount(s[2:])
+		return chunkRoundRobin, n, err
+	}
+	n, err := parseChunkCount(s)
+	return chunkBytes, n, err
+}
+
+// parseChunkCount parses and validates a positive integer chunk count.
+func parseChunkCount(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid number of chunks: '%s'", s)
+	}
+	return n, nil
 }
 
 // applyPositional sets inputFile and prefix from positional arguments.
@@ -171,14 +380,23 @@ func applyPositional(cfg *config, positional []string) error {
 	return nil
 }
 
-// executeSplit opens the input and splits it by lines.
+// executeSplit opens the input and dispatches to the appropriate mode.
 func executeSplit(cfg *config, stdin io.Reader) error {
 	reader, closer, err := openInput(cfg.inputFile, stdin)
 	if err != nil {
 		return err
 	}
 	defer closer()
-	return splitByLines(reader, cfg)
+	switch cfg.mode {
+	case modeBytes:
+		return splitByBytes(reader, cfg)
+	case modeLineBytes:
+		return splitByLineBytes(reader, cfg)
+	case modeChunks:
+		return splitByChunks(reader, cfg)
+	default:
+		return splitByLines(reader, cfg)
+	}
 }
 
 // openInput returns a reader for the specified file or stdin.
@@ -203,9 +421,9 @@ func splitByLines(r io.Reader, cfg *config) error {
 		if err != nil {
 			return err
 		}
-		wrote, err := writeChunk(br, cfg.prefix+suffix, cfg.lines)
-		if err != nil {
-			return err
+		wrote, writeErr := writeLineChunk(br, cfg.prefix+suffix, cfg.lines)
+		if writeErr != nil {
+			return writeErr
 		}
 		if !wrote {
 			break
@@ -214,19 +432,19 @@ func splitByLines(r io.Reader, cfg *config) error {
 	return nil
 }
 
-// writeChunk checks for remaining data and delegates to writeChunkData.
+// writeLineChunk checks for remaining data and writes up to maxLines lines.
 // Returns false when input is exhausted.
-func writeChunk(br *bufio.Reader, filename string, maxLines int) (bool, error) {
+func writeLineChunk(br *bufio.Reader, filename string, maxLines int) (bool, error) {
 	if _, err := br.Peek(1); err == io.EOF {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	return writeChunkData(br, filename, maxLines)
+	return writeLineChunkData(br, filename, maxLines)
 }
 
-// writeChunkData creates a file and writes up to maxLines lines to it.
-func writeChunkData(br *bufio.Reader, filename string, maxLines int) (bool, error) {
+// writeLineChunkData creates a file and writes up to maxLines lines to it.
+func writeLineChunkData(br *bufio.Reader, filename string, maxLines int) (bool, error) {
 	f, err := os.Create(filename)
 	if err != nil {
 		return false, err
@@ -251,6 +469,311 @@ func writeChunkData(br *bufio.Reader, filename string, maxLines int) (bool, erro
 		}
 	}
 	return true, bw.Flush()
+}
+
+// splitByBytes reads from r and writes chunks of cfg.byteCount bytes each.
+// R2.1: byte-count splitting.
+func splitByBytes(r io.Reader, cfg *config) error {
+	br := bufio.NewReader(r)
+	buf := make([]byte, cfg.byteCount)
+	for fileIdx := 0; ; fileIdx++ {
+		suffix, err := generateSuffix(fileIdx, cfg.suffixLen)
+		if err != nil {
+			return err
+		}
+		n, readErr := io.ReadFull(br, buf)
+		if n == 0 {
+			break
+		}
+		if writeErr := writeByteFile(cfg.prefix+suffix, buf[:n]); writeErr != nil {
+			return writeErr
+		}
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+	return nil
+}
+
+// writeByteFile writes data to a new file.
+func writeByteFile(filename string, data []byte) error {
+	return os.WriteFile(filename, data, 0o666)
+}
+
+// splitByLineBytes reads from r and writes chunks of at most cfg.byteCount
+// bytes each, breaking at line boundaries. R2.2: lines longer than the
+// limit are written to their own piece.
+func splitByLineBytes(r io.Reader, cfg *config) error {
+	br := bufio.NewReader(r)
+	var pending []byte
+	for fileIdx := 0; ; fileIdx++ {
+		if pending == nil {
+			if _, err := br.Peek(1); err == io.EOF {
+				break
+			} else if err != nil {
+				return err
+			}
+		}
+		suffix, err := generateSuffix(fileIdx, cfg.suffixLen)
+		if err != nil {
+			return err
+		}
+		var writeErr error
+		pending, writeErr = writeLineBytesChunk(br, cfg.prefix+suffix, cfg.byteCount, pending)
+		if writeErr != nil {
+			return writeErr
+		}
+	}
+	return nil
+}
+
+// writeLineBytesChunk writes one chunk of at most maxBytes bytes, breaking
+// at line boundaries. Long lines are broken at the byte limit.
+// Returns any pending data that didn't fit.
+func writeLineBytesChunk(br *bufio.Reader, filename string, maxBytes int64, pending []byte) ([]byte, error) {
+	f, err := os.Create(filename)
+	if err != nil {
+		return pending, err
+	}
+	defer f.Close()
+	bw := bufio.NewWriter(f)
+	var written int64
+	if pending != nil {
+		n := writePending(bw, pending, maxBytes)
+		written = int64(n)
+		if n < len(pending) {
+			return pending[n:], bw.Flush()
+		}
+	}
+	return fillLineBytesChunk(br, bw, written, maxBytes)
+}
+
+// writePending writes as much of pending data as fits in maxBytes.
+func writePending(bw *bufio.Writer, data []byte, maxBytes int64) int {
+	toWrite := len(data)
+	if int64(toWrite) > maxBytes {
+		toWrite = int(maxBytes)
+	}
+	bw.Write(data[:toWrite]) //nolint:errcheck — checked at flush
+	return toWrite
+}
+
+// fillLineBytesChunk reads lines and fills the chunk up to maxBytes.
+// Returns pending data that didn't fit.
+func fillLineBytesChunk(br *bufio.Reader, bw *bufio.Writer, written, maxBytes int64) ([]byte, error) {
+	for {
+		line, readErr := br.ReadBytes('\n')
+		if len(line) > 0 {
+			pending, werr := writeLine(bw, line, &written, maxBytes)
+			if werr != nil {
+				return nil, werr
+			}
+			if pending != nil {
+				return pending, bw.Flush()
+			}
+		}
+		if readErr == io.EOF {
+			return nil, bw.Flush()
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+		if written >= maxBytes {
+			return nil, bw.Flush()
+		}
+	}
+}
+
+// writeLine writes a line to bw respecting the byte limit. If the line
+// doesn't fit, returns the unwritten portion as pending.
+func writeLine(bw *bufio.Writer, line []byte, written *int64, maxBytes int64) ([]byte, error) {
+	lineLen := int64(len(line))
+	remaining := maxBytes - *written
+	if *written > 0 && lineLen > remaining {
+		return line, nil
+	}
+	if lineLen <= remaining {
+		if _, err := bw.Write(line); err != nil {
+			return nil, err
+		}
+		*written += lineLen
+		return nil, nil
+	}
+	// Line longer than limit with nothing written yet: write up to limit
+	if _, err := bw.Write(line[:remaining]); err != nil {
+		return nil, err
+	}
+	*written += remaining
+	return line[remaining:], nil
+}
+
+// splitByChunks dispatches to the appropriate chunk strategy. R2.3.
+func splitByChunks(r io.Reader, cfg *config) error {
+	switch cfg.chunkMode {
+	case chunkLines:
+		return splitChunksByLines(r, cfg)
+	case chunkRoundRobin:
+		return splitChunksByRoundRobin(r, cfg)
+	default:
+		return splitChunksByBytes(r, cfg)
+	}
+}
+
+// splitChunksByBytes splits the input into N chunks of roughly equal byte size.
+// R2.3: N form — requires seekable input or buffers all data.
+func splitChunksByBytes(r io.Reader, cfg *config) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	totalSize := int64(len(data))
+	chunkSize := totalSize / int64(cfg.chunks)
+	remainder := totalSize % int64(cfg.chunks)
+	var offset int64
+	for i := 0; i < cfg.chunks; i++ {
+		suffix, serr := generateSuffix(i, cfg.suffixLen)
+		if serr != nil {
+			return serr
+		}
+		size := chunkSize
+		if int64(i) < remainder {
+			size++
+		}
+		chunk := data[offset : offset+size]
+		if err := writeByteFile(cfg.prefix+suffix, chunk); err != nil {
+			return err
+		}
+		offset += size
+	}
+	return nil
+}
+
+// splitChunksByLines splits the input into N chunks by line count.
+// R2.3: l/N form.
+func splitChunksByLines(r io.Reader, cfg *config) error {
+	lines, err := readAllLines(r)
+	if err != nil {
+		return err
+	}
+	totalLines := len(lines)
+	chunkSize := totalLines / cfg.chunks
+	remainder := totalLines % cfg.chunks
+	lineIdx := 0
+	for i := 0; i < cfg.chunks; i++ {
+		suffix, serr := generateSuffix(i, cfg.suffixLen)
+		if serr != nil {
+			return serr
+		}
+		count := chunkSize
+		if i < remainder {
+			count++
+		}
+		if err := writeLinesFile(cfg.prefix+suffix, lines, lineIdx, count); err != nil {
+			return err
+		}
+		lineIdx += count
+	}
+	return nil
+}
+
+// splitChunksByRoundRobin distributes lines round-robin across N chunks.
+// R2.3: r/N form.
+func splitChunksByRoundRobin(r io.Reader, cfg *config) error {
+	lines, err := readAllLines(r)
+	if err != nil {
+		return err
+	}
+	writers, closers, err := openChunkFiles(cfg)
+	if err != nil {
+		return err
+	}
+	defer closeAll(closers)
+	for i, line := range lines {
+		chunkIdx := i % cfg.chunks
+		if _, werr := writers[chunkIdx].Write(line); werr != nil {
+			return werr
+		}
+	}
+	return flushAll(writers)
+}
+
+// readAllLines reads all lines from r, preserving line endings.
+func readAllLines(r io.Reader) ([][]byte, error) {
+	br := bufio.NewReader(r)
+	var lines [][]byte
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			lines = append(lines, line)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return lines, nil
+}
+
+// openChunkFiles creates all chunk output files for round-robin mode.
+func openChunkFiles(cfg *config) ([]*bufio.Writer, []io.Closer, error) {
+	writers := make([]*bufio.Writer, cfg.chunks)
+	closers := make([]io.Closer, cfg.chunks)
+	for i := 0; i < cfg.chunks; i++ {
+		suffix, err := generateSuffix(i, cfg.suffixLen)
+		if err != nil {
+			closeAll(closers[:i])
+			return nil, nil, err
+		}
+		f, err := os.Create(cfg.prefix + suffix)
+		if err != nil {
+			closeAll(closers[:i])
+			return nil, nil, err
+		}
+		writers[i] = bufio.NewWriter(f)
+		closers[i] = f
+	}
+	return writers, closers, nil
+}
+
+// closeAll closes all non-nil closers.
+func closeAll(closers []io.Closer) {
+	for _, c := range closers {
+		if c != nil {
+			c.Close() // best-effort cleanup
+		}
+	}
+}
+
+// flushAll flushes all buffered writers.
+func flushAll(writers []*bufio.Writer) error {
+	for _, w := range writers {
+		if err := w.Flush(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeLinesFile writes count lines starting at startIdx to a file.
+func writeLinesFile(filename string, lines [][]byte, startIdx, count int) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	bw := bufio.NewWriter(f)
+	end := min(startIdx+count, len(lines))
+	for i := startIdx; i < end; i++ {
+		if _, werr := bw.Write(lines[i]); werr != nil {
+			return werr
+		}
+	}
+	return bw.Flush()
 }
 
 // generateSuffix returns an alphabetic suffix for the given index.
