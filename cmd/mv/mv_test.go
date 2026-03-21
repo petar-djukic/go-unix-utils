@@ -3,6 +3,8 @@
 
 // Differential tests for prd057-mv R1.1–R1.4: basic move, rename,
 // multi-file move, and error handling.
+// Differential tests for prd057-mv R2.1–R2.4: overwrite control
+// (interactive, force, no-clobber, permission errors).
 package main
 
 import (
@@ -20,7 +22,7 @@ import (
 // messages with "mv" so that "gmv:" and "/path/to/mv:" both become "mv:".
 func binaryNameNormalizer(b []byte) []byte {
 	// Replace gmv with mv at line start
-	re := regexp.MustCompile(`(?m)^gmv:`)
+	re := regexp.MustCompile(`(?m)^(?:\S+/)?g?mv:`)
 	b = re.ReplaceAll(b, []byte("mv:"))
 	// Normalize "Try '...' for more information" lines
 	reTry := regexp.MustCompile(`Try '[^']*' for more information\.`)
@@ -64,6 +66,8 @@ func TestDiff(t *testing.T) {
 		},
 		missingSourceTest(t, normalizers),
 		targetNotADirTest(t, normalizers),
+		noClobberExistingTest(t, normalizers),
+		interactiveDeclineTest(t, normalizers),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -99,6 +103,45 @@ func targetNotADirTest(t *testing.T, normalizers []testutils.NormalizeFunc) test
 			filepath.Join(dir, "b.txt"),
 			filepath.Join(dir, "c.txt"),
 		},
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// noClobberExistingTest verifies -n does not overwrite existing dest. R2.3.
+// Non-destructive: neither binary moves, state preserved for both runs.
+func noClobberExistingTest(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "src.txt"), "source\n")
+	writeTestFile(t, filepath.Join(dir, "dst.txt"), "dest\n")
+	return testutils.DiffTest{
+		Name: "no_clobber_existing_dest",
+		Args: []string{
+			"-n",
+			filepath.Join(dir, "src.txt"),
+			filepath.Join(dir, "dst.txt"),
+		},
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// interactiveDeclineTest verifies -i with "n" response skips overwrite. R2.1.
+// Non-destructive: user declines, neither binary moves.
+func interactiveDeclineTest(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "src.txt"), "source\n")
+	writeTestFile(t, filepath.Join(dir, "dst.txt"), "dest\n")
+	return testutils.DiffTest{
+		Name: "interactive_decline",
+		Args: []string{
+			"-i",
+			filepath.Join(dir, "src.txt"),
+			filepath.Join(dir, "dst.txt"),
+		},
+		Stdin:     []byte("n\n"),
 		ExitCode:  1,
 		Normalize: normalizers,
 	}
@@ -161,6 +204,111 @@ func TestMoveOps(t *testing.T) {
 		assertFileContent(t, filepath.Join(dstDir, "inner.txt"), "inner\n")
 		assertNotExists(t, srcDir)
 	})
+
+	t.Run("force_overwrite", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new content\n")
+		writeTestFile(t, dst, "old content\n")
+		runExpectSuccess(t, goBin, "-f", src, dst)
+		assertFileContent(t, dst, "new content\n")
+		assertNotExists(t, src)
+	})
+
+	t.Run("no_clobber_preserves", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new\n")
+		writeTestFile(t, dst, "old\n")
+		exitCode, _ := runBinaryCmd(t, goBin, nil, "-n", src, dst)
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d", exitCode)
+		}
+		assertFileContent(t, dst, "old\n")
+		assertFileExists(t, src)
+	})
+
+	t.Run("interactive_accept", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new\n")
+		writeTestFile(t, dst, "old\n")
+		exitCode, _ := runBinaryCmd(t, goBin, []byte("y\n"), "-i", src, dst)
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d", exitCode)
+		}
+		assertFileContent(t, dst, "new\n")
+		assertNotExists(t, src)
+	})
+
+	t.Run("interactive_decline", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new\n")
+		writeTestFile(t, dst, "old\n")
+		exitCode, _ := runBinaryCmd(t, goBin, []byte("n\n"), "-i", src, dst)
+		if exitCode != 1 {
+			t.Fatalf("expected exit 1, got %d", exitCode)
+		}
+		assertFileContent(t, dst, "old\n")
+		assertFileExists(t, src)
+	})
+
+	t.Run("last_flag_fi_interactive_wins", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new\n")
+		writeTestFile(t, dst, "old\n")
+		// -f then -i: interactive wins, user declines
+		exitCode, _ := runBinaryCmd(t, goBin, []byte("n\n"), "-f", "-i", src, dst)
+		if exitCode != 1 {
+			t.Fatalf("expected exit 1, got %d", exitCode)
+		}
+		assertFileContent(t, dst, "old\n")
+		assertFileExists(t, src)
+	})
+
+	t.Run("last_flag_nf_force_wins", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new\n")
+		writeTestFile(t, dst, "old\n")
+		// -n then -f: force wins, overwrites
+		exitCode, _ := runBinaryCmd(t, goBin, nil, "-n", "-f", src, dst)
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d", exitCode)
+		}
+		assertFileContent(t, dst, "new\n")
+		assertNotExists(t, src)
+	})
+
+	t.Run("last_flag_in_noclobber_wins", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "new\n")
+		writeTestFile(t, dst, "old\n")
+		// -i then -n: no-clobber wins, does not overwrite
+		exitCode, _ := runBinaryCmd(t, goBin, nil, "-i", "-n", src, dst)
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d", exitCode)
+		}
+		assertFileContent(t, dst, "old\n")
+		assertFileExists(t, src)
+	})
 }
 
 // TestHelp verifies --help exits 0 with usage on stdout.
@@ -201,6 +349,24 @@ func runExpectSuccess(t *testing.T, bin string, args ...string) {
 	}
 }
 
+// runBinaryCmd runs the binary with optional stdin, returning exit code and output.
+func runBinaryCmd(t *testing.T, bin string, stdinData []byte, args ...string) (int, []byte) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	if stdinData != nil {
+		cmd.Stdin = bytes.NewReader(stdinData)
+	}
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return 0, out
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode(), out
+	}
+	t.Fatalf("failed to run binary: %v", err)
+	return 0, nil // unreachable
+}
+
 // assertFileContent reads a file and checks it has the expected content.
 func assertFileContent(t *testing.T, path, want string) {
 	t.Helper()
@@ -218,6 +384,14 @@ func assertNotExists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); err == nil {
 		t.Fatalf("expected %s to not exist, but it does", path)
+	}
+}
+
+// assertFileExists checks that a file exists.
+func assertFileExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("expected %s to exist: %v", path, err)
 	}
 }
 
