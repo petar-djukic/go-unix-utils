@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/numfmt against gnumfmt reference binary.
-// Tests prd071-numfmt R1.1–R1.4.
+// Tests prd071-numfmt R1.1–R1.4, R2.1–R2.4.
 package main
 
 import (
@@ -69,6 +69,125 @@ func TestDiff(t *testing.T) {
 			Name:  "from_iec_to_si",
 			Args:  []string{"--from=iec", "--to=si"},
 			Stdin: []byte("1K\n"),
+		},
+
+		// R2.1: --format with width.
+		{
+			Name:  "format_width_10",
+			Args:  []string{"--to=si", "--format=%10f"},
+			Stdin: []byte("1500000\n"),
+		},
+		// R2.1: --format with precision.
+		{
+			Name:  "format_precision_2",
+			Args:  []string{"--to=si", "--format=%.2f"},
+			Stdin: []byte("1500000\n"),
+		},
+		// R2.1: --format with width and precision.
+		{
+			Name:  "format_width_precision",
+			Args:  []string{"--to=si", "--format=%10.2f"},
+			Stdin: []byte("1500000\n"),
+		},
+		// R2.1: --format with left-alignment.
+		{
+			Name:  "format_left_align",
+			Args:  []string{"--to=si", "--format=%-10f"},
+			Stdin: []byte("1500000\n"),
+		},
+		// R2.1: --format with no --to (raw number formatting).
+		{
+			Name:  "format_raw_precision",
+			Args:  []string{"--format=%.2f"},
+			Stdin: []byte("3.14159\n"),
+		},
+
+		// R2.2: --padding positive (right-align).
+		{
+			Name:  "padding_right_align",
+			Args:  []string{"--to=si", "--padding=10"},
+			Stdin: []byte("1000\n"),
+		},
+		// R2.2: --padding negative (left-align).
+		{
+			Name:  "padding_left_align",
+			Args:  []string{"--to=si", "--padding=-10"},
+			Stdin: []byte("1000\n"),
+		},
+		// R2.2: --padding with no --to.
+		{
+			Name:  "padding_raw",
+			Args:  []string{"--padding=10"},
+			Stdin: []byte("42\n"),
+		},
+
+		// R2.3: --round=up (ceiling).
+		{
+			Name:  "round_up",
+			Args:  []string{"--to=si", "--round=up"},
+			Stdin: []byte("1234\n"),
+		},
+		// R2.3: --round=down (floor).
+		{
+			Name:  "round_down",
+			Args:  []string{"--to=si", "--round=down"},
+			Stdin: []byte("1234\n"),
+		},
+		// R2.3: --round=nearest.
+		{
+			Name:  "round_nearest",
+			Args:  []string{"--to=si", "--round=nearest"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.3: --round=towards-zero.
+		{
+			Name:  "round_towards_zero",
+			Args:  []string{"--to=si", "--round=towards-zero"},
+			Stdin: []byte("1900\n"),
+		},
+		// R2.3: --round=from-zero (explicit default).
+		{
+			Name:  "round_from_zero",
+			Args:  []string{"--to=si", "--round=from-zero"},
+			Stdin: []byte("1234\n"),
+		},
+
+		// R2.4: --suffix basic.
+		{
+			Name:  "suffix_basic",
+			Args:  []string{"--to=si", "--suffix=B"},
+			Stdin: []byte("1000\n"),
+		},
+		// R2.4: --suffix without --to.
+		{
+			Name:  "suffix_no_to",
+			Args:  []string{"--suffix=X"},
+			Stdin: []byte("42\n"),
+		},
+
+		// R2.1+R2.4: --format and --suffix combined.
+		{
+			Name:  "format_and_suffix",
+			Args:  []string{"--to=si", "--format=%.2f", "--suffix=B"},
+			Stdin: []byte("1500000\n"),
+		},
+		// R2.2+R2.4: --padding and --suffix combined.
+		{
+			Name:  "padding_and_suffix",
+			Args:  []string{"--to=si", "--padding=15", "--suffix=B"},
+			Stdin: []byte("1000\n"),
+		},
+		// R2.3: --round with --format precision.
+		{
+			Name:  "round_up_format",
+			Args:  []string{"--format=%.0f", "--round=up"},
+			Stdin: []byte("1.3\n"),
+		},
+		// R2.3: --round=down with --format precision.
+		{
+			Name:  "round_down_format",
+			Args:  []string{"--format=%.0f", "--round=down"},
+			Stdin: []byte("1.7\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

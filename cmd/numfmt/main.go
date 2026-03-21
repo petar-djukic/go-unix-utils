@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd071-numfmt R1.1–R1.4: basic number parsing, --from/--to scaling,
-// and default pass-through behavior.
+// Implements prd071-numfmt R1.1–R1.4, R2.1–R2.4: number parsing, --from/--to
+// scaling, --format, --padding, --round, and --suffix options.
 package main
 
 import (
@@ -30,6 +30,17 @@ const (
 	scaleAuto
 )
 
+// roundMode represents a rounding strategy. R2.3.
+type roundMode int
+
+const (
+	roundFromZero    roundMode = iota // default: away from zero
+	roundNearest                      // round half away from zero
+	roundUp                           // ceiling (towards +infinity)
+	roundDown                         // floor (towards -infinity)
+	roundTowardsZero                  // truncation (towards zero)
+)
+
 const (
 	siBase  = 1000.0
 	iecBase = 1024.0
@@ -40,8 +51,13 @@ var suffixLetters = [...]string{"K", "M", "G", "T", "P", "E", "Z", "Y"}
 
 // numfmtConfig holds parsed command-line options.
 type numfmtConfig struct {
-	from scaleUnit
-	to   scaleUnit
+	from    scaleUnit
+	to      scaleUnit
+	format  string
+	fmtSpec formatSpec
+	padding int
+	round   roundMode
+	suffix  string
 }
 
 func main() {
@@ -90,6 +106,14 @@ func parseArgs(args []string, stdout, stderr io.Writer) (numfmtConfig, []string,
 		}
 		i += consumed - 1
 	}
+	if cfg.format != "" {
+		spec, err := parseFormatStr(cfg.format)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+			return cfg, nil, 1
+		}
+		cfg.fmtSpec = spec
+	}
 	return cfg, operands, -1
 }
 
@@ -116,6 +140,16 @@ func processFlag(args []string, idx int, cfg *numfmtConfig, stdout, stderr io.Wr
 		return handleSpacedFlag(args, idx, &cfg.from, true, stderr)
 	case arg == "--to":
 		return handleSpacedFlag(args, idx, &cfg.to, false, stderr)
+	case strings.HasPrefix(arg, "--format="):
+		cfg.format = arg[len("--format="):]
+		return 1, -1
+	case strings.HasPrefix(arg, "--padding="):
+		return parsePaddingFlag(arg[len("--padding="):], &cfg.padding, stderr)
+	case strings.HasPrefix(arg, "--round="):
+		return parseRoundFlag(arg[len("--round="):], &cfg.round, stderr)
+	case strings.HasPrefix(arg, "--suffix="):
+		cfg.suffix = arg[len("--suffix="):]
+		return 1, -1
 	default:
 		return reportUnknownFlag(arg, stderr)
 	}
@@ -149,6 +183,28 @@ func parseUnitFlag(val string, target *scaleUnit, allowAuto bool, stderr io.Writ
 	return consumed, -1
 }
 
+// parsePaddingFlag parses the --padding value. R2.2.
+func parsePaddingFlag(val string, target *int, stderr io.Writer) (int, int) {
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: invalid padding value '%s'\n", progName, val)
+		return 1, 1
+	}
+	*target = n
+	return 1, -1
+}
+
+// parseRoundFlag parses the --round value. R2.3.
+func parseRoundFlag(val string, target *roundMode, stderr io.Writer) (int, int) {
+	mode, err := parseRoundMode(val)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+		return 1, 1
+	}
+	*target = mode
+	return 1, -1
+}
+
 // parseScaleUnit converts a string to a scaleUnit value.
 func parseScaleUnit(s string, allowAuto bool) (scaleUnit, error) {
 	switch s {
@@ -166,6 +222,23 @@ func parseScaleUnit(s string, allowAuto bool) (scaleUnit, error) {
 		}
 	}
 	return scaleNone, fmt.Errorf("invalid unit size: '%s'", s)
+}
+
+// parseRoundMode converts a string to a roundMode value. R2.3.
+func parseRoundMode(s string) (roundMode, error) {
+	switch s {
+	case "from-zero":
+		return roundFromZero, nil
+	case "nearest":
+		return roundNearest, nil
+	case "up":
+		return roundUp, nil
+	case "down":
+		return roundDown, nil
+	case "towards-zero":
+		return roundTowardsZero, nil
+	}
+	return roundFromZero, fmt.Errorf("invalid rounding mode: '%s'", s)
 }
 
 // processOperands converts each command-line operand.
@@ -207,7 +280,7 @@ func convertAndWrite(s string, cfg numfmtConfig, w *bufio.Writer, stderr io.Writ
 		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
 		return err
 	}
-	fmt.Fprintln(w, formatOutput(val, cfg.to))
+	fmt.Fprintln(w, formatOutput(val, cfg))
 	return nil
 }
 
@@ -332,8 +405,20 @@ func baseForUnit(unit scaleUnit) float64 {
 	return iecBase
 }
 
-// formatOutput formats a numeric value according to the output unit.
-func formatOutput(val float64, unit scaleUnit) string {
+// formatOutput formats a numeric value according to the config.
+// R2.1: uses --format spec. R2.2: applies --padding. R2.4: appends --suffix.
+func formatOutput(val float64, cfg numfmtConfig) string {
+	if cfg.format != "" {
+		result := formatWithSpec(val, cfg)
+		return applyPadding(result, cfg.padding)
+	}
+	result := formatDefault(val, cfg.to, cfg.round)
+	result += cfg.suffix
+	return applyPadding(result, cfg.padding)
+}
+
+// formatDefault formats a value with default formatting rules.
+func formatDefault(val float64, unit scaleUnit, mode roundMode) string {
 	if unit == scaleNone {
 		return formatRaw(val)
 	}
@@ -345,7 +430,7 @@ func formatOutput(val float64, unit scaleUnit) string {
 	}
 	scale := math.Pow(base, float64(idx+1))
 	scaled := val / scale
-	return formatScaled(scaled, buildSuffix(idx, unit))
+	return formatScaled(scaled, buildSuffix(idx, unit), mode)
 }
 
 // findBestScale returns the suffix index for the largest applicable scale.
@@ -375,24 +460,38 @@ func buildSuffix(idx int, unit scaleUnit) string {
 
 // formatScaled formats a scaled value with its unit suffix.
 // R1.1: values < 10 get one decimal place; values >= 10 get none.
-// GNU numfmt default rounding is "from-zero" (away from zero).
-func formatScaled(val float64, suffix string) string {
+func formatScaled(val float64, suffix string, mode roundMode) string {
 	if math.Abs(val) < 10 {
-		rounded := roundFromZero(val, 1)
+		rounded := roundValue(val, 1, mode)
 		return fmt.Sprintf("%.1f%s", rounded, suffix)
 	}
-	rounded := roundFromZero(val, 0)
+	rounded := roundValue(val, 0, mode)
 	return fmt.Sprintf("%.0f%s", rounded, suffix)
 }
 
-// roundFromZero rounds val away from zero to the given decimal places.
-// This matches GNU numfmt's default rounding behavior.
-func roundFromZero(val float64, decimals int) float64 {
+// roundValue rounds val to the given decimal places using the specified mode.
+// R2.3: supports from-zero, nearest, up, down, towards-zero.
+func roundValue(val float64, decimals int, mode roundMode) float64 {
 	pow := math.Pow(10, float64(decimals))
-	if val >= 0 {
-		return math.Ceil(val*pow) / pow
+	scaled := val * pow
+	var rounded float64
+	switch mode {
+	case roundNearest:
+		rounded = math.Round(scaled)
+	case roundUp:
+		rounded = math.Ceil(scaled)
+	case roundDown:
+		rounded = math.Floor(scaled)
+	case roundTowardsZero:
+		rounded = math.Trunc(scaled)
+	default: // roundFromZero
+		if scaled >= 0 {
+			rounded = math.Ceil(scaled)
+		} else {
+			rounded = math.Floor(scaled)
+		}
 	}
-	return math.Floor(val*pow) / pow
+	return rounded / pow
 }
 
 // formatRaw formats a value without any suffix.
@@ -411,6 +510,10 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "      --from=UNIT       auto-scale input UNITs; default is 'none'")
 	fmt.Fprintln(w, "      --to=UNIT         auto-scale output UNITs; default is 'none'")
+	fmt.Fprintln(w, "      --format=FORMAT   use printf style floating-point FORMAT")
+	fmt.Fprintln(w, "      --padding=N       pad the output to N characters")
+	fmt.Fprintln(w, "      --round=METHOD    use METHOD for rounding when scaling")
+	fmt.Fprintln(w, "      --suffix=SUFFIX   append SUFFIX to output numbers")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")
 	fmt.Fprintln(w, "")
