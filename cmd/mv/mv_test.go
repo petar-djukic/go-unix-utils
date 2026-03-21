@@ -5,10 +5,14 @@
 // multi-file move, and error handling.
 // Differential tests for prd057-mv R2.1–R2.4: overwrite control
 // (interactive, force, no-clobber, permission errors).
+// Tests for prd057-mv R3.1: verbose mode.
+// Tests for prd057-mv R3.2: target directory (-t/--target-directory).
+// Tests for prd057-mv R3.3: no-target-directory (-T/--no-target-directory).
 package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,6 +72,8 @@ func TestDiff(t *testing.T) {
 		targetNotADirTest(t, normalizers),
 		noClobberExistingTest(t, normalizers),
 		interactiveDeclineTest(t, normalizers),
+		verboseNoClobberTest(t, normalizers),
+		verboseMissingSourceTest(t, normalizers),
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -142,6 +148,42 @@ func interactiveDeclineTest(t *testing.T, normalizers []testutils.NormalizeFunc)
 			filepath.Join(dir, "dst.txt"),
 		},
 		Stdin:     []byte("n\n"),
+		ExitCode:  1,
+		Normalize: normalizers,
+	}
+}
+
+// verboseNoClobberTest verifies -v -n with existing dest produces no output. R3.1.
+// Non-destructive: no-clobber prevents any move.
+func verboseNoClobberTest(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "src.txt"), "source\n")
+	writeTestFile(t, filepath.Join(dir, "dst.txt"), "dest\n")
+	return testutils.DiffTest{
+		Name: "verbose_no_clobber",
+		Args: []string{
+			"-v", "-n",
+			filepath.Join(dir, "src.txt"),
+			filepath.Join(dir, "dst.txt"),
+		},
+		ExitCode:  0,
+		Normalize: normalizers,
+	}
+}
+
+// verboseMissingSourceTest verifies -v with missing source reports error. R3.1.
+// Non-destructive: source doesn't exist, no move occurs.
+func verboseMissingSourceTest(t *testing.T, normalizers []testutils.NormalizeFunc) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	return testutils.DiffTest{
+		Name: "verbose_missing_source",
+		Args: []string{
+			"-v",
+			filepath.Join(dir, "nonexistent.txt"),
+			filepath.Join(dir, "dst.txt"),
+		},
 		ExitCode:  1,
 		Normalize: normalizers,
 	}
@@ -225,9 +267,7 @@ func TestMoveOps(t *testing.T) {
 		writeTestFile(t, src, "new\n")
 		writeTestFile(t, dst, "old\n")
 		exitCode, _ := runBinaryCmd(t, goBin, nil, "-n", src, dst)
-		if exitCode != 0 {
-			t.Fatalf("expected exit 0, got %d", exitCode)
-		}
+		requireExit(t, 0, exitCode)
 		assertFileContent(t, dst, "old\n")
 		assertFileExists(t, src)
 	})
@@ -240,9 +280,7 @@ func TestMoveOps(t *testing.T) {
 		writeTestFile(t, src, "new\n")
 		writeTestFile(t, dst, "old\n")
 		exitCode, _ := runBinaryCmd(t, goBin, []byte("y\n"), "-i", src, dst)
-		if exitCode != 0 {
-			t.Fatalf("expected exit 0, got %d", exitCode)
-		}
+		requireExit(t, 0, exitCode)
 		assertFileContent(t, dst, "new\n")
 		assertNotExists(t, src)
 	})
@@ -255,9 +293,7 @@ func TestMoveOps(t *testing.T) {
 		writeTestFile(t, src, "new\n")
 		writeTestFile(t, dst, "old\n")
 		exitCode, _ := runBinaryCmd(t, goBin, []byte("n\n"), "-i", src, dst)
-		if exitCode != 1 {
-			t.Fatalf("expected exit 1, got %d", exitCode)
-		}
+		requireExit(t, 1, exitCode)
 		assertFileContent(t, dst, "old\n")
 		assertFileExists(t, src)
 	})
@@ -271,9 +307,7 @@ func TestMoveOps(t *testing.T) {
 		writeTestFile(t, dst, "old\n")
 		// -f then -i: interactive wins, user declines
 		exitCode, _ := runBinaryCmd(t, goBin, []byte("n\n"), "-f", "-i", src, dst)
-		if exitCode != 1 {
-			t.Fatalf("expected exit 1, got %d", exitCode)
-		}
+		requireExit(t, 1, exitCode)
 		assertFileContent(t, dst, "old\n")
 		assertFileExists(t, src)
 	})
@@ -287,9 +321,7 @@ func TestMoveOps(t *testing.T) {
 		writeTestFile(t, dst, "old\n")
 		// -n then -f: force wins, overwrites
 		exitCode, _ := runBinaryCmd(t, goBin, nil, "-n", "-f", src, dst)
-		if exitCode != 0 {
-			t.Fatalf("expected exit 0, got %d", exitCode)
-		}
+		requireExit(t, 0, exitCode)
 		assertFileContent(t, dst, "new\n")
 		assertNotExists(t, src)
 	})
@@ -303,11 +335,117 @@ func TestMoveOps(t *testing.T) {
 		writeTestFile(t, dst, "old\n")
 		// -i then -n: no-clobber wins, does not overwrite
 		exitCode, _ := runBinaryCmd(t, goBin, nil, "-i", "-n", src, dst)
-		if exitCode != 0 {
-			t.Fatalf("expected exit 0, got %d", exitCode)
-		}
+		requireExit(t, 0, exitCode)
 		assertFileContent(t, dst, "old\n")
 		assertFileExists(t, src)
+	})
+}
+
+// TestVerbose tests -v/--verbose output. R3.1.
+func TestVerbose(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("rename", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "hello\n")
+		code, stdout, stderr := runBinarySplit(t, goBin, nil, "-v", src, dst)
+		requireExit(t, 0, code)
+		assertFileContent(t, dst, "hello\n")
+		assertNotExists(t, src)
+		want := fmt.Sprintf("renamed '%s' -> '%s'\n", src, dst)
+		requireStrEqual(t, want, string(stderr), "verbose stderr")
+		requireStrEqual(t, "", string(stdout), "verbose stdout")
+	})
+
+	t.Run("move_into_dir", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		subdir := filepath.Join(dir, "target")
+		mkdirAll(t, subdir)
+		src := filepath.Join(dir, "file.txt")
+		writeTestFile(t, src, "content\n")
+		code, _, stderr := runBinarySplit(t, goBin, nil, "--verbose", src, subdir)
+		requireExit(t, 0, code)
+		want := fmt.Sprintf("renamed '%s' -> '%s'\n",
+			src, filepath.Join(subdir, "file.txt"))
+		requireStrEqual(t, want, string(stderr), "verbose stderr")
+	})
+}
+
+// TestTargetDirectory tests -t/--target-directory. R3.2.
+func TestTargetDirectory(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("short_flag", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		subdir := filepath.Join(dir, "dest")
+		mkdirAll(t, subdir)
+		a := filepath.Join(dir, "a.txt")
+		b := filepath.Join(dir, "b.txt")
+		writeTestFile(t, a, "aaa\n")
+		writeTestFile(t, b, "bbb\n")
+		runExpectSuccess(t, goBin, "-t", subdir, a, b)
+		assertFileContent(t, filepath.Join(subdir, "a.txt"), "aaa\n")
+		assertFileContent(t, filepath.Join(subdir, "b.txt"), "bbb\n")
+		assertNotExists(t, a)
+		assertNotExists(t, b)
+	})
+
+	t.Run("long_flag_equals", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		subdir := filepath.Join(dir, "dest")
+		mkdirAll(t, subdir)
+		src := filepath.Join(dir, "src.txt")
+		writeTestFile(t, src, "content\n")
+		runExpectSuccess(t, goBin, "--target-directory="+subdir, src)
+		assertFileContent(t, filepath.Join(subdir, "src.txt"), "content\n")
+		assertNotExists(t, src)
+	})
+
+	t.Run("conflict_with_T", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		writeTestFile(t, src, "content\n")
+		code, _ := runBinaryCmd(t, goBin, nil, "-t", dir, "-T", src)
+		requireExit(t, 1, code)
+	})
+}
+
+// TestNoTargetDirectory tests -T/--no-target-directory. R3.3.
+func TestNoTargetDirectory(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("simple_rename", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		src := filepath.Join(dir, "src.txt")
+		dst := filepath.Join(dir, "dst.txt")
+		writeTestFile(t, src, "content\n")
+		runExpectSuccess(t, goBin, "-T", src, dst)
+		assertFileContent(t, dst, "content\n")
+		assertNotExists(t, src)
+	})
+
+	t.Run("extra_operand", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		a := filepath.Join(dir, "a.txt")
+		b := filepath.Join(dir, "b.txt")
+		c := filepath.Join(dir, "c.txt")
+		writeTestFile(t, a, "a\n")
+		writeTestFile(t, b, "b\n")
+		writeTestFile(t, c, "c\n")
+		code, _ := runBinaryCmd(t, goBin, nil, "-T", a, b, c)
+		requireExit(t, 1, code)
 	})
 }
 
@@ -365,6 +503,43 @@ func runBinaryCmd(t *testing.T, bin string, stdinData []byte, args ...string) (i
 	}
 	t.Fatalf("failed to run binary: %v", err)
 	return 0, nil // unreachable
+}
+
+// runBinarySplit runs the binary capturing stdout and stderr separately.
+func runBinarySplit(t *testing.T, bin string, stdinData []byte, args ...string) (int, []byte, []byte) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	if stdinData != nil {
+		cmd.Stdin = bytes.NewReader(stdinData)
+	}
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if err == nil {
+		return 0, outBuf.Bytes(), errBuf.Bytes()
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode(), outBuf.Bytes(), errBuf.Bytes()
+	}
+	t.Fatalf("failed to run binary: %v", err)
+	return 0, nil, nil // unreachable
+}
+
+// requireExit fails the test if exit code doesn't match.
+func requireExit(t *testing.T, want, got int) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("expected exit %d, got %d", want, got)
+	}
+}
+
+// requireStrEqual fails the test if strings don't match.
+func requireStrEqual(t *testing.T, want, got, label string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: got %q, want %q", label, got, want)
+	}
 }
 
 // assertFileContent reads a file and checks it has the expected content.
