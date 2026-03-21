@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd073-printf R4.3–R4.4: differential tests for format string
-// parsing, conversion specifiers, width/precision/flags, escape sequences,
-// and argument recycling.
+// Implements prd073-printf R3.1–R3.4, R4.3–R4.4: differential tests for format
+// string parsing, conversion specifiers, width/precision/flags, escape sequences,
+// argument cycling, and missing argument defaults.
 package main
 
 import (
@@ -124,16 +124,41 @@ func TestDiff(t *testing.T) {
 		{Name: "escape_octal_A", Args: []string{"\\101"}},
 		{Name: "escape_hex_A", Args: []string{"\\x41"}},
 		{Name: "escape_bell", Args: []string{"\\a"}},
+		{Name: "escape_backspace", Args: []string{"a\\bb"}},
+		{Name: "escape_formfeed", Args: []string{"a\\fb"}},
+		{Name: "escape_cr", Args: []string{"a\\rb"}},
+		{Name: "escape_vtab", Args: []string{"a\\vb"}},
+		{Name: "escape_unicode_u", Args: []string{"\\u0041"}},
+		{Name: "escape_unicode_U", Args: []string{"\\U00000041"}},
+		{Name: "escape_octal_nul", Args: []string{"a\\0b"}},
+		{Name: "escape_hex_ff", Args: []string{"\\xff"}},
+		{Name: "escape_octal_377", Args: []string{"\\377"}},
 
-		// R3.2: argument recycling
+		// R3.2: %b escape sequences in arguments
+		{Name: "b_escape_backslash", Args: []string{"%b", "a\\\\b"}},
+		{Name: "b_escape_bell", Args: []string{"%b", "\\a"}},
+		{Name: "b_escape_backspace", Args: []string{"%b", "a\\bb"}},
+		{Name: "b_escape_formfeed", Args: []string{"%b", "a\\fb"}},
+		{Name: "b_escape_cr", Args: []string{"%b", "a\\rb"}},
+		{Name: "b_escape_vtab", Args: []string{"%b", "a\\vb"}},
+		{Name: "b_escape_hex", Args: []string{"%b", "\\x41"}},
+		{Name: "b_stop_c_mid", Args: []string{"%b", "ab\\cde"}},
+		{Name: "b_stop_c_format_after", Args: []string{"%b trailing", "hello\\c"}},
+
+		// R3.3: argument cycling
 		{Name: "recycle_s", Args: []string{"%s\\n", "a", "b", "c"}},
 		{Name: "recycle_d", Args: []string{"%d\\n", "1", "2", "3"}},
 		{Name: "recycle_multi", Args: []string{"%d %d\\n", "1", "2", "3", "4"}},
+		{Name: "recycle_mixed", Args: []string{"%s %d\\n", "a", "1", "b", "2"}},
+		{Name: "recycle_no_directive", Args: []string{"hello\\n"}},
 
-		// R3.3: missing arguments (default values)
+		// R3.4: missing arguments (default values)
 		{Name: "missing_int_arg", Args: []string{"%d %d\\n", "42"}},
 		{Name: "missing_string_arg", Args: []string{"%s %s\\n", "hello"}},
 		{Name: "missing_float_arg", Args: []string{"%f %f\\n", "3.14"}},
+		{Name: "missing_all_args_d", Args: []string{"%d"}},
+		{Name: "missing_all_args_s", Args: []string{"%s"}},
+		{Name: "missing_all_args_f", Args: []string{"%f"}},
 
 		// R3.4: character value arguments (quote prefix)
 		{Name: "char_value_single", Args: []string{"%d\\n", "'A"}},

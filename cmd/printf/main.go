@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd073-printf R1.1–R1.4, R2.1–R2.4: format string processing,
-// conversion specifiers (integer, float, string, char, %b),
-// width/precision/flags, escape sequences, and argument recycling.
+// Implements prd073-printf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: format string
+// processing, conversion specifiers (integer, float, string, char, %b),
+// width/precision/flags, escape sequences, argument cycling, and missing
+// argument defaults.
 package main
 
 import (
@@ -407,32 +408,33 @@ func interpretEscape(s string) (string, int) {
 	case 'x':
 		return hexEscape(s[2:], 2)
 	case 'u':
-		return unicodeEscape(s[2:], 4)
+		return unicodeEscape(s[2:], 4, 'u')
 	case 'U':
-		return unicodeEscape(s[2:], 8)
+		return unicodeEscape(s[2:], 8, 'U')
 	default:
 		if isOctalDigit(s[1]) {
 			val, n := parseOctalDigits(s[1:], 3)
-			return string(rune(val)), 1 + n
+			return string([]byte{byte(val)}), 1 + n
 		}
 		return string(s[:2]), 2
 	}
 }
 
 // hexEscape parses \xHH and returns result with total consumed bytes.
+// Outputs a raw byte, not UTF-8 encoded rune, to match GNU printf.
 func hexEscape(digits string, prefixLen int) (string, int) {
 	val, n := parseHexDigits(digits, 2)
 	if n == 0 {
 		return "\\x", prefixLen
 	}
-	return string(rune(val)), prefixLen + n
+	return string([]byte{byte(val)}), prefixLen + n
 }
 
 // unicodeEscape parses \uHHHH or \UHHHHHHHH.
-func unicodeEscape(digits string, maxDigits int) (string, int) {
+func unicodeEscape(digits string, maxDigits int, prefix byte) (string, int) {
 	val, n := parseHexDigits(digits, maxDigits)
 	if n == 0 {
-		return string([]byte{'\\', digits[0]}), 2
+		return string([]byte{'\\', prefix}), 2
 	}
 	return string(rune(val)), 2 + n
 }
@@ -454,7 +456,7 @@ func interpretBEscape(s string) (string, int) {
 		if n == 0 {
 			return "\x00", 2
 		}
-		return string(rune(val)), 2 + n
+		return string([]byte{byte(val)}), 2 + n
 	default:
 		return string(s[:2]), 2
 	}
