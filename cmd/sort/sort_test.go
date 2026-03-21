@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd053-sort R1.1–R1.4.
+// Differential tests for prd053-sort R1.1–R1.7.
 package main_test
 
 import (
@@ -125,8 +125,133 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin_empty_lines",
 			Stdin: []byte("\nb\n\na\n"),
 		},
+		// R1.5: unique removes duplicates.
+		{
+			Name:  "unique_basic",
+			Args:  []string{"-u"},
+			Stdin: []byte("b\na\nb\na\nc\n"),
+		},
+		// R1.5: unique with all identical lines.
+		{
+			Name:  "unique_all_same",
+			Args:  []string{"-u"},
+			Stdin: []byte("a\na\na\n"),
+		},
+		// R1.5: unique with no duplicates.
+		{
+			Name:  "unique_no_dupes",
+			Args:  []string{"-u"},
+			Stdin: []byte("c\nb\na\n"),
+		},
+		// R1.5: unique with long flag.
+		{
+			Name:  "unique_long_flag",
+			Args:  []string{"--unique"},
+			Stdin: []byte("b\na\nb\n"),
+		},
+		// R1.5: unique combined with reverse.
+		{
+			Name:  "unique_reverse",
+			Args:  []string{"-ru"},
+			Stdin: []byte("b\na\nb\na\nc\n"),
+		},
+		// R1.5: unique with empty input.
+		{
+			Name:  "unique_empty",
+			Args:  []string{"-u"},
+			Stdin: []byte(""),
+		},
+		// R1.7: stable sort.
+		{
+			Name:  "stable_basic",
+			Args:  []string{"-s"},
+			Stdin: []byte("banana\napple\ncherry\n"),
+		},
+		// R1.7: stable with long flag.
+		{
+			Name:  "stable_long_flag",
+			Args:  []string{"--stable"},
+			Stdin: []byte("c\nb\na\n"),
+		},
+		// R1.7: stable combined with reverse.
+		{
+			Name:  "stable_reverse",
+			Args:  []string{"-sr"},
+			Stdin: []byte("banana\napple\ncherry\n"),
+		},
+		// R1.7: stable combined with unique.
+		{
+			Name:  "stable_unique",
+			Args:  []string{"-su"},
+			Stdin: []byte("b\na\nb\na\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffOutput tests -o/--output flag (R1.6).
+func TestDiffOutput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skipf("reference binary gsort not in PATH: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	out1 := filepath.Join(tmpDir, "out1.txt")
+	out2 := filepath.Join(tmpDir, "out2.txt")
+	out3 := filepath.Join(tmpDir, "out3.txt")
+
+	tests := []testutils.DiffTest{
+		// R1.6: -o writes to file instead of stdout.
+		{
+			Name:    "output_short_flag",
+			Args:    []string{"-o", out1},
+			Stdin:   []byte("c\na\nb\n"),
+			WorkDir: tmpDir,
+		},
+		// R1.6: --output=FILE long form.
+		{
+			Name:    "output_long_flag",
+			Args:    []string{"--output=" + out2},
+			Stdin:   []byte("z\ny\nx\n"),
+			WorkDir: tmpDir,
+		},
+		// R1.6: -o combined with -u.
+		{
+			Name:    "output_with_unique",
+			Args:    []string{"-u", "-o", out3},
+			Stdin:   []byte("b\na\nb\na\n"),
+			WorkDir: tmpDir,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+
+	// Verify file contents produced by the go binary.
+	verifyFileContent(t, out1, "a\nb\nc\n")
+	verifyFileContent(t, out2, "x\ny\nz\n")
+	verifyFileContent(t, out3, "a\nb\n")
+}
+
+// TestOutputInPlace tests -o with the same file as input (R1.6).
+func TestOutputInPlace(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	dataFile := filepath.Join(tmpDir, "data.txt")
+	writeTestFile(t, dataFile, "banana\napple\ncherry\n")
+
+	cmd := exec.Command(goBin, "-o", dataFile, dataFile)
+	cmd.Dir = tmpDir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sort -o inplace failed: %v\noutput: %s", err, out)
+	}
+
+	verifyFileContent(t, dataFile, "apple\nbanana\ncherry\n")
 }
 
 // writeTestFile writes content to path, failing the test on error.
@@ -134,6 +259,18 @@ func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing test file %s: %v", path, err)
+	}
+}
+
+// verifyFileContent checks that a file contains the expected content.
+func verifyFileContent(t *testing.T, path, want string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading file %s: %v", path, err)
+	}
+	if string(got) != want {
+		t.Fatalf("file %s content mismatch:\ngot:  %q\nwant: %q", path, got, want)
 	}
 }
 
