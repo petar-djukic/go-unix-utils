@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/touch against gtouch (GNU coreutils).
-// Implements prd062-touch R1.1–R1.4, R2.1–R2.4, R3.1–R3.4 test coverage.
+// Implements prd062-touch R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4 test coverage.
 package main
 
 import (
@@ -155,6 +155,70 @@ func TestDiffR3(t *testing.T) {
 		{Name: "r3_no_deref_no_create", Args: []string{"-hc", "nonexistent_h"}},
 		// R3.4: -h on existing regular file works normally.
 		{Name: "r3_no_deref_existing", Args: []string{"-h", "existfile"}, WorkDir: hDir},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffR4 runs differential tests for R4 requirements (exit codes and edge cases).
+func TestDiffR4(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skipf("reference binary gtouch not in PATH: %v", err)
+	}
+
+	norm := []testutils.NormalizeFunc{binaryNameNormalizer}
+	normCase := []testutils.NormalizeFunc{binaryNameNormalizer, caseNormalizer}
+
+	// R4.2: set up a directory with no write permission.
+	noWriteDir := t.TempDir()
+	noWriteChild := filepath.Join(noWriteDir, "noperm")
+	if err := os.Mkdir(noWriteChild, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		os.Chmod(noWriteChild, 0o755) // best-effort restore for cleanup
+	})
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 on single successful file creation.
+		{Name: "r4_exit_zero_create", Args: []string{"okfile"}},
+		// R4.1: exit 0 on multiple successful files.
+		{Name: "r4_exit_zero_multi", Args: []string{"ok1", "ok2", "ok3"}},
+		// R4.2: exit 1 on invalid -t timestamp.
+		{
+			Name: "r4_exit_one_invalid_t", Args: []string{"-t", "notadate", "file"},
+			ExitCode: 1, Normalize: norm,
+		},
+		// R4.2: exit 1 on invalid -d date string.
+		{
+			Name: "r4_exit_one_invalid_d", Args: []string{"-d", "garbage", "file"},
+			ExitCode: 1, Normalize: norm,
+		},
+		// R4.2: exit 1 on permission denied, continue processing remaining files.
+		{
+			Name:     "r4_continue_after_error",
+			Args:     []string{filepath.Join(noWriteChild, "blocked"), "goodfile"},
+			ExitCode: 1, Normalize: normCase,
+		},
+		// R4.2: exit 1 on missing reference file.
+		{
+			Name: "r4_exit_one_missing_ref", Args: []string{"-r", "/no/such/ref", "file"},
+			ExitCode: 1, Normalize: normCase,
+		},
+		// R4.4: -d with ISO 8601 T separator.
+		{Name: "r4_date_iso_t", Args: []string{"-d", "2024-01-15T10:30:30", "dtfile"}},
+		// R4.4: -d with epoch and fractional seconds.
+		{Name: "r4_date_epoch_frac", Args: []string{"-d", "@1705312230.500000000", "effile"}},
+		// R4.4: -d with date only (no time).
+		{Name: "r4_date_only", Args: []string{"-d", "2024-06-01", "dofile"}},
+		// R4.4: unrecognized option exits 1.
+		{
+			Name: "r4_unrecognized_option", Args: []string{"--bogus", "file"},
+			ExitCode: 1, Normalize: norm,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -535,5 +599,54 @@ func TestNoDereferenceSymlink(t *testing.T) {
 	expected := time.Date(2024, 1, 15, 10, 30, 0, 0, time.Local)
 	if !lfi.ModTime.Equal(expected) {
 		t.Fatalf("symlink mtime: got %v, want %v", lfi.ModTime, expected)
+	}
+}
+
+// TestContinueAfterError verifies R4.2: touch continues processing files
+// after an error and still exits 1.
+func TestContinueAfterError(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+
+	// Create a directory with no write permission so touch fails inside it.
+	noWrite := filepath.Join(dir, "noperm")
+	if err := os.Mkdir(noWrite, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		os.Chmod(noWrite, 0o755) // best-effort restore for cleanup
+	})
+
+	badFile := filepath.Join(noWrite, "blocked")
+	goodFile := filepath.Join(dir, "good")
+
+	cmd := exec.Command(goBin, badFile, goodFile)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 1 {
+		t.Fatalf("expected exit 1, got %v\noutput: %s", err, out)
+	}
+
+	// R4.2: goodFile must still be created despite badFile failing.
+	if _, err := os.Stat(goodFile); err != nil {
+		t.Fatalf("good file not created after error: %v", err)
+	}
+}
+
+// TestExitZeroOnSuccess verifies R4.1: touch exits 0 on success.
+func TestExitZeroOnSuccess(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "okfile")
+
+	cmd := exec.Command(goBin, target)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected exit 0, got error: %v\noutput: %s", err, out)
 	}
 }

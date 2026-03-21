@@ -7,6 +7,8 @@
 // -t STAMP (explicit timestamp).
 // Implements prd062-touch R3.1–R3.4: -r/--reference (reference file),
 // -d/--date (date string), missing reference error, -h/--no-dereference.
+// Implements prd062-touch R4.1–R4.4: exit 0 on success, exit 1 on error
+// with continuation, differential tests for exit codes and timestamps.
 package main
 
 import (
