@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements differential tests for prd068-csplit R1.1–R1.4, R2.1–R2.4,
-// R3.1–R3.4 (error handling and edge cases).
+// R3.1–R3.4 (error handling and edge cases),
+// R4.1–R4.4 (suppress matched, elide empty files).
 package main
 
 import (
@@ -200,6 +201,50 @@ func TestDiff(t *testing.T) {
 			Name:  "success_exit_zero",
 			Args:  []string{"-", "3"},
 			Stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		// === R4 tests: suppress matched, elide empty, byte counts ===
+		{
+			// R4.1: --suppress-matched removes the matched line from output.
+			Name:  "suppress_matched_basic",
+			Args:  []string{"--suppress-matched", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			// R4.1: --suppress-matched with multiple regex splits.
+			Name:  "suppress_matched_multiple",
+			Args:  []string{"--suppress-matched", "-", "/b/", "/d/"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			// R4.1: --suppress-matched with repeat count.
+			Name:  "suppress_matched_repeat",
+			Args:  []string{"--suppress-matched", "-", "/x/", "{*}"},
+			Stdin: []byte("1\nx\n2\nx\n3\n"),
+		},
+		{
+			// R4.2: --elide-empty-files with --suppress-matched.
+			// Suppressing the match can create empty files; -z removes them.
+			Name:  "suppress_matched_elide_empty",
+			Args:  []string{"--suppress-matched", "-z", "-", "/a/"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R4.3: both flags together with repeat.
+			Name:  "suppress_and_elide_with_repeat",
+			Args:  []string{"--suppress-matched", "-z", "-", "/x/", "{*}"},
+			Stdin: []byte("x\n1\nx\n2\nx\n3\n"),
+		},
+		{
+			// R4.4: byte counts reflect actual size after suppression.
+			Name:  "suppress_matched_byte_counts",
+			Args:  []string{"--suppress-matched", "-", "/c/", "/e/"},
+			Stdin: []byte("a\nb\nc\nd\ne\nf\n"),
+		},
+		{
+			// R4.1: --suppress-matched with offset pattern.
+			Name:  "suppress_matched_with_offset",
+			Args:  []string{"--suppress-matched", "-", "/3/+1"},
+			Stdin: []byte("1\n2\n3\n4\n5\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

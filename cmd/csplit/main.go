@@ -3,7 +3,8 @@
 
 // Implements prd068-csplit R1.1–R1.4: pattern-based file splitting,
 // R2.1–R2.4: repeat counts and offset patterns,
-// R3.1–R3.4: error handling and edge cases.
+// R3.1–R3.4: error handling and edge cases,
+// R4.1–R4.4: suppress matched, elide empty files.
 package main
 
 import (
@@ -47,17 +48,26 @@ type pattern struct {
 
 // config holds parsed command-line options for csplit.
 type config struct {
-	prefix     string
-	digits     int
-	elideEmpty bool
-	inputFile  string
-	patterns   []pattern
+	prefix          string
+	digits          int
+	elideEmpty      bool
+	suppressMatched bool // R4.1: remove matched separator lines from output
+	inputFile       string
+	patterns        []pattern
 }
 
 // piece represents one output section with start/end indices into lines.
 type piece struct {
 	start int
 	end   int
+}
+
+// splitResult holds the result of splitting input by patterns.
+type splitResult struct {
+	pieces         []piece
+	pos            int
+	err            error
+	suppressedLines map[int]bool // R4.1: line indices to suppress
 }
 
 func main() {
@@ -137,6 +147,10 @@ func parseSingleOption(args []string, i int, cfg *config) (int, error) {
 	}
 	if arg == "-z" || arg == "--elide-empty-files" {
 		cfg.elideEmpty = true
+		return 0, nil
+	}
+	if arg == "--suppress-matched" {
+		cfg.suppressMatched = true
 		return 0, nil
 	}
 	return 0, fmt.Errorf("unrecognized option '%s'", arg)
@@ -371,15 +385,20 @@ func executeCsplit(cfg *config, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	pieces, pos, splitErr := splitByPatterns(lines, cfg.patterns)
-	pieces = append(pieces, piece{start: pos, end: len(lines)})
-	created, writeErr := writeAndReport(lines, pieces, cfg, stdout)
+	result := splitByPatterns(lines, cfg)
+	result.pieces = append(result.pieces, piece{start: result.pos, end: len(lines)})
+	return finalizeCsplit(lines, result, cfg, stdout)
+}
+
+// finalizeCsplit writes output files and handles split errors.
+func finalizeCsplit(lines [][]byte, result splitResult, cfg *config, stdout io.Writer) error {
+	created, writeErr := writeAndReport(lines, result, cfg, stdout)
 	if writeErr != nil {
 		return writeErr
 	}
-	if splitErr != nil {
+	if result.err != nil {
 		removeFiles(created)
-		return splitErr
+		return result.err
 	}
 	return nil
 }
@@ -418,82 +437,98 @@ func scanLines(r io.Reader) ([][]byte, error) {
 
 // splitByPatterns applies patterns in order to determine split pieces. R1.1.
 // On error, returns the pieces accumulated so far plus the current position.
-func splitByPatterns(lines [][]byte, patterns []pattern) ([]piece, int, error) {
-	var pieces []piece
-	pos := 0
-	for _, pat := range patterns {
-		newPieces, newPos, err := applyWithRepeat(lines, pos, pat)
-		pieces = append(pieces, newPieces...)
-		pos = newPos
+func splitByPatterns(lines [][]byte, cfg *config) splitResult {
+	result := splitResult{suppressedLines: make(map[int]bool)}
+	for _, pat := range cfg.patterns {
+		newPieces, newPos, suppressed, err := applyWithRepeat(lines, result.pos, pat, cfg)
+		result.pieces = append(result.pieces, newPieces...)
+		result.pos = newPos
+		for _, idx := range suppressed {
+			result.suppressedLines[idx] = true
+		}
 		if err != nil {
-			return pieces, pos, err
+			result.err = err
+			return result
 		}
 	}
-	return pieces, pos, nil
+	return result
 }
 
 // applyWithRepeat applies a pattern once or with repeats. R2.1, R2.2.
-func applyWithRepeat(lines [][]byte, pos int, pat pattern) ([]piece, int, error) {
+func applyWithRepeat(lines [][]byte, pos int, pat pattern, cfg *config) ([]piece, int, []int, error) {
 	total := pat.repeat + 1
 	if pat.repeat < 0 {
 		total = repeatForever
 	}
 	var pieces []piece
+	var suppressed []int
 	searchFrom := pos
 	for i := 0; total < 0 || i < total; i++ {
-		p, newPos, err := applyPatternFrom(lines, pos, searchFrom, pat)
+		p, newPos, matchIdx, err := applyPatternFrom(lines, pos, searchFrom, pat)
 		if err != nil {
 			if pat.repeat < 0 {
 				break // R2.2: {*} exhaustion is always OK
 			}
-			return pieces, pos, fmtRepeatErr(err, i) // R2.4
+			return pieces, pos, suppressed, fmtRepeatErr(err, i)
 		}
 		if p != nil {
 			pieces = append(pieces, *p)
 		}
-		pos = newPos
-		nextSearch := pos + 1
-		if nextSearch <= searchFrom {
-			nextSearch = searchFrom + 1
+		if cfg.suppressMatched && matchIdx >= 0 {
+			suppressed = append(suppressed, matchIdx)
 		}
-		searchFrom = nextSearch
+		pos = newPos
+		searchFrom = advanceSearch(pos, searchFrom)
 	}
-	return pieces, pos, nil
+	return pieces, pos, suppressed, nil
+}
+
+// advanceSearch computes the next search position to avoid infinite loops.
+func advanceSearch(pos, searchFrom int) int {
+	nextSearch := pos + 1
+	if nextSearch <= searchFrom {
+		nextSearch = searchFrom + 1
+	}
+	return nextSearch
 }
 
 // applyPatternFrom dispatches to the appropriate pattern handler.
-func applyPatternFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, error) {
+// Returns the piece (nil for skip), new position, matched line index (-1 if none), and error.
+func applyPatternFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, int, error) {
 	switch pat.kind {
 	case patternRegex:
 		return applyRegexFrom(lines, pos, searchFrom, pat)
 	case patternSkip:
 		return applySkipFrom(lines, pos, searchFrom, pat)
 	case patternLineNum:
-		return applyLineNumPattern(lines, pos, pat)
+		p, newPos, err := applyLineNumPattern(lines, pos, pat)
+		return p, newPos, -1, err
 	default:
-		return nil, pos, fmt.Errorf("unknown pattern kind")
+		return nil, pos, -1, fmt.Errorf("unknown pattern kind")
 	}
 }
 
 // applyRegexFrom splits at the next matching line. R1.2, R2.3.
-func applyRegexFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, error) {
+// Returns: piece, new position, split point for suppression, error.
+func applyRegexFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, int, error) {
 	matchIdx := findMatch(lines, searchFrom, pat.regex)
 	if matchIdx < 0 {
-		return nil, pos, fmt.Errorf("'%s': match not found", pat.raw)
+		return nil, pos, -1, fmt.Errorf("'%s': match not found", pat.raw)
 	}
 	splitPoint := clampSplitPoint(matchIdx+pat.offset, pos, len(lines))
 	p := piece{start: pos, end: splitPoint}
-	return &p, splitPoint, nil
+	return &p, splitPoint, splitPoint, nil
 }
 
 // applySkipFrom skips to the next matching line without output. R1.3, R2.3.
-func applySkipFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, error) {
+// Returns: nil piece, new position, skip point for suppression, error.
+func applySkipFrom(lines [][]byte, pos, searchFrom int, pat pattern) (*piece, int, int, error) {
 	matchIdx := findMatch(lines, searchFrom, pat.regex)
 	if matchIdx < 0 {
-		return nil, pos, fmt.Errorf("'%s': match not found", pat.raw)
+		return nil, pos, -1, fmt.Errorf("'%s': match not found", pat.raw)
 	}
 	skipPoint := clampSplitPoint(matchIdx+pat.offset, pos, len(lines))
-	return nil, skipPoint, nil
+	return nil, skipPoint, skipPoint, nil
 }
 
 // applyLineNumPattern splits at the specified line number. R1.4.
@@ -532,17 +567,17 @@ func clampSplitPoint(point, minVal, maxVal int) int {
 }
 
 // writeAndReport writes output files and prints byte counts to stdout.
-// Returns the list of created filenames for cleanup on error.
-func writeAndReport(lines [][]byte, pieces []piece, cfg *config, stdout io.Writer) ([]string, error) {
+// Returns the list of created filenames for cleanup on error. R4.4.
+func writeAndReport(lines [][]byte, result splitResult, cfg *config, stdout io.Writer) ([]string, error) {
 	var created []string
 	fileIdx := 0
-	for _, p := range pieces {
-		if cfg.elideEmpty && p.start == p.end {
+	for _, p := range result.pieces {
+		byteCount := countPieceBytes(lines, p, result.suppressedLines)
+		if cfg.elideEmpty && byteCount == 0 {
 			continue
 		}
 		filename := makeFilename(fileIdx, cfg)
-		byteCount, err := writePiece(filename, lines, p)
-		if err != nil {
+		if err := writePiece(filename, lines, p, result.suppressedLines); err != nil {
 			removeFiles(created)
 			return nil, err
 		}
@@ -553,23 +588,35 @@ func writeAndReport(lines [][]byte, pieces []piece, cfg *config, stdout io.Write
 	return created, nil
 }
 
-// writePiece writes lines for a piece to the named file and returns byte count.
-func writePiece(filename string, lines [][]byte, p piece) (int, error) {
+// countPieceBytes counts the bytes for a piece, excluding suppressed lines. R4.4.
+func countPieceBytes(lines [][]byte, p piece, suppressed map[int]bool) int {
+	total := 0
+	for i := p.start; i < p.end; i++ {
+		if suppressed[i] {
+			continue
+		}
+		total += len(lines[i])
+	}
+	return total
+}
+
+// writePiece writes lines for a piece to the named file, skipping suppressed lines.
+func writePiece(filename string, lines [][]byte, p piece, suppressed map[int]bool) error {
 	f, err := os.Create(filename)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer f.Close()
 	bw := bufio.NewWriter(f)
-	total := 0
 	for i := p.start; i < p.end; i++ {
-		n, werr := bw.Write(lines[i])
-		if werr != nil {
-			return total, werr
+		if suppressed[i] {
+			continue
 		}
-		total += n
+		if _, werr := bw.Write(lines[i]); werr != nil {
+			return werr
+		}
 	}
-	return total, bw.Flush()
+	return bw.Flush()
 }
 
 // makeFilename constructs the output filename for the given index.
