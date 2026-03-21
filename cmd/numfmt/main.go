@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd071-numfmt R1.1–R1.4, R2.1–R2.4: number parsing, --from/--to
-// scaling, --format, --padding, --round, and --suffix options.
+// Implements prd071-numfmt R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: number parsing,
+// --from/--to scaling, --format, --padding, --round, --suffix, --field,
+// --delimiter, --header, --from-unit, and --to-unit options.
 package main
 
 import (
@@ -51,13 +52,18 @@ var suffixLetters = [...]string{"K", "M", "G", "T", "P", "E", "Z", "Y"}
 
 // numfmtConfig holds parsed command-line options.
 type numfmtConfig struct {
-	from    scaleUnit
-	to      scaleUnit
-	format  string
-	fmtSpec formatSpec
-	padding int
-	round   roundMode
-	suffix  string
+	from        scaleUnit
+	to          scaleUnit
+	format      string
+	fmtSpec     formatSpec
+	padding     int
+	round       roundMode
+	suffix      string
+	fields      *fieldSet // nil = process whole line; R3.1
+	delimiter   string    // empty = whitespace; R3.2
+	headerLines int       // R3.3
+	fromUnit    float64   // R3.4: multiply input by this
+	toUnit      float64   // R3.4: divide output by this
 }
 
 func main() {
@@ -87,7 +93,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // parseArgs separates flags from operands and builds numfmtConfig.
 // Returns config, operands, and exit code (-1 = continue).
 func parseArgs(args []string, stdout, stderr io.Writer) (numfmtConfig, []string, int) {
-	var cfg numfmtConfig
+	cfg := numfmtConfig{fromUnit: 1, toUnit: 1}
 	var operands []string
 	flagsDone := false
 	for i := 0; i < len(args); i++ {
@@ -151,6 +157,34 @@ func processFlag(args []string, idx int, cfg *numfmtConfig, stdout, stderr io.Wr
 		cfg.suffix = arg[len("--suffix="):]
 		return 1, -1
 	default:
+		return processR3Flag(args, idx, cfg, stderr)
+	}
+}
+
+// processR3Flag handles R3 flags (field, delimiter, header, unit scaling).
+func processR3Flag(args []string, idx int, cfg *numfmtConfig, stderr io.Writer) (int, int) {
+	arg := args[idx]
+	switch {
+	case strings.HasPrefix(arg, "--field="):
+		return parseFieldFlag(arg[len("--field="):], cfg, stderr)
+	case strings.HasPrefix(arg, "--delimiter="):
+		cfg.delimiter = arg[len("--delimiter="):]
+		return 1, -1
+	case arg == "-d":
+		return handleDelimiterShortFlag(args, idx, cfg, stderr)
+	case strings.HasPrefix(arg, "-d") && !strings.HasPrefix(arg, "--"):
+		cfg.delimiter = arg[2:]
+		return 1, -1
+	case arg == "--header":
+		cfg.headerLines = 1
+		return 1, -1
+	case strings.HasPrefix(arg, "--header="):
+		return parseHeaderFlag(arg[len("--header="):], cfg, stderr)
+	case strings.HasPrefix(arg, "--from-unit="):
+		return parseScaleFactorFlag(arg[len("--from-unit="):], &cfg.fromUnit, stderr)
+	case strings.HasPrefix(arg, "--to-unit="):
+		return parseScaleFactorFlag(arg[len("--to-unit="):], &cfg.toUnit, stderr)
+	default:
 		return reportUnknownFlag(arg, stderr)
 	}
 }
@@ -205,6 +239,49 @@ func parseRoundFlag(val string, target *roundMode, stderr io.Writer) (int, int) 
 	return 1, -1
 }
 
+// parseFieldFlag parses the --field value. R3.1.
+func parseFieldFlag(val string, cfg *numfmtConfig, stderr io.Writer) (int, int) {
+	fs, err := parseFieldSpec(val)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+		return 1, 1
+	}
+	cfg.fields = &fs
+	return 1, -1
+}
+
+// handleDelimiterShortFlag handles -d VALUE form. R3.2.
+func handleDelimiterShortFlag(args []string, idx int, cfg *numfmtConfig, stderr io.Writer) (int, int) {
+	if idx+1 >= len(args) {
+		fmt.Fprintf(stderr, "%s: option '-d' requires an argument\n", progName)
+		return 1, 1
+	}
+	cfg.delimiter = args[idx+1]
+	return 2, -1
+}
+
+// parseHeaderFlag parses the --header=N value. R3.3.
+func parseHeaderFlag(val string, cfg *numfmtConfig, stderr io.Writer) (int, int) {
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 0 {
+		fmt.Fprintf(stderr, "%s: invalid header value '%s'\n", progName, val)
+		return 1, 1
+	}
+	cfg.headerLines = n
+	return 1, -1
+}
+
+// parseScaleFactorFlag parses --from-unit or --to-unit value. R3.4.
+func parseScaleFactorFlag(val string, target *float64, stderr io.Writer) (int, int) {
+	n, err := strconv.Atoi(val)
+	if err != nil || n <= 0 {
+		fmt.Fprintf(stderr, "%s: invalid unit size: '%s'\n", progName, val)
+		return 1, 1
+	}
+	*target = float64(n)
+	return 1, -1
+}
+
 // parseScaleUnit converts a string to a scaleUnit value.
 func parseScaleUnit(s string, allowAuto bool) (scaleUnit, error) {
 	switch s {
@@ -253,11 +330,19 @@ func processOperands(operands []string, cfg numfmtConfig, w *bufio.Writer, stder
 }
 
 // processStdin reads lines from stdin and converts each one.
+// R3.3: passes through the first headerLines lines without conversion.
 func processStdin(stdin io.Reader, cfg numfmtConfig, w *bufio.Writer, stderr io.Writer) int {
 	scanner := bufio.NewScanner(stdin)
 	exitCode := 0
+	lineNum := 0
 	for scanner.Scan() {
-		if err := convertAndWrite(scanner.Text(), cfg, w, stderr); err != nil {
+		lineNum++
+		line := scanner.Text()
+		if lineNum <= cfg.headerLines {
+			fmt.Fprintln(w, line)
+			continue
+		}
+		if err := processLine(line, cfg, w, stderr); err != nil {
 			exitCode = 2
 		}
 	}
@@ -267,20 +352,38 @@ func processStdin(stdin io.Reader, cfg numfmtConfig, w *bufio.Writer, stderr io.
 	return exitCode
 }
 
-// convertAndWrite converts a single value and writes the result.
-func convertAndWrite(s string, cfg numfmtConfig, w *bufio.Writer, stderr io.Writer) error {
+// processLine routes a single line to field or whole-line processing.
+func processLine(line string, cfg numfmtConfig, w *bufio.Writer, stderr io.Writer) error {
+	if cfg.fields != nil {
+		return processLineWithFields(line, cfg, cfg.fields, w, stderr)
+	}
+	return convertAndWrite(line, cfg, w, stderr)
+}
+
+// convertValue converts a single number string, returning the formatted result.
+// R3.4: applies fromUnit and toUnit scaling.
+func convertValue(s string, cfg numfmtConfig) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		err := fmt.Errorf("invalid number: ''")
-		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-		return err
+		return "", fmt.Errorf("invalid number: ''")
 	}
 	val, err := parseInputNumber(s, cfg.from)
+	if err != nil {
+		return "", err
+	}
+	val *= cfg.fromUnit
+	val /= cfg.toUnit
+	return formatOutput(val, cfg), nil
+}
+
+// convertAndWrite converts a single value and writes the result.
+func convertAndWrite(s string, cfg numfmtConfig, w *bufio.Writer, stderr io.Writer) error {
+	result, err := convertValue(s, cfg)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
 		return err
 	}
-	fmt.Fprintln(w, formatOutput(val, cfg))
+	fmt.Fprintln(w, result)
 	return nil
 }
 
@@ -514,6 +617,11 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "      --padding=N       pad the output to N characters")
 	fmt.Fprintln(w, "      --round=METHOD    use METHOD for rounding when scaling")
 	fmt.Fprintln(w, "      --suffix=SUFFIX   append SUFFIX to output numbers")
+	fmt.Fprintln(w, "  -d, --delimiter=X     use X instead of whitespace for field delimiter")
+	fmt.Fprintln(w, "      --field=FIELDS    replace the numbers in these input fields")
+	fmt.Fprintln(w, "      --from-unit=N     specify the input unit size")
+	fmt.Fprintln(w, "      --to-unit=N       the output unit size")
+	fmt.Fprintln(w, "      --header[=N]      print (without converting) the first N header lines")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")
 	fmt.Fprintln(w, "")

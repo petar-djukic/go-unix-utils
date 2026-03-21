@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/numfmt against gnumfmt reference binary.
-// Tests prd071-numfmt R1.1–R1.4, R2.1–R2.4.
+// Tests prd071-numfmt R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
@@ -188,6 +188,82 @@ func TestDiff(t *testing.T) {
 			Name:  "round_down_format",
 			Args:  []string{"--format=%.0f", "--round=down"},
 			Stdin: []byte("1.7\n"),
+		},
+
+		// R3.1: --field=N converts only specified field.
+		{
+			Name:  "field_single",
+			Args:  []string{"--to=si", "--field=2"},
+			Stdin: []byte("name 1000\n"),
+		},
+		// R3.1: --field with range.
+		{
+			Name:  "field_range",
+			Args:  []string{"--to=si", "--field=2-3"},
+			Stdin: []byte("x 1000 2000000 y\n"),
+		},
+		// R3.1: --field with comma-separated values.
+		{
+			Name:  "field_multiple",
+			Args:  []string{"--to=si", "--field=1,3"},
+			Stdin: []byte("1000 text 2000000\n"),
+		},
+		// R3.1: --field passthrough for unselected fields.
+		{
+			Name:  "field_passthrough",
+			Args:  []string{"--to=iec", "--field=2"},
+			Stdin: []byte("keep 1048576 also_keep\n"),
+		},
+
+		// R3.2: --delimiter with comma.
+		{
+			Name:  "delimiter_comma",
+			Args:  []string{"--to=si", "--field=2", "--delimiter=,"},
+			Stdin: []byte("name,1000\n"),
+		},
+		// R3.2: -d short form with colon.
+		{
+			Name:  "delimiter_short_colon",
+			Args:  []string{"--to=iec", "--field=2", "-d", ":"},
+			Stdin: []byte("size:1048576\n"),
+		},
+
+		// R3.3: --header default (1 line).
+		{
+			Name:  "header_default",
+			Args:  []string{"--to=iec", "--header"},
+			Stdin: []byte("size\n1048576\n"),
+		},
+		// R3.3: --header=2 (2 header lines).
+		{
+			Name:  "header_2",
+			Args:  []string{"--to=si", "--header=2"},
+			Stdin: []byte("col1\ncol2\n1000\n"),
+		},
+		// R3.3: --header combined with --field.
+		{
+			Name:  "header_with_field",
+			Args:  []string{"--to=iec", "--header", "--field=2"},
+			Stdin: []byte("name size\nfoo 1048576\n"),
+		},
+
+		// R3.4: --from-unit scales input.
+		{
+			Name:  "from_unit_1024",
+			Args:  []string{"--from-unit=1024", "--to=iec"},
+			Stdin: []byte("1\n"),
+		},
+		// R3.4: --to-unit scales output.
+		{
+			Name:  "to_unit_1000",
+			Args:  []string{"--to-unit=1000"},
+			Stdin: []byte("5000\n"),
+		},
+		// R3.4: --from-unit combined with --to.
+		{
+			Name:  "from_unit_with_to_si",
+			Args:  []string{"--from-unit=1024", "--to=si"},
+			Stdin: []byte("5\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
