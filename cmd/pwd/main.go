@@ -1,0 +1,207 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Implements prd051-pwd R1.1 (print working directory),
+// R1.2 (-L logical mode via PWD env var),
+// R1.3 (-P physical mode with symlinks resolved),
+// R1.4 (last of -L/-P wins),
+// R2.1 (extra operands produce warning on stderr),
+// R2.2 (unknown flags produce error exit 1).
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+// programName is used in error messages.
+const programName = "pwd"
+
+// mode represents the -L/-P selection.
+type mode int
+
+const (
+	modePhysical mode = iota
+	modeLogical
+)
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+	os.Exit(run(os.Args[1:]))
+}
+
+// run processes arguments and prints the working directory.
+// Returns the exit code.
+func run(args []string) int {
+	m, extraOperands, err := parseArgs(args)
+	if err != nil {
+		printError(err.Error())
+		return 1
+	}
+	// R2.1: warn about extra operands but continue.
+	if extraOperands {
+		fmt.Fprintf(os.Stderr, "%s: ignoring non-option arguments\n",
+			programName)
+	}
+	dir, err := getWorkDir(m)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
+	}
+	fmt.Println(dir)
+	return 0
+}
+
+// getWorkDir returns the working directory path based on the
+// selected mode. R1.2: logical uses PWD if valid. R1.3: physical
+// resolves symlinks.
+func getWorkDir(m mode) (string, error) {
+	if m == modeLogical {
+		if dir, ok := logicalDir(); ok {
+			return dir, nil
+		}
+	}
+	return physicalDir()
+}
+
+// logicalDir returns the PWD env var if it is set, absolute,
+// contains no . or .. components, and refers to the same directory
+// as the physical cwd. R1.2.
+func logicalDir() (string, bool) {
+	pwd := os.Getenv("PWD")
+	if pwd == "" || !filepath.IsAbs(pwd) {
+		return "", false
+	}
+	if containsDotComponent(pwd) {
+		return "", false
+	}
+	return pwd, validateSameDir(pwd)
+}
+
+// containsDotComponent checks if the path contains . or ..
+// as path components. R1.2.
+func containsDotComponent(path string) bool {
+	for _, comp := range strings.Split(path, "/") {
+		if comp == "." || comp == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// validateSameDir checks that pwd refers to the same directory
+// as the physical cwd by comparing os.FileInfo via os.SameFile.
+func validateSameDir(pwd string) bool {
+	pwdInfo, err := os.Stat(pwd)
+	if err != nil {
+		return false
+	}
+	physPath, err := physicalDir()
+	if err != nil {
+		return false
+	}
+	physInfo, err := os.Stat(physPath)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(pwdInfo, physInfo)
+}
+
+// physicalDir returns the physical working directory with all
+// symlinks resolved. R1.3.
+func physicalDir() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(dir)
+}
+
+// parseArgs validates arguments and returns the selected mode
+// and whether extra operands were found. R1.4: last of -L/-P wins.
+// R2.1: extra operands set the flag. R2.2: unknown flags error.
+// Default is physical (R1.1).
+func parseArgs(args []string) (mode, bool, error) {
+	m := modePhysical
+	hasOperands := false
+	for i, arg := range args {
+		if arg == "--" {
+			if i+1 < len(args) {
+				hasOperands = true
+			}
+			break
+		}
+		var err error
+		m, hasOperands, err = handleArg(arg, m, hasOperands)
+		if err != nil {
+			return m, false, err
+		}
+	}
+	return m, hasOperands, nil
+}
+
+// handleArg processes a single argument, returning the updated
+// mode, whether an operand was seen, or an error for unknown flags.
+func handleArg(arg string, m mode, hasOp bool) (mode, bool, error) {
+	switch arg {
+	case "--help":
+		fmt.Print(helpText())
+		os.Exit(0)
+	case "--version":
+		fmt.Print(versionText())
+		os.Exit(0)
+	case "-L", "--logical":
+		return modeLogical, hasOp, nil
+	case "-P", "--physical":
+		return modePhysical, hasOp, nil
+	default:
+		return classifyBadArg(arg, m, hasOp)
+	}
+	return m, hasOp, nil // unreachable
+}
+
+// classifyBadArg returns the appropriate result for an
+// unrecognized argument: unknown flag (error) or extra operand
+// (sets flag, no error). R2.1, R2.2.
+func classifyBadArg(arg string, m mode, hasOp bool) (mode, bool, error) {
+	if strings.HasPrefix(arg, "--") {
+		return m, hasOp, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+		return m, hasOp, fmt.Errorf("invalid option -- '%c'", arg[1])
+	}
+	// R2.1: extra operand — warn but do not fail.
+	return m, true, nil
+}
+
+// helpText returns the --help output.
+func helpText() string {
+	return `Usage: pwd [OPTION]...
+Print the full filename of the current working directory.
+
+  -L, --logical   use PWD from environment, even if it contains symlinks
+  -P, --physical  avoid all symlinks
+      --help     display this help and exit
+      --version  output version information and exit
+
+NOTE: your shell may have its own version of pwd, which usually supersedes
+the version described here.  Please refer to your shell's documentation
+for details about the options it supports.
+`
+}
+
+// versionText returns the --version output.
+func versionText() string {
+	return "pwd (go-unix-utils) 1.0\n"
+}
+
+// printError writes a formatted error message to stderr.
+func printError(msg string) {
+	fmt.Fprintf(os.Stderr,
+		"%s: %s\nTry '%s --help' for more information.\n",
+		programName, msg, programName)
+}

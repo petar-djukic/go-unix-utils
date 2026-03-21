@@ -1,0 +1,224 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Implements prd073-printf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4:
+// differential tests for format string parsing, conversion specifiers,
+// width/precision/flags, escape sequences, argument cycling, missing argument
+// defaults, exit codes, and error handling.
+package main
+
+import (
+	"bytes"
+	"os/exec"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+// stderrNameNormalizer replaces the reference binary name with "printf"
+// so stderr messages from gprintf and printf compare equal.
+var stderrNameNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gprintf:"), []byte("printf:"))
+}
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gprintf")
+	if err != nil {
+		t.Skipf("reference binary gprintf not in PATH: %v", err)
+	}
+	tests := []testutils.DiffTest{
+		// R1.1: literal text and format string basics
+		{Name: "literal_only", Args: []string{"hello"}},
+		{Name: "literal_with_newline", Args: []string{"hello\\n"}},
+		{Name: "literal_with_tab", Args: []string{"hello\\tworld"}},
+		{Name: "percent_literal", Args: []string{"100%%\\n"}},
+		{Name: "empty_format", Args: []string{""}},
+
+		// R1.2: integer conversion specifiers
+		{Name: "int_d", Args: []string{"%d\\n", "42"}},
+		{Name: "int_i", Args: []string{"%i\\n", "42"}},
+		{Name: "int_o", Args: []string{"%o\\n", "42"}},
+		{Name: "int_u", Args: []string{"%u\\n", "42"}},
+		{Name: "int_x", Args: []string{"%x\\n", "255"}},
+		{Name: "int_X", Args: []string{"%X\\n", "255"}},
+		{Name: "int_negative_d", Args: []string{"%d\\n", "-42"}},
+		{Name: "int_hex_input", Args: []string{"%d\\n", "0xff"}},
+		{Name: "int_octal_input", Args: []string{"%d\\n", "077"}},
+		{Name: "int_zero", Args: []string{"%d\\n", "0"}},
+
+		// R1.3: floating-point conversion specifiers
+		{Name: "float_f", Args: []string{"%f\\n", "3.14159"}},
+		{Name: "float_e", Args: []string{"%e\\n", "3.14159"}},
+		{Name: "float_g", Args: []string{"%g\\n", "3.14159"}},
+		{Name: "float_E", Args: []string{"%E\\n", "3.14159"}},
+		{Name: "float_G", Args: []string{"%G\\n", "3.14159"}},
+		{Name: "float_zero", Args: []string{"%f\\n", "0"}},
+		{Name: "float_negative", Args: []string{"%f\\n", "-1.5"}},
+
+		// R1.4: string, char, %b specifiers
+		{Name: "string_s", Args: []string{"%s\\n", "hello"}},
+		{Name: "char_c", Args: []string{"%c\\n", "A"}},
+		{Name: "char_c_string", Args: []string{"%c", "hello"}},
+		{Name: "b_plain", Args: []string{"%b", "hello"}},
+		{Name: "b_escape_n", Args: []string{"%b", "hello\\nworld"}},
+		{Name: "b_escape_t", Args: []string{"%b", "hello\\tworld"}},
+		{Name: "b_octal", Args: []string{"%b", "\\0101"}},
+		{Name: "b_stop_c", Args: []string{"%b", "hello\\cworld"}},
+
+		// R2.1: field width and precision
+		{Name: "width_d", Args: []string{"%10d\\n", "42"}},
+		{Name: "precision_f", Args: []string{"%.2f\\n", "3.14159"}},
+		{Name: "width_precision_f", Args: []string{"%10.2f\\n", "3.14159"}},
+		{Name: "precision_d", Args: []string{"%.5d\\n", "42"}},
+		{Name: "width_precision_d", Args: []string{"%10.5d\\n", "42"}},
+		{Name: "width_s", Args: []string{"%10s\\n", "hi"}},
+		{Name: "width_precision_s", Args: []string{"%10.3s\\n", "hello"}},
+		{Name: "precision_zero_f", Args: []string{"%.0f\\n", "3.14"}},
+		{Name: "width_precision_e", Args: []string{"%15.3e\\n", "3.14159"}},
+		{Name: "width_precision_g", Args: []string{"%10.4g\\n", "3.14159"}},
+		{Name: "width_o", Args: []string{"%10o\\n", "42"}},
+		{Name: "width_x", Args: []string{"%10x\\n", "255"}},
+		{Name: "precision_x", Args: []string{"%.8x\\n", "255"}},
+		{Name: "width_c", Args: []string{"%5c\\n", "A"}},
+
+		// R2.2: flag characters
+		{Name: "zero_pad_d", Args: []string{"%010d\\n", "42"}},
+		{Name: "left_align_d", Args: []string{"%-10d|\\n", "42"}},
+		{Name: "plus_sign_d", Args: []string{"%+d\\n", "42"}},
+		{Name: "plus_sign_neg_d", Args: []string{"%+d\\n", "-42"}},
+		{Name: "space_d", Args: []string{"% d\\n", "42"}},
+		{Name: "space_neg_d", Args: []string{"% d\\n", "-42"}},
+		{Name: "hash_o", Args: []string{"%#o\\n", "42"}},
+		{Name: "hash_x", Args: []string{"%#x\\n", "42"}},
+		{Name: "hash_X", Args: []string{"%#X\\n", "42"}},
+		{Name: "left_align_s", Args: []string{"%-10s|\\n", "hi"}},
+		{Name: "left_align_c", Args: []string{"%-5c|\\n", "A"}},
+		{Name: "zero_pad_f", Args: []string{"%010.2f\\n", "3.14"}},
+		{Name: "plus_f", Args: []string{"%+f\\n", "3.14"}},
+		{Name: "space_f", Args: []string{"% f\\n", "3.14"}},
+		{Name: "hash_f", Args: []string{"%#.0f\\n", "3.0"}},
+		{Name: "hash_g", Args: []string{"%#g\\n", "100.0"}},
+		{Name: "hash_e", Args: []string{"%#.0e\\n", "3.14"}},
+		{Name: "combined_flags_d", Args: []string{"%-+10d|\\n", "42"}},
+		{Name: "combined_zero_plus_d", Args: []string{"%+010d\\n", "42"}},
+
+		// R2.3: star width and precision
+		{Name: "star_width", Args: []string{"%*d\\n", "10", "42"}},
+		{Name: "star_precision", Args: []string{"%.*f\\n", "2", "3.14159"}},
+		{Name: "star_width_precision", Args: []string{"%*.*f\\n", "10", "2", "3.14159"}},
+		{Name: "star_neg_width", Args: []string{"%*d|\\n", "-10", "42"}},
+		{Name: "star_width_s", Args: []string{"%*s\\n", "10", "hi"}},
+		{Name: "star_precision_s", Args: []string{"%.*s\\n", "3", "hello"}},
+		{Name: "star_width_precision_s", Args: []string{"%*.*s\\n", "10", "3", "hello"}},
+		{Name: "star_width_c", Args: []string{"%*c\\n", "5", "A"}},
+
+		// R2.4: %% literal percent
+		{Name: "percent_start", Args: []string{"%%hello"}},
+		{Name: "percent_end", Args: []string{"hello%%"}},
+		{Name: "percent_mid", Args: []string{"he%%llo"}},
+		{Name: "percent_multi", Args: []string{"%%a%%b%%"}},
+
+		// R3.1: escape sequences in format
+		{Name: "escape_backslash", Args: []string{"hello\\\\world"}},
+		{Name: "escape_octal_A", Args: []string{"\\101"}},
+		{Name: "escape_hex_A", Args: []string{"\\x41"}},
+		{Name: "escape_bell", Args: []string{"\\a"}},
+		{Name: "escape_backspace", Args: []string{"a\\bb"}},
+		{Name: "escape_formfeed", Args: []string{"a\\fb"}},
+		{Name: "escape_cr", Args: []string{"a\\rb"}},
+		{Name: "escape_vtab", Args: []string{"a\\vb"}},
+		{Name: "escape_unicode_u", Args: []string{"\\u0041"}},
+		{Name: "escape_unicode_U", Args: []string{"\\U00000041"}},
+		{Name: "escape_octal_nul", Args: []string{"a\\0b"}},
+		{Name: "escape_hex_ff", Args: []string{"\\xff"}},
+		{Name: "escape_octal_377", Args: []string{"\\377"}},
+
+		// R3.2: %b escape sequences in arguments
+		{Name: "b_escape_backslash", Args: []string{"%b", "a\\\\b"}},
+		{Name: "b_escape_bell", Args: []string{"%b", "\\a"}},
+		{Name: "b_escape_backspace", Args: []string{"%b", "a\\bb"}},
+		{Name: "b_escape_formfeed", Args: []string{"%b", "a\\fb"}},
+		{Name: "b_escape_cr", Args: []string{"%b", "a\\rb"}},
+		{Name: "b_escape_vtab", Args: []string{"%b", "a\\vb"}},
+		{Name: "b_escape_hex", Args: []string{"%b", "\\x41"}},
+		{Name: "b_stop_c_mid", Args: []string{"%b", "ab\\cde"}},
+		{Name: "b_stop_c_format_after", Args: []string{"%b trailing", "hello\\c"}},
+
+		// R3.3: argument cycling
+		{Name: "recycle_s", Args: []string{"%s\\n", "a", "b", "c"}},
+		{Name: "recycle_d", Args: []string{"%d\\n", "1", "2", "3"}},
+		{Name: "recycle_multi", Args: []string{"%d %d\\n", "1", "2", "3", "4"}},
+		{Name: "recycle_mixed", Args: []string{"%s %d\\n", "a", "1", "b", "2"}},
+		{Name: "recycle_no_directive", Args: []string{"hello\\n"}},
+
+		// R3.4: missing arguments (default values)
+		{Name: "missing_int_arg", Args: []string{"%d %d\\n", "42"}},
+		{Name: "missing_string_arg", Args: []string{"%s %s\\n", "hello"}},
+		{Name: "missing_float_arg", Args: []string{"%f %f\\n", "3.14"}},
+		{Name: "missing_all_args_d", Args: []string{"%d"}},
+		{Name: "missing_all_args_s", Args: []string{"%s"}},
+		{Name: "missing_all_args_f", Args: []string{"%f"}},
+
+		// R3.4: character value arguments (quote prefix)
+		{Name: "char_value_single", Args: []string{"%d\\n", "'A"}},
+		{Name: "char_value_double", Args: []string{"%d\\n", "\"A"}},
+		{Name: "char_value_float", Args: []string{"%f\\n", "'A"}},
+
+		// Multiple directives in one format
+		{Name: "multi_types", Args: []string{"%d %s %f\\n", "42", "hello", "3.14"}},
+		{Name: "no_newline", Args: []string{"%s %s", "hello", "world"}},
+
+		// Combined width/precision/flags edge cases
+		{Name: "zero_pad_prec_f", Args: []string{"%010.2f\\n", "3.14159"}},
+		{Name: "u_negative", Args: []string{"%u\\n", "-1"}},
+		{Name: "x_negative", Args: []string{"%x\\n", "-1"}},
+		{Name: "large_width_d", Args: []string{"%20d\\n", "42"}},
+		{Name: "string_precision", Args: []string{"%.3s\\n", "hello"}},
+		{Name: "precision_zero_d", Args: []string{"%.0d\\n", "0"}},
+
+		// R4.1: exit 0 on successful formatting
+		{Name: "r4_exit0_simple_string", Args: []string{"%s\\n", "hello"}},
+		{Name: "r4_exit0_integer", Args: []string{"%d\\n", "42"}},
+		{Name: "r4_exit0_float", Args: []string{"%.2f\\n", "3.14"}},
+		{Name: "r4_exit0_literal_only", Args: []string{"hello world"}},
+		{Name: "r4_exit0_empty_format", Args: []string{""}},
+		{Name: "r4_exit0_multiple_args", Args: []string{"%s %d\\n", "hello", "42"}},
+
+		// R4.2: exit 1 on error with partial output
+		{Name: "non_numeric_d", Args: []string{"%d\\n", "abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "non_numeric_f", Args: []string{"%f\\n", "abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_non_numeric_o", Args: []string{"%o\\n", "xyz"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_non_numeric_u", Args: []string{"%u\\n", "abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_non_numeric_x", Args: []string{"%x\\n", "not_a_num"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_partial_output_before_error", Args: []string{"hello %d\\n", "abc"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_error_then_valid", Args: []string{"%d %d\\n", "abc", "42"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_invalid_directive_z", Args: []string{"%z"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+		{Name: "r4_invalid_directive_after_text", Args: []string{"hello%z"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{stderrNameNormalizer}},
+
+		// R4.3/R4.4: comprehensive coverage of all format types
+		{Name: "r4_cover_i_format", Args: []string{"%i\\n", "-10"}},
+		{Name: "r4_cover_u_large", Args: []string{"%u\\n", "4294967295"}},
+		{Name: "r4_cover_X_format", Args: []string{"%X\\n", "255"}},
+		{Name: "r4_cover_e_format", Args: []string{"%e\\n", "0.001"}},
+		{Name: "r4_cover_G_format", Args: []string{"%G\\n", "123456.789"}},
+		{Name: "r4_cover_b_with_escapes", Args: []string{"%b\\n", "a\\tb\\nc"}},
+		{Name: "r4_cover_c_format", Args: []string{"%c\\n", "Z"}},
+		{Name: "r4_cover_width_prec_star", Args: []string{"%*.*d\\n", "10", "5", "42"}},
+		{Name: "r4_cover_recycle_mixed", Args: []string{"%s\\n", "one", "two", "three"}},
+		{Name: "r4_cover_escape_mix", Args: []string{"\\t%s\\n", "val"}},
+		{Name: "r4_cover_char_value_quote", Args: []string{"%d\\n", "'Z"}},
+		{Name: "r4_cover_missing_args_multi", Args: []string{"%d %s %f\\n"}},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}

@@ -1,0 +1,247 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Differential tests for prd027-paste R1.1–R1.4, R2.1–R2.3, R3.1–R3.3, R4.1–R4.4.
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gpaste")
+	if err != nil {
+		t.Skipf("reference binary gpaste not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	setupTestFiles(t, dir)
+
+	fa := filepath.Join(dir, "a.txt")
+	fb := filepath.Join(dir, "b.txt")
+	fc := filepath.Join(dir, "c.txt")
+	fshort := filepath.Join(dir, "short.txt")
+	fempty := filepath.Join(dir, "empty.txt")
+
+	tests := []testutils.DiffTest{
+		// R1 tests
+		{
+			Name: "two_files_equal_length",
+			Args: []string{fa, fb},
+		},
+		{
+			Name: "three_files",
+			Args: []string{fa, fb, fc},
+		},
+		{
+			Name: "first_file_shorter",
+			Args: []string{fshort, fb},
+		},
+		{
+			Name: "second_file_shorter",
+			Args: []string{fa, fshort},
+		},
+		{
+			Name: "single_file",
+			Args: []string{fa},
+		},
+		{
+			Name: "empty_and_nonempty",
+			Args: []string{fempty, fa},
+		},
+		{
+			Name: "nonempty_and_empty",
+			Args: []string{fa, fempty},
+		},
+		{
+			Name: "stdin_passthrough_no_args",
+			Stdin: []byte("hello\nworld\n"),
+		},
+		{
+			Name:  "stdin_single_dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		{
+			Name:  "stdin_double_dash",
+			Args:  []string{"-", "-"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			Name:  "file_and_stdin",
+			Args:  []string{fa, "-"},
+			Stdin: []byte("X\nY\n"),
+		},
+		{
+			Name:  "stdin_and_file",
+			Args:  []string{"-", fa},
+			Stdin: []byte("X\nY\n"),
+		},
+		// R2.1: single custom delimiter
+		{
+			Name: "delim_colon_two_files",
+			Args: []string{"-d:", fa, fb},
+		},
+		{
+			Name: "delim_comma_three_files",
+			Args: []string{"-d,", fa, fb, fc},
+		},
+		// R2.1: delimiter list cycles across fields
+		{
+			Name: "delim_list_cycling",
+			Args: []string{"-d", ":,", fa, fb, fc},
+		},
+		// R2.2: escape sequences
+		{
+			Name: "delim_escape_tab",
+			Args: []string{`-d\t`, fa, fb},
+		},
+		{
+			Name: "delim_escape_newline",
+			Args: []string{`-d\n`, fa, fb},
+		},
+		{
+			Name: "delim_escape_backslash",
+			Args: []string{`-d\\`, fa, fb},
+		},
+		{
+			Name: "delim_escape_empty",
+			Args: []string{`-d\0`, fa, fb},
+		},
+		// R2.2: mixed escapes in delimiter list
+		{
+			Name: "delim_mixed_escapes",
+			Args: []string{`-d`, `:\0`, fa, fb, fc},
+		},
+		// R2.3: cycling resets per output line
+		{
+			Name: "delim_cycle_reset_per_line",
+			Args: []string{"-d", ":-", fa, fb, fc},
+		},
+		// R2.1/R2.3: with unequal file lengths
+		{
+			Name: "delim_custom_unequal_lengths",
+			Args: []string{"-d:", fshort, fb},
+		},
+		{
+			Name: "delim_list_unequal_three_files",
+			Args: []string{"-d", ":-", fshort, fb, fc},
+		},
+		// R3.1: serial mode — one file at a time
+		{
+			Name: "serial_single_file",
+			Args: []string{"-s", fa},
+		},
+		{
+			Name: "serial_two_files",
+			Args: []string{"-s", fa, fb},
+		},
+		{
+			Name: "serial_three_files",
+			Args: []string{"-s", fa, fb, fc},
+		},
+		{
+			Name: "serial_empty_file",
+			Args: []string{"-s", fempty},
+		},
+		{
+			Name: "serial_empty_and_nonempty",
+			Args: []string{"-s", fempty, fa},
+		},
+		// R3.1: serial mode with stdin
+		{
+			Name:  "serial_stdin",
+			Args:  []string{"-s", "-"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.2: serial mode with custom delimiter
+		{
+			Name: "serial_delim_colon",
+			Args: []string{"-s", "-d:", fa},
+		},
+		{
+			Name: "serial_delim_list_cycling",
+			Args: []string{"-s", "-d", ":,", fc},
+		},
+		// R3.2: serial mode with escape delimiter
+		{
+			Name: "serial_delim_escape_newline",
+			Args: []string{"-s", `-d\n`, fa},
+		},
+		// R3.3: -s overrides parallel (last flag wins is implicit)
+		{
+			Name: "serial_with_unequal_files",
+			Args: []string{"-s", fshort, fb},
+		},
+		// R3.1/R3.2: serial with combined -sd flag
+		{
+			Name: "serial_combined_sd_flag",
+			Args: []string{"-sd:", fa},
+		},
+		// R4.1: exit 0 on successful processing (implicit in all above tests)
+		// R4.2: exit 1 on file open error
+		{
+			Name:      "error_nonexistent_file",
+			Args:      []string{filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+		{
+			Name:      "error_nonexistent_parallel",
+			Args:      []string{fa, filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+		{
+			Name:      "error_nonexistent_serial",
+			Args:      []string{"-s", filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+		{
+			Name:      "error_nonexistent_serial_second",
+			Args:      []string{"-s", fa, filepath.Join(dir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: stderrNormalizer,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// setupTestFiles creates the fixture files used by differential tests.
+func setupTestFiles(t *testing.T, dir string) {
+	t.Helper()
+	writeFile(t, filepath.Join(dir, "a.txt"), "a\nb\n")
+	writeFile(t, filepath.Join(dir, "b.txt"), "1\n2\n")
+	writeFile(t, filepath.Join(dir, "c.txt"), "x\ny\nz\n")
+	writeFile(t, filepath.Join(dir, "short.txt"), "s\n")
+	writeFile(t, filepath.Join(dir, "empty.txt"), "")
+}
+
+// normalizeStderr normalizes stderr by replacing program names and
+// error message capitalization to match across Go and GNU binaries.
+func normalizeStderr(data []byte) []byte {
+	s := string(data)
+	s = strings.ReplaceAll(s, "gpaste:", "paste:")
+	s = strings.ReplaceAll(s, "No such file or directory", "no such file or directory")
+	return []byte(s)
+}
+
+// stderrNormalizer is a NormalizeFunc slice for error tests.
+var stderrNormalizer = []testutils.NormalizeFunc{normalizeStderr}
+
+// writeFile writes content to a file, failing the test on error.
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writeFile %s: %v", path, err)
+	}
+}

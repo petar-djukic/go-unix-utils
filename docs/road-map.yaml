@@ -14,11 +14,11 @@ releases:
         - id: rel00.0-uc001-magefiles
           status: spec_complete
         - id: rel00.0-uc002-format
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc003-sys
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc004-testutils
-          status: spec_complete
+          status: implemented
     - version: "01.1"
       name: "Batch 1.1 — cat specification and differential test"
       status: spec_complete
@@ -257,18 +257,21 @@ releases:
           status: spec_complete
         - id: rel05.4-uc004-sha512sum
           status: spec_complete
-    - version: "05.5"
-      name: "Batch 5.5 — ts timestamp stdin lines"
+    - version: "99.0"
+      name: "Deferred — items that could not complete in run 37"
       status: spec_complete
       depends_on: ["00.0"]
       description: |
-        Implement ts for prepending timestamps to stdin lines. ts reads from stdin and
-        prepends a strftime-formatted timestamp to each line. Supports wall-clock (default),
-        elapsed (-s), and incremental (-i) modes, monotonic clock (-m), and subsecond
-        extensions (%.S, %.s, %.T). Originally deferred due to task complexity;
-        promoted to rel05.5 after successful generation in run 19.
+        Deferred items from run 37 that could not complete due to stitch timeouts
+        or rate limits. prd004-ts R6: multi-format date parser exceeded stitch time
+        budget. prd070-fmt R3: formatting options exceeded stitch time budget.
+        prd072-od: rate-limited out of every attempt. See GH-2938, cobbler-scaffold#1805.
       use_cases:
-        - id: rel05.5-uc001-ts
+        - id: rel99.0-uc001-ts
+          status: spec_complete
+        - id: rel99.0-uc002-od
+          status: spec_complete
+        - id: rel99.0-uc003-fmt-r3
           status: spec_complete
     - version: "06.0"
       name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
@@ -398,10 +401,10 @@ releases:
         - id: rel08.1-uc003-join
           status: spec_complete
         - id: rel08.1-uc004-fmt
-          status: spec_complete
+          status: code_complete  # R3 deferred to rel99.0, see GH-3108
         - id: rel08.1-uc005-numfmt
           status: spec_complete
         - id: rel08.1-uc006-od
-          status: spec_complete
+          status: code_complete  # deferred to rel99.0, rate-limited in run 37
         - id: rel08.1-uc007-printf
           status: spec_complete
