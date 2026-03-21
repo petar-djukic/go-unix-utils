@@ -5,6 +5,8 @@
 // Implements prd061-sleep R4.3, R4.4.
 // Covers R2.1 (zero duration), R2.2 (no args error), R2.3 (invalid/negative args),
 // R2.4 (infinity/inf support).
+// Covers R3.1 (no output under normal op), R3.3 (--help), R3.4 (--version),
+// and overflow/large value handling.
 package main
 
 import (
@@ -112,6 +114,40 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrClear},
 		},
+		// R3.1: normal operation produces no stdout or stderr.
+		{
+			Name:     "no_output_normal",
+			Args:     []string{"0"},
+			ExitCode: 0,
+		},
+		// R3.3: --help prints usage and exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{stderrClear},
+		},
+		// R3.4: --version prints version info and exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{stderrClear},
+		},
+		// R3.1: invalid suffix produces error.
+		{
+			Name:      "invalid_suffix_error",
+			Args:      []string{"1x"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrClear},
+		},
+		// R2.3: multiple args with one invalid produces error.
+		{
+			Name:      "mixed_valid_invalid_error",
+			Args:      []string{"0", "abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrClear},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -144,21 +180,51 @@ func TestInfinity(t *testing.T) {
 	}
 }
 
-// verifyInfinityAccepted starts the binary with the given argument and
+// TestOverflow verifies that extremely large duration values do not crash
+// or produce errors. R3.4: overflow values are clamped and sleep indefinitely
+// (like infinity). We verify by starting the binary and confirming it does not
+// exit with an error within 100ms.
+func TestOverflow(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"huge_number", []string{"99999999999999999999999999"}},
+		{"huge_with_suffix_d", []string{"99999999999999999999d"}},
+		{"max_float", []string{"1.7976931348623157e+308"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			verifyLongSleepAccepted(t, goBin, tc.args)
+		})
+	}
+}
+
+// verifyLongSleepAccepted starts the binary with the given arguments and
 // verifies it does not exit immediately with an error. Cancels after 100ms.
-func verifyInfinityAccepted(t *testing.T, binary, arg string) {
+func verifyLongSleepAccepted(t *testing.T, binary string, args []string) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, arg)
+	cmd := exec.CommandContext(ctx, binary, args...)
 	err := cmd.Run()
 
-	// The command should be killed by the context timeout, not exit on its own.
-	// A context deadline exceeded error means the process was still running
-	// (sleeping), which is the expected behavior for infinity.
 	if ctx.Err() != context.DeadlineExceeded {
-		t.Fatalf("sleep %s exited immediately (err=%v), expected to sleep indefinitely", arg, err)
+		t.Fatalf("sleep %v exited immediately (err=%v), expected to sleep", args, err)
 	}
+}
+
+// verifyInfinityAccepted starts the binary with the given argument and
+// verifies it does not exit immediately with an error. Cancels after 100ms.
+func verifyInfinityAccepted(t *testing.T, binary, arg string) {
+	t.Helper()
+	verifyLongSleepAccepted(t, binary, []string{arg})
 }

@@ -5,6 +5,8 @@
 // fractional seconds, suffix multipliers, and multiple argument summing.
 // Implements prd061-sleep R2.1-R2.4: input validation, zero duration, error handling,
 // and infinity support.
+// Implements prd061-sleep R3.1-R3.4: no output under normal operation, no stdin
+// reading, --help and --version flags, overflow clamping for large durations.
 package main
 
 import (
@@ -94,7 +96,16 @@ func parseDuration(arg string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid time interval %q", arg)
 	}
 
-	return time.Duration(seconds * multiplier * float64(time.Second)), nil
+	return clampDuration(seconds * multiplier), nil
+}
+
+// clampDuration converts seconds to time.Duration, clamping to MaxInt64
+// on overflow. R3.4: handles extremely large duration values gracefully.
+func clampDuration(seconds float64) time.Duration {
+	if math.IsInf(seconds, 1) || seconds > float64(math.MaxInt64)/float64(time.Second) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(seconds * float64(time.Second))
 }
 
 // applySuffix extracts the suffix multiplier from the argument.
