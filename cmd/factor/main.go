@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd065-factor R1.1–R1.4, R2.1–R2.4: integer factorization
-// with large number support, stdin mode, and error handling.
+// Implements prd065-factor R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: integer
+// factorization with large number support, stdin mode, error handling,
+// and --help/--version support.
 package main
 
 import (
@@ -28,11 +29,36 @@ func main() {
 // run parses arguments and factorizes each integer.
 // R1.4: processes multiple arguments in order.
 // R2.1: reads from stdin when no arguments given.
+// R3.1: --help prints usage to stdout and exits 0.
+// R3.2: --version prints version info to stdout and exits 0.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
+		switch args[0] {
+		case "--help":
+			return printHelp(stdout)
+		case "--version":
+			return printVersion(stdout)
+		}
 		return factorArgs(args, stdout, stderr)
 	}
 	return factorStdin(stdin, stdout, stderr)
+}
+
+// printHelp writes usage information to stdout. R3.1.
+func printHelp(w io.Writer) int {
+	fmt.Fprintln(w, "Usage: factor [OPTION]... [NUMBER]...")
+	fmt.Fprintln(w, "Print the prime factors of each specified integer NUMBER.  If none")
+	fmt.Fprintln(w, "are specified on the command line, they are read from standard input.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "      --help     display this help and exit")
+	fmt.Fprintln(w, "      --version  output version information and exit")
+	return 0
+}
+
+// printVersion writes version information to stdout. R3.2.
+func printVersion(w io.Writer) int {
+	fmt.Fprintln(w, "factor (go-unix-utils)")
+	return 0
 }
 
 // factorArgs processes each command-line argument as an integer to factorize.

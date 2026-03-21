@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd065-factor R1.1–R1.4, R2.1–R2.4.
+// Differential tests for prd065-factor R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
@@ -16,6 +16,13 @@ import (
 // so differential tests pass despite different binary names.
 func normalizeProgramName(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gfactor:"), []byte("factor:"))
+}
+
+// normalizeHelpOutput discards stdout content for --help/--version tests
+// where output text inherently differs between GNU and Go implementations.
+// Exit code comparison still applies.
+func normalizeHelpOutput(data []byte) []byte {
+	return nil
 }
 
 func TestDiff(t *testing.T) {
@@ -135,6 +142,24 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "stdin_error_continues",
 			Stdin:     []byte("12\nabc\n97\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.1: --help prints usage and exits 0
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{normalizeHelpOutput},
+		},
+		// R3.2: --version prints version and exits 0
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{normalizeHelpOutput},
+		},
+		// R3.4: error on invalid input does not stop processing
+		{
+			Name:      "error_continues_processing",
+			Args:      []string{"abc", "12", "xyz", "97"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 	}
