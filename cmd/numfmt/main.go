@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd071-numfmt R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: number parsing,
-// --from/--to scaling, --format, --padding, --round, --suffix, --field,
-// --delimiter, --header, --from-unit, and --to-unit options.
+// Implements prd071-numfmt R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4:
+// number parsing, --from/--to scaling, --format, --padding, --round, --suffix,
+// --field, --delimiter, --header, --from-unit, --to-unit, --invalid mode,
+// exit codes, and error handling.
 package main
 
 import (
@@ -42,6 +43,16 @@ const (
 	roundTowardsZero                  // truncation (towards zero)
 )
 
+// invalidMode controls behavior on invalid numbers. R4.2.
+type invalidMode int
+
+const (
+	invalidAbort  invalidMode = iota // default: report error, exit 2
+	invalidFail                      // report error, continue, exit 2
+	invalidWarn                      // report warning, continue, exit 0
+	invalidIgnore                    // silent pass-through, exit 0
+)
+
 const (
 	siBase  = 1000.0
 	iecBase = 1024.0
@@ -59,11 +70,12 @@ type numfmtConfig struct {
 	padding     int
 	round       roundMode
 	suffix      string
-	fields      *fieldSet // nil = process whole line; R3.1
-	delimiter   string    // empty = whitespace; R3.2
-	headerLines int       // R3.3
-	fromUnit    float64   // R3.4: multiply input by this
-	toUnit      float64   // R3.4: divide output by this
+	fields      *fieldSet   // nil = process whole line; R3.1
+	delimiter   string      // empty = whitespace; R3.2
+	headerLines int         // R3.3
+	fromUnit    float64     // R3.4: multiply input by this
+	toUnit      float64     // R3.4: divide output by this
+	invalid     invalidMode // R4.2: behavior on invalid numbers
 }
 
 func main() {
@@ -161,7 +173,7 @@ func processFlag(args []string, idx int, cfg *numfmtConfig, stdout, stderr io.Wr
 	}
 }
 
-// processR3Flag handles R3 flags (field, delimiter, header, unit scaling).
+// processR3Flag handles R3 and R4 flags (field, delimiter, header, unit scaling, invalid).
 func processR3Flag(args []string, idx int, cfg *numfmtConfig, stderr io.Writer) (int, int) {
 	arg := args[idx]
 	switch {
@@ -184,6 +196,8 @@ func processR3Flag(args []string, idx int, cfg *numfmtConfig, stderr io.Writer) 
 		return parseScaleFactorFlag(arg[len("--from-unit="):], &cfg.fromUnit, stderr)
 	case strings.HasPrefix(arg, "--to-unit="):
 		return parseScaleFactorFlag(arg[len("--to-unit="):], &cfg.toUnit, stderr)
+	case strings.HasPrefix(arg, "--invalid="):
+		return parseInvalidFlag(arg[len("--invalid="):], &cfg.invalid, stderr)
 	default:
 		return reportUnknownFlag(arg, stderr)
 	}
@@ -282,6 +296,17 @@ func parseScaleFactorFlag(val string, target *float64, stderr io.Writer) (int, i
 	return 1, -1
 }
 
+// parseInvalidFlag parses the --invalid value. R4.2.
+func parseInvalidFlag(val string, target *invalidMode, stderr io.Writer) (int, int) {
+	mode, err := parseInvalidMode(val)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+		return 1, 1
+	}
+	*target = mode
+	return 1, -1
+}
+
 // parseScaleUnit converts a string to a scaleUnit value.
 func parseScaleUnit(s string, allowAuto bool) (scaleUnit, error) {
 	switch s {
@@ -318,7 +343,22 @@ func parseRoundMode(s string) (roundMode, error) {
 	return roundFromZero, fmt.Errorf("invalid rounding mode: '%s'", s)
 }
 
-// processOperands converts each command-line operand.
+// parseInvalidMode converts a string to an invalidMode value. R4.2.
+func parseInvalidMode(s string) (invalidMode, error) {
+	switch s {
+	case "abort":
+		return invalidAbort, nil
+	case "fail":
+		return invalidFail, nil
+	case "warn":
+		return invalidWarn, nil
+	case "ignore":
+		return invalidIgnore, nil
+	}
+	return invalidAbort, fmt.Errorf("invalid --invalid mode: '%s'", s)
+}
+
+// processOperands converts each command-line operand. R4.1.
 func processOperands(operands []string, cfg numfmtConfig, w *bufio.Writer, stderr io.Writer) int {
 	exitCode := 0
 	for _, op := range operands {
@@ -377,14 +417,29 @@ func convertValue(s string, cfg numfmtConfig) (string, error) {
 }
 
 // convertAndWrite converts a single value and writes the result.
+// R4.2: respects --invalid mode for error handling.
 func convertAndWrite(s string, cfg numfmtConfig, w *bufio.Writer, stderr io.Writer) error {
 	result, err := convertValue(s, cfg)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-		return err
+		if cfg.invalid != invalidAbort {
+			fmt.Fprintln(w, strings.TrimSpace(s))
+		}
+		return reportInvalid(err, cfg, stderr)
 	}
 	fmt.Fprintln(w, result)
 	return nil
+}
+
+// reportInvalid handles an invalid number error per the --invalid mode. R4.2.
+// Returns nil for warn/ignore (exit 0), the error for abort/fail (exit 2).
+func reportInvalid(err error, cfg numfmtConfig, stderr io.Writer) error {
+	if cfg.invalid != invalidIgnore {
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+	}
+	if cfg.invalid == invalidWarn || cfg.invalid == invalidIgnore {
+		return nil
+	}
+	return err
 }
 
 // parseInputNumber parses a number string with optional suffix per unit.
@@ -411,7 +466,7 @@ func parseScaledNumber(s string, unit scaleUnit) (float64, error) {
 	}
 	mult, err := suffixMultiplier(suffix, unit)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid suffix in input: '%s'", s)
 	}
 	return v * mult, nil
 }
@@ -622,6 +677,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "      --from-unit=N     specify the input unit size")
 	fmt.Fprintln(w, "      --to-unit=N       the output unit size")
 	fmt.Fprintln(w, "      --header[=N]      print (without converting) the first N header lines")
+	fmt.Fprintln(w, "      --invalid=MODE    failure mode for invalid numbers:")
+	fmt.Fprintln(w, "                          abort (default), fail, warn, ignore")
 	fmt.Fprintln(w, "      --help            display this help and exit")
 	fmt.Fprintln(w, "      --version         output version information and exit")
 	fmt.Fprintln(w, "")

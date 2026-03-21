@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/numfmt against gnumfmt reference binary.
-// Tests prd071-numfmt R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Tests prd071-numfmt R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// progNameNormalizer replaces the reference binary name with the Go binary
+// name in stderr output so differential error message comparison succeeds.
+func progNameNormalizer(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gnumfmt:"), []byte("numfmt:"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -264,6 +271,59 @@ func TestDiff(t *testing.T) {
 			Name:  "from_unit_with_to_si",
 			Args:  []string{"--from-unit=1024", "--to=si"},
 			Stdin: []byte("5\n"),
+		},
+
+		// R4.1: exit 0 on successful conversion (covered by all above tests).
+
+		// R4.2: exit 2 on invalid number (default --invalid=abort).
+		{
+			Name:      "invalid_number_default",
+			Stdin:     []byte("abc\n"),
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+		{
+			Name:      "invalid_number_with_to",
+			Args:      []string{"--to=si"},
+			Stdin:     []byte("abc\n"),
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+
+		// R4.2: --invalid=fail reports error but continues, exits 2.
+		{
+			Name:      "invalid_fail_continues",
+			Args:      []string{"--to=si", "--invalid=fail"},
+			Stdin:     []byte("abc\n1000\n"),
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+
+		// R4.2: --invalid=warn warns but exits 0.
+		{
+			Name:      "invalid_warn",
+			Args:      []string{"--to=si", "--invalid=warn"},
+			Stdin:     []byte("abc\n1000\n"),
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+
+		// R4.2: --invalid=ignore silently passes through, exits 0.
+		{
+			Name:  "invalid_ignore",
+			Args:  []string{"--to=si", "--invalid=ignore"},
+			Stdin: []byte("abc\n1000\n"),
+		},
+
+		// R4.4: unknown suffix error.
+		{
+			Name:      "unknown_suffix_from_si",
+			Args:      []string{"--from=si"},
+			Stdin:     []byte("1X\n"),
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+
+		// R4.4: invalid number as operand.
+		{
+			Name:      "invalid_operand",
+			Args:      []string{"--to=si", "notanumber"},
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

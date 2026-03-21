@@ -108,8 +108,9 @@ func processDelimitedLine(line string, cfg numfmtConfig, fields *fieldSet, w *bu
 		if fields.contains(i + 1) {
 			result, err := convertValue(p, cfg)
 			if err != nil {
-				fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-				convErr = err
+				if e := reportInvalid(err, cfg, stderr); e != nil {
+					convErr = e
+				}
 			} else {
 				parts[i] = result
 			}
@@ -128,8 +129,9 @@ func processWhitespaceLine(line string, cfg numfmtConfig, fields *fieldSet, w *b
 		if fields.contains(i + 1) {
 			result, err := convertValue(tok, cfg)
 			if err != nil {
-				fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-				convErr = err
+				if e := reportInvalid(err, cfg, stderr); e != nil {
+					convErr = e
+				}
 			} else {
 				tokens[i] = padToOriginalWidth(result, len(tok))
 			}
