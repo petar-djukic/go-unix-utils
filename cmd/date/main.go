@@ -6,6 +6,8 @@
 // Implements prd060-date R2.1–R2.4: --date/-d flag input parsing.
 // Implements prd060-date R3.1–R3.4: UTC mode, reference file time,
 // error handling for missing files, stdout-only output.
+// Implements prd060-date R4.1–R4.2: exit 0 on success, exit 1 on
+// invalid date or missing reference file.
 package main
 
 import (

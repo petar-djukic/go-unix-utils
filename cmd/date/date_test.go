@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd060-date R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Differential tests for prd060-date R1.1–R1.4, R2.1–R2.4, R3.1–R3.4,
+// R4.1–R4.4: exit codes, error handling, and comprehensive edge cases.
 package main
 
 import (
@@ -32,6 +33,7 @@ func TestDiff(t *testing.T) {
 
 	tests := buildR1R2Tests()
 	tests = append(tests, buildR3Tests(refFile)...)
+	tests = append(tests, buildR4Tests(refFile)...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -239,6 +241,124 @@ func buildR3Tests(refFile string) []testutils.DiffTest {
 			ExitCode:  1,
 			Env:       []string{"TZ=UTC"},
 			Normalize: []testutils.NormalizeFunc{normalizeProgName, normalizeErrCase},
+		},
+	}
+}
+
+// buildR4Tests returns differential test cases for R4 exit codes,
+// error handling, and comprehensive edge cases (R4.1–R4.4).
+func buildR4Tests(refFile string) []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			// R4.1, R4.4: default output with fixed epoch exits 0.
+			Name: "r4_default_output_fixed_epoch",
+			Args: []string{"-d", "@1700000000"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: +FORMAT with time conversion specs (%H, %M, %S).
+			Name: "r4_format_time_hms",
+			Args: []string{"-d", "@1700000000", "+%H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: +FORMAT with %T composite (same as %H:%M:%S).
+			Name: "r4_format_composite_T",
+			Args: []string{"-d", "@1700000000", "+%T"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: +FORMAT with %D composite (mm/dd/yy).
+			Name: "r4_format_composite_D",
+			Args: []string{"-d", "@1700000000", "+%D"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: +FORMAT with %r (12-hour clock).
+			Name: "r4_format_12hour",
+			Args: []string{"-d", "@1700000000", "+%r"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: +FORMAT with epoch seconds %s.
+			Name: "r4_format_epoch_seconds",
+			Args: []string{"-d", "@1700000000", "+%s"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: +FORMAT with %N nanoseconds.
+			Name: "r4_format_nanoseconds",
+			Args: []string{"-d", "@1700000000", "+%N"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: padding modifier %0m (zero-pad).
+			Name: "r4_padding_zero_pad",
+			Args: []string{"-d", "@1700000000", "+%0m"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: padding modifier %-H (no-pad).
+			Name: "r4_padding_no_pad_hour",
+			Args: []string{"-d", "@1700000000", "+%-H"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: padding modifier %_H (space-pad).
+			Name: "r4_padding_space_pad_hour",
+			Args: []string{"-d", "@1700000000", "+%_H"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: -d with ISO date-time string.
+			Name: "r4_date_iso_datetime",
+			Args: []string{"-d", "2024-03-15 08:30:00", "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: -u UTC mode with fixed epoch.
+			Name: "r4_utc_mode",
+			Args: []string{"-u", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"},
+		},
+		{
+			// R4.4: -r reference file with format.
+			Name: "r4_ref_file_format",
+			Args: []string{"-r", refFile, "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.2, R4.4: invalid date string exits 1.
+			Name:      "r4_error_invalid_date",
+			Args:      []string{"-d", "totally-invalid-date"},
+			ExitCode:  1,
+			Env:       []string{"TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgName},
+		},
+		{
+			// R4.2, R4.4: missing reference file exits 1.
+			Name:      "r4_error_missing_ref_file",
+			Args:      []string{"-r", "/no/such/file/anywhere"},
+			ExitCode:  1,
+			Env:       []string{"TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgName, normalizeErrCase},
+		},
+		{
+			// R4.4: multiple format specs combined with fixed epoch.
+			Name: "r4_combined_format_specs",
+			Args: []string{"-d", "@0", "+%Y/%m/%d %H:%M:%S %Z"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: %I 12-hour format, %p AM/PM with epoch.
+			Name: "r4_format_12hour_ampm",
+			Args: []string{"-d", "@1700000000", "+%I %p"},
+			Env:  []string{"TZ=UTC"},
+		},
+		{
+			// R4.4: %P lowercase am/pm with epoch.
+			Name: "r4_format_lowercase_ampm",
+			Args: []string{"-d", "@1700000000", "+%P"},
+			Env:  []string{"TZ=UTC"},
 		},
 	}
 }
