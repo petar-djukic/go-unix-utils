@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/sleep against gsleep reference binary.
-// Implements prd061-sleep R4.3, R4.4.
-// Covers R2.1 (zero duration), R2.2 (no args error), R2.3 (invalid/negative args),
-// R2.4 (infinity/inf support).
-// Covers R3.1 (no output under normal op), R3.3 (--help), R3.4 (--version),
-// and overflow/large value handling.
+// Implements prd061-sleep R4.1: exit 0 after sleeping for the requested duration.
+// Implements prd061-sleep R4.2: exit 1 when given invalid arguments.
+// Implements prd061-sleep R4.3: differential tests compare exit codes via pkg/testutils.
+// Implements prd061-sleep R4.4: covers zero duration, fractional seconds, suffix
+// multipliers (s, m, h, d), multiple arguments summed, error on no args, error on
+// invalid arg, and error on negative arg.
+// Also covers R2.1-R2.4, R3.1, R3.3, R3.4, and overflow/large value handling.
 package main
 
 import (
@@ -61,10 +63,22 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"0d"},
 			ExitCode: 0,
 		},
-		// R1.2: fractional seconds.
+		// R1.2, R4.1: fractional seconds exit 0.
 		{
 			Name:     "fractional_seconds",
 			Args:     []string{"0.001"},
+			ExitCode: 0,
+		},
+		// R4.1, R4.4: short non-zero sleep exits 0 (R4.3: use 0.01).
+		{
+			Name:     "short_sleep_exit_0",
+			Args:     []string{"0.01"},
+			ExitCode: 0,
+		},
+		// R4.4: suffix multiplier s with short duration.
+		{
+			Name:     "fractional_suffix_s",
+			Args:     []string{"0.001s"},
 			ExitCode: 0,
 		},
 		// R1.4: multiple arguments summed.
@@ -79,21 +93,27 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"0s", "0m", "0h"},
 			ExitCode: 0,
 		},
-		// R2.2: no arguments error.
+		// R4.4: multiple args with short durations summed.
+		{
+			Name:     "multiple_short_args_summed",
+			Args:     []string{"0.001", "0.001"},
+			ExitCode: 0,
+		},
+		// R2.2, R4.2: no arguments exits 1.
 		{
 			Name:      "no_args_error",
 			Args:      []string{},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrClear},
 		},
-		// R2.3: non-numeric argument error.
+		// R2.3, R4.2: non-numeric argument exits 1.
 		{
 			Name:      "invalid_arg_error",
 			Args:      []string{"abc"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrClear},
 		},
-		// R2.3: negative argument error.
+		// R2.3, R4.2: negative argument exits 1.
 		{
 			Name:      "negative_arg_error",
 			Args:      []string{"-1"},

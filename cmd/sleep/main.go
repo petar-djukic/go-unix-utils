@@ -7,6 +7,8 @@
 // and infinity support.
 // Implements prd061-sleep R3.1-R3.4: no output under normal operation, no stdin
 // reading, --help and --version flags, overflow clamping for large durations.
+// Implements prd061-sleep R4.1: exit 0 after sleeping for the requested duration.
+// Implements prd061-sleep R4.2: exit 1 when given invalid arguments.
 package main
 
 import (
