@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd067-split R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// Differential tests for prd067-split R1.1–R1.4, R2.1–R2.4, R3.1–R3.4,
+// R4.1–R4.4: exit codes and comprehensive test coverage.
 package main
 
 import (
@@ -532,6 +533,118 @@ func TestFilter(t *testing.T) {
 			t.Parallel()
 			compareSplitOutput(t, goBin, refBin, tc)
 		})
+	}
+}
+
+// TestErrorCases verifies R4.2 and R4.4: invalid counts and options produce
+// non-zero exit codes matching gsplit behavior.
+func TestErrorCases(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsplit")
+	if err != nil {
+		t.Skipf("reference binary gsplit not in PATH: %v", err)
+	}
+
+	tests := []splitTest{
+		// R4.4: invalid line count
+		{
+			name:  "invalid_lines_zero",
+			args:  []string{"-l", "0"},
+			stdin: seqLines(5),
+		},
+		{
+			name:  "invalid_lines_negative",
+			args:  []string{"-l", "-1"},
+			stdin: seqLines(5),
+		},
+		{
+			name:  "invalid_lines_text",
+			args:  []string{"-l", "abc"},
+			stdin: seqLines(5),
+		},
+		// R4.4: invalid byte count
+		{
+			name:  "invalid_bytes_zero",
+			args:  []string{"-b", "0"},
+			stdin: repeatBytes(10),
+		},
+		{
+			name:  "invalid_bytes_text",
+			args:  []string{"-b", "xyz"},
+			stdin: repeatBytes(10),
+		},
+		// R4.4: invalid chunk count
+		{
+			name:  "invalid_chunks_zero",
+			args:  []string{"-n", "0"},
+			stdin: repeatBytes(10),
+		},
+		{
+			name:  "invalid_chunks_text",
+			args:  []string{"-n", "abc"},
+			stdin: repeatBytes(10),
+		},
+		// R4.4: invalid suffix length
+		{
+			name:  "invalid_suffix_length_zero",
+			args:  []string{"-a", "0", "-l", "3"},
+			stdin: seqLines(5),
+		},
+		{
+			name:  "invalid_suffix_length_text",
+			args:  []string{"-a", "abc", "-l", "3"},
+			stdin: seqLines(5),
+		},
+		// R4.4: extra operand
+		{
+			name:  "extra_operand",
+			args:  []string{"a", "b", "c"},
+			stdin: seqLines(5),
+		},
+		// R4.4: unrecognized option
+		{
+			name:  "unrecognized_option",
+			args:  []string{"-Z"},
+			stdin: seqLines(5),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareExitCodes(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestSuccessExitCode verifies R4.1: successful split exits 0.
+func TestSuccessExitCode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsplit")
+	if err != nil {
+		t.Skipf("reference binary gsplit not in PATH: %v", err)
+	}
+
+	tc := splitTest{
+		name:  "success_exit_0",
+		args:  []string{"-l", "5"},
+		stdin: seqLines(10),
+	}
+	dir := t.TempDir()
+	setupInputFile(t, dir, tc)
+	exitCode := runSplitBinary(t, goBin, tc.args, tc.stdin, dir)
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d", exitCode)
+	}
+	refDir := t.TempDir()
+	setupInputFile(t, refDir, tc)
+	refExit := runSplitBinary(t, refBin, tc.args, tc.stdin, refDir)
+	if refExit != 0 {
+		t.Fatalf("reference binary exit %d, expected 0", refExit)
 	}
 }
 

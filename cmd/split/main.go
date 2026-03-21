@@ -3,7 +3,8 @@
 
 // Implements prd067-split R1.1–R1.4: basic file splitting by line count,
 // R2.1–R2.4: byte-based, line-bytes, and chunk-based splitting modes,
-// R3.1–R3.4: suffix control, numeric suffixes, additional suffix, and filter.
+// R3.1–R3.4: suffix control, numeric suffixes, additional suffix, and filter,
+// R4.1–R4.2: exit codes (0 on success, 1 on error).
 package main
 
 import (
