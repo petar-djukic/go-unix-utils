@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd063-timeout R1.1-R1.4 (core timeout behavior) and
-// R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status).
+// Implements prd063-timeout R1.1-R1.4 (core timeout behavior),
+// R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status),
+// and R3.1-R3.4 (exit codes: command status, timeout 124, signal 128+N, errors 125-127).
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
@@ -259,13 +261,14 @@ func parseSignal(s string) (syscall.Signal, error) {
 
 // runWithTimeout executes a command and kills it if it exceeds dur.
 // R1.1: SIGTERM on timeout. R1.4: dur==0 means no limit.
+// R3.3: when the child dies by signal before timeout, re-raises the signal.
 func runWithTimeout(dur time.Duration, command string, args []string, cfg *timeoutConfig) int {
 	cmd := buildCommand(command, args, cfg.foreground)
 	if err := cmd.Start(); err != nil {
 		return handleStartError(err, command)
 	}
 	if dur == 0 {
-		return exitCodeFromError(cmd.Wait())
+		return exitCodeFromWait(cmd.Wait(), true)
 	}
 	return waitWithTimeout(cmd, dur, cfg)
 }
@@ -284,6 +287,7 @@ func buildCommand(command string, args []string, foreground bool) *exec.Cmd {
 }
 
 // waitWithTimeout waits for cmd to finish or kills it after dur.
+// R3.3: child dying by signal before timeout triggers re-raise.
 func waitWithTimeout(cmd *exec.Cmd, dur time.Duration, cfg *timeoutConfig) int {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -291,7 +295,7 @@ func waitWithTimeout(cmd *exec.Cmd, dur time.Duration, cfg *timeoutConfig) int {
 	defer timer.Stop()
 	select {
 	case err := <-done:
-		return exitCodeFromError(err)
+		return exitCodeFromWait(err, true)
 	case <-timer.C:
 		sendSignalToCmd(cmd, cfg.signal, cfg.foreground)
 		return handleTimeoutExit(cmd, done, cfg)
@@ -325,9 +329,10 @@ func waitWithKillAfter(done <-chan error, cmd *exec.Cmd, cfg *timeoutConfig) int
 
 // resolveTimeoutExitCode returns the appropriate exit code after a timeout.
 // R2.4: --preserve-status returns the command's actual exit status.
+// R3.2: without --preserve-status, returns 124.
 func resolveTimeoutExitCode(waitErr error, preserveStatus bool) int {
 	if preserveStatus {
-		return exitCodeFromError(waitErr)
+		return exitCodeFromWait(waitErr, false)
 	}
 	return exitTimeout
 }
@@ -348,9 +353,11 @@ func sendSignalToCmd(cmd *exec.Cmd, sig syscall.Signal, foreground bool) {
 	}
 }
 
-// exitCodeFromError extracts the exit code from a cmd.Wait() error.
-// Handles both normal exits and signal-killed processes (128+signum).
-func exitCodeFromError(err error) int {
+// exitCodeFromWait extracts the exit code from a cmd.Wait() error.
+// R3.1: normal exits return the command's exit code.
+// R3.3: when reraise is true and the child was killed by a signal,
+// re-raises the signal on ourselves to match GNU timeout behavior.
+func exitCodeFromWait(err error, reraise bool) int {
 	if err == nil {
 		return 0
 	}
@@ -362,16 +369,35 @@ func exitCodeFromError(err error) int {
 	if code >= 0 {
 		return code
 	}
-	return signalExitCode(exitErr)
+	return signalExitCode(exitErr, reraise)
 }
 
 // signalExitCode extracts 128+signum from a signal-killed process.
-func signalExitCode(exitErr *exec.ExitError) int {
+// R3.3: when reraise is true, re-raises the child's signal on ourselves
+// so the parent process sees the correct signal death, matching GNU timeout.
+func signalExitCode(exitErr *exec.ExitError, reraise bool) int {
 	ws, ok := exitErr.Sys().(syscall.WaitStatus)
-	if ok && ws.Signaled() {
-		return 128 + int(ws.Signal())
+	if !ok || !ws.Signaled() {
+		return exitInternalError
 	}
-	return exitInternalError
+	sig := ws.Signal()
+	if reraise {
+		reraiseSignal(sig)
+	}
+	return 128 + int(sig)
+}
+
+// reraiseSignal resets the signal handler to default and sends the signal
+// to ourselves, causing the process to die with the same signal as the child.
+// R3.3: matches GNU timeout behavior of propagating the child's signal death.
+// Blocks briefly to allow the runtime to deliver the signal before returning.
+func reraiseSignal(sig syscall.Signal) {
+	signal.Reset(sig)
+	syscall.Kill(os.Getpid(), sig) //nolint:errcheck // intentional self-signal
+	// Give the runtime time to deliver the fatal signal. For signals
+	// whose default action is terminate, the process dies during this
+	// pause. Falls through to 128+signum fallback otherwise.
+	time.Sleep(time.Second)
 }
 
 // handleStartError maps exec start failures to exit codes.

@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for prd063-timeout R1.1-R1.4 (core timeout behavior) and
-// R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status).
+// Tests for prd063-timeout R1.1-R1.4 (core timeout behavior),
+// R2.1-R2.4 (signal selection, kill-after, foreground, preserve-status),
+// and R3.1-R3.4 (exit codes: command status, timeout 124, signal 128+N, errors 125-127).
 package main
 
 import (
@@ -11,6 +12,13 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// clearOutput is a normalizer that discards all output, used for error
+// tests where stderr differs between Go and reference binaries due to
+// program name and quoting conventions but exit codes match.
+var clearOutput testutils.NormalizeFunc = func(b []byte) []byte {
+	return nil
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -144,6 +152,62 @@ func TestDiff(t *testing.T) {
 			Name:     "preserve_status_failed_cmd",
 			Args:     []string{"--preserve-status", "10", "false"},
 			ExitCode: 1,
+		},
+		// R3.1: command exits before timeout with non-zero status 2.
+		{
+			Name:     "r3_1_command_exit_status_2",
+			Args:     []string{"10", "sh", "-c", "exit 2"},
+			ExitCode: 2,
+		},
+		// R3.1: command exits before timeout with high exit code 42.
+		{
+			Name:     "r3_1_command_exit_status_42",
+			Args:     []string{"10", "sh", "-c", "exit 42"},
+			ExitCode: 42,
+		},
+		// R3.2: command killed due to timeout exits 124.
+		{
+			Name:     "r3_2_timeout_exit_124",
+			Args:     []string{"0.01", "sleep", "60"},
+			ExitCode: 124,
+		},
+		// R3.3: command killed by signal not sent by timeout. Uses
+		// --foreground to avoid process group complications. The child
+		// kills itself with SIGHUP; timeout re-raises the signal.
+		{
+			Name:      "r3_3_signal_not_from_timeout",
+			Args:      []string{"--foreground", "10", "sh", "-c", "kill -HUP $$"},
+			ExitCode:  129,
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.4: invalid duration → exit 125. Stderr normalizer ignores
+		// program name and quoting differences.
+		{
+			Name:      "r3_4_invalid_duration",
+			Args:      []string{"abc", "true"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.4: command not found → exit 127. Stderr normalizer ignores
+		// error message format differences.
+		{
+			Name:      "r3_4_command_not_found",
+			Args:      []string{"10", "nonexistent_command_xyz_12345"},
+			ExitCode:  127,
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.4: missing operand (only duration, no command) → exit 125.
+		{
+			Name:      "r3_4_missing_operand",
+			Args:      []string{"10"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.2 + R2.2: kill-after with timeout, exit 137 after SIGKILL escalation.
+		{
+			Name:     "r3_2_kill_after_exit_137",
+			Args:     []string{"-k", "0.5", "0.01", "sh", "-c", "trap '' TERM; while :; do sleep 1; done"},
+			ExitCode: 137,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
