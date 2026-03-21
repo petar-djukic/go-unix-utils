@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd053-sort R1.1–R1.7, R2.1, R3.1–R3.3.
+// Differential tests for prd053-sort R1.1–R1.7, R2.1, R3.1–R3.4.
 package main_test
 
 import (
@@ -298,6 +298,126 @@ func TestDiff(t *testing.T) {
 			Name:  "three_keys",
 			Args:  []string{"-t:", "-k1,1", "-k2,2n", "-k3,3"},
 			Stdin: []byte("a:2:y\na:10:x\nb:1:z\na:2:x\n"),
+		},
+		// R3.4: -b ignore leading blanks on whole-line sort.
+		{
+			Name:  "ignore_blanks_basic",
+			Args:  []string{"-b"},
+			Stdin: []byte("  cherry\napple\n banana\n"),
+		},
+		// R3.4: -b with --ignore-leading-blanks long form.
+		{
+			Name:  "ignore_blanks_long_flag",
+			Args:  []string{"--ignore-leading-blanks"},
+			Stdin: []byte("  z\ny\n x\n"),
+		},
+		// R3.4: -b combined with -u removes duplicates ignoring blanks.
+		{
+			Name:  "ignore_blanks_unique",
+			Args:  []string{"-bu"},
+			Stdin: []byte("  a\na\n b\nb\n"),
+		},
+		// R3.4: -b combined with -r for reverse ignoring blanks.
+		{
+			Name:  "ignore_blanks_reverse",
+			Args:  []string{"-br"},
+			Stdin: []byte("  cherry\napple\n banana\n"),
+		},
+		// R3.2: b modifier on key start with -t separator.
+		{
+			Name:  "key_b_modifier_sep",
+			Args:  []string{"-t:", "-k2b,2"},
+			Stdin: []byte("a: cherry\nb: apple\nc: banana\n"),
+		},
+		// R3.2: b modifier on key with whitespace fields.
+		{
+			Name:  "key_b_modifier_whitespace",
+			Args:  []string{"-b", "-k1,1"},
+			Stdin: []byte("  banana\napple\n  cherry\n"),
+		},
+		// R3.2: f modifier folds case for comparison.
+		{
+			Name:  "key_f_modifier",
+			Args:  []string{"-k1,1f"},
+			Stdin: []byte("Banana\napple\nCherry\n"),
+		},
+		// R3.2: f modifier with mixed case dedup.
+		{
+			Name:  "key_f_modifier_unique",
+			Args:  []string{"-u", "-k1,1f"},
+			Stdin: []byte("Apple\napple\nBanana\nbanana\n"),
+		},
+		// R3.2: d modifier dictionary order.
+		{
+			Name:  "key_d_modifier",
+			Args:  []string{"-k1,1d"},
+			Stdin: []byte("a-c\na.b\nab\n"),
+		},
+		// R3.2: d modifier ignores special chars for sorting.
+		{
+			Name:  "key_d_modifier_special",
+			Args:  []string{"-k1,1d"},
+			Stdin: []byte("b!x\na@y\nc#z\n"),
+		},
+		// R3.2: i modifier ignores non-printing characters.
+		{
+			Name:  "key_i_modifier",
+			Args:  []string{"-k1,1i"},
+			Stdin: []byte("b\x01x\na\x02y\nc\x03z\n"),
+		},
+		// R3.2: i modifier with tab characters (printing, kept).
+		{
+			Name:  "key_i_modifier_tabs",
+			Args:  []string{"-k1,1i"},
+			Stdin: []byte("b\ty\na\tx\nc\tz\n"),
+		},
+		// R3.2: h modifier human-numeric sort on key.
+		{
+			Name:  "key_h_modifier",
+			Args:  []string{"-k1,1h"},
+			Stdin: []byte("10K\n2M\n1G\n500\n"),
+		},
+		// R3.2: h modifier with same suffix different values.
+		{
+			Name:  "key_h_modifier_same_suffix",
+			Args:  []string{"-k1,1h"},
+			Stdin: []byte("5K\n10K\n1K\n"),
+		},
+		// R3.2: M modifier month sort on key.
+		{
+			Name:  "key_M_modifier",
+			Args:  []string{"-k1,1M"},
+			Stdin: []byte("Mar\nJan\nFeb\nDec\n"),
+		},
+		// R3.2: M modifier with unknown months sorting first.
+		{
+			Name:  "key_M_modifier_unknown",
+			Args:  []string{"-k1,1M"},
+			Stdin: []byte("Jan\nfoo\nMar\nbar\n"),
+		},
+		// R3.2: V modifier version sort on key.
+		{
+			Name:  "key_V_modifier",
+			Args:  []string{"-k1,1V"},
+			Stdin: []byte("file10\nfile2\nfile1\nfile20\n"),
+		},
+		// R3.2: V modifier with dotted version numbers.
+		{
+			Name:  "key_V_modifier_dotted",
+			Args:  []string{"-k1,1V"},
+			Stdin: []byte("1.10.0\n1.2.0\n1.1.0\n2.0.0\n"),
+		},
+		// R3.3: multiple keys with different modifiers.
+		{
+			Name:  "multi_key_mixed_modifiers",
+			Args:  []string{"-k1,1f", "-k2,2n"},
+			Stdin: []byte("Apple 10\napple 2\nBanana 1\n"),
+		},
+		// R3.3: three keys with b on start, n, r modifiers.
+		{
+			Name:  "multi_key_bnr",
+			Args:  []string{"-t:", "-k1b,1", "-k2,2n", "-k3,3r"},
+			Stdin: []byte(" a:2:y\na:10:x\n b:1:z\na:2:x\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

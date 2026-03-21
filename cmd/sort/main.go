@@ -3,7 +3,7 @@
 
 // Implements prd053-sort R1.1–R1.7: basic sorting and output control.
 // Implements prd053-sort R2.1: numeric sort mode (-n).
-// Implements prd053-sort R3.1–R3.3: key fields and delimiters.
+// Implements prd053-sort R3.1–R3.4: key fields, delimiters, and ignore-leading-blanks.
 package main
 
 import (
@@ -22,24 +22,32 @@ const progName = "sort"
 
 // sortKey represents a single -k key specification (R3.2).
 type sortKey struct {
-	startField int  // 1-based start field number
-	startChar  int  // 1-based char offset within start field (0 = start)
-	endField   int  // 1-based end field number (0 = end of line)
-	endChar    int  // 1-based char offset within end field (0 = end)
-	numeric    bool // n modifier: numeric comparison
-	reverse    bool // r modifier: reverse this key
-	hasOpts    bool // true if any modifiers were specified on this key
+	startField     int  // 1-based start field number
+	startChar      int  // 1-based char offset within start field (0 = start)
+	endField       int  // 1-based end field number (0 = end of line)
+	endChar        int  // 1-based char offset within end field (0 = end)
+	numeric        bool // n modifier: numeric comparison
+	reverse        bool // r modifier: reverse this key
+	humanNumeric   bool // h modifier: human-numeric comparison (R3.2)
+	monthSort      bool // M modifier: month comparison (R3.2)
+	versionSort    bool // V modifier: version comparison (R3.2)
+	ignoreBlanks   bool // b modifier: ignore leading blanks (R3.2)
+	dictOrder      bool // d modifier: dictionary order (R3.2)
+	foldCase       bool // f modifier: fold case (R3.2)
+	ignoreNonPrint bool // i modifier: ignore non-printing (R3.2)
+	hasOpts        bool // true if any modifiers were specified on this key
 }
 
 // options holds parsed sort flags.
 type options struct {
-	reverse    bool      // -r, --reverse (R1.4)
-	unique     bool      // -u, --unique (R1.5)
-	outputFile string    // -o, --output (R1.6)
-	stable     bool      // -s, --stable (R1.7)
-	numeric    bool      // -n, --numeric-sort (R2.1)
-	fieldSep   string    // -t, --field-separator (R3.1)
-	keys       []sortKey // -k, --key (R3.2, R3.3)
+	reverse      bool      // -r, --reverse (R1.4)
+	unique       bool      // -u, --unique (R1.5)
+	outputFile   string    // -o, --output (R1.6)
+	stable       bool      // -s, --stable (R1.7)
+	numeric      bool      // -n, --numeric-sort (R2.1)
+	ignoreBlanks bool      // -b, --ignore-leading-blanks (R3.4)
+	fieldSep     string    // -t, --field-separator (R3.1)
+	keys         []sortKey // -k, --key (R3.2, R3.3)
 }
 
 func main() {
@@ -168,6 +176,8 @@ func applyShortFlag(o *options, ch byte) bool {
 		o.stable = true
 	case 'n':
 		o.numeric = true
+	case 'b':
+		o.ignoreBlanks = true
 	default:
 		return false
 	}
@@ -186,6 +196,8 @@ func applyLongFlag(o *options, arg string, args []string, i int, stdout, stderr 
 		o.stable = true
 	case arg == "--numeric-sort":
 		o.numeric = true
+	case arg == "--ignore-leading-blanks":
+		o.ignoreBlanks = true
 	case arg == "--help":
 		printHelp(stdout)
 		return i, 0
@@ -271,7 +283,7 @@ func parseSortKey(spec string) (sortKey, error) {
 		return sortKey{}, fmt.Errorf("invalid key specification: %s", spec)
 	}
 	k := sortKey{startField: startField, startChar: startChar}
-	applyKeyMods(&k, startMods)
+	applyKeyMods(&k, startMods, true)
 	if len(parts) == 2 {
 		endField, endChar, endMods, err := parseKeyPos(parts[1])
 		if err != nil {
@@ -279,7 +291,7 @@ func parseSortKey(spec string) (sortKey, error) {
 		}
 		k.endField = endField
 		k.endChar = endChar
-		applyKeyMods(&k, endMods)
+		applyKeyMods(&k, endMods, false)
 	}
 	return k, nil
 }
@@ -312,8 +324,11 @@ func parseKeyPos(s string) (int, int, string, error) {
 	return field, charPos, s[i:], nil
 }
 
-// applyKeyMods applies modifier letters to a sort key.
-func applyKeyMods(k *sortKey, mods string) {
+// applyKeyMods applies modifier letters to a sort key (R3.2).
+// isStart indicates whether the modifiers are on the start position.
+// The b modifier only strips leading blanks when on the start position;
+// on the end position it only affects boundary calculation.
+func applyKeyMods(k *sortKey, mods string, isStart bool) {
 	for _, ch := range mods {
 		switch ch {
 		case 'n':
@@ -321,6 +336,29 @@ func applyKeyMods(k *sortKey, mods string) {
 			k.hasOpts = true
 		case 'r':
 			k.reverse = true
+			k.hasOpts = true
+		case 'h':
+			k.humanNumeric = true
+			k.hasOpts = true
+		case 'M':
+			k.monthSort = true
+			k.hasOpts = true
+		case 'V':
+			k.versionSort = true
+			k.hasOpts = true
+		case 'b':
+			if isStart {
+				k.ignoreBlanks = true
+			}
+			k.hasOpts = true
+		case 'd':
+			k.dictOrder = true
+			k.hasOpts = true
+		case 'f':
+			k.foldCase = true
+			k.hasOpts = true
+		case 'i':
+			k.ignoreNonPrint = true
 			k.hasOpts = true
 		}
 	}
@@ -336,6 +374,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... [FILE]...\n", progName)
 	fmt.Fprintln(w, "Write sorted concatenation of all FILE(s) to standard output.")
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -b, --ignore-leading-blanks  ignore leading blanks")
 	fmt.Fprintln(w, "  -k, --key=KEYDEF         sort via a key; KEYDEF gives location and type")
 	fmt.Fprintln(w, "  -n, --numeric-sort        compare according to string numerical value")
 	fmt.Fprintln(w, "  -o, --output=FILE         write result to FILE instead of standard output")
@@ -414,21 +453,25 @@ func buildLessFunc(lines []string, opts options) func(i, j int) bool {
 }
 
 // buildWholeLineLess returns a comparison for whole-line sorting.
-// R1.1: lexicographic. R1.4: reverse. R2.1: numeric.
+// R1.1: lexicographic. R1.4: reverse. R2.1: numeric. R3.4: ignore leading blanks.
 func buildWholeLineLess(lines []string, opts options) func(i, j int) bool {
-	if opts.numeric {
-		return func(i, j int) bool {
-			cmp := compareNumeric(lines[i], lines[j])
-			if opts.reverse {
-				return cmp > 0
-			}
-			return cmp < 0
+	return func(i, j int) bool {
+		a, b := lines[i], lines[j]
+		if opts.ignoreBlanks {
+			a = strings.TrimLeft(a, " \t")
+			b = strings.TrimLeft(b, " \t")
 		}
+		var cmp int
+		if opts.numeric {
+			cmp = compareNumeric(a, b)
+		} else {
+			cmp = strings.Compare(a, b)
+		}
+		if opts.reverse {
+			return cmp > 0
+		}
+		return cmp < 0
 	}
-	if opts.reverse {
-		return func(i, j int) bool { return lines[i] > lines[j] }
-	}
-	return func(i, j int) bool { return lines[i] < lines[j] }
 }
 
 // buildKeyLess returns a comparison using key specifications (R3.2, R3.3).
@@ -522,17 +565,12 @@ func multiFieldKey(fields []string, si, ei int, k sortKey) string {
 func compareOneKey(a, b string, k sortKey, opts options) int {
 	ka := extractKey(a, k, opts.fieldSep)
 	kb := extractKey(b, k, opts.fieldSep)
-	isNumeric := k.numeric
+	ka = transformKey(ka, k, opts)
+	kb = transformKey(kb, k, opts)
+	cmp := compareByMode(ka, kb, k, opts)
 	isReverse := k.reverse
 	if !k.hasOpts {
-		isNumeric = opts.numeric
 		isReverse = opts.reverse
-	}
-	var cmp int
-	if isNumeric {
-		cmp = compareNumeric(ka, kb)
-	} else {
-		cmp = strings.Compare(ka, kb)
 	}
 	if isReverse {
 		return -cmp
@@ -603,8 +641,13 @@ func dedupLines(lines []string, opts options) []string {
 }
 
 // linesEqualByKey checks whether two lines are equal under the active keys.
+// R3.4: applies -b (ignore leading blanks) to whole-line comparison.
 func linesEqualByKey(a, b string, opts options) bool {
 	if len(opts.keys) == 0 {
+		if opts.ignoreBlanks {
+			a = strings.TrimLeft(a, " \t")
+			b = strings.TrimLeft(b, " \t")
+		}
 		if opts.numeric {
 			return compareNumeric(a, b) == 0
 		}
