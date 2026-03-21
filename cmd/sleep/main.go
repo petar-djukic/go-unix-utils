@@ -3,6 +3,8 @@
 
 // Implements prd061-sleep R1.1-R1.4: core sleep behavior with duration parsing,
 // fractional seconds, suffix multipliers, and multiple argument summing.
+// Implements prd061-sleep R2.1-R2.4: input validation, zero duration, error handling,
+// and infinity support.
 package main
 
 import (
