@@ -4,6 +4,7 @@
 // Implements prd055-tail R1.1–R1.4: line-count mode (default and -n),
 // stdin reading, and +NUM offset mode.
 // Implements prd055-tail R2.1–R2.3: byte-count mode (-c) with suffix multipliers.
+// Implements prd055-tail R3.1–R3.4: multi-file headers, -q/--quiet/--silent, -v/--verbose.
 package main
 
 import (

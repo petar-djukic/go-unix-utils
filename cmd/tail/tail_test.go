@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd055-tail R1.1–R1.4, R2.1–R2.3 differential tests:
+// Implements prd055-tail R1.1–R1.4, R2.1–R2.3, R3.1–R3.4 differential tests:
 // line-count mode, byte-count mode, stdin reading, -n/-c flags,
-// +NUM offset, and suffix multipliers.
+// +NUM offset, suffix multipliers, multi-file headers, -q, and -v.
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -190,6 +192,96 @@ func TestDiff(t *testing.T) {
 			Name:  "c_plus_with_newlines",
 			Args:  []string{"-c", "+4"},
 			Stdin: []byte("ab\ncd\nef\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// writeTestFile creates a file in dir with the given content. Fails test on error.
+func writeTestFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing test file %s: %v", name, err)
+	}
+	return p
+}
+
+// TestDiffHeaders tests prd055-tail R3.1–R3.4: multi-file headers, -q, -v.
+func TestDiffHeaders(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtail")
+	if err != nil {
+		t.Skipf("reference binary gtail not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	file1 := writeTestFile(t, dir, "file1.txt", "a\nb\nc\nd\ne\n")
+	file2 := writeTestFile(t, dir, "file2.txt", "1\n2\n3\n4\n5\n")
+	file3 := writeTestFile(t, dir, "file3.txt", "x\ny\nz\n")
+
+	tests := []testutils.DiffTest{
+		{
+			// R3.1: two files produce headers
+			Name: "multi_file_two_headers",
+			Args: []string{file1, file2},
+		},
+		{
+			// R3.1: three files produce headers with blank line separators
+			Name: "multi_file_three_headers",
+			Args: []string{file1, file2, file3},
+		},
+		{
+			// R3.1: multi-file with -n flag
+			Name: "multi_file_with_n",
+			Args: []string{"-n", "2", file1, file2},
+		},
+		{
+			// R3.2: single file produces no header
+			Name: "single_file_no_header",
+			Args: []string{file1},
+		},
+		{
+			// R3.3: -q suppresses headers for multiple files
+			Name: "quiet_suppresses_multi_headers",
+			Args: []string{"-q", file1, file2},
+		},
+		{
+			// R3.3: --quiet suppresses headers
+			Name: "quiet_long_suppresses_headers",
+			Args: []string{"--quiet", file1, file2},
+		},
+		{
+			// R3.3: --silent suppresses headers
+			Name: "silent_suppresses_headers",
+			Args: []string{"--silent", file1, file2},
+		},
+		{
+			// R3.4: -v forces header for single file
+			Name: "verbose_single_file_header",
+			Args: []string{"-v", file1},
+		},
+		{
+			// R3.4: --verbose forces header for single file
+			Name: "verbose_long_single_file_header",
+			Args: []string{"--verbose", file1},
+		},
+		{
+			// R3.4: -v with multiple files still shows headers
+			Name: "verbose_multi_file_headers",
+			Args: []string{"-v", file1, file2},
+		},
+		{
+			// R3.3: -q with single file (no header either way)
+			Name: "quiet_single_file",
+			Args: []string{"-q", file1},
+		},
+		{
+			// R3.1: multi-file with -c byte mode
+			Name: "multi_file_byte_mode",
+			Args: []string{"-c", "3", file1, file2},
 		},
 	}
 
