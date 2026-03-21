@@ -3,7 +3,8 @@
 
 // Implements prd064-shuf R1.1–R1.4: default shuffle behavior for files and stdin.
 // Implements prd064-shuf R2.1–R2.4: range mode, head count, repeat, output file.
-// Implements prd064-shuf R3.1–R3.4: echo mode, repeat mode combinations, edge cases.
+// Implements prd064-shuf R3.1–R3.4: echo mode, zero-terminated, edge cases.
+// Implements prd064-shuf R4.1–R4.2: exit codes for success and error.
 package main
 
 import (
@@ -22,13 +23,14 @@ const progName = "shuf"
 
 // options holds parsed command-line flags for shuf.
 type options struct {
-	inputRange [2]int // R2.1: lo-hi inclusive range
-	hasRange   bool
-	headCount  int // R2.2: max output lines (-1 = unlimited)
-	repeat     bool
-	echo       bool   // R3.3: treat args as input lines
-	outputFile string // R2.4: output file path (empty = stdout)
-	files      []string
+	inputRange     [2]int // R2.1: lo-hi inclusive range
+	hasRange       bool
+	headCount      int // R2.2: max output lines (-1 = unlimited)
+	repeat         bool
+	echo           bool   // R3.3: treat args as input lines
+	zeroTerminated bool   // R3.2: use NUL as delimiter
+	outputFile     string // R2.4: output file path (empty = stdout)
+	files          []string
 }
 
 func main() {
@@ -50,8 +52,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 // executeShuf runs the shuffle operation based on parsed options.
+// R4.1: returns 0 on success. R4.2: returns 1 on error.
 func executeShuf(opts *options, stdin io.Reader, stdout, stderr io.Writer) int {
-	lines, err := collectInput(opts, stdin)
+	delim := delimiter(opts.zeroTerminated)
+	lines, err := collectInput(opts, stdin, delim)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err)
 		return 1
@@ -62,11 +66,19 @@ func executeShuf(opts *options, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer cleanup()
-	return outputLines(opts, lines, w, stderr)
+	return outputLines(opts, lines, w, stderr, delim)
+}
+
+// delimiter returns NUL for zero-terminated mode, newline otherwise. R3.2.
+func delimiter(zeroTerminated bool) byte {
+	if zeroTerminated {
+		return 0
+	}
+	return '\n'
 }
 
 // collectInput gathers lines from echo args, files, stdin, or range mode.
-func collectInput(opts *options, stdin io.Reader) ([]string, error) {
+func collectInput(opts *options, stdin io.Reader, delim byte) ([]string, error) {
 	if opts.hasRange {
 		return generateRange(opts.inputRange[0], opts.inputRange[1]), nil
 	}
@@ -77,34 +89,33 @@ func collectInput(opts *options, stdin io.Reader) ([]string, error) {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
-	return readAllLines(files, stdin)
+	return readAllLines(files, stdin, delim)
 }
 
 // outputLines writes shuffled output, respecting -n and -r flags.
-func outputLines(opts *options, lines []string, w io.Writer, stderr io.Writer) int {
+func outputLines(opts *options, lines []string, w io.Writer, stderr io.Writer, delim byte) int {
 	if opts.repeat {
-		return writeRepeat(lines, opts.headCount, w, stderr)
+		return writeRepeat(lines, opts.headCount, w, stderr, delim)
 	}
 	shuffleLines(lines)
 	count := len(lines)
 	if opts.headCount >= 0 && opts.headCount < count {
 		count = opts.headCount
 	}
-	return writeLines(lines[:count], w, stderr)
+	return writeLines(lines[:count], w, stderr, delim)
 }
 
 // writeRepeat outputs random lines with replacement. R2.3.
 // If headCount < 0, runs indefinitely until write error/signal.
-func writeRepeat(lines []string, headCount int, w io.Writer, stderr io.Writer) int {
+func writeRepeat(lines []string, headCount int, w io.Writer, stderr io.Writer, delim byte) int {
 	if len(lines) == 0 {
 		return 0
 	}
 	bw := bufio.NewWriter(w)
 	for i := 0; headCount < 0 || i < headCount; i++ {
 		idx := rand.Intn(len(lines))
-		if _, err := fmt.Fprintln(bw, lines[idx]); err != nil {
-			// write error (e.g., broken pipe)
-			return 1
+		if err := writeLine(bw, lines[idx], delim); err != nil {
+			return 1 // write error (e.g., broken pipe)
 		}
 	}
 	if err := bw.Flush(); err != nil {
@@ -187,6 +198,9 @@ func handleFlag(args []string, i int, opts *options, stdout, stderr io.Writer) (
 		return 0, -1
 	case arg == "-r" || arg == "--repeat":
 		opts.repeat = true
+		return 0, -1
+	case arg == "-z" || arg == "--zero-terminated":
+		opts.zeroTerminated = true
 		return 0, -1
 	case arg == "-n" || arg == "--head-count":
 		return parseNextArg(args, i, opts, stderr, setHeadCount)
@@ -319,6 +333,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -n, --head-count=COUNT    output at most COUNT lines")
 	fmt.Fprintln(w, "  -o, --output=FILE         write result to FILE instead of standard output")
 	fmt.Fprintln(w, "  -r, --repeat              output lines can repeat")
+	fmt.Fprintln(w, "  -z, --zero-terminated     line delimiter is NUL, not newline")
 	fmt.Fprintln(w, "      --help     display this help and exit")
 	fmt.Fprintln(w, "      --version  output version information and exit")
 }
@@ -329,11 +344,11 @@ func printVersion(w io.Writer) {
 }
 
 // readAllLines reads all lines from the given files, using stdin for "-".
-// R1.4: each line is terminated by newline; last line included without trailing newline.
-func readAllLines(files []string, stdin io.Reader) ([]string, error) {
+// R1.4: each line is terminated by delimiter; last line included.
+func readAllLines(files []string, stdin io.Reader, delim byte) ([]string, error) {
 	var lines []string
 	for _, name := range files {
-		fileLines, err := readFileLines(name, stdin)
+		fileLines, err := readFileLines(name, stdin, delim)
 		if err != nil {
 			return nil, err
 		}
@@ -343,23 +358,27 @@ func readAllLines(files []string, stdin io.Reader) ([]string, error) {
 }
 
 // readFileLines reads lines from a single file or stdin.
-func readFileLines(name string, stdin io.Reader) ([]string, error) {
+func readFileLines(name string, stdin io.Reader, delim byte) ([]string, error) {
 	if name == "-" {
-		return scanLines(stdin)
+		return scanLines(stdin, delim)
 	}
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, unwrapPathError(err)
 	}
 	defer f.Close() // best-effort close on read-only file
-	return scanLines(f)
+	return scanLines(f, delim)
 }
 
-// scanLines reads all lines from r, splitting on newline.
-// R1.4: includes the last line even if it lacks a trailing newline.
-func scanLines(r io.Reader) ([]string, error) {
+// scanLines reads all lines from r, splitting on the given delimiter.
+// R1.4: includes the last line even if it lacks a trailing delimiter.
+// R3.2: uses NUL delimiter when -z is given.
+func scanLines(r io.Reader, delim byte) ([]string, error) {
 	var lines []string
 	scanner := bufio.NewScanner(r)
+	if delim != '\n' {
+		scanner.Split(splitByDelim(delim))
+	}
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
@@ -367,6 +386,25 @@ func scanLines(r io.Reader) ([]string, error) {
 		return nil, err
 	}
 	return lines, nil
+}
+
+// splitByDelim returns a bufio.SplitFunc that splits on the given byte.
+// R3.2: supports NUL-delimited input.
+func splitByDelim(delim byte) bufio.SplitFunc {
+	return func(data []byte, atEOF bool) (int, []byte, error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		for i, b := range data {
+			if b == delim {
+				return i + 1, data[:i], nil
+			}
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	}
 }
 
 // shuffleLines randomly permutes the slice in place.
@@ -377,11 +415,11 @@ func shuffleLines(lines []string) {
 	})
 }
 
-// writeLines writes shuffled lines to w, one per line.
-func writeLines(lines []string, w, stderr io.Writer) int {
+// writeLines writes shuffled lines to w, one per delimiter.
+func writeLines(lines []string, w, stderr io.Writer, delim byte) int {
 	bw := bufio.NewWriter(w)
 	for _, line := range lines {
-		if _, err := fmt.Fprintln(bw, line); err != nil {
+		if err := writeLine(bw, line, delim); err != nil {
 			fmt.Fprintf(stderr, "%s: write error: %s\n", progName, err)
 			return 1
 		}
@@ -391,6 +429,14 @@ func writeLines(lines []string, w, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// writeLine writes a single line followed by the delimiter.
+func writeLine(w *bufio.Writer, line string, delim byte) error {
+	if _, err := w.WriteString(line); err != nil {
+		return err
+	}
+	return w.WriteByte(delim)
 }
 
 // unwrapPathError extracts the inner error from *os.PathError for

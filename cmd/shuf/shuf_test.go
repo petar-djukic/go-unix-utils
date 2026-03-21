@@ -3,7 +3,8 @@
 
 // Differential tests for prd064-shuf R1.1–R1.4: default shuffle behavior.
 // Differential tests for prd064-shuf R2.1–R2.4: range mode, head count, repeat, output file.
-// Differential tests for prd064-shuf R3.1–R3.4: echo mode, repeat mode combinations, edge cases.
+// Differential tests for prd064-shuf R3.1–R3.4: echo mode, zero-terminated, edge cases.
+// Differential tests for prd064-shuf R4.1–R4.4: exit codes and structural verification.
 package main
 
 import (
@@ -38,6 +39,15 @@ func splitLines(data []byte) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
+}
+
+// splitByNul splits NUL-delimited output into items.
+func splitByNul(data []byte) []string {
+	s := strings.TrimSuffix(string(data), "\x00")
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\x00")
 }
 
 // TestShufStructural tests structural properties of shuf output.
@@ -419,7 +429,7 @@ func TestShufOutputFileEquals(t *testing.T) {
 	verifyIntRange(t, lines, 1, 3)
 }
 
-// TestShufRangeWithFileError tests that -i with file args is rejected (R2.1).
+// TestShufRangeWithFileError tests that -i with file args is rejected (R2.1, R4.2).
 func TestShufRangeWithFileError(t *testing.T) {
 	t.Parallel()
 
@@ -606,7 +616,7 @@ func TestShufEchoRepeatEmpty(t *testing.T) {
 	}
 }
 
-// TestShufEchoRangeConflict tests that -e and -i together are rejected (R3.4).
+// TestShufEchoRangeConflict tests that -e and -i together are rejected (R3.4, R4.2).
 func TestShufEchoRangeConflict(t *testing.T) {
 	t.Parallel()
 
@@ -626,8 +636,184 @@ func TestShufEchoRangeConflict(t *testing.T) {
 	}
 }
 
+// TestShufZeroTerminated tests -z zero-terminated mode (R3.2, R4.4).
+func TestShufZeroTerminated(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	tests := []struct {
+		name      string
+		args      []string
+		stdin     string
+		wantItems []string // expected items in sorted order
+	}{
+		{
+			name:      "nul delimited stdin",
+			args:      []string{"-z"},
+			stdin:     "alpha\x00beta\x00gamma\x00",
+			wantItems: []string{"alpha", "beta", "gamma"},
+		},
+		{
+			name:      "nul delimited echo",
+			args:      []string{"-z", "-e", "x", "y", "z"},
+			wantItems: []string{"x", "y", "z"},
+		},
+		{
+			name:      "nul delimited range",
+			args:      []string{"-z", "-i", "1-3"},
+			wantItems: []string{"1", "2", "3"},
+		},
+		{
+			name:      "nul delimited empty input",
+			args:      []string{"-z"},
+			stdin:     "",
+			wantItems: nil,
+		},
+		{
+			name:      "long form --zero-terminated",
+			args:      []string{"--zero-terminated", "-e", "a", "b"},
+			wantItems: []string{"a", "b"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			if tc.stdin != "" {
+				cmd.Stdin = bytes.NewBufferString(tc.stdin)
+			}
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("shuf -z failed: %v", err)
+			}
+			got := splitByNul(out)
+			if len(got) != len(tc.wantItems) {
+				t.Fatalf("item count: got %d, want %d\noutput: %q",
+					len(got), len(tc.wantItems), out)
+			}
+			sort.Strings(got)
+			for i := range got {
+				if got[i] != tc.wantItems[i] {
+					t.Fatalf("sorted item %d: got %q, want %q",
+						i, got[i], tc.wantItems[i])
+				}
+			}
+		})
+	}
+}
+
+// TestShufNonexistentFile tests error on nonexistent file (R4.2).
+func TestShufNonexistentFile(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "/nonexistent/path/to/file.txt")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for nonexistent file")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("exit code: got %d, want 1", exitErr.ExitCode())
+	}
+}
+
+// TestShufInvalidHeadCount tests error on invalid -n value (R4.2).
+func TestShufInvalidHeadCount(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "non-numeric", args: []string{"-n", "abc"}},
+		{name: "negative", args: []string{"-n", "-1"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = bytes.NewBufferString("a\nb\n")
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected error for invalid head count")
+			}
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected ExitError, got %T: %v", err, err)
+			}
+			if exitErr.ExitCode() != 1 {
+				t.Fatalf("exit code: got %d, want 1", exitErr.ExitCode())
+			}
+		})
+	}
+}
+
+// TestShufUnrecognizedOption tests error on unknown flag (R4.2).
+func TestShufUnrecognizedOption(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--bogus-flag")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for unrecognized option")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("exit code: got %d, want 1", exitErr.ExitCode())
+	}
+}
+
+// TestShufExitZero tests that successful operations exit 0 (R4.1).
+func TestShufExitZero(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	tests := []struct {
+		name  string
+		args  []string
+		stdin string
+	}{
+		{name: "stdin shuffle", stdin: "a\nb\nc\n"},
+		{name: "range mode", args: []string{"-i", "1-5"}},
+		{name: "echo mode", args: []string{"-e", "x", "y"}},
+		{name: "empty input", stdin: ""},
+		{name: "head count zero", args: []string{"-n", "0"}, stdin: "a\n"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			if tc.stdin != "" {
+				cmd.Stdin = bytes.NewBufferString(tc.stdin)
+			}
+			err := cmd.Run()
+			if err != nil {
+				t.Fatalf("expected exit 0, got error: %v", err)
+			}
+		})
+	}
+}
+
 // TestDiff runs differential tests against the GNU reference binary (gshuf).
 // These verify structural properties since output order is non-deterministic.
+// R4.3: structural verification. R4.4: comprehensive test coverage.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -727,6 +913,132 @@ func TestDiff(t *testing.T) {
 	}
 }
 
+// TestDiffFile runs differential tests for file input mode (R4.4).
+func TestDiffFile(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary gshuf not in PATH")
+	}
+
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "f1.txt")
+	file2 := filepath.Join(dir, "f2.txt")
+	if err := os.WriteFile(file1, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte("delta\nepsilon\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		args      []string
+		wantCount int
+	}{
+		{
+			name:      "single file",
+			args:      []string{file1},
+			wantCount: 3,
+		},
+		{
+			name:      "file with head count",
+			args:      []string{"-n", "2", file1},
+			wantCount: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			verifyStructural(t, goBin, refBin, tc.args, "", tc.wantCount)
+		})
+	}
+}
+
+// TestDiffZeroTerminated runs differential tests for -z mode (R3.2, R4.4).
+func TestDiffZeroTerminated(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary gshuf not in PATH")
+	}
+
+	tests := []struct {
+		name      string
+		args      []string
+		stdin     string
+		wantCount int
+	}{
+		{
+			name:      "nul delimited stdin",
+			args:      []string{"-z"},
+			stdin:     "a\x00b\x00c\x00",
+			wantCount: 3,
+		},
+		{
+			name:      "nul delimited echo",
+			args:      []string{"-z", "-e", "x", "y", "z"},
+			wantCount: 3,
+		},
+		{
+			name:      "nul delimited range",
+			args:      []string{"-z", "-i", "1-5"},
+			wantCount: 5,
+		},
+		{
+			name:      "nul delimited with head count",
+			args:      []string{"-z", "-n", "2", "-e", "a", "b", "c"},
+			wantCount: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			verifyStructuralNul(t, goBin, refBin, tc.args, tc.stdin, tc.wantCount)
+		})
+	}
+}
+
+// TestDiffErrors runs differential error-exit-code tests (R4.2, R4.4).
+func TestDiffErrors(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary gshuf not in PATH")
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "invalid range reversed", args: []string{"-i", "10-5"}},
+		{name: "invalid range non-numeric", args: []string{"-i", "abc-def"}},
+		{name: "range with file arg", args: []string{"-i", "1-5", "/dev/null"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			goExit := runExitCode(t, goBin, tc.args)
+			refExit := runExitCode(t, refBin, tc.args)
+			if goExit != refExit {
+				t.Fatalf("exit code mismatch: go=%d ref=%d", goExit, refExit)
+			}
+			if goExit != 1 {
+				t.Fatalf("expected exit 1, got %d", goExit)
+			}
+		})
+	}
+}
+
 // verifyStructural runs both binaries and checks that both produce the
 // expected line count and contain the same set of lines (when not using -r).
 func verifyStructural(t *testing.T, goBin, refBin string, args []string, stdin string, wantCount int) {
@@ -759,6 +1071,37 @@ func verifyStructural(t *testing.T, goBin, refBin string, args []string, stdin s
 	}
 }
 
+// verifyStructuralNul runs both binaries and checks NUL-delimited output
+// has the expected item count and same item set.
+func verifyStructuralNul(t *testing.T, goBin, refBin string, args []string, stdin string, wantCount int) {
+	t.Helper()
+	goOut := runShuf(t, goBin, args, stdin)
+	refOut := runShuf(t, refBin, args, stdin)
+
+	goItems := splitByNul(goOut)
+	refItems := splitByNul(refOut)
+
+	if len(goItems) != wantCount {
+		t.Fatalf("go binary: got %d items, want %d\noutput: %q",
+			len(goItems), wantCount, goOut)
+	}
+	if len(refItems) != wantCount {
+		t.Fatalf("ref binary: got %d items, want %d\noutput: %q",
+			len(refItems), wantCount, refOut)
+	}
+
+	if !hasSubsetFlag(args) {
+		sort.Strings(goItems)
+		sort.Strings(refItems)
+		for i := range goItems {
+			if goItems[i] != refItems[i] {
+				t.Fatalf("item set mismatch at %d: go=%q ref=%q",
+					i, goItems[i], refItems[i])
+			}
+		}
+	}
+}
+
 // hasSubsetFlag returns true if the args contain flags that make the
 // output a subset or allow repetition, preventing exact set comparison.
 func hasSubsetFlag(args []string) bool {
@@ -786,6 +1129,22 @@ func runShuf(t *testing.T, binary string, args []string, stdin string) []byte {
 		t.Fatalf("%s failed: %v", binary, err)
 	}
 	return out
+}
+
+// runExitCode executes a binary and returns its exit code.
+func runExitCode(t *testing.T, binary string, args []string) int {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	err := cmd.Run()
+	if err == nil {
+		return 0
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("%s execution error: %v", binary, err)
+	}
+	return exitErr.ExitCode()
 }
 
 // verifyIntRange checks that all lines are integers within [min, max].
