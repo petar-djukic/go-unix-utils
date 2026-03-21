@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements differential tests for prd068-csplit R1.1–R1.4, R2.1–R2.4.
+// Implements differential tests for prd068-csplit R1.1–R1.4, R2.1–R2.4,
+// R3.1–R3.4 (error handling and edge cases).
 package main
 
 import (
@@ -19,6 +20,19 @@ func normProgName(b []byte) []byte {
 	for i, line := range lines {
 		if idx := strings.Index(line, "csplit:"); idx > 0 {
 			lines[i] = line[idx:]
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
+// normRegexErr normalizes regex error messages. Go and GNU regex libraries
+// produce different error detail strings, so we replace the entire line
+// containing "invalid regular expression" with a fixed string.
+func normRegexErr(b []byte) []byte {
+	lines := strings.Split(string(b), "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "invalid regular expression") {
+			lines[i] = "invalid regular expression"
 		}
 	}
 	return []byte(strings.Join(lines, "\n"))
@@ -103,12 +117,10 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{normProgName},
 		},
 		{
-			// R2.2 + R2.4: {*} with first match failing is an error.
-			Name:      "star_no_first_match",
-			Args:      []string{"-", "/zzz/", "{*}"},
-			Stdin:     []byte("a\nb\nc\n"),
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgName},
+			// R2.2: {*} with no matches is not an error; outputs all input.
+			Name:  "star_no_first_match",
+			Args:  []string{"-", "/zzz/", "{*}"},
+			Stdin: []byte("a\nb\nc\n"),
 		},
 		{
 			// R2.1: {0} is equivalent to a single application.
@@ -121,6 +133,73 @@ func TestDiff(t *testing.T) {
 			Name:  "offset_with_star",
 			Args:  []string{"-", "/x/+1", "{*}"},
 			Stdin: []byte("1\nx\n2\nx\n3\n"),
+		},
+		// === R3 error handling and edge case tests ===
+		{
+			// R3.1: invalid regex pattern exits 1.
+			Name:      "invalid_regex",
+			Args:      []string{"-", "/[/"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName, normRegexErr},
+		},
+		{
+			// R3.2: regex pattern on empty input exits 1 (no match).
+			Name:      "empty_input_regex",
+			Args:      []string{"-", "/a/"},
+			Stdin:     []byte{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		{
+			// R3.2: line number on empty input exits 1 (out of range).
+			Name:      "empty_input_line_num",
+			Args:      []string{"-", "3"},
+			Stdin:     []byte{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		{
+			// R3.1: line number 0 is invalid, exits 1.
+			Name:      "line_number_zero",
+			Args:      []string{"-", "0"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		{
+			// R3.2: line number beyond EOF exits 1.
+			Name:      "line_number_beyond_eof",
+			Args:      []string{"-", "10"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		{
+			// R3.3: regex matching first line creates zero-length first piece.
+			Name:  "zero_length_first_piece",
+			Args:  []string{"-", "/a/"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R3.3: -z elides the empty first piece when regex matches line 1.
+			Name:  "elide_empty_first_piece",
+			Args:  []string{"-z", "-", "/a/"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R3.2: repeat count exceeds available matches (premature EOF).
+			Name:      "repeat_premature_eof",
+			Args:      []string{"-", "/x/", "{3}"},
+			Stdin:     []byte("1\nx\n2\nx\n3\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		{
+			// R3.4: successful split exits 0.
+			Name:  "success_exit_zero",
+			Args:  []string{"-", "3"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

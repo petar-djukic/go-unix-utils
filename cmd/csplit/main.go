@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd068-csplit R1.1–R1.4: pattern-based file splitting,
-// R2.1–R2.4: repeat counts and offset patterns.
+// R2.1–R2.4: repeat counts and offset patterns,
+// R3.1–R3.4: error handling and edge cases.
 package main
 
 import (
@@ -302,7 +303,7 @@ func parseRegexPattern(arg string) (pattern, error) {
 	expr := arg[1:closeIdx]
 	re, err := regexp.Compile(expr)
 	if err != nil {
-		return pattern{}, fmt.Errorf("invalid regular expression: %s", arg)
+		return pattern{}, fmtRegexErr(arg, err)
 	}
 	offset, err := parseOffset(arg[closeIdx+1:])
 	if err != nil {
@@ -317,7 +318,7 @@ func parseSkipPattern(arg string) (pattern, error) {
 	expr := arg[1:closeIdx]
 	re, err := regexp.Compile(expr)
 	if err != nil {
-		return pattern{}, fmt.Errorf("invalid regular expression: %s", arg)
+		return pattern{}, fmtRegexErr(arg, err)
 	}
 	offset, err := parseOffset(arg[closeIdx+1:])
 	if err != nil {
@@ -326,13 +327,29 @@ func parseSkipPattern(arg string) (pattern, error) {
 	return pattern{kind: patternSkip, regex: re, offset: offset, raw: arg}, nil
 }
 
-// parseLineNumPattern parses an INTEGER pattern. R1.4.
+// parseLineNumPattern parses an INTEGER pattern. R1.4, R3.4.
 func parseLineNumPattern(arg string) (pattern, error) {
 	n, err := strconv.Atoi(arg)
-	if err != nil || n <= 0 {
-		return pattern{}, fmt.Errorf("invalid pattern: %s", arg)
+	if err != nil {
+		return pattern{}, fmt.Errorf("'%s': invalid pattern", arg)
+	}
+	if n <= 0 {
+		return pattern{}, fmt.Errorf("%s: line number must be greater than zero", arg)
 	}
 	return pattern{kind: patternLineNum, lineNum: n, raw: arg}, nil
+}
+
+// fmtRegexErr formats a regex compilation error matching GNU csplit format.
+func fmtRegexErr(arg string, err error) error {
+	return fmt.Errorf("'%s': invalid regular expression: %s", arg, err)
+}
+
+// fmtRepeatErr annotates a match error with the repetition index. R3.4.
+func fmtRepeatErr(err error, iteration int) error {
+	if iteration == 0 {
+		return err
+	}
+	return fmt.Errorf("%s on repetition %d", err, iteration)
 }
 
 // parseOffset parses an optional +N or -N offset suffix. R2.3.
@@ -429,7 +446,7 @@ func applyWithRepeat(lines [][]byte, pos int, pat pattern) ([]piece, int, error)
 			if pat.repeat < 0 {
 				break // R2.2: {*} exhaustion is always OK
 			}
-			return nil, pos, err // R2.4: no match is an error
+			return pieces, pos, fmtRepeatErr(err, i) // R2.4
 		}
 		if p != nil {
 			pieces = append(pieces, *p)
