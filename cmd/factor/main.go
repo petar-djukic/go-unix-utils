@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd065-factor R1.1–R1.4: core integer factorization from arguments.
+// Implements prd065-factor R1.1–R1.4, R2.1–R2.4: integer factorization
+// with large number support, stdin mode, and error handling.
 package main
 
 import (
 	"bufio"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -26,6 +27,7 @@ func main() {
 
 // run parses arguments and factorizes each integer.
 // R1.4: processes multiple arguments in order.
+// R2.1: reads from stdin when no arguments given.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		return factorArgs(args, stdout, stderr)
@@ -35,6 +37,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // factorArgs processes each command-line argument as an integer to factorize.
 // R1.4: one factorization line per argument, in order.
+// R2.4: errors go to stderr without stopping processing.
 func factorArgs(args []string, stdout, stderr io.Writer) int {
 	bw := bufio.NewWriter(stdout)
 	exitCode := 0
@@ -52,6 +55,8 @@ func factorArgs(args []string, stdout, stderr io.Writer) int {
 }
 
 // factorStdin reads integers from stdin, one per line.
+// R2.1: stdin mode. R2.3: blank lines are skipped.
+// R2.4: errors go to stderr without stopping processing.
 func factorStdin(stdin io.Reader, stdout, stderr io.Writer) int {
 	scanner := bufio.NewScanner(stdin)
 	bw := bufio.NewWriter(stdout)
@@ -73,31 +78,29 @@ func factorStdin(stdin io.Reader, stdout, stderr io.Writer) int {
 	return exitCode
 }
 
-// factorOne parses a string as an integer and writes its factorization.
-// R1.1: format is "NUMBER: FACTOR FACTOR ..." with ascending factors.
+// factorOne parses a string as a non-negative integer and writes its
+// factorization. R1.1: format is "NUMBER: FACTOR FACTOR ...".
 // R1.2: for 1, prints "1:" with no factors.
-// R1.3: primes print the number itself as the sole factor.
+// R2.2: handles numbers up to 2^64-1 via uint64.
+// R2.4: returns error for non-numeric or negative input.
 func factorOne(s string, w io.Writer) error {
-	n := new(big.Int)
-	if _, ok := n.SetString(s, 10); !ok {
-		return fmt.Errorf("'%s' is not a valid positive integer", s)
-	}
-	if n.Sign() < 0 {
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
 		return fmt.Errorf("'%s' is not a valid positive integer", s)
 	}
 	factors := trialDivision(n)
-	return writeLine(s, factors, w)
+	return writeLine(strconv.FormatUint(n, 10), factors, w)
 }
 
 // writeLine formats and writes a single factorization line.
 // R1.1: "NUMBER: FACTOR FACTOR ..."
-func writeLine(number string, factors []*big.Int, w io.Writer) error {
+func writeLine(number string, factors []uint64, w io.Writer) error {
 	var sb strings.Builder
 	sb.WriteString(number)
 	sb.WriteByte(':')
 	for _, f := range factors {
 		sb.WriteByte(' ')
-		sb.WriteString(f.String())
+		sb.WriteString(strconv.FormatUint(f, 10))
 	}
 	sb.WriteByte('\n')
 	_, err := io.WriteString(w, sb.String())
@@ -105,41 +108,26 @@ func writeLine(number string, factors []*big.Int, w io.Writer) error {
 }
 
 // trialDivision returns the prime factors of n in ascending order with
-// multiplicity. For n <= 1, returns an empty slice. R1.2, R1.3.
-func trialDivision(n *big.Int) []*big.Int {
-	if n.Cmp(big.NewInt(2)) < 0 {
+// multiplicity. For n <= 1, returns an empty slice.
+// R1.2: n=1 yields empty factors. R1.3: primes yield [n].
+// R2.2: uses native uint64 arithmetic for performance on large numbers.
+func trialDivision(n uint64) []uint64 {
+	if n < 2 {
 		return nil
 	}
-	var factors []*big.Int
-	val := new(big.Int).Set(n)
-	factors = extractFactor(val, big.NewInt(2), factors)
-	d := big.NewInt(3)
-	two := big.NewInt(2)
-	for {
-		dSq := new(big.Int).Mul(d, d)
-		if dSq.Cmp(val) > 0 {
-			break
-		}
-		factors = extractFactor(val, d, factors)
-		d = new(big.Int).Add(d, two)
+	var factors []uint64
+	for n%2 == 0 {
+		factors = append(factors, 2)
+		n /= 2
 	}
-	if val.Cmp(big.NewInt(1)) > 0 {
-		factors = append(factors, new(big.Int).Set(val))
-	}
-	return factors
-}
-
-// extractFactor divides val by divisor as many times as possible,
-// appending each occurrence to factors. Modifies val in place.
-func extractFactor(val, divisor *big.Int, factors []*big.Int) []*big.Int {
-	mod := new(big.Int)
-	for {
-		mod.Mod(val, divisor)
-		if mod.Sign() != 0 {
-			break
+	for d := uint64(3); d*d <= n; d += 2 {
+		for n%d == 0 {
+			factors = append(factors, d)
+			n /= d
 		}
-		factors = append(factors, new(big.Int).Set(divisor))
-		val.Div(val, divisor)
+	}
+	if n > 1 {
+		factors = append(factors, n)
 	}
 	return factors
 }

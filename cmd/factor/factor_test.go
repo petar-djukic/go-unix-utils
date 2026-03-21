@@ -1,15 +1,22 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd065-factor R1.1–R1.4.
+// Differential tests for prd065-factor R1.1–R1.4, R2.1–R2.4.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeProgramName replaces "gfactor:" with "factor:" in output
+// so differential tests pass despite different binary names.
+func normalizeProgramName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gfactor:"), []byte("factor:"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -80,6 +87,55 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "large_number",
 			Args: []string{"999999999999989"},
+		},
+		// R2.1: stdin mode with single number
+		{
+			Name:  "stdin_single",
+			Stdin: []byte("42\n"),
+		},
+		// R2.1: stdin mode with multiple numbers
+		{
+			Name:  "stdin_multiple",
+			Stdin: []byte("12\n97\n1\n60\n"),
+		},
+		// R2.2: max int64 value (2^63-1)
+		{
+			Name: "max_int64",
+			Args: []string{"9223372036854775807"},
+		},
+		// R2.2: large composite near int64 max
+		{
+			Name: "large_composite_near_max",
+			Args: []string{"9223372036854775806"},
+		},
+		// R2.3: stdin with blank lines skipped
+		{
+			Name:  "stdin_blank_lines",
+			Stdin: []byte("\n12\n\n97\n\n"),
+		},
+		// R2.4: non-numeric input produces error
+		{
+			Name:      "error_non_numeric",
+			Args:      []string{"abc"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R2.4: negative number via stdin produces error
+		{
+			Name:      "error_negative_stdin",
+			Stdin:     []byte("-5\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R2.4: mixed valid and invalid args, continues processing
+		{
+			Name:      "error_mixed_args",
+			Args:      []string{"12", "abc", "97"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R2.4: stdin error handling continues processing
+		{
+			Name:      "stdin_error_continues",
+			Stdin:     []byte("12\nabc\n97\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 	}
 
