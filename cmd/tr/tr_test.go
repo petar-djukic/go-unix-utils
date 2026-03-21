@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for prd054-tr R1.1–R1.4, R2.1–R2.4.
+// Differential tests for prd054-tr R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
 package main
 
 import (
@@ -186,6 +186,78 @@ func TestDiff(t *testing.T) {
 			Name:  "R2.4_complement_C_flag",
 			Args:  []string{"-Cd", "[:alpha:]\\n"},
 			Stdin: []byte("abc 123 def\n"),
+		},
+		// R3.1: squeeze repeats collapses adjacent identical chars
+		{
+			Name:  "R3.1_squeeze_repeats_single",
+			Args:  []string{"-s", "a"},
+			Stdin: []byte("aaabbbccc\n"),
+		},
+		// R3.1: squeeze repeats with multiple chars in set
+		{
+			Name:  "R3.1_squeeze_repeats_multi",
+			Args:  []string{"-s", "abc"},
+			Stdin: []byte("aaabbbccc\n"),
+		},
+		// R3.1: squeeze with translate and class pair
+		{
+			Name:  "R3.1_squeeze_translate_class",
+			Args:  []string{"-s", "[:lower:]", "[:upper:]"},
+			Stdin: []byte("aabbccdd\n"),
+		},
+		// R3.1: squeeze newlines
+		{
+			Name:  "R3.1_squeeze_newlines",
+			Args:  []string{"-s", "\\n"},
+			Stdin: []byte("a\n\n\nb\n\nc\n"),
+		},
+		// R3.2: delete complement keeps only specified chars
+		{
+			Name:  "R3.2_delete_complement_digits",
+			Args:  []string{"-dc", "[:digit:]"},
+			Stdin: []byte("abc123def456\n"),
+		},
+		// R3.2: delete complement keeps alpha and newline
+		{
+			Name:  "R3.2_delete_complement_alpha",
+			Args:  []string{"-dc", "[:alpha:]\\n"},
+			Stdin: []byte("hello 123 world\n"),
+		},
+		// R3.2: delete complement with range
+		{
+			Name:  "R3.2_delete_complement_range",
+			Args:  []string{"-dc", "a-f\\n"},
+			Stdin: []byte("abcdefghij\n"),
+		},
+		// R3.2: delete complement with -C flag
+		{
+			Name:  "R3.2_delete_complement_C",
+			Args:  []string{"-Cd", "0-9"},
+			Stdin: []byte("abc123def456\n"),
+		},
+		// R3.3: squeeze complement collapses non-set chars
+		{
+			Name:  "R3.3_squeeze_complement_single_set",
+			Args:  []string{"-sc", "[:alpha:]"},
+			Stdin: []byte("hello   123   world\n"),
+		},
+		// R3.3: squeeze complement with translate
+		{
+			Name:  "R3.3_squeeze_complement_translate",
+			Args:  []string{"-cs", "[:alpha:]\\n", "_"},
+			Stdin: []byte("hello  123  world\n"),
+		},
+		// R3.3: squeeze complement with range
+		{
+			Name:  "R3.3_squeeze_complement_range",
+			Args:  []string{"-cs", "a-z\\n", "*"},
+			Stdin: []byte("abc  123  def\n"),
+		},
+		// R3.3: squeeze complement with -C flag
+		{
+			Name:  "R3.3_squeeze_complement_C_translate",
+			Args:  []string{"-Cs", "[:digit:]\\n", " "},
+			Stdin: []byte("abc123def456ghi\n"),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

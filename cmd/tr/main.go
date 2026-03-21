@@ -4,6 +4,7 @@
 // Implements prd054-tr R1.1–R1.4: basic character translation, stdin/stdout I/O,
 // SET specifications (ranges, escapes, repetition, POSIX character classes).
 // Implements prd054-tr R2.1–R2.4: delete, squeeze, combined, and complement modes.
+// Implements prd054-tr R3.1–R3.3: squeeze repeats, delete-complement, squeeze-complement.
 package main
 
 import (
