@@ -3,6 +3,7 @@
 
 // Implements prd064-shuf R1.1–R1.4: default shuffle behavior for files and stdin.
 // Implements prd064-shuf R2.1–R2.4: range mode, head count, repeat, output file.
+// Implements prd064-shuf R3.1–R3.4: echo mode, repeat mode combinations, edge cases.
 package main
 
 import (
@@ -25,6 +26,7 @@ type options struct {
 	hasRange   bool
 	headCount  int // R2.2: max output lines (-1 = unlimited)
 	repeat     bool
+	echo       bool   // R3.3: treat args as input lines
 	outputFile string // R2.4: output file path (empty = stdout)
 	files      []string
 }
@@ -63,10 +65,13 @@ func executeShuf(opts *options, stdin io.Reader, stdout, stderr io.Writer) int {
 	return outputLines(opts, lines, w, stderr)
 }
 
-// collectInput gathers lines from files, stdin, or range mode.
+// collectInput gathers lines from echo args, files, stdin, or range mode.
 func collectInput(opts *options, stdin io.Reader) ([]string, error) {
 	if opts.hasRange {
 		return generateRange(opts.inputRange[0], opts.inputRange[1]), nil
+	}
+	if opts.echo {
+		return opts.files, nil
 	}
 	files := opts.files
 	if len(files) == 0 {
@@ -177,6 +182,9 @@ func handleFlag(args []string, i int, opts *options, stdout, stderr io.Writer) (
 	case arg == "--version":
 		printVersion(stdout)
 		return 0, 0
+	case arg == "-e" || arg == "--echo":
+		opts.echo = true
+		return 0, -1
 	case arg == "-r" || arg == "--repeat":
 		opts.repeat = true
 		return 0, -1
@@ -280,8 +288,13 @@ func setOutputFile(opts *options, value string) error {
 	return nil
 }
 
-// validateOptions checks for conflicting options. R2.1.
+// validateOptions checks for conflicting options.
+// R2.1: -i cannot be combined with file arguments.
+// R3.3: -e cannot be combined with -i.
 func validateOptions(opts *options) error {
+	if opts.hasRange && opts.echo {
+		return fmt.Errorf("cannot combine -e and -i options")
+	}
 	if opts.hasRange && len(opts.files) > 0 {
 		return fmt.Errorf("extra operand '%s'", opts.files[0])
 	}
@@ -296,14 +309,16 @@ func printTryHelp(w io.Writer) {
 // printHelp writes usage information to w.
 func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... [FILE]\n", progName)
+	fmt.Fprintf(w, "  or:  %s -e [OPTION]... [ARG]...\n", progName)
 	fmt.Fprintln(w, "Write a random permutation of the input lines to standard output.")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "With no FILE, or when FILE is -, read standard input.")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  -i, --input-range=LO-HI   treat each number LO through HI as an input line")
-	fmt.Fprintln(w, "  -n, --head-count=COUNT     output at most COUNT lines")
-	fmt.Fprintln(w, "  -o, --output=FILE          write result to FILE instead of standard output")
-	fmt.Fprintln(w, "  -r, --repeat               output lines can repeat")
+	fmt.Fprintln(w, "  -e, --echo               treat each ARG as an input line")
+	fmt.Fprintln(w, "  -i, --input-range=LO-HI  treat each number LO through HI as an input line")
+	fmt.Fprintln(w, "  -n, --head-count=COUNT    output at most COUNT lines")
+	fmt.Fprintln(w, "  -o, --output=FILE         write result to FILE instead of standard output")
+	fmt.Fprintln(w, "  -r, --repeat              output lines can repeat")
 	fmt.Fprintln(w, "      --help     display this help and exit")
 	fmt.Fprintln(w, "      --version  output version information and exit")
 }

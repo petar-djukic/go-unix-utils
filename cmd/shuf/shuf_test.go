@@ -3,6 +3,7 @@
 
 // Differential tests for prd064-shuf R1.1–R1.4: default shuffle behavior.
 // Differential tests for prd064-shuf R2.1–R2.4: range mode, head count, repeat, output file.
+// Differential tests for prd064-shuf R3.1–R3.4: echo mode, repeat mode combinations, edge cases.
 package main
 
 import (
@@ -477,6 +478,154 @@ func TestShufInvalidRange(t *testing.T) {
 	}
 }
 
+// TestShufEcho tests -e echo mode (R3.3).
+func TestShufEcho(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	tests := []struct {
+		name      string
+		args      []string
+		wantLines []string // expected lines in sorted order
+	}{
+		{
+			name:      "echo three arguments",
+			args:      []string{"-e", "alpha", "beta", "gamma"},
+			wantLines: []string{"alpha", "beta", "gamma"},
+		},
+		{
+			name:      "echo single argument",
+			args:      []string{"-e", "only"},
+			wantLines: []string{"only"},
+		},
+		{
+			name:      "echo with --echo long form",
+			args:      []string{"--echo", "x", "y", "z"},
+			wantLines: []string{"x", "y", "z"},
+		},
+		{
+			name:      "echo empty argument list",
+			args:      []string{"-e"},
+			wantLines: nil,
+		},
+		{
+			name:      "echo with arguments after --",
+			args:      []string{"-e", "--", "-a", "-b"},
+			wantLines: []string{"-a", "-b"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("shuf -e failed: %v", err)
+			}
+			got := sortedLines(out)
+			if len(got) != len(tc.wantLines) {
+				t.Fatalf("line count: got %d, want %d\noutput: %q",
+					len(got), len(tc.wantLines), string(out))
+			}
+			for i := range got {
+				if got[i] != tc.wantLines[i] {
+					t.Fatalf("sorted line %d: got %q, want %q",
+						i, got[i], tc.wantLines[i])
+				}
+			}
+		})
+	}
+}
+
+// TestShufEchoWithHeadCount tests -e with -n limiting (R3.3, R2.2).
+func TestShufEchoWithHeadCount(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-e", "-n", "2", "a", "b", "c", "d")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -e -n failed: %v", err)
+	}
+	lines := splitLines(out)
+	if len(lines) != 2 {
+		t.Fatalf("line count: got %d, want 2\noutput: %q",
+			len(lines), string(out))
+	}
+	// All output lines must be from the input set.
+	valid := map[string]bool{"a": true, "b": true, "c": true, "d": true}
+	for _, line := range lines {
+		if !valid[line] {
+			t.Fatalf("unexpected output line %q", line)
+		}
+	}
+}
+
+// TestShufEchoRepeat tests -e -r combination (R3.3, R2.3).
+func TestShufEchoRepeat(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-e", "-r", "-n", "20", "x", "y")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -e -r -n failed: %v", err)
+	}
+	lines := splitLines(out)
+	if len(lines) != 20 {
+		t.Fatalf("line count: got %d, want 20\noutput: %q",
+			len(lines), string(out))
+	}
+	valid := map[string]bool{"x": true, "y": true}
+	for _, line := range lines {
+		if !valid[line] {
+			t.Fatalf("unexpected output line %q", line)
+		}
+	}
+}
+
+// TestShufEchoRepeatEmpty tests -e -r with no arguments (R3.4).
+func TestShufEchoRepeatEmpty(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-e", "-r", "-n", "5")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -e -r -n with empty args failed: %v", err)
+	}
+	lines := splitLines(out)
+	if len(lines) != 0 {
+		t.Fatalf("expected no output for empty echo+repeat, got %d lines: %q",
+			len(lines), string(out))
+	}
+}
+
+// TestShufEchoRangeConflict tests that -e and -i together are rejected (R3.4).
+func TestShufEchoRangeConflict(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-e", "-i", "1-5", "a", "b")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for -e with -i")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("exit code: got %d, want 1", exitErr.ExitCode())
+	}
+}
+
 // TestDiff runs differential tests against the GNU reference binary (gshuf).
 // These verify structural properties since output order is non-deterministic.
 func TestDiff(t *testing.T) {
@@ -543,6 +692,31 @@ func TestDiff(t *testing.T) {
 			args:      []string{"-r", "-n", "15", "-i", "1-5"},
 			wantCount: 15,
 		},
+		{
+			name:      "echo three args",
+			args:      []string{"-e", "alpha", "beta", "gamma"},
+			wantCount: 3,
+		},
+		{
+			name:      "echo single arg",
+			args:      []string{"-e", "only"},
+			wantCount: 1,
+		},
+		{
+			name:      "echo empty",
+			args:      []string{"-e"},
+			wantCount: 0,
+		},
+		{
+			name:      "echo with head count",
+			args:      []string{"-e", "-n", "2", "a", "b", "c"},
+			wantCount: 2,
+		},
+		{
+			name:      "echo repeat with head count",
+			args:      []string{"-e", "-r", "-n", "10", "x", "y"},
+			wantCount: 10,
+		},
 	}
 
 	for _, tc := range tests {
@@ -573,14 +747,7 @@ func verifyStructural(t *testing.T, goBin, refBin string, args []string, stdin s
 	}
 
 	// When neither -r nor -n is used, both should contain the same line set.
-	hasSubset := false
-	for _, a := range args {
-		if a == "-r" || a == "--repeat" || a == "-n" || a == "--head-count" {
-			hasSubset = true
-			break
-		}
-	}
-	if !hasSubset {
+	if !hasSubsetFlag(args) {
 		goSorted := sortedLines(goOut)
 		refSorted := sortedLines(refOut)
 		for i := range goSorted {
@@ -590,6 +757,20 @@ func verifyStructural(t *testing.T, goBin, refBin string, args []string, stdin s
 			}
 		}
 	}
+}
+
+// hasSubsetFlag returns true if the args contain flags that make the
+// output a subset or allow repetition, preventing exact set comparison.
+func hasSubsetFlag(args []string) bool {
+	for _, a := range args {
+		if a == "-r" || a == "--repeat" || a == "-n" || a == "--head-count" {
+			return true
+		}
+		if strings.HasPrefix(a, "-n") || strings.HasPrefix(a, "--head-count=") {
+			return true
+		}
+	}
+	return false
 }
 
 // runShuf executes a shuf binary with the given args and stdin.
