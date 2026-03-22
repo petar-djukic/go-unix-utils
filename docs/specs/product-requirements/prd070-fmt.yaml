@@ -18,18 +18,34 @@ requirements:
   R1:
     title: Default formatting behavior
     items:
-      - R1.1: When invoked with no options, must reformat each paragraph of input text to fit within 75 characters (the GNU default width).
-      - R1.2: Must treat blank lines as paragraph separators. Must not merge text across blank lines.
-      - R1.3: Must preserve the indentation of the first line of each paragraph. Subsequent lines in the same paragraph are filled to match the second line's indentation (or the first if only one line).
-      - R1.4: When given one or more FILE arguments, must read and format each file in order. When no file is given or "-" is given, must read from stdin.
+      - R1.1:
+          text: When invoked with no options, must reformat each paragraph of input text to fit within 75 characters (the GNU default width).
+          weight: 1
+      - R1.2:
+          text: Must treat blank lines as paragraph separators. Must not merge text across blank lines.
+          weight: 1
+      - R1.3:
+          text: Must preserve the indentation of the first line of each paragraph. Subsequent lines in the same paragraph are filled to match the second line's indentation (or the first if only one line).
+          weight: 1
+      - R1.4:
+          text: When given one or more FILE arguments, must read and format each file in order. When no file is given or "-" is given, must read from stdin.
+          weight: 1
 
   R2:
     title: Width control and goal width
     items:
-      - R2.1: "-w WIDTH or --width=WIDTH must set the maximum line width (default 75)."
-      - R2.2: "-g GOAL or --goal=GOAL must set the goal line width. Lines are filled to approximately GOAL characters. Default goal is 93% of width."
-      - R2.3: Must break lines at word boundaries (spaces). Must not break in the middle of a word unless the word exceeds the maximum width.
-      - R2.4: Must collapse multiple spaces between words to a single space, except after sentence-ending punctuation (. ! ?) where two spaces are preserved.
+      - R2.1:
+          text: "-w WIDTH or --width=WIDTH must set the maximum line width (default 75)."
+          weight: 1
+      - R2.2:
+          text: "-g GOAL or --goal=GOAL must set the goal line width. Lines are filled to approximately GOAL characters. Default goal is 93% of width."
+          weight: 1
+      - R2.3:
+          text: Must break lines at word boundaries (spaces). Must not break in the middle of a word unless the word exceeds the maximum width.
+          weight: 1
+      - R2.4:
+          text: Must collapse multiple spaces between words to a single space, except after sentence-ending punctuation (. ! ?) where two spaces are preserved.
+          weight: 1
 
   # R3 (formatting options: -s, -u, -p, -t) deferred to release 99.0.
   # Timed out at 15 minutes in run 37. See GH-2938.
@@ -37,10 +53,18 @@ requirements:
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when formatting completes successfully.
-      - R4.2: Must exit 1 when an invalid option is given or a file cannot be opened.
-      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
-      - R4.4: "Tests must cover: default 75-char formatting, -w custom width, -g goal width, -s split-only, -u uniform spacing, -p prefix mode, -t tagged paragraph, multi-file input, stdin input, blank line paragraph boundaries, indentation preservation, and error cases (invalid width, missing file)."
+      - R4.1:
+          text: Must exit 0 when formatting completes successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when an invalid option is given or a file cannot be opened.
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: default 75-char formatting, -w custom width, -g goal width, -s split-only, -u uniform spacing, -p prefix mode, -t tagged paragraph, multi-file input, stdin input, blank line paragraph boundaries, indentation preservation, and error cases (invalid width, missing file)."
+          weight: 1
 
 non_goals:
   - cmd/fmt does not implement crown margin mode (-c) beyond the default indentation behavior.

@@ -18,23 +18,41 @@ requirements:
   R1:
     title: Default behavior
     items:
-      - R1.1: When invoked with no arguments, must print the group names of the current user, space-separated, on a single line followed by a newline, and exit 0.
-      - R1.2: When invoked with one or more USER arguments, must print the groups for each user on a separate line and exit 0.
-      - R1.3: If a named USER does not exist, must print an error message to stderr for that user and continue processing remaining users. Must exit 1 if any user was not found.
+      - R1.1:
+          text: When invoked with no arguments, must print the group names of the current user, space-separated, on a single line followed by a newline, and exit 0.
+          weight: 1
+      - R1.2:
+          text: When invoked with one or more USER arguments, must print the groups for each user on a separate line and exit 0.
+          weight: 1
+      - R1.3:
+          text: If a named USER does not exist, must print an error message to stderr for that user and continue processing remaining users. Must exit 1 if any user was not found.
+          weight: 1
 
   R2:
     title: Output format
     items:
-      - R2.1: When no USER argument is given, must print only the space-separated group names with no prefix.
-      - R2.2: "When USER arguments are given, each line must be formatted as: 'user : group1 group2 ...' with the user name, a space, a colon, a space, and then the space-separated group names."
-      - R2.3: Group names must appear in the order returned by the system group database.
+      - R2.1:
+          text: When no USER argument is given, must print only the space-separated group names with no prefix.
+          weight: 1
+      - R2.2:
+          text: "When USER arguments are given, each line must be formatted as: 'user : group1 group2 ...' with the user name, a space, a colon, a space, and then the space-separated group names."
+          weight: 1
+      - R2.3:
+          text: Group names must appear in the order returned by the system group database.
+          weight: 1
 
   R3:
     title: Differential testing
     items:
-      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (ggroups) via pkg/testutils.
-      - R3.2: "Tests must cover: no-argument current-user output, single named user, multiple named users, nonexistent user error, and mixed valid/invalid users."
-      - R3.3: Tests must verify the "user :" prefix format for named-user queries.
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (ggroups) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: no-argument current-user output, single named user, multiple named users, nonexistent user error, and mixed valid/invalid users."
+          weight: 1
+      - R3.3:
+          text: Tests must verify the "user :" prefix format for named-user queries.
+          weight: 1
 
 non_goals:
   - cmd/groups does not support any flags beyond --help and --version; it has no optional behavior modes.

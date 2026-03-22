@@ -19,34 +19,66 @@ requirements:
   R1:
     title: Default behavior and line-based splitting
     items:
-      - R1.1: When invoked with no options, must split the input into pieces of 1000 lines each, writing to files named xaa, xab, xac, etc.
-      - R1.2: "When a PREFIX argument is given, must use PREFIX instead of 'x' as the output filename prefix."
-      - R1.3: "-l N or --lines=N must split the input into pieces of N lines each."
-      - R1.4: When reading from stdin or when FILE is "-", must read from stdin.
+      - R1.1:
+          text: When invoked with no options, must split the input into pieces of 1000 lines each, writing to files named xaa, xab, xac, etc.
+          weight: 1
+      - R1.2:
+          text: "When a PREFIX argument is given, must use PREFIX instead of 'x' as the output filename prefix."
+          weight: 1
+      - R1.3:
+          text: "-l N or --lines=N must split the input into pieces of N lines each."
+          weight: 1
+      - R1.4:
+          text: When reading from stdin or when FILE is "-", must read from stdin.
+          weight: 1
 
   R2:
     title: Byte-based and chunk-based splitting
     items:
-      - R2.1: "-b N or --bytes=N must split the input into pieces of N bytes each. N may have a suffix (K, M, G, T, P, E, Z, Y for powers of 1024, or KB, MB, etc. for powers of 1000)."
-      - R2.2: "-C N or --line-bytes=N must split the input into pieces of at most N bytes each, breaking only at line boundaries. Lines longer than N bytes are written to their own piece."
-      - R2.3: "-n CHUNKS or --number=CHUNKS must split the input into CHUNKS pieces of roughly equal size. Must support N (by bytes), l/N (by lines), and r/N (round-robin by lines) forms."
-      - R2.4: "Must not split in more than one mode simultaneously; conflicting split options must produce an error and exit 1."
+      - R2.1:
+          text: "-b N or --bytes=N must split the input into pieces of N bytes each. N may have a suffix (K, M, G, T, P, E, Z, Y for powers of 1024, or KB, MB, etc. for powers of 1000)."
+          weight: 1
+      - R2.2:
+          text: "-C N or --line-bytes=N must split the input into pieces of at most N bytes each, breaking only at line boundaries. Lines longer than N bytes are written to their own piece."
+          weight: 1
+      - R2.3:
+          text: "-n CHUNKS or --number=CHUNKS must split the input into CHUNKS pieces of roughly equal size. Must support N (by bytes), l/N (by lines), and r/N (round-robin by lines) forms."
+          weight: 1
+      - R2.4:
+          text: "Must not split in more than one mode simultaneously; conflicting split options must produce an error and exit 1."
+          weight: 1
 
   R3:
     title: Suffix control and additional options
     items:
-      - R3.1: "-a N or --suffix-length=N must use suffixes of length N (default 2)."
-      - R3.2: "-d or --numeric-suffixes must use numeric suffixes (00, 01, 02, ...) instead of alphabetic."
-      - R3.3: "--additional-suffix=SUFFIX must append SUFFIX to each output filename after the alphabetic or numeric suffix."
-      - R3.4: "--filter=COMMAND must write each piece to the given shell COMMAND via a pipe, with the output filename available as $FILE in the command."
+      - R3.1:
+          text: "-a N or --suffix-length=N must use suffixes of length N (default 2)."
+          weight: 1
+      - R3.2:
+          text: "-d or --numeric-suffixes must use numeric suffixes (00, 01, 02, ...) instead of alphabetic."
+          weight: 1
+      - R3.3:
+          text: "--additional-suffix=SUFFIX must append SUFFIX to each output filename after the alphabetic or numeric suffix."
+          weight: 1
+      - R3.4:
+          text: "--filter=COMMAND must write each piece to the given shell COMMAND via a pipe, with the output filename available as $FILE in the command."
+          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when the input is split successfully.
-      - R4.2: Must exit 1 when an invalid option, conflicting options, or write error occurs.
-      - R4.3: "Differential tests must compare output file contents and exit codes between the Go binary and the reference binary via pkg/testutils."
-      - R4.4: "Tests must cover: default 1000-line split, -l with custom line count, -b byte split with and without suffixes, -C line-bytes, -n chunk modes, -a suffix length, -d numeric suffixes, --additional-suffix, stdin input, custom prefix, and error cases (conflicting options, invalid counts)."
+      - R4.1:
+          text: Must exit 0 when the input is split successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when an invalid option, conflicting options, or write error occurs.
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare output file contents and exit codes between the Go binary and the reference binary via pkg/testutils."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: default 1000-line split, -l with custom line count, -b byte split with and without suffixes, -C line-bytes, -n chunk modes, -a suffix length, -d numeric suffixes, --additional-suffix, stdin input, custom prefix, and error cases (conflicting options, invalid counts)."
+          weight: 1
 
 non_goals:
   - cmd/split does not implement --verbose output mode.

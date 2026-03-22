@@ -19,35 +19,69 @@ requirements:
   R1:
     title: Line-count mode (default and -n)
     items:
-      - R1.1: When no flags are given, must print the first 10 lines of each input file.
-      - R1.2: "-n NUM or --lines=NUM must print the first NUM lines. NUM must be a positive integer or a negative integer prefixed with '-'."
-      - R1.3: "When NUM is prefixed with '-' (e.g., -n -5), must print all lines except the last NUM lines. This requires buffering the entire input to determine where to stop."
-      - R1.4: Must read from stdin when no file arguments are given or when a file argument is "-".
-      - R1.5: A line is terminated by a newline character. The last line of a file that does not end with a newline is still counted as a line.
+      - R1.1:
+          text: When no flags are given, must print the first 10 lines of each input file.
+          weight: 1
+      - R1.2:
+          text: "-n NUM or --lines=NUM must print the first NUM lines. NUM must be a positive integer or a negative integer prefixed with '-'."
+          weight: 1
+      - R1.3:
+          text: "When NUM is prefixed with '-' (e.g., -n -5), must print all lines except the last NUM lines. This requires buffering the entire input to determine where to stop."
+          weight: 1
+      - R1.4:
+          text: Must read from stdin when no file arguments are given or when a file argument is "-".
+          weight: 1
+      - R1.5:
+          text: A line is terminated by a newline character. The last line of a file that does not end with a newline is still counted as a line.
+          weight: 1
 
   R2:
     title: Byte-count mode (-c)
     items:
-      - R2.1: "-c NUM or --bytes=NUM must print the first NUM bytes of each input. -c and -n are mutually exclusive; the last one given takes precedence."
-      - R2.2: "When NUM is prefixed with '-' (e.g., -c -100), must print all bytes except the last NUM bytes."
-      - R2.3: NUM may use multiplier suffixes as defined by GNU coreutils. At minimum, must support b (512), K or KiB (1024), M or MiB (1048576), and G or GiB (1073741824).
+      - R2.1:
+          text: "-c NUM or --bytes=NUM must print the first NUM bytes of each input. -c and -n are mutually exclusive; the last one given takes precedence."
+          weight: 1
+      - R2.2:
+          text: "When NUM is prefixed with '-' (e.g., -c -100), must print all bytes except the last NUM bytes."
+          weight: 1
+      - R2.3:
+          text: NUM may use multiplier suffixes as defined by GNU coreutils. At minimum, must support b (512), K or KiB (1024), M or MiB (1048576), and G or GiB (1073741824).
+          weight: 1
 
   R3:
     title: Multi-file output and headers
     items:
-      - R3.1: "When multiple files are given, must precede each file's output with a header in the format '==> FILENAME <==' followed by a newline. A blank line separates each file's header from the previous file's output."
-      - R3.2: When a single file is given, must not print a header by default.
-      - R3.3: -q or --quiet or --silent must suppress all headers, even for multiple files.
-      - R3.4: -v or --verbose must print headers even for a single file.
-      - R3.5: When a named file cannot be opened, must print an error message to stderr and continue processing remaining files.
+      - R3.1:
+          text: "When multiple files are given, must precede each file's output with a header in the format '==> FILENAME <==' followed by a newline. A blank line separates each file's header from the previous file's output."
+          weight: 1
+      - R3.2:
+          text: When a single file is given, must not print a header by default.
+          weight: 1
+      - R3.3:
+          text: -q or --quiet or --silent must suppress all headers, even for multiple files.
+          weight: 1
+      - R3.4:
+          text: -v or --verbose must print headers even for a single file.
+          weight: 1
+      - R3.5:
+          text: When a named file cannot be opened, must print an error message to stderr and continue processing remaining files.
+          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when all input files are processed successfully.
-      - R4.2: Must exit 1 when any input file cannot be opened or read. Must still process and output content for the files that were successfully read.
-      - R4.3: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
-      - R4.4: "Tests must cover: default 10 lines, explicit -n count, -c byte count, negative counts (-n -5, -c -100), multi-file headers, -q (suppress headers), -v (force headers), stdin input, and error on non-existent file."
+      - R4.1:
+          text: Must exit 0 when all input files are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened or read. Must still process and output content for the files that were successfully read.
+          weight: 1
+      - R4.3:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: default 10 lines, explicit -n count, -c byte count, negative counts (-n -5, -c -100), multi-file headers, -q (suppress headers), -v (force headers), stdin input, and error on non-existent file."
+          weight: 1
 
 non_goals:
   - cmd/head does not implement -z (zero-terminated lines using NUL delimiter). This flag adds complexity to the line-counting logic and is rarely used.

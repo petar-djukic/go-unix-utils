@@ -18,34 +18,66 @@ requirements:
   R1:
     title: Default line numbering
     items:
-      - R1.1: By default, must number non-empty lines in the body section only, using right-justified numbers in a field of width 6, with a tab character separating the number from the line content.
-      - R1.2: Empty lines (containing only a newline) in the body section must not be numbered by default. They must be passed through with no number and no separator.
-      - R1.3: Must read from stdin when no file arguments are given. Must read each named file in argument order.
-      - R1.4: Line numbering must be continuous across files when multiple files are given (the counter does not reset between files unless a page delimiter is encountered).
+      - R1.1:
+          text: By default, must number non-empty lines in the body section only, using right-justified numbers in a field of width 6, with a tab character separating the number from the line content.
+          weight: 1
+      - R1.2:
+          text: Empty lines (containing only a newline) in the body section must not be numbered by default. They must be passed through with no number and no separator.
+          weight: 1
+      - R1.3:
+          text: Must read from stdin when no file arguments are given. Must read each named file in argument order.
+          weight: 1
+      - R1.4:
+          text: Line numbering must be continuous across files when multiple files are given (the counter does not reset between files unless a page delimiter is encountered).
+          weight: 1
 
   R2:
     title: Numbering style flags (-b, -h, -f)
     items:
-      - R2.1: "-b STYLE must set the body section numbering style. Styles: a (number all lines), t (number non-empty lines, default), n (number no lines), p RE (number lines matching regular expression RE)."
-      - R2.2: "-h STYLE must set the header section numbering style (default n). Same style values as -b."
-      - R2.3: "-f STYLE must set the footer section numbering style (default n). Same style values as -b."
-      - R2.4: When the style is n for a section, lines in that section must pass through with no number and no separator character.
+      - R2.1:
+          text: "-b STYLE must set the body section numbering style. Styles: a (number all lines), t (number non-empty lines, default), n (number no lines), p RE (number lines matching regular expression RE)."
+          weight: 1
+      - R2.2:
+          text: "-h STYLE must set the header section numbering style (default n). Same style values as -b."
+          weight: 1
+      - R2.3:
+          text: "-f STYLE must set the footer section numbering style (default n). Same style values as -b."
+          weight: 1
+      - R2.4:
+          text: When the style is n for a section, lines in that section must pass through with no number and no separator character.
+          weight: 1
 
   R3:
     title: Format and numbering options (-n, -w, -s, -v, -i, -l)
     items:
-      - R3.1: "-n FORMAT must set the line number format. Formats: ln (left-justified, no leading zeros), rn (right-justified, no leading zeros, default), rz (right-justified, leading zeros)."
-      - R3.2: -w N must set the line number field width to N characters (default 6).
-      - R3.3: -s SEP must use SEP as the separator between the line number and the line content (default tab). SEP may be any string.
-      - R3.4: -v N must set the initial line number to N (default 1). -i N must set the line number increment to N (default 1).
+      - R3.1:
+          text: "-n FORMAT must set the line number format. Formats: ln (left-justified, no leading zeros), rn (right-justified, no leading zeros, default), rz (right-justified, leading zeros)."
+          weight: 1
+      - R3.2:
+          text: -w N must set the line number field width to N characters (default 6).
+          weight: 1
+      - R3.3:
+          text: -s SEP must use SEP as the separator between the line number and the line content (default tab). SEP may be any string.
+          weight: 1
+      - R3.4:
+          text: -v N must set the initial line number to N (default 1). -i N must set the line number increment to N (default 1).
+          weight: 1
 
   R4:
     title: Section delimiters and page reset (-d, -p, -l)
     items:
-      - R4.1: "A line containing only the two-character sequence \\:\\:\\: (the section delimiter repeated three times) marks the start of a header section. \\:\\: marks the start of a body section. \\: marks the start of a footer section. These delimiter lines are not written to output."
-      - R4.2: Each new logical page (triggered by a header delimiter) resets the line counter to the value of -v unless -p is given.
-      - R4.3: -p must suppress line counter reset at the start of each logical page; numbering continues from the previous page's last line number.
-      - R4.4: -l N must treat N consecutive empty lines as a single empty line for the purpose of numbering with -b t. The default is 1 (each empty line counted separately). With -l 2, two or fewer consecutive empty lines are treated as one unnumbered block.
+      - R4.1:
+          text: "A line containing only the two-character sequence \\:\\:\\: (the section delimiter repeated three times) marks the start of a header section. \\:\\: marks the start of a body section. \\: marks the start of a footer section. These delimiter lines are not written to output."
+          weight: 1
+      - R4.2:
+          text: Each new logical page (triggered by a header delimiter) resets the line counter to the value of -v unless -p is given.
+          weight: 1
+      - R4.3:
+          text: -p must suppress line counter reset at the start of each logical page; numbering continues from the previous page's last line number.
+          weight: 1
+      - R4.4:
+          text: -l N must treat N consecutive empty lines as a single empty line for the purpose of numbering with -b t. The default is 1 (each empty line counted separately). With -l 2, two or fewer consecutive empty lines are treated as one unnumbered block.
+          weight: 1
 
 non_goals:
   - cmd/nl does not implement regex-based separator matching beyond the -p RE style argument.

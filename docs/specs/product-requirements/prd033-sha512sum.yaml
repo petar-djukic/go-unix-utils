@@ -18,30 +18,54 @@ requirements:
   R1:
     title: Digest computation
     items:
-      - R1.1: Must compute the SHA-512 digest of each named file and write one line per file in the format "HASH  FILENAME" (text mode) or "HASH *FILENAME" (binary mode). The default is text mode.
-      - R1.2: Must read from stdin and print "HASH  -" when no file arguments are given or when "-" is provided as a filename.
-      - R1.3: --tag must use BSD-style output format "SHA512 (FILENAME) = HASH".
-      - R1.4: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
+      - R1.1:
+          text: Must compute the SHA-512 digest of each named file and write one line per file in the format "HASH  FILENAME" (text mode) or "HASH *FILENAME" (binary mode). The default is text mode.
+          weight: 1
+      - R1.2:
+          text: Must read from stdin and print "HASH  -" when no file arguments are given or when "-" is provided as a filename.
+          weight: 1
+      - R1.3:
+          text: --tag must use BSD-style output format "SHA512 (FILENAME) = HASH".
+          weight: 1
+      - R1.4:
+          text: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
+          weight: 1
 
   R2:
     title: Checksum verification (--check, -c)
     items:
-      - R2.1: "--check FILE must read FILE, parse each line (GNU or BSD tag format), recompute the SHA-512 digest, and compare to the stored hash."
-      - R2.2: 'Must print "FILENAME: OK" or "FILENAME: FAILED" for each entry. Must exit 1 if any check fails.'
-      - R2.3: --warn prints a warning for each malformed line. --quiet suppresses OK lines. --status suppresses all output.
+      - R2.1:
+          text: "--check FILE must read FILE, parse each line (GNU or BSD tag format), recompute the SHA-512 digest, and compare to the stored hash."
+          weight: 1
+      - R2.2:
+          text: 'Must print "FILENAME: OK" or "FILENAME: FAILED" for each entry. Must exit 1 if any check fails.'
+          weight: 1
+      - R2.3:
+          text: --warn prints a warning for each malformed line. --quiet suppresses OK lines. --status suppresses all output.
+          weight: 1
 
   R3:
     title: Binary and text mode flags
     items:
-      - R3.1: -b marks input as binary; output uses "HASH *FILENAME". -t (default) uses "HASH  FILENAME".
-      - R3.2: --tag produces BSD tag format regardless of -b/-t.
+      - R3.1:
+          text: -b marks input as binary; output uses "HASH *FILENAME". -t (default) uses "HASH  FILENAME".
+          weight: 1
+      - R3.2:
+          text: --tag produces BSD tag format regardless of -b/-t.
+          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
-      - R4.1: Must exit 0 when all files are processed and all verified digests match.
-      - R4.2: Must exit 1 when any file cannot be opened, any digest fails, or the checksum file is unreadable.
-      - R4.3: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R4.1:
+          text: Must exit 0 when all files are processed and all verified digests match.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any file cannot be opened, any digest fails, or the checksum file is unreadable.
+          weight: 1
+      - R4.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
 non_goals:
   - cmd/sha512sum does not implement HMAC-SHA512 or keyed variants.

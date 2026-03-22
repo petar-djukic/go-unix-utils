@@ -18,33 +18,63 @@ requirements:
   R1:
     title: Byte and character selection (-b, -c)
     items:
-      - R1.1: -b LIST must extract the specified byte positions from each line. LIST is a comma-separated list of ranges; each range is N, N-M, N- (from N to end), or -M (from start to M). Bytes are 1-indexed.
-      - R1.2: -c LIST must extract the specified character positions. Under LC_ALL=C, -c and -b are equivalent (one byte per character). The flag is provided for compatibility.
-      - R1.3: With -b or -c, newline characters are not counted as part of the line; they are passed through to terminate each output line.
-      - R1.4: Lines shorter than the selected range produce no bytes for the out-of-range positions; only the bytes that exist are output.
+      - R1.1:
+          text: -b LIST must extract the specified byte positions from each line. LIST is a comma-separated list of ranges; each range is N, N-M, N- (from N to end), or -M (from start to M). Bytes are 1-indexed.
+          weight: 1
+      - R1.2:
+          text: -c LIST must extract the specified character positions. Under LC_ALL=C, -c and -b are equivalent (one byte per character). The flag is provided for compatibility.
+          weight: 1
+      - R1.3:
+          text: With -b or -c, newline characters are not counted as part of the line; they are passed through to terminate each output line.
+          weight: 1
+      - R1.4:
+          text: Lines shorter than the selected range produce no bytes for the out-of-range positions; only the bytes that exist are output.
+          weight: 1
 
   R2:
     title: Field selection (-f, -d, -s)
     items:
-      - R2.1: -f LIST must extract the specified fields from each line, where fields are delimited by the character given with -d (default tab). LIST uses the same range syntax as -b.
-      - R2.2: -d DELIM must set the input field delimiter to the single character DELIM. The delimiter must be exactly one byte. When the output delimiter is not explicitly set with --output-delimiter, the input delimiter is also used as the output delimiter.
-      - R2.3: -s must suppress lines that do not contain the delimiter. Without -s, lines with no delimiter are printed unchanged.
-      - R2.4: --output-delimiter STRING must use STRING as the separator between selected output fields, replacing the default (which is the input delimiter).
+      - R2.1:
+          text: -f LIST must extract the specified fields from each line, where fields are delimited by the character given with -d (default tab). LIST uses the same range syntax as -b.
+          weight: 1
+      - R2.2:
+          text: -d DELIM must set the input field delimiter to the single character DELIM. The delimiter must be exactly one byte. When the output delimiter is not explicitly set with --output-delimiter, the input delimiter is also used as the output delimiter.
+          weight: 1
+      - R2.3:
+          text: -s must suppress lines that do not contain the delimiter. Without -s, lines with no delimiter are printed unchanged.
+          weight: 1
+      - R2.4:
+          text: --output-delimiter STRING must use STRING as the separator between selected output fields, replacing the default (which is the input delimiter).
+          weight: 1
 
   R3:
     title: Complement mode (--complement)
     items:
-      - R3.1: --complement must invert the selection; the output contains the bytes, characters, or fields NOT specified by the range list.
-      - R3.2: --complement is compatible with -b, -c, and -f. It is not compatible with -s.
-      - R3.3: With --complement and -f, fields not in the list are output in their original order, separated by the output delimiter.
+      - R3.1:
+          text: --complement must invert the selection; the output contains the bytes, characters, or fields NOT specified by the range list.
+          weight: 1
+      - R3.2:
+          text: --complement is compatible with -b, -c, and -f. It is not compatible with -s.
+          weight: 1
+      - R3.3:
+          text: With --complement and -f, fields not in the list are output in their original order, separated by the output delimiter.
+          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
-      - R4.1: Must exit 0 when all inputs are processed successfully.
-      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
-      - R4.3: Must exit 1 when a write error occurs on stdout.
-      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R4.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
+          weight: 1
+      - R4.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R4.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
 non_goals:
   - cmd/cut does not support multi-byte delimiters; -d accepts exactly one byte.

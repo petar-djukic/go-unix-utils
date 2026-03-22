@@ -18,34 +18,66 @@ requirements:
   R1:
     title: Default deduplication
     items:
-      - R1.1: By default, must read each line and write it once, suppressing all but the first occurrence of any run of identical adjacent lines.
-      - R1.2: Lines that appear only once must be written. Lines that appear multiple times in a run must be written once. Non-adjacent duplicates are unaffected (uniq does not sort input).
-      - R1.3: Must read from stdin when no file argument is given. Must accept an optional output file as a second argument.
-      - R1.4: Comparison is case-sensitive by default. Each line includes the newline terminator in the comparison.
+      - R1.1:
+          text: By default, must read each line and write it once, suppressing all but the first occurrence of any run of identical adjacent lines.
+          weight: 1
+      - R1.2:
+          text: Lines that appear only once must be written. Lines that appear multiple times in a run must be written once. Non-adjacent duplicates are unaffected (uniq does not sort input).
+          weight: 1
+      - R1.3:
+          text: Must read from stdin when no file argument is given. Must accept an optional output file as a second argument.
+          weight: 1
+      - R1.4:
+          text: Comparison is case-sensitive by default. Each line includes the newline terminator in the comparison.
+          weight: 1
 
   R2:
     title: Output selection (-d, -D, -u, -c)
     items:
-      - R2.1: -d must print only lines that appear more than once in a run (one copy per run). Lines that appear only once are suppressed.
-      - R2.2: -D must print all lines of each run that appears more than once. Every copy of a duplicated run is written, not just the first.
-      - R2.3: -u must print only lines that appear exactly once (runs of one).
-      - R2.4: -c must prefix each output line with the count of occurrences in its run, right-justified in a field wide enough to hold the count, followed by a space and the line.
+      - R2.1:
+          text: -d must print only lines that appear more than once in a run (one copy per run). Lines that appear only once are suppressed.
+          weight: 1
+      - R2.2:
+          text: -D must print all lines of each run that appears more than once. Every copy of a duplicated run is written, not just the first.
+          weight: 1
+      - R2.3:
+          text: -u must print only lines that appear exactly once (runs of one).
+          weight: 1
+      - R2.4:
+          text: -c must prefix each output line with the count of occurrences in its run, right-justified in a field wide enough to hold the count, followed by a space and the line.
+          weight: 1
 
   R3:
     title: Comparison options (-i, -f, -s, -w)
     items:
-      - R3.1: -i must perform case-insensitive comparison. Lines that differ only in case are treated as duplicates.
-      - R3.2: -f N must skip the first N fields (whitespace-separated tokens) of each line before comparing. The skipped fields are still written to output.
-      - R3.3: -s N must skip the first N characters of each line before comparing. The skipped characters are still written to output.
-      - R3.4: -w N must compare only the first N characters of each line (after -f and -s adjustments). Characters beyond N are ignored for comparison purposes but still written.
+      - R3.1:
+          text: -i must perform case-insensitive comparison. Lines that differ only in case are treated as duplicates.
+          weight: 1
+      - R3.2:
+          text: -f N must skip the first N fields (whitespace-separated tokens) of each line before comparing. The skipped fields are still written to output.
+          weight: 1
+      - R3.3:
+          text: -s N must skip the first N characters of each line before comparing. The skipped characters are still written to output.
+          weight: 1
+      - R3.4:
+          text: -w N must compare only the first N characters of each line (after -f and -s adjustments). Characters beyond N are ignored for comparison purposes but still written.
+          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
-      - R4.1: Must exit 0 when all inputs are processed successfully.
-      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr.
-      - R4.3: Must exit 1 when a write error occurs on stdout.
-      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R4.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr.
+          weight: 1
+      - R4.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R4.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
 non_goals:
   - cmd/uniq does not sort its input; it operates only on adjacent duplicates.

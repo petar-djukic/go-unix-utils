@@ -17,43 +17,77 @@ requirements:
   R1:
     title: Hard link creation (default)
     items:
-      - R1.1: Must create a hard link from TARGET to LINK_NAME when invoked as 'ln TARGET LINK_NAME'.
-      - R1.2: Must create hard links for multiple TARGETs in DIRECTORY when invoked as 'ln TARGET... DIRECTORY', placing each link in DIRECTORY with the same basename as the target.
-      - R1.3: Must exit with a non-zero status and print an error to stderr when attempting to create a hard link to a directory.
-      - R1.4: Must exit with a non-zero status and print an error to stderr when LINK_NAME already exists and neither -f nor -i is given.
+      - R1.1:
+          text: Must create a hard link from TARGET to LINK_NAME when invoked as 'ln TARGET LINK_NAME'.
+          weight: 1
+      - R1.2:
+          text: Must create hard links for multiple TARGETs in DIRECTORY when invoked as 'ln TARGET... DIRECTORY', placing each link in DIRECTORY with the same basename as the target.
+          weight: 1
+      - R1.3:
+          text: Must exit with a non-zero status and print an error to stderr when attempting to create a hard link to a directory.
+          weight: 1
+      - R1.4:
+          text: Must exit with a non-zero status and print an error to stderr when LINK_NAME already exists and neither -f nor -i is given.
+          weight: 1
 
   R2:
     title: Symbolic link creation (-s, --symbolic)
     items:
-      - R2.1: -s or --symbolic must create a symbolic link instead of a hard link.
-      - R2.2: Must allow symbolic links to directories, unlike hard links.
-      - R2.3: Must store the TARGET string as-is in the symlink, whether it is relative or absolute.
-      - R2.4: -r or --relative must create a symbolic link with a relative path from the link location to the target, computing the relative path automatically.
+      - R2.1:
+          text: -s or --symbolic must create a symbolic link instead of a hard link.
+          weight: 1
+      - R2.2:
+          text: Must allow symbolic links to directories, unlike hard links.
+          weight: 1
+      - R2.3:
+          text: Must store the TARGET string as-is in the symlink, whether it is relative or absolute.
+          weight: 1
+      - R2.4:
+          text: -r or --relative must create a symbolic link with a relative path from the link location to the target, computing the relative path automatically.
+          weight: 1
 
   R3:
     title: Force, safety, and verbosity flags
     items:
-      - R3.1: -f or --force must remove existing destination files before creating the link.
-      - R3.2: -n or --no-dereference must treat a destination that is a symlink to a directory as a regular file, rather than following it.
-      - R3.3: |
-          -i or --interactive must prompt the user on stderr before removing an existing
-          destination. Prompt format: 'ln: replace 'DEST'? ' where DEST is the destination
-          path. Read one line from stdin. If the response starts with 'y' or 'Y', proceed
-          with removal and link creation. Any other response (including empty) means decline;
-          do not remove the destination and do not create the link. Do not retry on invalid
-          input. When stdin is not a terminal (detected via os.Stdin.Fd() isatty check),
-          treat as decline (do not prompt, do not remove). When -f and -i are both given,
-          the last flag on the command line wins, matching GNU ln behavior.
-      - R3.4: -v or --verbose must print the name of each link created to stdout.
-      - R3.5: -b must create a backup of each existing destination file before removal, using the default backup suffix '~'. --backup=METHOD must accept numbered, existing, simple, and none as backup methods.
-      - R3.6: -S SUFFIX or --suffix=SUFFIX must use SUFFIX instead of '~' for backup file names.
+      - R3.1:
+          text: -f or --force must remove existing destination files before creating the link.
+          weight: 1
+      - R3.2:
+          text: -n or --no-dereference must treat a destination that is a symlink to a directory as a regular file, rather than following it.
+          weight: 1
+      - R3.3:
+          text: |
+            -i or --interactive must prompt the user on stderr before removing an existing
+            destination. Prompt format: 'ln: replace 'DEST'? ' where DEST is the destination
+            path. Read one line from stdin. If the response starts with 'y' or 'Y', proceed
+            with removal and link creation. Any other response (including empty) means decline;
+            do not remove the destination and do not create the link. Do not retry on invalid
+            input. When stdin is not a terminal (detected via os.Stdin.Fd() isatty check),
+            treat as decline (do not prompt, do not remove). When -f and -i are both given,
+            the last flag on the command line wins, matching GNU ln behavior.
+          weight: 1
+      - R3.4:
+          text: -v or --verbose must print the name of each link created to stdout.
+          weight: 1
+      - R3.5:
+          text: -b must create a backup of each existing destination file before removal, using the default backup suffix '~'. --backup=METHOD must accept numbered, existing, simple, and none as backup methods.
+          weight: 1
+      - R3.6:
+          text: -S SUFFIX or --suffix=SUFFIX must use SUFFIX instead of '~' for backup file names.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout, stderr, exit codes, and resulting filesystem state between the Go binary and gln via pkg/testutils.
-      - R4.2: "Tests must cover: hard link creation, symbolic link creation (-s), force overwrite (-f), no-dereference (-n), verbose output (-v), backup creation (-b), multiple targets into a directory, relative symlinks (-r), and error cases for hard linking directories and existing destinations."
-      - R4.3: Tests must verify that created links point to the correct target and have the correct link type (hard or symbolic), matching gln behavior.
+      - R4.1:
+          text: Differential tests must compare stdout, stderr, exit codes, and resulting filesystem state between the Go binary and gln via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: hard link creation, symbolic link creation (-s), force overwrite (-f), no-dereference (-n), verbose output (-v), backup creation (-b), multiple targets into a directory, relative symlinks (-r), and error cases for hard linking directories and existing destinations."
+          weight: 1
+      - R4.3:
+          text: Tests must verify that created links point to the correct target and have the correct link type (hard or symbolic), matching gln behavior.
+          weight: 1
 
 non_goals:
   - cmd/ln does not implement -L or -P (logical/physical) dereference modes for following symlink chains on the target.

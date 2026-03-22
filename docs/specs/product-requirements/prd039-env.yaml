@@ -19,30 +19,54 @@ requirements:
   R1:
     title: Default behavior
     items:
-      - R1.1: When invoked with no arguments, must print every environment variable on its own line in NAME=VALUE format and exit 0.
-      - R1.2: When invoked with COMMAND [ARG ...], must execute COMMAND with the resulting environment after all modifications have been applied.
-      - R1.3: If COMMAND is not found, must exit 127. If COMMAND is found but cannot be executed, must exit 126.
+      - R1.1:
+          text: When invoked with no arguments, must print every environment variable on its own line in NAME=VALUE format and exit 0.
+          weight: 1
+      - R1.2:
+          text: When invoked with COMMAND [ARG ...], must execute COMMAND with the resulting environment after all modifications have been applied.
+          weight: 1
+      - R1.3:
+          text: If COMMAND is not found, must exit 127. If COMMAND is found but cannot be executed, must exit 126.
+          weight: 1
 
   R2:
     title: Environment modification
     items:
-      - R2.1: -i or --ignore-environment must start COMMAND with an empty environment. Only explicitly supplied NAME=VALUE pairs appear in the child process environment.
-      - R2.2: -u NAME or --unset=NAME must remove the variable NAME from the environment before COMMAND runs. Multiple -u flags must be supported.
-      - R2.3: Each NAME=VALUE argument (positional, before COMMAND) must set or override the variable NAME in the environment. The first argument that does not contain '=' and is not a flag is the start of COMMAND.
+      - R2.1:
+          text: -i or --ignore-environment must start COMMAND with an empty environment. Only explicitly supplied NAME=VALUE pairs appear in the child process environment.
+          weight: 1
+      - R2.2:
+          text: -u NAME or --unset=NAME must remove the variable NAME from the environment before COMMAND runs. Multiple -u flags must be supported.
+          weight: 1
+      - R2.3:
+          text: Each NAME=VALUE argument (positional, before COMMAND) must set or override the variable NAME in the environment. The first argument that does not contain '=' and is not a flag is the start of COMMAND.
+          weight: 1
 
   R3:
     title: Output formatting and exit codes
     items:
-      - R3.1: -0 or --null must terminate each output line with a NUL byte (0x00) instead of a newline when printing the environment (no COMMAND case).
-      - R3.2: When COMMAND is executed, env must exit with the same exit code as COMMAND.
-      - R3.3: Must print an error message to stderr when an invalid option is given and exit 125.
+      - R3.1:
+          text: -0 or --null must terminate each output line with a NUL byte (0x00) instead of a newline when printing the environment (no COMMAND case).
+          weight: 1
+      - R3.2:
+          text: When COMMAND is executed, env must exit with the same exit code as COMMAND.
+          weight: 1
+      - R3.3:
+          text: Must print an error message to stderr when an invalid option is given and exit 125.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (genv) via pkg/testutils.
-      - R4.2: "Tests must cover: no-argument environment dump, NAME=VALUE setting, -u unsetting, -i empty environment, -0 NUL-delimited output, COMMAND execution with modified env, and exit code passthrough."
-      - R4.3: Tests must verify error output and exit code for invalid options and missing commands.
+      - R4.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (genv) via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: no-argument environment dump, NAME=VALUE setting, -u unsetting, -i empty environment, -0 NUL-delimited output, COMMAND execution with modified env, and exit code passthrough."
+          weight: 1
+      - R4.3:
+          text: Tests must verify error output and exit code for invalid options and missing commands.
+          weight: 1
 
 non_goals:
   - cmd/env does not implement -C (change directory) or -S (split string) GNU extensions.

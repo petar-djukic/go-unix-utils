@@ -18,33 +18,63 @@ requirements:
   R1:
     title: Core copy behavior
     items:
-      - R1.1: Must read all bytes from stdin and write them to stdout. Simultaneously, must write the same bytes to each named output file in the order they appear on the command line.
-      - R1.2: When no file arguments are given, must copy stdin to stdout only (passthrough mode).
-      - R1.3: Must create output files that do not exist. Must truncate existing output files to zero length before writing, unless -a is given.
-      - R1.4: When "-" appears as a file argument, must treat it as an additional reference to stdout. The data is still written to stdout once (not duplicated), matching GNU tee behavior.
-      - R1.5: Must write output in the order received from stdin. Buffering is permitted but must not reorder data.
+      - R1.1:
+          text: Must read all bytes from stdin and write them to stdout. Simultaneously, must write the same bytes to each named output file in the order they appear on the command line.
+          weight: 1
+      - R1.2:
+          text: When no file arguments are given, must copy stdin to stdout only (passthrough mode).
+          weight: 1
+      - R1.3:
+          text: Must create output files that do not exist. Must truncate existing output files to zero length before writing, unless -a is given.
+          weight: 1
+      - R1.4:
+          text: When "-" appears as a file argument, must treat it as an additional reference to stdout. The data is still written to stdout once (not duplicated), matching GNU tee behavior.
+          weight: 1
+      - R1.5:
+          text: Must write output in the order received from stdin. Buffering is permitted but must not reorder data.
+          weight: 1
 
   R2:
     title: Append mode (-a) and SIGINT suppression (-i)
     items:
-      - R2.1: -a or --append must open each output file in append mode (O_APPEND). Existing file content is preserved and new data is appended after it.
-      - R2.2: -i or --ignore-interrupts must cause tee to ignore the SIGINT signal. Without -i, SIGINT terminates tee normally. With -i, tee continues reading and writing until stdin reaches EOF or a write error occurs.
-      - R2.3: -a and -i may be combined. Their effects are independent.
+      - R2.1:
+          text: -a or --append must open each output file in append mode (O_APPEND). Existing file content is preserved and new data is appended after it.
+          weight: 1
+      - R2.2:
+          text: -i or --ignore-interrupts must cause tee to ignore the SIGINT signal. Without -i, SIGINT terminates tee normally. With -i, tee continues reading and writing until stdin reaches EOF or a write error occurs.
+          weight: 1
+      - R2.3:
+          text: -a and -i may be combined. Their effects are independent.
+          weight: 1
 
   R3:
     title: Error handling and exit codes
     items:
-      - R3.1: Must exit 0 when all output files and stdout are written successfully.
-      - R3.2: Must exit 1 when any output file cannot be opened or written. Must print a diagnostic message to stderr identifying the failed file.
-      - R3.3: When one output file fails, must continue writing to the remaining output files and stdout. A single file failure does not stop output to other destinations.
-      - R3.4: Must exit 1 when a write error occurs on stdout (e.g., broken pipe without -p mode). The default GNU tee behavior exits on EPIPE to stdout.
+      - R3.1:
+          text: Must exit 0 when all output files and stdout are written successfully.
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when any output file cannot be opened or written. Must print a diagnostic message to stderr identifying the failed file.
+          weight: 1
+      - R3.3:
+          text: When one output file fails, must continue writing to the remaining output files and stdout. A single file failure does not stop output to other destinations.
+          weight: 1
+      - R3.4:
+          text: Must exit 1 when a write error occurs on stdout (e.g., broken pipe without -p mode). The default GNU tee behavior exits on EPIPE to stdout.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout output, output file content, and exit codes between the Go binary and the reference binary via pkg/testutils.
-      - R4.2: "Tests must cover: single file, multiple files, append mode (-a), passthrough mode (no files), SIGINT suppression (-i with a signal sent during operation), and write-error handling (output to a read-only path)."
-      - R4.3: Tests must verify that data written to each output file matches stdout byte-for-byte.
+      - R4.1:
+          text: Differential tests must compare stdout output, output file content, and exit codes between the Go binary and the reference binary via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: single file, multiple files, append mode (-a), passthrough mode (no files), SIGINT suppression (-i with a signal sent during operation), and write-error handling (output to a read-only path)."
+          weight: 1
+      - R4.3:
+          text: Tests must verify that data written to each output file matches stdout byte-for-byte.
+          weight: 1
 
 non_goals:
   - cmd/tee does not implement --output-error modes (warn, warn-nopipe, exit, exit-nopipe) or the -p flag. These are advanced error-handling modes that add complexity beyond the scope of rel02.0.

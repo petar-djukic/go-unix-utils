@@ -24,48 +24,92 @@ requirements:
   R1:
     title: Core soak-before-write contract
     items:
-      - R1.1: Must read all bytes from stdin before opening or creating the output file. Opening the output file before stdin is closed violates the core contract and is not permitted.
-      - R1.2: Must buffer stdin in memory using a dynamically grown buffer starting at 8192 bytes, doubling on overflow, matching sponge.c:BUFF_SIZE and the realloc loop at sponge.c:313-324.
-      - R1.3: "When the in-memory buffer would exceed the available memory threshold (derived from physmem_available() in the reference; in Go, use runtime.MemStats or a fixed fraction of RLIMIT_DATA), must spill the current buffer to a temp file and continue reading. The spill must be transparent: the final output is still a single concatenated byte stream."
-      - R1.4: Must create the temp file in the directory specified by the TMPDIR environment variable, or "/tmp" if TMPDIR is not set. The temp file name must follow the pattern "sponge.XXXXXX" (mkstemp-style random suffix).
-      - R1.5: "Must register a cleanup handler (atexit equivalent in Go: defer or os/signal) that deletes the temp file if the process exits or receives SIGINT, SIGTERM, SIGHUP, or SIGPIPE before the rename completes."
+      - R1.1:
+          text: Must read all bytes from stdin before opening or creating the output file. Opening the output file before stdin is closed violates the core contract and is not permitted.
+          weight: 1
+      - R1.2:
+          text: Must buffer stdin in memory using a dynamically grown buffer starting at 8192 bytes, doubling on overflow, matching sponge.c:BUFF_SIZE and the realloc loop at sponge.c:313-324.
+          weight: 1
+      - R1.3:
+          text: "When the in-memory buffer would exceed the available memory threshold (derived from physmem_available() in the reference; in Go, use runtime.MemStats or a fixed fraction of RLIMIT_DATA), must spill the current buffer to a temp file and continue reading. The spill must be transparent: the final output is still a single concatenated byte stream."
+          weight: 1
+      - R1.4:
+          text: Must create the temp file in the directory specified by the TMPDIR environment variable, or "/tmp" if TMPDIR is not set. The temp file name must follow the pattern "sponge.XXXXXX" (mkstemp-style random suffix).
+          weight: 1
+      - R1.5:
+          text: "Must register a cleanup handler (atexit equivalent in Go: defer or os/signal) that deletes the temp file if the process exits or receives SIGINT, SIGTERM, SIGHUP, or SIGPIPE before the rename completes."
+          weight: 1
 
   R2:
     title: Output file handling
     items:
-      - R2.1: When an output filename is given, must attempt an atomic rename of the temp file to the output filename when the output file is a regular file or does not yet exist (sponge.c:371-373).
-      - R2.2: When the rename fails (e.g., cross-device move), must fall back to a byte-for-byte copy of the temp file content to the output file, then delete the temp file.
-      - R2.3: When the output file already exists, must preserve its file mode (permissions) by reading the mode via lstat before writing and applying it to the output file via chmod (sponge.c:338-346). When the output file does not exist, must apply the default mode 0666 masked by the process umask.
-      - R2.4: "Must use lstat (not stat) to check whether the output path exists and is a regular file (sponge.c:332-333). This matters when the output path is a symlink: sponge must replace the symlink target, not follow it blindly."
-      - R2.5: The output file must never be in a partially-written state observable by other processes. Either the rename succeeds atomically or the copy completes before the old file is removed.
+      - R2.1:
+          text: When an output filename is given, must attempt an atomic rename of the temp file to the output filename when the output file is a regular file or does not yet exist (sponge.c:371-373).
+          weight: 1
+      - R2.2:
+          text: When the rename fails (e.g., cross-device move), must fall back to a byte-for-byte copy of the temp file content to the output file, then delete the temp file.
+          weight: 1
+      - R2.3:
+          text: When the output file already exists, must preserve its file mode (permissions) by reading the mode via lstat before writing and applying it to the output file via chmod (sponge.c:338-346). When the output file does not exist, must apply the default mode 0666 masked by the process umask.
+          weight: 1
+      - R2.4:
+          text: "Must use lstat (not stat) to check whether the output path exists and is a regular file (sponge.c:332-333). This matters when the output path is a symlink: sponge must replace the symlink target, not follow it blindly."
+          weight: 1
+      - R2.5:
+          text: The output file must never be in a partially-written state observable by other processes. Either the rename succeeds atomically or the copy completes before the old file is removed.
+          weight: 1
 
   R3:
     title: Append mode (-a)
     items:
-      - R3.1: "-a must cause sponge to prepend the existing content of the output file to the stdin content before writing. The result is: [original file content][stdin content] written to the output file."
-      - R3.2: -a applies only when the output file already exists and is a regular file. When the output file does not exist, -a behaves identically to the default mode (creates a new file with stdin content).
-      - R3.3: The prepend operation must copy the original file content into the temp file first, then append the stdin buffer to the temp file (sponge.c:352-357). The original file must be read before the temp file is renamed over it.
+      - R3.1:
+          text: "-a must cause sponge to prepend the existing content of the output file to the stdin content before writing. The result is: [original file content][stdin content] written to the output file."
+          weight: 1
+      - R3.2:
+          text: -a applies only when the output file already exists and is a regular file. When the output file does not exist, -a behaves identically to the default mode (creates a new file with stdin content).
+          weight: 1
+      - R3.3:
+          text: The prepend operation must copy the original file content into the temp file first, then append the stdin buffer to the temp file (sponge.c:352-357). The original file must be read before the temp file is renamed over it.
+          weight: 1
 
   R4:
     title: Passthrough mode (no output filename)
     items:
-      - R4.1: When no output filename is given, must write the buffered stdin content to stdout after stdin is fully consumed.
-      - R4.2: In passthrough mode with large input (temp file spill), must seek the temp file to the beginning and copy its content to stdout (sponge.c:403-406).
-      - R4.3: In passthrough mode with small input (buffer fits in memory), must write the in-memory buffer directly to stdout without creating or reading a temp file (sponge.c:408-411).
+      - R4.1:
+          text: When no output filename is given, must write the buffered stdin content to stdout after stdin is fully consumed.
+          weight: 1
+      - R4.2:
+          text: In passthrough mode with large input (temp file spill), must seek the temp file to the beginning and copy its content to stdout (sponge.c:403-406).
+          weight: 1
+      - R4.3:
+          text: In passthrough mode with small input (buffer fits in memory), must write the in-memory buffer directly to stdout without creating or reading a temp file (sponge.c:408-411).
+          weight: 1
 
   R5:
     title: Exit codes and error handling
     items:
-      - R5.1: Must exit 0 on success.
-      - R5.2: Must exit 1 when stdin cannot be read, when the temp file cannot be created or written, when the output file cannot be opened, or when the rename or copy fails. In all error cases, must print a descriptive error message to stderr via perror-equivalent before exiting.
-      - R5.3: Must exit 1 when memory allocation fails (buffer realloc). Must print an error and exit rather than panicking.
-      - R5.4: Must clean up the temp file on exit in all error paths. The temp file must not persist after the process exits, whether due to success or failure.
+      - R5.1:
+          text: Must exit 0 on success.
+          weight: 1
+      - R5.2:
+          text: Must exit 1 when stdin cannot be read, when the temp file cannot be created or written, when the output file cannot be opened, or when the rename or copy fails. In all error cases, must print a descriptive error message to stderr via perror-equivalent before exiting.
+          weight: 1
+      - R5.3:
+          text: Must exit 1 when memory allocation fails (buffer realloc). Must print an error and exit rather than panicking.
+          weight: 1
+      - R5.4:
+          text: Must clean up the temp file on exit in all error paths. The temp file must not persist after the process exits, whether due to success or failure.
+          weight: 1
 
   R6:
     title: Differential testing
     items:
-      - R6.1: Differential tests must compare the content of the output file (not stdout) after both the Go binary and the reference binary have exited, using file-content comparison provided by pkg/testutils.
-      - R6.2: "Tests must cover: small stdin (fits in memory), large stdin (forces temp file spill, tested with input larger than 1 MB), append mode, passthrough mode (no filename), output file does not exist, output file already exists (mode preservation), and the cross-device rename fallback (tested by placing the output file on a different filesystem from TMPDIR)."
+      - R6.1:
+          text: Differential tests must compare the content of the output file (not stdout) after both the Go binary and the reference binary have exited, using file-content comparison provided by pkg/testutils.
+          weight: 1
+      - R6.2:
+          text: "Tests must cover: small stdin (fits in memory), large stdin (forces temp file spill, tested with input larger than 1 MB), append mode, passthrough mode (no filename), output file does not exist, output file already exists (mode preservation), and the cross-device rename fallback (tested by placing the output file on a different filesystem from TMPDIR)."
+          weight: 1
 
 non_goals:
   - cmd/sponge does not implement interactive editing or prompt modes.

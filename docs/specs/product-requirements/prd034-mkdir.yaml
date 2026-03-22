@@ -17,32 +17,60 @@ requirements:
   R1:
     title: Basic directory creation
     items:
-      - R1.1: Must create a single directory when invoked as 'mkdir DIR'.
-      - R1.2: Must create multiple directories when invoked with multiple DIR arguments, processing each independently.
-      - R1.3: Must exit with a non-zero status and print an error to stderr when a target directory already exists and -p is not given.
-      - R1.4: Must exit with a non-zero status and print an error to stderr when the parent of the target does not exist and -p is not given.
+      - R1.1:
+          text: Must create a single directory when invoked as 'mkdir DIR'.
+          weight: 1
+      - R1.2:
+          text: Must create multiple directories when invoked with multiple DIR arguments, processing each independently.
+          weight: 1
+      - R1.3:
+          text: Must exit with a non-zero status and print an error to stderr when a target directory already exists and -p is not given.
+          weight: 1
+      - R1.4:
+          text: Must exit with a non-zero status and print an error to stderr when the parent of the target does not exist and -p is not given.
+          weight: 1
 
   R2:
     title: Parent directory creation (-p, --parents)
     items:
-      - R2.1: -p or --parents must create intermediate parent directories as needed, similar to 'mkdir -p a/b/c' creating a, a/b, and a/b/c.
-      - R2.2: Must not report an error when the target directory already exists and -p is given.
-      - R2.3: Must not report an error when intermediate directories already exist and -p is given.
+      - R2.1:
+          text: -p or --parents must create intermediate parent directories as needed, similar to 'mkdir -p a/b/c' creating a, a/b, and a/b/c.
+          weight: 1
+      - R2.2:
+          text: Must not report an error when the target directory already exists and -p is given.
+          weight: 1
+      - R2.3:
+          text: Must not report an error when intermediate directories already exist and -p is given.
+          weight: 1
 
   R3:
     title: Mode setting (-m, --mode)
     items:
-      - R3.1: -m MODE or --mode=MODE must set the file permission bits of the created directory to MODE, where MODE is an octal value or symbolic mode string.
-      - R3.2: When -m is not given, must create directories with default permissions (0777 modified by the process umask).
-      - R3.3: When -p is combined with -m, must apply the specified mode only to the final target directory; intermediate directories must be created with default permissions modified by umask.
-      - R3.4: -v or --verbose must print a message to stdout for each directory created.
+      - R3.1:
+          text: -m MODE or --mode=MODE must set the file permission bits of the created directory to MODE, where MODE is an octal value or symbolic mode string.
+          weight: 1
+      - R3.2:
+          text: When -m is not given, must create directories with default permissions (0777 modified by the process umask).
+          weight: 1
+      - R3.3:
+          text: When -p is combined with -m, must apply the specified mode only to the final target directory; intermediate directories must be created with default permissions modified by umask.
+          weight: 1
+      - R3.4:
+          text: -v or --verbose must print a message to stdout for each directory created.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout, stderr, and exit codes between the Go binary and gmkdir via pkg/testutils.
-      - R4.2: "Tests must cover: single directory creation, multiple directory creation, -p with nested paths, -p on existing directory, -m with octal mode, -v verbose output, and error cases for missing parents and existing targets."
-      - R4.3: Tests must verify that permission bits match between the Go implementation and gmkdir for all -m and -p combinations.
+      - R4.1:
+          text: Differential tests must compare stdout, stderr, and exit codes between the Go binary and gmkdir via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: single directory creation, multiple directory creation, -p with nested paths, -p on existing directory, -m with octal mode, -v verbose output, and error cases for missing parents and existing targets."
+          weight: 1
+      - R4.3:
+          text: Tests must verify that permission bits match between the Go implementation and gmkdir for all -m and -p combinations.
+          weight: 1
 
 non_goals:
   - cmd/mkdir does not implement SELinux context options (-Z, --context).

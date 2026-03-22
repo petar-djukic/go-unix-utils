@@ -17,33 +17,63 @@ requirements:
   R1:
     title: Default tab expansion (tab stop every 8 columns)
     items:
-      - R1.1: By default, tab characters must be replaced by enough spaces to advance to the next multiple-of-8 column position. Column positions are 1-indexed; a tab at column 1 advances to column 9.
-      - R1.2: Multiple consecutive tabs must each advance to the next tab stop independently.
-      - R1.3: Non-tab characters must be written unchanged. Each non-tab byte (including multi-byte UTF-8 sequences under LC_ALL=C) counts as one column.
-      - R1.4: Newline characters reset the column position to 1 for the next line.
+      - R1.1:
+          text: By default, tab characters must be replaced by enough spaces to advance to the next multiple-of-8 column position. Column positions are 1-indexed; a tab at column 1 advances to column 9.
+          weight: 1
+      - R1.2:
+          text: Multiple consecutive tabs must each advance to the next tab stop independently.
+          weight: 1
+      - R1.3:
+          text: Non-tab characters must be written unchanged. Each non-tab byte (including multi-byte UTF-8 sequences under LC_ALL=C) counts as one column.
+          weight: 1
+      - R1.4:
+          text: Newline characters reset the column position to 1 for the next line.
+          weight: 1
 
   R2:
     title: Custom tab stops (-t)
     items:
-      - R2.1: "-t N must set a uniform tab stop interval of N columns (equivalent to tab stops at N, 2N, 3N, ...). N must be a positive integer."
-      - R2.2: "-t LIST must set tab stops at the absolute column positions given in LIST (comma-separated or space-separated positive integers in strictly increasing order). A tab at or past the last explicit tab stop is replaced by a single space."
-      - R2.3: The -t option replaces the default tab stop interval of 8. If -t is given multiple times, the last value takes effect.
-      - R2.4: When LIST contains a single value, it behaves identically to -t N (uniform interval).
+      - R2.1:
+          text: "-t N must set a uniform tab stop interval of N columns (equivalent to tab stops at N, 2N, 3N, ...). N must be a positive integer."
+          weight: 1
+      - R2.2:
+          text: "-t LIST must set tab stops at the absolute column positions given in LIST (comma-separated or space-separated positive integers in strictly increasing order). A tab at or past the last explicit tab stop is replaced by a single space."
+          weight: 1
+      - R2.3:
+          text: The -t option replaces the default tab stop interval of 8. If -t is given multiple times, the last value takes effect.
+          weight: 1
+      - R2.4:
+          text: When LIST contains a single value, it behaves identically to -t N (uniform interval).
+          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
-      - R3.1: Must exit 0 when all inputs are processed successfully.
-      - R3.2: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
-      - R3.3: Must exit 1 when a write error occurs on stdout.
-      - R3.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R3.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
+          weight: 1
+      - R3.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R3.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare Go expand output against gexpand byte-for-byte via pkg/testutils.RunDiffTests.
-      - R4.2: "Tests must cover: default tab expansion, -t N with a single interval, -t LIST with multiple tab stops, input with no tabs (passthrough), and multiple tabs in succession."
-      - R4.3: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
+      - R4.1:
+          text: Differential tests must compare Go expand output against gexpand byte-for-byte via pkg/testutils.RunDiffTests.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: default tab expansion, -t N with a single interval, -t LIST with multiple tab stops, input with no tabs (passthrough), and multiple tabs in succession."
+          weight: 1
+      - R4.3:
+          text: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
+          weight: 1
 
 non_goals:
   - cmd/expand does not process backspace characters for column position adjustment (GNU expand does not adjust for backspaces either under LC_ALL=C).

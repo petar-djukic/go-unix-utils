@@ -16,31 +16,57 @@ requirements:
   R1:
     title: Default behavior and canonicalization
     items:
-      - R1.1: When invoked with a symlink operand and no flags, must print the immediate target of the symbolic link followed by a newline and exit 0.
-      - R1.2: If the operand is not a symbolic link (with no flags), must print nothing to stdout and exit 1.
-      - R1.3: "-f (--canonicalize) must resolve the full canonical path, following all symlinks. The final component need not exist, but the directory containing it must exist."
-      - R1.4: "-e (--canonicalize-existing) must resolve the full canonical path. Every component of the path must exist; otherwise exit 1."
-      - R1.5: "-m (--canonicalize-missing) must resolve the full canonical path. No component need exist."
-      - R1.6: "-n (--no-newline) must suppress the trailing newline when printing a single operand."
+      - R1.1:
+          text: When invoked with a symlink operand and no flags, must print the immediate target of the symbolic link followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: If the operand is not a symbolic link (with no flags), must print nothing to stdout and exit 1.
+          weight: 1
+      - R1.3:
+          text: "-f (--canonicalize) must resolve the full canonical path, following all symlinks. The final component need not exist, but the directory containing it must exist."
+          weight: 1
+      - R1.4:
+          text: "-e (--canonicalize-existing) must resolve the full canonical path. Every component of the path must exist; otherwise exit 1."
+          weight: 1
+      - R1.5:
+          text: "-m (--canonicalize-missing) must resolve the full canonical path. No component need exist."
+          weight: 1
+      - R1.6:
+          text: "-n (--no-newline) must suppress the trailing newline when printing a single operand."
+          weight: 1
 
   R2:
     title: Multiple operands
     items:
-      - R2.1: When multiple operands are given, must print each result on a separate line.
-      - R2.2: When multiple operands are given with -n, -n is ignored (newlines are always printed between results).
+      - R2.1:
+          text: When multiple operands are given, must print each result on a separate line.
+          weight: 1
+      - R2.2:
+          text: When multiple operands are given with -n, -n is ignored (newlines are always printed between results).
+          weight: 1
 
   R3:
     title: Error handling
     items:
-      - R3.1: If no operand is provided, must print a usage error to stderr and exit 1.
-      - R3.2: Unknown flags must produce an error message to stderr and exit 1.
+      - R3.1:
+          text: If no operand is provided, must print a usage error to stderr and exit 1.
+          weight: 1
+      - R3.2:
+          text: Unknown flags must produce an error message to stderr and exit 1.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (greadlink) via pkg/testutils.
-      - R4.2: "Tests must cover: symlink target, non-symlink operand, -f with existing and partial paths, -e with existing and missing paths, -m with missing paths, -n flag, multiple operands, and error cases."
-      - R4.3: All differential tests must set LC_ALL=C in the environment.
+      - R4.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (greadlink) via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: symlink target, non-symlink operand, -f with existing and partial paths, -e with existing and missing paths, -m with missing paths, -n flag, multiple operands, and error cases."
+          weight: 1
+      - R4.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
 
 non_goals:
   - cmd/readlink does not create or modify symbolic links; use cmd/ln for that.

@@ -19,34 +19,66 @@ requirements:
   R1:
     title: Default behavior and format strings
     items:
-      - R1.1: When invoked with no arguments, must print the current date and time in the default format and exit 0.
-      - R1.2: When a +FORMAT argument is given, must format the date according to the strftime-style format string and print the result followed by a newline.
-      - R1.3: Must support all standard strftime conversion specifications including %Y (year), %m (month), %d (day), %H (hour), %M (minute), %S (second), %Z (timezone name), %s (seconds since epoch), %N (nanoseconds), %A (weekday name), %B (month name), %j (day of year), %u (day of week 1-7), and %w (day of week 0-6).
-      - R1.4: Must support GNU extensions including %P (lowercase am/pm) and padding modifiers (%-d for no padding, %_d for space padding, %0d for zero padding).
+      - R1.1:
+          text: When invoked with no arguments, must print the current date and time in the default format and exit 0.
+          weight: 1
+      - R1.2:
+          text: When a +FORMAT argument is given, must format the date according to the strftime-style format string and print the result followed by a newline.
+          weight: 1
+      - R1.3:
+          text: Must support all standard strftime conversion specifications including %Y (year), %m (month), %d (day), %H (hour), %M (minute), %S (second), %Z (timezone name), %s (seconds since epoch), %N (nanoseconds), %A (weekday name), %B (month name), %j (day of year), %u (day of week 1-7), and %w (day of week 0-6).
+          weight: 1
+      - R1.4:
+          text: Must support GNU extensions including %P (lowercase am/pm) and padding modifiers (%-d for no padding, %_d for space padding, %0d for zero padding).
+          weight: 1
 
   R2:
     title: Date string parsing (-d/--date)
     items:
-      - R2.1: "-d STRING or --date=STRING must display the date described by STRING instead of the current time."
-      - R2.2: "Must parse epoch timestamps prefixed with @ (e.g., -d @1234567890)."
-      - R2.3: "Must parse ISO 8601 date strings (e.g., -d '2024-01-15 10:30:00')."
-      - R2.4: "When the date string cannot be parsed, must print an error to stderr and exit 1."
+      - R2.1:
+          text: "-d STRING or --date=STRING must display the date described by STRING instead of the current time."
+          weight: 1
+      - R2.2:
+          text: "Must parse epoch timestamps prefixed with @ (e.g., -d @1234567890)."
+          weight: 1
+      - R2.3:
+          text: "Must parse ISO 8601 date strings (e.g., -d '2024-01-15 10:30:00')."
+          weight: 1
+      - R2.4:
+          text: "When the date string cannot be parsed, must print an error to stderr and exit 1."
+          weight: 1
 
   R3:
     title: UTC mode and reference time
     items:
-      - R3.1: "-u or --utc or --universal must display the date in UTC instead of the local timezone."
-      - R3.2: "-r FILE or --reference=FILE must display the last modification time of FILE instead of the current time."
-      - R3.3: "When the referenced file does not exist, must print an error to stderr and exit 1."
-      - R3.4: Must not read from stdin. Must write formatted output to stdout only.
+      - R3.1:
+          text: "-u or --utc or --universal must display the date in UTC instead of the local timezone."
+          weight: 1
+      - R3.2:
+          text: "-r FILE or --reference=FILE must display the last modification time of FILE instead of the current time."
+          weight: 1
+      - R3.3:
+          text: "When the referenced file does not exist, must print an error to stderr and exit 1."
+          weight: 1
+      - R3.4:
+          text: Must not read from stdin. Must write formatted output to stdout only.
+          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when the date is displayed successfully.
-      - R4.2: Must exit 1 when an invalid date string is given or a referenced file does not exist.
-      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must use fixed dates via -d @EPOCH to ensure deterministic output."
-      - R4.4: "Tests must cover: default output with fixed epoch, +FORMAT with various conversion specs, -d with epoch and ISO strings, -u UTC mode, -r reference file, padding modifiers, and error cases (invalid date, missing file)."
+      - R4.1:
+          text: Must exit 0 when the date is displayed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when an invalid date string is given or a referenced file does not exist.
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must use fixed dates via -d @EPOCH to ensure deterministic output."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: default output with fixed epoch, +FORMAT with various conversion specs, -d with epoch and ISO strings, -u UTC mode, -r reference file, padding modifiers, and error cases (invalid date, missing file)."
+          weight: 1
 
 non_goals:
   - cmd/date does not implement -s/--set to set the system clock.

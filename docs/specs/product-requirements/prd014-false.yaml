@@ -15,29 +15,51 @@ requirements:
   R1:
     title: Core behavior
     items:
-      - R1.1: Must exit with status 1 when invoked with no arguments.
-      - R1.2: Must exit with status 1 when invoked with any arguments, ignoring them entirely. Arguments are not parsed, validated, or acted upon.
-      - R1.3: Must not read from stdin. Must not write to stdout or stderr under normal operation (no arguments or unrecognized arguments).
+      - R1.1:
+          text: Must exit with status 1 when invoked with no arguments.
+          weight: 1
+      - R1.2:
+          text: Must exit with status 1 when invoked with any arguments, ignoring them entirely. Arguments are not parsed, validated, or acted upon.
+          weight: 1
+      - R1.3:
+          text: Must not read from stdin. Must not write to stdout or stderr under normal operation (no arguments or unrecognized arguments).
+          weight: 1
 
   R2:
     title: Help and version output
     items:
-      - R2.1: When --help is the first argument, must print a usage message to stdout and exit 0.
-      - R2.2: When --version is the first argument, must print version information to stdout and exit 0.
-      - R2.3: If a write error occurs while printing --help or --version output, must exit 1.
+      - R2.1:
+          text: When --help is the first argument, must print a usage message to stdout and exit 0.
+          weight: 1
+      - R2.2:
+          text: When --version is the first argument, must print version information to stdout and exit 0.
+          weight: 1
+      - R2.3:
+          text: If a write error occurs while printing --help or --version output, must exit 1.
+          weight: 1
 
   R3:
     title: Exit codes
     items:
-      - R3.1: Must exit 1 in all cases except when --help or --version is given and output succeeds (exit 0).
-      - R3.2: Must not exit with any status other than 0 or 1.
+      - R3.1:
+          text: Must exit 1 in all cases except when --help or --version is given and output succeeds (exit 0).
+          weight: 1
+      - R3.2:
+          text: Must not exit with any status other than 0 or 1.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare exit codes between the Go binary and the reference binary via pkg/testutils.
-      - R4.2: "Tests must cover: no arguments, arbitrary arguments (ignored), --help output, and --version output."
-      - R4.3: Tests must verify that no output is produced on stdout or stderr when invoked without --help or --version.
+      - R4.1:
+          text: Differential tests must compare exit codes between the Go binary and the reference binary via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: no arguments, arbitrary arguments (ignored), --help output, and --version output."
+          weight: 1
+      - R4.3:
+          text: Tests must verify that no output is produced on stdout or stderr when invoked without --help or --version.
+          weight: 1
 
 non_goals:
   - cmd/false does not implement any flags beyond --help and --version.
