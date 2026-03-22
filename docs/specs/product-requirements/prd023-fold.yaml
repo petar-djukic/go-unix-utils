@@ -18,33 +18,63 @@ requirements:
   R1:
     title: Core line wrapping
     items:
-      - R1.1: Must read each file (or stdin when no arguments are given) and write each line wrapped to at most W characters (columns by default, bytes with -b). The default width is 80.
-      - R1.2: Lines shorter than or equal to the maximum width must be written unchanged (including the trailing newline).
-      - R1.3: Lines longer than the maximum width must be split by inserting a newline after exactly W columns (or bytes with -b). Wrapping is applied repeatedly until the remaining portion fits within the width.
-      - R1.4: The final segment of a wrapped line retains the original newline if the source line ended with one; a line without a trailing newline produces a final segment without one.
+      - R1.1:
+          text: Must read each file (or stdin when no arguments are given) and write each line wrapped to at most W characters (columns by default, bytes with -b). The default width is 80.
+          weight: 1
+      - R1.2:
+          text: Lines shorter than or equal to the maximum width must be written unchanged (including the trailing newline).
+          weight: 1
+      - R1.3:
+          text: Lines longer than the maximum width must be split by inserting a newline after exactly W columns (or bytes with -b). Wrapping is applied repeatedly until the remaining portion fits within the width.
+          weight: 1
+      - R1.4:
+          text: The final segment of a wrapped line retains the original newline if the source line ended with one; a line without a trailing newline produces a final segment without one.
+          weight: 1
 
   R2:
     title: Width and byte-mode flags (-w, -b)
     items:
-      - R2.1: -w N must set the maximum line width to N. N must be a positive integer. If N is 0 or negative, fold must exit with an error message to stderr and exit code 1.
-      - R2.2: By default, width is measured in display columns. Tab characters count as the number of columns needed to reach the next tab stop (tab stops every 8 columns). Other control characters count as one column.
-      - R2.3: -b must measure width in bytes rather than columns. Each byte counts as 1 regardless of whether it is a tab or multi-byte character. This disables tab-stop expansion for width measurement.
+      - R2.1:
+          text: -w N must set the maximum line width to N. N must be a positive integer. If N is 0 or negative, fold must exit with an error message to stderr and exit code 1.
+          weight: 1
+      - R2.2:
+          text: By default, width is measured in display columns. Tab characters count as the number of columns needed to reach the next tab stop (tab stops every 8 columns). Other control characters count as one column.
+          weight: 1
+      - R2.3:
+          text: -b must measure width in bytes rather than columns. Each byte counts as 1 regardless of whether it is a tab or multi-byte character. This disables tab-stop expansion for width measurement.
+          weight: 1
 
   R3:
     title: Space-break mode (-s)
     items:
-      - R3.1: -s must break lines at the last space character at or before the wrap column, rather than at an exact column position.
-      - R3.2: If no space character appears within the first W columns of a segment, -s must fall back to breaking at exactly W columns (same behavior as without -s).
-      - R3.3: The space character at the break point is written as the last character of the current output line before the inserted newline. The next line starts with the character immediately following the space.
-      - R3.4: -s is compatible with -b; space detection uses byte positions when -b is active.
+      - R3.1:
+          text: -s must break lines at the last space character at or before the wrap column, rather than at an exact column position.
+          weight: 1
+      - R3.2:
+          text: If no space character appears within the first W columns of a segment, -s must fall back to breaking at exactly W columns (same behavior as without -s).
+          weight: 1
+      - R3.3:
+          text: The space character at the break point is written as the last character of the current output line before the inserted newline. The next line starts with the character immediately following the space.
+          weight: 1
+      - R3.4:
+          text: -s is compatible with -b; space detection uses byte positions when -b is active.
+          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
-      - R4.1: Must exit 0 when all inputs are processed successfully.
-      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
-      - R4.3: Must exit 1 when a write error occurs on stdout.
-      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R4.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
+          weight: 1
+      - R4.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R4.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
 non_goals:
   - cmd/fold does not implement Unicode grapheme cluster width calculation; it treats each non-tab byte as one column, matching the GNU reference binary behavior under LC_ALL=C.

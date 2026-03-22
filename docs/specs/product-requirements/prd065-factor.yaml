@@ -18,34 +18,66 @@ requirements:
   R1:
     title: Core factorization behavior
     items:
-      - R1.1: "For each integer argument, must print a line in the format 'NUMBER: FACTOR FACTOR ...' where factors are in ascending order with repetition for multiplicity (e.g., '12: 2 2 3')."
-      - R1.2: "For the number 1, must print '1:' with no factors."
-      - R1.3: Must handle prime numbers by printing the number itself as the sole factor.
-      - R1.4: Must process multiple arguments in order, printing one factorization line per argument.
+      - R1.1:
+          text: "For each integer argument, must print a line in the format 'NUMBER: FACTOR FACTOR ...' where factors are in ascending order with repetition for multiplicity (e.g., '12: 2 2 3')."
+          weight: 1
+      - R1.2:
+          text: "For the number 1, must print '1:' with no factors."
+          weight: 1
+      - R1.3:
+          text: Must handle prime numbers by printing the number itself as the sole factor.
+          weight: 1
+      - R1.4:
+          text: Must process multiple arguments in order, printing one factorization line per argument.
+          weight: 1
 
   R2:
     title: Stdin mode and input handling
     items:
-      - R2.1: When no arguments are given, must read integers from stdin, one per line, and factorize each.
-      - R2.2: Must accept integers up to at least 2^63-1 (the Go int64 maximum).
-      - R2.3: Must skip blank lines in stdin mode without producing output or error.
-      - R2.4: When a non-integer or negative input is encountered, must print an error to stderr and continue processing remaining inputs.
+      - R2.1:
+          text: When no arguments are given, must read integers from stdin, one per line, and factorize each.
+          weight: 1
+      - R2.2:
+          text: Must accept integers up to at least 2^63-1 (the Go int64 maximum).
+          weight: 1
+      - R2.3:
+          text: Must skip blank lines in stdin mode without producing output or error.
+          weight: 1
+      - R2.4:
+          text: When a non-integer or negative input is encountered, must print an error to stderr and continue processing remaining inputs.
+          weight: 1
 
   R3:
     title: Help, version, and output
     items:
-      - R3.1: When --help is the first argument, must print a usage message to stdout and exit 0.
-      - R3.2: When --version is the first argument, must print version information to stdout and exit 0.
-      - R3.3: Must write factorization output to stdout, one line per integer.
-      - R3.4: Must write error messages to stderr without stopping processing of remaining inputs.
+      - R3.1:
+          text: When --help is the first argument, must print a usage message to stdout and exit 0.
+          weight: 1
+      - R3.2:
+          text: When --version is the first argument, must print version information to stdout and exit 0.
+          weight: 1
+      - R3.3:
+          text: Must write factorization output to stdout, one line per integer.
+          weight: 1
+      - R3.4:
+          text: Must write error messages to stderr without stopping processing of remaining inputs.
+          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when all inputs are valid and factorized successfully.
-      - R4.2: Must exit 1 when any input is invalid (non-integer, negative, overflow).
-      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
-      - R4.4: "Tests must cover: single number, multiple numbers, primes, composites, 1, large numbers, stdin mode, error on non-integer, and error on negative number."
+      - R4.1:
+          text: Must exit 0 when all inputs are valid and factorized successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input is invalid (non-integer, negative, overflow).
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: single number, multiple numbers, primes, composites, 1, large numbers, stdin mode, error on non-integer, and error on negative number."
+          weight: 1
 
 non_goals:
   - cmd/factor does not implement arbitrary-precision factorization beyond int64 range.

@@ -18,33 +18,63 @@ requirements:
   R1:
     title: Single-argument mode (default)
     items:
-      - R1.1: "When invoked as 'basename NAME', must strip the longest prefix ending in '/' from NAME and print the result followed by a newline."
-      - R1.2: "When invoked as 'basename NAME SUFFIX', must strip the directory prefix and then remove SUFFIX from the end of the result if it matches. SUFFIX is a literal string match, not a pattern."
-      - R1.3: Must strip trailing slashes from NAME before processing. Multiple consecutive trailing slashes are all removed.
-      - R1.4: "When NAME consists entirely of slashes, must output '/'."
-      - R1.5: When NAME is an empty string, must output an empty line (newline only).
+      - R1.1:
+          text: "When invoked as 'basename NAME', must strip the longest prefix ending in '/' from NAME and print the result followed by a newline."
+          weight: 1
+      - R1.2:
+          text: "When invoked as 'basename NAME SUFFIX', must strip the directory prefix and then remove SUFFIX from the end of the result if it matches. SUFFIX is a literal string match, not a pattern."
+          weight: 1
+      - R1.3:
+          text: Must strip trailing slashes from NAME before processing. Multiple consecutive trailing slashes are all removed.
+          weight: 1
+      - R1.4:
+          text: "When NAME consists entirely of slashes, must output '/'."
+          weight: 1
+      - R1.5:
+          text: When NAME is an empty string, must output an empty line (newline only).
+          weight: 1
 
   R2:
     title: Multi-argument mode (-a, --multiple)
     items:
-      - R2.1: -a or --multiple must enable processing of multiple NAME arguments. Each NAME is processed independently and the result is printed on a separate line.
-      - R2.2: -s SUFFIX or --suffix=SUFFIX must remove SUFFIX from each result and implies -a. When -s is given, the second positional argument is treated as a NAME, not a SUFFIX.
-      - R2.3: In multi-argument mode without -s, no suffix removal is performed on any argument.
+      - R2.1:
+          text: -a or --multiple must enable processing of multiple NAME arguments. Each NAME is processed independently and the result is printed on a separate line.
+          weight: 1
+      - R2.2:
+          text: -s SUFFIX or --suffix=SUFFIX must remove SUFFIX from each result and implies -a. When -s is given, the second positional argument is treated as a NAME, not a SUFFIX.
+          weight: 1
+      - R2.3:
+          text: In multi-argument mode without -s, no suffix removal is performed on any argument.
+          weight: 1
 
   R3:
     title: Output formatting and exit codes
     items:
-      - R3.1: Each result must be followed by a newline character, or by a NUL byte (0x00) if -z or --zero is given.
-      - R3.2: Must exit 0 on success.
-      - R3.3: Must exit 1 when called with an incorrect number of arguments in single-argument mode (zero arguments or more than two without -a).
-      - R3.4: Must print an error message to stderr when argument validation fails.
+      - R3.1:
+          text: Each result must be followed by a newline character, or by a NUL byte (0x00) if -z or --zero is given.
+          weight: 1
+      - R3.2:
+          text: Must exit 0 on success.
+          weight: 1
+      - R3.3:
+          text: Must exit 1 when called with an incorrect number of arguments in single-argument mode (zero arguments or more than two without -a).
+          weight: 1
+      - R3.4:
+          text: Must print an error message to stderr when argument validation fails.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
-      - R4.2: "Tests must cover: simple path (dir/file), trailing slashes, root path (/), empty string, suffix removal, multi-argument mode (-a), suffix mode (-s), and NUL-delimited output (-z)."
-      - R4.3: Tests must verify error output and exit code for invalid argument counts.
+      - R4.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: simple path (dir/file), trailing slashes, root path (/), empty string, suffix removal, multi-argument mode (-a), suffix mode (-s), and NUL-delimited output (-z)."
+          weight: 1
+      - R4.3:
+          text: Tests must verify error output and exit code for invalid argument counts.
+          weight: 1
 
 non_goals:
   - cmd/basename does not implement pattern-based suffix removal (glob or regex); suffix is a literal string match.

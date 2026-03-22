@@ -16,22 +16,38 @@ requirements:
   R1:
     title: Default behavior and silent mode
     items:
-      - R1.1: When invoked with no arguments and stdin is a terminal, must print the terminal device name (e.g., /dev/ttys000) followed by a newline and exit 0.
-      - R1.2: When invoked with no arguments and stdin is not a terminal, must print "not a tty" followed by a newline and exit 1.
-      - R1.3: "-s (--silent, --quiet) must suppress all output. The exit code is 0 if stdin is a terminal, 1 otherwise."
+      - R1.1:
+          text: When invoked with no arguments and stdin is a terminal, must print the terminal device name (e.g., /dev/ttys000) followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: When invoked with no arguments and stdin is not a terminal, must print "not a tty" followed by a newline and exit 1.
+          weight: 1
+      - R1.3:
+          text: "-s (--silent, --quiet) must suppress all output. The exit code is 0 if stdin is a terminal, 1 otherwise."
+          weight: 1
 
   R2:
     title: Error handling
     items:
-      - R2.1: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 2.
-      - R2.2: Unknown flags must produce an error message to stderr and exit 2.
+      - R2.1:
+          text: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 2.
+          weight: 1
+      - R2.2:
+          text: Unknown flags must produce an error message to stderr and exit 2.
+          weight: 1
 
   R3:
     title: Differential testing
     items:
-      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gtty) via pkg/testutils.
-      - R3.2: "Tests must cover: stdin connected to a terminal (if available), stdin redirected from a file or pipe (not a tty), -s flag, and error cases."
-      - R3.3: All differential tests must set LC_ALL=C in the environment.
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gtty) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: stdin connected to a terminal (if available), stdin redirected from a file or pipe (not a tty), -s flag, and error cases."
+          weight: 1
+      - R3.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
 
 non_goals:
   - cmd/tty does not configure terminal settings; use stty for that.

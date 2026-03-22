@@ -16,34 +16,66 @@ requirements:
   R1:
     title: Individual information flags
     items:
-      - R1.1: When invoked with no arguments, must print the kernel name (equivalent to -s) followed by a newline and exit 0.
-      - R1.2: "-s must print the kernel name (e.g., Darwin, Linux)."
-      - R1.3: "-n must print the network node hostname."
-      - R1.4: "-r must print the kernel release string."
-      - R1.5: "-v must print the kernel version string."
-      - R1.6: "-m must print the machine hardware name (e.g., x86_64, arm64)."
-      - R1.7: "-p must print the processor type, or \"unknown\" if not determinable."
-      - R1.8: "-i must print the hardware platform, or \"unknown\" if not determinable."
-      - R1.9: "-o must print the operating system name."
+      - R1.1:
+          text: When invoked with no arguments, must print the kernel name (equivalent to -s) followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: "-s must print the kernel name (e.g., Darwin, Linux)."
+          weight: 1
+      - R1.3:
+          text: "-n must print the network node hostname."
+          weight: 1
+      - R1.4:
+          text: "-r must print the kernel release string."
+          weight: 1
+      - R1.5:
+          text: "-v must print the kernel version string."
+          weight: 1
+      - R1.6:
+          text: "-m must print the machine hardware name (e.g., x86_64, arm64)."
+          weight: 1
+      - R1.7:
+          text: "-p must print the processor type, or \"unknown\" if not determinable."
+          weight: 1
+      - R1.8:
+          text: "-i must print the hardware platform, or \"unknown\" if not determinable."
+          weight: 1
+      - R1.9:
+          text: "-o must print the operating system name."
+          weight: 1
 
   R2:
     title: Combined output
     items:
-      - R2.1: "-a must print all fields in the order: kernel name, node name, kernel release, kernel version, machine, processor, hardware platform, operating system, separated by single spaces."
-      - R2.2: When multiple individual flags are specified (e.g., -sn), must print only the requested fields in the canonical order, space-separated, followed by a newline.
+      - R2.1:
+          text: "-a must print all fields in the order: kernel name, node name, kernel release, kernel version, machine, processor, hardware platform, operating system, separated by single spaces."
+          weight: 1
+      - R2.2:
+          text: When multiple individual flags are specified (e.g., -sn), must print only the requested fields in the canonical order, space-separated, followed by a newline.
+          weight: 1
 
   R3:
     title: Error handling
     items:
-      - R3.1: Must not accept any positional operands. If an operand is provided, must print an error message to stderr and exit 1.
-      - R3.2: Unknown flags must produce an error message to stderr and exit 1.
+      - R3.1:
+          text: Must not accept any positional operands. If an operand is provided, must print an error message to stderr and exit 1.
+          weight: 1
+      - R3.2:
+          text: Unknown flags must produce an error message to stderr and exit 1.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (guname) via pkg/testutils.
-      - R4.2: "Tests must cover: default (no flags), each individual flag (-s, -n, -r, -v, -m, -p, -i, -o), -a, combinations of flags, and error cases."
-      - R4.3: All differential tests must set LC_ALL=C in the environment.
+      - R4.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (guname) via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: default (no flags), each individual flag (-s, -n, -r, -v, -m, -p, -i, -o), -a, combinations of flags, and error cases."
+          weight: 1
+      - R4.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
 
 non_goals:
   - cmd/uname does not set the hostname or any system information; it is read-only.

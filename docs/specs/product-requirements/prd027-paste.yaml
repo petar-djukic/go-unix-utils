@@ -18,32 +18,60 @@ requirements:
   R1:
     title: Default parallel merge
     items:
-      - R1.1: Must open all named files simultaneously and read one line from each per output line. Lines from files are joined with the delimiter and written to stdout, followed by a newline.
-      - R1.2: When files have unequal line counts, the shorter files contribute empty fields (the delimiter is still written) until all files are exhausted. The final output line ends with a newline.
-      - R1.3: stdin is used as an input when "-" is given as a filename. Multiple "-" arguments each refer to stdin read sequentially.
-      - R1.4: When no files are given, must read from stdin and write each line followed by a newline (passthrough behavior matching gpaste with a single stdin source).
+      - R1.1:
+          text: Must open all named files simultaneously and read one line from each per output line. Lines from files are joined with the delimiter and written to stdout, followed by a newline.
+          weight: 1
+      - R1.2:
+          text: When files have unequal line counts, the shorter files contribute empty fields (the delimiter is still written) until all files are exhausted. The final output line ends with a newline.
+          weight: 1
+      - R1.3:
+          text: stdin is used as an input when "-" is given as a filename. Multiple "-" arguments each refer to stdin read sequentially.
+          weight: 1
+      - R1.4:
+          text: When no files are given, must read from stdin and write each line followed by a newline (passthrough behavior matching gpaste with a single stdin source).
+          weight: 1
 
   R2:
     title: Delimiter configuration (-d)
     items:
-      - R2.1: -d DELIM must use DELIM as the separator between fields. DELIM may be a single character or a list; if a list is given, the delimiters are cycled in order across the fields of each output line.
-      - R2.2: The escape sequences \\n (newline), \\t (tab), \\\\ (backslash), and \\0 (empty string, no delimiter) are recognized in DELIM.
-      - R2.3: When DELIM cycles back to the start for a new output line, cycling resets from the first delimiter in the list.
+      - R2.1:
+          text: -d DELIM must use DELIM as the separator between fields. DELIM may be a single character or a list; if a list is given, the delimiters are cycled in order across the fields of each output line.
+          weight: 1
+      - R2.2:
+          text: The escape sequences \\n (newline), \\t (tab), \\\\ (backslash), and \\0 (empty string, no delimiter) are recognized in DELIM.
+          weight: 1
+      - R2.3:
+          text: When DELIM cycles back to the start for a new output line, cycling resets from the first delimiter in the list.
+          weight: 1
 
   R3:
     title: Serial mode (-s)
     items:
-      - R3.1: -s must process files one at a time. All lines of the first file are joined with the delimiter and written as a single output line. Then all lines of the second file are written as a single output line, and so on.
-      - R3.2: In serial mode, the delimiter list cycles across fields within the single output line for each file. The trailing newline is always written.
-      - R3.3: -s and the default parallel mode are mutually exclusive; -s overrides parallel mode.
+      - R3.1:
+          text: -s must process files one at a time. All lines of the first file are joined with the delimiter and written as a single output line. Then all lines of the second file are written as a single output line, and so on.
+          weight: 1
+      - R3.2:
+          text: In serial mode, the delimiter list cycles across fields within the single output line for each file. The trailing newline is always written.
+          weight: 1
+      - R3.3:
+          text: -s and the default parallel mode are mutually exclusive; -s overrides parallel mode.
+          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
-      - R4.1: Must exit 0 when all inputs are processed successfully.
-      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing halts on the first error.
-      - R4.3: Must exit 1 when a write error occurs on stdout.
-      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R4.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing halts on the first error.
+          weight: 1
+      - R4.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R4.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
 non_goals:
   - cmd/paste does not buffer entire files in memory; it reads one line per file per output line in parallel mode.

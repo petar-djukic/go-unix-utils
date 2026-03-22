@@ -19,34 +19,66 @@ requirements:
   R1:
     title: Pattern-based splitting
     items:
-      - R1.1: "Must accept one or more PATTERN arguments. Each pattern is applied in order to split the input at the matching boundary."
-      - R1.2: "/REGEXP/ must split at the next line matching REGEXP. The matching line becomes the first line of the next piece."
-      - R1.3: "%REGEXP% must skip to the next line matching REGEXP without creating an output file for the skipped content."
-      - R1.4: "INTEGER must split at the given line number. The specified line becomes the first line of the next piece."
+      - R1.1:
+          text: "Must accept one or more PATTERN arguments. Each pattern is applied in order to split the input at the matching boundary."
+          weight: 1
+      - R1.2:
+          text: "/REGEXP/ must split at the next line matching REGEXP. The matching line becomes the first line of the next piece."
+          weight: 1
+      - R1.3:
+          text: "%REGEXP% must skip to the next line matching REGEXP without creating an output file for the skipped content."
+          weight: 1
+      - R1.4:
+          text: "INTEGER must split at the given line number. The specified line becomes the first line of the next piece."
+          weight: 1
 
   R2:
     title: Repeat counts and offset
     items:
-      - R2.1: "{N} appended to a pattern must repeat that pattern N additional times (total N+1 applications)."
-      - R2.2: "{*} appended to a pattern must repeat that pattern as many times as possible until end of input."
-      - R2.3: "/REGEXP/+N and /REGEXP/-N must split N lines after or before the matching line, respectively."
-      - R2.4: When a pattern does not match, must print an error to stderr. With --suppress-matched this is not an error if at least one split occurred.
+      - R2.1:
+          text: "{N} appended to a pattern must repeat that pattern N additional times (total N+1 applications)."
+          weight: 1
+      - R2.2:
+          text: "{*} appended to a pattern must repeat that pattern as many times as possible until end of input."
+          weight: 1
+      - R2.3:
+          text: "/REGEXP/+N and /REGEXP/-N must split N lines after or before the matching line, respectively."
+          weight: 1
+      - R2.4:
+          text: When a pattern does not match, must print an error to stderr. With --suppress-matched this is not an error if at least one split occurred.
+          weight: 1
 
   R3:
     title: Output control and prefix options
     items:
-      - R3.1: "Must write output files named xx00, xx01, xx02, etc. by default."
-      - R3.2: "-f PREFIX or --prefix=PREFIX must use PREFIX instead of 'xx' for output filenames."
-      - R3.3: "-n DIGITS or --digits=DIGITS must use DIGITS-wide numeric suffixes (default 2)."
-      - R3.4: "-z or --elide-empty-files must suppress creation of empty output files."
+      - R3.1:
+          text: "Must write output files named xx00, xx01, xx02, etc. by default."
+          weight: 1
+      - R3.2:
+          text: "-f PREFIX or --prefix=PREFIX must use PREFIX instead of 'xx' for output filenames."
+          weight: 1
+      - R3.3:
+          text: "-n DIGITS or --digits=DIGITS must use DIGITS-wide numeric suffixes (default 2)."
+          weight: 1
+      - R3.4:
+          text: "-z or --elide-empty-files must suppress creation of empty output files."
+          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when the input is split successfully.
-      - R4.2: Must exit 1 when a pattern fails to match (unless suppressed) or an invalid option is given.
-      - R4.3: "Differential tests must compare output file contents and exit codes between the Go binary and the reference binary via pkg/testutils."
-      - R4.4: "Tests must cover: regex split, line number split, skip patterns (%), repeat counts ({N} and {*}), offset (+N/-N), -f custom prefix, -n digit width, -z elide empty, stdin input, and error cases (no match, invalid regex)."
+      - R4.1:
+          text: Must exit 0 when the input is split successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when a pattern fails to match (unless suppressed) or an invalid option is given.
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare output file contents and exit codes between the Go binary and the reference binary via pkg/testutils."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: regex split, line number split, skip patterns (%), repeat counts ({N} and {*}), offset (+N/-N), -f custom prefix, -n digit width, -z elide empty, stdin input, and error cases (no match, invalid regex)."
+          weight: 1
 
 non_goals:
   - cmd/csplit does not implement --suppress-matched beyond the basic behavior.

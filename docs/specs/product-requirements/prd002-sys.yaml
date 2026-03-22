@@ -24,60 +24,92 @@ requirements:
   R1:
     title: Terminal width and TTY detection
     items:
-      - R1.1: Must provide func TerminalWidth() (int, error) that returns the current terminal column count by calling ioctl(TIOCGWINSZ) on stdout. Returns an error (not panic) when stdout is not a terminal or when ioctl fails.
-      - R1.2: Must use golang.org/x/sys/unix (the project's only external dependency) to perform the TIOCGWINSZ ioctl; must not shell out to tput or stty and must not import golang.org/x/term.
-      - R1.3: |
-          Must provide func IsTerminal(fd uintptr) bool that returns true when the file
-          descriptor refers to a terminal, and false otherwise. Implementation: call
-          golang.org/x/sys/unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ) and return
-          err == nil. Returns false for pipes, regular files, and non-terminal descriptors.
-          The caller (pkg/format ColorEnabled) is responsible for extracting the fd from an
-          io.Writer via type assertion to *os.File. Required by pkg/format to suppress color
-          output when stdout is redirected.
-      - R1.4: 'Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.'
-      - R1.5: |
-          Must provide func InstallSIGPIPEHandler() that installs a SIGPIPE handler causing the
-          process to exit 0 when stdout or stderr is closed by a downstream consumer.
-          Implementation: use signal.Notify(c, syscall.SIGPIPE) with a buffered channel of
-          size 1; in a dedicated goroutine call os.Exit(0) when the channel receives. Must not
-          use signal.Ignore so that deferred cleanup functions do not run on SIGPIPE (matching
-          GNU behavior where SIGPIPE terminates silently).
-      - R1.6: InstallSIGPIPEHandler must be safe to call multiple times; only one goroutine per invocation is started.
-      - R1.7: 'Utility context — ls (ls.c:1600-1620): ls installs a SIGPIPE handler via sigaction so that piping ls output to head does not produce a broken-pipe error message. du, find, and xargs have the same requirement.'
+      - R1.1:
+          text: Must provide func TerminalWidth() (int, error) that returns the current terminal column count by calling ioctl(TIOCGWINSZ) on stdout. Returns an error (not panic) when stdout is not a terminal or when ioctl fails.
+          weight: 1
+      - R1.2:
+          text: Must use golang.org/x/sys/unix (the project's only external dependency) to perform the TIOCGWINSZ ioctl; must not shell out to tput or stty and must not import golang.org/x/term.
+          weight: 1
+      - R1.3:
+          text: |
+            Must provide func IsTerminal(fd uintptr) bool that returns true when the file
+            descriptor refers to a terminal, and false otherwise. Implementation: call
+            golang.org/x/sys/unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ) and return
+            err == nil. Returns false for pipes, regular files, and non-terminal descriptors.
+            The caller (pkg/format ColorEnabled) is responsible for extracting the fd from an
+            io.Writer via type assertion to *os.File. Required by pkg/format to suppress color
+            output when stdout is redirected.
+          weight: 1
+      - R1.4:
+          text: 'Utility context — ls (ls.c:2281): ls uses struct winsize to determine column count for its default multi-column layout and for the -w/--width flag default.'
+          weight: 1
+      - R1.5:
+          text: |
+            Must provide func InstallSIGPIPEHandler() that installs a SIGPIPE handler causing the
+            process to exit 0 when stdout or stderr is closed by a downstream consumer.
+            Implementation: use signal.Notify(c, syscall.SIGPIPE) with a buffered channel of
+            size 1; in a dedicated goroutine call os.Exit(0) when the channel receives. Must not
+            use signal.Ignore so that deferred cleanup functions do not run on SIGPIPE (matching
+            GNU behavior where SIGPIPE terminates silently).
+          weight: 1
+      - R1.6:
+          text: InstallSIGPIPEHandler must be safe to call multiple times; only one goroutine per invocation is started.
+          weight: 1
+      - R1.7:
+          text: 'Utility context — ls (ls.c:1600-1620): ls installs a SIGPIPE handler via sigaction so that piping ls output to head does not produce a broken-pipe error message. du, find, and xargs have the same requirement.'
+          weight: 1
 
   R2:
     title: Extended file metadata
     items:
-      - R2.1: Must provide func Stat(path string) (*FileInfo, error) and func Lstat(path string) (*FileInfo, error). Stat follows symbolic links (equivalent to os.Stat); Lstat does not follow symbolic links (equivalent to os.Lstat). Both return a *FileInfo populated from syscall.Stat_t.
-      - R2.2: |
-          FileInfo must be defined as the following named struct in package sys:
+      - R2.1:
+          text: Must provide func Stat(path string) (*FileInfo, error) and func Lstat(path string) (*FileInfo, error). Stat follows symbolic links (equivalent to os.Stat); Lstat does not follow symbolic links (equivalent to os.Lstat). Both return a *FileInfo populated from syscall.Stat_t.
+          weight: 1
+      - R2.2:
+          text: |
+            FileInfo must be defined as the following named struct in package sys:
 
-            type FileInfo struct {
-                Mode    os.FileMode // file mode and type bits (from syscall.Stat_t.Mode)
-                Size    int64       // apparent file size in bytes (st_size)
-                Nlink   uint64      // hard-link count (st_nlink)
-                Uid     uint32      // owner user ID (st_uid)
-                Gid     uint32      // owner group ID (st_gid)
-                Rdev    uint64      // device ID for special files (st_rdev)
-                Dev     uint64      // device ID of the containing filesystem (st_dev)
-                Ino     uint64      // inode number (st_ino)
-                Blocks  int64       // number of 512-byte blocks allocated (st_blocks)
-                Blksize int64       // preferred I/O block size (st_blksize)
-                ModTime time.Time   // modification time (st_mtime / st_mtimespec)
-                Info    os.FileInfo // underlying os.FileInfo for os package compatibility
-            }
-      - R2.3: Must abstract the Darwin/Linux divergence in struct field names (st_mtimespec on Darwin vs st_mtim on Linux; st_blocks interpretation) so callers use a single API regardless of target platform.
-      - R2.4: 'Utility context — ls (ls.c:213, 371): ls needs Nlink, Uid, Gid, Rdev, Mode for -l format; Blocks for -s; Ino for -i.'
-      - R2.5: 'Utility context — du (du.c:554): du needs Dev and Ino for hard-link deduplication, and Blocks for physical block-count accumulation.'
-      - R2.6: 'Utility context — find (find/ftsfind.c:172): find predicates (-type, -size, -newer, -perm, -uid, -gid) require Mode, Size, ModTime, Uid, Gid, Nlink from the stat struct.'
+              type FileInfo struct {
+                  Mode    os.FileMode // file mode and type bits (from syscall.Stat_t.Mode)
+                  Size    int64       // apparent file size in bytes (st_size)
+                  Nlink   uint64      // hard-link count (st_nlink)
+                  Uid     uint32      // owner user ID (st_uid)
+                  Gid     uint32      // owner group ID (st_gid)
+                  Rdev    uint64      // device ID for special files (st_rdev)
+                  Dev     uint64      // device ID of the containing filesystem (st_dev)
+                  Ino     uint64      // inode number (st_ino)
+                  Blocks  int64       // number of 512-byte blocks allocated (st_blocks)
+                  Blksize int64       // preferred I/O block size (st_blksize)
+                  ModTime time.Time   // modification time (st_mtime / st_mtimespec)
+                  Info    os.FileInfo // underlying os.FileInfo for os package compatibility
+              }
+          weight: 1
+      - R2.3:
+          text: Must abstract the Darwin/Linux divergence in struct field names (st_mtimespec on Darwin vs st_mtim on Linux; st_blocks interpretation) so callers use a single API regardless of target platform.
+          weight: 1
+      - R2.4:
+          text: 'Utility context — ls (ls.c:213, 371): ls needs Nlink, Uid, Gid, Rdev, Mode for -l format; Blocks for -s; Ino for -i.'
+          weight: 1
+      - R2.5:
+          text: 'Utility context — du (du.c:554): du needs Dev and Ino for hard-link deduplication, and Blocks for physical block-count accumulation.'
+          weight: 1
+      - R2.6:
+          text: 'Utility context — find (find/ftsfind.c:172): find predicates (-type, -size, -newer, -perm, -uid, -gid) require Mode, Size, ModTime, Uid, Gid, Nlink from the stat struct.'
+          weight: 1
 
   R3:
     title: SIGWINCH handling
     items:
-      - R3.1: |
-          Must provide func OnTerminalResize(callback func(width int)) that registers a SIGWINCH handler. When the terminal is resized, the handler calls TerminalWidth() and invokes the callback with the new width. If TerminalWidth() returns an error the callback is not invoked.
-      - R3.2: Must support multiple calls to OnTerminalResize; each registered callback must be called on resize. Callbacks are called in registration order.
-      - R3.3: 'Utility context — ls (ls.c:2281, SIGWINCH registration): ls re-queries terminal width on SIGWINCH to re-format output when the terminal window is resized during a long listing.'
+      - R3.1:
+          text: |
+            Must provide func OnTerminalResize(callback func(width int)) that registers a SIGWINCH handler. When the terminal is resized, the handler calls TerminalWidth() and invokes the callback with the new width. If TerminalWidth() returns an error the callback is not invoked.
+          weight: 1
+      - R3.2:
+          text: Must support multiple calls to OnTerminalResize; each registered callback must be called on resize. Callbacks are called in registration order.
+          weight: 1
+      - R3.3:
+          text: 'Utility context — ls (ls.c:2281, SIGWINCH registration): ls re-queries terminal width on SIGWINCH to re-format output when the terminal window is resized during a long listing.'
+          weight: 1
 
 non_goals:
   - pkg/sys does not wrap all of syscall or golang.org/x/sys; it exposes only the surfaces required by the current utility batch.

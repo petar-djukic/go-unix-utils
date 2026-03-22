@@ -18,34 +18,66 @@ requirements:
   R1:
     title: Three-column comparison output
     items:
-      - R1.1: Must read file1 and file2 simultaneously, line by line. Lines present only in file1 are written in column 1 (no indentation). Lines present only in file2 are written in column 2 (one tab indent). Lines present in both are written in column 3 (two tabs indent).
-      - R1.2: Must process files in sorted order; when a line from file1 is lexicographically less than the current file2 line, it is a column-1 line. When file2's line is less, it is a column-2 line. Equal lines go to column 3.
-      - R1.3: When one file is exhausted, all remaining lines from the other file go to the appropriate column (column 1 if file1 has lines left, column 2 if file2 has lines left).
-      - R1.4: Comparison is byte-for-byte with LC_ALL=C (no locale collation). An optional newline at the end of the last line does not affect comparison.
+      - R1.1:
+          text: Must read file1 and file2 simultaneously, line by line. Lines present only in file1 are written in column 1 (no indentation). Lines present only in file2 are written in column 2 (one tab indent). Lines present in both are written in column 3 (two tabs indent).
+          weight: 1
+      - R1.2:
+          text: Must process files in sorted order; when a line from file1 is lexicographically less than the current file2 line, it is a column-1 line. When file2's line is less, it is a column-2 line. Equal lines go to column 3.
+          weight: 1
+      - R1.3:
+          text: When one file is exhausted, all remaining lines from the other file go to the appropriate column (column 1 if file1 has lines left, column 2 if file2 has lines left).
+          weight: 1
+      - R1.4:
+          text: Comparison is byte-for-byte with LC_ALL=C (no locale collation). An optional newline at the end of the last line does not affect comparison.
+          weight: 1
 
   R2:
     title: Column suppression flags (-1, -2, -3)
     items:
-      - R2.1: -1 must suppress column 1 (lines unique to file1). The remaining columns shift left in indentation.
-      - R2.2: -2 must suppress column 2 (lines unique to file2). The remaining columns shift left accordingly.
-      - R2.3: -3 must suppress column 3 (lines common to both files). Combining -1 -2 -3 produces no output.
-      - R2.4: When a column is suppressed, the tab indentation for remaining columns adjusts so that the leftmost output column has no leading tab.
+      - R2.1:
+          text: -1 must suppress column 1 (lines unique to file1). The remaining columns shift left in indentation.
+          weight: 1
+      - R2.2:
+          text: -2 must suppress column 2 (lines unique to file2). The remaining columns shift left accordingly.
+          weight: 1
+      - R2.3:
+          text: -3 must suppress column 3 (lines common to both files). Combining -1 -2 -3 produces no output.
+          weight: 1
+      - R2.4:
+          text: When a column is suppressed, the tab indentation for remaining columns adjusts so that the leftmost output column has no leading tab.
+          weight: 1
 
   R3:
     title: Order checking and output delimiter
     items:
-      - R3.1: By default, comm checks that input files are sorted. When a line is encountered that is less than the previous line in the same file, comm prints a warning to stderr and continues.
-      - R3.2: --check-order makes the ordering check fatal; comm exits non-zero if input is not sorted.
-      - R3.3: --nocheck-order disables the sorting check entirely; no warning is printed even if input is out of order.
-      - R3.4: --output-delimiter=STRING replaces the default tab character as the column separator. All column indentation levels use STRING instead of a tab.
+      - R3.1:
+          text: By default, comm checks that input files are sorted. When a line is encountered that is less than the previous line in the same file, comm prints a warning to stderr and continues.
+          weight: 1
+      - R3.2:
+          text: --check-order makes the ordering check fatal; comm exits non-zero if input is not sorted.
+          weight: 1
+      - R3.3:
+          text: --nocheck-order disables the sorting check entirely; no warning is printed even if input is out of order.
+          weight: 1
+      - R3.4:
+          text: --output-delimiter=STRING replaces the default tab character as the column separator. All column indentation levels use STRING instead of a tab.
+          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
-      - R4.1: Must exit 0 when all inputs are processed successfully and no order violations occur.
-      - R4.2: Must exit 1 when any input file cannot be opened, printing the error to stderr.
-      - R4.3: Must exit 1 when a write error occurs on stdout.
-      - R4.4: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+      - R4.1:
+          text: Must exit 0 when all inputs are processed successfully and no order violations occur.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr.
+          weight: 1
+      - R4.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R4.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
 non_goals:
   - cmd/comm does not sort its inputs; both files must already be sorted before invocation.

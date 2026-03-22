@@ -19,34 +19,66 @@ requirements:
   R1:
     title: Format string and conversion specifiers
     items:
-      - R1.1: "Must interpret FORMAT as a printf-style format string containing literal text and conversion specifiers. Must print the formatted result to stdout with no trailing newline unless the format includes \\n."
-      - R1.2: "Must support integer conversion specifiers: %d (signed decimal), %i (signed decimal), %o (octal), %u (unsigned decimal), %x (lowercase hex), %X (uppercase hex)."
-      - R1.3: "Must support floating-point conversion specifiers: %f (decimal notation), %e (scientific notation), %g (shorter of %f and %e), and their uppercase variants %F, %E, %G."
-      - R1.4: "Must support string conversion specifier %s and character conversion specifier %c. %b must interpret backslash escapes in the argument string (like echo -e)."
+      - R1.1:
+          text: "Must interpret FORMAT as a printf-style format string containing literal text and conversion specifiers. Must print the formatted result to stdout with no trailing newline unless the format includes \\n."
+          weight: 1
+      - R1.2:
+          text: "Must support integer conversion specifiers: %d (signed decimal), %i (signed decimal), %o (octal), %u (unsigned decimal), %x (lowercase hex), %X (uppercase hex)."
+          weight: 1
+      - R1.3:
+          text: "Must support floating-point conversion specifiers: %f (decimal notation), %e (scientific notation), %g (shorter of %f and %e), and their uppercase variants %F, %E, %G."
+          weight: 1
+      - R1.4:
+          text: "Must support string conversion specifier %s and character conversion specifier %c. %b must interpret backslash escapes in the argument string (like echo -e)."
+          weight: 1
 
   R2:
     title: Width, precision, and flags
     items:
-      - R2.1: "Must support field width and precision in conversion specifiers (e.g., %10d, %.5f, %10.3f). Width specifies minimum field width; precision specifies digits after decimal for floats or maximum characters for strings."
-      - R2.2: "Must support flag characters: '-' (left-align), '+' (always show sign), ' ' (space before positive numbers), '0' (zero-pad), '#' (alternate form)."
-      - R2.3: "Must support '*' for width and precision, taking the value from the next argument."
-      - R2.4: "Must support '%%' as a literal percent character in the format string."
+      - R2.1:
+          text: "Must support field width and precision in conversion specifiers (e.g., %10d, %.5f, %10.3f). Width specifies minimum field width; precision specifies digits after decimal for floats or maximum characters for strings."
+          weight: 1
+      - R2.2:
+          text: "Must support flag characters: '-' (left-align), '+' (always show sign), ' ' (space before positive numbers), '0' (zero-pad), '#' (alternate form)."
+          weight: 1
+      - R2.3:
+          text: "Must support '*' for width and precision, taking the value from the next argument."
+          weight: 1
+      - R2.4:
+          text: "Must support '%%' as a literal percent character in the format string."
+          weight: 1
 
   R3:
     title: Escape sequences and argument handling
     items:
-      - R3.1: "Must interpret C-style escape sequences in FORMAT: \\\\, \\a, \\b, \\f, \\n, \\r, \\t, \\v, \\NNN (octal), \\xHH (hex), \\uHHHH (Unicode), \\UHHHHHHHH (Unicode)."
-      - R3.2: "When more arguments remain than the format consumes, must reuse the format string for the remaining arguments, repeating until all arguments are consumed."
-      - R3.3: "When fewer arguments are provided than the format requires, must use 0 for numeric specifiers and empty string for string specifiers."
-      - R3.4: "When a numeric argument starts with a single or double quote (e.g., '\"A' or \"'A\"), must use the numeric value of the character that follows the quote."
+      - R3.1:
+          text: "Must interpret C-style escape sequences in FORMAT: \\\\, \\a, \\b, \\f, \\n, \\r, \\t, \\v, \\NNN (octal), \\xHH (hex), \\uHHHH (Unicode), \\UHHHHHHHH (Unicode)."
+          weight: 1
+      - R3.2:
+          text: "When more arguments remain than the format consumes, must reuse the format string for the remaining arguments, repeating until all arguments are consumed."
+          weight: 1
+      - R3.3:
+          text: "When fewer arguments are provided than the format requires, must use 0 for numeric specifiers and empty string for string specifiers."
+          weight: 1
+      - R3.4:
+          text: "When a numeric argument starts with a single or double quote (e.g., '\"A' or \"'A\"), must use the numeric value of the character that follows the quote."
+          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
-      - R4.1: Must exit 0 when formatting and printing complete successfully.
-      - R4.2: Must exit 1 when an invalid format directive is encountered or a numeric conversion fails. Must still produce partial output before the error.
-      - R4.3: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
-      - R4.4: "Tests must cover: %d/%i/%o/%u/%x/%X integer formats, %f/%e/%g float formats, %s string, %c character, %b backslash-interpreted string, width and precision, all flag characters, '*' width/precision, argument recycling, escape sequences (\\n, \\t, \\NNN, \\xHH), character value arguments (quote prefix), missing arguments, and error cases (invalid format, non-numeric argument for %d)."
+      - R4.1:
+          text: Must exit 0 when formatting and printing complete successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when an invalid format directive is encountered or a numeric conversion fails. Must still produce partial output before the error.
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: %d/%i/%o/%u/%x/%X integer formats, %f/%e/%g float formats, %s string, %c character, %b backslash-interpreted string, width and precision, all flag characters, '*' width/precision, argument recycling, escape sequences (\\n, \\t, \\NNN, \\xHH), character value arguments (quote prefix), missing arguments, and error cases (invalid format, non-numeric argument for %d)."
+          weight: 1
 
 non_goals:
   - cmd/printf does not implement %q (shell-escaped string) which is a bash extension not in GNU coreutils printf.

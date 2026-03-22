@@ -16,22 +16,38 @@ requirements:
   R1:
     title: Default behavior
     items:
-      - R1.1: When invoked with no arguments, must print the login name followed by a newline and exit 0.
-      - R1.2: The login name must be obtained from the system login record (getlogin(3) or equivalent), not from the effective UID.
+      - R1.1:
+          text: When invoked with no arguments, must print the login name followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: The login name must be obtained from the system login record (getlogin(3) or equivalent), not from the effective UID.
+          weight: 1
 
   R2:
     title: Error handling
     items:
-      - R2.1: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 1.
-      - R2.2: Unknown flags must produce an error message to stderr and exit 1.
-      - R2.3: If the login name cannot be determined (e.g., no controlling terminal), must print an error to stderr and exit 1.
+      - R2.1:
+          text: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 1.
+          weight: 1
+      - R2.2:
+          text: Unknown flags must produce an error message to stderr and exit 1.
+          weight: 1
+      - R2.3:
+          text: If the login name cannot be determined (e.g., no controlling terminal), must print an error to stderr and exit 1.
+          weight: 1
 
   R3:
     title: Differential testing
     items:
-      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (glogname) via pkg/testutils.
-      - R3.2: "Tests must cover: normal invocation (no arguments), extra operand error, and unknown flag error."
-      - R3.3: All differential tests must set LC_ALL=C in the environment.
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (glogname) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: normal invocation (no arguments), extra operand error, and unknown flag error."
+          weight: 1
+      - R3.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
 
 non_goals:
   - cmd/logname does not accept a username argument.

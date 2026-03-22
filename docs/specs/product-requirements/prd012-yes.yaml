@@ -18,30 +18,54 @@ requirements:
   R1:
     title: Core output behavior
     items:
-      - R1.1: When no arguments are given, must output "y" followed by a newline, repeatedly, until the process is killed or a write error occurs on stdout.
-      - R1.2: When one or more arguments are given, must join them with a single space character and output the resulting string followed by a newline, repeatedly.
-      - R1.3: Arguments beginning with "-" must be passable using the "--" separator to prevent misinterpretation as flags (e.g., "yes -- --help" outputs "--help" repeatedly).
-      - R1.4: Must not read from stdin. All output goes to stdout.
+      - R1.1:
+          text: When no arguments are given, must output "y" followed by a newline, repeatedly, until the process is killed or a write error occurs on stdout.
+          weight: 1
+      - R1.2:
+          text: When one or more arguments are given, must join them with a single space character and output the resulting string followed by a newline, repeatedly.
+          weight: 1
+      - R1.3:
+          text: Arguments beginning with "-" must be passable using the "--" separator to prevent misinterpretation as flags (e.g., "yes -- --help" outputs "--help" repeatedly).
+          weight: 1
+      - R1.4:
+          text: Must not read from stdin. All output goes to stdout.
+          weight: 1
 
   R2:
     title: Output buffering and performance
     items:
-      - R2.1: Must buffer output to avoid per-line write syscalls. Use a bufio.Writer with a buffer of at least 8192 bytes or write in fixed-size blocks, matching the GNU implementation's approach of filling a large output buffer before calling write().
-      - R2.2: Must flush the output buffer before exiting on a write error so that the last partial buffer is delivered to the pipe reader.
+      - R2.1:
+          text: Must buffer output to avoid per-line write syscalls. Use a bufio.Writer with a buffer of at least 8192 bytes or write in fixed-size blocks, matching the GNU implementation's approach of filling a large output buffer before calling write().
+          weight: 1
+      - R2.2:
+          text: Must flush the output buffer before exiting on a write error so that the last partial buffer is delivered to the pipe reader.
+          weight: 1
 
   R3:
     title: Exit codes and signal handling
     items:
-      - R3.1: Must exit 0 when terminated by SIGPIPE (the normal case when piped to a program that closes its stdin).
-      - R3.2: Must exit 1 when a write error other than EPIPE occurs on stdout.
-      - R3.3: Must handle SIGPIPE gracefully without printing an error message to stderr. The default Go SIGPIPE behavior (exit silently) is acceptable if it matches the reference binary's exit code.
+      - R3.1:
+          text: Must exit 0 when terminated by SIGPIPE (the normal case when piped to a program that closes its stdin).
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when a write error other than EPIPE occurs on stdout.
+          weight: 1
+      - R3.3:
+          text: Must handle SIGPIPE gracefully without printing an error message to stderr. The default Go SIGPIPE behavior (exit silently) is acceptable if it matches the reference binary's exit code.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must pipe the output of both the Go binary and the reference binary through "head -n N" and compare the captured output byte-for-byte via pkg/testutils.
-      - R4.2: "Tests must cover: no arguments (default 'y'), single argument, multiple arguments joined with spaces, arguments after '--' separator, and empty string argument."
-      - R4.3: Tests must verify exit code behavior when stdout is closed early (SIGPIPE case).
+      - R4.1:
+          text: Differential tests must pipe the output of both the Go binary and the reference binary through "head -n N" and compare the captured output byte-for-byte via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: no arguments (default 'y'), single argument, multiple arguments joined with spaces, arguments after '--' separator, and empty string argument."
+          weight: 1
+      - R4.3:
+          text: Tests must verify exit code behavior when stdout is closed early (SIGPIPE case).
+          weight: 1
 
 non_goals:
   - cmd/yes does not implement any flags beyond --help and --version.

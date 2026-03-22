@@ -18,32 +18,60 @@ requirements:
   R1:
     title: Core output behavior
     items:
-      - R1.1: Must write each argument to stdout, separated by single space characters, followed by a newline character.
-      - R1.2: When given no arguments, must write only a newline character to stdout.
-      - R1.3: -n must suppress the trailing newline. Output ends at the last argument character with no newline appended.
-      - R1.4: Arguments beginning with "-" must be passed through as literal text when they are not recognized flags (-n, -e, -E). Unrecognized flags are treated as positional arguments.
+      - R1.1:
+          text: Must write each argument to stdout, separated by single space characters, followed by a newline character.
+          weight: 1
+      - R1.2:
+          text: When given no arguments, must write only a newline character to stdout.
+          weight: 1
+      - R1.3:
+          text: -n must suppress the trailing newline. Output ends at the last argument character with no newline appended.
+          weight: 1
+      - R1.4:
+          text: Arguments beginning with "-" must be passed through as literal text when they are not recognized flags (-n, -e, -E). Unrecognized flags are treated as positional arguments.
+          weight: 1
 
   R2:
     title: Escape sequence interpretation (-e, -E)
     items:
-      - R2.1: "-e must enable interpretation of the following backslash sequences: \\\\  (backslash), \\a (alert/BEL, 0x07), \\b (backspace, 0x08), \\c (suppress all further output including the trailing newline), \\e (escape, 0x1B), \\f (form feed, 0x0C), \\n (newline, 0x0A), \\r (carriage return, 0x0D), \\t (horizontal tab, 0x09), \\v (vertical tab, 0x0B), \\0NNN (octal value NNN, 1-3 digits), \\xHH (hex value HH, 1-2 digits)."
-      - R2.2: "\\c with -e terminates output immediately: no further characters, no trailing newline, regardless of remaining arguments."
-      - R2.3: -E must disable escape interpretation. When -E is active, backslash sequences are written literally. -E is the default; specifying -E explicitly is a no-op when -e has not been given.
-      - R2.4: When both -e and -E are given, the last one on the command line takes precedence.
+      - R2.1:
+          text: "-e must enable interpretation of the following backslash sequences: \\\\  (backslash), \\a (alert/BEL, 0x07), \\b (backspace, 0x08), \\c (suppress all further output including the trailing newline), \\e (escape, 0x1B), \\f (form feed, 0x0C), \\n (newline, 0x0A), \\r (carriage return, 0x0D), \\t (horizontal tab, 0x09), \\v (vertical tab, 0x0B), \\0NNN (octal value NNN, 1-3 digits), \\xHH (hex value HH, 1-2 digits)."
+          weight: 1
+      - R2.2:
+          text: "\\c with -e terminates output immediately: no further characters, no trailing newline, regardless of remaining arguments."
+          weight: 1
+      - R2.3:
+          text: -E must disable escape interpretation. When -E is active, backslash sequences are written literally. -E is the default; specifying -E explicitly is a no-op when -e has not been given.
+          weight: 1
+      - R2.4:
+          text: When both -e and -E are given, the last one on the command line takes precedence.
+          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
-      - R3.1: Must exit 0 on successful output.
-      - R3.2: Must exit 1 when a write error occurs on stdout.
-      - R3.3: Must handle SIGPIPE gracefully (exit 0) when stdout is closed by a downstream consumer, using pkg/sys.InstallSIGPIPEHandler.
+      - R3.1:
+          text: Must exit 0 on successful output.
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R3.3:
+          text: Must handle SIGPIPE gracefully (exit 0) when stdout is closed by a downstream consumer, using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
 
   R4:
     title: Differential testing
     items:
-      - R4.1: Differential tests must compare Go echo output against gecho byte-for-byte via pkg/testutils.RunDiffTests.
-      - R4.2: "Tests must cover: no arguments, single argument, multiple arguments, -n flag, -e with each supported escape sequence, -E flag, combined -n -e, and arguments starting with '-'."
-      - R4.3: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
+      - R4.1:
+          text: Differential tests must compare Go echo output against gecho byte-for-byte via pkg/testutils.RunDiffTests.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: no arguments, single argument, multiple arguments, -n flag, -e with each supported escape sequence, -E flag, combined -n -e, and arguments starting with '-'."
+          weight: 1
+      - R4.3:
+          text: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
+          weight: 1
 
 non_goals:
   - cmd/echo does not implement --help or --version (GNU echo does not process these as flags either; they are printed as literals).

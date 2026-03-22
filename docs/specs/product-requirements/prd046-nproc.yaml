@@ -16,24 +16,44 @@ requirements:
   R1:
     title: Default behavior and flags
     items:
-      - R1.1: When invoked with no arguments, must print the number of available processing units followed by a newline and exit 0.
-      - R1.2: "--all must print the number of installed processors, which may differ from the available count if CPU affinity or cgroups restrict the set."
-      - R1.3: "--ignore=N must subtract N from the processor count and print the result. The result must never be less than 1."
-      - R1.4: --all and --ignore=N may be combined. When combined, --ignore subtracts from the installed count.
+      - R1.1:
+          text: When invoked with no arguments, must print the number of available processing units followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: "--all must print the number of installed processors, which may differ from the available count if CPU affinity or cgroups restrict the set."
+          weight: 1
+      - R1.3:
+          text: "--ignore=N must subtract N from the processor count and print the result. The result must never be less than 1."
+          weight: 1
+      - R1.4:
+          text: --all and --ignore=N may be combined. When combined, --ignore subtracts from the installed count.
+          weight: 1
 
   R2:
     title: Error handling
     items:
-      - R2.1: If any positional operand is provided, must print an error message to stderr and exit 1.
-      - R2.2: If --ignore is given a non-numeric value, must print an error message to stderr and exit 1.
-      - R2.3: Unknown flags must produce an error message to stderr and exit 1.
+      - R2.1:
+          text: If any positional operand is provided, must print an error message to stderr and exit 1.
+          weight: 1
+      - R2.2:
+          text: If --ignore is given a non-numeric value, must print an error message to stderr and exit 1.
+          weight: 1
+      - R2.3:
+          text: Unknown flags must produce an error message to stderr and exit 1.
+          weight: 1
 
   R3:
     title: Differential testing
     items:
-      - R3.1: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gnproc) via pkg/testutils.
-      - R3.2: "Tests must cover: default invocation, --all, --ignore=1, --all --ignore=1, and error cases."
-      - R3.3: All differential tests must set LC_ALL=C in the environment.
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gnproc) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: default invocation, --all, --ignore=1, --all --ignore=1, and error cases."
+          weight: 1
+      - R3.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
 
 non_goals:
   - cmd/nproc does not set CPU affinity or modify scheduling.
