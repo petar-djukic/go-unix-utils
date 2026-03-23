@@ -1,0 +1,100 @@
+id: prd097-who
+title: "cmd/who: Show Who Is Logged On"
+
+problem: |
+  macOS ships a BSD who that differs from GNU who in output format, flag support, and
+  header display. The Go implementation must match the Homebrew GNU reference binary
+  (gwho, installed by coreutils) byte-for-byte on all flag combinations, verified by
+  differential testing via pkg/testutils.
+
+goals:
+  - G1: Show information about currently logged-in users.
+  - G2: Support header display, idle time, and boot time options.
+  - G3: Verify functional parity against gwho via differential testing.
+
+requirements:
+  R1:
+    title: Default user listing
+    items:
+      - R1.1:
+          text: Must read the utmpx database and print one line per logged-in user showing login name, terminal line, login time, and remote hostname (if available), matching GNU who output format.
+          weight: 4
+      - R1.2:
+          text: When given a FILE argument, must read that file as the utmpx database instead of the system default.
+          weight: 1
+      - R1.3:
+          text: "who am i (or who am I) must print only the entry for the current terminal."
+          weight: 1
+      - R1.4:
+          text: Must exit 1 when the utmpx database cannot be read.
+          weight: 1
+
+  R2:
+    title: Display options
+    items:
+      - R2.1:
+          text: "-H or --heading must print a header line above the output."
+          weight: 1
+      - R2.2:
+          text: "-u or --users must show idle time for each user. Idle time is displayed as HH:MM, '.' for active (< 1 minute), or 'old' for > 24 hours."
+          weight: 4
+      - R2.3:
+          text: "-b or --boot must show the time of the last system boot."
+          weight: 1
+      - R2.4:
+          text: "-q or --count must print login names and a count of logged-in users, one name per column."
+          weight: 1
+
+  R3:
+    title: Exit codes and SIGPIPE
+    items:
+      - R3.1:
+          text: Must exit 0 on success.
+          weight: 1
+      - R3.2:
+          text: Must exit 1 on any error.
+          weight: 1
+      - R3.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/who does not implement -r (runlevel) or -d (dead processes) on macOS.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "who prints logged-in users with terminal and time, matching gwho."
+    traces:
+      - R1.1
+  - id: AC2
+    criterion: "who -H prints a header line, matching gwho -H."
+    traces:
+      - R2.1
+  - id: AC3
+    criterion: "who -b prints boot time, matching gwho -b."
+    traces:
+      - R2.3
+  - id: AC4
+    criterion: "Differential test against gwho passes."
+    traces:
+      - R1.1
+      - R2.1
+      - R2.3
+  - id: AC5
+    criterion: "cmd/who compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

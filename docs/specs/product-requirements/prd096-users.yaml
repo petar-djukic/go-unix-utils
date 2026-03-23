@@ -1,0 +1,65 @@
+id: prd096-users
+title: "cmd/users: Print Login Names of Currently Logged-In Users"
+
+problem: |
+  macOS ships users but the GNU version has consistent output formatting. The Go
+  implementation must match the Homebrew GNU reference binary (gusers, installed by
+  coreutils) byte-for-byte, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the login names of currently logged-in users, sorted and space-separated.
+  - G2: Verify functional parity against gusers via differential testing.
+
+requirements:
+  R1:
+    title: User listing
+    items:
+      - R1.1:
+          text: Must read the utmpx database (or equivalent on the target platform) and print the login names of all currently logged-in users on a single line, space-separated, sorted alphabetically.
+          weight: 4
+      - R1.2:
+          text: When given a FILE argument, must read that file as the utmpx database instead of the system default.
+          weight: 1
+      - R1.3:
+          text: Duplicate login names (same user logged in multiple times) must appear once per session, not deduplicated.
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 on success.
+          weight: 1
+      - R2.2:
+          text: Must exit 1 on any error.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/users does not show idle time, terminal, or remote host information; use who for that.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "users prints logged-in usernames sorted and space-separated, matching gusers."
+    traces:
+      - R1.1
+      - R1.3
+  - id: AC2
+    criterion: "Differential test against gusers passes."
+    traces:
+      - R1.1
+  - id: AC3
+    criterion: "cmd/users compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

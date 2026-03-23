@@ -493,3 +493,56 @@ releases:
           status: spec_complete
         - id: rel11.0-uc004-nohup
           status: spec_complete
+    - version: "11.1"
+      name: "Batch 11.1 — user and session information (users, who, pinky)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement three user information utilities. users prints login names of logged-in
+        users. who shows detailed login session information with idle time and boot time.
+        pinky provides lightweight finger-style user lookups with GECOS field display. All
+        read the utmpx database and are verified by differential testing against GNU
+        coreutils reference binaries.
+      use_cases:
+        - id: rel11.1-uc001-users
+          status: spec_complete
+        - id: rel11.1-uc002-who
+          status: spec_complete
+        - id: rel11.1-uc003-pinky
+          status: spec_complete
+    - version: "12.0"
+      name: "Batch 12.0 — file security and installation (shred, chroot, install)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement three file security and installation utilities. shred overwrites files
+        with random data to prevent recovery. chroot changes the root directory and
+        executes commands in the new root. install copies files while setting ownership,
+        permissions, and creating directories. All are verified by differential testing
+        against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel12.0-uc001-shred
+          status: spec_complete
+        - id: rel12.0-uc002-chroot
+          status: spec_complete
+        - id: rel12.0-uc003-install
+          status: spec_complete
+    - version: "12.1"
+      name: "Batch 12.1 — miscellaneous utilities (tsort, pathchk, test, stty)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement four miscellaneous utilities. tsort performs topological sorting with
+        cycle detection. pathchk validates pathnames against POSIX portability rules. test
+        evaluates conditional expressions for file tests, string comparisons, and integer
+        arithmetic. stty prints and changes terminal line settings. All are verified by
+        differential testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel12.1-uc001-tsort
+          status: spec_complete
+        - id: rel12.1-uc002-pathchk
+          status: spec_complete
+        - id: rel12.1-uc003-test
+          status: spec_complete
+        - id: rel12.1-uc004-stty
+          status: spec_complete
