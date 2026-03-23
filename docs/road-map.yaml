@@ -392,3 +392,25 @@ releases:
           status: spec_complete
         - id: rel08.1-uc007-printf
           status: spec_complete
+    - version: "09.0"
+      name: "Batch 9.0 — hash and checksum utilities (sha224sum, sha384sum, b2sum, cksum, sum)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement five checksum and hash utilities. sha224sum and sha384sum complete the
+        SHA-2 family alongside the existing sha256sum and sha512sum. b2sum adds BLAKE2b
+        support with variable-length digests. cksum computes POSIX CRC-32 checksums with
+        optional algorithm selection for modern hashes. sum computes BSD or System V
+        checksums. All are verified by differential testing against GNU coreutils reference
+        binaries.
+      use_cases:
+        - id: rel09.0-uc001-sha224sum
+          status: spec_complete
+        - id: rel09.0-uc002-sha384sum
+          status: spec_complete
+        - id: rel09.0-uc003-b2sum
+          status: spec_complete
+        - id: rel09.0-uc004-cksum
+          status: spec_complete
+        - id: rel09.0-uc005-sum
+          status: spec_complete
