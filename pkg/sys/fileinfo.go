@@ -3,7 +3,7 @@
 
 // Package sys wraps Darwin and Linux syscalls and signal handling.
 //
-// Implements prd002-sys R1.1–R1.2: FileInfo struct and Stat/Lstat signatures.
+// Implements prd002-sys R1.5–R1.7, R2.1: FileInfo struct, Stat, Lstat.
 package sys
 
 import (
@@ -14,7 +14,7 @@ import (
 // FileInfo holds extended file metadata that Go's os.FileInfo does not expose,
 // including hard-link count, ownership, device IDs, and all three timestamps.
 //
-// R1.1: all fields match the prd002-sys contract.
+// R2.2: all fields match the prd002-sys contract.
 type FileInfo struct {
 	Mode       os.FileMode
 	Size       int64
@@ -34,14 +34,22 @@ type FileInfo struct {
 
 // Stat returns a FileInfo for the named file, following symlinks.
 //
-// R1.2: stub implementation — panics until the execution logic is implemented.
+// R2.1: calls os.Stat then extracts syscall.Stat_t fields via fileInfoFromOS.
 func Stat(path string) (*FileInfo, error) {
-	panic("not implemented")
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileInfoFromOS(info)
 }
 
 // Lstat returns a FileInfo for the named file without following symlinks.
 //
-// R1.2: stub implementation — panics until the execution logic is implemented.
+// R2.1: calls os.Lstat to avoid following symlinks.
 func Lstat(path string) (*FileInfo, error) {
-	panic("not implemented")
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileInfoFromOS(info)
 }
