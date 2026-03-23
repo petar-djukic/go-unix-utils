@@ -1,0 +1,40 @@
+id: rel14.0-uc003-vidir
+title: "Edit directories in a text editor via vidir"
+
+summary: |
+  The operator runs the Go vidir binary. The differential testing harness runs both
+  the Go binary and the reference binary (vidir) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd114-vidir.yaml) and invokes do-work to produce
+  a passing differential test for cmd/vidir.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises vidir with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/vidir and
+      vidir with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/vidir — vidir enables batch rename/delete (prd114-vidir)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with vidir.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-14.0

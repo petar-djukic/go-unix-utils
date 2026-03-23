@@ -1,0 +1,79 @@
+id: test-rel14.0
+title: "Test Suite: rel14.0 — chronic, pee, vidir"
+release: rel14.0
+
+traces:
+  - rel14.0-uc001-chronic
+  - rel14.0-uc002-pee
+  - rel14.0-uc003-vidir
+  - prd112-chronic R1
+  - prd112-chronic R2
+  - prd113-pee R1
+  - prd113-pee R2
+  - prd114-vidir R1
+  - prd114-vidir R2
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: chronic, pee, vidir (moreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  - name: chronic_success_suppressed
+    description: "chronic suppresses output on success"
+    inputs:
+      args: ["echo", "hello"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd112-chronic R1.1
+
+  - name: chronic_failure_shown
+    description: "chronic shows output on failure"
+    inputs:
+      args: ["false"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd112-chronic R1.1
+      - prd112-chronic R2.1
+
+  - name: pee_two_commands
+    description: "pee pipes stdin to two commands"
+    inputs:
+      args: ["cat", "wc -c"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd113-pee R1.1
+      - prd113-pee R1.3
+
+  - name: vidir_list_format
+    description: "vidir lists files with tab-separated numbers"
+    inputs:
+      args: ["."]
+      stdin: null
+      env: ["LC_ALL=C", "EDITOR=cat"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd114-vidir R1.1

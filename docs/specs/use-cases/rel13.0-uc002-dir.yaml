@@ -1,0 +1,40 @@
+id: rel13.0-uc002-dir
+title: "List directory contents in columns via dir"
+
+summary: |
+  The operator runs the Go dir binary. The differential testing harness runs both
+  the Go binary and the reference binary (gdir) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd107-dir.yaml) and invokes do-work to produce
+  a passing differential test for cmd/dir.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises dir with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/dir and
+      gdir with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/dir — dir lists directory contents (prd107-dir)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with gdir.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-13.0

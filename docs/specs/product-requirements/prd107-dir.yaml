@@ -1,0 +1,113 @@
+id: prd107-dir
+title: "cmd/dir: List Directory Contents"
+
+problem: |
+  dir is a GNU coreutils utility equivalent to "ls -C -b". It lists directory contents in
+  multi-column format with non-printable characters escaped using C-style backslash sequences.
+  macOS does not ship a dir command; the Go implementation must match the Homebrew GNU
+  reference binary (gdir, installed by coreutils) byte-for-byte on all flag combinations,
+  verified by differential testing via pkg/testutils.
+
+  dir shares the bulk of its logic with cmd/ls (prd008-ls). The implementation must invoke
+  the same listing engine with hardcoded defaults for multi-column layout (-C) and C-style
+  escaping (-b). dir requires pkg/sys for SIGPIPE handling and terminal width queries.
+
+goals:
+  - G1: List directory contents in multi-column format with C-style escaping of non-printable characters, matching GNU dir (ls -C -b) output.
+  - G2: Accept the same arguments as ls, with the only difference being the default format and quoting style.
+
+requirements:
+  R1:
+    title: Default behavior and output format
+    items:
+      - R1.1:
+          text: |
+            Must list directory contents in multi-column format by default, regardless of
+            whether stdout is a TTY. This matches GNU dir behavior where -C is the default
+            format. When stdout is a TTY, terminal width is obtained by calling
+            pkg/sys.TerminalWidth() (int, error). When stdout is not a TTY, must use a
+            default width of 80 columns.
+          weight: 1
+      - R1.2:
+          text: |
+            Must escape non-printable characters in filenames using C-style backslash
+            sequences by default. This matches the -b (--escape) behavior of ls. Backslash,
+            newline, tab, and other control characters are printed as \\, \n, \t, and \NNN
+            (octal) respectively. Spaces in filenames are printed as \  (backslash space).
+          weight: 1
+      - R1.3:
+          text: |
+            Must sort entries in the C locale order (LC_COLLATE=C) by default, matching
+            ls default sort behavior. Entries whose names start with "." are excluded unless
+            -a or -A is given.
+          weight: 1
+      - R1.4:
+          text: When no directory arguments are given, must default to the current directory (".").
+          weight: 1
+      - R1.5:
+          text: Must accept all flags that ls accepts. dir is identical to ls except for the default format (-C) and default quoting style (-b). All other behavior is inherited from ls.
+          weight: 1
+
+  R2:
+    title: Exit codes and signal handling
+    items:
+      - R2.1:
+          text: Must exit 0 when all listed paths are accessed and output is written successfully.
+          weight: 1
+      - R2.2:
+          text: Must exit 1 when a minor problem occurs (permission denied, file not found). Must print a diagnostic to stderr and continue processing remaining entries.
+          weight: 1
+      - R2.3:
+          text: Must exit 2 when a serious problem occurs such as an invalid command-line option, matching GNU dir (and ls) exit-code contract.
+          weight: 1
+      - R2.4:
+          text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping dir output to head or other truncating consumers does not produce a broken-pipe error message.
+          weight: 1
+
+non_goals:
+  - dir does not add any flags beyond what ls provides; it is strictly ls with different defaults.
+  - Color output (--color) is not enabled by default in dir; it must be explicitly requested.
+  - Long format (-l) is not the default; -C is the default.
+  - Recursive listing (-R) is supported but not default behavior.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "Default mode comparison -- gdir and go run ./cmd/dir on a test directory produce identical multi-column output with escaped filenames. Differential tests must set LC_ALL=C."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+  - id: AC2
+    criterion: "Non-TTY output -- gdir piped to cat and go run ./cmd/dir piped to cat produce identical 80-column multi-column output."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC3
+    criterion: "Escaping -- filenames containing spaces, backslashes, newlines, and control characters are escaped identically by gdir and the Go binary."
+    traces:
+      - R1.2
+  - id: AC4
+    criterion: "Exit codes -- the Go binary exits 1 when given a non-existent path and exits 2 for an invalid option, matching gdir behavior."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+  - id: AC5
+    criterion: "cmd/dir compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

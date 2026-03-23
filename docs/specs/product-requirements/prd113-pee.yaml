@@ -1,0 +1,62 @@
+id: prd113-pee
+title: "cmd/pee: Tee Standard Input to Pipes"
+
+problem: |
+  pee (from moreutils) reads stdin and writes it to multiple commands simultaneously,
+  like tee but for pipe commands instead of files. The Go implementation must match the
+  Homebrew reference binary (pee, installed by moreutils) byte-for-byte, verified by
+  differential testing via pkg/testutils.
+
+goals:
+  - G1: Read stdin and pipe it to multiple commands simultaneously.
+  - G2: Verify functional parity against the reference pee binary via differential testing.
+
+requirements:
+  R1:
+    title: Pipe teeing
+    items:
+      - R1.1:
+          text: Must accept one or more COMMAND arguments. Must read stdin and write the input to the stdin of each COMMAND in parallel. Each COMMAND is executed via the shell (sh -c COMMAND).
+          weight: 4
+      - R1.2:
+          text: Must wait for all commands to complete before exiting.
+          weight: 1
+      - R1.3:
+          text: Stdout of each COMMAND goes to stdout, interleaved.
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 when all commands exit 0. Must exit 1 when any command exits non-zero.
+          weight: 1
+      - R2.2:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/pee does not implement output ordering or serialization of command outputs.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "echo hello | pee 'cat' 'wc -c' writes hello and byte count, matching reference."
+    traces:
+      - R1.1
+      - R1.3
+  - id: AC2
+    criterion: "Differential test against reference pee passes."
+    traces:
+      - R1.1
+  - id: AC3
+    criterion: "cmd/pee compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

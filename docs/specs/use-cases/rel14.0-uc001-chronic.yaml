@@ -1,0 +1,40 @@
+id: rel14.0-uc001-chronic
+title: "Run commands quietly unless they fail via chronic"
+
+summary: |
+  The operator runs the Go chronic binary. The differential testing harness runs both
+  the Go binary and the reference binary (chronic) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd112-chronic.yaml) and invokes do-work to produce
+  a passing differential test for cmd/chronic.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises chronic with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/chronic and
+      chronic with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/chronic — chronic suppresses output on success (prd112-chronic)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with chronic.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-14.0

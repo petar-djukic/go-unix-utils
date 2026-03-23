@@ -546,3 +546,54 @@ releases:
           status: spec_complete
         - id: rel12.1-uc004-stty
           status: spec_complete
+    - version: "13.0"
+      name: "Batch 13.0 — directory listing and filesystem (df, dir, vdir, dircolors)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement four directory listing and filesystem utilities. df reports filesystem
+        disk space usage with human-readable and SI format options. dir lists directory
+        contents in multi-column format (equivalent to ls -C -b). vdir lists directory
+        contents in long format (equivalent to ls -l -b). dircolors outputs shell commands
+        to set LS_COLORS for colorized ls output. All are verified by differential testing
+        against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel13.0-uc001-df
+          status: spec_complete
+        - id: rel13.0-uc002-dir
+          status: spec_complete
+        - id: rel13.0-uc003-vdir
+          status: spec_complete
+        - id: rel13.0-uc004-dircolors
+          status: spec_complete
+    - version: "13.1"
+      name: "Batch 13.1 — text formatting (pr, ptx)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement two text formatting utilities. pr paginates text files for printing with
+        headers, page numbers, and multi-column layout. ptx produces a permuted
+        (keyword-in-context) index from text input. Both are verified by differential
+        testing against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel13.1-uc001-pr
+          status: spec_complete
+        - id: rel13.1-uc002-ptx
+          status: spec_complete
+    - version: "14.0"
+      name: "Batch 14.0 — moreutils (chronic, pee, vidir)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement three moreutils utilities. chronic runs commands and suppresses output
+        unless the command fails, useful for cron jobs. pee tees stdin to multiple pipe
+        commands simultaneously. vidir enables batch renaming and deletion of files by
+        editing a directory listing in a text editor. All are verified by differential
+        testing against Homebrew moreutils reference binaries.
+      use_cases:
+        - id: rel14.0-uc001-chronic
+          status: spec_complete
+        - id: rel14.0-uc002-pee
+          status: spec_complete
+        - id: rel14.0-uc003-vidir
+          status: spec_complete

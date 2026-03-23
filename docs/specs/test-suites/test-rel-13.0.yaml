@@ -1,0 +1,109 @@
+id: test-rel13.0
+title: "Test Suite: rel13.0 — df, dir, vdir, dircolors"
+release: rel13.0
+
+traces:
+  - rel13.0-uc001-df
+  - rel13.0-uc002-dir
+  - rel13.0-uc003-vdir
+  - rel13.0-uc004-dircolors
+  - prd106-df R1
+  - prd106-df R2
+  - prd106-df R3
+  - prd107-dir R1
+  - prd107-dir R2
+  - prd108-vdir R1
+  - prd108-vdir R2
+  - prd109-dircolors R1
+  - prd109-dircolors R2
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gdf, gdir, gvdir, gdircolors (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  - name: df_default
+    description: "df shows filesystem usage"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd106-df R1.1
+
+  - name: df_human
+    description: "df -h shows human-readable sizes"
+    inputs:
+      args: ["-h"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd106-df R2.1
+
+  - name: dir_default
+    description: "dir lists files in columns"
+    inputs:
+      args: ["."]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd107-dir R1.1
+
+  - name: vdir_default
+    description: "vdir lists files in long format"
+    inputs:
+      args: ["."]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd108-vdir R1.1
+
+  - name: dircolors_bourne
+    description: "dircolors -b outputs Bourne shell LS_COLORS assignment"
+    inputs:
+      args: ["-b"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd109-dircolors R1.1
+
+  - name: dircolors_print_database
+    description: "dircolors -p prints default color database"
+    inputs:
+      args: ["-p"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd109-dircolors R1.3
