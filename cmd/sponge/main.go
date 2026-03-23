@@ -6,7 +6,8 @@
 // R2.1-R2.5 (output file handling with atomic rename, permission
 // preservation, lstat, and cross-device fallback),
 // R3.1-R3.3 (append mode via -a flag, permission error handling),
-// R5.1-R5.4 (exit codes, error handling, signal cleanup).
+// R5.1-R5.4 (exit codes, error handling, signal cleanup, SIGPIPE),
+// R6.1-R6.2 (--help usage output, --version output).
 package main
 
 import (
