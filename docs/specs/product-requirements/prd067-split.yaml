@@ -84,6 +84,11 @@ non_goals:
   - cmd/split does not implement --verbose output mode.
   - cmd/split does not implement --elide-empty-files beyond what -n provides natively.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sizeparse
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "seq 1 3000 | go run ./cmd/split produces xaa (lines 1-1000), xab (lines 1001-2000), xac (lines 2001-3000), matching gsplit."

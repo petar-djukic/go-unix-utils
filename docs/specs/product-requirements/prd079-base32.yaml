@@ -64,6 +64,11 @@ non_goals:
   - cmd/base32 does not implement Base32hex (extended hex alphabet).
   - cmd/base32 does not implement Base64; use base64 for that.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/encutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "echo hello | base32 produces Base32 encoded output matching gbase32."

@@ -1,0 +1,49 @@
+id: rel00.0-uc005-hashutil
+title: "Shared hash output formatting and verification via hashutil"
+
+summary: |
+  The pkg/hashutil library provides shared logic for formatting hash digests in GNU
+  text/binary and BSD tag formats, parsing checksum files, and verifying digests with
+  --check mode. All hash cmd/ utilities (md5sum, sha1sum, sha256sum, sha512sum,
+  sha224sum, sha384sum, b2sum) import this package instead of reimplementing the
+  output and verification logic.
+
+actor: Stitch Agent
+
+trigger: |
+  The stitch agent implements a hash utility PRD and needs hash output formatting,
+  checksum file parsing, or --check verification logic.
+
+flow:
+  - id: F1
+    step: |
+      The stitch agent reads the hashutil PRD and implements the shared library with
+      HashConfig, FormatGNU, FormatBSDTag, ComputeDigest, ParseChecksumLine, and
+      VerifyChecksums functions.
+  - id: F2
+    step: |
+      The stitch agent writes unit tests for each exported function, verifying correct
+      output format, parsing, and verification behavior.
+
+touchpoints:
+  - T1: "pkg/hashutil — hash output formatting, checksum parsing, verification (prd086-hashutil R1, R2, R3)"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      Unit tests pass for ComputeDigest, FormatGNU, FormatBSDTag, ParseChecksumLine,
+      VerifyChecksums, and DigestFiles with multiple hash algorithms.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+      - AC7
+
+out_of_scope:
+  - Specific hash algorithm implementations (provided by Go standard library).
+  - SIGPIPE handling (each cmd/ utility handles independently).
+
+test_suite: test-rel00.0

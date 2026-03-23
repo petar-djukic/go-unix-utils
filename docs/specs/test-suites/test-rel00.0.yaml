@@ -23,6 +23,18 @@ traces:
   - prd001-testutils R3
   - prd001-testutils R4
   - prd001-testutils R5
+  - rel00.0-uc005-hashutil
+  - prd086-hashutil R1
+  - prd086-hashutil R2
+  - prd086-hashutil R3
+  - rel00.0-uc006-sizeparse
+  - prd087-sizeparse R1
+  - prd087-sizeparse R2
+  - prd087-sizeparse R3
+  - rel00.0-uc007-encutil
+  - prd088-encutil R1
+  - prd088-encutil R2
+  - prd088-encutil R3
 
 preconditions:
   - A git repository with at least one tag matching v[0-9]*.

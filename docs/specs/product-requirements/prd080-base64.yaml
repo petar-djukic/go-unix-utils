@@ -64,6 +64,11 @@ non_goals:
   - cmd/base64 does not implement Base64url (URL-safe alphabet).
   - cmd/base64 does not implement Base32; use base32 for that.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/encutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "echo hello | base64 produces Base64 encoded output matching gbase64."

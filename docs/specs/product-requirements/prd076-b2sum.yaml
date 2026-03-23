@@ -73,6 +73,11 @@ non_goals:
   - cmd/b2sum does not implement BLAKE2s; it computes BLAKE2b only.
   - cmd/b2sum does not implement keyed hashing or BLAKE2 MAC mode.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/hashutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "b2sum on a known file produces the correct BLAKE2b-512 hash in GNU format, matching gb2sum."

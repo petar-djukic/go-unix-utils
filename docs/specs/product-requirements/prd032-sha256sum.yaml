@@ -71,6 +71,11 @@ non_goals:
   - cmd/sha256sum does not implement HMAC-SHA256 or keyed variants.
   - cmd/sha256sum does not implement SHA-224; it computes SHA-256 only.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/hashutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "sha256sum on a known file produces the correct SHA-256 hash in GNU format, matching gsha256sum."

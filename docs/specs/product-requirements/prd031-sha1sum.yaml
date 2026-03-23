@@ -71,6 +71,11 @@ non_goals:
   - cmd/sha1sum does not implement HMAC-SHA1 or keyed variants.
   - SHA-1 is cryptographically broken; this implementation is for compatibility with GNU tools only.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/hashutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "sha1sum on a known file produces the correct SHA-1 hash in GNU format, matching gsha1sum."
