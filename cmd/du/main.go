@@ -8,7 +8,8 @@
 // R2.4 (-d/--max-depth), R2.5 (-k), R2.6 (-m), R2.7 (-c/--total),
 // R3.1-R3.3 (hard-link deduplication via device+inode tracking),
 // R4.1-R4.2 (exit codes with error continuation),
-// R5.1 (SIGPIPE handler installation).
+// R5.1 (SIGPIPE handler installation),
+// --help and --version output.
 //
 // TODO: prd009 R2.2 (--si) is a non_goal per PRD non_goals: "--si (1000-based units) is out of scope".
 // TODO: prd009 R2.4 (-B/--block-size=SIZE) is a non_goal per PRD non_goals: "--block-size=SIZE with arbitrary unit suffixes is out of scope; only -k and -m are supported".
@@ -86,6 +87,14 @@ func parseFlagsAndArgs(args []string, cfg *duConfig) error {
 			cfg.args = append(cfg.args, args[i+1:]...)
 			return nil
 		}
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
+		if arg == "--version" {
+			fmt.Println("du (go-unix-utils) dev")
+			os.Exit(0)
+		}
 		if val, ok := strings.CutPrefix(arg, "--max-depth="); ok {
 			if err := parseMaxDepth(val, cfg); err != nil {
 				return err
@@ -109,6 +118,25 @@ func parseFlagsAndArgs(args []string, cfg *duConfig) error {
 		cfg.args = append(cfg.args, arg)
 	}
 	return nil
+}
+
+// printHelp writes usage information to stdout.
+func printHelp() {
+	fmt.Print(`Usage: du [OPTION]... [FILE]...
+Summarize disk usage of the set of FILEs, recursively for directories.
+
+  -a, --all             write counts for all files, not just directories
+  -c, --total           produce a grand total
+  -d, --max-depth=N     print the total for a directory only if it is N or
+                          fewer levels below the command line argument
+  -h, --human-readable  print sizes in human readable format (e.g., 1K 234M 2G)
+  -k                    like --block-size=1K
+  -m                    like --block-size=1M
+  -s, --summarize       display only a total for each argument
+  -x, --one-file-system skip directories on different file systems
+      --help            display this help and exit
+      --version         output version information and exit
+`)
 }
 
 // handleDepthFlag handles -d N, --max-depth N, and -dN flag forms.
@@ -338,10 +366,23 @@ func ceilDiv(a, b int64) int64 {
 
 // reportError prints a diagnostic to stderr.
 // R4.2: continues processing after errors.
+// D2: matches GNU du format with capitalized error message.
 func reportError(action, path string, err error) {
 	msg := err.Error()
 	if pe, ok := err.(*os.PathError); ok {
 		msg = pe.Err.Error()
 	}
-	fmt.Fprintf(os.Stderr, "du: %s '%s': %s\n", action, path, msg)
+	fmt.Fprintf(os.Stderr, "du: %s '%s': %s\n", action, path, capitalizeFirst(msg))
+}
+
+// capitalizeFirst returns s with the first byte uppercased.
+// Matches GNU coreutils error message style (e.g., "No such file or directory").
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	if s[0] >= 'a' && s[0] <= 'z' {
+		return string(s[0]-32) + s[1:]
+	}
+	return s
 }

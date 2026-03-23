@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -175,6 +176,19 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--one-file-system", fixture},
 			Normalize: []testutils.NormalizeFunc{sortLines},
 		},
+		// R4.1-R4.2: error handling and exit codes.
+		{
+			Name:      "nonexistent_path",
+			Args:      []string{"/nonexistent_path_for_du_test"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinName},
+		},
+		{
+			Name:      "mixed_valid_invalid",
+			Args:      []string{fixture, "/nonexistent_path_for_du_test"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{sortLines, normalizeBinName},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -190,6 +204,12 @@ func sortLines(b []byte) []byte {
 	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 	sort.Strings(lines)
 	return []byte(strings.Join(lines, "\n") + "\n")
+}
+
+// normalizeBinName replaces "gdu:" with "du:" in output for comparison.
+// GNU reference binary stderr uses "gdu:" prefix; our binary uses "du:".
+func normalizeBinName(b []byte) []byte {
+	return []byte(strings.ReplaceAll(string(b), "gdu:", "du:"))
 }
 
 // createFixture builds a directory tree for du testing.
@@ -265,5 +285,79 @@ func writeTestFile(t *testing.T, path string, size int) {
 	data := make([]byte, size)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestDiffPermissionDenied tests error handling for unreadable directories.
+// R4.1-R4.2: permission denied prints diagnostic to stderr, exits 1.
+func TestDiffPermissionDenied(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("permission test requires unix")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("test requires non-root user")
+	}
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	unreadable := filepath.Join(dir, "noperm")
+	mustMkdir(t, unreadable)
+	writeTestFile(t, filepath.Join(unreadable, "file.txt"), 1024)
+	if err := os.Chmod(unreadable, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unreadable, 0o755) // best-effort restore for cleanup
+	})
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "permission_denied_dir",
+			Args:      []string{dir},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{sortLines, normalizeBinName},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestHelpFlag verifies --help prints usage to stdout and exits 0.
+func TestHelpFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+	output := string(out)
+	if !strings.Contains(output, "Usage:") {
+		t.Errorf("--help output missing 'Usage:': %s", output)
+	}
+	if !strings.Contains(output, "--human-readable") {
+		t.Errorf("--help output missing '--human-readable': %s", output)
+	}
+}
+
+// TestVersionFlag verifies --version prints version info and exits 0.
+func TestVersionFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	output := string(out)
+	if !strings.Contains(output, "du (go-unix-utils)") {
+		t.Errorf("--version output missing expected prefix: %s", output)
 	}
 }
