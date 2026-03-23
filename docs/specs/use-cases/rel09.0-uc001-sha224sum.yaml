@@ -1,0 +1,53 @@
+id: rel09.0-uc001-sha224sum
+title: "Compute and verify SHA-224 digests via sha224sum"
+
+summary: |
+  The operator runs the Go sha224sum binary on one or more files or stdin. The binary
+  computes SHA-224 digests and prints them in GNU format, or verifies a checksum file.
+  The differential testing harness then runs both the Go binary and the Homebrew
+  reference binary (gsha224sum from coreutils) with identical inputs and confirms that
+  their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd074-sha224sum.yaml) and invokes do-work to
+  produce a passing differential test for cmd/sha224sum.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises sha224sum in digest mode (file and stdin), check mode
+      (--check), and tag mode (--tag). --check changes the processing model from digest
+      computation to verification against stored hashes.
+  - id: F2
+    step: |
+      The operator tests --check with both matching and mismatching digests to verify
+      OK/FAILED output and correct exit codes.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/sha224sum and
+      gsha224sum with the same inputs and compares stdout byte-for-byte. Requires F1
+      (binary must be built).
+
+touchpoints:
+  - T1: "cmd/sha224sum — SHA-224 digest computation, GNU format output, check mode, binary/tag flags (prd074-sha224sum R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for file digest, stdin digest, --check valid,
+      --check mismatch, and --tag BSD format, confirming full parity with gsha224sum.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - SHA-256 digests are not implemented by this utility.
+
+test_suite: test-rel09.0

@@ -1,0 +1,51 @@
+id: rel09.0-uc005-sum
+title: "Compute checksums and block counts via sum"
+
+summary: |
+  The operator runs the Go sum binary on one or more files or stdin. The binary computes
+  BSD or System V checksums and prints the checksum and block count. The differential
+  testing harness then runs both the Go binary and the Homebrew reference binary (gsum
+  from coreutils) with identical inputs and confirms that their outputs are identical
+  byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd078-sum.yaml) and invokes do-work to
+  produce a passing differential test for cmd/sum.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises sum in default BSD mode (file and stdin) and System V
+      mode (-s).
+  - id: F2
+    step: |
+      The operator tests multi-file input and error cases (missing files) to verify
+      correct output and exit codes.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/sum and
+      gsum with the same inputs and compares stdout byte-for-byte. Requires F1
+      (binary must be built).
+
+touchpoints:
+  - T1: "cmd/sum — BSD and System V checksum algorithms, block count output (prd078-sum R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for BSD mode, System V mode (-s), stdin input,
+      multi-file input, and error cases, confirming full parity with gsum.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - Modern hash algorithms are not implemented; use sha256sum or cksum for that.
+
+test_suite: test-rel09.0

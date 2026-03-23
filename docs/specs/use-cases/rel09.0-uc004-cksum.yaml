@@ -1,0 +1,53 @@
+id: rel09.0-uc004-cksum
+title: "Compute CRC checksums and byte counts via cksum"
+
+summary: |
+  The operator runs the Go cksum binary on one or more files or stdin. The binary
+  computes CRC-32 checksums (POSIX default) or alternate digest algorithms via
+  --algorithm. The differential testing harness then runs both the Go binary and the
+  Homebrew reference binary (gcksum from coreutils) with identical inputs and confirms
+  that their outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd077-cksum.yaml) and invokes do-work to
+  produce a passing differential test for cmd/cksum.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises cksum in default CRC mode (file and stdin), and with
+      --algorithm=sha256 to verify tagged hash output.
+  - id: F2
+    step: |
+      The operator tests --untagged and --raw output format options with non-CRC
+      algorithms.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/cksum and
+      gcksum with the same inputs and compares stdout byte-for-byte. Requires F1
+      (binary must be built).
+
+touchpoints:
+  - T1: "cmd/cksum — CRC-32 checksum, algorithm selection, output format control (prd077-cksum R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for default CRC mode, --algorithm=sha256 tagged
+      output, --untagged format, stdin input, multi-file input, and error cases,
+      confirming full parity with gcksum.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - --check mode for CRC verification is not implemented.
+  - --base64 encoding is not implemented.
+
+test_suite: test-rel09.0
