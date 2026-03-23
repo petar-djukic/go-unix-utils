@@ -115,4 +115,5 @@ acceptance_criteria:
 
 package_contract:
   imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/format
     - github.com/petar-djukic/go-unix-utils/pkg/sys
