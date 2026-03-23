@@ -4,7 +4,7 @@
 // Implements prd019-seq: Print a Sequence of Numbers.
 // Covers R1.1-R1.5 (argument forms, sequence generation, zero step),
 // R2.1-R2.4 (separator, equal-width, format precedence),
-// R3.1-R3.3 (exit codes, error messages, edge cases).
+// R3.1-R3.4 (format string, equal-width, format validation, -f/-w precedence).
 package main
 
 import (
@@ -53,6 +53,14 @@ func run(cfg config, positional []string) int {
 		return 1
 	}
 
+	// R3.4: when -f is given, validate format and ignore -w.
+	if cfg.format != "" {
+		if err := validateFormat(cfg.format); err != nil {
+			fmt.Fprintf(os.Stderr, "seq: %v\n", err)
+			return 1
+		}
+	}
+
 	fmtStr := resolveFormat(cfg, positional, first, last)
 
 	return generate(first, incr, last, fmtStr, cfg.separator)
@@ -97,6 +105,81 @@ func maxPrecision(args []string) int {
 		}
 	}
 	return maxPrec
+}
+
+// validateFormat checks that a -f format string contains exactly one
+// floating-point conversion specifier from the allowed set.
+// R3.1/R3.2: allowed specifiers are %a, %e, %f, %g, %A, %E, %F, %G.
+func validateFormat(format string) error {
+	count := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(format) {
+			return fmtErr(format, "incomplete %%")
+		}
+		if format[i] == '%' {
+			continue // literal %%
+		}
+		i = skipFormatModifiers(format, i)
+		if i >= len(format) {
+			return fmtErr(format, "incomplete %%")
+		}
+		if !isAllowedSpecifier(format[i]) {
+			return fmt.Errorf("format '%s' has unknown %%%c directive", format, format[i])
+		}
+		count++
+	}
+	return checkSpecifierCount(format, count)
+}
+
+// skipFormatModifiers advances past flags, width, and precision fields.
+func skipFormatModifiers(format string, i int) int {
+	// skip flags: -, +, #, 0, space, '
+	for i < len(format) && isFormatFlag(format[i]) {
+		i++
+	}
+	// skip width
+	for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+		i++
+	}
+	// skip precision
+	if i < len(format) && format[i] == '.' {
+		i++
+		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+			i++
+		}
+	}
+	return i
+}
+
+// isFormatFlag returns true if b is a printf flag character.
+func isFormatFlag(b byte) bool {
+	return b == '-' || b == '+' || b == '#' || b == '0' || b == ' ' || b == '\''
+}
+
+// isAllowedSpecifier returns true if b is an allowed floating-point specifier.
+func isAllowedSpecifier(b byte) bool {
+	return b == 'a' || b == 'e' || b == 'f' || b == 'g' ||
+		b == 'A' || b == 'E' || b == 'F' || b == 'G'
+}
+
+// checkSpecifierCount validates the number of conversion specifiers found.
+func checkSpecifierCount(format string, count int) error {
+	if count == 0 {
+		return fmt.Errorf("format '%s' has no %% directive", format)
+	}
+	if count > 1 {
+		return fmt.Errorf("format '%s' has too many %% directives", format)
+	}
+	return nil
+}
+
+// fmtErr returns a format-related error with the format string quoted.
+func fmtErr(format, detail string) error {
+	return fmt.Errorf("format '%s' has %s", format, detail)
 }
 
 // parsePositional interprets 1, 2, or 3 positional args as FIRST, INCREMENT, LAST.

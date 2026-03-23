@@ -65,7 +65,8 @@ func main() {
 
 // run processes all input files and returns the exit code.
 // R1.4: when no files given, reads stdin.
-// R3.5/R4.1/R4.2: continues after errors, exit 1 if any fail.
+// R3.5: when a file cannot be opened, prints error to stderr and continues.
+// R4.1/R4.2: exit 0 on success, exit 1 if any file fails.
 func run(cfg config, files []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
@@ -76,6 +77,7 @@ func run(cfg config, files []string) int {
 
 	for _, name := range files {
 		if err := processFile(cfg, name, showHeader, needSep); err != nil {
+			// R3.5: print error and continue processing remaining files.
 			fmt.Fprintf(os.Stderr, "head: %v\n", err)
 			exitCode = 1
 			continue
@@ -101,6 +103,7 @@ func resolveHeaderMode(hm headerMode, fileCount int) bool {
 }
 
 // processFile reads and outputs content from a single file or stdin.
+// R3.5: returns error on open failure so the caller can report and continue.
 func processFile(cfg config, name string, showHeader, needSep bool) error {
 	r, err := openInput(name)
 	if err != nil {
@@ -110,16 +113,20 @@ func processFile(cfg config, name string, showHeader, needSep bool) error {
 		defer r.Close()
 	}
 
-	displayName := name
-	if name == "-" {
-		displayName = "standard input"
-	}
-
 	if showHeader {
-		printHeader(displayName, needSep)
+		printHeader(fileDisplayName(name), needSep)
 	}
 
 	return outputContent(r, cfg)
+}
+
+// fileDisplayName returns the display name for a file argument.
+// R3.1: stdin ("-") displays as "standard input".
+func fileDisplayName(name string) string {
+	if name == "-" {
+		return "standard input"
+	}
+	return name
 }
 
 // openInput opens a named file or returns stdin for "-".
