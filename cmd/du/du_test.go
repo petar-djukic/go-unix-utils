@@ -25,6 +25,7 @@ func TestDiff(t *testing.T) {
 
 	fixture := createFixture(t)
 	hlFixture := createHardLinkFixture(t)
+	deepFixture := createDeepFixture(t)
 
 	tests := []testutils.DiffTest{
 		{
@@ -100,6 +101,80 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-m", "-a", fixture},
 			Normalize: []testutils.NormalizeFunc{sortLines},
 		},
+		// R2.2: -s/--summarize displays only total per argument.
+		{
+			Name: "summarize_short",
+			Args: []string{"-s", fixture},
+		},
+		{
+			Name: "summarize_long",
+			Args: []string{"--summarize", fixture},
+		},
+		{
+			Name:      "summarize_multiple_args",
+			Args:      []string{"-s", fixture, hlFixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name: "summarize_human",
+			Args: []string{"-s", "-h", fixture},
+		},
+		// R2.7: -c/--total prints grand total line.
+		{
+			Name:      "total_short",
+			Args:      []string{"-c", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "total_long",
+			Args:      []string{"--total", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "total_multiple_args",
+			Args:      []string{"-c", fixture, hlFixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name: "summarize_total",
+			Args: []string{"-s", "-c", fixture, hlFixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.4: -d/--max-depth limits output depth.
+		{
+			Name: "max_depth_0",
+			Args: []string{"-d", "0", deepFixture},
+		},
+		{
+			Name:      "max_depth_1",
+			Args:      []string{"--max-depth=1", deepFixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "max_depth_2",
+			Args:      []string{"-d", "2", deepFixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name: "max_depth_combined_d0",
+			Args: []string{"-d0", fixture},
+		},
+		{
+			Name:      "max_depth_all",
+			Args:      []string{"-d", "1", "-a", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// -x/--one-file-system on a normal tree (no mount points).
+		{
+			Name:      "one_file_system",
+			Args:      []string{"-x", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "one_file_system_long",
+			Args:      []string{"--one-file-system", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -152,6 +227,26 @@ func createHardLinkFixture(t *testing.T) string {
 	if err := os.Link(original, link); err != nil {
 		t.Fatalf("cannot create hard link: %v", err)
 	}
+
+	return dir
+}
+
+// createDeepFixture builds a deeper directory tree for max-depth testing.
+func createDeepFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	sub1 := filepath.Join(dir, "sub1")
+	deep := filepath.Join(sub1, "deep")
+	sub2 := filepath.Join(dir, "sub2")
+	mustMkdir(t, sub1)
+	mustMkdir(t, deep)
+	mustMkdir(t, sub2)
+
+	writeTestFile(t, filepath.Join(dir, "root.txt"), 1024)
+	writeTestFile(t, filepath.Join(sub1, "file1.txt"), 4096)
+	writeTestFile(t, filepath.Join(deep, "deep.txt"), 2048)
+	writeTestFile(t, filepath.Join(sub2, "file2.txt"), 8192)
 
 	return dir
 }
