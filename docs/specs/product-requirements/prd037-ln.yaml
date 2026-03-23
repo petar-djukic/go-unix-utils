@@ -19,42 +19,42 @@ requirements:
     items:
       - R1.1:
           text: Must create a hard link from TARGET to LINK_NAME when invoked as 'ln TARGET LINK_NAME'.
-          weight: 2
+          weight: 4
       - R1.2:
           text: Must create hard links for multiple TARGETs in DIRECTORY when invoked as 'ln TARGET... DIRECTORY', placing each link in DIRECTORY with the same basename as the target.
-          weight: 2
+          weight: 4
       - R1.3:
           text: Must exit with a non-zero status and print an error to stderr when attempting to create a hard link to a directory.
-          weight: 2
+          weight: 4
       - R1.4:
           text: Must exit with a non-zero status and print an error to stderr when LINK_NAME already exists and neither -f nor -i is given.
-          weight: 2
+          weight: 4
 
   R2:
     title: Symbolic link creation (-s, --symbolic)
     items:
       - R2.1:
           text: -s or --symbolic must create a symbolic link instead of a hard link.
-          weight: 2
+          weight: 4
       - R2.2:
           text: Must allow symbolic links to directories, unlike hard links.
-          weight: 2
+          weight: 4
       - R2.3:
           text: Must store the TARGET string as-is in the symlink, whether it is relative or absolute.
-          weight: 2
+          weight: 4
       - R2.4:
           text: -r or --relative must create a symbolic link with a relative path from the link location to the target, computing the relative path automatically.
-          weight: 2
+          weight: 4
 
   R3:
     title: Force, safety, and verbosity flags
     items:
       - R3.1:
           text: -f or --force must remove existing destination files before creating the link.
-          weight: 2
+          weight: 4
       - R3.2:
           text: -n or --no-dereference must treat a destination that is a symlink to a directory as a regular file, rather than following it.
-          weight: 2
+          weight: 4
       - R3.3:
           text: |
             -i or --interactive must prompt the user on stderr before removing an existing
@@ -65,29 +65,29 @@ requirements:
             input. When stdin is not a terminal (detected via os.Stdin.Fd() isatty check),
             treat as decline (do not prompt, do not remove). When -f and -i are both given,
             the last flag on the command line wins, matching GNU ln behavior.
-          weight: 2
+          weight: 4
       - R3.4:
           text: -v or --verbose must print the name of each link created to stdout.
-          weight: 2
+          weight: 4
       - R3.5:
           text: -b must create a backup of each existing destination file before removal, using the default backup suffix '~'. --backup=METHOD must accept numbered, existing, simple, and none as backup methods.
-          weight: 2
+          weight: 4
       - R3.6:
           text: -S SUFFIX or --suffix=SUFFIX must use SUFFIX instead of '~' for backup file names.
-          weight: 2
+          weight: 4
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare stdout, stderr, exit codes, and resulting filesystem state between the Go binary and gln via pkg/testutils.
-          weight: 2
+          weight: 4
       - R4.2:
           text: "Tests must cover: hard link creation, symbolic link creation (-s), force overwrite (-f), no-dereference (-n), verbose output (-v), backup creation (-b), multiple targets into a directory, relative symlinks (-r), and error cases for hard linking directories and existing destinations."
-          weight: 2
+          weight: 4
       - R4.3:
           text: Tests must verify that created links point to the correct target and have the correct link type (hard or symbolic), matching gln behavior.
-          weight: 2
+          weight: 4
 
 non_goals:
   - cmd/ln does not implement -L or -P (logical/physical) dereference modes for following symlink chains on the target.
