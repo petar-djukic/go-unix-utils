@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd015-basename: Strip Directory and Suffix from Filenames.
-// Covers R1.1-R1.3 (core path extraction, suffix removal, trailing slashes),
-// R2.1-R2.3 (multi-argument mode, -s/--suffix flag, help/version).
+// Covers R1.1-R1.5 (core path extraction, suffix removal, trailing slashes),
+// R2.1-R2.3 (multi-argument mode, -s/--suffix flag),
+// R3.1-R3.4 (NUL termination, exit codes, error messages).
 package main
 
 import (
@@ -20,33 +21,50 @@ var version = "dev"
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	suffix, multi, names, exitCode := parseArgs(os.Args[1:])
+	cfg, names, exitCode := parseArgs(os.Args[1:])
 	if exitCode >= 0 {
 		os.Exit(exitCode)
 	}
 
+	// R3.3, R3.4: no arguments is an error.
 	if len(names) == 0 {
 		fmt.Fprintln(os.Stderr, "basename: missing operand")
+		fmt.Fprintln(os.Stderr, "Try 'basename --help' for more information.")
 		os.Exit(1)
 	}
 
-	exitCode = run(suffix, multi, names)
+	exitCode = run(cfg, names)
 	os.Exit(exitCode)
 }
 
+// config holds parsed flag state.
+type config struct {
+	suffix string
+	multi  bool
+	zero   bool
+}
+
 // run processes the names and prints results. Returns exit code.
-func run(suffix string, multi bool, names []string) int {
+func run(cfg config, names []string) int {
 	// R1.2: two-argument form treats second positional as suffix.
-	if !multi && len(names) == 2 {
-		suffix = names[1]
+	if !cfg.multi && len(names) == 2 {
+		cfg.suffix = names[1]
 		names = names[:1]
-	} else if !multi && len(names) > 2 {
+	} else if !cfg.multi && len(names) > 2 {
+		// R3.3, R3.4: extra operand in single-argument mode.
 		fmt.Fprintf(os.Stderr, "basename: extra operand '%s'\n", names[2])
+		fmt.Fprintln(os.Stderr, "Try 'basename --help' for more information.")
 		return 1
 	}
 
+	terminator := "\n"
+	if cfg.zero {
+		// R3.1: NUL byte instead of newline.
+		terminator = "\x00"
+	}
+
 	for _, name := range names {
-		if _, err := fmt.Println(basename(name, suffix)); err != nil {
+		if _, err := fmt.Print(basename(name, cfg.suffix) + terminator); err != nil {
 			return 1
 		}
 	}
@@ -85,7 +103,7 @@ func basename(name, suffix string) string {
 
 // parseArgs processes flags and returns configuration.
 // exit is -1 when processing should continue; >= 0 for early termination.
-func parseArgs(args []string) (suffix string, multi bool, names []string, exit int) {
+func parseArgs(args []string) (cfg config, names []string, exit int) {
 	exit = -1
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -94,28 +112,31 @@ func parseArgs(args []string) (suffix string, multi bool, names []string, exit i
 			names = append(names, args[i+1:]...)
 			return
 		case arg == "--help":
-			return "", false, nil, printHelp()
+			return config{}, nil, printHelp()
 		case arg == "--version":
-			return "", false, nil, printVersion()
+			return config{}, nil, printVersion()
 		case arg == "-a" || arg == "--multiple":
 			// R2.1: enable multi-argument mode.
-			multi = true
+			cfg.multi = true
+		case arg == "-z" || arg == "--zero":
+			// R3.1: NUL-terminated output.
+			cfg.zero = true
 		case arg == "-s":
 			// R2.2: -s SUFFIX implies -a.
 			i++
 			if i >= len(args) {
 				fmt.Fprintln(os.Stderr, "basename: option requires an argument -- 's'")
-				return "", false, nil, 1
+				return config{}, nil, 1
 			}
-			suffix = args[i]
-			multi = true
+			cfg.suffix = args[i]
+			cfg.multi = true
 		case strings.HasPrefix(arg, "--suffix="):
 			// R2.2: --suffix=SUFFIX implies -a.
-			suffix = strings.TrimPrefix(arg, "--suffix=")
-			multi = true
+			cfg.suffix = strings.TrimPrefix(arg, "--suffix=")
+			cfg.multi = true
 		case strings.HasPrefix(arg, "-") && len(arg) > 1:
 			fmt.Fprintf(os.Stderr, "basename: unrecognized option '%s'\n", arg)
-			return "", false, nil, 1
+			return config{}, nil, 1
 		default:
 			// First non-flag argument; remaining args are all names.
 			names = append(names, args[i:]...)
