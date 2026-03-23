@@ -28,19 +28,19 @@ requirements:
       - R1.1:
           text: |
             When stdout is a TTY and no format flag is given, must produce multi-column output sorted vertically (down columns, then across). Terminal width is obtained by calling pkg/sys.TerminalWidth() (int, error) — returns the current terminal column count via TIOCGWINSZ ioctl on stdout; returns an error when stdout is not a terminal. Entries are laid out by calling pkg/format.Columns(entries []string, termWidth int) [][]string — distributes entries into the maximum number of columns fitting within termWidth, with column widths computed as per-column maxima of entry lengths.
-          weight: 1
+          weight: 2
       - R1.2:
           text: When stdout is not a TTY (pipe, file redirect) and no format flag is given, must produce single-column output with one entry per line. This matches GNU ls behavior (ls.c detects stdout is not a TTY and sets format to single-column).
-          weight: 1
+          weight: 2
       - R1.3:
           text: Must sort entries in the C locale order (LC_COLLATE=C). Differential tests must set LC_ALL=C to eliminate locale-dependent sort divergence.
-          weight: 1
+          weight: 2
       - R1.4:
           text: Must not list entries whose names start with "." unless -a or -A is given. This is the default filter behavior matching GNU ls.
-          weight: 1
+          weight: 2
       - R1.5:
           text: -1 must produce single-column output with one entry per line regardless of whether stdout is a TTY. This overrides the default multi-column layout.
-          weight: 1
+          weight: 2
       - R1.6:
           text: |
             -l flag skeleton and permission string. When -l is given, produce long-format output. Field order (left to right): permissions (10 chars), nlink, owner, group, size, mtime, name. Fields separated by a single space. Numeric fields (nlink, size) are right-aligned in columns wide enough for the largest value in the listing.
@@ -50,7 +50,7 @@ requirements:
             - Positions 1-3 (owner rwx): 'r'/'- ' for bit 0o400, 'w'/'-' for 0o200, 'x'/'-' for 0o100. If setuid (fi.Mode&os.ModeSetuid != 0): replace 'x' with 's', or replace '-' with 'S'.
             - Positions 4-6 (group rwx): bits 0o040, 0o020, 0o010. If setgid (fi.Mode&os.ModeSetgid != 0): replace 'x' with 's', or replace '-' with 'S'.
             - Positions 7-9 (other rwx): bits 0o004, 0o002, 0o001. If sticky (fi.Mode&os.ModeSticky != 0): replace 'x' with 't', or replace '-' with 'T'.
-          weight: 1
+          weight: 2
       - R1.7:
           text: |
             File metadata via pkg/sys.Lstat. Obtain metadata for each listed entry by calling pkg/sys.Lstat(path string) (*sys.FileInfo, error) — does not follow symbolic links; returns the symlink's own metadata when path is a symlink.
@@ -72,178 +72,178 @@ requirements:
               }
 
             In long format: print fi.Nlink (uint64) right-aligned; print fi.Size (int64, bytes) right-aligned. Both columns sized to the widest value across all listed entries.
-          weight: 1
+          weight: 2
       - R1.8:
           text: |
             Owner and group name resolution in long format. Resolve owner name by calling os/user.LookupId(strconv.Itoa(int(fi.Uid))); on success use u.Username; on error (user not found or lookup fails) fall back to strconv.FormatUint(uint64(fi.Uid), 10). Resolve group name by calling os/user.LookupGroupId(strconv.Itoa(int(fi.Gid))); on success use g.Name; on error fall back to strconv.FormatUint(uint64(fi.Gid), 10). Owner and group fields are left-padded to column width for alignment.
-          weight: 1
+          weight: 2
       - R1.9:
           text: |
             Modification time formatting in long format. Use fi.ModTime (time.Time from sys.FileInfo). If time.Since(fi.ModTime) < 6*30*24*time.Hour (approximately six months), format as fi.ModTime.Format("Jan _2 15:04"). Otherwise format as fi.ModTime.Format("Jan _2  2006"). Both patterns produce a 12-character field.
-          weight: 1
+          weight: 2
       - R1.10:
           text: |
             Total block count line and symlink display. Before the directory listing, print "total N\n" where N = sum(fi.Blocks for all listed entries) / 2. The division converts 512-byte st_blocks units to 1K-block units matching GNU ls. N is a plain integer (no trailing suffix) unless -h is active (see R3).
 
             Symlink display: when fi.Mode&os.ModeSymlink != 0, read the link target with os.Readlink(path) and append " -> " + target to the entry name field. Use Lstat (not Stat) so the symlink's own fi.Size and fi.Nlink are used, not the target's.
-          weight: 1
+          weight: 2
       - R1.11:
           text: |
             -C must force multi-column output regardless of whether stdout is a TTY. Layout uses pkg/format.Columns(entries []string, termWidth int) [][]string. When stdout is not a TTY, -C must use a default width of 80 columns (matching GNU ls behavior when stdout is not a TTY and -C is given without -w).
-          weight: 1
+          weight: 2
       - R1.12:
           text: -C must sort entries vertically (down columns, then across to the next column). This is the same sort direction as the default multi-column mode in R1.1.
-          weight: 1
+          weight: 2
       - R1.13:
           text: -x must produce multi-column output with entries sorted horizontally (across columns, then down to the next row). This differs from -C which sorts vertically.
-          weight: 1
+          weight: 2
       - R1.14:
           text: -C and -x are mutually exclusive with -l and -1. If -l or -1 appears after -C or -x on the command line, it overrides the multi-column mode. If -C or -x appears after -l or -1, it overrides the long or single-column format. The last format flag wins, matching GNU ls behavior.
-          weight: 1
+          weight: 2
 
   R2:
     title: Filtering, sorting, and metadata display (-a, -A, -d, -t, -S, -r, -U, -v, -i, -s, -n)
     items:
       - R2.1:
           text: -a must include entries whose names start with "." including the special entries "." and ".." in the listing.
-          weight: 1
+          weight: 2
       - R2.2:
           text: -A must include entries whose names start with "." except for "." and "..". -A is the "almost all" filter.
-          weight: 1
+          weight: 2
       - R2.3:
           text: -d must list directory entries themselves rather than their contents. When a directory is given as an argument with -d, must print the directory name (or its long-format entry with -l) without descending into it.
-          weight: 1
+          weight: 2
       - R2.4:
           text: When both -a and -A are given, the last one on the command line takes precedence, matching GNU ls behavior.
-          weight: 1
+          weight: 2
       - R2.5:
           text: |
             -t must sort entries by modification time, newest first. Obtain metadata via pkg/sys.Lstat(path string) (*sys.FileInfo, error); use sys.FileInfo.ModTime time.Time for comparison (fi.ModTime.After(fj.ModTime) for newest-first ordering). Entries with the same modification time must be sorted by name in C locale order as a tiebreaker.
-          weight: 1
+          weight: 2
       - R2.6:
           text: |
             -S must sort entries by file size (st_size), largest first. Obtain file size from sys.FileInfo.Size int64 — apparent file size in bytes (st_size). Entries with the same size must be sorted by name in C locale order as a tiebreaker.
-          weight: 1
+          weight: 2
       - R2.7:
           text: -r must reverse the current sort order. -r applies to whichever sort is active (name sort by default, -t for time, -S for size, -v for version). -r with the default sort produces reverse alphabetical order.
-          weight: 1
+          weight: 2
       - R2.8:
           text: -U must disable sorting entirely and list entries in directory order (the order returned by readdir). -U overrides -t, -S, and -v. -r with -U has no defined effect (directory order is not reversible in a meaningful way), but must be accepted without error.
-          weight: 1
+          weight: 2
       - R2.9:
           text: -v must sort entries using natural version sort semantics (strverscmp behavior). Runs of digits within filenames are compared numerically rather than lexicographically, so "file2" sorts before "file10". Must be implemented without external libraries.
-          weight: 1
+          weight: 2
       - R2.10:
           text: When multiple sort flags are given, the last one on the command line takes precedence, matching GNU ls behavior.
-          weight: 1
+          weight: 2
       - R2.11:
           text: |
             -i must prepend the inode number of each entry before the entry name (or before the permissions in -l mode). Obtain the inode number via pkg/sys.Lstat(path string) (*sys.FileInfo, error) and read sys.FileInfo.Ino uint64 — inode number (st_ino). The inode number is right-aligned in a column wide enough for the largest inode in the listing.
-          weight: 1
+          weight: 2
       - R2.12:
           text: |
             -s must prepend the allocated block count for each entry before the entry name (or before the permissions in -l mode). Obtain the block count via pkg/sys.Lstat(path string) (*sys.FileInfo, error) and read sys.FileInfo.Blocks int64 — number of 512-byte blocks allocated (st_blocks). Report in 1024-byte block units: fi.Blocks / 2. The block count is right-aligned in a column wide enough for the largest count in the listing.
-          weight: 1
+          weight: 2
       - R2.13:
           text: -s with -l must also modify the "total N" line to include block counts in the selected unit. The total is the sum of all listed entries' block allocations.
-          weight: 1
+          weight: 2
       - R2.14:
           text: |
             -n must activate long format (implies -l) and display numeric UID and GID instead of resolving owner and group names. Format UID as strconv.FormatUint(uint64(fi.Uid), 10) and GID as strconv.FormatUint(uint64(fi.Gid), 10), where fi.Uid uint32 and fi.Gid uint32 come from pkg/sys.Lstat. Do not call os/user.LookupId or os/user.LookupGroupId.
-          weight: 1
+          weight: 2
       - R2.15:
           text: -i and -s may be combined. When both are given, inode is printed first, then block count, then the entry (or the long-format fields).
-          weight: 1
+          weight: 2
 
   R3:
     title: Display features (--color, -h, -F, -R)
     items:
       - R3.1:
           text: Must support --color=always, --color=auto, and --color=never. When --color is given without a value, it must default to "always".
-          weight: 1
+          weight: 2
       - R3.2:
           text: |
             --color=auto must colorize output only when stdout is a TTY. TTY detection: call pkg/sys.IsTerminal(os.Stdout) — returns true when os.Stdout's file descriptor is a terminal (detected via golang.org/x/sys/unix.IoctlGetWinsize with TIOCGWINSZ), false otherwise. When stdout is not a TTY, --color=auto must behave like --color=never.
-          weight: 1
+          weight: 2
       - R3.3:
           text: |
             Colorized output uses GNU LS_COLORS default color assignments via pkg/format. Call pkg/format.FileTypeColor(mode os.FileMode) string to obtain the ANSI escape sequence for a given file type, and pkg/format.Reset() string for the reset sequence. Executable detection: fi.Mode&0o111 != 0 (any execute bit set). Each entry name is wrapped as: colorCode + name + resetCode. When color is suppressed, both codes are empty strings so no ANSI sequences appear in output.
 
             Set the process-global color mode based on the --color flag value: call pkg/format.SetColorEnabled(true) for --color=always, pkg/format.SetColorEnabled(false) for --color=never. For --color=auto, call pkg/sys.IsTerminal(os.Stdout.Fd()) and pass the result to pkg/format.SetColorEnabled. When color is disabled, pkg/format.FileTypeColor returns empty strings.
-          weight: 1
+          weight: 2
       - R3.4:
           text: When --color=never or when color is suppressed (non-TTY with auto), must not emit any ANSI escape sequences in the output.
-          weight: 1
+          weight: 2
       - R3.5:
           text: |
             -h must only take effect with -l (long format). When -h is given with -l, file sizes (fi.Size int64) must be displayed via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). Without -l, -h must have no visible effect on output.
-          weight: 1
+          weight: 2
       - R3.6:
           text: -h must also apply to the "total N" block count line in long format. When -h is active, convert the total block count (sum(fi.Blocks)/2 as int64) to a human-readable string using the same binary algorithm before printing "total X\n".
-          weight: 1
+          weight: 2
       - R3.7:
           text: |
             -h must apply to -s block counts when both -s and -h are given, converting
             block counts to human-readable form. Use pkg/format.HumanSize(bytes int64,
             opts HumanSizeOpts) string with opts.Binary = true, consistent with R3.5.
             Do not duplicate the HumanSize algorithm inline.
-          weight: 1
+          weight: 2
       - R3.8:
           text: -F must append a type indicator character after each entry name. The indicators are "/" for directories, "*" for executable regular files, "@" for symbolic links, "|" for named pipes (FIFOs), "=" for sockets. Regular non-executable files receive no indicator.
-          weight: 1
+          weight: 2
       - R3.9:
           text: Executable is defined as having any execute bit set (owner, group, or other) in the file's permission mode.
-          weight: 1
+          weight: 2
       - R3.10:
           text: -F must work with all output formats (-l, -1, -C, -x) and with color output. When color is enabled, the indicator character is printed after the ANSI reset sequence so it is not colorized.
-          weight: 1
+          weight: 2
       - R3.11:
           text: -R must recursively list the contents of each subdirectory encountered during the listing. Each subdirectory's contents are printed under a header line in the format "PATH:" followed by a blank line, then the directory contents, then a blank line before the next entry.
-          weight: 1
+          weight: 2
       - R3.12:
           text: -R must respect the current format mode. With -l, each subdirectory's contents are listed in long format including the "total N" block line. With -C or default mode, each subdirectory's contents use multi-column layout.
-          weight: 1
+          weight: 2
       - R3.13:
           text: -R must not follow symbolic links to directories. Only real subdirectories are recursed into.
-          weight: 1
+          weight: 2
       - R3.14:
           text: -R must apply the current filter flags (-a, -A) to each subdirectory. Dotfiles in subdirectories are shown only if -a or -A is given.
-          weight: 1
+          weight: 2
       - R3.15:
           text: -R must list directories in the same sort order as entries within a directory. If -t is active, subdirectories are recursed into in modification-time order.
-          weight: 1
+          weight: 2
 
   R4:
     title: Exit codes, signal handling, and flag interactions
     items:
       - R4.1:
           text: Must exit 0 when all listed paths are accessed and output is written successfully.
-          weight: 1
+          weight: 2
       - R4.2:
           text: Must exit 1 when a minor problem occurs, such as failing to access a file or directory given as an argument (e.g., permission denied, file not found). Must still list the remaining accessible entries before exiting. Must print a diagnostic to stderr for each inaccessible entry.
-          weight: 1
+          weight: 2
       - R4.3:
           text: Must exit 2 when a serious problem occurs, such as an invalid command-line option. This matches GNU ls (ls.c:5638 exit(status) where status is set to EXIT_FAILURE=2 for bad options at ls.c:2026).
-          weight: 1
+          weight: 2
       - R4.4:
           text: |
             Must install a SIGPIPE handler at startup so that piping ls output to head or other truncating consumers does not produce a broken-pipe error message. Implementation: call pkg/sys.InstallSIGPIPEHandler() — this uses signal.Notify(c, syscall.SIGPIPE) with a buffered channel of size 1; a dedicated goroutine calls os.Exit(0) when the channel receives. Must not use signal.Ignore (deferred cleanup functions must not run on SIGPIPE, matching GNU ls behavior).
-          weight: 1
+          weight: 2
       - R4.5:
           text: Must install a SIGWINCH handler via pkg/sys.OnTerminalResize(callback func(width int)) that re-queries the terminal width and updates the column layout. pkg/sys.OnTerminalResize registers a SIGWINCH listener that calls pkg/sys.TerminalWidth() and invokes the callback with the new width; multiple callbacks may be registered. This allows ls to adapt column layout if the terminal is resized during a long listing.
-          weight: 1
+          weight: 2
       - R4.6:
           text: -n implies -l. When -n is given without -l, the output must be in long format with numeric UID/GID.
-          weight: 1
+          weight: 2
       - R4.7:
           text: -C and -x are mutually exclusive with -l and -1. The last format flag on the command line wins (see R1.14).
-          weight: 1
+          weight: 2
       - R4.8:
           text: -R with -l must produce a "total N" block line for each subdirectory listing, matching GNU ls -lR output.
-          weight: 1
+          weight: 2
       - R4.9:
           text: -i, -s, and -F may all be combined with -R. Each subdirectory listing applies the same metadata display and classification options.
-          weight: 1
+          weight: 2
 
 non_goals:
   - --hyperlink (terminal hyperlinks) is out of scope for this project.

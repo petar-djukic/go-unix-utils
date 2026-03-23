@@ -20,64 +20,64 @@ requirements:
     items:
       - R1.1:
           text: "When given one or more FILE arguments, must remove each file using unlink(2)."
-          weight: 1
+          weight: 2
       - R1.2:
           text: "Without -r, must refuse to remove a directory and print an error to stderr."
-          weight: 1
+          weight: 2
       - R1.3:
           text: "Must not remove '.' or '..' to prevent accidental directory tree destruction. Must print an error if either is specified."
-          weight: 1
+          weight: 2
       - R1.4:
           text: "When a file cannot be removed (permission denied, in use), must print an error to stderr and continue with remaining files."
-          weight: 1
+          weight: 2
 
   R2:
     title: Recursive removal and force mode
     items:
       - R2.1:
           text: "-r or -R or --recursive must remove directories and their contents recursively."
-          weight: 1
+          weight: 2
       - R2.2:
           text: "-f or --force must ignore non-existent files and never prompt. Overrides -i and -I."
-          weight: 1
+          weight: 2
       - R2.3:
           text: "When -r and -f are combined, must silently remove directory trees without prompting."
-          weight: 1
+          weight: 2
       - R2.4:
           text: "-d or --dir must remove empty directories. Without -d or -r, directory removal fails."
-          weight: 1
+          weight: 2
 
   R3:
     title: Interactive modes and verbose output
     items:
       - R3.1:
           text: "-i must prompt before every removal."
-          weight: 1
+          weight: 2
       - R3.2:
           text: "-I must prompt once before removing more than three files or when removing recursively."
-          weight: 1
+          weight: 2
       - R3.3:
           text: "-v or --verbose must print the name of each file as it is removed."
-          weight: 1
+          weight: 2
       - R3.4:
           text: "--interactive=WHEN must control prompting. WHEN is 'never' (like -f), 'once' (like -I), or 'always' (like -i)."
-          weight: 1
+          weight: 2
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when all files are removed successfully.
-          weight: 1
+          weight: 2
       - R4.2:
           text: Must exit 1 when any removal fails. Must continue removing remaining files.
-          weight: 1
+          weight: 2
       - R4.3:
           text: "With -f, must exit 0 even when specified files do not exist."
-          weight: 1
+          weight: 2
       - R4.4:
           text: "Differential tests must compare exit codes and resulting file system state between the Go binary and the reference binary via pkg/testutils. Tests must cover: single file removal, multi-file removal, -r recursive, -f force on non-existent, -d empty directory, -v verbose, error on directory without -r, error on permission denied, and refusing to remove '.' or '..'."
-          weight: 1
+          weight: 2
 
 non_goals:
   - cmd/rm does not implement --one-file-system (skip directories on different filesystems during recursive removal).

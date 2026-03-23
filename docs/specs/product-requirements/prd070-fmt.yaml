@@ -20,32 +20,32 @@ requirements:
     items:
       - R1.1:
           text: When invoked with no options, must reformat each paragraph of input text to fit within 75 characters (the GNU default width).
-          weight: 1
+          weight: 2
       - R1.2:
           text: Must treat blank lines as paragraph separators. Must not merge text across blank lines.
-          weight: 1
+          weight: 2
       - R1.3:
           text: Must preserve the indentation of the first line of each paragraph. Subsequent lines in the same paragraph are filled to match the second line's indentation (or the first if only one line).
-          weight: 1
+          weight: 2
       - R1.4:
           text: When given one or more FILE arguments, must read and format each file in order. When no file is given or "-" is given, must read from stdin.
-          weight: 1
+          weight: 2
 
   R2:
     title: Width control and goal width
     items:
       - R2.1:
           text: "-w WIDTH or --width=WIDTH must set the maximum line width (default 75)."
-          weight: 1
+          weight: 2
       - R2.2:
           text: "-g GOAL or --goal=GOAL must set the goal line width. Lines are filled to approximately GOAL characters. Default goal is 93% of width."
-          weight: 1
+          weight: 2
       - R2.3:
           text: Must break lines at word boundaries (spaces). Must not break in the middle of a word unless the word exceeds the maximum width.
-          weight: 1
+          weight: 2
       - R2.4:
           text: Must collapse multiple spaces between words to a single space, except after sentence-ending punctuation (. ! ?) where two spaces are preserved.
-          weight: 1
+          weight: 2
 
   R3:
     title: Split-only and uniform-spacing modes
