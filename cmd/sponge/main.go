@@ -5,25 +5,79 @@
 // Covers R1.1-R1.5 (core soak-before-write contract),
 // R2.1-R2.5 (output file handling with atomic rename, permission
 // preservation, lstat, and cross-device fallback),
-// R3.1-R3.2 (append mode via -a flag).
+// R3.1-R3.3 (append mode via -a flag, permission error handling),
+// R5.1-R5.4 (exit codes, error handling, signal cleanup).
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+// tempFilePath tracks the current temp file for signal-based cleanup.
+// R5.1 (prd007): signal handler removes the temp file on SIGINT/SIGTERM.
+// D2: package-level variable so the signal handler can access it.
+var (
+	tempFileMu   sync.Mutex
+	tempFilePath string
 )
 
 func main() {
 	// R5.4/shared protocol: Install SIGPIPE handler for piped output.
 	sys.InstallSIGPIPEHandler()
 
-	opts := parseArgs(os.Args[1:])
+	// R5.2 (prd007)/R6: Install signal handler before creating any temp file.
+	installSignalHandler()
+
+	opts, err := parseArgs(os.Args[1:])
+	if err != nil {
+		// R4.3 (prd007): exit 1 on invalid option.
+		fmt.Fprintf(os.Stderr, "sponge: %s\n", err)
+		os.Exit(1)
+	}
+
 	exitCode := run(opts, os.Stdin, os.Stdout, os.Stderr)
 	os.Exit(exitCode)
+}
+
+// installSignalHandler sets up SIGINT and SIGTERM to clean up temp files.
+// R5.1 (prd007)/D1: uses os/signal.Notify to catch signals.
+// R5.2 (prd007)/R6: must be called before any temp file is created.
+func installSignalHandler() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-ch
+		tempFileMu.Lock()
+		path := tempFilePath
+		tempFileMu.Unlock()
+		if path != "" {
+			_ = os.Remove(path) // best-effort cleanup on signal
+		}
+		os.Exit(1)
+	}()
+}
+
+// setTempFilePath records the temp file path for signal cleanup.
+func setTempFilePath(path string) {
+	tempFileMu.Lock()
+	tempFilePath = path
+	tempFileMu.Unlock()
+}
+
+// clearTempFilePath clears the tracked temp file path after rename.
+func clearTempFilePath() {
+	tempFileMu.Lock()
+	tempFilePath = ""
+	tempFileMu.Unlock()
 }
 
 // spongeOptions holds the parsed arguments for a sponge invocation.
@@ -36,7 +90,8 @@ type spongeOptions struct {
 // R1.2: first positional argument is the output file.
 // R1.3: no argument means write to stdout.
 // R3.1: -a enables append mode.
-func parseArgs(args []string) spongeOptions {
+// R4.3 (prd007): returns error on unrecognized flags.
+func parseArgs(args []string) (spongeOptions, error) {
 	var opts spongeOptions
 	for _, arg := range args {
 		if arg == "--version" {
@@ -51,12 +106,16 @@ func parseArgs(args []string) spongeOptions {
 			opts.appendMode = true
 			continue
 		}
+		// R4.3: reject unrecognized flags (anything starting with -).
+		if strings.HasPrefix(arg, "-") && arg != "-" {
+			return spongeOptions{}, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
+		}
 		// First non-flag argument is the output file.
 		if opts.outputFile == "" {
 			opts.outputFile = arg
 		}
 	}
-	return opts
+	return opts, nil
 }
 
 // printHelp writes usage information to stdout.
@@ -72,6 +131,8 @@ If no FILE is given, write to standard output.
 
 // run reads all stdin, then writes to the output file or stdout.
 // Returns the process exit code.
+// R5.1 (prd007): returns 0 on success.
+// R5.2 (prd007): returns 1 on any I/O error.
 func run(opts spongeOptions, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	// R1.1: Read all of stdin before opening the output file.
 	// R1.4: Works with pipes and redirects via io.ReadAll.
@@ -81,7 +142,7 @@ func run(opts spongeOptions, stdin io.Reader, stdout io.Writer, stderr io.Writer
 		return 1
 	}
 
-	// R1.3/R4.1: No output file means passthrough to stdout.
+	// R1.3/R5.1: No output file means passthrough to stdout.
 	if opts.outputFile == "" {
 		return writeToStdout(data, stdout, stderr)
 	}
@@ -102,14 +163,15 @@ func writeToStdout(data []byte, stdout io.Writer, stderr io.Writer) int {
 // R2.1: temp file created in the same directory as the output file.
 // R2.3: preserves original file permissions when overwriting.
 // R2.4: uses Lstat to check the output path.
-// R3.1-R3.2: append mode prepends existing file content.
+// R3.1-R3.3: append mode prepends existing file content.
+// R3.3 (prd007): handles permission errors on temp file and output.
 func writeToFile(data []byte, path string, appendMode bool, stderr io.Writer) int {
 	dir := filepath.Dir(path)
 
 	// R2.3/R2.4: Read existing file permissions via Lstat before writing.
 	origMode, hasOrigMode := getFileMode(path)
 
-	// R3.1: In append mode, prepend existing file content.
+	// R3.1/R3.3: In append mode, prepend existing file content.
 	if appendMode && hasOrigMode {
 		var err error
 		data, err = prependFileContent(path, data)
@@ -124,17 +186,24 @@ func writeToFile(data []byte, path string, appendMode bool, stderr io.Writer) in
 
 // writeViaTempFile creates a temp file, writes data, and renames to path.
 // R2.1: atomic rename. R2.2: fallback copy on cross-device.
-// R3.1 (prd007): clean up temp file on write failure.
+// R3.3/R5.4: clean up temp file on write failure or signal.
 func writeViaTempFile(data []byte, path, dir string, origMode os.FileMode, hasOrigMode bool, stderr io.Writer) int {
 	tmp, err := os.CreateTemp(dir, "sponge.*")
 	if err != nil {
+		// R3.3: permission error creating temp file.
 		fmt.Fprintf(stderr, "sponge: cannot create temp file: %s\n", err)
 		return 1
 	}
 	tmpName := tmp.Name()
 
-	// R3.1 (prd007)/R5.4: Ensure temp file is cleaned up on any error path.
-	defer cleanupTemp(tmpName)
+	// R5.1/R5.2/D2: Register temp file for signal-based cleanup.
+	setTempFilePath(tmpName)
+
+	// R5.4: Ensure temp file is cleaned up on any error path.
+	defer func() {
+		cleanupTemp(tmpName)
+		clearTempFilePath()
+	}()
 
 	if err := writeTempAndClose(tmp, data); err != nil {
 		fmt.Fprintf(stderr, "sponge: write error: %s\n", err)
@@ -169,7 +238,7 @@ func getFileMode(path string) (os.FileMode, bool) {
 }
 
 // prependFileContent reads existing file content and prepends it to data.
-// R3.1: result is [original content][stdin content].
+// R3.1/R3.3: result is [original content][stdin content].
 // R3.2: caller only invokes this when the file exists.
 func prependFileContent(path string, stdinData []byte) ([]byte, error) {
 	existing, err := os.ReadFile(path)
