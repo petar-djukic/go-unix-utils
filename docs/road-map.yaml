@@ -14,7 +14,7 @@ releases:
         - id: rel00.0-uc001-magefiles
           status: spec_complete
         - id: rel00.0-uc002-format
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc003-sys
           status: implemented
         - id: rel00.0-uc004-testutils
