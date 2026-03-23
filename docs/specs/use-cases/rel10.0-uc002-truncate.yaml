@@ -1,0 +1,49 @@
+id: rel10.0-uc002-truncate
+title: "Shrink or extend file size via truncate"
+
+summary: |
+  The operator runs the Go truncate binary to set or adjust file sizes. The binary
+  supports absolute sizes, relative adjustments, unit suffixes, and reference files.
+  The differential testing harness runs both the Go binary and the Homebrew reference
+  binary (gtruncate from coreutils) with identical inputs and confirms behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd083-truncate.yaml) and invokes do-work to
+  produce a passing differential test for cmd/truncate.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises truncate with absolute size (-s 100), relative size
+      (-s +50, -s -10), unit suffixes (-s 1K), and reference file (-r ref).
+  - id: F2
+    step: |
+      The operator tests --no-create mode, multiple files, and error cases.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/truncate
+      and gtruncate with the same inputs and compares resulting file sizes.
+
+touchpoints:
+  - T1: "cmd/truncate — file size control, relative adjustment, reference file (prd083-truncate R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for absolute size, relative adjustment, reference
+      file, no-create mode, and error cases, confirming full parity with gtruncate.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Sparse file optimization is not implemented.
+
+test_suite: test-rel-10.0

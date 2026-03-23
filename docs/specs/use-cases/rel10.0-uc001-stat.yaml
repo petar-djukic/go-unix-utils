@@ -1,0 +1,52 @@
+id: rel10.0-uc001-stat
+title: "Display file and filesystem status via stat"
+
+summary: |
+  The operator runs the Go stat binary to display file metadata or filesystem status.
+  The binary supports printf-style format strings for custom output. The differential
+  testing harness runs both the Go binary and the Homebrew reference binary (gstat
+  from coreutils) with identical inputs and confirms that their outputs are identical
+  byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd082-stat.yaml) and invokes do-work to
+  produce a passing differential test for cmd/stat.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises stat in default mode, with format strings (-c), terse
+      mode (-t), and filesystem mode (-f).
+  - id: F2
+    step: |
+      The operator tests symlink handling (-L), multiple files, and error cases
+      (missing files).
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/stat and
+      gstat with the same inputs and compares stdout byte-for-byte.
+
+touchpoints:
+  - T1: "cmd/stat — file status display, format strings, filesystem mode (prd082-stat R1, R2, R3, R4)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for default output, format strings, terse mode,
+      filesystem mode, symlink dereference, and error cases, confirming full parity
+      with gstat.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - SELinux context display is not implemented.
+
+test_suite: test-rel-10.0

@@ -1,0 +1,49 @@
+id: rel09.1-uc002-base64
+title: "Encode and decode Base64 data via base64"
+
+summary: |
+  The operator runs the Go base64 binary to encode or decode Base64 data. The
+  differential testing harness runs both the Go binary and the Homebrew reference
+  binary (gbase64 from coreutils) with identical inputs and confirms that their
+  outputs are identical byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd080-base64.yaml) and invokes do-work to
+  produce a passing differential test for cmd/base64.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises base64 in encode mode (stdin and file), decode mode
+      (-d), and with custom wrap width (-w).
+  - id: F2
+    step: |
+      The operator tests decode with invalid input and --ignore-garbage to verify
+      error handling and garbage tolerance.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/base64 and
+      gbase64 with the same inputs and compares stdout byte-for-byte.
+
+touchpoints:
+  - T1: "cmd/base64 — Base64 encoding/decoding, wrap control, garbage handling (prd080-base64 R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for encode, decode, wrap control, ignore-garbage,
+      and error cases, confirming full parity with gbase64.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - Base64URL (URL-safe alphabet) is not implemented; use basenc for that.
+
+test_suite: test-rel-09.1

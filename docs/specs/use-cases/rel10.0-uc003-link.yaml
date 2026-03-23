@@ -1,0 +1,49 @@
+id: rel10.0-uc003-link
+title: "Create a hard link via link"
+
+summary: |
+  The operator runs the Go link binary to create a hard link using the link(2) system
+  call. The differential testing harness runs both the Go binary and the Homebrew
+  reference binary (glink from coreutils) with identical inputs and confirms behavior
+  parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd084-link.yaml) and invokes do-work to
+  produce a passing differential test for cmd/link.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises link with two arguments to create a hard link, verifying
+      the resulting file has the correct inode.
+  - id: F2
+    step: |
+      The operator tests error cases: wrong argument count, non-existent source,
+      existing target, cross-device link attempt.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/link and
+      glink with the same inputs and compares exit codes and stderr.
+
+touchpoints:
+  - T1: "cmd/link — hard link creation via link(2) (prd084-link R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for successful link creation, argument validation,
+      and error cases, confirming full parity with glink.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - Symbolic links are handled by ln, not link.
+
+test_suite: test-rel-10.0

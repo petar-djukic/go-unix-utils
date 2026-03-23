@@ -1,0 +1,192 @@
+id: test-rel10.0
+title: "Test Suite: rel10.0 — stat, truncate, link, sync"
+release: rel10.0
+
+traces:
+  - rel10.0-uc001-stat
+  - rel10.0-uc002-truncate
+  - rel10.0-uc003-link
+  - rel10.0-uc004-sync
+  - prd082-stat R1
+  - prd082-stat R2
+  - prd082-stat R3
+  - prd082-stat R4
+  - prd083-truncate R1
+  - prd083-truncate R2
+  - prd083-truncate R3
+  - prd084-link R1
+  - prd084-link R2
+  - prd085-sync R1
+  - prd085-sync R2
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gstat, gtruncate, glink, gsync (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  # ---- stat ----
+
+  - name: stat_default_file
+    description: "stat on a regular file produces multi-line status output"
+    inputs:
+      args: ["hello.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd082-stat R1.1
+      - prd082-stat R1.2
+
+  - name: stat_format_size_name
+    description: "stat -c '%s %n' produces size and filename"
+    inputs:
+      args: ["-c", "%s %n", "hello.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd082-stat R2.1
+
+  - name: stat_terse
+    description: "stat -t produces single-line terse output"
+    inputs:
+      args: ["-t", "hello.txt"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd082-stat R2.3
+
+  - name: stat_filesystem
+    description: "stat -f displays filesystem status"
+    inputs:
+      args: ["-f", "/"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd082-stat R3.1
+
+  # ---- truncate ----
+
+  - name: truncate_absolute_size
+    description: "truncate -s 100 sets file to 100 bytes"
+    inputs:
+      args: ["-s", "100", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd083-truncate R1.1
+      - prd083-truncate R1.3
+
+  - name: truncate_relative_grow
+    description: "truncate -s +50 grows file by 50 bytes"
+    inputs:
+      args: ["-s", "+50", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd083-truncate R1.2
+
+  - name: truncate_reference
+    description: "truncate -r ref file sets file to ref's size"
+    inputs:
+      args: ["-r", "ref", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd083-truncate R2.1
+
+  # ---- link ----
+
+  - name: link_create
+    description: "link file1 file2 creates a hard link"
+    inputs:
+      args: ["file1", "file2"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd084-link R1.1
+      - prd084-link R1.2
+
+  - name: link_wrong_args
+    description: "link with one argument exits 1"
+    inputs:
+      args: ["file1"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 1
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd084-link R1.3
+
+  # ---- sync ----
+
+  - name: sync_no_args
+    description: "sync with no arguments completes without error"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd085-sync R1.1
+
+  - name: sync_file
+    description: "sync on a named file completes without error"
+    inputs:
+      args: ["testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd085-sync R1.2

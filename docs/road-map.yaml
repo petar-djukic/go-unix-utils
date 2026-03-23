@@ -414,3 +414,40 @@ releases:
           status: spec_complete
         - id: rel09.0-uc005-sum
           status: spec_complete
+    - version: "09.1"
+      name: "Batch 9.1 — encoding utilities (base32, base64, basenc)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement three encoding/decoding utilities. base32 and base64 handle RFC 4648
+        Base32 and Base64 encoding with wrap control and decode modes. basenc is a
+        generalized encoder supporting Base64, Base64URL, Base32, Base32hex, Base16, and
+        Z85 alphabets. All are verified by differential testing against GNU coreutils
+        reference binaries.
+      use_cases:
+        - id: rel09.1-uc001-base32
+          status: spec_complete
+        - id: rel09.1-uc002-base64
+          status: spec_complete
+        - id: rel09.1-uc003-basenc
+          status: spec_complete
+    - version: "10.0"
+      name: "Batch 10.0 — file metadata and operations (stat, truncate, link, sync)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement four file metadata and operation utilities. stat displays file and
+        filesystem status with printf-style format strings. truncate sets or adjusts file
+        sizes with relative operations and unit suffixes. link creates hard links via the
+        link(2) system call. sync flushes filesystem caches with per-file and filesystem
+        modes. All are verified by differential testing against GNU coreutils reference
+        binaries.
+      use_cases:
+        - id: rel10.0-uc001-stat
+          status: spec_complete
+        - id: rel10.0-uc002-truncate
+          status: spec_complete
+        - id: rel10.0-uc003-link
+          status: spec_complete
+        - id: rel10.0-uc004-sync
+          status: spec_complete

@@ -1,0 +1,49 @@
+id: rel10.0-uc004-sync
+title: "Synchronize cached writes to storage via sync"
+
+summary: |
+  The operator runs the Go sync binary to flush filesystem caches to persistent storage.
+  The binary supports per-file sync, data-only sync, and filesystem-level sync. The
+  differential testing harness runs both the Go binary and the Homebrew reference binary
+  (gsync from coreutils) with identical inputs and confirms behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd085-sync.yaml) and invokes do-work to
+  produce a passing differential test for cmd/sync.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises sync with no arguments (global sync), with file arguments
+      (per-file fsync), with -d (fdatasync), and with -f (filesystem sync).
+  - id: F2
+    step: |
+      The operator tests error cases: -d without files, -f without files, non-existent
+      file arguments.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/sync and
+      gsync with the same inputs and compares exit codes.
+
+touchpoints:
+  - T1: "cmd/sync — global sync, per-file fsync, fdatasync, filesystem sync (prd085-sync R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and exit code comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for global sync, per-file sync, data-only sync,
+      filesystem sync, and error cases, confirming full parity with gsync.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - Filesystem-type-specific sync semantics beyond OS-provided behavior.
+
+test_suite: test-rel-10.0
