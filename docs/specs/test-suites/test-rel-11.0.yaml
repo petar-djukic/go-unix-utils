@@ -1,0 +1,160 @@
+id: test-rel11.0
+title: "Test Suite: rel11.0 — mkfifo, mknod, nice, nohup"
+release: rel11.0
+
+traces:
+  - rel11.0-uc001-mkfifo
+  - rel11.0-uc002-mknod
+  - rel11.0-uc003-nice
+  - rel11.0-uc004-nohup
+  - prd092-mkfifo R1
+  - prd092-mkfifo R2
+  - prd093-mknod R1
+  - prd093-mknod R2
+  - prd094-nice R1
+  - prd094-nice R2
+  - prd095-nohup R1
+  - prd095-nohup R2
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gmkfifo, gmknod, gnice, gnohup (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  # ---- mkfifo ----
+
+  - name: mkfifo_basic
+    description: "mkfifo creates a named pipe"
+    inputs:
+      args: ["testpipe"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd092-mkfifo R1.1
+
+  - name: mkfifo_mode
+    description: "mkfifo -m 600 creates a FIFO with restricted permissions"
+    inputs:
+      args: ["-m", "600", "testpipe"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd092-mkfifo R1.3
+
+  # ---- mknod ----
+
+  - name: mknod_fifo
+    description: "mknod pipe1 p creates a FIFO"
+    inputs:
+      args: ["pipe1", "p"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd093-mknod R1.1
+
+  - name: mknod_mode
+    description: "mknod -m 644 pipe1 p creates a FIFO with mode 644"
+    inputs:
+      args: ["-m", "644", "pipe1", "p"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd093-mknod R1.2
+
+  # ---- nice ----
+
+  - name: nice_default
+    description: "nice echo hello runs with default +10 adjustment"
+    inputs:
+      args: ["echo", "hello"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd094-nice R1.1
+      - prd094-nice R1.4
+
+  - name: nice_custom
+    description: "nice -n 5 echo hello adjusts by 5"
+    inputs:
+      args: ["-n", "5", "echo", "hello"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd094-nice R1.2
+
+  - name: nice_no_command
+    description: "nice with no command prints current nice value"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd094-nice R1.3
+
+  # ---- nohup ----
+
+  - name: nohup_basic
+    description: "nohup echo hello runs immune to SIGHUP"
+    inputs:
+      args: ["echo", "hello"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd095-nohup R1.1
+      - prd095-nohup R1.4
+
+  - name: nohup_missing_command
+    description: "nohup nonexistent exits 127"
+    inputs:
+      args: ["nonexistent_command_xyz"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 127
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd095-nohup R2.2

@@ -457,3 +457,39 @@ releases:
           status: spec_complete
         - id: rel10.0-uc004-sync
           status: spec_complete
+    - version: "10.1"
+      name: "Batch 10.1 — permission and ownership (chmod, chgrp, chown)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement three permission and ownership utilities. chmod changes file mode bits
+        with octal and symbolic mode specifications. chgrp changes group ownership. chown
+        changes file owner and group with OWNER[:GROUP] syntax. All support recursive
+        traversal and symlink handling options. All are verified by differential testing
+        against GNU coreutils reference binaries.
+      use_cases:
+        - id: rel10.1-uc001-chmod
+          status: spec_complete
+        - id: rel10.1-uc002-chgrp
+          status: spec_complete
+        - id: rel10.1-uc003-chown
+          status: spec_complete
+    - version: "11.0"
+      name: "Batch 11.0 — special files and process control (mkfifo, mknod, nice, nohup)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement four special file and process control utilities. mkfifo creates named
+        pipes. mknod creates block special, character special, or FIFO files. nice runs
+        commands with adjusted scheduling priority. nohup runs commands immune to SIGHUP
+        with automatic output redirection. All are verified by differential testing against
+        GNU coreutils reference binaries.
+      use_cases:
+        - id: rel11.0-uc001-mkfifo
+          status: spec_complete
+        - id: rel11.0-uc002-mknod
+          status: spec_complete
+        - id: rel11.0-uc003-nice
+          status: spec_complete
+        - id: rel11.0-uc004-nohup
+          status: spec_complete

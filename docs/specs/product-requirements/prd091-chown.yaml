@@ -1,0 +1,98 @@
+id: prd091-chown
+title: "cmd/chown: Change File Owner and Group"
+
+problem: |
+  macOS ships a BSD chown that differs from GNU chown in recursive traversal flags,
+  symlink handling, and OWNER:GROUP parsing. The Go implementation must match the
+  Homebrew GNU reference binary (gchown, installed by coreutils) byte-for-byte on all
+  flag combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Change the owner and/or group of files using OWNER, OWNER:GROUP, OWNER:, :GROUP, or numeric UID:GID syntax.
+  - G2: Support recursive ownership changes with -R and symlink traversal control.
+  - G3: Verify functional parity against gchown via differential testing.
+
+requirements:
+  R1:
+    title: Ownership specification
+    items:
+      - R1.1:
+          text: "Must accept OWNER[:GROUP] syntax: OWNER changes only owner, OWNER:GROUP changes both, OWNER: changes owner and sets group to OWNER's login group, :GROUP changes only group."
+          weight: 4
+      - R1.2:
+          text: OWNER and GROUP may be names or numeric IDs. Must resolve names to IDs via the system user/group database.
+          weight: 1
+      - R1.3:
+          text: "--reference=RFILE must set each FILE's owner and group to match RFILE's."
+          weight: 1
+      - R1.4:
+          text: Must exit 1 when any file cannot be accessed or the owner/group is invalid, printing an error to stderr, and continue processing remaining files.
+          weight: 1
+
+  R2:
+    title: Recursive and symlink handling
+    items:
+      - R2.1:
+          text: "-R or --recursive must change ownership recursively for directories and their contents."
+          weight: 4
+      - R2.2:
+          text: "-h or --no-dereference must change the symlink itself rather than the target."
+          weight: 1
+      - R2.3:
+          text: "-H must follow symlinks on the command line only. -L must follow all symlinks. -P must never follow symlinks (default with -R)."
+          weight: 4
+
+  R3:
+    title: Output control and exit codes
+    items:
+      - R3.1:
+          text: "-v or --verbose must print a diagnostic for every file processed. -c or --changes must print only when changes are made. -f or --silent must suppress most errors."
+          weight: 1
+      - R3.2:
+          text: Must exit 0 when all files are processed successfully. Must exit 1 on any error.
+          weight: 1
+      - R3.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/chown does not implement --preserve-root.
+  - cmd/chown does not implement --from=CURRENT_OWNER:CURRENT_GROUP conditional change.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "chown user:staff file changes owner and group, matching gchown."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC2
+    criterion: "chown -R user dir recursively changes owner, matching gchown -R."
+    traces:
+      - R2.1
+  - id: AC3
+    criterion: "chown :staff file changes only group, matching gchown."
+    traces:
+      - R1.1
+  - id: AC4
+    criterion: "Differential test against gchown passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+  - id: AC5
+    criterion: "cmd/chown compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

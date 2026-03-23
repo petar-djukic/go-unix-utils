@@ -1,0 +1,161 @@
+id: test-rel10.1
+title: "Test Suite: rel10.1 — chmod, chgrp, chown"
+release: rel10.1
+
+traces:
+  - rel10.1-uc001-chmod
+  - rel10.1-uc002-chgrp
+  - rel10.1-uc003-chown
+  - prd089-chmod R1
+  - prd089-chmod R2
+  - prd089-chmod R3
+  - prd089-chmod R4
+  - prd090-chgrp R1
+  - prd090-chgrp R2
+  - prd090-chgrp R3
+  - prd091-chown R1
+  - prd091-chown R2
+  - prd091-chown R3
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gchmod, gchgrp, gchown (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+  - "Tests run with sufficient permissions for ownership changes (may require root for chown)"
+
+test_cases:
+
+  # ---- chmod ----
+
+  - name: chmod_octal
+    description: "chmod 755 sets permissions to rwxr-xr-x"
+    inputs:
+      args: ["755", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd089-chmod R1.1
+      - prd089-chmod R1.3
+
+  - name: chmod_symbolic
+    description: "chmod u+x,go-w applies symbolic mode"
+    inputs:
+      args: ["u+x,go-w", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd089-chmod R1.2
+
+  - name: chmod_recursive
+    description: "chmod -R 644 changes permissions recursively"
+    inputs:
+      args: ["-R", "644", "testdir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd089-chmod R2.1
+
+  - name: chmod_verbose
+    description: "chmod -v 644 prints diagnostic for each file"
+    inputs:
+      args: ["-v", "644", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd089-chmod R2.2
+
+  # ---- chgrp ----
+
+  - name: chgrp_basic
+    description: "chgrp staff file changes group"
+    inputs:
+      args: ["staff", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd090-chgrp R1.1
+      - prd090-chgrp R1.3
+
+  - name: chgrp_recursive
+    description: "chgrp -R staff dir changes group recursively"
+    inputs:
+      args: ["-R", "staff", "testdir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd090-chgrp R2.1
+
+  # ---- chown ----
+
+  - name: chown_owner_group
+    description: "chown user:staff file changes owner and group"
+    inputs:
+      args: ["user:staff", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd091-chown R1.1
+      - prd091-chown R1.2
+
+  - name: chown_group_only
+    description: "chown :staff file changes only group"
+    inputs:
+      args: [":staff", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd091-chown R1.1
+
+  - name: chown_recursive
+    description: "chown -R user dir changes owner recursively"
+    inputs:
+      args: ["-R", "user", "testdir"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd091-chown R2.1
