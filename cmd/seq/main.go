@@ -3,7 +3,8 @@
 
 // Implements prd019-seq: Print a Sequence of Numbers.
 // Covers R1.1-R1.5 (argument forms, sequence generation, zero step),
-// R2.1 (default newline separator), and R3.1 (-f/--format).
+// R2.1-R2.4 (separator, equal-width, format precedence),
+// R3.1-R3.3 (exit codes, error messages, edge cases).
 package main
 
 import (
@@ -22,12 +23,12 @@ var version = "dev"
 
 // config holds parsed flag state for seq.
 type config struct {
-	format    string // -f/--format printf-style format
-	separator string // R2.1: default newline
+	format     string // -f/--format printf-style format
+	separator  string // -s/--separator, R2.2: default newline
+	equalWidth bool   // -w/--equal-width, R3.3: pad with leading zeros
 }
 
 func main() {
-	// D1: SIGPIPE handler for piped output.
 	sys.InstallSIGPIPEHandler()
 
 	cfg, positional, exitCode := parseArgs(os.Args[1:])
@@ -46,22 +47,60 @@ func run(cfg config, positional []string) int {
 		return 1
 	}
 
-	// R1.5: STEP must not be zero.
+	// R1.5 / R3.3: STEP must not be zero.
 	if incr == 0 {
 		fmt.Fprintf(os.Stderr, "seq: invalid Zero increment value: '0'\n")
 		return 1
 	}
 
-	fmtStr := cfg.format
-	if fmtStr == "" {
-		fmtStr = defaultFormat(positional)
-	}
+	fmtStr := resolveFormat(cfg, positional, first, last)
 
 	return generate(first, incr, last, fmtStr, cfg.separator)
 }
 
+// resolveFormat determines the output format string.
+// R3.4: -f takes precedence over -w. When only -w is given, zero-pad to widest endpoint.
+func resolveFormat(cfg config, positional []string, first, last float64) string {
+	if cfg.format != "" {
+		return cfg.format
+	}
+	if cfg.equalWidth {
+		return equalWidthFormat(positional, first, last)
+	}
+	return defaultFormat(positional)
+}
+
+// equalWidthFormat computes a zero-padded format string for -w mode.
+// R3.3: width determined by the widest of FIRST and LAST formatted with default format.
+func equalWidthFormat(args []string, first, last float64) string {
+	dfmt := defaultFormat(args)
+	w1 := len(fmt.Sprintf(dfmt, first))
+	w2 := len(fmt.Sprintf(dfmt, last))
+	width := w1
+	if w2 > width {
+		width = w2
+	}
+	prec := maxPrecision(args)
+	if prec == 0 {
+		return fmt.Sprintf("%%0%dg", width)
+	}
+	return fmt.Sprintf("%%0%d.%df", width, prec)
+}
+
+// maxPrecision returns the maximum decimal precision across all arguments.
+func maxPrecision(args []string) int {
+	maxPrec := 0
+	for _, a := range args {
+		p := decimalPrecision(a)
+		if p > maxPrec {
+			maxPrec = p
+		}
+	}
+	return maxPrec
+}
+
 // parsePositional interprets 1, 2, or 3 positional args as FIRST, INCREMENT, LAST.
-// D2: 1 arg = LAST, 2 args = FIRST LAST, 3 args = FIRST INCREMENT LAST.
+// R1.1: 1 arg = LAST, 2 args = FIRST LAST, 3 args = FIRST INCREMENT LAST.
 func parsePositional(args []string) (first, incr, last float64, err error) {
 	switch len(args) {
 	case 1:
@@ -91,7 +130,6 @@ func parsePositional(args []string) (first, incr, last float64, err error) {
 }
 
 // parseNumber parses a string as a float64.
-// D3: uses strconv.ParseFloat to handle both integers and floating-point.
 func parseNumber(s string) (float64, error) {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil || math.IsNaN(v) {
@@ -101,6 +139,7 @@ func parseNumber(s string) (float64, error) {
 }
 
 // generate outputs the sequence and returns the exit code.
+// R2.2: separator between numbers; trailing newline after last number.
 func generate(first, incr, last float64, fmtStr, sep string) int {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush() // best-effort flush
@@ -130,16 +169,9 @@ func shouldContinue(current, last, incr float64) bool {
 }
 
 // defaultFormat computes the printf format string from the input arguments.
-// D4: auto-detects precision from input decimal places.
 // R2.3: integer sequences produce integers; float sequences use minimum precision.
 func defaultFormat(args []string) string {
-	maxPrec := 0
-	for _, a := range args {
-		p := decimalPrecision(a)
-		if p > maxPrec {
-			maxPrec = p
-		}
-	}
+	maxPrec := maxPrecision(args)
 	if maxPrec == 0 {
 		return "%g"
 	}
@@ -148,7 +180,6 @@ func defaultFormat(args []string) string {
 
 // decimalPrecision returns the number of decimal places in a numeric string.
 func decimalPrecision(s string) int {
-	// Strip leading sign.
 	if strings.HasPrefix(s, "-") || strings.HasPrefix(s, "+") {
 		s = s[1:]
 	}
@@ -199,7 +230,7 @@ func parseOneArg(args []string, i *int, cfg *config, positional *[]string) int {
 	case strings.HasPrefix(arg, "--separator="):
 		cfg.separator = arg[len("--separator="):]
 	case arg == "-w" || arg == "--equal-width":
-		// -w is noted but not in scope for this task (R3.3)
+		cfg.equalWidth = true
 	default:
 		*positional = append(*positional, arg)
 	}
