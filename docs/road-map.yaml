@@ -264,14 +264,12 @@ releases:
       description: |
         Deferred items from run 37 that could not complete due to stitch timeouts
         or rate limits. prd004-ts R6: multi-format date parser exceeded stitch time
-        budget. prd070-fmt R3: formatting options exceeded stitch time budget.
-        prd072-od: rate-limited out of every attempt. See GH-2938, cobbler-scaffold#1805.
+        budget. prd072-od: rate-limited out of every attempt.
+        See GH-2938, cobbler-scaffold#1805.
       use_cases:
         - id: rel99.0-uc001-ts
           status: spec_complete
         - id: rel99.0-uc002-od
-          status: spec_complete
-        - id: rel99.0-uc003-fmt-r3
           status: spec_complete
     - version: "06.0"
       name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
@@ -401,7 +399,7 @@ releases:
         - id: rel08.1-uc003-join
           status: spec_complete
         - id: rel08.1-uc004-fmt
-          status: code_complete  # R3 deferred to rel99.0, see GH-3108
+          status: spec_complete
         - id: rel08.1-uc005-numfmt
           status: spec_complete
         - id: rel08.1-uc006-od
