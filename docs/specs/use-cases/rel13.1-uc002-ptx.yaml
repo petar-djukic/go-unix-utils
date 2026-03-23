@@ -1,0 +1,40 @@
+id: rel13.1-uc002-ptx
+title: "Produce a permuted index via ptx"
+
+summary: |
+  The operator runs the Go ptx binary. The differential testing harness runs both
+  the Go binary and the reference binary (gptx) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd111-ptx.yaml) and invokes do-work to produce
+  a passing differential test for cmd/ptx.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises ptx with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/ptx and
+      gptx with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/ptx — ptx produces KWIC index (prd111-ptx)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with gptx.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-13.1

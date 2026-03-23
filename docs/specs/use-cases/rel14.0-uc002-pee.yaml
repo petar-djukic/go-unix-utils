@@ -1,0 +1,40 @@
+id: rel14.0-uc002-pee
+title: "Tee stdin to pipes via pee"
+
+summary: |
+  The operator runs the Go pee binary. The differential testing harness runs both
+  the Go binary and the reference binary (pee) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd113-pee.yaml) and invokes do-work to produce
+  a passing differential test for cmd/pee.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises pee with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/pee and
+      pee with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/pee — pee pipes stdin to multiple commands (prd113-pee)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with pee.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-14.0

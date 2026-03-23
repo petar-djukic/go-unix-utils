@@ -1,0 +1,40 @@
+id: rel13.1-uc001-pr
+title: "Paginate files for printing via pr"
+
+summary: |
+  The operator runs the Go pr binary. The differential testing harness runs both
+  the Go binary and the reference binary (gpr) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd110-pr.yaml) and invokes do-work to produce
+  a passing differential test for cmd/pr.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises pr with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/pr and
+      gpr with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/pr — pr paginates text with headers (prd110-pr)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with gpr.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-13.1
