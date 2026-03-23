@@ -14,11 +14,11 @@ releases:
         - id: rel00.0-uc001-magefiles
           status: spec_complete
         - id: rel00.0-uc002-format
-          status: implemented
+          status: spec_complete
         - id: rel00.0-uc003-sys
-          status: implemented
+          status: spec_complete
         - id: rel00.0-uc004-testutils
-          status: implemented
+          status: spec_complete
         - id: rel00.0-uc005-hashutil
           status: spec_complete
         - id: rel00.0-uc006-sizeparse
