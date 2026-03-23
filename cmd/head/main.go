@@ -3,11 +3,15 @@
 
 // Implements prd018-head: Print the First Lines or Bytes of Files.
 // Covers R1.1-R1.5 (line-count mode, default 10 lines, stdin, line termination),
-// R2.1 (-c/--bytes byte-count mode), and --help/--version.
+// R2.1-R2.2 (-c/--bytes byte-count mode, negative counts),
+// R3.1-R3.5 (multi-file headers, quiet/verbose, error handling),
+// R4.1-R4.2 (exit codes), and --help/--version.
+// TODO: prd018 non_goal: -z/--zero-terminated is excluded per E6.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,11 +34,21 @@ const (
 	modeBytes
 )
 
+// headerMode controls header display for multi-file output.
+type headerMode int
+
+const (
+	headerAuto    headerMode = iota // R3.1/R3.2: headers only for multiple files
+	headerQuiet                     // R3.3: suppress all headers
+	headerVerbose                   // R3.4: always show headers
+)
+
 // config holds parsed flag state.
 type config struct {
 	mode     countMode
 	count    int64
-	negative bool // true when count means "all but last N"
+	negative bool       // true when count means "all but last N"
+	header   headerMode // controls header display
 }
 
 func main() {
@@ -50,17 +64,18 @@ func main() {
 }
 
 // run processes all input files and returns the exit code.
-// R1.4: when no files given, reads stdin. R4.1/R4.2: exit code handling.
+// R1.4: when no files given, reads stdin.
+// R3.5/R4.1/R4.2: continues after errors, exit 1 if any fail.
 func run(cfg config, files []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
-	multiFile := len(files) > 1
+	showHeader := resolveHeaderMode(cfg.header, len(files))
 	exitCode := 0
 	needSep := false
 
 	for _, name := range files {
-		if err := processFile(cfg, name, multiFile, needSep); err != nil {
+		if err := processFile(cfg, name, showHeader, needSep); err != nil {
 			fmt.Fprintf(os.Stderr, "head: %v\n", err)
 			exitCode = 1
 			continue
@@ -69,6 +84,20 @@ func run(cfg config, files []string) int {
 	}
 
 	return exitCode
+}
+
+// resolveHeaderMode determines whether headers should be printed.
+// R3.1/R3.2: auto shows headers for multiple files.
+// R3.3: quiet suppresses all headers. R3.4: verbose always shows.
+func resolveHeaderMode(hm headerMode, fileCount int) bool {
+	switch hm {
+	case headerQuiet:
+		return false
+	case headerVerbose:
+		return true
+	default:
+		return fileCount > 1
+	}
 }
 
 // processFile reads and outputs content from a single file or stdin.
@@ -86,7 +115,6 @@ func processFile(cfg config, name string, showHeader, needSep bool) error {
 		displayName = "standard input"
 	}
 
-	// R3.1: print header when multiple files.
 	if showHeader {
 		printHeader(displayName, needSep)
 	}
@@ -95,15 +123,29 @@ func processFile(cfg config, name string, showHeader, needSep bool) error {
 }
 
 // openInput opens a named file or returns stdin for "-".
+// R3.5: formats error messages to match GNU head output.
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
 	}
-	return os.Open(name)
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, formatOpenError(name, err)
+	}
+	return f, nil
+}
+
+// formatOpenError produces a GNU-compatible error message for file open failures.
+func formatOpenError(name string, err error) error {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return fmt.Errorf("cannot open '%s' for reading: %v", name, pathErr.Err)
+	}
+	return fmt.Errorf("cannot open '%s' for reading: %v", name, err)
 }
 
 // printHeader prints the GNU-style multi-file header.
-// R1.4/R3.1: '==> FILENAME <==' with blank line between files.
+// R3.1: '==> FILENAME <==' with blank line between files.
 func printHeader(name string, needSep bool) {
 	if needSep {
 		fmt.Println()
@@ -156,6 +198,21 @@ func outputFirstLines(r io.Reader, n int64) error {
 // outputAllButLastLines reads all lines, then outputs all but the last n.
 // R1.3: negative line count requires buffering entire input.
 func outputAllButLastLines(r io.Reader, n int64) error {
+	lines, err := readAllLines(r)
+	if err != nil {
+		return err
+	}
+
+	end := int64(len(lines)) - n
+	if end < 0 {
+		end = 0
+	}
+
+	return writeLines(lines[:end])
+}
+
+// readAllLines reads all lines from r and returns them.
+func readAllLines(r io.Reader) ([][]byte, error) {
 	br := bufio.NewReaderSize(r, 64*1024)
 	var lines [][]byte
 
@@ -166,23 +223,20 @@ func outputAllButLastLines(r io.Reader, n int64) error {
 		}
 		if err != nil {
 			if err == io.EOF {
-				break
+				return lines, nil
 			}
+			return nil, err
+		}
+	}
+}
+
+// writeLines writes all lines to stdout.
+func writeLines(lines [][]byte) error {
+	for _, line := range lines {
+		if _, err := os.Stdout.Write(line); err != nil {
 			return err
 		}
 	}
-
-	end := int64(len(lines)) - n
-	if end < 0 {
-		end = 0
-	}
-
-	for i := int64(0); i < end; i++ {
-		if _, err := os.Stdout.Write(lines[i]); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -210,39 +264,49 @@ func parseArgs(args []string) (cfg config, files []string, exit int) {
 	exit = -1
 
 	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "--":
+		if args[i] == "--" {
 			files = append(files, args[i+1:]...)
 			return
-		case arg == "--help":
-			return config{}, nil, printHelp()
-		case arg == "--version":
-			return config{}, nil, printVersion()
-		case strings.HasPrefix(arg, "--lines="):
-			exit = applyCount(&cfg, modeLines, arg[len("--lines="):])
-		case strings.HasPrefix(arg, "--bytes="):
-			exit = applyCount(&cfg, modeBytes, arg[len("--bytes="):])
-		case arg == "-n" || arg == "--lines":
-			i, exit = consumeNext(args, i, &cfg, modeLines)
-		case arg == "-c" || arg == "--bytes":
-			i, exit = consumeNext(args, i, &cfg, modeBytes)
-		case strings.HasPrefix(arg, "-n"):
-			exit = applyCount(&cfg, modeLines, arg[2:])
-		case strings.HasPrefix(arg, "-c"):
-			exit = applyCount(&cfg, modeBytes, arg[2:])
-		case strings.HasPrefix(arg, "-") && len(arg) > 1:
-			fmt.Fprintf(os.Stderr, "head: unrecognized option '%s'\n", arg)
-			return config{}, nil, 1
-		default:
-			files = append(files, arg)
 		}
+		exit = parseOneArg(args[i], args, &i, &cfg, &files)
 		if exit >= 0 {
 			return config{}, nil, exit
 		}
 	}
 
 	return
+}
+
+// parseOneArg handles a single argument and returns exit code (-1 to continue).
+func parseOneArg(arg string, args []string, i *int, cfg *config, files *[]string) int {
+	switch {
+	case arg == "--help":
+		return printHelp()
+	case arg == "--version":
+		return printVersion()
+	case arg == "-q" || arg == "--quiet" || arg == "--silent":
+		cfg.header = headerQuiet
+	case arg == "-v" || arg == "--verbose":
+		cfg.header = headerVerbose
+	case strings.HasPrefix(arg, "--lines="):
+		return applyCount(cfg, modeLines, arg[len("--lines="):])
+	case strings.HasPrefix(arg, "--bytes="):
+		return applyCount(cfg, modeBytes, arg[len("--bytes="):])
+	case arg == "-n" || arg == "--lines":
+		return consumeNextVal(args, i, cfg, modeLines)
+	case arg == "-c" || arg == "--bytes":
+		return consumeNextVal(args, i, cfg, modeBytes)
+	case strings.HasPrefix(arg, "-n"):
+		return applyCount(cfg, modeLines, arg[2:])
+	case strings.HasPrefix(arg, "-c"):
+		return applyCount(cfg, modeBytes, arg[2:])
+	case strings.HasPrefix(arg, "-") && len(arg) > 1:
+		fmt.Fprintf(os.Stderr, "head: unrecognized option '%s'\n", arg)
+		return 1
+	default:
+		*files = append(*files, arg)
+	}
+	return -1
 }
 
 // applyCount parses a count value and applies it to cfg. Returns -1 on
@@ -255,15 +319,16 @@ func applyCount(cfg *config, m countMode, val string) int {
 	return -1
 }
 
-// consumeNext reads the next argument as a count value. Returns the
-// updated index and exit code (-1 for success, 1 for error).
-func consumeNext(args []string, i int, cfg *config, m countMode) (int, int) {
-	if i+1 >= len(args) {
+// consumeNextVal reads the next argument as a count value. Returns
+// exit code (-1 for success, 1 for error).
+func consumeNextVal(args []string, i *int, cfg *config, m countMode) int {
+	if *i+1 >= len(args) {
 		fmt.Fprintf(os.Stderr,
-			"head: option requires an argument -- '%s'\n", args[i])
-		return i, 1
+			"head: option requires an argument -- '%s'\n", args[*i])
+		return 1
 	}
-	return i + 1, applyCount(cfg, m, args[i+1])
+	*i++
+	return applyCount(cfg, m, args[*i])
 }
 
 // setCount parses a count string and updates cfg.
@@ -310,6 +375,8 @@ With no FILE, or when FILE is -, read standard input.
   -n, --lines=[-]NUM       print the first NUM lines instead of the first 10;
                              with the leading '-', print all but the last
                              NUM lines of each file
+  -q, --quiet, --silent    never print headers giving file names
+  -v, --verbose            always print headers giving file names
 
       --help     display this help and exit
       --version  output version information and exit
