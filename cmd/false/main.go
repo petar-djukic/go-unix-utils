@@ -22,23 +22,24 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 
 	// R2.1-R2.3: check for --help and --version as first argument.
+	// GNU false always exits 1, even for --help and --version.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--help":
-			os.Exit(printHelp())
+			printHelp()
 		case "--version":
-			os.Exit(printVersion())
+			printVersion()
 		}
 	}
 
-	// R1.1-R1.3: exit 1 unconditionally, ignoring all arguments.
+	// R1.1-R1.3, R3.1: exit 1 unconditionally.
 	os.Exit(1)
 }
 
-// printHelp writes usage information to stdout and returns the exit code.
-// R2.1: prints help to stdout. R2.3: exits 1 on write error.
-func printHelp() int {
-	_, err := fmt.Fprint(os.Stdout, `Usage: false [ignored command line arguments]
+// printHelp writes usage information to stdout.
+// R2.1: prints help to stdout. Write errors are ignored since false exits 1 regardless.
+func printHelp() {
+	fmt.Fprint(os.Stdout, `Usage: false [ignored command line arguments]
   or:  false OPTION
 Exit with a status code indicating failure.
 
@@ -49,18 +50,10 @@ NOTE: your shell may have its own version of false, which usually supersedes
 the version described here.  Please refer to your shell's documentation
 for details about the options it supports.
 `)
-	if err != nil {
-		return 1
-	}
-	return 0
 }
 
-// printVersion writes version information to stdout and returns the exit code.
-// R2.2: prints version to stdout. R2.3: exits 1 on write error.
-func printVersion() int {
-	_, err := fmt.Fprintf(os.Stdout, "false (go-unix-utils) %s\n", version)
-	if err != nil {
-		return 1
-	}
-	return 0
+// printVersion writes version information to stdout.
+// R2.2: prints version to stdout. Write errors are ignored since false exits 1 regardless.
+func printVersion() {
+	fmt.Fprintf(os.Stdout, "false (go-unix-utils) %s\n", version)
 }
