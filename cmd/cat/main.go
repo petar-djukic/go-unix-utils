@@ -16,6 +16,10 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// version is set at build time via -ldflags "-X main.version=<tag>".
+// Defaults to "dev" when the linker variable is not set.
+var version = "dev"
+
 // catOptions holds the parsed flag state for a cat invocation.
 // R1-R4: flags map directly to GNU cat flag semantics.
 type catOptions struct {
@@ -39,6 +43,8 @@ func main() {
 // parseFlags parses GNU cat-compatible flags from the argument list.
 // R1.1-R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9: all flags defined.
 // R4.8: -u is accepted but ignored.
+// R5.1: --version prints version to stdout and exits 0.
+// R5.2: --help prints usage to stdout and exits 0.
 func parseFlags(args []string) (catOptions, []string) {
 	var opts catOptions
 	var files []string
@@ -53,6 +59,14 @@ func parseFlags(args []string) (catOptions, []string) {
 			endOfFlags = true
 			continue
 		}
+		if arg == "--version" {
+			printVersion()
+			os.Exit(0)
+		}
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
 		if len(arg) > 1 && arg[0] == '-' {
 			if err := applyShortFlags(arg[1:], &opts); err != nil {
 				fmt.Fprintf(os.Stderr, "cat: %s\n", err)
@@ -63,6 +77,35 @@ func parseFlags(args []string) (catOptions, []string) {
 		}
 	}
 	return opts, files
+}
+
+// printVersion writes the version string to stdout in GNU format.
+// R5.1: "cat (go-unix-utils) VERSION" followed by a newline.
+func printVersion() {
+	fmt.Printf("cat (go-unix-utils) %s\n", version)
+}
+
+// printHelp writes usage information to stdout.
+// R5.2: usage includes synopsis and flag descriptions.
+func printHelp() {
+	fmt.Print(`Usage: cat [OPTION]... [FILE]...
+Concatenate FILE(s) to standard output.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -A, --show-all           equivalent to -vET
+  -b, --number-nonblank    number nonempty output lines, overrides -n
+  -e                       equivalent to -vE
+  -E, --show-ends          display $ at end of each line
+  -n, --number             number all output lines
+  -s, --squeeze-blank      suppress repeated empty output lines
+  -t                       equivalent to -vT
+  -T, --show-tabs          display TAB characters as ^I
+  -u                       (ignored)
+  -v, --show-nonprinting   use ^ and M- notation, except for LFD and TAB
+      --help               display this help and exit
+      --version            output version information and exit
+`)
 }
 
 // applyShortFlags applies a sequence of short flag characters to opts.
@@ -128,7 +171,7 @@ func run(opts catOptions, files []string, stdin io.Reader, stdout io.Writer, std
 
 // processFile reads from r and writes transformed output to w.
 // R1.3: content written in sequence with no separator.
-// R1.4: binary input not corrupted when no transform flags active.
+// R1.4/R5.4: binary input not corrupted when no transform flags active.
 // R4.9: applies transforms in order: squeeze, non-printing, ends, numbering.
 func processFile(r io.Reader, w io.Writer, opts catOptions, state *lineState) error {
 	if !needsTransform(opts) {
