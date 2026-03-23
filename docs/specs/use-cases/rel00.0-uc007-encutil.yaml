@@ -1,0 +1,46 @@
+id: rel00.0-uc007-encutil
+title: "Shared encoding and decoding pipeline via encutil"
+
+summary: |
+  The pkg/encutil library provides shared logic for encoding and decoding data with
+  configurable encoding schemes, line wrapping, and garbage tolerance. The base32,
+  base64, and basenc cmd/ utilities import this package instead of reimplementing the
+  encode/decode/wrap pipeline.
+
+actor: Stitch Agent
+
+trigger: |
+  The stitch agent implements an encoding utility PRD and needs the shared encode/decode
+  pipeline.
+
+flow:
+  - id: F1
+    step: |
+      The stitch agent reads the encutil PRD and implements the shared library with
+      Encode, Decode, and OpenInput functions.
+  - id: F2
+    step: |
+      The stitch agent writes unit tests for encoding with wrap control, decoding
+      with garbage tolerance, and file input handling.
+
+touchpoints:
+  - T1: "pkg/encutil — encoding/decoding pipeline, wrap control, garbage handling (prd088-encutil R1, R2, R3)"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      Unit tests pass for Encode with wrap control, Decode with garbage tolerance,
+      and OpenInput with stdin fallback.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+      - AC6
+
+out_of_scope:
+  - Specific encoding scheme implementations (provided by Go standard library).
+  - SIGPIPE handling (each cmd/ utility handles independently).
+
+test_suite: test-rel00.0

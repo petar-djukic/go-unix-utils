@@ -83,6 +83,11 @@ non_goals:
   - cmd/od does not implement --strings (-S) string extraction mode.
   - cmd/od does not implement --endian for byte-order control beyond native order.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sizeparse
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "printf '\\x01\\x02\\x03\\x04' | go run ./cmd/od produces octal dump output matching god."

@@ -56,6 +56,11 @@ requirements:
 non_goals:
   - cmd/truncate does not implement sparse file optimization.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sizeparse
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "truncate -s 100 file creates or resizes file to 100 bytes, matching gtruncate."

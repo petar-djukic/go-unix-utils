@@ -66,6 +66,11 @@ non_goals:
   - cmd/basenc does not implement Base2 (binary) encoding.
   - cmd/basenc does not implement custom alphabet specification.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/encutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "echo hello | basenc --base64 produces Base64 encoded output matching gbasenc --base64."

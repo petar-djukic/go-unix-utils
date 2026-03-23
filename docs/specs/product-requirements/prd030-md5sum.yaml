@@ -77,6 +77,11 @@ non_goals:
   - cmd/md5sum does not implement HMAC-MD5 or keyed variants; it computes raw MD5 digests only.
   - cmd/md5sum does not implement the --strict flag (exit non-zero for improperly formatted lines); --warn is sufficient.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/hashutil
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "echo -n 'abc' | md5sum produces 'md5sum output matching gmd5sum', verified byte-for-byte."

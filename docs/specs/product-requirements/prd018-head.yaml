@@ -88,6 +88,11 @@ non_goals:
   - cmd/head does not implement the full range of GNU multiplier suffixes (kB, MB, GB decimal variants). Only binary suffixes (K/KiB, M/MiB, G/GiB, b) are supported.
   - cmd/head does not follow files or re-read on change; it reads each input once.
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sizeparse
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "seq 1 20 | go run ./cmd/head produces lines 1 through 10, matching ghead."

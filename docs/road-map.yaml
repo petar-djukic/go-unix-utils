@@ -19,6 +19,12 @@ releases:
           status: implemented
         - id: rel00.0-uc004-testutils
           status: implemented
+        - id: rel00.0-uc005-hashutil
+          status: spec_complete
+        - id: rel00.0-uc006-sizeparse
+          status: spec_complete
+        - id: rel00.0-uc007-encutil
+          status: spec_complete
     - version: "01.1"
       name: "Batch 1.1 — cat specification and differential test"
       status: spec_complete

@@ -83,6 +83,11 @@ non_goals:
   - "cmd/tail does not implement --retry (keep trying to open a file). This flag is only meaningful with -f."
   - cmd/tail does not implement -F (equivalent to --follow=name --retry).
 
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sizeparse
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
 acceptance_criteria:
   - id: AC1
     criterion: "seq 1 20 | go run ./cmd/tail produces lines 11 through 20, matching gtail."

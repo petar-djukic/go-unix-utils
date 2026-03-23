@@ -1,0 +1,45 @@
+id: rel00.0-uc006-sizeparse
+title: "Shared size string parsing with unit suffixes via sizeparse"
+
+summary: |
+  The pkg/sizeparse library provides a single parser for size strings with unit
+  suffixes (K, M, G, KB, MB, etc.) used by eight cmd/ utilities (head, tail, split,
+  truncate, numfmt, du, sort, od). Each utility imports this package instead of
+  reimplementing suffix multiplication logic.
+
+actor: Stitch Agent
+
+trigger: |
+  The stitch agent implements a utility PRD that requires parsing size strings with
+  unit suffixes.
+
+flow:
+  - id: F1
+    step: |
+      The stitch agent reads the sizeparse PRD and implements Parse and
+      ParseWithOptions functions supporting the full GNU coreutils suffix set.
+  - id: F2
+    step: |
+      The stitch agent writes unit tests covering binary (IEC) suffixes, decimal (SI)
+      suffixes, sign prefixes, default units, and error cases.
+
+touchpoints:
+  - T1: "pkg/sizeparse — size string parsing with unit suffixes (prd087-sizeparse R1, R2, R3)"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      Unit tests pass for Parse and ParseWithOptions with binary suffixes, decimal
+      suffixes, sign prefixes, default units, overflow, and invalid input.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Size formatting for output (handled by pkg/format.HumanSize).
+  - Floating-point size parsing.
+
+test_suite: test-rel00.0
