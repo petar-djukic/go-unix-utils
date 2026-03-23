@@ -21,58 +21,58 @@ requirements:
     items:
       - R1.1:
           text: "When two SETs are given without flags, must translate each character in SET1 to the corresponding character in SET2. If SET2 is shorter than SET1, the last character of SET2 is repeated to match SET1's length."
-          weight: 2
+          weight: 4
       - R1.2:
           text: Must read from stdin and write translated output to stdout. tr does not accept file arguments.
-          weight: 2
+          weight: 4
       - R1.3:
           text: "SET specifications must support: individual characters, ranges (a-z), octal escapes (\\NNN), backslash escapes (\\n, \\t, \\\\, \\a, \\b, \\f, \\r, \\v), and repetition (CHAR*N, CHAR*)."
-          weight: 2
+          weight: 4
       - R1.4:
           text: "SET specifications must support POSIX character classes: [:alnum:], [:alpha:], [:blank:], [:cntrl:], [:digit:], [:graph:], [:lower:], [:print:], [:punct:], [:space:], [:upper:], [:xdigit:]."
-          weight: 2
+          weight: 4
 
   R2:
     title: Delete and squeeze modes
     items:
       - R2.1:
           text: "-d or --delete must delete all characters in SET1 from the input. SET2 is not used with -d alone."
-          weight: 2
+          weight: 4
       - R2.2:
           text: "-s or --squeeze-repeats must replace each run of repeated characters listed in the last SET with a single occurrence of that character."
-          weight: 2
+          weight: 4
       - R2.3:
           text: "When -d and -s are used together, must delete characters in SET1 and squeeze characters in SET2."
-          weight: 2
+          weight: 4
       - R2.4:
           text: "-c or -C or --complement must complement SET1, operating on all characters not in SET1."
-          weight: 2
+          weight: 4
 
   R3:
     title: Character class translation pairs
     items:
       - R3.1:
           text: "[:lower:] to [:upper:] must translate lowercase to uppercase. [:upper:] to [:lower:] must translate uppercase to lowercase."
-          weight: 2
+          weight: 4
       - R3.2:
           text: "When translating (not deleting), SET2 must not be empty. If SET2 is omitted, must print a usage error."
-          weight: 2
+          weight: 4
       - R3.3:
           text: "Equivalence classes [=CHAR=] must be supported in SET2 for specifying characters that sort identically."
-          weight: 2
+          weight: 4
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when translation or deletion completes successfully.
-          weight: 2
+          weight: 4
       - R4.2:
           text: Must exit 1 on usage errors (missing SET, invalid class, conflicting flags).
-          weight: 2
+          weight: 4
       - R4.3:
           text: "Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must cover: basic translation, -d delete, -s squeeze, -c complement, -ds combined, character ranges, POSIX classes, case conversion, octal escapes, and error cases."
-          weight: 2
+          weight: 4
 
 non_goals:
   - cmd/tr does not implement multibyte character support beyond single-byte encodings. All tests use LC_ALL=C.

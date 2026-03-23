@@ -103,17 +103,17 @@ requirements:
     items:
       - R6.1:
           text: -r must scan each input line for known timestamp patterns and replace each match with a human-readable relative age string (e.g., "15m5s ago").
-          weight: 3
+          weight: 4
       - R6.2:
           text: 'Must recognize the following timestamp patterns from the Perl source regex: syslog format ("Jan  5 14:30:00"), ISO-8601 ("2024-01-05T14:30:00.000Z"), RFC 2822 with optional day ("16 Jun 94 07:29:35 GMT"), lastlog format ("Mon Jan  5 14:30").'
-          weight: 3
+          weight: 4
 
   R10:
     title: Relative-time format override and integration
     items:
       - R10.1:
           text: When -r and a format string are both given, must convert matched timestamps to the specified format via strftime rather than to a relative string.
-          weight: 2
+          weight: 4
       - R10.2:
           text: Lines with no recognizable timestamp must be passed through unchanged.
           weight: 1

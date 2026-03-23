@@ -20,52 +20,52 @@ requirements:
     items:
       - R1.1:
           text: When invoked with no options, must reformat each paragraph of input text to fit within 75 characters (the GNU default width).
-          weight: 2
+          weight: 4
       - R1.2:
           text: Must treat blank lines as paragraph separators. Must not merge text across blank lines.
-          weight: 2
+          weight: 4
       - R1.3:
           text: Must preserve the indentation of the first line of each paragraph. Subsequent lines in the same paragraph are filled to match the second line's indentation (or the first if only one line).
-          weight: 2
+          weight: 4
       - R1.4:
           text: When given one or more FILE arguments, must read and format each file in order. When no file is given or "-" is given, must read from stdin.
-          weight: 2
+          weight: 4
 
   R2:
     title: Width control and goal width
     items:
       - R2.1:
           text: "-w WIDTH or --width=WIDTH must set the maximum line width (default 75)."
-          weight: 2
+          weight: 4
       - R2.2:
           text: "-g GOAL or --goal=GOAL must set the goal line width. Lines are filled to approximately GOAL characters. Default goal is 93% of width."
-          weight: 2
+          weight: 4
       - R2.3:
           text: Must break lines at word boundaries (spaces). Must not break in the middle of a word unless the word exceeds the maximum width.
-          weight: 2
+          weight: 4
       - R2.4:
           text: Must collapse multiple spaces between words to a single space, except after sentence-ending punctuation (. ! ?) where two spaces are preserved.
-          weight: 2
+          weight: 4
 
   R3:
     title: Split-only and uniform-spacing modes
     items:
       - R3.1:
           text: "-s or --split-only must split long lines but not join short lines. Lines shorter than the goal width are left as-is."
-          weight: 2
+          weight: 4
       - R3.2:
           text: "-u or --uniform-spacing must use one space between words and two spaces after sentence-ending punctuation uniformly."
-          weight: 2
+          weight: 4
 
   R4:
     title: Prefix mode and tagged-paragraph
     items:
       - R4.1:
           text: "-p PREFIX or --prefix=PREFIX must only reformat lines beginning with PREFIX (after optional whitespace). Must remove the prefix before formatting and re-add it afterward."
-          weight: 3
+          weight: 4
       - R4.2:
           text: "-t or --tagged-paragraph must treat the first line of each paragraph as having a different indentation from subsequent lines, preserving the tagged-paragraph format."
-          weight: 3
+          weight: 4
 
   R5:
     title: Exit codes and differential testing

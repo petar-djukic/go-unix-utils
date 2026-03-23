@@ -20,61 +20,61 @@ requirements:
     items:
       - R1.1:
           text: "When given SOURCE DEST, must rename SOURCE to DEST if on the same filesystem, or copy and delete if on different filesystems."
-          weight: 2
+          weight: 4
       - R1.2:
           text: "When given multiple SOURCE arguments and a DEST directory, must move each SOURCE into DEST."
-          weight: 2
+          weight: 4
       - R1.3:
           text: Must move directories without requiring a recursive flag (unlike cp).
-          weight: 2
+          weight: 4
       - R1.4:
           text: "When DEST exists and is a directory, must move SOURCE into DEST as DEST/SOURCE."
-          weight: 2
+          weight: 4
 
   R2:
     title: Overwrite control
     items:
       - R2.1:
           text: "-i or --interactive must prompt before overwriting an existing destination file."
-          weight: 2
+          weight: 4
       - R2.2:
           text: "-f or --force must not prompt before overwriting. When combined with -i, the last flag given takes precedence."
-          weight: 2
+          weight: 4
       - R2.3:
           text: "-n or --no-clobber must not overwrite an existing destination file."
-          weight: 2
+          weight: 4
       - R2.4:
           text: "When the destination cannot be overwritten due to permissions, must print an error to stderr."
-          weight: 2
+          weight: 4
 
   R3:
     title: Output control and target directory
     items:
       - R3.1:
           text: "-v or --verbose must print the name of each file as it is moved, in the format 'SOURCE -> DEST' or 'renamed SOURCE -> DEST'."
-          weight: 2
+          weight: 4
       - R3.2:
           text: "-t DIRECTORY or --target-directory=DIRECTORY must move all SOURCE arguments into DIRECTORY."
-          weight: 2
+          weight: 4
       - R3.3:
           text: "-T or --no-target-directory must treat DEST as a normal file, not a directory."
-          weight: 2
+          weight: 4
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when all files are moved successfully.
-          weight: 2
+          weight: 4
       - R4.2:
           text: Must exit 1 when any move operation fails (permission denied, source not found).
-          weight: 2
+          weight: 4
       - R4.3:
           text: "When moving multiple files and one fails, must continue moving remaining files and exit 1."
-          weight: 2
+          weight: 4
       - R4.4:
           text: "Differential tests must compare exit codes and resulting file system state between the Go binary and the reference binary via pkg/testutils. Tests must cover: single file rename, move into directory, multi-file move, -i interactive, -f force, -n no-clobber, -v verbose, -t target directory, directory move, and error cases."
-          weight: 2
+          weight: 4
 
 non_goals:
   - cmd/mv does not implement --backup (make backups of existing destination files).

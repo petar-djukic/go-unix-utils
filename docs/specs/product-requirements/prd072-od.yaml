@@ -20,16 +20,16 @@ requirements:
     items:
       - R1.1:
           text: "When invoked with no type options, must display input in the default format: octal 2-byte words (equivalent to -t o2), with an octal address offset in the left column."
-          weight: 2
+          weight: 4
       - R1.2:
           text: "-t TYPE or --format=TYPE must display input in the given format. TYPE consists of a format letter (a for named characters, c for C-style characters, d for signed decimal, f for floating point, o for octal, u for unsigned decimal, x for hexadecimal) optionally followed by a size in bytes."
-          weight: 2
+          weight: 4
       - R1.3:
           text: Multiple -t options may be given; each produces an additional line of output per input block.
-          weight: 2
+          weight: 4
       - R1.4:
           text: Must read from FILE arguments in order, or from stdin when no file is given or "-" is specified.
-          weight: 2
+          weight: 4
 
   R2:
     title: Address format and byte range
@@ -52,16 +52,16 @@ requirements:
     items:
       - R3.1:
           text: "-w[N] or --width[=N] must set the number of input bytes per output line (default 16). When -w is given without a value, must use 32."
-          weight: 2
+          weight: 4
       - R3.2:
           text: Must support traditional short options as aliases for type specifiers. -b is equivalent to -t o1, -c is -t c, -d is -t u2, -o is -t o2, -s is -t d2, -x is -t x2.
-          weight: 2
+          weight: 4
       - R3.3:
           text: "Duplicate bytes in multi-line output must be replaced with '*' on a line by itself to indicate repetition, matching GNU od behavior."
-          weight: 2
+          weight: 4
       - R3.4:
           text: "-v or --output-duplicates must print all input data, disabling the '*' duplicate suppression."
-          weight: 2
+          weight: 4
 
   R4:
     title: Exit codes and differential testing
