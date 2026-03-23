@@ -8,6 +8,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -39,7 +40,61 @@ func main() {
 // R1.1-R1.5, R2.1-R2.4, R3.1-R3.3, R4.1-R4.9: all flags defined.
 // R4.8: -u is accepted but ignored.
 func parseFlags(args []string) (catOptions, []string) {
-	panic("not implemented")
+	var opts catOptions
+	var files []string
+	endOfFlags := false
+
+	for _, arg := range args {
+		if endOfFlags {
+			files = append(files, arg)
+			continue
+		}
+		if arg == "--" {
+			endOfFlags = true
+			continue
+		}
+		if len(arg) > 1 && arg[0] == '-' {
+			if err := applyShortFlags(arg[1:], &opts); err != nil {
+				fmt.Fprintf(os.Stderr, "cat: %s\n", err)
+				os.Exit(1)
+			}
+		} else {
+			files = append(files, arg)
+		}
+	}
+	return opts, files
+}
+
+// applyShortFlags applies a sequence of short flag characters to opts.
+// R4.5: -A is -vET. R4.6: -e is -vE. R4.7: -t is -vT.
+func applyShortFlags(flags string, opts *catOptions) error {
+	for _, c := range flags {
+		switch c {
+		case 'n':
+			opts.numberAll = true
+		case 'b':
+			opts.numberNonBlank = true
+		case 's':
+			opts.squeezeBlank = true
+		case 'E':
+			opts.showEnds = true
+		case 'T':
+			opts.showTabs = true
+		case 'v':
+			opts.showNonPrint = true
+		case 'A':
+			opts.showNonPrint, opts.showEnds, opts.showTabs = true, true, true
+		case 'e':
+			opts.showNonPrint, opts.showEnds = true, true
+		case 't':
+			opts.showNonPrint, opts.showTabs = true, true
+		case 'u':
+			// R4.8: accepted but ignored
+		default:
+			return fmt.Errorf("invalid option -- '%c'", c)
+		}
+	}
+	return nil
 }
 
 // run processes all files with the given options and returns the exit code.
@@ -48,7 +103,27 @@ func parseFlags(args []string) (catOptions, []string) {
 // R5.1: returns 0 on success.
 // R5.2: returns 1 on any file open error, continues processing.
 func run(opts catOptions, files []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
-	panic("not implemented")
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+	state := newLineState()
+	exitCode := 0
+	for _, name := range files {
+		r, err := openInput(name, stdin)
+		if err != nil {
+			reportError(stderr, name, err)
+			exitCode = 1
+			continue
+		}
+		err = processFile(r, stdout, opts, state)
+		if name != "-" {
+			r.Close()
+		}
+		if err != nil {
+			exitCode = 1
+		}
+	}
+	return exitCode
 }
 
 // processFile reads from r and writes transformed output to w.
@@ -56,7 +131,32 @@ func run(opts catOptions, files []string, stdin io.Reader, stdout io.Writer, std
 // R1.4: binary input not corrupted when no transform flags active.
 // R4.9: applies transforms in order: squeeze, non-printing, ends, numbering.
 func processFile(r io.Reader, w io.Writer, opts catOptions, state *lineState) error {
-	panic("not implemented")
+	if !needsTransform(opts) {
+		_, err := io.Copy(w, r)
+		return err
+	}
+	bw := bufio.NewWriterSize(w, 8192)
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := r.Read(buf)
+		for i := range n {
+			if err := processByte(bw, buf[i], opts, state); err != nil {
+				return err
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				return bw.Flush()
+			}
+			return readErr
+		}
+	}
+}
+
+// needsTransform reports whether any transformation flag is active.
+func needsTransform(opts catOptions) bool {
+	return opts.numberAll || opts.numberNonBlank || opts.squeezeBlank ||
+		opts.showEnds || opts.showTabs || opts.showNonPrint
 }
 
 // lineState tracks state across files for numbering and squeezing.
@@ -64,55 +164,126 @@ func processFile(r io.Reader, w io.Writer, opts catOptions, state *lineState) er
 // R3.2: blank squeezing applies across file boundaries.
 type lineState struct {
 	lineNumber     int  // current line number counter
-	prevBlank      bool // whether the previous line was blank
 	atLineStart    bool // whether we are at the start of a new line
 	consecutiveNLs int  // count of consecutive blank lines for squeezing
 }
 
 // newLineState creates the initial line state for a cat invocation.
 func newLineState() *lineState {
-	panic("not implemented")
+	return &lineState{atLineStart: true}
+}
+
+// processByte handles one input byte, applying squeeze/number/transform.
+// R4.9: order is squeeze, then non-printing, then ends, then number.
+func processByte(w *bufio.Writer, b byte, opts catOptions, state *lineState) error {
+	if state.atLineStart {
+		blank := b == '\n'
+		if shouldSqueeze(opts, state, blank) {
+			state.consecutiveNLs++
+			return nil
+		}
+		if blank {
+			state.consecutiveNLs++
+		} else {
+			state.consecutiveNLs = 0
+		}
+		if shouldNumber(opts, blank) {
+			state.lineNumber++
+			if _, err := w.WriteString(formatLineNumber(state.lineNumber)); err != nil {
+				return err
+			}
+		}
+		if !blank {
+			state.atLineStart = false
+		}
+	}
+	return writeOutputByte(w, b, opts, state)
+}
+
+// writeOutputByte writes a single byte to output with end/transform flags.
+// R4.3: "$" before newline when -E active.
+func writeOutputByte(w *bufio.Writer, b byte, opts catOptions, state *lineState) error {
+	if b == '\n' {
+		state.atLineStart = true
+		if opts.showEnds {
+			if err := w.WriteByte('$'); err != nil {
+				return err
+			}
+		}
+		return w.WriteByte('\n')
+	}
+	transformed := transformByte(b, opts)
+	_, err := w.Write(transformed)
+	return err
 }
 
 // transformByte converts a single byte according to active display flags.
 // R4.1: caret notation and M- prefix for non-printing characters.
 // R4.2: tabs and newlines exempted from -v display.
-// R4.3: "$" appended before newline when -E active.
 // R4.4: tabs shown as ^I when -T active.
 func transformByte(b byte, opts catOptions) []byte {
-	panic("not implemented")
+	if b == '\t' {
+		if opts.showTabs {
+			return []byte{'^', 'I'}
+		}
+		return []byte{b}
+	}
+	if !opts.showNonPrint {
+		return []byte{b}
+	}
+	return transformNonPrint(b)
 }
 
-// isBlankLine reports whether a line contains only a newline character.
-// R2.4: a blank line has zero non-newline bytes.
-func isBlankLine(line []byte) bool {
-	panic("not implemented")
+// transformNonPrint converts a non-printing byte to its display form.
+// R4.1: control -> ^X, 0x80-0x9F -> M-^X, 0xA0-0xFE -> M-X,
+// 0x7F -> ^?, 0xFF -> M-^?.
+func transformNonPrint(b byte) []byte {
+	switch {
+	case b < 32 && b != '\t' && b != '\n':
+		return []byte{'^', b + 64}
+	case b == 127:
+		return []byte{'^', '?'}
+	case b >= 128 && b < 160:
+		return []byte{'M', '-', '^', b - 128 + 64}
+	case b >= 160 && b < 255:
+		return []byte{'M', '-', b - 128}
+	case b == 255:
+		return []byte{'M', '-', '^', '?'}
+	default:
+		return []byte{b}
+	}
 }
 
 // formatLineNumber formats a line number in GNU cat format.
 // R2.1: right-justified in width 6, followed by tab.
 func formatLineNumber(n int) string {
-	panic("not implemented")
+	return fmt.Sprintf("%6d\t", n)
 }
 
 // shouldNumber reports whether the current line should be numbered.
 // R2.2: -b skips blank lines.
 // R2.3: -b takes precedence over -n.
 func shouldNumber(opts catOptions, blank bool) bool {
-	panic("not implemented")
+	if opts.numberNonBlank {
+		return !blank
+	}
+	return opts.numberAll
 }
 
 // shouldSqueeze reports whether a blank line should be suppressed.
 // R3.1: only the first of consecutive blank lines is written.
-func shouldSqueeze(opts catOptions, state *lineState) bool {
-	panic("not implemented")
+func shouldSqueeze(opts catOptions, state *lineState, blank bool) bool {
+	return opts.squeezeBlank && blank && state.consecutiveNLs > 0
 }
 
 // openInput opens a file for reading, or returns stdin for "-".
 // R1.2: "-" means stdin.
 // R5.2: returns error for files that cannot be opened.
 func openInput(name string, stdin io.Reader) (io.ReadCloser, error) {
-	panic("not implemented")
+	if name == "-" {
+		return io.NopCloser(stdin), nil
+	}
+	return os.Open(name)
 }
 
 // reportError writes a cat-style error message to stderr.
