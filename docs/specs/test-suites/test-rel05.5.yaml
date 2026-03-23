@@ -11,6 +11,7 @@ traces:
   - prd004-ts R5
   - prd004-ts R6
   - prd004-ts R7
+  - prd004-ts R10
 
 preconditions:
   - ./bin/ts exists (built via mage build).
@@ -181,7 +182,7 @@ test_cases:
       stdout: "no timestamp here\n"
       stderr: ""
     traces:
-      - prd004-ts R6.4
+      - prd004-ts R10.2
 
   - name: invalid_flag
     description: Unrecognized flag must produce a usage error and non-zero exit.

@@ -263,12 +263,9 @@ releases:
       depends_on: ["00.0"]
       description: |
         Deferred items from run 37 that could not complete due to stitch timeouts
-        or rate limits. prd004-ts R6: multi-format date parser exceeded stitch time
-        budget. prd072-od: rate-limited out of every attempt.
-        See GH-2938, cobbler-scaffold#1805.
+        or rate limits. prd072-od: rate-limited out of every attempt.
+        See cobbler-scaffold#1805.
       use_cases:
-        - id: rel99.0-uc001-ts
-          status: spec_complete
         - id: rel99.0-uc002-od
           status: spec_complete
     - version: "06.0"
