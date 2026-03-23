@@ -1,0 +1,53 @@
+id: rel09.1-uc003-basenc
+title: "Encode and decode with multiple alphabets via basenc"
+
+summary: |
+  The operator runs the Go basenc binary to encode or decode data using a selectable
+  encoding scheme (Base64, Base64URL, Base32, Base32hex, Base16, Z85). The differential
+  testing harness runs both the Go binary and the Homebrew reference binary (gbasenc
+  from coreutils) with identical inputs and confirms that their outputs are identical
+  byte-for-byte.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd081-basenc.yaml) and invokes do-work to
+  produce a passing differential test for cmd/basenc.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises basenc with each encoding scheme (--base64, --base64url,
+      --base32, --base32hex, --base16, --z85) in encode and decode modes.
+  - id: F2
+    step: |
+      The operator tests error cases: no encoding specified, invalid decode input,
+      wrong input length for Z85.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/basenc and
+      gbasenc with the same inputs and compares stdout byte-for-byte.
+
+touchpoints:
+  - T1: "cmd/basenc — multi-alphabet encoding/decoding, wrap control, garbage handling (prd081-basenc R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all encoding schemes (base64, base64url,
+      base32, base32hex, base16, z85) in encode and decode modes, confirming full
+      parity with gbasenc.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - Base2 (binary) encoding is not implemented.
+  - Custom alphabet specification is not supported.
+
+test_suite: test-rel-09.1

@@ -1,0 +1,188 @@
+id: test-rel09.1
+title: "Test Suite: rel09.1 — base32, base64, basenc"
+release: rel09.1
+
+traces:
+  - rel09.1-uc001-base32
+  - rel09.1-uc002-base64
+  - rel09.1-uc003-basenc
+  - prd079-base32 R1
+  - prd079-base32 R2
+  - prd079-base32 R3
+  - prd080-base64 R1
+  - prd080-base64 R2
+  - prd080-base64 R3
+  - prd081-basenc R1
+  - prd081-basenc R2
+  - prd081-basenc R3
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gbase32, gbase64, gbasenc (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  # ---- base32 ----
+
+  - name: base32_encode_stdin
+    description: "base32 encodes stdin to Base32"
+    inputs:
+      args: []
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd079-base32 R1.1
+      - prd079-base32 R1.2
+
+  - name: base32_decode
+    description: "base32 -d decodes Base32 input"
+    inputs:
+      args: ["-d"]
+      stdin: "NBSWY3DPEB3W64TMMQ======\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd079-base32 R2.1
+      - prd079-base32 R2.2
+
+  - name: base32_wrap_zero
+    description: "base32 -w 0 disables line wrapping"
+    inputs:
+      args: ["-w", "0"]
+      stdin: "hello world this is a longer string\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd079-base32 R1.3
+
+  # ---- base64 ----
+
+  - name: base64_encode_stdin
+    description: "base64 encodes stdin to Base64"
+    inputs:
+      args: []
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd080-base64 R1.1
+      - prd080-base64 R1.2
+
+  - name: base64_decode
+    description: "base64 -d decodes Base64 input"
+    inputs:
+      args: ["-d"]
+      stdin: "aGVsbG8K\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd080-base64 R2.1
+      - prd080-base64 R2.2
+
+  - name: base64_wrap_zero
+    description: "base64 -w 0 disables line wrapping"
+    inputs:
+      args: ["-w", "0"]
+      stdin: "hello world this is a longer string\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd080-base64 R1.3
+
+  # ---- basenc ----
+
+  - name: basenc_base64
+    description: "basenc --base64 encodes to Base64"
+    inputs:
+      args: ["--base64"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd081-basenc R1.1
+
+  - name: basenc_base16
+    description: "basenc --base16 encodes to hex"
+    inputs:
+      args: ["--base16"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd081-basenc R2.1
+
+  - name: basenc_base64url
+    description: "basenc --base64url encodes with URL-safe alphabet"
+    inputs:
+      args: ["--base64url"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd081-basenc R1.2
+
+  - name: basenc_base32hex
+    description: "basenc --base32hex encodes with extended hex Base32"
+    inputs:
+      args: ["--base32hex"]
+      stdin: "hello\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd081-basenc R1.4
+
+  - name: basenc_decode
+    description: "basenc --base64 -d decodes Base64 input"
+    inputs:
+      args: ["--base64", "-d"]
+      stdin: "aGVsbG8K\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd081-basenc R2.3
