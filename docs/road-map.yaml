@@ -257,17 +257,6 @@ releases:
           status: spec_complete
         - id: rel05.4-uc004-sha512sum
           status: spec_complete
-    - version: "99.0"
-      name: "Deferred — items that could not complete in run 37"
-      status: spec_complete
-      depends_on: ["00.0"]
-      description: |
-        Deferred items from run 37 that could not complete due to stitch timeouts
-        or rate limits. prd072-od: rate-limited out of every attempt.
-        See cobbler-scaffold#1805.
-      use_cases:
-        - id: rel99.0-uc002-od
-          status: spec_complete
     - version: "06.0"
       name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
       status: spec_complete
@@ -400,6 +389,6 @@ releases:
         - id: rel08.1-uc005-numfmt
           status: spec_complete
         - id: rel08.1-uc006-od
-          status: code_complete  # deferred to rel99.0, rate-limited in run 37
+          status: spec_complete
         - id: rel08.1-uc007-printf
           status: spec_complete
