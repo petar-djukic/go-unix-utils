@@ -20,64 +20,64 @@ requirements:
     items:
       - R1.1:
           text: "Must run COMMAND with optional ARGS and kill it with SIGTERM if it does not exit within DURATION seconds."
-          weight: 1
+          weight: 2
       - R1.2:
           text: Must support fractional durations (e.g., timeout 0.5 command).
-          weight: 1
+          weight: 2
       - R1.3:
           text: Must support suffix multipliers s (seconds, default), m (minutes), h (hours), d (days).
-          weight: 1
+          weight: 2
       - R1.4:
           text: "When DURATION is 0, must not impose a time limit (the command runs indefinitely)."
-          weight: 1
+          weight: 2
 
   R2:
     title: Signal selection and kill-after
     items:
       - R2.1:
           text: "-s SIGNAL or --signal=SIGNAL must send the specified signal instead of SIGTERM. Must accept signal names (e.g., KILL, HUP) and numeric signal values."
-          weight: 1
+          weight: 2
       - R2.2:
           text: "-k DURATION or --kill-after=DURATION must send SIGKILL if the command is still running DURATION seconds after the initial signal."
-          weight: 1
+          weight: 2
       - R2.3:
           text: "--foreground must not create a separate process group, allowing the command to use the terminal."
-          weight: 1
+          weight: 2
       - R2.4:
           text: "--preserve-status must exit with the same status as the command, even on timeout, instead of the timeout-specific exit code 124."
-          weight: 1
+          weight: 2
 
   R3:
     title: Exit codes
     items:
       - R3.1:
           text: "When the command exits before the timeout, must exit with the command's exit status."
-          weight: 1
+          weight: 2
       - R3.2:
           text: "When the command is killed due to timeout, must exit 124 (unless --preserve-status is given)."
-          weight: 1
+          weight: 2
       - R3.3:
           text: "When the command is killed by a signal not sent by timeout, must exit 128+signum."
-          weight: 1
+          weight: 2
       - R3.4:
           text: "When the timeout command itself fails (invalid arguments, command not found), must exit 125 for internal error or 126/127 for command execution failure."
-          weight: 1
+          weight: 2
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: "Differential tests must compare exit codes between the Go binary and the reference binary via pkg/testutils."
-          weight: 1
+          weight: 2
       - R4.2:
           text: "Tests must cover: command completes before timeout (exit with command status), command exceeds timeout (exit 124), duration 0 (no limit), -s with named and numeric signals, -k kill-after escalation, --preserve-status, and error cases (no args, invalid duration, command not found)."
-          weight: 1
+          weight: 2
       - R4.3:
           text: "Tests must use fast commands (true, false, sleep 0) and short durations to avoid slow test execution."
-          weight: 1
+          weight: 2
       - R4.4:
           text: "Tests must verify that the timed-out process is actually killed and does not remain as an orphan."
-          weight: 1
+          weight: 2
 
 non_goals:
   - cmd/timeout does not implement --verbose or any diagnostic output beyond error messages.
