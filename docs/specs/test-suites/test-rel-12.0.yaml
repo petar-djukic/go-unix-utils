@@ -1,0 +1,95 @@
+id: test-rel12.0
+title: "Test Suite: rel12.0 — shred, chroot, install"
+release: rel12.0
+
+traces:
+  - rel12.0-uc001-shred
+  - rel12.0-uc002-chroot
+  - rel12.0-uc003-install
+  - prd099-shred R1
+  - prd099-shred R2
+  - prd099-shred R3
+  - prd100-chroot R1
+  - prd100-chroot R2
+  - prd101-install R1
+  - prd101-install R2
+  - prd101-install R3
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gshred, gchroot, ginstall (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  - name: shred_default
+    description: "shred overwrites file with 3 passes of random data"
+    inputs:
+      args: ["testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd099-shred R1.1
+
+  - name: shred_zero_remove
+    description: "shred -n 1 -z -u overwrites, zeros, and removes"
+    inputs:
+      args: ["-n", "1", "-z", "-u", "testfile"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd099-shred R1.2
+      - prd099-shred R1.3
+      - prd099-shred R1.4
+
+  - name: install_copy
+    description: "install copies file with default permissions"
+    inputs:
+      args: ["src", "dest"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd101-install R1.1
+
+  - name: install_directory
+    description: "install -d creates directories"
+    inputs:
+      args: ["-d", "dir1/dir2"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd101-install R2.1
+
+  - name: install_mode
+    description: "install -m 644 sets specific permissions"
+    inputs:
+      args: ["-m", "644", "src", "dest"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd101-install R1.2

@@ -1,0 +1,40 @@
+id: rel11.1-uc003-pinky
+title: "Display lightweight finger information via pinky"
+
+summary: |
+  The operator runs the Go pinky binary. The differential testing harness runs both
+  the Go binary and the Homebrew reference binary (gpinky from coreutils) with identical
+  inputs and confirms behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd098-pinky.yaml) and invokes do-work to produce
+  a passing differential test for cmd/pinky.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises pinky with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/pinky and
+      gpinky with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/pinky — pinky prints user info in short/long format (prd098-pinky)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with gpinky.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-11.1

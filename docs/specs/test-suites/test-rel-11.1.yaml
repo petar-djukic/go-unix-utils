@@ -1,0 +1,93 @@
+id: test-rel11.1
+title: "Test Suite: rel11.1 — users, who, pinky"
+release: rel11.1
+
+traces:
+  - rel11.1-uc001-users
+  - rel11.1-uc002-who
+  - rel11.1-uc003-pinky
+  - prd096-users R1
+  - prd096-users R2
+  - prd097-who R1
+  - prd097-who R2
+  - prd097-who R3
+  - prd098-pinky R1
+  - prd098-pinky R2
+  - prd098-pinky R3
+
+preconditions:
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: gusers, gwho, gpinky (coreutils package)"
+  - "Tests use LC_ALL=C for deterministic output"
+
+test_cases:
+
+  - name: users_list
+    description: "users prints logged-in usernames"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd096-users R1.1
+
+  - name: who_default
+    description: "who prints logged-in users with terminal and time"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd097-who R1.1
+
+  - name: who_heading
+    description: "who -H prints header line"
+    inputs:
+      args: ["-H"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd097-who R2.1
+
+  - name: who_boot
+    description: "who -b prints boot time"
+    inputs:
+      args: ["-b"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd097-who R2.3
+
+  - name: pinky_short
+    description: "pinky prints short format user info"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd098-pinky R1.1

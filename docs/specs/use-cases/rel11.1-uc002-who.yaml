@@ -1,0 +1,40 @@
+id: rel11.1-uc002-who
+title: "Show who is logged on via who"
+
+summary: |
+  The operator runs the Go who binary. The differential testing harness runs both
+  the Go binary and the Homebrew reference binary (gwho from coreutils) with identical
+  inputs and confirms behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd097-who.yaml) and invokes do-work to produce
+  a passing differential test for cmd/who.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises who with standard flag combinations and inputs.
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/who and
+      gwho with the same inputs and compares stdout, stderr, and exit codes.
+
+touchpoints:
+  - T1: "cmd/who — who prints user, terminal, and time info (prd097-who)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all standard flag combinations, confirming
+      full parity with gwho.
+    traces:
+      - AC1
+
+out_of_scope:
+  - Platform-specific features not available on macOS.
+
+test_suite: test-rel-11.1
