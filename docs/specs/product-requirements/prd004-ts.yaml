@@ -98,9 +98,28 @@ requirements:
           text: When -m is active, the timestamp must not jump backwards or exhibit discontinuities if the wall clock is adjusted (e.g., by NTP) while ts is running.
           weight: 1
 
-  # R6 (relative-time conversion mode) deferred to release 99.0.
-  # Repeatedly exceeded the 15-minute stitch timeout in run 37 due to
-  # multi-format date parsing complexity. See GH-2938, cobbler-scaffold#1697, #1699.
+  R6:
+    title: Relative-time parsing and age output
+    items:
+      - R6.1:
+          text: -r must scan each input line for known timestamp patterns and replace each match with a human-readable relative age string (e.g., "15m5s ago").
+          weight: 3
+      - R6.2:
+          text: 'Must recognize the following timestamp patterns from the Perl source regex: syslog format ("Jan  5 14:30:00"), ISO-8601 ("2024-01-05T14:30:00.000Z"), RFC 2822 with optional day ("16 Jun 94 07:29:35 GMT"), lastlog format ("Mon Jan  5 14:30").'
+          weight: 3
+
+  R10:
+    title: Relative-time format override and integration
+    items:
+      - R10.1:
+          text: When -r and a format string are both given, must convert matched timestamps to the specified format via strftime rather than to a relative string.
+          weight: 2
+      - R10.2:
+          text: Lines with no recognizable timestamp must be passed through unchanged.
+          weight: 1
+      - R10.3:
+          text: -r is mutually exclusive with -i and -s; passing both must print a usage error to stderr and exit non-zero.
+          weight: 1
 
   R7:
     title: Exit codes and error handling
@@ -111,7 +130,9 @@ requirements:
       - R7.2:
           text: Must exit non-zero and print a usage message to stderr when an unrecognized flag is given.
           weight: 1
-      # R7.3 deferred with R6 (references -r mode)
+      - R7.3:
+          text: Must exit non-zero when -r mode is requested but the timestamp parsing dependency (equivalent of Date::Parse) is unavailable. In the Go implementation this means the parsing library must be compiled in, so this condition cannot arise; document the invariant in the implementation.
+          weight: 1
 
   R8:
     title: Environment
@@ -139,7 +160,6 @@ non_goals:
   - cmd/ts does not read from files; it reads only from stdin.
   - cmd/ts does not support localized date parsing in -r mode (the Perl source explicitly notes this limitation).
   - cmd/ts does not implement --help or --version flags beyond a usage string on bad input.
-  - "R6 (relative-time conversion mode, -r flag) is deferred to release 99.0. The multi-format date parser and relative-age formatter exceed the stitch time budget. See GH-2938."
 
 acceptance_criteria:
   - id: AC1
@@ -175,7 +195,7 @@ acceptance_criteria:
       - R4.2
       - R4.3
       - R5.2
-      - R6.5
+      - R10.3
       - R7.1
       - R8.1
       - R8.2
@@ -185,7 +205,7 @@ acceptance_criteria:
     criterion: "ts with an invalid flag prints a usage message to stderr and exits non-zero."
     traces:
       - R3.4
-      - R6.5
+      - R10.3
       - R7.2
   - id: AC5
     criterion: "Empty stdin (immediate EOF) produces no output and exits 0."
@@ -193,10 +213,10 @@ acceptance_criteria:
       - R1.1
       - R1.6
       - R3.4
-      - R6.5
+      - R10.3
       - R7.1
       - R7.2
-      # R7.3 deferred with R6
+      - R7.3
       - R9.2
   - id: AC6
     criterion: "cmd/ts compiles with no warnings under golangci-lint."
@@ -221,10 +241,15 @@ acceptance_criteria:
       - R5.1
       - R5.2
       - R5.3
+      - R6.1
+      - R6.2
       - R7.1
       - R7.2
-      # R7.3 deferred with R6
+      - R7.3
       - R8.1
       - R8.2
       - R9.1
       - R9.2
+      - R10.1
+      - R10.2
+      - R10.3
