@@ -1,0 +1,44 @@
+id: rel11.0-uc001-mkfifo
+title: "Create named pipes via mkfifo"
+
+summary: |
+  The operator runs the Go mkfifo binary to create named pipes (FIFOs). The differential
+  testing harness runs both the Go binary and the Homebrew reference binary (gmkfifo from
+  coreutils) with identical inputs and confirms behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd092-mkfifo.yaml) and invokes do-work to produce
+  a passing differential test for cmd/mkfifo.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises mkfifo with one or more names, with -m mode specification,
+      and tests error cases (existing path).
+  - id: F2
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/mkfifo and
+      gmkfifo with the same inputs and compares exit codes and stderr.
+
+touchpoints:
+  - T1: "cmd/mkfifo — FIFO creation, mode specification (prd092-mkfifo R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for basic creation, mode specification, multiple
+      names, and error cases, confirming full parity with gmkfifo.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - SELinux context setting.
+
+test_suite: test-rel-11.0

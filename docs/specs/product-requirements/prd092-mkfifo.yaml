@@ -1,0 +1,78 @@
+id: prd092-mkfifo
+title: "cmd/mkfifo: Make FIFOs (Named Pipes)"
+
+problem: |
+  macOS ships mkfifo but the GNU version supports --mode (-m) for setting permissions
+  at creation. The Go implementation must match the Homebrew GNU reference binary
+  (gmkfifo, installed by coreutils) byte-for-byte on all flag combinations, verified
+  by differential testing via pkg/testutils.
+
+goals:
+  - G1: Create one or more named pipes (FIFOs).
+  - G2: Support permission mode specification at creation.
+  - G3: Verify functional parity against gmkfifo via differential testing.
+
+requirements:
+  R1:
+    title: FIFO creation
+    items:
+      - R1.1:
+          text: Must create a FIFO (named pipe) at each specified path using the mkfifo(2) system call.
+          weight: 1
+      - R1.2:
+          text: Must process multiple NAME arguments, creating a FIFO for each.
+          weight: 1
+      - R1.3:
+          text: "-m MODE or --mode=MODE must set the FIFO's permission bits to MODE (octal or symbolic). Default is 0666 modified by umask."
+          weight: 1
+      - R1.4:
+          text: Must exit 1 when any FIFO cannot be created (e.g., path already exists), printing an error to stderr, and continue processing remaining arguments.
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 when all FIFOs are created successfully.
+          weight: 1
+      - R2.2:
+          text: Must exit 1 when any creation fails.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/mkfifo does not implement SELinux context setting.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "mkfifo pipe1 creates a FIFO at pipe1, matching gmkfifo."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC2
+    criterion: "mkfifo -m 600 pipe1 creates a FIFO with mode 600, matching gmkfifo."
+    traces:
+      - R1.3
+  - id: AC3
+    criterion: "Differential test against gmkfifo passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC4
+    criterion: "cmd/mkfifo compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

@@ -1,0 +1,50 @@
+id: rel10.1-uc003-chown
+title: "Change file owner and group via chown"
+
+summary: |
+  The operator runs the Go chown binary to change file owner and/or group using
+  OWNER[:GROUP] syntax. The differential testing harness runs both the Go binary and the
+  Homebrew reference binary (gchown from coreutils) with identical inputs and confirms
+  behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd091-chown.yaml) and invokes do-work to produce
+  a passing differential test for cmd/chown.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises chown with OWNER, OWNER:GROUP, OWNER:, :GROUP syntax,
+      recursive mode (-R), symlink handling (-h, -H, -L, -P), and output control.
+  - id: F2
+    step: |
+      The operator tests --reference mode, numeric UIDs/GIDs, and error cases.
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/chown and
+      gchown with the same inputs and compares exit codes and stderr.
+
+touchpoints:
+  - T1: "cmd/chown — ownership parsing, recursive traversal, symlink handling (prd091-chown R1, R2, R3)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for all OWNER:GROUP syntax variants, recursive
+      changes, symlink handling, reference mode, and error cases, confirming full
+      parity with gchown.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+
+out_of_scope:
+  - --preserve-root and --from conditional changes are not implemented.
+
+test_suite: test-rel-10.1

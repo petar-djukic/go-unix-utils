@@ -1,0 +1,49 @@
+id: rel11.0-uc004-nohup
+title: "Run commands immune to hangups via nohup"
+
+summary: |
+  The operator runs the Go nohup binary to execute a command immune to SIGHUP with
+  automatic stdout/stderr redirection to nohup.out. The differential testing harness
+  runs both the Go binary and the Homebrew reference binary (gnohup from coreutils)
+  with identical inputs and confirms behavior parity.
+
+actor: Human Operator
+
+trigger: |
+  The operator has completed the PRD (prd095-nohup.yaml) and invokes do-work to produce
+  a passing differential test for cmd/nohup.
+
+flow:
+  - id: F1
+    step: |
+      The operator exercises nohup with a simple command, verifying SIGHUP immunity,
+      nohup.out creation, and stderr redirection.
+  - id: F2
+    step: |
+      The operator tests error cases: missing command (exit 127), non-executable
+      command (exit 126).
+  - id: F3
+    step: |
+      The differential testing harness (pkg/testutils) executes both ./bin/nohup and
+      gnohup with the same inputs and compares exit codes and stderr messages.
+
+touchpoints:
+  - T1: "cmd/nohup — SIGHUP immunity, output redirection, command execution (prd095-nohup R1, R2)"
+  - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
+  - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
+
+success_criteria:
+  - id: S1
+    criterion: |
+      The differential test passes for basic nohup execution, nohup.out creation,
+      stderr redirection, and error cases, confirming full parity with gnohup.
+    traces:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+
+out_of_scope:
+  - --help and --version beyond usage on error.
+
+test_suite: test-rel-11.0
