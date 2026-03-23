@@ -24,7 +24,7 @@ releases:
         - id: rel00.0-uc006-sizeparse
           status: spec_complete
         - id: rel00.0-uc007-encutil
-          status: spec_complete
+          status: implemented
     - version: "01.1"
       name: "Batch 1.1 — cat specification and differential test"
       status: spec_complete
