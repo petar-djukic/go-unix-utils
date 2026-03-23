@@ -53,13 +53,51 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{sortLines},
 		},
 		{
-			Name:      "file_argument",
-			Args:      []string{filepath.Join(fixture, "root.txt")},
+			Name: "file_argument",
+			Args: []string{filepath.Join(fixture, "root.txt")},
 		},
 		{
-			Name:    "current_dir_default",
-			Args:    []string{},
-			WorkDir: fixture,
+			Name:      "current_dir_default",
+			Args:      []string{},
+			WorkDir:   fixture,
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.1: -h/--human-readable with binary (1024-based) suffixes.
+		{
+			Name:      "human_readable_short",
+			Args:      []string{"-h", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "human_readable_long",
+			Args:      []string{"--human-readable", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "human_readable_all",
+			Args:      []string{"-h", "-a", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.5: -k is equivalent to default (1024-byte blocks).
+		{
+			Name:      "kilo_blocks",
+			Args:      []string{"-k", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "kilo_blocks_all",
+			Args:      []string{"-k", "-a", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.6: -m reports sizes in 1048576-byte blocks.
+		{
+			Name:      "mega_blocks",
+			Args:      []string{"-m", fixture},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "mega_blocks_all",
+			Args:      []string{"-m", "-a", fixture},
 			Normalize: []testutils.NormalizeFunc{sortLines},
 		},
 	}
