@@ -49,8 +49,11 @@ func helpVersionNormalizer() testutils.NormalizeFunc {
 func stderrNormalizer() testutils.NormalizeFunc {
 	// Normalize full paths and gbasename to basename.
 	binPath := regexp.MustCompile(`/[^\s:]+/g?basename|gbasename`)
+	// Remove GNU "Try ... --help" hint lines (Go binary may omit these).
+	tryHelp := regexp.MustCompile(`(?m)^Try '[^']*' for more information\.\n?`)
 	return func(b []byte) []byte {
 		b = binPath.ReplaceAll(b, []byte("basename"))
+		b = tryHelp.ReplaceAll(b, nil)
 		return b
 	}
 }
@@ -66,7 +69,7 @@ func TestDiff(t *testing.T) {
 	errNorm := stderrNormalizer()
 
 	tests := []testutils.DiffTest{
-		// R4.2: simple path — strip directory.
+		// R4.1/R4.2: simple path — strip directory.
 		{
 			Name: "simple_path",
 			Args: []string{"/usr/bin/sort"},
@@ -90,6 +93,11 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "all_slashes",
 			Args: []string{"///"},
+		},
+		// R4.2: empty string argument.
+		{
+			Name: "empty_string",
+			Args: []string{""},
 		},
 		// R4.2: suffix removal (two-argument form).
 		{
@@ -146,15 +154,29 @@ func TestDiff(t *testing.T) {
 			Name: "zero_long",
 			Args: []string{"--zero", "foo"},
 		},
+		// R4.2: combined -a -s -z flags.
+		{
+			Name: "combined_multi_suffix_zero",
+			Args: []string{"-a", "-s", ".h", "-z", "include/stdio.h", "include/stdlib.h"},
+		},
 		// R4.3: no arguments — error, exit 1.
 		{
 			Name:      "no_args_error",
+			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{errNorm},
 		},
 		// R4.3: extra operand in single-argument mode — error, exit 1.
 		{
 			Name:      "extra_operand_error",
 			Args:      []string{"a", "b", "c"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
+		// R4.3: invalid option — error, exit 1.
+		{
+			Name:      "invalid_option",
+			Args:      []string{"--invalid-option"},
+			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{errNorm},
 		},
 		// --help output.
