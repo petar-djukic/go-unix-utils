@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd005-wc: Count Lines, Words, and Bytes.
-// Covers R1.1-R1.4 (default counting, stdin/files, output format, totals),
-// R2.1 (-l lines), R2.2 (-w words), R2.3/R2.4 (-c bytes, -m chars).
+// Covers R1.1-R1.4, R2.1-R2.6, R3.1-R3.2, R4.1-R4.4, R6.1-R6.2.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -25,23 +25,32 @@ const defaultWidth = 7
 
 // counts holds computed counts for a single input.
 type counts struct {
-	lines int64
-	words int64
-	bytes int64
-	chars int64
+	lines      int64
+	words      int64
+	bytes      int64
+	chars      int64
+	maxLineLen int64
 }
 
 // showFlags holds which counts to display.
 type showFlags struct {
-	lines bool
-	words bool
-	bytes bool
-	chars bool
+	lines      bool
+	words      bool
+	bytes      bool
+	chars      bool
+	maxLineLen bool
+}
+
+// options holds parsed command-line options.
+type options struct {
+	flags      showFlags
+	files      []string
+	files0From string
 }
 
 // noFlagsSet returns true when no counting flags were specified.
 func (f showFlags) noFlagsSet() bool {
-	return !f.lines && !f.words && !f.bytes && !f.chars
+	return !f.lines && !f.words && !f.bytes && !f.chars && !f.maxLineLen
 }
 
 // effective returns display flags with defaults applied.
@@ -59,22 +68,85 @@ func (f showFlags) effective() showFlags {
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	fl, files, exitCode := parseArgs(os.Args[1:])
+	opts, exitCode := parseArgs(os.Args[1:])
 	if exitCode >= 0 {
 		os.Exit(exitCode)
 	}
-	os.Exit(run(fl, files))
+	os.Exit(run(opts))
 }
 
 // run processes all inputs and returns the exit code.
-// R1.2: reads stdin when no files given. R1.4: total line for multiple files.
-func run(fl showFlags, files []string) int {
+func run(opts options) int {
+	files, err := resolveFiles(opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "wc: %v\n", err)
+		return 1
+	}
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	width := computeWidth(files)
-	eff := fl.effective()
+	eff := opts.flags.effective()
 	return processFiles(files, eff, width)
+}
+
+// resolveFiles determines the file list from options.
+// R3.2: --files0-from with file operands is an error.
+func resolveFiles(opts options) ([]string, error) {
+	if opts.files0From == "" {
+		return opts.files, nil
+	}
+	if len(opts.files) > 0 {
+		return nil, fmt.Errorf(
+			"file operands cannot be combined with --files0-from")
+	}
+	return readFiles0From(opts.files0From)
+}
+
+// readFiles0From reads NUL-terminated filenames from a file or stdin.
+// R4.4: when FILE is "-", filenames are read from stdin.
+func readFiles0From(source string) ([]string, error) {
+	r, err := openFiles0Source(source)
+	if err != nil {
+		return nil, err
+	}
+	if r != os.Stdin {
+		defer r.Close()
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read error: %w", err)
+	}
+	return splitNulFiles(data), nil
+}
+
+// openFiles0Source opens the --files0-from source.
+func openFiles0Source(source string) (*os.File, error) {
+	if source == "-" {
+		return os.Stdin, nil
+	}
+	f, err := os.Open(source)
+	if err != nil {
+		return nil, formatOpenError(source, err)
+	}
+	return f, nil
+}
+
+// splitNulFiles splits NUL-terminated data into filenames.
+func splitNulFiles(data []byte) []string {
+	if len(data) == 0 {
+		return nil
+	}
+	data = bytes.TrimRight(data, "\x00")
+	if len(data) == 0 {
+		return nil
+	}
+	parts := bytes.Split(data, []byte{0})
+	files := make([]string, len(parts))
+	for i, p := range parts {
+		files[i] = string(p)
+	}
+	return files
 }
 
 // processFiles counts and prints results for each file.
@@ -102,11 +174,15 @@ func processFiles(files []string, fl showFlags, width int) int {
 }
 
 // addCounts accumulates src into dst.
+// R2.5: maxLineLen takes the maximum, not the sum.
 func addCounts(dst *counts, src counts) {
 	dst.lines += src.lines
 	dst.words += src.words
 	dst.bytes += src.bytes
 	dst.chars += src.chars
+	if src.maxLineLen > dst.maxLineLen {
+		dst.maxLineLen = src.maxLineLen
+	}
 }
 
 // countFile opens and counts a single input.
@@ -121,38 +197,64 @@ func countFile(name string) (counts, error) {
 	return countReader(r)
 }
 
-// countReader counts lines, words, bytes, and chars from r.
-// R2.1: lines = newline count. R2.2: words = maximal non-whitespace sequences.
-// R2.4: chars = Unicode code points; invalid bytes count as one character each.
+// countReader counts lines, words, bytes, chars, and max line length.
+// R2.1: lines = newline count. R2.2: words = maximal non-whitespace.
+// R2.4: chars = Unicode code points. R2.5: max line length with tab expansion.
 func countReader(r io.Reader) (counts, error) {
 	br := bufio.NewReaderSize(r, 64*1024)
 	var c counts
 	inWord := false
+	var lineLen int64
 
 	for {
 		ru, size, err := br.ReadRune()
 		if err != nil {
 			if err == io.EOF {
+				updateMaxLineLen(&c, lineLen)
 				return c, nil
 			}
 			return c, err
 		}
 		c.bytes += int64(size)
 		c.chars++
-		if ru == '\n' {
-			c.lines++
-		}
-		if unicode.IsSpace(ru) {
-			inWord = false
-		} else if !inWord {
-			c.words++
-			inWord = true
-		}
+		updateLineLen(&lineLen, ru, &c)
+		updateWordState(ru, &inWord, &c)
+	}
+}
+
+// updateLineLen updates the current line length and max on newline.
+// R2.5: tab advances to the next multiple of 8.
+func updateLineLen(lineLen *int64, ru rune, c *counts) {
+	switch ru {
+	case '\n':
+		c.lines++
+		updateMaxLineLen(c, *lineLen)
+		*lineLen = 0
+	case '\t':
+		*lineLen += 8 - (*lineLen % 8)
+	default:
+		*lineLen++
+	}
+}
+
+// updateWordState tracks word boundaries for word counting.
+func updateWordState(ru rune, inWord *bool, c *counts) {
+	if unicode.IsSpace(ru) {
+		*inWord = false
+	} else if !*inWord {
+		c.words++
+		*inWord = true
+	}
+}
+
+// updateMaxLineLen updates the max line length if current is larger.
+func updateMaxLineLen(c *counts, lineLen int64) {
+	if lineLen > c.maxLineLen {
+		c.maxLineLen = lineLen
 	}
 }
 
 // computeWidth determines the column width for output formatting.
-// Uses file sizes from stat where possible; defaults to 7 for stdin.
 func computeWidth(files []string) int {
 	var totalSize int64
 	anyRegular := false
@@ -192,7 +294,7 @@ func digitCount(n int64) int {
 }
 
 // printLine prints a single output line with right-aligned counts.
-// R2.6: fixed order: lines, words, chars/bytes.
+// R2.6: fixed order: lines, words, chars/bytes, max-line-length.
 func printLine(c counts, name string, width int, fl showFlags) {
 	first := true
 	if fl.lines {
@@ -206,6 +308,9 @@ func printLine(c counts, name string, width int, fl showFlags) {
 	}
 	if fl.bytes {
 		printField(c.bytes, width, &first)
+	}
+	if fl.maxLineLen {
+		printField(c.maxLineLen, width, &first)
 	}
 	if name != "" {
 		fmt.Printf(" %s", name)
@@ -233,6 +338,7 @@ func displayName(name string) string {
 }
 
 // openInput opens a named file or returns stdin for "-".
+// R4.1: "-" means stdin.
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
@@ -254,49 +360,57 @@ func formatOpenError(name string, err error) error {
 }
 
 // parseArgs processes command-line arguments.
-// Returns exit >= 0 for early exit (help/version/error).
-func parseArgs(args []string) (fl showFlags, files []string, exit int) {
-	exit = -1
+func parseArgs(args []string) (options, int) {
+	var opts options
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
-			files = append(files, args[i+1:]...)
-			return
+			opts.files = append(opts.files, args[i+1:]...)
+			return opts, -1
 		}
-		exit = parseOneArg(args[i], &fl, &files)
+		exit := parseOneArg(args[i], &opts)
 		if exit >= 0 {
-			return showFlags{}, nil, exit
+			return options{}, exit
 		}
 	}
-	return
+	return opts, -1
 }
 
-// parseOneArg handles a single argument. Returns -1 to continue, >= 0 to exit.
-func parseOneArg(arg string, fl *showFlags, files *[]string) int {
+// parseOneArg handles a single argument.
+func parseOneArg(arg string, opts *options) int {
 	switch {
 	case arg == "--help":
 		return printHelp()
 	case arg == "--version":
 		return printVersion()
 	case arg == "--bytes":
-		fl.bytes = true
+		opts.flags.bytes = true
 	case arg == "--chars":
-		fl.chars = true
+		opts.flags.chars = true
 	case arg == "--lines":
-		fl.lines = true
+		opts.flags.lines = true
 	case arg == "--words":
-		fl.words = true
-	case strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-':
-		return parseShortFlags(arg[1:], fl)
+		opts.flags.words = true
+	case arg == "--max-line-length":
+		opts.flags.maxLineLen = true
+	case strings.HasPrefix(arg, "--files0-from="):
+		opts.files0From = arg[len("--files0-from="):]
+	case isShortFlag(arg):
+		return parseShortFlags(arg[1:], &opts.flags)
 	case strings.HasPrefix(arg, "--"):
 		fmt.Fprintf(os.Stderr, "wc: unrecognized option '%s'\n", arg)
 		return 1
 	default:
-		*files = append(*files, arg)
+		opts.files = append(opts.files, arg)
 	}
 	return -1
 }
 
-// parseShortFlags handles combined short flags like -lwc.
+// isShortFlag returns true if arg looks like a short flag cluster.
+func isShortFlag(arg string) bool {
+	return strings.HasPrefix(arg, "-") && len(arg) > 1 && arg[1] != '-'
+}
+
+// parseShortFlags handles combined short flags like -lwcL.
 func parseShortFlags(s string, fl *showFlags) int {
 	for _, ch := range s {
 		switch ch {
@@ -308,6 +422,8 @@ func parseShortFlags(s string, fl *showFlags) int {
 			fl.bytes = true
 		case 'm':
 			fl.chars = true
+		case 'L':
+			fl.maxLineLen = true
 		default:
 			fmt.Fprintf(os.Stderr, "wc: invalid option -- '%c'\n", ch)
 			return 1
@@ -327,11 +443,15 @@ printable characters delimited by white space.
 With no FILE, or when FILE is -, read standard input.
 
 The options below may be used to select which counts are printed, always in
-the following order: newline, word, character, byte.
+the following order: newline, word, character, byte, maximum line length.
   -c, --bytes            print the byte counts
   -m, --chars            print the character counts
   -l, --lines            print the newline counts
+  -L, --max-line-length  print the maximum display width
   -w, --words            print the word counts
+      --files0-from=F    read input from the files specified by
+                           NUL-terminated names in file F;
+                           If F is - then read names from standard input
       --help     display this help and exit
       --version  output version information and exit
 `)
