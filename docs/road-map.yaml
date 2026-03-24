@@ -178,7 +178,7 @@ releases:
           status: implemented
     - version: "05.0"
       name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement four easy stream-transform utilities that depend only on pkg/testutils and
