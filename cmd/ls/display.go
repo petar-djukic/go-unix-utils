@@ -93,6 +93,10 @@ func printNonLongEntries(entries []entry, cfg lsConfig) {
 		printColumnar(names)
 		return
 	}
+	if mode == modeHorizontal {
+		printHorizontalColumnar(names)
+		return
+	}
 	for _, name := range names {
 		fmt.Println(name)
 	}
@@ -419,6 +423,70 @@ func formatMtime(t time.Time) string {
 		return t.Format("Jan _2 15:04")
 	}
 	return t.Format("Jan _2  2006")
+}
+
+// printHorizontalColumnar prints entries in row-major multi-column format.
+// R1.13: -x sorts horizontally (across columns, then down to next row).
+func printHorizontalColumnar(names []string) {
+	width := termWidthOrDefault()
+	numCols := computeHorizontalCols(names, width)
+	if numCols <= 1 {
+		for _, name := range names {
+			fmt.Println(name)
+		}
+		return
+	}
+	colWidths := horizontalColWidths(names, numCols)
+	for i := 0; i < len(names); i += numCols {
+		end := i + numCols
+		if end > len(names) {
+			end = len(names)
+		}
+		printColumnarRow(names[i:end], colWidths)
+	}
+}
+
+// computeHorizontalCols finds the maximum column count for horizontal layout.
+func computeHorizontalCols(names []string, width int) int {
+	maxCols := width / 2
+	if maxCols < 1 {
+		maxCols = 1
+	}
+	if maxCols > len(names) {
+		maxCols = len(names)
+	}
+	for cols := maxCols; cols > 1; cols-- {
+		cw := horizontalColWidths(names, cols)
+		if horizontalTotalWidth(cw) <= width {
+			return cols
+		}
+	}
+	return 1
+}
+
+// horizontalColWidths computes per-column max widths for row-major layout.
+func horizontalColWidths(names []string, numCols int) []int {
+	widths := make([]int, numCols)
+	for i, name := range names {
+		col := i % numCols
+		w := utf8.RuneCountInString(name)
+		if w > widths[col] {
+			widths[col] = w
+		}
+	}
+	return widths
+}
+
+// horizontalTotalWidth returns total width needed for the given column widths.
+func horizontalTotalWidth(colWidths []int) int {
+	total := 0
+	for i, w := range colWidths {
+		total += w
+		if i < len(colWidths)-1 {
+			total += 2 // gap between columns
+		}
+	}
+	return total
 }
 
 // updateWidth sets *current to v if v is larger.

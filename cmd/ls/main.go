@@ -22,7 +22,8 @@ const (
 	modeDefault outputMode = iota
 	modeSingle             // -1: one entry per line
 	modeLong               // -l: long format
-	modeColumns            // -C: forced multi-column
+	modeColumns            // -C: forced multi-column (vertical)
+	modeHorizontal         // -x: forced multi-column (horizontal)
 )
 
 // filterMode selects which entries to show.
@@ -120,6 +121,8 @@ func parseShortFlags(flags string, cfg *lsConfig) {
 			cfg.output = modeSingle
 		case 'C':
 			cfg.output = modeColumns
+		case 'x':
+			cfg.output = modeHorizontal
 		case 'R':
 			cfg.recursive = true
 		case 't':
@@ -179,6 +182,7 @@ List information about the FILEs (the current directory by default).
   -S                   sort by file size, largest first
   -t                   sort by time, newest first
   -U                   do not sort; list entries in directory order
+  -x                   list entries by lines instead of by columns
   -1                   list one file per line
       --help           display this help and exit
       --version        output version information and exit
