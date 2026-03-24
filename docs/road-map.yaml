@@ -210,7 +210,7 @@ releases:
         - id: rel05.1-uc001-expand
           status: implemented
         - id: rel05.1-uc002-unexpand
-          status: spec_complete
+          status: implemented
     - version: "05.2"
       name: "Batch 5.2 — columnar operations pair (cut, paste)"
       status: spec_complete
