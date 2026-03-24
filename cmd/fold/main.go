@@ -150,7 +150,7 @@ func run(cfg foldConfig, files []string, stdin io.Reader, stdout, stderr io.Writ
 func processOneFile(name string, stdin io.Reader, bw *bufio.Writer, cfg foldConfig) error {
 	r, err := openInput(name, stdin)
 	if err != nil {
-		return fmt.Errorf("%s: %s", name, err)
+		return err
 	}
 	if name != "-" {
 		defer r.Close()
@@ -164,7 +164,19 @@ func openInput(name string, stdin io.Reader) (io.ReadCloser, error) {
 	if name == "-" {
 		return io.NopCloser(stdin), nil
 	}
-	return os.Open(name)
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %s", name, unwrapOSError(err))
+	}
+	return f, nil
+}
+
+// unwrapOSError extracts the underlying error message from an os.PathError.
+func unwrapOSError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // foldInput dispatches to the appropriate folding strategy.
