@@ -10,6 +10,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -148,16 +149,26 @@ func statFile(path string, noDeref bool) (bool, time.Time, time.Time, error) {
 		if os.IsNotExist(err) {
 			return false, time.Time{}, time.Time{}, nil
 		}
-		return false, time.Time{}, time.Time{}, err
+		return false, time.Time{}, time.Time{}, unwrapPathErr(err)
 	}
 	return true, fi.AccessTime, fi.ModTime, nil
+}
+
+// unwrapPathErr extracts the underlying syscall error from *os.PathError
+// to match GNU coreutils error message format (no "stat path:" prefix).
+func unwrapPathErr(err error) error {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return pe.Err
+	}
+	return err
 }
 
 // createFile creates an empty file with default permissions. R1.2.
 func createFile(path string) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
-		return fmt.Errorf("cannot touch '%s': %v", path, err)
+		return fmt.Errorf("cannot touch '%s': %v", path, unwrapPathErr(err))
 	}
 	return f.Close()
 }
@@ -209,7 +220,7 @@ func readRefTimestamps(path string, noDeref bool) (timestamps, error) {
 	}
 	if err != nil {
 		return timestamps{}, fmt.Errorf(
-			"failed to get attributes of '%s': %v", path, err)
+			"failed to get attributes of '%s': %v", path, unwrapPathErr(err))
 	}
 	return timestamps{atime: fi.AccessTime, mtime: fi.ModTime}, nil
 }
