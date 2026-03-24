@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15: directory listing
-// with output modes (-1, -C, -m, -x), sorting flags (-t, -S, -r, -U),
-// filtering (-a, -A, -d), metadata display (-s, -i), human-readable sizes (-h),
-// color output (--color), symlink handling (-L, -H), type indicators (-F, -p),
-// time selection (--time), time formatting (--time-style), and recursive listing (-R).
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.3:
+// directory listing with output modes (-1, -C, -m, -x), sorting flags
+// (-t, -S, -r, -U, -v), filtering (-a, -A, -d), metadata display (-s, -i, -n),
+// human-readable sizes (-h), color output (--color), symlink handling (-L, -H),
+// type indicators (-F, -p), time selection (--time), time formatting
+// (--time-style), recursive listing (-R), and exit code contracts.
 package main
 
 import (
@@ -44,10 +45,11 @@ const (
 type sortMode int
 
 const (
-	sortName sortMode = iota // default: alphabetical C locale
-	sortTime                 // -t: by modification time, newest first
-	sortSize                 // -S: by file size, largest first
-	sortNone                 // -U: directory order (no sort)
+	sortName    sortMode = iota // default: alphabetical C locale
+	sortTime                    // -t: by modification time, newest first
+	sortSize                    // -S: by file size, largest first
+	sortNone                    // -U: directory order (no sort)
+	sortVersion                 // -v: natural version sort
 )
 
 // indicatorMode selects which type indicators to append.
@@ -93,6 +95,7 @@ type lsConfig struct {
 	colorActive   bool          // resolved: true if color output is active
 	derefAll      bool          // -L: dereference all symlinks
 	derefCmd      bool          // -H: dereference command-line symlinks
+	numericIDs    bool          // -n: numeric UID/GID in long format
 	timeSelect    timeField     // --time
 	timeStyle     string        // --time-style
 	args          []string
@@ -134,6 +137,7 @@ func applyColorMode(cfg *lsConfig) {
 }
 
 // parseArgs extracts flags and positional arguments.
+// R4.3: exits 2 for unrecognized options.
 func parseArgs(args []string) lsConfig {
 	var cfg lsConfig
 	for i := range len(args) {
@@ -154,7 +158,8 @@ func parseArgs(args []string) lsConfig {
 			parseShortFlags(arg[1:], &cfg)
 			continue
 		}
-		if handleLongFlag(arg, &cfg) {
+		if strings.HasPrefix(arg, "--") {
+			parseLongFlag(arg, &cfg)
 			continue
 		}
 		cfg.args = append(cfg.args, arg)
@@ -165,6 +170,17 @@ func parseArgs(args []string) lsConfig {
 	return cfg
 }
 
+// parseLongFlag processes a long flag, exiting 2 if unrecognized.
+// R4.3: unrecognized --flags produce exit code 2.
+func parseLongFlag(arg string, cfg *lsConfig) {
+	if handleLongFlag(arg, cfg) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ls: unrecognized option '%s'\n", arg)
+	fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
+	os.Exit(2)
+}
+
 // parseShortFlags processes a cluster of short flags (e.g., "-laRtSrFpLH").
 func parseShortFlags(flags string, cfg *lsConfig) {
 	for _, ch := range flags {
@@ -173,6 +189,7 @@ func parseShortFlags(flags string, cfg *lsConfig) {
 }
 
 // applyShortFlag applies a single short flag character to the config.
+// R4.3: unrecognized short flags produce exit code 2.
 func applyShortFlag(ch rune, cfg *lsConfig) {
 	switch ch {
 	case 'a':
@@ -199,6 +216,9 @@ func applyShortFlag(ch rune, cfg *lsConfig) {
 		cfg.reverse = true
 	case 'U':
 		cfg.sorting = sortNone
+	case 'v':
+		// R2.9: version sort.
+		cfg.sorting = sortVersion
 	case 'h':
 		cfg.humanReadable = true
 	case 's':
@@ -207,6 +227,10 @@ func applyShortFlag(ch rune, cfg *lsConfig) {
 		cfg.showInode = true
 	case 'd':
 		cfg.dirOnly = true
+	case 'n':
+		// R2.14: -n implies long format with numeric UID/GID.
+		cfg.output = modeLong
+		cfg.numericIDs = true
 	case 'F':
 		cfg.indicator = indicatorClassify
 	case 'p':
@@ -215,6 +239,11 @@ func applyShortFlag(ch rune, cfg *lsConfig) {
 		cfg.derefAll = true
 	case 'H':
 		cfg.derefCmd = true
+	default:
+		// R4.3: exit 2 for unrecognized options.
+		fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
+		fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
+		os.Exit(2)
 	}
 }
 
@@ -239,6 +268,10 @@ func handleLongFlag(arg string, cfg *lsConfig) bool {
 		cfg.derefAll = true
 	case "--dereference-command-line":
 		cfg.derefCmd = true
+	case "--numeric-uid-gid":
+		// R2.14: long-form of -n.
+		cfg.output = modeLong
+		cfg.numericIDs = true
 	default:
 		return handleLongFlagValue(arg, cfg)
 	}
@@ -307,6 +340,7 @@ List information about the FILEs (the current directory by default).
   -l                   use a long listing format
   -L, --dereference    dereference symlinks, show target info
   -m                   fill width with a comma separated list of entries
+  -n, --numeric-uid-gid  like -l, but list numeric user and group IDs
   -p                   append / indicator to directories
   -r, --reverse        reverse order while sorting
   -R, --recursive      list subdirectories recursively
@@ -316,6 +350,7 @@ List information about the FILEs (the current directory by default).
       --time=WORD      select timestamp: atime, ctime (default mtime)
       --time-style=STYLE  time format: full-iso, long-iso, iso
   -U                   do not sort; list entries in directory order
+  -v                   natural sort of (version) numbers within text
   -x                   list entries by lines instead of by columns
   -1                   list one file per line
       --help           display this help and exit
@@ -324,6 +359,8 @@ List information about the FILEs (the current directory by default).
 }
 
 // run processes all arguments and returns the exit code.
+// R4.1: returns 0 when all paths accessed successfully.
+// R4.2: returns 1 when minor problems occur (inaccessible entries).
 func run(cfg lsConfig) int {
 	if cfg.dirOnly {
 		return runDirOnly(cfg)
@@ -364,6 +401,7 @@ func dirOnlyStatFunc(cfg lsConfig) func(string) (*sys.FileInfo, error) {
 }
 
 // runNormal processes arguments separating files and directories.
+// R4.2: reports errors for inaccessible entries and continues.
 func runNormal(cfg lsConfig) int {
 	exitCode := 0
 	var fileEntries, dirEntries []entry
@@ -440,6 +478,7 @@ func listDir(dir string, cfg lsConfig) int {
 // R1.4: default hides dot-entries.
 // R2.1: -a shows all including . and ..
 // R2.2: -A shows dot-entries except . and ..
+// R3.14: filter flags apply to each subdirectory in -R mode.
 func buildDirEntries(dir string, raw []os.DirEntry, filter filterMode) []entry {
 	var entries []entry
 	if filter == filterAll {
@@ -490,6 +529,7 @@ func statEntriesInPlace(entries []entry, cfg lsConfig) {
 // R2.6: -S sorts by size largest first.
 // R2.7: -r reverses the sort order.
 // R2.8: -U disables sorting.
+// R3.15: -R recurses subdirectories in the same sort order.
 func sortEntries(entries []entry, cfg lsConfig) {
 	if cfg.sorting == sortNone || len(entries) <= 1 {
 		return
@@ -514,6 +554,8 @@ func selectComparator(cfg lsConfig) func(a, b entry) bool {
 		}
 	case sortSize:
 		return compareBySize
+	case sortVersion:
+		return compareByVersion
 	default:
 		return compareByName
 	}
@@ -548,6 +590,12 @@ func compareBySize(a, b entry) bool {
 		return a.info.Size > b.info.Size
 	}
 	return a.name < b.name
+}
+
+// compareByVersion sorts using version sort semantics.
+// R2.9: digit runs are compared numerically (strverscmp behavior).
+func compareByVersion(a, b entry) bool {
+	return versionLess(a.name, b.name)
 }
 
 // entryTime returns the selected timestamp from a FileInfo.
@@ -598,13 +646,14 @@ func classifyIndicator(mode os.FileMode) string {
 
 // recurseSubdirs handles -R recursive listing for subdirectories.
 // R3.13: does not follow symbolic links to directories.
-func recurseSubdirs(dir string, entries []entry, cfg lsConfig) int {
+// R3.15: recurses in the same sort order as the directory listing.
+func recurseSubdirs(_ string, entries []entry, cfg lsConfig) int {
 	exitCode := 0
 	for _, e := range entries {
 		if e.name == "." || e.name == ".." {
 			continue
 		}
-		if e.info == nil || !e.info.Mode.IsDir() {
+		if !isRealDir(e, cfg) {
 			continue
 		}
 		fmt.Println()
@@ -616,6 +665,24 @@ func recurseSubdirs(dir string, entries []entry, cfg lsConfig) int {
 	return exitCode
 }
 
+// isRealDir checks if an entry is a real directory (not a symlink to one).
+// R3.13: -R must not follow symbolic links to directories.
+func isRealDir(e entry, cfg lsConfig) bool {
+	if e.info == nil || !e.info.Mode.IsDir() {
+		return false
+	}
+	// When -L is active, Stat makes symlinks appear as dirs.
+	// Use Lstat to verify the entry is not actually a symlink.
+	if cfg.derefAll {
+		lfi, err := sys.Lstat(e.path)
+		if err != nil {
+			return false
+		}
+		return lfi.Mode&os.ModeSymlink == 0
+	}
+	return true
+}
+
 // joinPath concatenates parent and child, avoiding double slashes.
 func joinPath(parent, child string) string {
 	if strings.HasSuffix(parent, "/") {
@@ -625,10 +692,70 @@ func joinPath(parent, child string) string {
 }
 
 // reportError prints a diagnostic to stderr matching GNU ls format.
+// R4.2: must print diagnostic for each inaccessible entry.
 func reportError(action, path string, err error) {
 	msg := err.Error()
 	if pe, ok := err.(*os.PathError); ok {
 		msg = pe.Err.Error()
 	}
 	fmt.Fprintf(os.Stderr, "ls: %s '%s': %s\n", action, path, msg)
+}
+
+// versionLess compares two strings using version sort semantics.
+// Digit runs are compared numerically so "file2" < "file10".
+func versionLess(a, b string) bool {
+	ai, bi := 0, 0
+	for ai < len(a) && bi < len(b) {
+		ca, cb := a[ai], b[bi]
+		if isDigit(ca) && isDigit(cb) {
+			cmp := compareDigitRuns(a, b, &ai, &bi)
+			if cmp != 0 {
+				return cmp < 0
+			}
+			continue
+		}
+		if ca != cb {
+			return ca < cb
+		}
+		ai++
+		bi++
+	}
+	return len(a) < len(b)
+}
+
+// compareDigitRuns extracts and compares digit runs numerically.
+// Advances ai and bi past the digit sequences.
+func compareDigitRuns(a, b string, ai, bi *int) int {
+	na := extractDigitRun(a, ai)
+	nb := extractDigitRun(b, bi)
+	ta := trimLeadingZeros(na)
+	tb := trimLeadingZeros(nb)
+	if len(ta) != len(tb) {
+		return len(ta) - len(tb)
+	}
+	return strings.Compare(ta, tb)
+}
+
+// extractDigitRun returns the digit substring starting at *pos
+// and advances *pos past it.
+func extractDigitRun(s string, pos *int) string {
+	start := *pos
+	for *pos < len(s) && isDigit(s[*pos]) {
+		*pos++
+	}
+	return s[start:*pos]
+}
+
+// trimLeadingZeros removes leading zeros, preserving at least one digit.
+func trimLeadingZeros(s string) string {
+	i := 0
+	for i < len(s)-1 && s[i] == '0' {
+		i++
+	}
+	return s[i:]
+}
+
+// isDigit returns true if c is an ASCII digit.
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
 }
