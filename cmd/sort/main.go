@@ -1,20 +1,18 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd053-sort R1.1–R1.6:
+// Implements prd053-sort R1.1–R1.7, R3.1–R3.3:
 // core entry point with basic line sorting, reverse (-r), numeric (-n),
-// unique (-u), and output file (-o) support.
+// unique (-u), output file (-o), stable (-s), field separator (-t),
+// and key definitions (-k).
 package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -30,6 +28,8 @@ type config struct {
 	unique     bool
 	stable     bool
 	outputFile string
+	separator  string    // R3.1: -t field separator
+	keys       []sortKey // R3.2: -k key definitions
 	files      []string
 }
 
@@ -109,11 +109,8 @@ func readLines(r io.Reader) ([][]byte, error) {
 // --- Sorting ---
 
 // sortLines sorts lines in place according to cfg.
-// R1.3: lexicographic byte ordering under LC_ALL=C by default.
-// R1.4: -r reverses the order.
-// R1.5: -n sorts by leading numeric value.
 func sortLines(lines [][]byte, cfg config) {
-	cmp := selectCompare(cfg)
+	cmp := makeCompare(cfg)
 	if cfg.stable {
 		sort.SliceStable(lines, func(i, j int) bool {
 			return cmp(lines[i], lines[j])
@@ -125,84 +122,6 @@ func sortLines(lines [][]byte, cfg config) {
 	}
 }
 
-// selectCompare returns the appropriate less-than function.
-func selectCompare(cfg config) func(a, b []byte) bool {
-	var less func(a, b []byte) bool
-	if cfg.numeric {
-		less = numericLess
-	} else {
-		less = byteLess
-	}
-	if cfg.reverse {
-		fwd := less
-		less = func(a, b []byte) bool { return fwd(b, a) }
-	}
-	return less
-}
-
-// byteLess compares two lines lexicographically by raw byte values.
-// R1.3: LC_ALL=C byte ordering.
-func byteLess(a, b []byte) bool {
-	return bytes.Compare(a, b) < 0
-}
-
-// numericLess compares two lines by leading numeric value.
-// R1.5: parse leading whitespace and optional sign, then numeric value.
-func numericLess(a, b []byte) bool {
-	va := parseLeadingNumber(a)
-	vb := parseLeadingNumber(b)
-	if va != vb {
-		return va < vb
-	}
-	return bytes.Compare(a, b) < 0
-}
-
-// parseLeadingNumber extracts the leading numeric value from a line.
-// Matches GNU sort -n behavior: skip leading blanks, parse optional sign
-// and decimal number. Non-numeric lines compare as 0.
-func parseLeadingNumber(line []byte) float64 {
-	s := strings.TrimLeft(string(line), " \t")
-	if len(s) == 0 {
-		return 0
-	}
-	end := numericEnd(s)
-	if end == 0 {
-		return 0
-	}
-	val, err := strconv.ParseFloat(s[:end], 64)
-	if err != nil {
-		return 0
-	}
-	return val
-}
-
-// numericEnd finds the end index of a leading numeric value in s.
-func numericEnd(s string) int {
-	i := 0
-	if i < len(s) && (s[i] == '+' || s[i] == '-') {
-		i++
-	}
-	start := i
-	hasDot := false
-	for i < len(s) {
-		if s[i] >= '0' && s[i] <= '9' {
-			i++
-		} else if s[i] == '.' && !hasDot {
-			hasDot = true
-			i++
-		} else {
-			break
-		}
-	}
-	if i == start && hasDot {
-		return 0
-	}
-	if i == start && i > 0 {
-		return 0 // sign only, no digits
-	}
-	return i
-}
-
 // --- Deduplication ---
 
 // dedup removes consecutive duplicate lines based on the active comparison.
@@ -211,7 +130,7 @@ func dedup(lines [][]byte, cfg config) [][]byte {
 	if len(lines) == 0 {
 		return lines
 	}
-	eq := selectEqual(cfg)
+	eq := makeEqual(cfg)
 	result := [][]byte{lines[0]}
 	for i := 1; i < len(lines); i++ {
 		if !eq(lines[i-1], lines[i]) {
@@ -221,50 +140,43 @@ func dedup(lines [][]byte, cfg config) [][]byte {
 	return result
 }
 
-// selectEqual returns the equality function matching the active sort mode.
-func selectEqual(cfg config) func(a, b []byte) bool {
-	if cfg.numeric {
-		return func(a, b []byte) bool {
-			va := parseLeadingNumber(a)
-			vb := parseLeadingNumber(b)
-			return va == vb || (math.IsNaN(va) && math.IsNaN(vb))
-		}
-	}
-	return func(a, b []byte) bool {
-		return bytes.Equal(a, b)
-	}
-}
-
 // --- Output ---
 
 // writeOutput writes sorted lines to stdout or the named file.
-// R1.3: -o FILE writes to FILE instead of stdout.
 func writeOutput(lines [][]byte, outputFile string) int {
 	w, closer, err := openOutput(outputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sort: %v\n", err)
 		return 2
 	}
-	bw := bufio.NewWriter(w)
-	for _, line := range lines {
-		if _, wErr := bw.Write(line); wErr != nil {
-			fmt.Fprintf(os.Stderr, "sort: write error: %v\n", wErr)
-			return 2
-		}
-		if wErr := bw.WriteByte('\n'); wErr != nil {
-			fmt.Fprintf(os.Stderr, "sort: write error: %v\n", wErr)
-			return 2
-		}
-	}
-	if err := bw.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "sort: write error: %v\n", err)
-		return 2
+	if code := writeLines(w, lines); code != 0 {
+		return code
 	}
 	if closer != nil {
 		if err := closer.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "sort: close error: %v\n", err)
 			return 2
 		}
+	}
+	return 0
+}
+
+// writeLines writes all lines to w with newline terminators.
+func writeLines(w io.Writer, lines [][]byte) int {
+	bw := bufio.NewWriter(w)
+	for _, line := range lines {
+		if _, err := bw.Write(line); err != nil {
+			fmt.Fprintf(os.Stderr, "sort: write error: %v\n", err)
+			return 2
+		}
+		if err := bw.WriteByte('\n'); err != nil {
+			fmt.Fprintf(os.Stderr, "sort: write error: %v\n", err)
+			return 2
+		}
+	}
+	if err := bw.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "sort: write error: %v\n", err)
+		return 2
 	}
 	return 0
 }
@@ -314,13 +226,22 @@ func handleArg(args []string, i *int, cfg *config) int {
 	case arg == "--output":
 		return parseLongWithValue(args, i, &cfg.outputFile)
 	default:
-		return handleArgContinued(arg, args, i, cfg)
+		return handleArgLong(arg, args, i, cfg)
 	}
 }
 
-// handleArgContinued handles remaining argument types.
-func handleArgContinued(arg string, args []string, i *int, cfg *config) int {
+// handleArgLong handles long options for keys, separator, and booleans.
+func handleArgLong(arg string, args []string, i *int, cfg *config) int {
 	switch {
+	case strings.HasPrefix(arg, "--field-separator="):
+		cfg.separator = arg[len("--field-separator="):]
+		return -1
+	case arg == "--field-separator":
+		return parseLongWithValue(args, i, &cfg.separator)
+	case strings.HasPrefix(arg, "--key="):
+		return addKeyDef(arg[len("--key="):], cfg)
+	case arg == "--key":
+		return parseLongKey(args, i, cfg)
 	case parseLongBool(arg, cfg):
 		return -1
 	case strings.HasPrefix(arg, "-") && arg != "-" && arg[1] != '-':
@@ -359,17 +280,44 @@ func parseLongWithValue(args []string, i *int, dest *string) int {
 	return -1
 }
 
+// parseLongKey handles --key VALUE (space-separated).
+func parseLongKey(args []string, i *int, cfg *config) int {
+	if *i+1 >= len(args) {
+		fmt.Fprintf(os.Stderr, "sort: option '--key' requires an argument\n")
+		return 2
+	}
+	*i++
+	return addKeyDef(args[*i], cfg)
+}
+
+// addKeyDef parses a key definition string and appends it to cfg.
+func addKeyDef(s string, cfg *config) int {
+	key, err := parseKeyDef(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sort: %v\n", err)
+		return 2
+	}
+	cfg.keys = append(cfg.keys, key)
+	return -1
+}
+
 // parseShortFlags processes clustered short flags (e.g., -rnu).
 // Returns -1 to continue, >= 0 to exit with that code.
 func parseShortFlags(flags string, args []string, i *int, cfg *config) int {
 	for j := 0; j < len(flags); j++ {
 		ch := flags[j]
-		if ch == 'o' {
-			return consumeOutputFlag(flags, j, args, i, cfg)
-		}
-		exit := applyBoolFlag(ch, cfg)
-		if exit >= 0 {
-			return exit
+		switch ch {
+		case 'o':
+			return consumeValueFlag(flags, j, args, i, &cfg.outputFile, ch)
+		case 't':
+			return consumeValueFlag(flags, j, args, i, &cfg.separator, ch)
+		case 'k':
+			return consumeKeyFlag(flags, j, args, i, cfg)
+		default:
+			exit := applyBoolFlag(ch, cfg)
+			if exit >= 0 {
+				return exit
+			}
 		}
 	}
 	return -1
@@ -393,22 +341,38 @@ func applyBoolFlag(ch byte, cfg *config) int {
 	return -1
 }
 
-// consumeOutputFlag handles -o with value from remaining flags or next arg.
-func consumeOutputFlag(
+// consumeValueFlag handles a short flag that takes a value (-o, -t).
+func consumeValueFlag(
+	flags string, j int, args []string, i *int, dest *string, ch byte,
+) int {
+	rest := flags[j+1:]
+	if rest != "" {
+		*dest = rest
+		return -1
+	}
+	if *i+1 >= len(args) {
+		fmt.Fprintf(os.Stderr, "sort: option requires an argument -- '%c'\n", ch)
+		return 2
+	}
+	*i++
+	*dest = args[*i]
+	return -1
+}
+
+// consumeKeyFlag handles -k with value from remaining flags or next arg.
+func consumeKeyFlag(
 	flags string, j int, args []string, i *int, cfg *config,
 ) int {
 	rest := flags[j+1:]
 	if rest != "" {
-		cfg.outputFile = rest
-		return -1
+		return addKeyDef(rest, cfg)
 	}
 	if *i+1 >= len(args) {
-		fmt.Fprintf(os.Stderr, "sort: option requires an argument -- 'o'\n")
+		fmt.Fprintf(os.Stderr, "sort: option requires an argument -- 'k'\n")
 		return 2
 	}
 	*i++
-	cfg.outputFile = args[*i]
-	return -1
+	return addKeyDef(args[*i], cfg)
 }
 
 // --- Help and version ---
@@ -424,6 +388,11 @@ Ordering options:
 
   -n, --numeric-sort          compare according to string numerical value
   -r, --reverse               reverse the result of comparisons
+
+Key options:
+
+  -k, --key=KEYDEF            sort via a key; KEYDEF gives location and type
+  -t, --field-separator=SEP   use SEP instead of non-blank to blank transition
 
 Other options:
 
