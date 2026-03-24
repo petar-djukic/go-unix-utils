@@ -148,11 +148,11 @@ func validateOpts(opts options) error {
 	}
 	if opts.showName && selCount == 0 {
 		return fmt.Errorf(
-			"cannot print only names or real IDs in default format")
+			"printing only names or real IDs requires -u, -g, or -G")
 	}
 	if opts.showReal && !opts.showUser && !opts.showGroup {
 		return fmt.Errorf(
-			"cannot print only names or real IDs in default format")
+			"printing only names or real IDs requires -u, -g, or -G")
 	}
 	return nil
 }
