@@ -86,6 +86,18 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-L"},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.2: --logical long form.
+		{
+			Name: "logical_long_flag",
+			Args: []string{"--logical"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: --physical long form.
+		{
+			Name: "physical_long_flag",
+			Args: []string{"--physical"},
+			Env:  []string{"LC_ALL=C"},
+		},
 		// R3.2: -L -P precedence — last flag wins, physical.
 		{
 			Name: "logical_then_physical",
@@ -98,6 +110,19 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-P", "-L"},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.2: triple flag precedence — last flag wins, logical.
+		{
+			Name: "triple_flag_precedence",
+			Args: []string{"-L", "-P", "-L"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: -- separator followed by what looks like a flag.
+		{
+			Name:      "double_dash_separator",
+			Args:      []string{"--"},
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
 		// R2.1: GNU pwd ignores non-option arguments, prints cwd, exits 0.
 		{
 			Name:      "extra_operand",
@@ -106,10 +131,18 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{errNorm},
 		},
-		// R2.2: unknown flag error — exit 1.
+		// R2.2: unknown long flag error — exit 1.
 		{
-			Name:      "unknown_flag",
+			Name:      "unknown_long_flag",
 			Args:      []string{"--invalid"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
+		// R2.2: unknown short flag error — exit 1.
+		{
+			Name:      "unknown_short_flag",
+			Args:      []string{"-x"},
 			ExitCode:  1,
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{errNorm},

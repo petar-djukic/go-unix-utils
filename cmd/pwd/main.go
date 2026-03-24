@@ -3,7 +3,8 @@
 
 // Implements prd051-pwd: Print Working Directory.
 // Covers R1.1-R1.4 (default/logical/physical modes, last-flag-wins),
-// R2.1-R2.2 (extra operand/unknown flag errors).
+// R2.1-R2.2 (extra operand/unknown flag errors),
+// R3.1-R3.3 (differential testing, coverage, LC_ALL=C).
 package main
 
 import (
@@ -56,7 +57,12 @@ func run(args []string) int {
 // should continue.
 func parseArgs(args []string) (mode, int) {
 	m := modePhysical // R1.4: default is -P.
+	endOfOpts := false
 	for _, arg := range args {
+		if endOfOpts {
+			// R2.1: GNU pwd ignores non-option arguments.
+			continue
+		}
 		switch arg {
 		case "--help":
 			return m, printHelp()
@@ -67,7 +73,7 @@ func parseArgs(args []string) (mode, int) {
 		case "-P", "--physical":
 			m = modePhysical // R1.3, R1.4: last flag wins.
 		case "--":
-			continue
+			endOfOpts = true
 		default:
 			if len(arg) > 1 && arg[0] == '-' {
 				return m, printUnknownFlag(arg)
@@ -132,8 +138,14 @@ func validatePWD(pwd string) string {
 }
 
 // printUnknownFlag writes an error for an unrecognized option and returns 1.
+// R2.2, D1: format matches GNU pwd error messages.
 func printUnknownFlag(flag string) int {
-	fmt.Fprintf(os.Stderr, "pwd: unrecognized option '%s'\n", flag)
+	if len(flag) == 2 && flag[0] == '-' {
+		// Short flag: GNU uses "invalid option -- 'x'" format.
+		fmt.Fprintf(os.Stderr, "pwd: invalid option -- '%c'\n", flag[1])
+	} else {
+		fmt.Fprintf(os.Stderr, "pwd: unrecognized option '%s'\n", flag)
+	}
 	fmt.Fprintln(os.Stderr, "Try 'pwd --help' for more information.")
 	return 1
 }
