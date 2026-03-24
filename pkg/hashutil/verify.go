@@ -10,7 +10,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
+
+// checkResult holds the counts from a checksum verification run.
+type checkResult struct {
+	failed    int
+	malformed int
+	allOK     bool
+}
 
 // VerifyChecksums reads a checksum file, verifies each entry against the
 // actual file contents, and prints results according to opts.
@@ -39,25 +47,26 @@ func openChecksumFile(name string) (*os.File, error) {
 // processChecksumLines iterates over lines and verifies each checksum.
 func processChecksumLines(r io.Reader, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) (bool, error) {
 	scanner := bufio.NewScanner(r)
-	allOK := true
-	malformed := 0
+	res := checkResult{allOK: true}
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		ok, err := verifySingleLine(line, cfg, opts, stdout, stderr)
 		if err != nil {
-			malformed++
+			res.malformed++
 			continue
 		}
 		if !ok {
-			allOK = false
+			res.allOK = false
+			res.failed++
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return false, fmt.Errorf("reading checksum file: %w", err)
 	}
-	reportMalformed(malformed, stderr)
-	return allOK, nil
+	progName := deriveProgramName(cfg)
+	printSummaries(progName, res, opts, stderr)
+	return res.allOK, nil
 }
 
 // verifySingleLine parses and verifies one checksum line.
@@ -65,7 +74,8 @@ func verifySingleLine(line string, cfg HashConfig, opts CheckOptions, stdout, st
 	filename, expected, _, err := ParseChecksumLine(line, cfg)
 	if err != nil {
 		if opts.Warn {
-			fmt.Fprintf(stderr, "%s: no properly formatted checksum lines found\n", line)
+			fmt.Fprintf(stderr, "%s: no properly formatted %s checksum lines found\n",
+				line, cfg.Algorithm)
 		}
 		return true, err
 	}
@@ -76,7 +86,7 @@ func verifySingleLine(line string, cfg HashConfig, opts CheckOptions, stdout, st
 func verifyFile(filename, expected string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) bool {
 	actual, err := computeFileDigest(filename, cfg)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", filename, err)
+		fmt.Fprintf(stderr, "%s: %s: %v\n", deriveProgramName(cfg), filename, err)
 		reportResult(filename, false, opts, stdout)
 		return false
 	}
@@ -110,9 +120,47 @@ func reportResult(filename string, ok bool, opts CheckOptions, stdout io.Writer)
 	fmt.Fprintf(stdout, "%s: %s\n", filename, status)
 }
 
-// reportMalformed prints a summary warning for malformed lines.
-func reportMalformed(count int, stderr io.Writer) {
-	if count > 0 {
-		fmt.Fprintf(stderr, "WARNING: %d line is improperly formatted\n", count)
+// deriveProgramName builds the program name from the algorithm (e.g., "MD5" -> "md5sum").
+func deriveProgramName(cfg HashConfig) string {
+	return strings.ToLower(cfg.Algorithm) + "sum"
+}
+
+// printSummaries prints end-of-check-mode summary warnings to stderr.
+// R3.3 / R2.2: warns about malformed lines and failed checksums.
+func printSummaries(progName string, res checkResult, opts CheckOptions, stderr io.Writer) {
+	if !opts.Status {
+		printMalformedSummary(progName, res.malformed, stderr)
 	}
+	printFailedSummary(progName, res.failed, opts, stderr)
+}
+
+// printMalformedSummary prints the malformed line count warning.
+func printMalformedSummary(progName string, count int, stderr io.Writer) {
+	if count == 0 {
+		return
+	}
+	verb := "is"
+	noun := "line"
+	if count > 1 {
+		verb = "are"
+		noun = "lines"
+	}
+	fmt.Fprintf(stderr, "%s: WARNING: %d %s %s improperly formatted\n",
+		progName, count, noun, verb)
+}
+
+// printFailedSummary prints the failed checksum count warning.
+func printFailedSummary(progName string, count int, opts CheckOptions, stderr io.Writer) {
+	if count == 0 {
+		return
+	}
+	if opts.Status {
+		return
+	}
+	noun := "checksum"
+	if count > 1 {
+		noun = "checksums"
+	}
+	fmt.Fprintf(stderr, "%s: WARNING: %d computed %s did NOT match\n",
+		progName, count, noun)
 }

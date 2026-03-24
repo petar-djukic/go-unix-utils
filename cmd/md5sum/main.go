@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd030-md5sum R1.1-R1.4, R2.1-R2.2: Compute and check MD5
-// message digests using pkg/hashutil for shared formatting and verification.
+// Implements prd030-md5sum R1.1-R1.4, R2.1-R2.4, R3.1-R3.3: Compute and
+// check MD5 message digests using pkg/hashutil for shared formatting and
+// verification. Check mode supports --warn, --quiet, and --status flags.
 package main
 
 import (
