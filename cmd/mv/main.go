@@ -3,7 +3,8 @@
 
 // Implements prd057-mv: Move or rename files.
 // R1.1-R1.4 (basic move/rename, multi-source, directory move, dest-is-dir),
-// R2.1-R2.2 (interactive prompt, force overwrite with last-flag-wins).
+// R2.1-R2.4 (interactive prompt, force overwrite, no-clobber, permission error),
+// R3.1-R3.3 (verbose, target-directory, no-target-directory).
 package main
 
 import (
@@ -136,11 +137,15 @@ func isCrossDevice(err error) bool {
 
 // crossDeviceMove copies src to dest then removes src.
 // R1.1: fallback for cross-filesystem moves.
+// R3.2: handles directories recursively.
 func crossDeviceMove(cfg config, src, dest string) int {
 	info, err := os.Lstat(src)
 	if err != nil {
 		printErr("cannot stat '%s': %v", src, unwrapErr(err))
 		return 1
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return crossDeviceMoveSymlink(cfg, src, dest)
 	}
 	if info.IsDir() {
 		return crossDeviceMoveDir(cfg, src, dest, info)
@@ -149,11 +154,34 @@ func crossDeviceMove(cfg config, src, dest string) int {
 }
 
 // crossDeviceMoveFile copies a regular file across devices then removes it.
+// R2.4: preserves timestamps, permissions, and ownership.
 func crossDeviceMoveFile(
 	cfg config, src, dest string, info os.FileInfo,
 ) int {
 	if err := copyFileContents(src, dest, info.Mode()); err != nil {
 		printErr("%v", err)
+		return 1
+	}
+	preserveMetadata(src, dest)
+	if err := os.Remove(src); err != nil {
+		printErr("cannot remove '%s': %v", src, unwrapErr(err))
+		return 1
+	}
+	if cfg.verbose {
+		printVerbose(src, dest)
+	}
+	return 0
+}
+
+// crossDeviceMoveSymlink recreates a symlink at dest then removes src.
+func crossDeviceMoveSymlink(cfg config, src, dest string) int {
+	target, err := os.Readlink(src)
+	if err != nil {
+		printErr("cannot read symlink '%s': %v", src, unwrapErr(err))
+		return 1
+	}
+	if err := os.Symlink(target, dest); err != nil {
+		printErr("cannot create symlink '%s': %v", dest, unwrapErr(err))
 		return 1
 	}
 	if err := os.Remove(src); err != nil {
@@ -168,6 +196,7 @@ func crossDeviceMoveFile(
 
 // crossDeviceMoveDir recursively copies a directory across devices.
 // R1.3: directories move without requiring a recursive flag.
+// R2.4: preserves directory metadata after copying contents.
 func crossDeviceMoveDir(
 	cfg config, src, dest string, info os.FileInfo,
 ) int {
@@ -185,6 +214,7 @@ func crossDeviceMoveDir(
 	if moveDirEntries(cfg, src, dest, entries) != 0 {
 		return 1
 	}
+	preserveMetadata(src, dest)
 	return removeSrcDir(cfg, src, dest)
 }
 
@@ -243,6 +273,36 @@ func writeDestFile(
 		return fmt.Errorf("error writing '%s': %v", dest, unwrapErr(err))
 	}
 	return nil
+}
+
+// preserveMetadata applies timestamps, permissions, and ownership from src to dest.
+// R2.4: cross-device move must preserve these attributes.
+func preserveMetadata(src, dest string) {
+	si, err := sys.Lstat(src)
+	if err != nil {
+		return // best-effort: cannot stat source
+	}
+	applyPermissions(si, dest)
+	applyTimestamps(si, dest)
+	applyOwnership(si, dest)
+}
+
+// applyPermissions sets mode bits from source metadata onto dest.
+func applyPermissions(si *sys.FileInfo, dest string) {
+	// best-effort: permission setting may fail for non-owner
+	_ = os.Chmod(dest, si.Mode.Perm())
+}
+
+// applyTimestamps sets access and modification times on dest.
+func applyTimestamps(si *sys.FileInfo, dest string) {
+	// best-effort: timestamp setting may fail on some filesystems
+	_ = os.Chtimes(dest, si.AccessTime, si.ModTime)
+}
+
+// applyOwnership sets uid/gid from source metadata onto dest.
+func applyOwnership(si *sys.FileInfo, dest string) {
+	// best-effort: ownership change typically requires root
+	_ = os.Lchown(dest, int(si.Uid), int(si.Gid))
 }
 
 // shouldSkipExisting checks overwrite mode against an existing dest.
