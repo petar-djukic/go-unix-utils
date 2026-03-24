@@ -56,7 +56,7 @@ releases:
         pkg/format for extended file metadata and human-readable size formatting.
       use_cases:
         - id: rel01.3-uc001-du
-          status: spec_complete
+          status: implemented
     - version: "02.0"
       name: "Batch 2 — trivial utilities (true, false, yes, basename, dirname)"
       status: spec_complete
