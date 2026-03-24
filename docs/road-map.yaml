@@ -360,7 +360,7 @@ releases:
         - id: rel08.0-uc002-sleep
           status: implemented
         - id: rel08.0-uc003-touch
-          status: spec_complete
+          status: implemented
         - id: rel08.0-uc004-timeout
           status: spec_complete
         - id: rel08.0-uc005-shuf
