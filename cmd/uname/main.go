@@ -3,7 +3,9 @@
 
 // Implements prd044-uname: Print System Information.
 // Covers R1.1-R1.9 (default/no-arg, -s, -n, -r, -v, -m, -p, -i, -o flags),
-// R2.1 (-a combined output), R2.2 (multi-flag canonical order).
+// R2.1 (-a combined output), R2.2 (multi-flag canonical order),
+// R3.1-R3.2 (error handling for invalid options and operands),
+// R4.1-R4.2 (--help, --version, exit codes).
 package main
 
 import (
@@ -96,6 +98,12 @@ func parseArgs(args []string) (parseResult, int) {
 		}
 		if arg == "--" {
 			continue
+		}
+		// R3.2: unrecognized long options.
+		if strings.HasPrefix(arg, "--") {
+			fmt.Fprintf(os.Stderr, "uname: unrecognized option '%s'\n", arg)
+			fmt.Fprintln(os.Stderr, "Try 'uname --help' for more information.")
+			return result, 1
 		}
 		if len(arg) > 1 && arg[0] == '-' {
 			code := parseShortFlags(arg[1:], &result)
