@@ -3,8 +3,8 @@
 
 // Differential tests for cmd/rmdir against GNU grmdir.
 // Covers prd035-rmdir R1.1-R1.4 (basic removal, errors),
-// R2.1-R2.2 (parent removal, stop ascending),
-// R3.1 (--ignore-fail-on-non-empty).
+// R2.1-R2.3 (parent removal, stop ascending, independent args),
+// R3.1-R3.4 (--ignore-fail-on-non-empty, verbose, exit codes, --version/--help).
 package main
 
 import (
@@ -242,7 +242,7 @@ func TestRmdirParentsStopNonEmpty(t *testing.T) {
 
 	// Run reference binary: a/b/c where a has a sibling file.
 	refDir := t.TempDir()
-	os.MkdirAll(filepath.Join(refDir, "a", "b", "c"), 0o755)        //nolint:errcheck
+	os.MkdirAll(filepath.Join(refDir, "a", "b", "c"), 0o755)            //nolint:errcheck
 	os.WriteFile(filepath.Join(refDir, "a", "keep"), []byte("x"), 0o644) //nolint:errcheck
 	refRes := runRmdir(t, refBin, refDir, []string{"-p", "a/b/c"})
 	// "a" should still exist because it's not empty.
@@ -253,7 +253,7 @@ func TestRmdirParentsStopNonEmpty(t *testing.T) {
 
 	// Run Go binary.
 	goDir := t.TempDir()
-	os.MkdirAll(filepath.Join(goDir, "a", "b", "c"), 0o755)        //nolint:errcheck
+	os.MkdirAll(filepath.Join(goDir, "a", "b", "c"), 0o755)            //nolint:errcheck
 	os.WriteFile(filepath.Join(goDir, "a", "keep"), []byte("x"), 0o644) //nolint:errcheck
 	goRes := runRmdir(t, goBin, goDir, []string{"-p", "a/b/c"})
 	if _, err := os.Stat(filepath.Join(goDir, "a")); os.IsNotExist(err) {
@@ -288,4 +288,130 @@ func TestRmdirIgnoreNonEmpty(t *testing.T) {
 		[]string{"--ignore-fail-on-non-empty", "nonempty"})
 
 	compareResults(t, "ignore_non_empty", refRes, goRes, norm)
+}
+
+// TestRmdirVerbose verifies --verbose prints a diagnostic for each removal.
+// R3.3: -v prints a message for each directory removed.
+func TestRmdirVerbose(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary.
+	refDir := t.TempDir()
+	os.Mkdir(filepath.Join(refDir, "emptydir"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"--verbose", "emptydir"})
+	assertDirRemoved(t, filepath.Join(refDir, "emptydir"), "ref")
+
+	// Run Go binary.
+	goDir := t.TempDir()
+	os.Mkdir(filepath.Join(goDir, "emptydir"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"--verbose", "emptydir"})
+	assertDirRemoved(t, filepath.Join(goDir, "emptydir"), "go")
+
+	compareResults(t, "verbose", refRes, goRes, norm)
+}
+
+// TestRmdirVerboseShort verifies -v short flag.
+// R3.3: -v prints a message for each directory removed.
+func TestRmdirVerboseShort(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary.
+	refDir := t.TempDir()
+	os.Mkdir(filepath.Join(refDir, "d"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"-v", "d"})
+	assertDirRemoved(t, filepath.Join(refDir, "d"), "ref")
+
+	// Run Go binary.
+	goDir := t.TempDir()
+	os.Mkdir(filepath.Join(goDir, "d"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"-v", "d"})
+	assertDirRemoved(t, filepath.Join(goDir, "d"), "go")
+
+	compareResults(t, "verbose_short", refRes, goRes, norm)
+}
+
+// TestRmdirVerboseParents verifies --verbose with -p shows each ancestor.
+// R3.3 + R2.1: verbose output for each directory in the ancestor chain.
+func TestRmdirVerboseParents(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary.
+	refDir := t.TempDir()
+	os.MkdirAll(filepath.Join(refDir, "x", "y", "z"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"-pv", "x/y/z"})
+	assertDirRemoved(t, filepath.Join(refDir, "x"), "ref-x")
+
+	// Run Go binary.
+	goDir := t.TempDir()
+	os.MkdirAll(filepath.Join(goDir, "x", "y", "z"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"-pv", "x/y/z"})
+	assertDirRemoved(t, filepath.Join(goDir, "x"), "go-x")
+
+	compareResults(t, "verbose_parents", refRes, goRes, norm)
+}
+
+// TestRmdirContinueAfterFailure verifies processing continues after a
+// failed argument.
+// R3.4: continue processing remaining arguments after a failure.
+func TestRmdirContinueAfterFailure(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary: first arg is non-empty (fails), second is
+	// empty (succeeds). Exit code should be 1 but second dir removed.
+	refDir := t.TempDir()
+	mkdirWithFile(t, filepath.Join(refDir, "nonempty"))
+	os.Mkdir(filepath.Join(refDir, "emptydir"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir,
+		[]string{"nonempty", "emptydir"})
+	assertDirRemoved(t, filepath.Join(refDir, "emptydir"), "ref-empty")
+
+	// Run Go binary.
+	goDir := t.TempDir()
+	mkdirWithFile(t, filepath.Join(goDir, "nonempty"))
+	os.Mkdir(filepath.Join(goDir, "emptydir"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir,
+		[]string{"nonempty", "emptydir"})
+	assertDirRemoved(t, filepath.Join(goDir, "emptydir"), "go-empty")
+
+	compareResults(t, "continue_after_failure", refRes, goRes, norm)
+}
+
+// TestRmdirMissingOperand verifies the error when no arguments are given.
+func TestRmdirMissingOperand(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	refRes := runRmdir(t, refBin, t.TempDir(), nil)
+	goRes := runRmdir(t, goBin, t.TempDir(), nil)
+
+	compareResults(t, "missing_operand", refRes, goRes, norm)
 }

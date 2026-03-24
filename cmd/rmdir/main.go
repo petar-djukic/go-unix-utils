@@ -3,8 +3,8 @@
 
 // Implements prd035-rmdir: Remove Empty Directories.
 // Covers R1.1-R1.4 (basic directory removal, error handling),
-// R2.1-R2.2 (parent removal with -p/--parents, stop on non-empty),
-// R3.1 (--ignore-fail-on-non-empty suppression).
+// R2.1-R2.3 (parent removal with -p/--parents, independent arg processing),
+// R3.1-R3.4 (--ignore-fail-on-non-empty, verbose, exit codes, --version/--help).
 package main
 
 import (
@@ -41,6 +41,7 @@ func main() {
 type config struct {
 	parents            bool
 	ignoreFailNonEmpty bool
+	verbose            bool
 }
 
 // run removes directories and returns the exit code.
@@ -71,6 +72,10 @@ func removeDir(cfg config, dir string) error {
 func removeSingle(cfg config, dir string) error {
 	err := syscall.Rmdir(dir)
 	if err == nil {
+		// R3.3: verbose diagnostic on successful removal.
+		if cfg.verbose {
+			printVerbose(dir)
+		}
 		return nil
 	}
 	return handleRemoveError(cfg, dir, err)
@@ -93,6 +98,10 @@ func removeAncestors(cfg config, dir string) error {
 	for parent != "." && parent != "/" {
 		err := syscall.Rmdir(parent)
 		if err == nil {
+			// R3.3: verbose diagnostic for each ancestor removed.
+			if cfg.verbose {
+				printVerbose(parent)
+			}
 			parent = filepath.Dir(parent)
 			continue
 		}
@@ -137,6 +146,12 @@ func printRemoveError(dir string, err error) {
 		dir, reason)
 }
 
+// printVerbose prints a verbose diagnostic for a removed directory.
+// R3.3: GNU rmdir prints verbose output to stdout.
+func printVerbose(dir string) {
+	fmt.Fprintf(os.Stdout, "rmdir: removing directory, '%s'\n", dir)
+}
+
 // capitalizeFirst capitalizes the first letter of a string.
 func capitalizeFirst(s string) string {
 	if s == "" {
@@ -161,6 +176,8 @@ func parseArgs(args []string) (cfg config, dirs []string, exit int) {
 			return config{}, nil, printVersion()
 		case arg == "-p" || arg == "--parents":
 			cfg.parents = true
+		case arg == "-v" || arg == "--verbose":
+			cfg.verbose = true
 		case arg == "--ignore-fail-on-non-empty":
 			cfg.ignoreFailNonEmpty = true
 		case strings.HasPrefix(arg, "-") && len(arg) > 1:
@@ -176,13 +193,15 @@ func parseArgs(args []string) (cfg config, dirs []string, exit int) {
 	return
 }
 
-// parseShortFlags handles combined single-char flags like -p.
+// parseShortFlags handles combined single-char flags like -pv.
 // Returns -1 to continue, >= 0 for early exit.
 func parseShortFlags(arg string, cfg *config) int {
 	for j := 1; j < len(arg); j++ {
 		switch arg[j] {
 		case 'p':
 			cfg.parents = true
+		case 'v':
+			cfg.verbose = true
 		default:
 			fmt.Fprintf(os.Stderr,
 				"rmdir: unrecognized option '-%c'\n", arg[j])
@@ -202,6 +221,7 @@ Remove the DIRECTORY(ies), if they are empty.
                     is non-empty
   -p, --parents   remove DIRECTORY and its ancestors; e.g., 'rmdir -p a/b/c' is
                     similar to 'rmdir a/b/c a/b a'
+  -v, --verbose   output a diagnostic for every directory processed
 
       --help     display this help and exit
       --version  output version information and exit
