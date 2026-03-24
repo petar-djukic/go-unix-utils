@@ -4,7 +4,8 @@
 // Differential tests for cmd/rmdir against GNU grmdir.
 // Covers prd035-rmdir R1.1-R1.4 (basic removal, errors),
 // R2.1-R2.3 (parent removal, stop ascending, independent args),
-// R3.1-R3.4 (--ignore-fail-on-non-empty, verbose, exit codes, --version/--help).
+// R3.1-R3.4 (--ignore-fail-on-non-empty, verbose, exit codes, --version/--help),
+// R4.1-R4.3 (edge cases: trailing slashes, symlinks, dot/dot-dot paths).
 package main
 
 import (
@@ -414,4 +415,233 @@ func TestRmdirMissingOperand(t *testing.T) {
 	goRes := runRmdir(t, goBin, t.TempDir(), nil)
 
 	compareResults(t, "missing_operand", refRes, goRes, norm)
+}
+
+// TestRmdirTrailingSlash verifies rmdir handles trailing slashes correctly.
+// R4.1: trailing slashes on directory paths must match grmdir behavior.
+func TestRmdirTrailingSlash(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary with trailing slash.
+	refDir := t.TempDir()
+	os.Mkdir(filepath.Join(refDir, "emptydir"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"emptydir/"})
+	assertDirRemoved(t, filepath.Join(refDir, "emptydir"), "ref")
+
+	// Run Go binary with trailing slash.
+	goDir := t.TempDir()
+	os.Mkdir(filepath.Join(goDir, "emptydir"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"emptydir/"})
+	assertDirRemoved(t, filepath.Join(goDir, "emptydir"), "go")
+
+	compareResults(t, "trailing_slash", refRes, goRes, norm)
+}
+
+// TestRmdirTrailingSlashVerbose verifies verbose output with trailing slash.
+// R4.1: verbose diagnostic must match grmdir when path has trailing slash.
+func TestRmdirTrailingSlashVerbose(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary with trailing slash and verbose.
+	refDir := t.TempDir()
+	os.Mkdir(filepath.Join(refDir, "emptydir"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"-v", "emptydir/"})
+	assertDirRemoved(t, filepath.Join(refDir, "emptydir"), "ref")
+
+	// Run Go binary with trailing slash and verbose.
+	goDir := t.TempDir()
+	os.Mkdir(filepath.Join(goDir, "emptydir"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"-v", "emptydir/"})
+	assertDirRemoved(t, filepath.Join(goDir, "emptydir"), "go")
+
+	compareResults(t, "trailing_slash_verbose", refRes, goRes, norm)
+}
+
+// TestRmdirSymlinkToDir verifies rmdir fails on a symlink pointing to a
+// directory without following the symlink.
+// R4.2: rmdir must not resolve symlinks, matching GNU behavior.
+func TestRmdirSymlinkToDir(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary on a symlink to a directory.
+	refDir := t.TempDir()
+	realDir := filepath.Join(refDir, "realdir")
+	os.Mkdir(realDir, 0o755)                         //nolint:errcheck
+	os.Symlink(realDir, filepath.Join(refDir, "sl")) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"sl"})
+
+	// Run Go binary on a symlink to a directory.
+	goDir := t.TempDir()
+	goRealDir := filepath.Join(goDir, "realdir")
+	os.Mkdir(goRealDir, 0o755)                     //nolint:errcheck
+	os.Symlink(goRealDir, filepath.Join(goDir, "sl")) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"sl"})
+
+	compareResults(t, "symlink_to_dir", refRes, goRes, norm)
+
+	// Verify symlink was NOT followed (realdir must still exist).
+	if _, sErr := os.Stat(goRealDir); os.IsNotExist(sErr) {
+		t.Error("go: realdir was removed — symlink was followed")
+	}
+}
+
+// TestRmdirSymlinkToDirTrailingSlash verifies rmdir behavior on a symlink
+// to a directory with a trailing slash.
+// R4.1 + R4.2: trailing slash on a symlink-to-directory.
+func TestRmdirSymlinkToDirTrailingSlash(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary.
+	refDir := t.TempDir()
+	realDir := filepath.Join(refDir, "realdir")
+	os.Mkdir(realDir, 0o755)                         //nolint:errcheck
+	os.Symlink(realDir, filepath.Join(refDir, "sl")) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"sl/"})
+
+	// Run Go binary.
+	goDir := t.TempDir()
+	goRealDir := filepath.Join(goDir, "realdir")
+	os.Mkdir(goRealDir, 0o755)                     //nolint:errcheck
+	os.Symlink(goRealDir, filepath.Join(goDir, "sl")) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"sl/"})
+
+	compareResults(t, "symlink_to_dir_trailing_slash", refRes, goRes, norm)
+}
+
+// TestRmdirDotPath verifies rmdir with ./ prefix in path.
+// R4.3: dot components must be handled identically to grmdir.
+func TestRmdirDotPath(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary with ./ prefix.
+	refDir := t.TempDir()
+	os.Mkdir(filepath.Join(refDir, "emptydir"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"./emptydir"})
+	assertDirRemoved(t, filepath.Join(refDir, "emptydir"), "ref")
+
+	// Run Go binary with ./ prefix.
+	goDir := t.TempDir()
+	os.Mkdir(filepath.Join(goDir, "emptydir"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"./emptydir"})
+	assertDirRemoved(t, filepath.Join(goDir, "emptydir"), "go")
+
+	compareResults(t, "dot_path", refRes, goRes, norm)
+}
+
+// TestRmdirDotDotPath verifies rmdir with .. component in path.
+// R4.3: dot-dot components must be handled identically to grmdir.
+func TestRmdirDotDotPath(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Create parent/sub and parent/target. Use parent/sub/../target to
+	// refer to target via dot-dot traversal.
+	refDir := t.TempDir()
+	os.MkdirAll(filepath.Join(refDir, "parent", "sub"), 0o755)    //nolint:errcheck
+	os.Mkdir(filepath.Join(refDir, "parent", "target"), 0o755)    //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"parent/sub/../target"})
+	assertDirRemoved(t, filepath.Join(refDir, "parent", "target"), "ref")
+
+	goDir := t.TempDir()
+	os.MkdirAll(filepath.Join(goDir, "parent", "sub"), 0o755)  //nolint:errcheck
+	os.Mkdir(filepath.Join(goDir, "parent", "target"), 0o755)  //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"parent/sub/../target"})
+	assertDirRemoved(t, filepath.Join(goDir, "parent", "target"), "go")
+
+	compareResults(t, "dotdot_path", refRes, goRes, norm)
+}
+
+// TestRmdirDotOnly verifies rmdir on "." itself.
+// R4.3: rmdir . must fail identically to grmdir.
+func TestRmdirDotOnly(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	refRes := runRmdir(t, refBin, t.TempDir(), []string{"."})
+	goRes := runRmdir(t, goBin, t.TempDir(), []string{"."})
+
+	compareResults(t, "dot_only", refRes, goRes, norm)
+}
+
+// TestRmdirDotDotOnly verifies rmdir on ".." itself.
+// R4.3: rmdir .. must fail identically to grmdir.
+func TestRmdirDotDotOnly(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	refRes := runRmdir(t, refBin, t.TempDir(), []string{".."})
+	goRes := runRmdir(t, goBin, t.TempDir(), []string{".."})
+
+	compareResults(t, "dotdot_only", refRes, goRes, norm)
+}
+
+// TestRmdirParentsTrailingSlash verifies -p with trailing slash.
+// R4.1 + R4.3: parent traversal with trailing slash path.
+func TestRmdirParentsTrailingSlash(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skipf("reference binary grmdir not in PATH: %v", err)
+	}
+
+	norm := stderrNormalizer()
+
+	// Run reference binary.
+	refDir := t.TempDir()
+	os.MkdirAll(filepath.Join(refDir, "a", "b", "c"), 0o755) //nolint:errcheck
+	refRes := runRmdir(t, refBin, refDir, []string{"-p", "a/b/c/"})
+	assertDirRemoved(t, filepath.Join(refDir, "a"), "ref-a")
+
+	// Run Go binary.
+	goDir := t.TempDir()
+	os.MkdirAll(filepath.Join(goDir, "a", "b", "c"), 0o755) //nolint:errcheck
+	goRes := runRmdir(t, goBin, goDir, []string{"-p", "a/b/c/"})
+	assertDirRemoved(t, filepath.Join(goDir, "a"), "go-a")
+
+	compareResults(t, "parents_trailing_slash", refRes, goRes, norm)
 }
