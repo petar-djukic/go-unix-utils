@@ -337,9 +337,9 @@ releases:
         coreutils reference binaries, comparing exit codes and resulting file system state.
       use_cases:
         - id: rel07.1-uc001-cp
-          status: spec_complete
+          status: implemented
         - id: rel07.1-uc002-mv
-          status: spec_complete
+          status: implemented
         - id: rel07.1-uc003-rm
           status: spec_complete
     - version: "08.0"
