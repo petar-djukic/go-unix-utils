@@ -3,10 +3,12 @@
 
 // Implements prd037-ln: Create Links Between Files.
 // Covers R1.1-R1.4 (hard link creation, multi-target, error handling),
-// R2.1-R2.2 (symbolic link creation via -s/--symbolic).
+// R2.1-R2.4 (symbolic links, relative path computation),
+// R3.1-R3.4 (force, no-dereference, interactive, verbose).
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -37,7 +39,12 @@ func main() {
 
 // config holds parsed flag state.
 type config struct {
-	symbolic bool
+	symbolic      bool
+	force         bool
+	interactive   bool
+	noDereference bool
+	verbose       bool
+	relative      bool
 }
 
 // run dispatches link creation and returns the exit code.
@@ -48,7 +55,8 @@ func run(cfg config, args []string) int {
 	dest := args[len(args)-1]
 	sources := args[:len(args)-1]
 
-	if isDirectory(dest) {
+	// R3.2: with -n, Lstat prevents following symlink-to-directory.
+	if isDirectoryDest(dest, cfg.noDereference) {
 		return linkIntoDir(cfg, sources, dest)
 	}
 	if len(sources) > 1 {
@@ -79,17 +87,118 @@ func linkIntoDir(cfg config, sources []string, destDir string) int {
 	return exitCode
 }
 
-// createLink creates a single hard or symbolic link.
-// R1.1: hard link from target to linkName.
-// R1.3: error on hard link to directory.
-// R1.4: error when linkName already exists.
-// R2.1: -s creates symbolic link.
-// R2.2: symbolic links to directories are allowed.
+// createLink orchestrates a single link: relative path, destination
+// preparation, link creation, and verbose output.
 func createLink(cfg config, target, linkName string) int {
-	if cfg.symbolic {
-		return createSymlink(target, linkName)
+	// R2.4: compute relative path when -r and -s are both given.
+	target = applyRelative(cfg, target, linkName)
+	if target == "" {
+		return 1
 	}
-	return createHardlink(target, linkName)
+	code := prepareDestination(cfg, linkName)
+	if code >= 0 {
+		return code
+	}
+	return performLink(cfg, target, linkName)
+}
+
+// applyRelative computes a relative target path when -r and -s are set.
+// R2.3: without -r, the TARGET string is stored as-is.
+// R2.4: with -r, a relative path from link location to target is computed.
+func applyRelative(cfg config, target, linkName string) string {
+	if !cfg.relative || !cfg.symbolic {
+		return target
+	}
+	rel, err := computeRelative(target, linkName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ln: %s: %s\n", target, err)
+		return ""
+	}
+	return rel
+}
+
+// computeRelative returns the relative path from the link's parent
+// directory to the target. R2.4.
+func computeRelative(target, linkName string) (string, error) {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", err
+	}
+	linkDir := filepath.Dir(linkName)
+	absLinkDir, err := filepath.Abs(linkDir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Rel(absLinkDir, absTarget)
+}
+
+// prepareDestination handles an existing destination file.
+// Returns -1 to proceed, 1 for error or interactive decline.
+// R3.1: -f removes existing. R3.3: -i prompts before removal.
+func prepareDestination(cfg config, linkName string) int {
+	if !destExists(linkName) {
+		return -1
+	}
+	if cfg.interactive {
+		if !promptReplace(linkName) {
+			return 1
+		}
+		return removeDest(linkName)
+	}
+	if cfg.force {
+		return removeDest(linkName)
+	}
+	return -1 // let the OS call report the conflict
+}
+
+// removeDest removes the destination file or symlink.
+// Returns -1 on success, 1 on error.
+func removeDest(linkName string) int {
+	if err := os.Remove(linkName); err != nil {
+		fmt.Fprintf(os.Stderr, "ln: cannot remove '%s': %s\n",
+			linkName, unwrapErrMsg(err))
+		return 1
+	}
+	return -1
+}
+
+// promptReplace asks the user on stderr whether to replace linkName.
+// R3.3: reads one line from stdin; proceeds only if response starts
+// with 'y' or 'Y'.
+func promptReplace(linkName string) bool {
+	fmt.Fprintf(os.Stderr, "ln: replace '%s'? ", linkName)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+	line = strings.TrimSpace(line)
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
+}
+
+// performLink creates the link and prints verbose output on success.
+// R3.4: -v prints the name of each link created to stdout.
+func performLink(cfg config, target, linkName string) int {
+	var code int
+	if cfg.symbolic {
+		code = createSymlink(target, linkName)
+	} else {
+		code = createHardlink(target, linkName)
+	}
+	if code == 0 && cfg.verbose {
+		printVerbose(cfg.symbolic, linkName, target)
+	}
+	return code
+}
+
+// printVerbose prints the link creation message to stdout.
+// R3.4: format matches GNU ln verbose output.
+func printVerbose(symbolic bool, linkName, target string) {
+	arrow := "=>"
+	if symbolic {
+		arrow = "->"
+	}
+	fmt.Fprintf(os.Stdout, "'%s' %s '%s'\n", linkName, arrow, target)
 }
 
 // createSymlink creates a symbolic link.
@@ -120,6 +229,27 @@ func createHardlink(target, linkName string) int {
 		return 1
 	}
 	return 0
+}
+
+// destExists returns true if something exists at path (using Lstat
+// to detect symlinks without following them).
+func destExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// isDirectoryDest checks if path is a directory.
+// R3.2: with noDereference, uses Lstat so a symlink to a directory
+// is not treated as a directory.
+func isDirectoryDest(path string, noDereference bool) bool {
+	var info os.FileInfo
+	var err error
+	if noDereference {
+		info, err = os.Lstat(path)
+	} else {
+		info, err = os.Stat(path)
+	}
+	return err == nil && info.IsDir()
 }
 
 // printAccessError prints GNU-style error for target access failure.
@@ -156,6 +286,14 @@ func linkType(op string) string {
 	return "hard"
 }
 
+// unwrapErrMsg extracts the inner error message from an os.PathError.
+func unwrapErrMsg(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return capitalizeFirst(pe.Err.Error())
+	}
+	return err.Error()
+}
+
 // capitalizeFirst capitalizes the first letter of a string.
 func capitalizeFirst(s string) string {
 	if s == "" {
@@ -164,14 +302,9 @@ func capitalizeFirst(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// isDirectory returns true if path is an existing directory.
-func isDirectory(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
-
 // parseArgs processes flags and returns configuration.
 // exit is -1 when processing should continue; >= 0 for early termination.
+// R3.3: when -f and -i are both given, the last one on the command line wins.
 func parseArgs(args []string) (cfg config, targets []string, exit int) {
 	exit = -1
 	for i := 0; i < len(args); i++ {
@@ -184,8 +317,20 @@ func parseArgs(args []string) (cfg config, targets []string, exit int) {
 			return config{}, nil, printHelp()
 		case arg == "--version":
 			return config{}, nil, printVersion()
-		case arg == "-s" || arg == "--symbolic":
+		case arg == "--symbolic":
 			cfg.symbolic = true
+		case arg == "--force":
+			cfg.force = true
+			cfg.interactive = false
+		case arg == "--interactive":
+			cfg.interactive = true
+			cfg.force = false
+		case arg == "--no-dereference":
+			cfg.noDereference = true
+		case arg == "--verbose":
+			cfg.verbose = true
+		case arg == "--relative":
+			cfg.relative = true
 		case strings.HasPrefix(arg, "-") && len(arg) > 1 &&
 			!strings.HasPrefix(arg, "--"):
 			exit = parseShortFlags(arg, &cfg)
@@ -200,13 +345,26 @@ func parseArgs(args []string) (cfg config, targets []string, exit int) {
 	return
 }
 
-// parseShortFlags handles combined single-char flags like -s.
+// parseShortFlags handles combined single-char flags like -sfn.
 // Returns -1 to continue, >= 0 for early exit.
+// R3.3: -f and -i override each other; last one wins.
 func parseShortFlags(arg string, cfg *config) int {
 	for j := 1; j < len(arg); j++ {
 		switch arg[j] {
 		case 's':
 			cfg.symbolic = true
+		case 'f':
+			cfg.force = true
+			cfg.interactive = false
+		case 'i':
+			cfg.interactive = true
+			cfg.force = false
+		case 'n':
+			cfg.noDereference = true
+		case 'v':
+			cfg.verbose = true
+		case 'r':
+			cfg.relative = true
 		default:
 			fmt.Fprintf(os.Stderr,
 				"ln: unrecognized option '-%c'\n", arg[j])
@@ -222,7 +380,13 @@ func printHelp() int {
   or:  ln [OPTION]... TARGET... DIRECTORY
 Create links between files.
 
-  -s, --symbolic  make symbolic links instead of hard links
+  -f, --force            remove existing destination files
+  -i, --interactive      prompt before removing destinations
+  -n, --no-dereference   treat LINK_NAME as a normal file if
+                           it is a symbolic link to a directory
+  -r, --relative         with -s, create relative symbolic links
+  -s, --symbolic         make symbolic links instead of hard links
+  -v, --verbose          print name of each linked file
 
       --help     display this help and exit
       --version  output version information and exit
