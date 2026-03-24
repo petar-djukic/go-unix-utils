@@ -3,7 +3,7 @@
 
 // Implements prd046-nproc: Print Number of Available Processing Units.
 // Covers R1.1-R1.4 (default behavior, --all, --ignore=N, combined),
-// R2.1-R2.2 (extra operand/non-numeric ignore errors).
+// R2.1-R2.3 (extra operand/non-numeric ignore/unknown flag errors).
 package main
 
 import (
@@ -72,8 +72,13 @@ func parseArgs(args []string) (config, int) {
 			if i+1 < len(args) {
 				return cfg, extraOperandError(args[i+1])
 			}
+		case len(arg) == 2 && arg[0] == '-' && arg[1] != '-':
+			// R2.3: unknown short flag — GNU format: invalid option -- 'X'.
+			fmt.Fprintf(os.Stderr, "nproc: invalid option -- '%c'\n", arg[1])
+			fmt.Fprintln(os.Stderr, "Try 'nproc --help' for more information.")
+			return cfg, 1
 		case len(arg) > 1 && arg[0] == '-':
-			// R2.3: unknown flags produce an error.
+			// R2.3: unknown long flags produce an error.
 			fmt.Fprintf(os.Stderr, "nproc: unrecognized option '%s'\n", arg)
 			fmt.Fprintln(os.Stderr, "Try 'nproc --help' for more information.")
 			return cfg, 1
