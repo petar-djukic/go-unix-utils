@@ -340,16 +340,24 @@ func handleDelimiter(line string, cfg nlConfig, state *nlState) bool {
 		return true
 	case bodyDelim:
 		state.section = sectionBody
+		if !cfg.noReset {
+			state.lineNumber = cfg.startNumber - cfg.increment
+		}
+		state.emptyCount = 0
 		return true
 	case delim:
 		state.section = sectionFooter
+		if !cfg.noReset {
+			state.lineNumber = cfg.startNumber - cfg.increment
+		}
+		state.emptyCount = 0
 		return true
 	}
 	return false
 }
 
 // writeLine writes one line of output with optional numbering.
-// R1.2: unnumbered lines pass through with no number and no separator.
+// R1.2: unnumbered lines get padding (width + len(sep) spaces) but no number.
 // R3.4: uses configured increment instead of 1.
 func writeLine(bw *bufio.Writer, line string, cfg nlConfig, state *nlState) error {
 	style := activeStyle(cfg, state.section)
@@ -362,8 +370,13 @@ func writeLine(bw *bufio.Writer, line string, cfg nlConfig, state *nlState) erro
 		if _, err := bw.WriteString(cfg.separator); err != nil {
 			return err
 		}
-	} else if line != "" {
-		state.emptyCount = 0
+	} else {
+		if line != "" {
+			state.emptyCount = 0
+		}
+		if _, err := bw.WriteString(emptyPrefix(cfg)); err != nil {
+			return err
+		}
 	}
 	if _, err := bw.WriteString(line); err != nil {
 		return err
@@ -427,6 +440,12 @@ func shouldNumber(style numberStyle, line string, re *regexp.Regexp) bool {
 	default:
 		return false
 	}
+}
+
+// emptyPrefix returns the padding string for unnumbered lines.
+// GNU nl outputs width + len(separator) spaces for unnumbered lines.
+func emptyPrefix(cfg nlConfig) string {
+	return strings.Repeat(" ", cfg.width+len(cfg.separator))
 }
 
 // formatNumber formats a line number according to the config.
