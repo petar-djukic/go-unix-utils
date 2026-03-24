@@ -324,7 +324,7 @@ releases:
         - id: rel07.0-uc002-tr
           status: implemented
         - id: rel07.0-uc003-tail
-          status: spec_complete
+          status: implemented
     - version: "07.1"
       name: "Batch 7.1 — file operations (cp, mv, rm)"
       status: spec_complete
