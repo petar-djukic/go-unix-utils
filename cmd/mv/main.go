@@ -54,16 +54,26 @@ func main() {
 // run executes the move operation and returns the exit code.
 // R4.1: exit 0 on success. R4.2: exit 1 on any error.
 func run(cfg config, args []string) int {
+	if cfg.targetDir != "" {
+		return runWithTargetDir(cfg, args)
+	}
 	if len(args) < 2 {
 		printErr("missing file operand")
 		return 1
 	}
 	dest := args[len(args)-1]
 	sources := args[:len(args)-1]
-	if cfg.targetDir != "" {
-		dest = cfg.targetDir
-	}
 	return dispatch(cfg, sources, dest)
+}
+
+// runWithTargetDir handles the -t/--target-directory mode.
+// R3.2: all args are sources; destination comes from -t flag.
+func runWithTargetDir(cfg config, args []string) int {
+	if len(args) < 1 {
+		printErr("missing file operand")
+		return 1
+	}
+	return dispatch(cfg, args, cfg.targetDir)
 }
 
 // dispatch routes to single-file or multi-source move.
@@ -80,7 +90,7 @@ func dispatch(cfg config, sources []string, dest string) int {
 // R4.3: continue on error, exit 1 if any failed.
 func moveMultiple(cfg config, sources []string, dest string) int {
 	if !isDir(dest) {
-		printErr("target '%s' is not a directory", dest)
+		printErr("target '%s': Not a directory", dest)
 		return 1
 	}
 	exitCode := 0
@@ -103,10 +113,30 @@ func moveSingle(cfg config, src, dest string) int {
 		printErr("cannot stat '%s': %v", src, unwrapErr(err))
 		return 1
 	}
+	if isSubdir(src, dest) {
+		printErr("cannot move '%s' to a subdirectory of itself, '%s'",
+			src, dest)
+		return 1
+	}
 	if shouldSkipExisting(cfg, dest) {
 		return 0
 	}
 	return performMove(cfg, src, dest)
+}
+
+// isSubdir reports whether dest is inside src (moving dir into itself).
+// R4.2: error when attempting to move a directory into itself.
+func isSubdir(src, dest string) bool {
+	srcAbs, err := filepath.Abs(src)
+	if err != nil {
+		return false
+	}
+	destAbs, err := filepath.Abs(dest)
+	if err != nil {
+		return false
+	}
+	srcAbs = filepath.Clean(srcAbs) + string(filepath.Separator)
+	return strings.HasPrefix(destAbs, srcAbs)
 }
 
 // performMove attempts os.Rename, falling back to copy+remove on EXDEV.
@@ -334,10 +364,10 @@ func confirmOverwrite(dest string) bool {
 		strings.HasPrefix(response, "Y")
 }
 
-// printVerbose prints the move operation to stderr in GNU mv format.
+// printVerbose prints the move operation to stdout in GNU mv format.
 // R3.1: verbose output for each file moved.
 func printVerbose(src, dest string) {
-	fmt.Fprintf(os.Stderr, "renamed '%s' -> '%s'\n", src, dest)
+	fmt.Fprintf(os.Stdout, "renamed '%s' -> '%s'\n", src, dest)
 }
 
 // fileExists reports whether path exists.

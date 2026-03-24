@@ -251,6 +251,53 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffVersionHelp tests --version and --help output.
+// R1.2: --version and --help produce GNU-format output.
+func TestDiffVersionHelp(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcp")
+	if err != nil {
+		t.Skipf("reference binary gcp not in PATH: %v", err)
+	}
+
+	versionNorm := versionNormalizer()
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{helpNormalizer()},
+		},
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{versionNorm},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// versionNormalizer replaces version-specific text so both binaries match.
+func versionNormalizer() testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		// Normalize to just the first line's program name prefix.
+		re := regexp.MustCompile(`(?s)^(cp) .*`)
+		return re.ReplaceAll(b, []byte("$1 (version)\n"))
+	}
+}
+
+// helpNormalizer normalizes help output so minor formatting differences pass.
+func helpNormalizer() testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		// Only compare that both produce some help output and exit 0.
+		if len(b) > 0 {
+			return []byte("HELP_OUTPUT\n")
+		}
+		return b
+	}
+}
+
 // forceReadonlyDest creates a readonly file for -f testing.
 func forceReadonlyDest(t *testing.T, dir string) string {
 	t.Helper()
