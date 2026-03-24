@@ -98,6 +98,7 @@ func copyMultiple(cfg config, sources []string, dest string) int {
 
 // copySingle copies a single source to a destination path.
 // R2.3/R2.4: handles symlink dereference decision.
+// R4.2: detects copy-to-self by comparing source and destination inodes.
 func copySingle(cfg config, src, dest string) int {
 	info, err := os.Lstat(src)
 	if err != nil {
@@ -117,7 +118,25 @@ func copySingle(cfg config, src, dest string) int {
 	if info.IsDir() {
 		return copyDirectory(cfg, src, dest, info)
 	}
+	if isSameFile(src, dest) {
+		printErr("'%s' and '%s' are the same file", src, dest)
+		return 1
+	}
 	return copyFile(cfg, src, dest, info)
+}
+
+// isSameFile reports whether src and dest refer to the same inode.
+// R4.2: detects copy-to-self to prevent data loss.
+func isSameFile(src, dest string) bool {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return false
+	}
+	destInfo, err := os.Stat(dest)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(srcInfo, destInfo)
 }
 
 // isSymlink reports whether the file info indicates a symbolic link.
