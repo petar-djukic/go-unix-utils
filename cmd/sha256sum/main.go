@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd032-sha256sum R1.1-R1.4, R2.1-R2.2: Compute and check SHA-256
-// message digests using pkg/hashutil for shared formatting and verification.
-// Supports --binary, --text, --tag, --check, --zero output modes.
+// Implements prd032-sha256sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: Compute and
+// check SHA-256 message digests using pkg/hashutil for shared formatting and
+// verification. Check mode supports --warn, --quiet, --status, and --strict.
 package main
 
 import (
@@ -21,11 +21,11 @@ import (
 var version = "dev"
 
 // sha256Config is the HashConfig for SHA-256 digests.
-// D3: Algorithm="SHA256", NewHash=sha256.New, DigestLen=32.
+// D3: Algorithm="SHA256", NewHash=sha256.New, DigestLen=64 (hex length).
 var sha256Config = hashutil.HashConfig{
 	Algorithm: "SHA256",
 	NewHash:   sha256.New,
-	DigestLen: 32,
+	DigestLen: 64,
 }
 
 // sha256sumOptions holds the parsed flag state for a sha256sum invocation.
