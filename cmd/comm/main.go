@@ -130,8 +130,12 @@ func formatPathError(name string, err error) error {
 
 // delimiter returns the column separator string.
 // R3.4: --output-delimiter replaces the default tab.
+// GNU comm uses NUL when --output-delimiter is set to empty string.
 func delimiter(cfg config) string {
 	if cfg.hasOutputDelim {
+		if cfg.outputDelim == "" {
+			return "\x00"
+		}
 		return cfg.outputDelim
 	}
 	return "\t"
@@ -355,32 +359,19 @@ func writePrefixedLine(bw *bufio.Writer, prefix, line string) error {
 }
 
 // emitTotal writes the --total summary line with column counts.
-// D4: uses same column format as data lines, with counts instead of text.
+// GNU comm always prints all three column counts regardless of suppression.
 func emitTotal(cfg config, bw *bufio.Writer, ct counts) error {
 	delim := delimiter(cfg)
-	needSep := false
-	if !cfg.suppress1 {
-		if _, err := fmt.Fprintf(bw, "%d", ct.col1); err != nil {
-			return err
-		}
-		needSep = true
+	if _, err := fmt.Fprintf(bw, "%d", ct.col1); err != nil {
+		return err
 	}
-	if !cfg.suppress2 {
-		if needSep {
-			bw.WriteString(delim) //nolint:errcheck // checked at final write
-		}
-		if _, err := fmt.Fprintf(bw, "%d", ct.col2); err != nil {
-			return err
-		}
-		needSep = true
+	bw.WriteString(delim) //nolint:errcheck // checked at final write
+	if _, err := fmt.Fprintf(bw, "%d", ct.col2); err != nil {
+		return err
 	}
-	if !cfg.suppress3 {
-		if needSep {
-			bw.WriteString(delim) //nolint:errcheck // checked at final write
-		}
-		if _, err := fmt.Fprintf(bw, "%d", ct.col3); err != nil {
-			return err
-		}
+	bw.WriteString(delim) //nolint:errcheck // checked at final write
+	if _, err := fmt.Fprintf(bw, "%d", ct.col3); err != nil {
+		return err
 	}
 	bw.WriteString(delim) //nolint:errcheck // checked at final write
 	_, err := bw.WriteString("total\n")
