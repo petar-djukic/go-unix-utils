@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rm against GNU grm.
-// Covers prd058-rm R1.1-R1.4 (basic removal), R2.1-R2.2 (recursive/force).
+// Covers prd058-rm R1.1-R1.4 (basic removal), R2.1-R2.4 (recursive/force/dir),
+// R3.1-R3.4 (interactive modes, verbose, --interactive=WHEN).
 package main
 
 import (
@@ -33,15 +34,19 @@ func stderrNormalizer(b []byte) []byte {
 		`(?m)^Try '[^']*' for more information\.\n?`)
 	noSuch := regexp.MustCompile(`(?i)no such file or directory`)
 	isDir := regexp.MustCompile(`(?i)is a directory`)
+	dirNotEmpty := regexp.MustCompile(`(?i)directory not empty`)
 	b = binPath.ReplaceAll(b, []byte("rm"))
 	b = tryHelp.ReplaceAll(b, nil)
 	b = noSuch.ReplaceAll(b, []byte("No such file or directory"))
 	b = isDir.ReplaceAll(b, []byte("Is a directory"))
+	b = dirNotEmpty.ReplaceAll(b, []byte("Directory not empty"))
 	return b
 }
 
 // writeFile creates a file with content in dir and returns its path.
-func writeFile(t *testing.T, dir, name string, content []byte) string {
+func writeFile(
+	t *testing.T, dir, name string, content []byte,
+) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, content, 0o644); err != nil {
@@ -60,6 +65,12 @@ func makeDir(t *testing.T, dir, name string) string {
 	return p
 }
 
+// pathExists reports whether path exists on disk.
+func pathExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
 // binResult holds the captured output of a single binary invocation.
 type binResult struct {
 	stdout   []byte
@@ -72,6 +83,15 @@ func runBin(
 	t *testing.T, binary string, args []string, workDir string,
 ) binResult {
 	t.Helper()
+	return runBinWithStdin(t, binary, args, workDir, "")
+}
+
+// runBinWithStdin executes a binary with args and stdin piped.
+func runBinWithStdin(
+	t *testing.T, binary string, args []string,
+	workDir, stdin string,
+) binResult {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(
 		context.Background(), 10*time.Second)
 	defer cancel()
@@ -81,6 +101,9 @@ func runBin(
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	err := cmd.Run()
 	exitCode := 0
 	if err != nil {
@@ -99,7 +122,8 @@ func runBin(
 
 // normalizePaths replaces absolute workDir paths with "WORK/" prefix.
 func normalizePaths(b []byte, workDir string) []byte {
-	return bytes.ReplaceAll(b, []byte(workDir+"/"), []byte("WORK/"))
+	return bytes.ReplaceAll(
+		b, []byte(workDir+"/"), []byte("WORK/"))
 }
 
 // runRmDiffTest runs a single rm test against both binaries.
@@ -115,7 +139,8 @@ func runRmDiffTest(
 		goArgs := tc.setup(t, goDir)
 		refRes := runBin(t, refBin, refArgs, refDir)
 		goRes := runBin(t, goBin, goArgs, goDir)
-		compareRmResults(t, tc.name, refRes, goRes, refDir, goDir)
+		compareRmResults(
+			t, tc.name, refRes, goRes, refDir, goDir)
 	})
 }
 
@@ -126,10 +151,14 @@ func compareRmResults(
 	refDir, goDir string,
 ) {
 	t.Helper()
-	refOut := stderrNormalizer(normalizePaths(refRes.stdout, refDir))
-	goOut := stderrNormalizer(normalizePaths(goRes.stdout, goDir))
-	refErr := stderrNormalizer(normalizePaths(refRes.stderr, refDir))
-	goErr := stderrNormalizer(normalizePaths(goRes.stderr, goDir))
+	refOut := stderrNormalizer(
+		normalizePaths(refRes.stdout, refDir))
+	goOut := stderrNormalizer(
+		normalizePaths(goRes.stdout, goDir))
+	refErr := stderrNormalizer(
+		normalizePaths(refRes.stderr, refDir))
+	goErr := stderrNormalizer(
+		normalizePaths(goRes.stderr, goDir))
 	if !bytes.Equal(refOut, goOut) ||
 		!bytes.Equal(refErr, goErr) ||
 		refRes.exitCode != goRes.exitCode {
@@ -238,6 +267,16 @@ func TestDiff(t *testing.T) {
 			},
 		},
 		{
+			// R2.4: -d on non-empty directory fails.
+			name: "d_nonempty_dir",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				d := makeDir(t, dir, "notempty")
+				writeFile(t, d, "file.txt", []byte("data\n"))
+				return []string{"-d", d}
+			},
+		},
+		{
 			// R3.3: -rv verbose recursive removal.
 			name: "recursive_verbose",
 			setup: func(t *testing.T, dir string) []string {
@@ -245,6 +284,16 @@ func TestDiff(t *testing.T) {
 				d := makeDir(t, dir, "rvdir")
 				writeFile(t, d, "a.txt", []byte("a\n"))
 				return []string{"-rv", d}
+			},
+		},
+		{
+			// R2.1: -R uppercase is synonym for -r.
+			name: "recursive_uppercase_R",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				d := makeDir(t, dir, "capR")
+				writeFile(t, d, "f.txt", []byte("cap\n"))
+				return []string{"-R", d}
 			},
 		},
 		{
@@ -344,4 +393,237 @@ func TestDotDotDotRefusal(t *testing.T) {
 				path, stderr)
 		}
 	}
+}
+
+// TestInteractiveAlways tests -i prompting with y/n responses.
+// R3.1: -i prompts before every removal.
+func TestInteractiveAlways(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("yes_removes", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeFile(t, dir, "target.txt", []byte("data\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"-i", f}, dir, "y\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if pathExists(f) {
+			t.Error("file should be removed after y response")
+		}
+		stderr := string(res.stderr)
+		if !strings.Contains(stderr, "remove") {
+			t.Errorf("expected prompt in stderr, got: %q", stderr)
+		}
+	})
+
+	t.Run("no_keeps", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeFile(t, dir, "keep.txt", []byte("data\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"-i", f}, dir, "n\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if !pathExists(f) {
+			t.Error("file should still exist after n response")
+		}
+	})
+
+	t.Run("force_overrides_i", func(t *testing.T) {
+		// R2.2: last flag wins. -i then -f means force.
+		dir := t.TempDir()
+		f := writeFile(t, dir, "gone.txt", []byte("data\n"))
+		res := runBin(
+			t, goBin, []string{"-i", "-f", f}, dir)
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if pathExists(f) {
+			t.Error("file should be removed with -if (force wins)")
+		}
+	})
+}
+
+// TestInteractiveOnce tests -I prompting conditions.
+// R3.2: -I prompts once when >3 files or -r is active.
+func TestInteractiveOnce(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("three_or_fewer_no_prompt", func(t *testing.T) {
+		// With 3 files (not > 3), -I should NOT prompt.
+		dir := t.TempDir()
+		f1 := writeFile(t, dir, "a.txt", []byte("a\n"))
+		f2 := writeFile(t, dir, "b.txt", []byte("b\n"))
+		f3 := writeFile(t, dir, "c.txt", []byte("c\n"))
+		res := runBin(
+			t, goBin, []string{"-I", f1, f2, f3}, dir)
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		for _, f := range []string{f1, f2, f3} {
+			if pathExists(f) {
+				t.Errorf("file %s should be removed", f)
+			}
+		}
+	})
+
+	t.Run("more_than_three_yes", func(t *testing.T) {
+		// With 4 files, -I should prompt; answer y removes all.
+		dir := t.TempDir()
+		f1 := writeFile(t, dir, "a.txt", []byte("a\n"))
+		f2 := writeFile(t, dir, "b.txt", []byte("b\n"))
+		f3 := writeFile(t, dir, "c.txt", []byte("c\n"))
+		f4 := writeFile(t, dir, "d.txt", []byte("d\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"-I", f1, f2, f3, f4},
+			dir, "y\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		for _, f := range []string{f1, f2, f3, f4} {
+			if pathExists(f) {
+				t.Errorf("file %s should be removed", f)
+			}
+		}
+	})
+
+	t.Run("more_than_three_no", func(t *testing.T) {
+		// With 4 files, -I with n keeps all files.
+		dir := t.TempDir()
+		f1 := writeFile(t, dir, "a.txt", []byte("a\n"))
+		f2 := writeFile(t, dir, "b.txt", []byte("b\n"))
+		f3 := writeFile(t, dir, "c.txt", []byte("c\n"))
+		f4 := writeFile(t, dir, "d.txt", []byte("d\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"-I", f1, f2, f3, f4},
+			dir, "n\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		for _, f := range []string{f1, f2, f3, f4} {
+			if !pathExists(f) {
+				t.Errorf("file %s should still exist", f)
+			}
+		}
+	})
+
+	t.Run("recursive_prompts", func(t *testing.T) {
+		// -I with -r and 1 arg should prompt (recursive trigger).
+		dir := t.TempDir()
+		d := makeDir(t, dir, "rdir")
+		writeFile(t, d, "f.txt", []byte("f\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"-rI", d}, dir, "y\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if pathExists(d) {
+			t.Error("dir should be removed after y response")
+		}
+	})
+}
+
+// TestInteractiveWhen tests --interactive=WHEN flag.
+// R3.4: WHEN controls prompting mode.
+func TestInteractiveWhen(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("never", func(t *testing.T) {
+		// --interactive=never acts like -f.
+		dir := t.TempDir()
+		res := runBin(t, goBin,
+			[]string{"--interactive=never",
+				filepath.Join(dir, "nosuch")}, dir)
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+	})
+
+	t.Run("always_yes", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeFile(t, dir, "a.txt", []byte("a\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"--interactive=always", f},
+			dir, "y\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if pathExists(f) {
+			t.Error("file should be removed")
+		}
+	})
+
+	t.Run("always_no", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeFile(t, dir, "a.txt", []byte("a\n"))
+		res := runBinWithStdin(
+			t, goBin, []string{"--interactive=always", f},
+			dir, "n\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if !pathExists(f) {
+			t.Error("file should still exist")
+		}
+	})
+
+	t.Run("invalid_when", func(t *testing.T) {
+		dir := t.TempDir()
+		res := runBin(t, goBin,
+			[]string{"--interactive=bogus", "x"}, dir)
+		if res.exitCode != 1 {
+			t.Errorf("exit: got %d, want 1", res.exitCode)
+		}
+	})
+}
+
+// TestRootRefusal verifies that rm -r / is refused by default.
+func TestRootRefusal(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	res := runBin(t, goBin, []string{"-r", "/"}, t.TempDir())
+	if res.exitCode != 1 {
+		t.Errorf("exit: got %d, want 1", res.exitCode)
+	}
+	stderr := string(res.stderr)
+	if !strings.Contains(stderr, "dangerous") {
+		t.Errorf(
+			"expected 'dangerous' in stderr, got: %q", stderr)
+	}
+}
+
+// TestRecursiveDescendPrompt verifies -i prompts for directory descent.
+// R3.1: -i prompts "descend into directory?" before recursing.
+func TestRecursiveDescendPrompt(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("descend_yes_remove_yes", func(t *testing.T) {
+		dir := t.TempDir()
+		d := makeDir(t, dir, "mydir")
+		writeFile(t, d, "f.txt", []byte("f\n"))
+		// Prompts: descend? y, remove file? y, remove dir? y
+		res := runBinWithStdin(
+			t, goBin, []string{"-ri", d}, dir, "y\ny\ny\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if pathExists(d) {
+			t.Error("dir should be removed")
+		}
+	})
+
+	t.Run("descend_no_keeps_dir", func(t *testing.T) {
+		dir := t.TempDir()
+		d := makeDir(t, dir, "keepdir")
+		writeFile(t, d, "f.txt", []byte("f\n"))
+		// Prompt: descend? n → skip entire directory.
+		res := runBinWithStdin(
+			t, goBin, []string{"-ri", d}, dir, "n\n")
+		if res.exitCode != 0 {
+			t.Errorf("exit: got %d, want 0", res.exitCode)
+		}
+		if !pathExists(d) {
+			t.Error("dir should still exist")
+		}
+	})
 }
