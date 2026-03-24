@@ -3,13 +3,14 @@
 
 // Implements prd038-unlink: Remove a Single File.
 // Covers R1.1-R1.3 (basic unlink operation, exit codes),
-// R2.1-R2.3 (error handling for wrong argument count and nonexistent files).
+// R2.1-R2.4 (error handling for wrong argument count, nonexistent files, directories).
 package main
 
 import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -47,11 +48,10 @@ func run(args []string) int {
 		return 1
 	}
 
-	// R1.1: call unlink(2) on exactly one FILE argument.
-	if err := os.Remove(operands[0]); err != nil {
-		// R1.3: print error to stderr and exit 1 when unlink fails.
+	// R1.1/R2.4: call unlink(2) directly; rejects directories with EPERM.
+	if err := syscall.Unlink(operands[0]); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: cannot unlink '%s': %s\n",
-			progName, operands[0], unwrapError(err))
+			progName, operands[0], err.Error())
 		return 1
 	}
 
@@ -89,14 +89,6 @@ func parseArgs(args []string) (operands []string, exit int) {
 // printTryHelp writes the "Try --help" hint to stderr.
 func printTryHelp() {
 	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
-}
-
-// unwrapError extracts the inner message from a *os.PathError.
-func unwrapError(err error) string {
-	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err.Error()
-	}
-	return err.Error()
 }
 
 // printHelp writes usage information to stdout and returns the exit code.
