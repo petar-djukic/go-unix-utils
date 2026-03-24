@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd025-unexpand: Convert Spaces to Tabs.
-// Covers R1.1-R1.4 (default leading whitespace conversion, stdin/file reading, stdout output),
-// R2.1-R2.2 (--first-only default, -a/--all convert all whitespace).
+// Covers R1.1-R1.4 (default leading whitespace conversion),
+// R2.1-R2.3 (--first-only default, -a/--all convert all whitespace),
+// R3.1-R3.3 (-t custom tab stops, list mode, -t implies -a),
+// R4.1-R4.4 (exit codes, file error handling, write error, SIGPIPE).
 package main
 
 import (
@@ -11,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -20,7 +23,9 @@ const defaultTabStop = 8
 
 // unexpandConfig holds parsed command-line options.
 type unexpandConfig struct {
-	allMode bool // R2.1/R2.2: convert all whitespace, not just leading
+	allMode  bool  // R2.1: convert all whitespace, not just leading
+	tabStops []int // R3.1: explicit tab stop positions (empty = uniform)
+	uniform  int   // R3.1: uniform tab interval (0 = use tabStops list)
 }
 
 func main() {
@@ -38,7 +43,7 @@ func main() {
 
 // parseArgs parses unexpand flags and returns config and file list.
 func parseArgs(args []string) (unexpandConfig, []string, error) {
-	var cfg unexpandConfig
+	cfg := unexpandConfig{uniform: defaultTabStop}
 	var files []string
 	i := 0
 	for i < len(args) {
@@ -52,7 +57,7 @@ func parseArgs(args []string) (unexpandConfig, []string, error) {
 			i++
 			continue
 		}
-		consumed, err := parseFlag(arg, &cfg)
+		consumed, err := parseFlag(arg, args, i, &cfg)
 		if err != nil {
 			return cfg, nil, err
 		}
@@ -62,21 +67,95 @@ func parseArgs(args []string) (unexpandConfig, []string, error) {
 }
 
 // parseFlag parses a single flag and returns args consumed.
-func parseFlag(arg string, cfg *unexpandConfig) (int, error) {
-	switch arg {
-	case "-a", "--all":
+func parseFlag(arg string, args []string, i int, cfg *unexpandConfig) (int, error) {
+	switch {
+	case arg == "-a" || arg == "--all":
 		cfg.allMode = true
 		return 1, nil
-	case "--first-only":
+	case arg == "--first-only":
 		cfg.allMode = false
 		return 1, nil
+	case strings.HasPrefix(arg, "-t"):
+		return parseShortTabs(arg, args, i, cfg)
+	case strings.HasPrefix(arg, "--tabs"):
+		return parseLongTabs(arg, args, i, cfg)
 	default:
 		return 0, fmt.Errorf("invalid option -- '%s'", arg[1:])
 	}
 }
 
+// parseShortTabs parses -t N or -tN form.
+func parseShortTabs(arg string, args []string, i int, cfg *unexpandConfig) (int, error) {
+	if len(arg) > 2 {
+		return 1, applyTabs(arg[2:], cfg)
+	}
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option requires an argument -- 't'")
+	}
+	return 2, applyTabs(args[i+1], cfg)
+}
+
+// parseLongTabs parses --tabs N or --tabs=N form.
+func parseLongTabs(arg string, args []string, i int, cfg *unexpandConfig) (int, error) {
+	if strings.HasPrefix(arg, "--tabs=") {
+		return 1, applyTabs(arg[len("--tabs="):], cfg)
+	}
+	if arg != "--tabs" {
+		return 0, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option '--tabs' requires an argument")
+	}
+	return 2, applyTabs(args[i+1], cfg)
+}
+
+// applyTabs parses a tab stop specification.
+// R3.1: single number = uniform interval, comma list = absolute positions.
+// R3.3: -t implies -a.
+func applyTabs(val string, cfg *unexpandConfig) error {
+	// R3.3: custom tab stops imply -a mode.
+	cfg.allMode = true
+	parts := strings.Split(strings.ReplaceAll(val, " ", ","), ",")
+	if len(parts) == 1 {
+		return applyUniformTab(parts[0], cfg)
+	}
+	return applyTabList(parts, cfg)
+}
+
+// applyUniformTab sets a uniform tab interval.
+func applyUniformTab(s string, cfg *unexpandConfig) error {
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("tab size contains invalid character(s): '%s'", s)
+	}
+	cfg.uniform = n
+	cfg.tabStops = nil
+	return nil
+}
+
+// applyTabList sets explicit tab stop positions (must be ascending).
+func applyTabList(parts []string, cfg *unexpandConfig) error {
+	stops := make([]int, 0, len(parts))
+	prev := 0
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n <= 0 {
+			return fmt.Errorf("tab size contains invalid character(s): '%s'", p)
+		}
+		if n <= prev {
+			return fmt.Errorf("tab sizes must be ascending")
+		}
+		stops = append(stops, n)
+		prev = n
+	}
+	cfg.tabStops = stops
+	cfg.uniform = 0
+	return nil
+}
+
 // run processes all files and returns the exit code.
-// R1.4: stdin when no files or "-" given.
+// R4.1: exit 0 when all inputs processed successfully.
+// R4.2: exit 1 when any file cannot be opened; continue remaining.
 func run(cfg unexpandConfig, files []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(files) == 0 {
 		files = []string{"-"}
@@ -128,9 +207,9 @@ func unwrapOSError(err error) string {
 }
 
 // unexpandInput reads from r and writes unexpanded output to bw.
-// R1.1: replaces leading spaces with tabs at default 8-column stops.
+// R1.1: replaces leading spaces with tabs at configured tab stops.
 // R1.2: by default only converts leading whitespace.
-// R1.3: preserves content after first non-blank unchanged (default mode).
+// R2.1: -a mode converts all whitespace.
 func unexpandInput(r io.Reader, bw *bufio.Writer, cfg unexpandConfig) error {
 	br := bufio.NewReader(r)
 	var col, pending int
@@ -143,62 +222,74 @@ func unexpandInput(r io.Reader, bw *bufio.Writer, cfg unexpandConfig) error {
 			}
 			return err
 		}
-		switch {
-		case c == '\n':
-			if err := flushAndWrite(bw, pending, '\n'); err != nil {
-				return err
-			}
-			col, pending, converting = 0, 0, true
-		case !converting:
-			if err := bw.WriteByte(c); err != nil {
-				return err
-			}
-		case c == ' ':
-			col, pending, err = handleSpace(col, pending, bw)
-			if err != nil {
-				return err
-			}
-		case c == '\t':
-			col, pending, err = handleTab(col, bw)
-			if err != nil {
-				return err
-			}
-		default:
-			col, pending, converting, err = handleNonWS(c, col, pending, bw, cfg)
-			if err != nil {
-				return err
-			}
+		col, pending, converting, err = processByte(
+			c, col, pending, converting, bw, cfg,
+		)
+		if err != nil {
+			return err
 		}
+	}
+}
+
+// processByte dispatches a single byte through the unexpand state machine.
+func processByte(c byte, col, pending int, converting bool, bw *bufio.Writer, cfg unexpandConfig) (int, int, bool, error) {
+	switch {
+	case c == '\n':
+		if err := flushAndWrite(bw, pending, '\n'); err != nil {
+			return 0, 0, true, err
+		}
+		return 0, 0, true, nil
+	case !converting:
+		if err := bw.WriteByte(c); err != nil {
+			return col, 0, false, err
+		}
+		return col + 1, 0, false, nil
+	case c == ' ':
+		return handleSpace(col, pending, bw, cfg)
+	case c == '\t':
+		return handleTab(col, bw, cfg)
+	default:
+		return handleNonWS(c, col, pending, bw, cfg)
 	}
 }
 
 // handleSpace accumulates a space and emits a tab when a tab stop is reached.
-// R1.1: tabs are preferred over spaces when a run reaches a tab stop exactly.
+// R1.1: tabs preferred when a run reaches a tab stop exactly.
 // R1.3: spaces that do not reach a tab stop are kept as spaces.
-func handleSpace(col, pending int, bw *bufio.Writer) (int, int, error) {
+// R3.2: past last explicit stop, spaces are kept as-is.
+func handleSpace(col, pending int, bw *bufio.Writer, cfg unexpandConfig) (int, int, bool, error) {
 	col++
 	pending++
-	if col%defaultTabStop == 0 {
-		if err := bw.WriteByte('\t'); err != nil {
-			return col, 0, err
-		}
-		return col, 0, nil
+	ns := nextStop(col-1, cfg)
+	// R3.2: if no valid stop exists, keep spaces as-is.
+	if ns < 0 {
+		return col, pending, true, nil
 	}
-	return col, pending, nil
+	if col == ns {
+		if err := bw.WriteByte('\t'); err != nil {
+			return col, 0, true, err
+		}
+		return col, 0, true, nil
+	}
+	return col, pending, true, nil
 }
 
 // handleTab processes an existing tab in the input.
-// R1.4: existing tabs count toward column position and do not prevent further substitution.
-func handleTab(col int, bw *bufio.Writer) (int, int, error) {
+// R1.4: existing tabs count toward column position.
+func handleTab(col int, bw *bufio.Writer, cfg unexpandConfig) (int, int, bool, error) {
 	if err := bw.WriteByte('\t'); err != nil {
-		return col, 0, err
+		return col, 0, true, err
 	}
-	return nextStop(col), 0, nil
+	ns := nextStop(col, cfg)
+	if ns < 0 {
+		return col + 1, 0, true, nil
+	}
+	return ns, 0, true, nil
 }
 
 // handleNonWS flushes pending spaces and writes a non-whitespace character.
 // R1.2: in default mode, stops converting after first non-whitespace.
-// R2.1/R2.2: in -a mode, continues converting after non-whitespace.
+// R2.1/R2.3: in -a mode, continues converting after non-whitespace.
 func handleNonWS(c byte, col, pending int, bw *bufio.Writer, cfg unexpandConfig) (int, int, bool, error) {
 	if err := flushSpaces(bw, pending); err != nil {
 		return col, 0, false, err
@@ -228,6 +319,18 @@ func flushAndWrite(bw *bufio.Writer, pending int, c byte) error {
 }
 
 // nextStop returns the next tab stop column after col.
-func nextStop(col int) int {
-	return (col/defaultTabStop + 1) * defaultTabStop
+// Returns -1 when using explicit stops and col is past the last stop.
+// R3.1: -t N sets uniform interval, -t LIST sets explicit positions.
+// R3.2: past last explicit stop, returns -1 (no tab insertion).
+func nextStop(col int, cfg unexpandConfig) int {
+	if cfg.uniform > 0 {
+		return (col/cfg.uniform + 1) * cfg.uniform
+	}
+	for _, s := range cfg.tabStops {
+		if s > col {
+			return s
+		}
+	}
+	// R3.2: past last explicit stop — no more tab stops.
+	return -1
 }
