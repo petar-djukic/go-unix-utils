@@ -3,7 +3,9 @@
 
 // Implements prd024-expand: Convert Tabs to Spaces.
 // Covers R1.1-R1.4 (default tab expansion, stdin/file reading, stdout output),
-// R2.1 (-t custom tab stops), R2.2 (-i initial-only mode).
+// R2.1-R2.4 (-t custom tab stops, comma-separated list, last-wins, single-value uniform),
+// R2.2 (-i initial-only mode),
+// R3.1-R3.4 (exit codes, file error handling, write error handling, SIGPIPE).
 package main
 
 import (
@@ -107,12 +109,15 @@ func parseLongTabs(arg string, args []string, i int, cfg *expandConfig) (int, er
 
 // applyTabs parses a tab stop specification.
 // R2.1: single number = uniform interval.
-// R2.1 (list): comma-separated = explicit positions.
+// R2.3: replaces default of 8; last -t wins (caller overwrites each time).
+// R2.4: single value in comma-separated form treated as uniform interval.
 func applyTabs(val string, cfg *expandConfig) error {
 	parts := strings.Split(strings.ReplaceAll(val, " ", ","), ",")
+	// R2.4: single value behaves identically to -t N (uniform interval).
 	if len(parts) == 1 {
 		return applyUniformTab(parts[0], cfg)
 	}
+	// R2.3: comma-separated list of absolute tab stop positions.
 	return applyTabList(parts, cfg)
 }
 
@@ -148,22 +153,30 @@ func applyTabList(parts []string, cfg *expandConfig) error {
 }
 
 // run processes all files and returns the exit code.
-// R1.2: stdin when no files given. R1.3: concatenates output.
+// R3.1: exit 0 when all inputs processed successfully.
+// R3.2: stdin when no files given; process multiple files in order.
+// R3.3: exit 1 when any file cannot be opened; error to stderr, continue.
+// R3.4: exit 1 when a write error occurs on stdout.
 func run(cfg expandConfig, files []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	// R3.2: stdin when no files or "-" given.
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	bw := bufio.NewWriter(stdout)
 	exitCode := 0
+	// R3.2: process multiple files in order, concatenating output.
 	for _, name := range files {
 		if err := processFile(name, stdin, bw, cfg); err != nil {
+			// R3.3: write error to stderr and continue with remaining files.
 			fmt.Fprintf(stderr, "expand: %s\n", err)
 			exitCode = 1
 		}
 	}
+	// R3.4: exit 1 on stdout write error (detected at flush).
 	if err := bw.Flush(); err != nil {
 		exitCode = 1
 	}
+	// R3.1: exit 0 when all inputs processed successfully.
 	return exitCode
 }
 
