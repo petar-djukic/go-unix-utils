@@ -3,7 +3,7 @@
 
 // Implements prd036-mktemp: Create Temporary Files or Directories.
 // Covers R1.1-R1.5 (default behavior), R2.1-R2.3 (directory mode),
-// R3.1-R3.4 (template and location control).
+// R3.1-R3.6 (template and location control).
 package main
 
 import (
@@ -49,12 +49,14 @@ type config struct {
 	suffix    string // R3.3: --suffix=SUFF appended after random chars.
 	tFlag     bool   // R3.4: -t legacy BSD mode.
 	useTmpdir bool   // R3.2: --tmpdir without value.
+	dryRun    bool   // R3.5: -u/--dry-run, print name without creating.
+	quiet     bool   // R3.6: -q/--quiet, suppress error messages.
 }
 
 // run validates the template and creates the temporary file or directory.
 // R1.5: exits 0 on success, 1 on failure with stderr diagnostic.
 func run(cfg config, template string) int {
-	// R3.3: suffix must not contain directory separator.
+	// Template validation errors are always printed (not suppressed by -q).
 	if err := validateSuffix(cfg.suffix); err != nil {
 		fmt.Fprintf(os.Stderr, "mktemp: %v\n", err)
 		return 1
@@ -68,14 +70,43 @@ func run(cfg config, template string) int {
 	}
 
 	dir, base := resolveTemplate(cfg, template)
+
+	if cfg.dryRun {
+		return runDryRun(dir, base, trailingXs, cfg)
+	}
+
 	path, err := createTemp(cfg, dir, base, trailingXs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mktemp: %v\n", err)
-		return 1
+		return reportError(cfg, err)
 	}
 
 	// R1.3, R2.3: print the path of the created file or directory to stdout.
 	fmt.Println(path)
+	return 0
+}
+
+// reportError prints a diagnostic to stderr unless quiet mode is set.
+// R3.6: -q suppresses error messages on failure.
+func reportError(cfg config, err error) int {
+	if !cfg.quiet {
+		fmt.Fprintf(os.Stderr, "mktemp: %v\n", err)
+	}
+	return 1
+}
+
+// runDryRun generates a name without creating the file or directory.
+// R3.5: prints the name and a warning that the option is discouraged.
+func runDryRun(dir, base string, xs int, cfg config) int {
+	fmt.Fprintln(os.Stderr,
+		"mktemp: --dry-run is discouraged; "+
+			"use of this option indicates a race condition")
+	randPart, err := randomString(xs)
+	if err != nil {
+		return reportError(cfg,
+			fmt.Errorf("generating random name: %w", err))
+	}
+	prefix := base[:len(base)-xs]
+	fmt.Println(filepath.Join(dir, prefix+randPart+cfg.suffix))
 	return 0
 }
 
@@ -245,7 +276,7 @@ func parseArgs(args []string) (cfg config, template string, exit int) {
 	return
 }
 
-// parseLongFlag handles long-form options (--directory, --tmpdir, --suffix).
+// parseLongFlag handles long-form options.
 func parseLongFlag(arg string, cfg *config) int {
 	switch {
 	case arg == "--directory":
@@ -259,6 +290,12 @@ func parseLongFlag(arg string, cfg *config) int {
 	case strings.HasPrefix(arg, "--suffix="):
 		// R3.3: --suffix=SUFF appends SUFF after random chars.
 		cfg.suffix = arg[len("--suffix="):]
+	case arg == "--dry-run":
+		// R3.5: print name without creating.
+		cfg.dryRun = true
+	case arg == "--quiet":
+		// R3.6: suppress error messages.
+		cfg.quiet = true
 	default:
 		fmt.Fprintf(os.Stderr,
 			"mktemp: unrecognized option '%s'\n", arg)
@@ -286,7 +323,7 @@ func isShortFlags(arg string) bool {
 		!strings.HasPrefix(arg, "--")
 }
 
-// parseShortFlags handles combined single-char flags like -d, -t, -p.
+// parseShortFlags handles combined single-char flags like -d, -t, -p, -u, -q.
 // Returns -1 to continue, >= 0 for early exit.
 func parseShortFlags(arg string, cfg *config, args []string, idx *int) int {
 	for j := 1; j < len(arg); j++ {
@@ -296,6 +333,12 @@ func parseShortFlags(arg string, cfg *config, args []string, idx *int) int {
 		case 't':
 			// R3.4: -t treats template as filename in TMPDIR.
 			cfg.tFlag = true
+		case 'u':
+			// R3.5: -u dry-run mode.
+			cfg.dryRun = true
+		case 'q':
+			// R3.6: -q quiet mode.
+			cfg.quiet = true
 		case 'p':
 			return parsePFlag(arg[j+1:], cfg, args, idx)
 		default:
@@ -332,6 +375,8 @@ TEMPLATEs must contain at least 3 consecutive 'X's in last component.
 If TEMPLATE is not specified, use tmp.XXXXXXXXXX.
 
   -d, --directory     create a directory, not a file
+  -u, --dry-run       do not create anything; merely print a name (unsafe)
+  -q, --quiet         suppress diagnostics about file/dir-creation failure
   -p DIR, --tmpdir=DIR  use DIR as the parent directory
       --tmpdir        use $TMPDIR or /tmp as parent directory
       --suffix=SUFF   append SUFF to TEMPLATE

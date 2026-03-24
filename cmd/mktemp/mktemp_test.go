@@ -28,6 +28,13 @@ func normalizeNonEmpty(b []byte) []byte {
 	return []byte("NORMALIZED\n")
 }
 
+// normalizeAlways replaces any output (including empty) with a fixed string.
+// Used for tests where stderr content is expected to differ between
+// Go and reference binaries (e.g., dry-run warning messages).
+func normalizeAlways(b []byte) []byte {
+	return []byte("NORMALIZED\n")
+}
+
 // TestDiff runs differential tests comparing the Go binary against gmktemp.
 // R4.1: compares exit codes and structural properties.
 // R4.4: does not compare exact filenames.
@@ -41,6 +48,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	normalize := []testutils.NormalizeFunc{normalizeNonEmpty}
+	normalizeAll := []testutils.NormalizeFunc{normalizeAlways}
 
 	tests := []testutils.DiffTest{
 		{
@@ -102,6 +110,24 @@ func TestDiff(t *testing.T) {
 			// R3.3: suffix with directory separator must fail.
 			Name:      "suffix_with_slash",
 			Args:      []string{"--suffix=/bad"},
+			Normalize: normalize,
+		},
+		{
+			// R3.5: -u dry-run prints name without creating.
+			Name:      "dry_run",
+			Args:      []string{"-u"},
+			Normalize: normalizeAll,
+		},
+		{
+			// R3.5: -u with -d dry-run directory mode.
+			Name:      "dry_run_directory",
+			Args:      []string{"-u", "-d"},
+			Normalize: normalizeAll,
+		},
+		{
+			// R3.6: -q suppresses creation error messages.
+			Name:      "quiet_creation_failure",
+			Args:      []string{"-q", "-p", "/nonexistent/dir", "test.XXXXXX"},
 			Normalize: normalize,
 		},
 	}
@@ -334,6 +360,98 @@ func TestStructural(t *testing.T) {
 		// R2.2: directory mode 0700.
 		if perm := info.Mode().Perm(); perm != 0o700 {
 			t.Errorf("expected mode 0700, got %04o", perm)
+		}
+	})
+
+	t.Run("dry_run_no_file", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.5: -u prints name without creating.
+		path := runMktemp(t, goBin, tmpDir, "-u")
+		if _, err := os.Stat(path); err == nil {
+			t.Error("expected file not to exist in dry-run mode")
+		}
+	})
+
+	t.Run("dry_run_prints_path", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.5: must print the name to stdout.
+		path := runMktemp(t, goBin, tmpDir, "-u")
+		if dir := filepath.Dir(path); dir != tmpDir {
+			t.Errorf("expected dir %s, got %s", tmpDir, dir)
+		}
+		base := filepath.Base(path)
+		if !strings.HasPrefix(base, "tmp.") {
+			t.Errorf("expected prefix 'tmp.', got %s", base)
+		}
+	})
+
+	t.Run("dry_run_prints_warning", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.5: must print a warning to stderr.
+		cmd := exec.Command(goBin, "-u")
+		cmd.Env = buildEnv(tmpDir)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("dry-run failed: %v", err)
+		}
+		if strings.TrimSpace(string(out)) == "" {
+			t.Error("expected path on stdout")
+		}
+		if stderr.Len() == 0 {
+			t.Error("expected warning on stderr")
+		}
+	})
+
+	t.Run("dry_run_directory_no_dir", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.5 + R2.1: -u -d prints name without creating directory.
+		path := runMktemp(t, goBin, tmpDir, "-u", "-d")
+		if _, err := os.Stat(path); err == nil {
+			t.Error("expected directory not to exist in dry-run mode")
+		}
+	})
+
+	t.Run("quiet_suppresses_creation_error", func(t *testing.T) {
+		t.Parallel()
+		// R3.6: -q suppresses creation error messages.
+		// Use a non-existent parent dir to trigger a creation error.
+		badDir := filepath.Join(t.TempDir(), "nonexistent")
+		cmd := exec.Command(goBin, "-q", "-p", badDir, "test.XXXXXX")
+		cmd.Env = buildEnv(t.TempDir())
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		if err == nil {
+			t.Fatal("expected failure")
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("expected no stderr with -q, got: %s",
+				stderr.String())
+		}
+	})
+
+	t.Run("quiet_exits_1", func(t *testing.T) {
+		t.Parallel()
+		// R3.6: -q still exits 1 on creation failure.
+		badDir := filepath.Join(t.TempDir(), "nonexistent")
+		cmd := exec.Command(goBin, "-q", "-p", badDir, "test.XXXXXX")
+		cmd.Env = buildEnv(t.TempDir())
+		err := cmd.Run()
+		if err == nil {
+			t.Fatal("expected failure")
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit 1, got %d", exitErr.ExitCode())
 		}
 	})
 }
