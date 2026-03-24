@@ -306,7 +306,7 @@ releases:
         - id: rel06.1-uc004-whoami
           status: implemented
         - id: rel06.1-uc005-groups
-          status: spec_complete
+          status: implemented
     - version: "07.0"
       name: "Batch 7.0 — text processing pipeline (sort, tr, tail)"
       status: spec_complete
