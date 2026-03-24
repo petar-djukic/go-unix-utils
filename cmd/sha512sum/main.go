@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd033-sha512sum R1.1-R1.4, R2.1-R2.2: Compute and check SHA-512
-// message digests using pkg/hashutil for shared formatting and verification.
-// Check mode supports --warn, --quiet, --status, and --strict.
+// Implements prd033-sha512sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: Compute and
+// check SHA-512 message digests using pkg/hashutil for shared formatting and
+// verification. Check mode supports --warn, --quiet, --status, and --strict.
 package main
 
 import (
@@ -20,6 +20,9 @@ import (
 // version is set at build time via -ldflags "-X main.version=<tag>".
 var version = "dev"
 
+// programName is the name used in error messages.
+const programName = "sha512sum"
+
 // sha512Config is the HashConfig for SHA-512 digests.
 // R1.1: Algorithm="SHA512", NewHash=sha512.New, DigestLen=128 (hex length).
 var sha512Config = hashutil.HashConfig{
@@ -34,10 +37,10 @@ type sha512sumOptions struct {
 	text   bool // -t/--text: default mode, two spaces (R1.3)
 	tag    bool // --tag: BSD-style output (R1.3)
 	check  bool // -c/--check: verify checksums (R2.1)
-	warn   bool // -w/--warn: warn on malformed lines (R2.2)
-	quiet  bool // --quiet: suppress OK lines (R2.2)
-	status bool // --status: suppress all output (R2.2)
-	strict bool // --strict: exit non-zero on malformed lines
+	warn   bool // -w/--warn: warn on malformed lines (R2.3)
+	quiet  bool // --quiet: suppress OK lines (R2.3)
+	status bool // --status: suppress all output (R2.3)
+	strict bool // --strict: exit non-zero on malformed lines (R2.3)
 	zero   bool // -z/--zero: NUL terminator instead of newline
 }
 
@@ -53,7 +56,12 @@ func main() {
 // run executes the sha512sum command with the given options and files.
 // R1.1-R1.2: delegates to hashutil.DigestFiles for digest mode,
 // hashutil.VerifyChecksums for check mode.
+// R3.2: validates flag combinations before proceeding.
 func run(opts sha512sumOptions, files []string) int {
+	if err := validateFlags(opts); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
+	}
 	if opts.check {
 		return runCheck(opts, files)
 	}
@@ -61,6 +69,17 @@ func run(opts sha512sumOptions, files []string) int {
 	return hashutil.DigestFiles(
 		files, sha512Config, opts.binary, opts.tag, stdout, os.Stderr,
 	)
+}
+
+// validateFlags checks for invalid flag combinations.
+// R3.2: --tag is meaningless when verifying checksums.
+func validateFlags(opts sha512sumOptions) error {
+	if opts.tag && opts.check {
+		return fmt.Errorf(
+			"the --tag option is meaningless when verifying checksums",
+		)
+	}
+	return nil
 }
 
 // wrapStdout returns a writer that replaces newlines with NUL bytes
@@ -73,7 +92,8 @@ func wrapStdout(zero bool) io.Writer {
 }
 
 // runCheck verifies checksums from the given files.
-// R2.1-R2.2: reads checksum file, prints OK/FAILED per entry.
+// R2.1-R2.3: reads checksum file, prints OK/FAILED per entry.
+// Supports --quiet, --status, --warn, --strict options.
 func runCheck(opts sha512sumOptions, files []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
@@ -81,20 +101,31 @@ func runCheck(opts sha512sumOptions, files []string) int {
 	checkOpts := buildCheckOptions(opts)
 	exitCode := 0
 	for _, f := range files {
-		ok, err := hashutil.VerifyChecksums(
-			f, sha512Config, checkOpts, os.Stdout, os.Stderr,
-		)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "sha512sum: %v\n", err)
-			exitCode = 1
-		} else if !ok {
+		if err := verifyOneFile(f, checkOpts, &exitCode); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
 			exitCode = 1
 		}
 	}
 	return exitCode
 }
 
+// verifyOneFile runs VerifyChecksums on a single checksum file and
+// updates exitCode if verification fails.
+func verifyOneFile(f string, checkOpts hashutil.CheckOptions, exitCode *int) error {
+	ok, err := hashutil.VerifyChecksums(
+		f, sha512Config, checkOpts, os.Stdout, os.Stderr,
+	)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		*exitCode = 1
+	}
+	return nil
+}
+
 // buildCheckOptions constructs CheckOptions from sha512sumOptions.
+// R2.3: --strict enables warnings and is handled at the exit-code level.
 func buildCheckOptions(opts sha512sumOptions) hashutil.CheckOptions {
 	return hashutil.CheckOptions{
 		Warn:   opts.warn || opts.strict,
@@ -138,7 +169,7 @@ func parseFlags(args []string) (sha512sumOptions, []string) {
 		}
 		if len(arg) > 1 && arg[0] == '-' && arg != "-" {
 			if err := applyShortFlags(arg[1:], &opts); err != nil {
-				fmt.Fprintf(os.Stderr, "sha512sum: %s\n", err)
+				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 				os.Exit(1)
 			}
 			continue
@@ -170,7 +201,7 @@ func handleLongFlag(arg string, opts *sha512sumOptions) bool {
 	case "--zero":
 		opts.zero = true
 	case "--version":
-		fmt.Printf("sha512sum (go-unix-utils) %s\n", version)
+		fmt.Printf("%s (go-unix-utils) %s\n", programName, version)
 		os.Exit(0)
 	case "--help":
 		printHelp()
