@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/ln comparing against gln (GNU coreutils).
 // Covers prd037-ln R1.1-R1.4 (hard links), R2.1-R2.4 (symbolic links,
-// relative), R3.1-R3.4 (force, no-dereference, interactive, verbose).
+// relative), R3.1-R3.6 (force, no-dereference, interactive, verbose,
+// backup, suffix), R4.1-R4.3 (differential tests, filesystem state).
 package main
 
 import (
@@ -157,6 +158,7 @@ func mustMkdir(t *testing.T, path string) {
 }
 
 // TestHardLinkBasic verifies R1.1: hard link from TARGET to LINK_NAME.
+// R4.3: verifies link type (hard).
 func TestHardLinkBasic(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gln")
@@ -238,6 +240,7 @@ func TestHardLinkExistingDest(t *testing.T) {
 }
 
 // TestSymlinkBasic verifies R2.1: -s creates symbolic link.
+// R4.3: verifies link type (symbolic) and target.
 func TestSymlinkBasic(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gln")
@@ -601,7 +604,260 @@ func TestForceInteractiveLastWins(t *testing.T) {
 	compareResults(t, "force_interactive_last_wins", refRes, goRes)
 }
 
+// TestBackupSimple verifies R3.5: -b creates a backup with ~ suffix.
+// R4.1: compares filesystem state (backup file exists with original content).
+func TestBackupSimple(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	refRes := runBin(t, refBin,
+		[]string{"-bf", "src.txt", "dst.txt"}, refDir)
+	refBackup := readFileContent(t, filepath.Join(refDir, "dst.txt~"))
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	goRes := runBin(t, goBin,
+		[]string{"-bf", "src.txt", "dst.txt"}, goDir)
+	goBackup := readFileContent(t, filepath.Join(goDir, "dst.txt~"))
+
+	compareResults(t, "backup_simple", refRes, goRes)
+	assertHardLink(t, filepath.Join(goDir, "src.txt"),
+		filepath.Join(goDir, "dst.txt"), "go-link")
+	if refBackup != goBackup {
+		t.Errorf("backup content mismatch: ref=%q go=%q",
+			refBackup, goBackup)
+	}
+}
+
+// TestBackupNumbered verifies R3.5: --backup=numbered creates numbered
+// backups like dst.txt.~1~.
+// R4.1: compares filesystem state.
+func TestBackupNumbered(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	refRes := runBin(t, refBin,
+		[]string{"-f", "--backup=numbered", "src.txt", "dst.txt"}, refDir)
+	assertFileExists(t, filepath.Join(refDir, "dst.txt.~1~"), "ref")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	goRes := runBin(t, goBin,
+		[]string{"-f", "--backup=numbered", "src.txt", "dst.txt"}, goDir)
+	assertFileExists(t, filepath.Join(goDir, "dst.txt.~1~"), "go")
+
+	compareResults(t, "backup_numbered", refRes, goRes)
+}
+
+// TestBackupNumberedIncrement verifies R3.5: numbered backups increment.
+// R4.1: compares that ~1~ and ~2~ both exist.
+func TestBackupNumberedIncrement(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "v1")
+	runBin(t, refBin,
+		[]string{"-f", "--backup=numbered", "src.txt", "dst.txt"}, refDir)
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "v2")
+	refRes := runBin(t, refBin,
+		[]string{"-f", "--backup=numbered", "src.txt", "dst.txt"}, refDir)
+	assertFileExists(t, filepath.Join(refDir, "dst.txt.~1~"), "ref-1")
+	assertFileExists(t, filepath.Join(refDir, "dst.txt.~2~"), "ref-2")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "v1")
+	runBin(t, goBin,
+		[]string{"-f", "--backup=numbered", "src.txt", "dst.txt"}, goDir)
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "v2")
+	goRes := runBin(t, goBin,
+		[]string{"-f", "--backup=numbered", "src.txt", "dst.txt"}, goDir)
+	assertFileExists(t, filepath.Join(goDir, "dst.txt.~1~"), "go-1")
+	assertFileExists(t, filepath.Join(goDir, "dst.txt.~2~"), "go-2")
+
+	compareResults(t, "backup_numbered_increment", refRes, goRes)
+}
+
+// TestBackupExistingFallsToSimple verifies R3.5: --backup=existing
+// uses simple backup when no numbered backups exist.
+func TestBackupExistingFallsToSimple(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	refRes := runBin(t, refBin,
+		[]string{"-f", "--backup=existing", "src.txt", "dst.txt"}, refDir)
+	assertFileExists(t, filepath.Join(refDir, "dst.txt~"), "ref")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	goRes := runBin(t, goBin,
+		[]string{"-f", "--backup=existing", "src.txt", "dst.txt"}, goDir)
+	assertFileExists(t, filepath.Join(goDir, "dst.txt~"), "go")
+
+	compareResults(t, "backup_existing_simple", refRes, goRes)
+}
+
+// TestBackupExistingUsesNumbered verifies R3.5: --backup=existing uses
+// numbered backup when numbered backups already exist.
+func TestBackupExistingUsesNumbered(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	// Create a numbered backup so existing mode detects it.
+	writeFile(t, filepath.Join(refDir, "dst.txt.~1~"), "backup1")
+	refRes := runBin(t, refBin,
+		[]string{"-f", "--backup=existing", "src.txt", "dst.txt"}, refDir)
+	assertFileExists(t, filepath.Join(refDir, "dst.txt.~2~"), "ref")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	writeFile(t, filepath.Join(goDir, "dst.txt.~1~"), "backup1")
+	goRes := runBin(t, goBin,
+		[]string{"-f", "--backup=existing", "src.txt", "dst.txt"}, goDir)
+	assertFileExists(t, filepath.Join(goDir, "dst.txt.~2~"), "go")
+
+	compareResults(t, "backup_existing_numbered", refRes, goRes)
+}
+
+// TestBackupNone verifies R3.5: --backup=none skips backup creation.
+func TestBackupNone(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	refRes := runBin(t, refBin,
+		[]string{"-f", "--backup=none", "src.txt", "dst.txt"}, refDir)
+	assertFileNotExists(t, filepath.Join(refDir, "dst.txt~"), "ref")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	goRes := runBin(t, goBin,
+		[]string{"-f", "--backup=none", "src.txt", "dst.txt"}, goDir)
+	assertFileNotExists(t, filepath.Join(goDir, "dst.txt~"), "go")
+
+	compareResults(t, "backup_none", refRes, goRes)
+}
+
+// TestBackupCustomSuffix verifies R3.6: -S changes the backup suffix.
+// R4.1: compares filesystem state.
+func TestBackupCustomSuffix(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	refRes := runBin(t, refBin,
+		[]string{"-bf", "-S", ".bak", "src.txt", "dst.txt"}, refDir)
+	assertFileExists(t, filepath.Join(refDir, "dst.txt.bak"), "ref")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	goRes := runBin(t, goBin,
+		[]string{"-bf", "-S", ".bak", "src.txt", "dst.txt"}, goDir)
+	assertFileExists(t, filepath.Join(goDir, "dst.txt.bak"), "go")
+
+	compareResults(t, "backup_custom_suffix", refRes, goRes)
+}
+
+// TestBackupSuffixLongFlag verifies R3.6: --suffix=SUFFIX variant.
+func TestBackupSuffixLongFlag(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(refDir, "dst.txt"), "original")
+	refRes := runBin(t, refBin,
+		[]string{"-bf", "--suffix=.orig", "src.txt", "dst.txt"}, refDir)
+	assertFileExists(t, filepath.Join(refDir, "dst.txt.orig"), "ref")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "src.txt"), "source")
+	writeFile(t, filepath.Join(goDir, "dst.txt"), "original")
+	goRes := runBin(t, goBin,
+		[]string{"-bf", "--suffix=.orig", "src.txt", "dst.txt"}, goDir)
+	assertFileExists(t, filepath.Join(goDir, "dst.txt.orig"), "go")
+
+	compareResults(t, "backup_suffix_long", refRes, goRes)
+}
+
+// TestBackupSymlink verifies R3.5: -b with symbolic link creation.
+// R4.3: verifies the resulting link is symbolic.
+func TestBackupSymlink(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skipf("reference binary gln not in PATH: %v", err)
+	}
+
+	refDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "target.txt"), "content")
+	writeFile(t, filepath.Join(refDir, "link.txt"), "old")
+	refRes := runBin(t, refBin,
+		[]string{"-sbf", "target.txt", "link.txt"}, refDir)
+	assertSymlink(t, filepath.Join(refDir, "link.txt"), "target.txt", "ref")
+	assertFileExists(t, filepath.Join(refDir, "link.txt~"), "ref-backup")
+
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(goDir, "target.txt"), "content")
+	writeFile(t, filepath.Join(goDir, "link.txt"), "old")
+	goRes := runBin(t, goBin,
+		[]string{"-sbf", "target.txt", "link.txt"}, goDir)
+	assertSymlink(t, filepath.Join(goDir, "link.txt"), "target.txt", "go")
+	assertFileExists(t, filepath.Join(goDir, "link.txt~"), "go-backup")
+
+	compareResults(t, "backup_symlink", refRes, goRes)
+}
+
 // assertHardLink verifies two paths share the same inode.
+// R4.3: verifies link type is hard (same file).
 func assertHardLink(t *testing.T, src, dst, label string) {
 	t.Helper()
 	srcInfo, err := os.Stat(src)
@@ -620,6 +876,7 @@ func assertHardLink(t *testing.T, src, dst, label string) {
 }
 
 // assertSymlink verifies a symlink points to the expected target.
+// R4.3: verifies link type is symbolic and target matches.
 func assertSymlink(t *testing.T, link, expectedTarget, label string) {
 	t.Helper()
 	target, err := os.Readlink(link)
@@ -631,4 +888,31 @@ func assertSymlink(t *testing.T, link, expectedTarget, label string) {
 		t.Errorf("[%s] symlink target = %q, want %q",
 			label, target, expectedTarget)
 	}
+}
+
+// assertFileExists verifies a file exists at the given path.
+// R4.1: filesystem state comparison.
+func assertFileExists(t *testing.T, path, label string) {
+	t.Helper()
+	if _, err := os.Lstat(path); err != nil {
+		t.Errorf("[%s] expected file %s to exist: %v", label, path, err)
+	}
+}
+
+// assertFileNotExists verifies no file exists at the given path.
+func assertFileNotExists(t *testing.T, path, label string) {
+	t.Helper()
+	if _, err := os.Lstat(path); err == nil {
+		t.Errorf("[%s] expected file %s to not exist", label, path)
+	}
+}
+
+// readFileContent reads file content as a string.
+func readFileContent(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("readFileContent %s: %v", path, err)
+	}
+	return string(data)
 }

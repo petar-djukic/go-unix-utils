@@ -4,7 +4,7 @@
 // Implements prd037-ln: Create Links Between Files.
 // Covers R1.1-R1.4 (hard link creation, multi-target, error handling),
 // R2.1-R2.4 (symbolic links, relative path computation),
-// R3.1-R3.4 (force, no-dereference, interactive, verbose).
+// R3.1-R3.6 (force, no-dereference, interactive, verbose, backup, suffix).
 package main
 
 import (
@@ -19,6 +19,16 @@ import (
 
 // version is set at build time via -ldflags "-X main.version=<tag>".
 var version = "dev"
+
+// backupMethod represents the --backup=METHOD value.
+type backupMethod int
+
+const (
+	backupNone     backupMethod = iota // no backup
+	backupSimple                       // always simple (~)
+	backupNumbered                     // always numbered (~N~)
+	backupExisting                     // numbered if existing, else simple
+)
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -45,6 +55,9 @@ type config struct {
 	noDereference bool
 	verbose       bool
 	relative      bool
+	backup        backupMethod
+	doBackup      bool   // true when -b or --backup is given
+	suffix        string // R3.6: backup suffix, defaults to "~"
 }
 
 // run dispatches link creation and returns the exit code.
@@ -133,8 +146,9 @@ func computeRelative(target, linkName string) (string, error) {
 }
 
 // prepareDestination handles an existing destination file.
-// Returns -1 to proceed, 1 for error or interactive decline.
+// Returns -1 to proceed, 0 for interactive decline, 1 for error.
 // R3.1: -f removes existing. R3.3: -i prompts before removal.
+// R3.5: creates backup before removal when -b/--backup is given.
 func prepareDestination(cfg config, linkName string) int {
 	if !destExists(linkName) {
 		return -1
@@ -143,12 +157,71 @@ func prepareDestination(cfg config, linkName string) int {
 		if !promptReplace(linkName) {
 			return 1
 		}
-		return removeDest(linkName)
+		return backupAndRemove(cfg, linkName)
 	}
 	if cfg.force {
-		return removeDest(linkName)
+		return backupAndRemove(cfg, linkName)
 	}
 	return -1 // let the OS call report the conflict
+}
+
+// backupAndRemove creates a backup (if configured) then removes dest.
+// R3.5: backup before removal. When backup uses rename, the original
+// is already gone so removeDest is skipped.
+func backupAndRemove(cfg config, linkName string) int {
+	if cfg.doBackup && cfg.backup != backupNone {
+		if code := createBackup(cfg, linkName); code != 0 {
+			return code
+		}
+		return -1 // rename moved the file; no removal needed
+	}
+	return removeDest(linkName)
+}
+
+// createBackup creates a backup of the destination file.
+// R3.5: backup methods — simple, numbered, existing.
+func createBackup(cfg config, linkName string) int {
+	backupPath := chooseBackupPath(cfg, linkName)
+	if err := os.Rename(linkName, backupPath); err != nil {
+		fmt.Fprintf(os.Stderr, "ln: cannot backup '%s': %s\n",
+			linkName, unwrapErrMsg(err))
+		return 1
+	}
+	return 0
+}
+
+// chooseBackupPath selects the backup path based on the method.
+// R3.5: numbered (~1~, ~2~), existing (numbered if any exist),
+// simple (suffix only).
+func chooseBackupPath(cfg config, linkName string) string {
+	switch cfg.backup {
+	case backupNumbered:
+		return numberedBackupPath(linkName)
+	case backupExisting:
+		if hasNumberedBackup(linkName) {
+			return numberedBackupPath(linkName)
+		}
+		return linkName + cfg.suffix
+	default:
+		return linkName + cfg.suffix
+	}
+}
+
+// numberedBackupPath finds the next available numbered backup name.
+// Format: file.~N~ where N starts at 1.
+func numberedBackupPath(linkName string) string {
+	for n := 1; ; n++ {
+		path := fmt.Sprintf("%s.~%d~", linkName, n)
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			return path
+		}
+	}
+}
+
+// hasNumberedBackup checks if any numbered backup (~N~) exists.
+func hasNumberedBackup(linkName string) bool {
+	_, err := os.Lstat(linkName + ".~1~")
+	return err == nil
 }
 
 // removeDest removes the destination file or symlink.
@@ -305,7 +378,9 @@ func capitalizeFirst(s string) string {
 // parseArgs processes flags and returns configuration.
 // exit is -1 when processing should continue; >= 0 for early termination.
 // R3.3: when -f and -i are both given, the last one on the command line wins.
+// R3.5: -b and --backup. R3.6: -S and --suffix.
 func parseArgs(args []string) (cfg config, targets []string, exit int) {
+	cfg.suffix = "~" // R3.6: default backup suffix
 	exit = -1
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -331,9 +406,36 @@ func parseArgs(args []string) (cfg config, targets []string, exit int) {
 			cfg.verbose = true
 		case arg == "--relative":
 			cfg.relative = true
+		case arg == "--backup":
+			// R3.5: --backup without =METHOD defaults to existing
+			cfg.doBackup = true
+			cfg.backup = backupExisting
+		case strings.HasPrefix(arg, "--backup="):
+			// R3.5: --backup=METHOD
+			method := strings.TrimPrefix(arg, "--backup=")
+			bm, ok := parseBackupMethod(method)
+			if !ok {
+				fmt.Fprintf(os.Stderr,
+					"ln: invalid backup type '%s'\n", method)
+				return cfg, nil, 1
+			}
+			cfg.doBackup = true
+			cfg.backup = bm
+		case strings.HasPrefix(arg, "--suffix="):
+			// R3.6: --suffix=SUFFIX
+			cfg.suffix = strings.TrimPrefix(arg, "--suffix=")
+		case arg == "--suffix":
+			// R3.6: --suffix SUFFIX (next arg)
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr,
+					"ln: option '--suffix' requires an argument")
+				return cfg, nil, 1
+			}
+			i++
+			cfg.suffix = args[i]
 		case strings.HasPrefix(arg, "-") && len(arg) > 1 &&
 			!strings.HasPrefix(arg, "--"):
-			exit = parseShortFlags(arg, &cfg)
+			i, exit = parseShortFlags(arg, args, i, &cfg)
 			if exit >= 0 {
 				return cfg, nil, exit
 			}
@@ -345,10 +447,30 @@ func parseArgs(args []string) (cfg config, targets []string, exit int) {
 	return
 }
 
+// parseBackupMethod converts a string method to a backupMethod.
+// R3.5: numbered/t, existing/nil, simple/never, none/off.
+func parseBackupMethod(s string) (backupMethod, bool) {
+	switch s {
+	case "none", "off":
+		return backupNone, true
+	case "simple", "never":
+		return backupSimple, true
+	case "numbered", "t":
+		return backupNumbered, true
+	case "existing", "nil":
+		return backupExisting, true
+	default:
+		return backupNone, false
+	}
+}
+
 // parseShortFlags handles combined single-char flags like -sfn.
-// Returns -1 to continue, >= 0 for early exit.
+// Returns updated index and exit code (-1 to continue, >= 0 for early exit).
 // R3.3: -f and -i override each other; last one wins.
-func parseShortFlags(arg string, cfg *config) int {
+// R3.5: -b enables backup. R3.6: -S takes next arg as suffix.
+func parseShortFlags(
+	arg string, args []string, idx int, cfg *config,
+) (int, int) {
 	for j := 1; j < len(arg); j++ {
 		switch arg[j] {
 		case 's':
@@ -365,13 +487,31 @@ func parseShortFlags(arg string, cfg *config) int {
 			cfg.verbose = true
 		case 'r':
 			cfg.relative = true
+		case 'b':
+			// R3.5: -b enables simple backup
+			cfg.doBackup = true
+			cfg.backup = backupSimple
+		case 'S':
+			// R3.6: -S takes the remainder or next arg as suffix
+			if j+1 < len(arg) {
+				cfg.suffix = arg[j+1:]
+				return idx, -1
+			}
+			if idx+1 >= len(args) {
+				fmt.Fprintln(os.Stderr,
+					"ln: option requires an argument -- 'S'")
+				return idx, 1
+			}
+			idx++
+			cfg.suffix = args[idx]
+			return idx, -1
 		default:
 			fmt.Fprintf(os.Stderr,
 				"ln: unrecognized option '-%c'\n", arg[j])
-			return 1
+			return idx, 1
 		}
 	}
-	return -1
+	return idx, -1
 }
 
 // printHelp writes usage information to stdout and returns the exit code.
@@ -380,14 +520,16 @@ func printHelp() int {
   or:  ln [OPTION]... TARGET... DIRECTORY
 Create links between files.
 
-  -f, --force            remove existing destination files
-  -i, --interactive      prompt before removing destinations
-  -n, --no-dereference   treat LINK_NAME as a normal file if
-                           it is a symbolic link to a directory
-  -r, --relative         with -s, create relative symbolic links
-  -s, --symbolic         make symbolic links instead of hard links
-  -v, --verbose          print name of each linked file
-
+  -b                       like --backup but does not accept an argument
+  -f, --force              remove existing destination files
+  -i, --interactive        prompt before removing destinations
+  -n, --no-dereference     treat LINK_NAME as a normal file if
+                             it is a symbolic link to a directory
+  -r, --relative           with -s, create relative symbolic links
+  -s, --symbolic           make symbolic links instead of hard links
+  -S, --suffix=SUFFIX      override the usual backup suffix
+  -v, --verbose            print name of each linked file
+      --backup[=CONTROL]   make a backup of each existing destination file
       --help     display this help and exit
       --version  output version information and exit
 `)
