@@ -45,7 +45,7 @@ releases:
         or pkg/format.
       use_cases:
         - id: rel01.2-uc001-sponge
-          status: spec_complete
+          status: implemented
     - version: "01.3"
       name: "Batch 1.3 — du specification and differential test"
       status: spec_complete
