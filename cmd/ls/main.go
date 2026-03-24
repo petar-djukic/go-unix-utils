@@ -1,28 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.6: basic directory listing with output modes.
-// R1.1: multi-column output when stdout is a TTY.
-// R1.2: single-column output when stdout is not a TTY.
-// R1.3: C locale sort order (LC_COLLATE=C).
-// R1.4: hide dot-entries by default; -a shows all, -A shows almost all.
-// R1.5: -1 forces single-column output.
-// R1.6: -l long format with permissions, nlink, owner, group, size, mtime.
-// R1.11-R1.12: -C forces multi-column, vertical sort.
-// -R recursive listing.
+// Implements prd008-ls R1.1-R1.12, R2.1-R2.12: directory listing with output
+// modes, sorting flags (-t, -S, -r, -U), filtering (-a, -A, -d), metadata
+// display (-s, -i), human-readable sizes (-h), and recursive listing (-R).
 package main
 
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"sort"
-	"strconv"
 	"strings"
-	"time"
-	"unicode/utf8"
 
-	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -40,25 +29,45 @@ const (
 type filterMode int
 
 const (
-	filterDefault filterMode = iota // hide dot-entries
-	filterAlmostAll                 // -A: show dot-entries except . and ..
-	filterAll                       // -a: show all including . and ..
+	filterDefault   filterMode = iota // hide dot-entries
+	filterAlmostAll                   // -A: show dot-entries except . and ..
+	filterAll                         // -a: show all including . and ..
+)
+
+// sortMode selects the sort order.
+type sortMode int
+
+const (
+	sortName sortMode = iota // default: alphabetical C locale
+	sortTime                 // -t: by modification time, newest first
+	sortSize                 // -S: by file size, largest first
+	sortNone                 // -U: directory order (no sort)
 )
 
 // lsConfig holds parsed command-line options.
 type lsConfig struct {
-	output    outputMode
-	filter    filterMode
-	recursive bool // -R
-	args      []string
+	output        outputMode
+	filter        filterMode
+	sorting       sortMode
+	reverse       bool // -r: reverse sort order
+	humanReadable bool // -h: human-readable sizes
+	showBlocks    bool // -s: show allocated block count
+	showInode     bool // -i: show inode number
+	dirOnly       bool // -d: list directories themselves
+	recursive     bool // -R: recurse into subdirectories
+	args          []string
 }
 
-// defaultTermWidth is used when stdout is not a TTY and -C is forced.
-const defaultTermWidth = 80
+// entry holds a directory entry with cached metadata.
+type entry struct {
+	name string
+	path string
+	info *sys.FileInfo // nil if stat failed
+}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	// D5: set LC_ALL=C for consistent collation.
+	// R1.3: C locale sort order.
 	os.Setenv("LC_ALL", "C")
 
 	cfg := parseArgs(os.Args[1:])
@@ -97,7 +106,7 @@ func parseArgs(args []string) lsConfig {
 	return cfg
 }
 
-// parseShortFlags processes a cluster of short flags (e.g., "-laR").
+// parseShortFlags processes a cluster of short flags (e.g., "-laRtSr").
 func parseShortFlags(flags string, cfg *lsConfig) {
 	for _, ch := range flags {
 		switch ch {
@@ -113,6 +122,22 @@ func parseShortFlags(flags string, cfg *lsConfig) {
 			cfg.output = modeColumns
 		case 'R':
 			cfg.recursive = true
+		case 't':
+			cfg.sorting = sortTime
+		case 'S':
+			cfg.sorting = sortSize
+		case 'r':
+			cfg.reverse = true
+		case 'U':
+			cfg.sorting = sortNone
+		case 'h':
+			cfg.humanReadable = true
+		case 's':
+			cfg.showBlocks = true
+		case 'i':
+			cfg.showInode = true
+		case 'd':
+			cfg.dirOnly = true
 		}
 	}
 }
@@ -126,6 +151,10 @@ func handleLongFlag(arg string, cfg *lsConfig) bool {
 		cfg.filter = filterAlmostAll
 	case "--recursive":
 		cfg.recursive = true
+	case "--reverse":
+		cfg.reverse = true
+	case "--human-readable":
+		cfg.humanReadable = true
 	default:
 		return false
 	}
@@ -140,9 +169,17 @@ List information about the FILEs (the current directory by default).
   -a, --all            do not ignore entries starting with .
   -A, --almost-all     do not list implied . and ..
   -C                   list entries by columns
+  -d                   list directories themselves, not their contents
+  -h, --human-readable print sizes in human-readable format
+  -i                   print the index number of each file
   -l                   use a long listing format
-  -1                   list one file per line
+  -r, --reverse        reverse order while sorting
   -R, --recursive      list subdirectories recursively
+  -s                   print the allocated size of each file
+  -S                   sort by file size, largest first
+  -t                   sort by time, newest first
+  -U                   do not sort; list entries in directory order
+  -1                   list one file per line
       --help           display this help and exit
       --version        output version information and exit
 `)
@@ -150,10 +187,37 @@ List information about the FILEs (the current directory by default).
 
 // run processes all arguments and returns the exit code.
 func run(cfg lsConfig) int {
+	if cfg.dirOnly {
+		return runDirOnly(cfg)
+	}
+	return runNormal(cfg)
+}
+
+// runDirOnly handles -d: list entries themselves without descending.
+// R2.3: directories are listed as entries, not their contents.
+func runDirOnly(cfg lsConfig) int {
+	entries := make([]entry, 0, len(cfg.args))
 	exitCode := 0
-	// Separate files and directories.
-	var files []string
-	var dirs []string
+	for _, arg := range cfg.args {
+		fi, err := sys.Lstat(arg)
+		if err != nil {
+			reportError("cannot access", arg, err)
+			exitCode = 1
+			continue
+		}
+		entries = append(entries, entry{name: arg, path: arg, info: fi})
+	}
+	sortEntries(entries, cfg)
+	if code := displayEntries(entries, cfg); code != 0 {
+		exitCode = 1
+	}
+	return exitCode
+}
+
+// runNormal processes arguments separating files and directories.
+func runNormal(cfg lsConfig) int {
+	exitCode := 0
+	var fileEntries, dirEntries []entry
 	for _, arg := range cfg.args {
 		fi, err := sys.Stat(arg)
 		if err != nil {
@@ -161,33 +225,39 @@ func run(cfg lsConfig) int {
 			exitCode = 1
 			continue
 		}
+		e := entry{name: arg, path: arg, info: fi}
 		if fi.Mode.IsDir() {
-			dirs = append(dirs, arg)
+			dirEntries = append(dirEntries, e)
 		} else {
-			files = append(files, arg)
+			fileEntries = append(fileEntries, e)
 		}
 	}
-	sort.Strings(files)
-	sort.Strings(dirs)
+	sortEntries(fileEntries, cfg)
+	sortEntries(dirEntries, cfg)
 
-	// Print file arguments first.
-	if len(files) > 0 {
-		if exitCode |= listFiles(files, cfg); exitCode != 0 {
+	if len(fileEntries) > 0 {
+		if code := displayEntries(fileEntries, cfg); code != 0 {
 			exitCode = 1
 		}
 	}
 
-	multipleTargets := len(files) > 0 || len(dirs) > 1
-	needBlank := len(files) > 0
+	needBlank := len(fileEntries) > 0
+	showHeader := len(fileEntries) > 0 || len(dirEntries) > 1
+	exitCode |= listDirs(dirEntries, cfg, needBlank, showHeader)
+	return exitCode
+}
 
-	for _, dir := range dirs {
+// listDirs lists multiple directory arguments in order.
+func listDirs(dirs []entry, cfg lsConfig, needBlank, showHeader bool) int {
+	exitCode := 0
+	for _, de := range dirs {
 		if needBlank {
 			fmt.Println()
 		}
-		if multipleTargets || cfg.recursive {
-			fmt.Printf("%s:\n", dir)
+		if showHeader || cfg.recursive {
+			fmt.Printf("%s:\n", de.name)
 		}
-		if code := listDir(dir, cfg); code != 0 {
+		if code := listDir(de.path, cfg); code != 0 {
 			exitCode = 1
 		}
 		needBlank = true
@@ -195,69 +265,148 @@ func run(cfg lsConfig) int {
 	return exitCode
 }
 
-// listFiles prints non-directory file arguments.
-func listFiles(files []string, cfg lsConfig) int {
-	if cfg.output == modeLong {
-		return printLongEntries(files)
-	}
-	printEntries(files, cfg)
-	return 0
-}
-
 // listDir lists the contents of a single directory.
 func listDir(dir string, cfg lsConfig) int {
-	exitCode := 0
 	rawEntries, err := os.ReadDir(dir)
 	if err != nil {
 		reportError("cannot open directory", dir, err)
 		return 1
 	}
 
-	names := filterEntries(rawEntries, cfg.filter)
-	sort.Strings(names)
-
-	paths := buildPaths(dir, names)
-
-	if cfg.output == modeLong {
-		if code := printLongDir(paths, names); code != 0 {
-			exitCode = 1
-		}
-	} else {
-		printEntries(names, cfg)
+	entries := buildDirEntries(dir, rawEntries, cfg.filter)
+	if needsStat(cfg) {
+		statEntriesInPlace(entries)
 	}
+	sortEntries(entries, cfg)
+
+	exitCode := displayDirEntries(entries, cfg)
 
 	if cfg.recursive {
-		exitCode |= recurseSubdirs(dir, rawEntries, cfg)
+		exitCode |= recurseSubdirs(dir, entries, cfg)
 	}
 	return exitCode
 }
 
-// filterEntries returns entry names matching the filter mode.
+// buildDirEntries creates entry structs from directory entries with filtering.
 // R1.4: default hides dot-entries.
 // R2.1: -a shows all including . and ..
 // R2.2: -A shows dot-entries except . and ..
-func filterEntries(entries []os.DirEntry, filter filterMode) []string {
-	var names []string
+func buildDirEntries(dir string, raw []os.DirEntry, filter filterMode) []entry {
+	var entries []entry
 	if filter == filterAll {
-		names = append(names, ".", "..")
+		entries = append(entries,
+			entry{name: ".", path: joinPath(dir, ".")},
+			entry{name: "..", path: joinPath(dir, "..")},
+		)
 	}
-	for _, e := range entries {
+	for _, e := range raw {
 		name := e.Name()
 		if filter == filterDefault && strings.HasPrefix(name, ".") {
 			continue
 		}
-		names = append(names, name)
+		entries = append(entries, entry{name: name, path: joinPath(dir, name)})
 	}
-	return names
+	return entries
 }
 
-// buildPaths constructs full paths for directory entries.
-func buildPaths(dir string, names []string) []string {
-	paths := make([]string, len(names))
-	for i, name := range names {
-		paths[i] = joinPath(dir, name)
+// needsStat returns true when entry metadata is required for sorting or display.
+func needsStat(cfg lsConfig) bool {
+	return cfg.output == modeLong ||
+		cfg.sorting == sortTime ||
+		cfg.sorting == sortSize ||
+		cfg.showBlocks ||
+		cfg.showInode ||
+		cfg.recursive
+}
+
+// statEntriesInPlace populates the info field for each entry via Lstat.
+func statEntriesInPlace(entries []entry) {
+	for i := range entries {
+		fi, err := sys.Lstat(entries[i].path)
+		if err == nil {
+			entries[i].info = fi
+		}
 	}
-	return paths
+}
+
+// sortEntries sorts entries according to the configured sort mode.
+// R2.5: -t sorts by mtime newest first.
+// R2.6: -S sorts by size largest first.
+// R2.7: -r reverses the sort order.
+// R2.8: -U disables sorting.
+func sortEntries(entries []entry, cfg lsConfig) {
+	if cfg.sorting == sortNone || len(entries) <= 1 {
+		return
+	}
+	cmp := selectComparator(cfg.sorting)
+	if cfg.reverse {
+		orig := cmp
+		cmp = func(a, b entry) bool { return orig(b, a) }
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return cmp(entries[i], entries[j])
+	})
+}
+
+// selectComparator returns the less function for the given sort mode.
+func selectComparator(mode sortMode) func(a, b entry) bool {
+	switch mode {
+	case sortTime:
+		return compareByTime
+	case sortSize:
+		return compareBySize
+	default:
+		return compareByName
+	}
+}
+
+// compareByName sorts alphabetically by name in C locale order.
+func compareByName(a, b entry) bool {
+	return a.name < b.name
+}
+
+// compareByTime sorts by modification time, newest first.
+// R2.5: ties broken by name in C locale order.
+func compareByTime(a, b entry) bool {
+	if a.info == nil || b.info == nil {
+		return compareByName(a, b)
+	}
+	if !a.info.ModTime.Equal(b.info.ModTime) {
+		return a.info.ModTime.After(b.info.ModTime)
+	}
+	return a.name < b.name
+}
+
+// compareBySize sorts by file size, largest first.
+// R2.6: ties broken by name in C locale order.
+func compareBySize(a, b entry) bool {
+	if a.info == nil || b.info == nil {
+		return compareByName(a, b)
+	}
+	if a.info.Size != b.info.Size {
+		return a.info.Size > b.info.Size
+	}
+	return a.name < b.name
+}
+
+// recurseSubdirs handles -R recursive listing for subdirectories.
+// R3.13: does not follow symbolic links to directories.
+func recurseSubdirs(dir string, entries []entry, cfg lsConfig) int {
+	exitCode := 0
+	for _, e := range entries {
+		if e.name == "." || e.name == ".." {
+			continue
+		}
+		if e.info == nil || !e.info.Mode.IsDir() {
+			continue
+		}
+		fmt.Println()
+		fmt.Printf("%s:\n", e.path)
+		if code := listDir(e.path, cfg); code != 0 {
+			exitCode = 1
+		}
+	}
+	return exitCode
 }
 
 // joinPath concatenates parent and child, avoiding double slashes.
@@ -266,339 +415,6 @@ func joinPath(parent, child string) string {
 		return parent + child
 	}
 	return parent + "/" + child
-}
-
-// printEntries outputs entries in the selected mode (single or multi-column).
-func printEntries(names []string, cfg lsConfig) {
-	if len(names) == 0 {
-		return
-	}
-	mode := resolveOutputMode(cfg)
-	if mode == modeColumns {
-		printColumnar(names)
-		return
-	}
-	// Single-column output.
-	for _, name := range names {
-		fmt.Println(name)
-	}
-}
-
-// resolveOutputMode determines the effective output mode.
-// R1.1/R1.2: default is multi-column when TTY, single-column otherwise.
-// R1.5: -1 forces single-column.
-// R1.11: -C forces multi-column.
-func resolveOutputMode(cfg lsConfig) outputMode {
-	if cfg.output != modeDefault {
-		return cfg.output
-	}
-	if sys.IsTerminal(os.Stdout.Fd()) {
-		return modeColumns
-	}
-	return modeSingle
-}
-
-// printColumnar prints entries in multi-column format.
-func printColumnar(names []string) {
-	width := termWidthOrDefault()
-	rows := format.Columns(names, width)
-	colWidths := computeColumnWidths(rows)
-	for _, row := range rows {
-		printColumnarRow(row, colWidths)
-	}
-}
-
-// termWidthOrDefault returns terminal width, or defaultTermWidth if unavailable.
-func termWidthOrDefault() int {
-	w, err := sys.TerminalWidth()
-	if err != nil {
-		return defaultTermWidth
-	}
-	return w
-}
-
-// computeColumnWidths returns the max width per column across all rows.
-func computeColumnWidths(rows [][]string) []int {
-	if len(rows) == 0 {
-		return nil
-	}
-	maxCols := 0
-	for _, row := range rows {
-		if len(row) > maxCols {
-			maxCols = len(row)
-		}
-	}
-	widths := make([]int, maxCols)
-	for _, row := range rows {
-		for col, entry := range row {
-			w := utf8.RuneCountInString(entry)
-			if w > widths[col] {
-				widths[col] = w
-			}
-		}
-	}
-	return widths
-}
-
-// printColumnarRow prints a single row of multi-column output.
-func printColumnarRow(row []string, colWidths []int) {
-	for i, entry := range row {
-		if i < len(row)-1 {
-			fmt.Print(format.PadRight(entry, colWidths[i]+2))
-		} else {
-			fmt.Print(entry)
-		}
-	}
-	fmt.Println()
-}
-
-// printLongDir prints directory entries in long format with total line.
-// R1.10: prints "total N" line before entries.
-func printLongDir(paths, names []string) int {
-	infos := make([]*sys.FileInfo, len(paths))
-	exitCode := 0
-	var totalBlocks int64
-
-	for i, p := range paths {
-		fi, err := sys.Lstat(p)
-		if err != nil {
-			reportError("cannot access", names[i], err)
-			exitCode = 1
-			continue
-		}
-		infos[i] = fi
-		totalBlocks += fi.Blocks
-	}
-
-	// R1.10: total line in 1K-block units.
-	fmt.Printf("total %d\n", totalBlocks/2)
-
-	printLongLines(names, paths, infos)
-	return exitCode
-}
-
-// printLongEntries prints file arguments in long format (no total line).
-func printLongEntries(paths []string) int {
-	infos := make([]*sys.FileInfo, len(paths))
-	exitCode := 0
-
-	for i, p := range paths {
-		fi, err := sys.Lstat(p)
-		if err != nil {
-			reportError("cannot access", p, err)
-			exitCode = 1
-			continue
-		}
-		infos[i] = fi
-	}
-
-	printLongLines(paths, paths, infos)
-	return exitCode
-}
-
-// printLongLines prints long-format output with aligned columns.
-func printLongLines(names, paths []string, infos []*sys.FileInfo) {
-	widths := computeLongWidths(infos)
-	for i, fi := range infos {
-		if fi == nil {
-			continue
-		}
-		printLongLine(names[i], paths[i], fi, widths)
-	}
-}
-
-// longWidths holds column widths for long-format alignment.
-type longWidths struct {
-	nlink int
-	owner int
-	group int
-	size  int
-}
-
-// computeLongWidths calculates column widths for long-format output.
-func computeLongWidths(infos []*sys.FileInfo) longWidths {
-	var w longWidths
-	for _, fi := range infos {
-		if fi == nil {
-			continue
-		}
-		updateWidth(&w.nlink, len(strconv.FormatUint(fi.Nlink, 10)))
-		updateWidth(&w.owner, len(lookupUser(fi.Uid)))
-		updateWidth(&w.group, len(lookupGroup(fi.Gid)))
-		updateWidth(&w.size, len(strconv.FormatInt(fi.Size, 10)))
-	}
-	return w
-}
-
-// updateWidth sets *current to v if v is larger.
-func updateWidth(current *int, v int) {
-	if v > *current {
-		*current = v
-	}
-}
-
-// printLongLine prints one entry in long format.
-// R1.6: fields: permissions nlink owner group size mtime name
-func printLongLine(name, path string, fi *sys.FileInfo, w longWidths) {
-	perm := permissionString(fi.Mode)
-	nlink := format.PadLeft(strconv.FormatUint(fi.Nlink, 10), w.nlink)
-	owner := format.PadRight(lookupUser(fi.Uid), w.owner)
-	group := format.PadRight(lookupGroup(fi.Gid), w.group)
-	size := format.PadLeft(strconv.FormatInt(fi.Size, 10), w.size)
-	mtime := formatMtime(fi.ModTime)
-
-	display := name
-	// R1.10: symlink display with " -> target".
-	if fi.Mode&os.ModeSymlink != 0 {
-		target, err := os.Readlink(path)
-		if err == nil {
-			display = name + " -> " + target
-		}
-	}
-
-	fmt.Printf("%s %s %s %s %s %s %s\n",
-		perm, nlink, owner, group, size, mtime, display)
-}
-
-// permissionString produces the 10-character permission string.
-// R1.6: file type char + owner rwx + group rwx + other rwx
-// with setuid/setgid/sticky bit substitution.
-func permissionString(mode os.FileMode) string {
-	var buf [10]byte
-	buf[0] = fileTypeChar(mode)
-	fillRWX(buf[1:4], mode, 6, os.ModeSetuid)
-	fillRWX(buf[4:7], mode, 3, os.ModeSetgid)
-	fillRWXSticky(buf[7:10], mode)
-	return string(buf[:])
-}
-
-// fileTypeChar returns the type character for position 0.
-func fileTypeChar(mode os.FileMode) byte {
-	switch {
-	case mode&os.ModeDir != 0:
-		return 'd'
-	case mode&os.ModeSymlink != 0:
-		return 'l'
-	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
-		return 'c'
-	case mode&os.ModeDevice != 0:
-		return 'b'
-	case mode&os.ModeNamedPipe != 0:
-		return 'p'
-	case mode&os.ModeSocket != 0:
-		return 's'
-	default:
-		return '-'
-	}
-}
-
-// fillRWX fills a 3-byte rwx slice for owner or group permissions.
-// shift is the bit offset (6 for owner, 3 for group).
-// special is ModeSetuid or ModeSetgid.
-func fillRWX(buf []byte, mode os.FileMode, shift uint, special os.FileMode) {
-	perm := mode.Perm()
-	buf[0] = rwChar(perm, 4<<shift, 'r')
-	buf[1] = rwChar(perm, 2<<shift, 'w')
-	x := rwChar(perm, 1<<shift, 'x')
-	if mode&special != 0 {
-		if x == 'x' {
-			x = 's'
-		} else {
-			x = 'S'
-		}
-	}
-	buf[2] = x
-}
-
-// fillRWXSticky fills the other-rwx with sticky bit handling.
-func fillRWXSticky(buf []byte, mode os.FileMode) {
-	perm := mode.Perm()
-	buf[0] = rwChar(perm, 0o004, 'r')
-	buf[1] = rwChar(perm, 0o002, 'w')
-	x := rwChar(perm, 0o001, 'x')
-	if mode&os.ModeSticky != 0 {
-		if x == 'x' {
-			x = 't'
-		} else {
-			x = 'T'
-		}
-	}
-	buf[2] = x
-}
-
-// rwChar returns ch if bit is set in perm, '-' otherwise.
-func rwChar(perm os.FileMode, bit os.FileMode, ch byte) byte {
-	if perm&bit != 0 {
-		return ch
-	}
-	return '-'
-}
-
-// lookupUser resolves a UID to a username, falling back to numeric string.
-// R1.8: uses os/user.LookupId with numeric fallback.
-func lookupUser(uid uint32) string {
-	u, err := user.LookupId(strconv.Itoa(int(uid)))
-	if err != nil {
-		return strconv.FormatUint(uint64(uid), 10)
-	}
-	return u.Username
-}
-
-// lookupGroup resolves a GID to a group name, falling back to numeric string.
-// R1.8: uses os/user.LookupGroupId with numeric fallback.
-func lookupGroup(gid uint32) string {
-	g, err := user.LookupGroupId(strconv.Itoa(int(gid)))
-	if err != nil {
-		return strconv.FormatUint(uint64(gid), 10)
-	}
-	return g.Name
-}
-
-// sixMonths approximates 6 months for mtime formatting cutoff.
-const sixMonths = 6 * 30 * 24 * time.Hour
-
-// formatMtime formats a modification time for long-format display.
-// R1.9: recent files show "Jan _2 15:04", older show "Jan _2  2006".
-func formatMtime(t time.Time) string {
-	if time.Since(t) < sixMonths && time.Since(t) >= 0 {
-		return t.Format("Jan _2 15:04")
-	}
-	return t.Format("Jan _2  2006")
-}
-
-// recurseSubdirs handles -R recursive listing for subdirectories.
-func recurseSubdirs(dir string, entries []os.DirEntry, cfg lsConfig) int {
-	exitCode := 0
-	// Collect and sort subdirectory names.
-	var subdirs []string
-	for _, e := range entries {
-		name := e.Name()
-		if cfg.filter == filterDefault && strings.HasPrefix(name, ".") {
-			continue
-		}
-		if name == "." || name == ".." {
-			continue
-		}
-		path := joinPath(dir, name)
-		fi, err := sys.Lstat(path)
-		if err != nil {
-			continue
-		}
-		if fi.Mode.IsDir() {
-			subdirs = append(subdirs, name)
-		}
-	}
-	sort.Strings(subdirs)
-
-	for _, name := range subdirs {
-		path := joinPath(dir, name)
-		fmt.Println()
-		fmt.Printf("%s:\n", path)
-		if code := listDir(path, cfg); code != 0 {
-			exitCode = 1
-		}
-	}
-	return exitCode
 }
 
 // reportError prints a diagnostic to stderr matching GNU ls format.
