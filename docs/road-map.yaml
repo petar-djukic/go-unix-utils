@@ -309,7 +309,7 @@ releases:
           status: implemented
     - version: "07.0"
       name: "Batch 7.0 — text processing pipeline (sort, tr, tail)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three text processing utilities that complete the stream processing
