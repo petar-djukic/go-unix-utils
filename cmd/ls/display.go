@@ -3,7 +3,7 @@
 
 // Implements prd008-ls display logic: long format output, columnar layout,
 // permission strings, inode/block prefix display, human-readable sizes,
-// and time formatting.
+// color wrapping, time formatting, and symlink display.
 package main
 
 import (
@@ -116,6 +116,8 @@ func buildDisplayNames(entries []entry, cfg lsConfig, pw prefixWidths) []string 
 
 // buildDisplayName constructs a single display string with optional prefixes.
 // R2.15: when both -i and -s are given, inode is first, then block count.
+// R3.3: wraps entry name in ANSI color codes when color is active.
+// R3.10: indicator is printed after the color reset sequence.
 func buildDisplayName(e entry, cfg lsConfig, pw prefixWidths) string {
 	var parts []string
 	if cfg.showInode {
@@ -124,8 +126,23 @@ func buildDisplayName(e entry, cfg lsConfig, pw prefixWidths) string {
 	if cfg.showBlocks {
 		parts = append(parts, format.PadLeft(blockString(e, cfg.humanReadable), pw.blocks))
 	}
-	parts = append(parts, e.name+typeIndicator(e.info, cfg.indicator))
+	name := coloredEntryName(e.name, e.info)
+	parts = append(parts, name+typeIndicator(e.info, cfg.indicator))
 	return strings.Join(parts, " ")
+}
+
+// coloredEntryName wraps a name in ANSI color codes based on file type.
+// R3.3: uses pkg/format.FileTypeColor and Reset.
+// R3.4: returns plain name when color is disabled.
+func coloredEntryName(name string, info *sys.FileInfo) string {
+	if info == nil {
+		return name
+	}
+	c := format.FileTypeColor(info.Mode)
+	if c == "" {
+		return name
+	}
+	return c + name + format.Reset()
 }
 
 // computePrefixWidths calculates column widths for -i and -s prefixes.
@@ -247,9 +264,13 @@ func printLongEntries(entries []entry, cfg lsConfig) int {
 // printLongLines prints long-format output with aligned columns.
 func printLongLines(entries []entry, cfg lsConfig) int {
 	exitCode := 0
+	sf := sys.Lstat
+	if cfg.derefAll {
+		sf = sys.Stat
+	}
 	for i := range entries {
 		if entries[i].info == nil {
-			fi, err := sys.Lstat(entries[i].path)
+			fi, err := sf(entries[i].path)
 			if err != nil {
 				reportError("cannot access", entries[i].name, err)
 				exitCode = 1
@@ -286,6 +307,10 @@ func computeLongWidths(entries []entry, cfg lsConfig) longWidths {
 
 // printLongLine prints one entry in long format.
 // R1.6: [inode] [blocks] permissions nlink owner group size mtime name
+// R3.2: symlinks display as "name -> target" in long format.
+// R3.3: entry name wrapped in ANSI color when active.
+// R3.5: --time selects which timestamp to display.
+// R3.6: --time-style controls timestamp formatting.
 func printLongLine(e entry, cfg lsConfig, lw longWidths, pw prefixWidths) {
 	var prefix string
 	if cfg.showInode {
@@ -300,8 +325,9 @@ func printLongLine(e entry, cfg lsConfig, lw longWidths, pw prefixWidths) {
 	owner := format.PadRight(lookupUser(e.info.Uid), lw.owner)
 	group := format.PadRight(lookupGroup(e.info.Gid), lw.group)
 	size := format.PadLeft(sizeString(e.info.Size, cfg.humanReadable), lw.size)
-	mtime := formatMtime(e.info.ModTime)
-	display := symlinkDisplay(e) + typeIndicator(e.info, cfg.indicator)
+	ts := entryTime(e.info, cfg.timeSelect)
+	mtime := formatEntryTime(ts, cfg.timeStyle)
+	display := coloredSymlinkDisplay(e) + typeIndicator(e.info, cfg.indicator)
 
 	fmt.Printf("%s%s %s %s %s %s %s %s\n",
 		prefix, perm, nlink, owner, group, size, mtime, display)
@@ -316,16 +342,50 @@ func sizeString(size int64, humanReadable bool) string {
 	return strconv.FormatInt(size, 10)
 }
 
-// symlinkDisplay returns the display name with symlink target if applicable.
-// R1.10: symlink display appends " -> target".
-func symlinkDisplay(e entry) string {
-	if e.info.Mode&os.ModeSymlink != 0 {
+// coloredSymlinkDisplay returns the display name with color and symlink target.
+// R3.2: symlinks show "name -> target" in long format.
+// R3.3: name is wrapped in ANSI color codes when color is active.
+func coloredSymlinkDisplay(e entry) string {
+	name := coloredEntryName(e.name, e.info)
+	if e.info != nil && e.info.Mode&os.ModeSymlink != 0 {
 		target, err := os.Readlink(e.path)
 		if err == nil {
-			return e.name + " -> " + target
+			return name + " -> " + target
 		}
 	}
-	return e.name
+	return name
+}
+
+// formatEntryTime formats a timestamp for long-format display.
+// R3.6: --time-style controls the format; default uses locale-like format.
+func formatEntryTime(t time.Time, style string) string {
+	switch style {
+	case "full-iso":
+		return t.Format("2006-01-02 15:04:05.000000000 -0700")
+	case "long-iso":
+		return t.Format("2006-01-02 15:04")
+	case "iso":
+		return formatISOTime(t)
+	default:
+		return formatDefaultTime(t)
+	}
+}
+
+// formatISOTime formats time in ISO style: recent "01-02 15:04", old "2006-01-02 ".
+func formatISOTime(t time.Time) string {
+	if time.Since(t) < sixMonths && time.Since(t) >= 0 {
+		return t.Format("01-02 15:04")
+	}
+	return t.Format("2006-01-02 ")
+}
+
+// formatDefaultTime formats time in locale-like style.
+// R1.9: recent files show "Jan _2 15:04", older show "Jan _2  2006".
+func formatDefaultTime(t time.Time) string {
+	if time.Since(t) < sixMonths && time.Since(t) >= 0 {
+		return t.Format("Jan _2 15:04")
+	}
+	return t.Format("Jan _2  2006")
 }
 
 // permissionString produces the 10-character permission string.
@@ -417,15 +477,6 @@ func lookupGroup(gid uint32) string {
 		return strconv.FormatUint(uint64(gid), 10)
 	}
 	return g.Name
-}
-
-// formatMtime formats a modification time for long-format display.
-// R1.9: recent files show "Jan _2 15:04", older show "Jan _2  2006".
-func formatMtime(t time.Time) string {
-	if time.Since(t) < sixMonths && time.Since(t) >= 0 {
-		return t.Format("Jan _2 15:04")
-	}
-	return t.Format("Jan _2  2006")
 }
 
 // printCommaEntries prints entries in comma-separated format, wrapping at

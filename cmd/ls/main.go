@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.8-R3.15: directory listing
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15: directory listing
 // with output modes (-1, -C, -m, -x), sorting flags (-t, -S, -r, -U),
 // filtering (-a, -A, -d), metadata display (-s, -i), human-readable sizes (-h),
-// type indicators (-F, -p), and recursive listing (-R).
+// color output (--color), symlink handling (-L, -H), type indicators (-F, -p),
+// time selection (--time), time formatting (--time-style), and recursive listing (-R).
 package main
 
 import (
@@ -12,7 +13,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -56,6 +59,24 @@ const (
 	indicatorSlash                        // -p: / for directories only
 )
 
+// colorMode selects the --color behavior.
+type colorMode int
+
+const (
+	colorAuto   colorMode = iota // --color=auto or default
+	colorAlways                  // --color=always
+	colorNever                   // --color=never
+)
+
+// timeField selects which timestamp to display and sort by.
+type timeField int
+
+const (
+	timeMod    timeField = iota // default: modification time
+	timeAccess                  // --time=atime/access/use
+	timeChange                  // --time=ctime/status
+)
+
 // lsConfig holds parsed command-line options.
 type lsConfig struct {
 	output        outputMode
@@ -68,6 +89,12 @@ type lsConfig struct {
 	dirOnly       bool          // -d: list directories themselves
 	recursive     bool          // -R: recurse into subdirectories
 	indicator     indicatorMode // -F or -p
+	color         colorMode     // --color
+	colorActive   bool          // resolved: true if color output is active
+	derefAll      bool          // -L: dereference all symlinks
+	derefCmd      bool          // -H: dereference command-line symlinks
+	timeSelect    timeField     // --time
+	timeStyle     string        // --time-style
 	args          []string
 }
 
@@ -87,7 +114,23 @@ func main() {
 	os.Setenv("LC_ALL", "C")
 
 	cfg := parseArgs(os.Args[1:])
+	applyColorMode(&cfg)
 	os.Exit(run(cfg))
+}
+
+// applyColorMode resolves the --color flag into the effective color state.
+// R3.1: --color=auto enables color only when stdout is a TTY.
+// R3.2: uses pkg/sys.IsTerminal for TTY detection.
+func applyColorMode(cfg *lsConfig) {
+	switch cfg.color {
+	case colorAlways:
+		cfg.colorActive = true
+	case colorNever:
+		cfg.colorActive = false
+	default:
+		cfg.colorActive = sys.IsTerminal(os.Stdout.Fd())
+	}
+	format.SetColorEnabled(cfg.colorActive)
 }
 
 // parseArgs extracts flags and positional arguments.
@@ -122,7 +165,7 @@ func parseArgs(args []string) lsConfig {
 	return cfg
 }
 
-// parseShortFlags processes a cluster of short flags (e.g., "-laRtSrFp").
+// parseShortFlags processes a cluster of short flags (e.g., "-laRtSrFpLH").
 func parseShortFlags(flags string, cfg *lsConfig) {
 	for _, ch := range flags {
 		applyShortFlag(ch, cfg)
@@ -168,6 +211,10 @@ func applyShortFlag(ch rune, cfg *lsConfig) {
 		cfg.indicator = indicatorClassify
 	case 'p':
 		cfg.indicator = indicatorSlash
+	case 'L':
+		cfg.derefAll = true
+	case 'H':
+		cfg.derefCmd = true
 	}
 }
 
@@ -186,10 +233,61 @@ func handleLongFlag(arg string, cfg *lsConfig) bool {
 		cfg.humanReadable = true
 	case "--classify":
 		cfg.indicator = indicatorClassify
+	case "--color":
+		cfg.color = colorAlways
+	case "--dereference":
+		cfg.derefAll = true
+	case "--dereference-command-line":
+		cfg.derefCmd = true
+	default:
+		return handleLongFlagValue(arg, cfg)
+	}
+	return true
+}
+
+// handleLongFlagValue processes long flags with =value syntax.
+func handleLongFlagValue(arg string, cfg *lsConfig) bool {
+	key, val, ok := strings.Cut(arg, "=")
+	if !ok {
+		return false
+	}
+	switch key {
+	case "--color":
+		applyColorValue(val, cfg)
+	case "--time":
+		applyTimeValue(val, cfg)
+	case "--time-style":
+		cfg.timeStyle = val
 	default:
 		return false
 	}
 	return true
+}
+
+// applyColorValue sets the color mode from the --color=VALUE string.
+// R3.1: supports always, auto, never (and GNU aliases).
+func applyColorValue(val string, cfg *lsConfig) {
+	switch val {
+	case "always", "yes", "force":
+		cfg.color = colorAlways
+	case "never", "no", "none":
+		cfg.color = colorNever
+	default:
+		cfg.color = colorAuto
+	}
+}
+
+// applyTimeValue sets the time selection from the --time=VALUE string.
+// R3.5: selects which timestamp to display: mtime (default), atime, ctime.
+func applyTimeValue(val string, cfg *lsConfig) {
+	switch val {
+	case "atime", "access", "use":
+		cfg.timeSelect = timeAccess
+	case "ctime", "status":
+		cfg.timeSelect = timeChange
+	default:
+		cfg.timeSelect = timeMod
+	}
 }
 
 // printHelp writes usage information to stdout.
@@ -200,11 +298,14 @@ List information about the FILEs (the current directory by default).
   -a, --all            do not ignore entries starting with .
   -A, --almost-all     do not list implied . and ..
   -C                   list entries by columns
+      --color[=WHEN]   colorize output; WHEN is always, auto, or never
   -d                   list directories themselves, not their contents
   -F, --classify       append indicator (one of /=>@|) to entries
   -h, --human-readable print sizes in human-readable format
+  -H                   follow symlinks on the command line
   -i                   print the index number of each file
   -l                   use a long listing format
+  -L, --dereference    dereference symlinks, show target info
   -m                   fill width with a comma separated list of entries
   -p                   append / indicator to directories
   -r, --reverse        reverse order while sorting
@@ -212,6 +313,8 @@ List information about the FILEs (the current directory by default).
   -s                   print the allocated size of each file
   -S                   sort by file size, largest first
   -t                   sort by time, newest first
+      --time=WORD      select timestamp: atime, ctime (default mtime)
+      --time-style=STYLE  time format: full-iso, long-iso, iso
   -U                   do not sort; list entries in directory order
   -x                   list entries by lines instead of by columns
   -1                   list one file per line
@@ -230,11 +333,13 @@ func run(cfg lsConfig) int {
 
 // runDirOnly handles -d: list entries themselves without descending.
 // R2.3: directories are listed as entries, not their contents.
+// R3.3: -L dereferences all symlinks. R3.4: -H dereferences command-line args.
 func runDirOnly(cfg lsConfig) int {
+	sf := dirOnlyStatFunc(cfg)
 	entries := make([]entry, 0, len(cfg.args))
 	exitCode := 0
 	for _, arg := range cfg.args {
-		fi, err := sys.Lstat(arg)
+		fi, err := sf(arg)
 		if err != nil {
 			reportError("cannot access", arg, err)
 			exitCode = 1
@@ -247,6 +352,15 @@ func runDirOnly(cfg lsConfig) int {
 		exitCode = 1
 	}
 	return exitCode
+}
+
+// dirOnlyStatFunc returns the stat function for -d mode command-line args.
+// R3.3: -L follows all symlinks. R3.4: -H follows command-line symlinks.
+func dirOnlyStatFunc(cfg lsConfig) func(string) (*sys.FileInfo, error) {
+	if cfg.derefAll || cfg.derefCmd {
+		return sys.Stat
+	}
+	return sys.Lstat
 }
 
 // runNormal processes arguments separating files and directories.
@@ -310,7 +424,7 @@ func listDir(dir string, cfg lsConfig) int {
 
 	entries := buildDirEntries(dir, rawEntries, cfg.filter)
 	if needsStat(cfg) {
-		statEntriesInPlace(entries)
+		statEntriesInPlace(entries, cfg)
 	}
 	sortEntries(entries, cfg)
 
@@ -352,13 +466,19 @@ func needsStat(cfg lsConfig) bool {
 		cfg.showBlocks ||
 		cfg.showInode ||
 		cfg.recursive ||
-		cfg.indicator != indicatorNone
+		cfg.indicator != indicatorNone ||
+		cfg.colorActive
 }
 
-// statEntriesInPlace populates the info field for each entry via Lstat.
-func statEntriesInPlace(entries []entry) {
+// statEntriesInPlace populates the info field for each entry.
+// R3.3: -L uses Stat to follow symlinks; default uses Lstat.
+func statEntriesInPlace(entries []entry, cfg lsConfig) {
+	sf := sys.Lstat
+	if cfg.derefAll {
+		sf = sys.Stat
+	}
 	for i := range entries {
-		fi, err := sys.Lstat(entries[i].path)
+		fi, err := sf(entries[i].path)
 		if err == nil {
 			entries[i].info = fi
 		}
@@ -374,7 +494,7 @@ func sortEntries(entries []entry, cfg lsConfig) {
 	if cfg.sorting == sortNone || len(entries) <= 1 {
 		return
 	}
-	cmp := selectComparator(cfg.sorting)
+	cmp := selectComparator(cfg)
 	if cfg.reverse {
 		orig := cmp
 		cmp = func(a, b entry) bool { return orig(b, a) }
@@ -384,11 +504,14 @@ func sortEntries(entries []entry, cfg lsConfig) {
 	})
 }
 
-// selectComparator returns the less function for the given sort mode.
-func selectComparator(mode sortMode) func(a, b entry) bool {
-	switch mode {
+// selectComparator returns the less function for the given sort config.
+func selectComparator(cfg lsConfig) func(a, b entry) bool {
+	switch cfg.sorting {
 	case sortTime:
-		return compareByTime
+		tf := cfg.timeSelect
+		return func(a, b entry) bool {
+			return compareByTimeField(a, b, tf)
+		}
 	case sortSize:
 		return compareBySize
 	default:
@@ -401,14 +524,16 @@ func compareByName(a, b entry) bool {
 	return a.name < b.name
 }
 
-// compareByTime sorts by modification time, newest first.
+// compareByTimeField sorts by the selected time field, newest first.
 // R2.5: ties broken by name in C locale order.
-func compareByTime(a, b entry) bool {
+func compareByTimeField(a, b entry, tf timeField) bool {
 	if a.info == nil || b.info == nil {
 		return compareByName(a, b)
 	}
-	if !a.info.ModTime.Equal(b.info.ModTime) {
-		return a.info.ModTime.After(b.info.ModTime)
+	at := entryTime(a.info, tf)
+	bt := entryTime(b.info, tf)
+	if !at.Equal(bt) {
+		return at.After(bt)
 	}
 	return a.name < b.name
 }
@@ -423,6 +548,19 @@ func compareBySize(a, b entry) bool {
 		return a.info.Size > b.info.Size
 	}
 	return a.name < b.name
+}
+
+// entryTime returns the selected timestamp from a FileInfo.
+// R3.5: --time selects atime, ctime, or mtime (default).
+func entryTime(info *sys.FileInfo, tf timeField) time.Time {
+	switch tf {
+	case timeAccess:
+		return info.AccessTime
+	case timeChange:
+		return info.ChangeTime
+	default:
+		return info.ModTime
+	}
 }
 
 // typeIndicator returns the suffix character for -F or -p.
