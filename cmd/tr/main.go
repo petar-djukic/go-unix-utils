@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd054-tr R1.1–R1.4, R2.1–R2.4, R3.1–R3.3:
+// Implements prd054-tr R1.1–R1.4, R2.1–R2.4, R3.1–R3.3, R4.1–R4.3:
 // character translation, delete (-d), squeeze (-s), complement (-c/-C),
-// POSIX character classes, equivalence classes, and combined modes.
+// POSIX character classes, equivalence classes, combined modes,
+// exit codes, error diagnostics, and edge case handling.
 package main
 
 import (
@@ -385,10 +386,8 @@ func parseOctal(spec string, i int) (byte, int) {
 	for j := start; j < end; j++ {
 		val = val*8 + int(spec[j]-'0')
 	}
-	if val > 255 {
-		val = 255
-	}
-	return byte(val), end - i
+	// R4.3: wrap to byte range (matches GNU tr unsigned char behavior).
+	return byte(val & 0xFF), end - i
 }
 
 // --- Bracket expressions ---
@@ -673,6 +672,12 @@ func assignSets(cfg config, positional []string) (config, int) {
 		}
 		cfg.set1 = positional[0]
 	case 2:
+		// R4.2: -d without -s takes only SET1; SET2 is an extra operand.
+		if cfg.delete && !cfg.squeeze {
+			fmt.Fprintf(os.Stderr,
+				"tr: extra operand '%s'\n", positional[1])
+			return config{}, 1
+		}
 		cfg.set1 = positional[0]
 		cfg.set2 = positional[1]
 	default:
