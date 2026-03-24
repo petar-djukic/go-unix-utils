@@ -327,7 +327,7 @@ releases:
           status: implemented
     - version: "07.1"
       name: "Batch 7.1 — file operations (cp, mv, rm)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three fundamental file operation utilities. cp copies files and directories
