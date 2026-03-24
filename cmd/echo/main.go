@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd020-echo: Display a Line of Text.
-// Covers R1.1-R1.4 (core output behavior), R2.1-R2.2 (escape sequences).
+// Covers R1.1-R1.4 (core output behavior), R2.1-R2.4 (escape sequences),
+// R3.1-R3.3 (exit codes and SIGPIPE).
 package main
 
 import (
@@ -24,6 +25,7 @@ func main() {
 		output += "\n"
 	}
 
+	// R3.1: exit 0 on success (implicit). R3.2: exit 1 on write error.
 	_, err := os.Stdout.WriteString(output)
 	if err != nil {
 		os.Exit(1)
@@ -33,8 +35,9 @@ func main() {
 // parseFlags consumes leading GNU echo flags (-n, -e, -E) from args.
 // GNU echo recognizes flags only when every character in the argument
 // after the leading '-' is one of n, e, or E. The first argument that
-// does not match this pattern ends flag parsing. D2: manual parsing,
-// not the flag package. D3: last -e/-E wins.
+// does not match this pattern ends flag parsing. R2.3: -E disables
+// escapes (the default). R2.4: last -e/-E wins. D2: manual parsing,
+// not the flag package.
 func parseFlags(args []string) (bool, bool, []string) {
 	noNewline := false
 	escapes := false
