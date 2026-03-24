@@ -89,12 +89,15 @@ func printNonLongEntries(entries []entry, cfg lsConfig) {
 	pw := computePrefixWidths(entries, cfg)
 	names := buildDisplayNames(entries, cfg, pw)
 	mode := resolveOutputMode(cfg)
-	if mode == modeColumns {
+	switch mode {
+	case modeColumns:
 		printColumnar(names)
 		return
-	}
-	if mode == modeHorizontal {
+	case modeHorizontal:
 		printHorizontalColumnar(names)
+		return
+	case modeComma:
+		printCommaEntries(names)
 		return
 	}
 	for _, name := range names {
@@ -423,6 +426,34 @@ func formatMtime(t time.Time) string {
 		return t.Format("Jan _2 15:04")
 	}
 	return t.Format("Jan _2  2006")
+}
+
+// printCommaEntries prints entries in comma-separated format, wrapping at
+// terminal width. R2.11: -m fills width with comma-separated entries.
+func printCommaEntries(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	width := termWidthOrDefault()
+	col := 0
+	for i, name := range names {
+		nameLen := utf8.RuneCountInString(name)
+		if i == 0 {
+			fmt.Print(name)
+			col = nameLen
+			continue
+		}
+		needed := 2 + nameLen // ", " + name
+		if col+needed > width {
+			fmt.Print(",\n")
+			fmt.Print(name)
+			col = nameLen
+		} else {
+			fmt.Print(", " + name)
+			col += needed
+		}
+	}
+	fmt.Println()
 }
 
 // printHorizontalColumnar prints entries in row-major multi-column format.

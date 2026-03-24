@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.12, R3.8-R3.15: directory listing
-// with output modes, sorting flags (-t, -S, -r, -U), filtering (-a, -A, -d),
-// metadata display (-s, -i), human-readable sizes (-h), type indicators (-F, -p),
-// and recursive listing (-R).
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.8-R3.15: directory listing
+// with output modes (-1, -C, -m, -x), sorting flags (-t, -S, -r, -U),
+// filtering (-a, -A, -d), metadata display (-s, -i), human-readable sizes (-h),
+// type indicators (-F, -p), and recursive listing (-R).
 package main
 
 import (
@@ -25,6 +25,7 @@ const (
 	modeLong                  // -l: long format
 	modeColumns               // -C: forced multi-column (vertical)
 	modeHorizontal            // -x: forced multi-column (horizontal)
+	modeComma                 // -m: comma-separated, width-wrapped
 )
 
 // filterMode selects which entries to show.
@@ -76,6 +77,9 @@ type entry struct {
 	path string
 	info *sys.FileInfo // nil if stat failed
 }
+
+// TODO: -w / --width flag skipped — listed in prd008-ls non_goals as out of scope (E6).
+// TODO: -T / --tabsize flag skipped — not specified in prd008-ls (E7).
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -140,6 +144,8 @@ func applyShortFlag(ch rune, cfg *lsConfig) {
 		cfg.output = modeColumns
 	case 'x':
 		cfg.output = modeHorizontal
+	case 'm':
+		cfg.output = modeComma
 	case 'R':
 		cfg.recursive = true
 	case 't':
@@ -199,6 +205,7 @@ List information about the FILEs (the current directory by default).
   -h, --human-readable print sizes in human-readable format
   -i                   print the index number of each file
   -l                   use a long listing format
+  -m                   fill width with a comma separated list of entries
   -p                   append / indicator to directories
   -r, --reverse        reverse order while sorting
   -R, --recursive      list subdirectories recursively
