@@ -68,15 +68,15 @@ releases:
         All are verified by differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel02.0-uc001-true
-          status: spec_complete
+          status: implemented
         - id: rel02.0-uc002-false
-          status: spec_complete
+          status: implemented
         - id: rel02.0-uc003-yes
-          status: spec_complete
+          status: implemented
         - id: rel02.0-uc004-basename
-          status: spec_complete
+          status: implemented
         - id: rel02.0-uc005-dirname
-          status: spec_complete
+          status: implemented
     - version: "02.1"
       name: "Batch 2.1 — tee specification and differential test"
       status: spec_complete
