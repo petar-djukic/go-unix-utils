@@ -280,7 +280,7 @@ releases:
         - id: rel06.0-uc002-rmdir
           status: implemented
         - id: rel06.0-uc003-mktemp
-          status: spec_complete
+          status: implemented
         - id: rel06.0-uc004-ln
           status: spec_complete
         - id: rel06.0-uc005-unlink
