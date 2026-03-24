@@ -1,11 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd054-tr R1.1–R1.4, R2.1–R2.2: core character translation.
-//
-// Covers basic SET1→SET2 translation, SET expansion (ranges, octal and
-// backslash escapes, POSIX classes, repetition, equivalence classes),
-// SET2 padding, and binary data handling via stdin/stdout.
+// Implements prd054-tr R1.1–R1.4, R2.1–R2.4, R3.1–R3.3:
+// character translation, delete (-d), squeeze (-s), complement (-c/-C),
+// POSIX character classes, equivalence classes, and combined modes.
 package main
 
 import (
@@ -33,7 +31,6 @@ type config struct {
 }
 
 func main() {
-	// D1: Install SIGPIPE handler per shared protocol.
 	sys.InstallSIGPIPEHandler()
 	cfg, exitCode := parseArgs(os.Args[1:])
 	if exitCode >= 0 {
@@ -44,20 +41,66 @@ func main() {
 
 // --- Dispatch ---
 
-// run expands SET specifications and dispatches to translate mode.
-// R1.1: translates each SET1 byte to the corresponding SET2 byte.
+// run expands SET1, applies complement if requested, and dispatches.
 func run(cfg config) int {
-	if cfg.delete {
-		fmt.Fprintln(os.Stderr, "tr: delete mode not yet supported")
-		return 1
-	}
-	if cfg.squeeze {
-		fmt.Fprintln(os.Stderr, "tr: squeeze mode not yet supported")
-		return 1
-	}
 	set1, err := expandSet(cfg.set1, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tr: %v\n", err)
+		return 1
+	}
+	// R2.4 / R3.3: complement SET1 before any mode.
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	return dispatchMode(cfg, set1)
+}
+
+// dispatchMode selects the processing mode based on flags.
+func dispatchMode(cfg config, set1 []byte) int {
+	switch {
+	case cfg.delete && cfg.squeeze:
+		return runDeleteSqueeze(set1, cfg)
+	case cfg.delete:
+		return runDeleteOnly(set1)
+	case cfg.squeeze && cfg.set2 == "":
+		return runSqueezeOnly(set1)
+	case cfg.squeeze:
+		return runTranslateSqueeze(set1, cfg)
+	default:
+		return runTranslateOnly(set1, cfg)
+	}
+}
+
+// --- Mode implementations ---
+
+// runDeleteOnly deletes characters in SET1 from input.
+// R2.1 (prd054-tr R3.1).
+func runDeleteOnly(set1 []byte) int {
+	deleteSet := buildMemberSet(set1)
+	if err := processIO(nil, &deleteSet, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "tr: write error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// runSqueezeOnly squeezes repeated characters in SET1.
+// R2.2 with a single SET.
+func runSqueezeOnly(set1 []byte) int {
+	squeezeSet := buildMemberSet(set1)
+	if err := processIO(nil, nil, &squeezeSet); err != nil {
+		fmt.Fprintf(os.Stderr, "tr: write error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// runDeleteSqueeze deletes SET1 chars and squeezes SET2 chars.
+// R2.3 (prd054-tr R2.3): -ds combined mode.
+func runDeleteSqueeze(set1 []byte, cfg config) int {
+	if cfg.set2 == "" {
+		fmt.Fprintln(os.Stderr,
+			"tr: two strings must be given when both deleting and squeezing repeats")
 		return 1
 	}
 	set2, err := expandSet(cfg.set2, len(set1))
@@ -65,22 +108,40 @@ func run(cfg config) int {
 		fmt.Fprintf(os.Stderr, "tr: %v\n", err)
 		return 1
 	}
-	return runTranslate(set1, set2, cfg)
-}
-
-// runTranslate performs byte-by-byte translation from SET1 to SET2.
-// R1.1: maps SET1[i] to SET2[i].
-// R1.3: pads SET2 by repeating its last character.
-func runTranslate(set1, set2 []byte, cfg config) int {
-	if len(set2) == 0 {
-		fmt.Fprintln(os.Stderr,
-			"tr: when not truncating set1, string2 must be non-empty")
+	deleteSet := buildMemberSet(set1)
+	squeezeSet := buildMemberSet(set2)
+	if err := processIO(nil, &deleteSet, &squeezeSet); err != nil {
+		fmt.Fprintf(os.Stderr, "tr: write error: %v\n", err)
 		return 1
 	}
-	if cfg.complement {
-		set1 = complementSet(set1)
+	return 0
+}
+
+// runTranslateSqueeze translates SET1→SET2, then squeezes SET2.
+// R2.2 with two SETs.
+func runTranslateSqueeze(set1 []byte, cfg config) int {
+	set2, err := expandTranslateSet2(set1, cfg.set2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tr: %v\n", err)
+		return 1
 	}
-	set2 = padSet2(set1, set2)
+	table := buildTransTable(set1, set2)
+	squeezeSet := buildMemberSet(set2)
+	if err := processIO(&table, nil, &squeezeSet); err != nil {
+		fmt.Fprintf(os.Stderr, "tr: write error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// runTranslateOnly performs translation without squeeze.
+// R1.1: maps SET1[i] to SET2[i].
+func runTranslateOnly(set1 []byte, cfg config) int {
+	set2, err := expandTranslateSet2(set1, cfg.set2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tr: %v\n", err)
+		return 1
+	}
 	table := buildTransTable(set1, set2)
 	if err := processStdin(table); err != nil {
 		fmt.Fprintf(os.Stderr, "tr: write error: %v\n", err)
@@ -89,7 +150,31 @@ func runTranslate(set1, set2 []byte, cfg config) int {
 	return 0
 }
 
-// --- Translation table and I/O ---
+// expandTranslateSet2 expands and pads SET2 for translate modes.
+// R3.2: SET2 must be non-empty when translating.
+func expandTranslateSet2(set1 []byte, spec string) ([]byte, error) {
+	set2, err := expandSet(spec, len(set1))
+	if err != nil {
+		return nil, err
+	}
+	if len(set2) == 0 {
+		return nil, fmt.Errorf(
+			"when not truncating set1, string2 must be non-empty")
+	}
+	return padSet2(set1, set2), nil
+}
+
+// --- Translation table and set construction ---
+
+// buildMemberSet creates a 256-element boolean membership set.
+// D2: used for delete and squeeze sets.
+func buildMemberSet(set []byte) [256]bool {
+	var s [256]bool
+	for _, c := range set {
+		s[c] = true
+	}
+	return s
+}
 
 // buildTransTable creates a 256-byte translation table.
 // R1.1: identity map with SET1[i] → SET2[i] overlaid.
@@ -122,6 +207,7 @@ func padSet2(set1, set2 []byte) []byte {
 }
 
 // complementSet returns all byte values NOT in the given set, in order.
+// D3: inverts SET1 membership for -c/-C modes.
 func complementSet(set []byte) []byte {
 	var inSet [256]bool
 	for _, c := range set {
@@ -136,9 +222,57 @@ func complementSet(set []byte) []byte {
 	return result
 }
 
+// --- I/O processing ---
+
+// processIO handles combined translate/delete/squeeze in a single pass.
+// D2: uses buffered I/O. Supports any combination of operations.
+func processIO(
+	table *[256]byte, deleteSet, squeezeSet *[256]bool,
+) error {
+	reader := bufio.NewReader(os.Stdin)
+	writer := bufio.NewWriter(os.Stdout)
+	buf := make([]byte, 32*1024)
+	lastOut := -1
+	for {
+		n, err := reader.Read(buf)
+		if wErr := applyOps(writer, buf[:n], table, deleteSet, squeezeSet, &lastOut); wErr != nil {
+			return wErr
+		}
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+	}
+}
+
+// applyOps applies translate/delete/squeeze to one buffer of input.
+func applyOps(
+	w *bufio.Writer, buf []byte,
+	table *[256]byte, deleteSet, squeezeSet *[256]bool,
+	lastOut *int,
+) error {
+	for _, b := range buf {
+		if table != nil {
+			b = table[b]
+		}
+		if deleteSet != nil && deleteSet[b] {
+			continue
+		}
+		if squeezeSet != nil && squeezeSet[b] && int(b) == *lastOut {
+			continue
+		}
+		if err := w.WriteByte(b); err != nil {
+			return err
+		}
+		*lastOut = int(b)
+	}
+	return nil
+}
+
 // processStdin reads stdin, translates via table, writes to stdout.
-// R1.4: handles all 256 byte values (binary data).
-// D2: uses buffered I/O for performance.
+// Fast path for translate-only mode (batch processing).
 func processStdin(table [256]byte) error {
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
@@ -197,8 +331,7 @@ func expandSet(spec string, otherLen int) ([]byte, error) {
 	return result, nil
 }
 
-// isRangeDash checks if position i in spec starts a range delimiter
-// (a dash followed by a non-bracket character).
+// isRangeDash checks if position i in spec starts a range delimiter.
 func isRangeDash(spec string, i int) bool {
 	return i+1 < len(spec) && spec[i] == '-' && spec[i+1] != '['
 }
@@ -230,7 +363,6 @@ var escapeMap = map[byte]byte{
 }
 
 // parseEscape handles backslash sequences starting at spec[i].
-// R2.2: named escapes. R2.1: octal escapes.
 func parseEscape(spec string, i int) (byte, int) {
 	ch := spec[i+1]
 	if esc, ok := escapeMap[ch]; ok {
@@ -243,7 +375,6 @@ func parseEscape(spec string, i int) (byte, int) {
 }
 
 // parseOctal parses a \NNN octal escape starting at spec[i].
-// R2.1: reads 1–3 octal digits after the backslash.
 func parseOctal(spec string, i int) (byte, int) {
 	start := i + 1
 	end := start
@@ -279,7 +410,7 @@ func tryBracketExpr(spec string, i, otherLen, curLen int) (int, []byte, error) {
 }
 
 // parsePosixClass parses [:classname:] at spec[i].
-// R1.2: POSIX character classes under LC_ALL=C.
+// R1.4 / R2.3: POSIX character classes under LC_ALL=C.
 func parsePosixClass(spec string, i int) (int, []byte, error) {
 	rest := spec[i:]
 	end := strings.Index(rest, ":]")
@@ -295,7 +426,7 @@ func parsePosixClass(spec string, i int) (int, []byte, error) {
 }
 
 // parseEquivClass parses [=c=] at spec[i].
-// R1.2: equivalence classes (identity mapping under LC_ALL=C).
+// R2.4 / R3.3: equivalence classes (identity mapping under LC_ALL=C).
 func parseEquivClass(spec string, i int) (int, []byte, error) {
 	rest := spec[i:]
 	if len(rest) < 5 || rest[3] != '=' || rest[4] != ']' {
@@ -305,7 +436,6 @@ func parseEquivClass(spec string, i int) (int, []byte, error) {
 }
 
 // parseRepeat parses [c*n] or [c*] at spec[i].
-// R1.2: repeated character expansion.
 func parseRepeat(spec string, i, otherLen, curLen int) (int, []byte, error) {
 	rest := spec[i:]
 	if len(rest) < 4 {
@@ -332,7 +462,6 @@ func parseRepeat(spec string, i, otherLen, curLen int) (int, []byte, error) {
 }
 
 // resolveRepeatCount parses the count in [c*n] or infers it for [c*].
-// A count starting with "0" (and longer than 1 digit) is parsed as octal.
 func resolveRepeatCount(s string, otherLen, curLen int) (int, error) {
 	if s == "" {
 		count := otherLen - curLen
@@ -367,7 +496,7 @@ func repeatByte(ch byte, n int) []byte {
 // --- POSIX character classes ---
 
 // posixClassChars returns the bytes belonging to a named POSIX class
-// under LC_ALL=C.
+// under LC_ALL=C. R1.4 / R2.3.
 func posixClassChars(name string) ([]byte, error) {
 	switch name {
 	case "upper":
