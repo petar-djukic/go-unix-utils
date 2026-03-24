@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd055-tail: Print the last lines or bytes of files.
-// R1 (line-count mode), R2 (byte-count mode), R3 (multi-file headers),
-// R4 (exit codes and differential testing).
+// R1 (line-count mode), R2 (byte-count mode, R2.3 zero-terminated),
+// R3 (multi-file headers), R4 (exit codes and differential testing).
+// Follow mode: R3.1 (-f), R3.2 (--follow=name), R3.3 (--pid), R3.4 (--max-unchanged-stats).
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
@@ -24,7 +26,6 @@ var version = "dev"
 const defaultLines = 10
 
 // countMode distinguishes between line-count and byte-count modes.
-// R1: line mode is the default; R2: byte mode is selected by -c.
 type countMode int
 
 const (
@@ -32,30 +33,36 @@ const (
 	modeBytes
 )
 
+// followMode selects follow behavior.
+type followMode int
+
+const (
+	followNone       followMode = iota
+	followDescriptor                   // -f / --follow / --follow=descriptor
+	followName                         // --follow=name / -F
+)
+
 // headerMode controls header display for multi-file output.
 type headerMode int
 
 const (
-	headerAuto    headerMode = iota // R3.1/R3.2: headers only for multiple files
-	headerQuiet                     // R3.3: suppress all headers
-	headerVerbose                   // R3.4: always show headers
+	headerAuto    headerMode = iota
+	headerQuiet
+	headerVerbose
 )
 
 // config holds the parsed command-line flags for tail.
-// R1.1–R1.4: line-count mode fields.
-// R2.1–R2.3: byte-count mode fields.
-// R3.1–R3.4: header control fields.
 type config struct {
-	// mode selects line-count vs byte-count (R1 vs R2).
-	mode countMode
-	// count is the number of lines or bytes to output (R1.2, R2.1).
-	count int64
-	// fromStart is true when the +N prefix is used (R1.3, R2.2).
-	fromStart bool
-	// header controls header display (R3.1–R3.4).
-	header headerMode
-	// zeroTerminated uses NUL instead of newline as line delimiter.
-	zeroTerminated bool
+	mode              countMode
+	count             int64
+	fromStart         bool
+	header            headerMode
+	zeroTerminated    bool
+	follow            followMode
+	sleepInterval     float64
+	pid               int
+	maxUnchangedStats int
+	retry             bool
 }
 
 func main() {
@@ -69,20 +76,35 @@ func main() {
 	os.Exit(run(cfg, files))
 }
 
+// delimiter returns the line delimiter byte based on -z flag.
+// R2.3: NUL when --zero-terminated, newline otherwise.
+func (c config) delimiter() byte {
+	if c.zeroTerminated {
+		return 0
+	}
+	return '\n'
+}
+
 // run processes all input files and returns the exit code.
-// R1.4: when no files given, reads stdin.
-// R4.1/R4.2: exit 0 on success, exit 1 if any file fails.
 func run(cfg config, files []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	showHeader := resolveHeaderMode(cfg.header, len(files))
+
+	if cfg.follow != followNone {
+		return runFollow(cfg, files, showHeader)
+	}
+	return runStatic(cfg, files, showHeader)
+}
+
+// runStatic processes files without follow mode.
+func runStatic(cfg config, files []string, showHeader bool) int {
 	exitCode := 0
 	needSep := false
 
 	for _, name := range files {
 		if err := processFile(cfg, name, showHeader, needSep); err != nil {
-			// R4.4: print error and continue processing remaining files.
 			fmt.Fprintf(os.Stderr, "tail: %v\n", err)
 			exitCode = 1
 		} else {
@@ -94,8 +116,6 @@ func run(cfg config, files []string) int {
 }
 
 // resolveHeaderMode determines whether headers should be printed.
-// R3.1/R3.2: auto shows headers for multiple files.
-// R3.3: quiet suppresses all headers. R3.4: verbose always shows.
 func resolveHeaderMode(hm headerMode, fileCount int) bool {
 	switch hm {
 	case headerQuiet:
@@ -108,7 +128,6 @@ func resolveHeaderMode(hm headerMode, fileCount int) bool {
 }
 
 // processFile reads and outputs content from a single file or stdin.
-// R4.2/R4.4: returns error on open failure.
 func processFile(cfg config, name string, showHeader, needSep bool) error {
 	r, err := openInput(name)
 	if err != nil {
@@ -126,7 +145,6 @@ func processFile(cfg config, name string, showHeader, needSep bool) error {
 }
 
 // fileDisplayName returns the display name for a file argument.
-// R3.1: stdin ("-") displays as "standard input".
 func fileDisplayName(name string) string {
 	if name == "-" {
 		return "standard input"
@@ -135,7 +153,6 @@ func fileDisplayName(name string) string {
 }
 
 // openInput opens a named file or returns stdin for "-".
-// R1.4: reads from stdin when file is "-".
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
@@ -157,7 +174,6 @@ func formatOpenError(name string, err error) error {
 }
 
 // printHeader prints the GNU-style multi-file header.
-// R3.1: '==> FILENAME <==' with blank line between files.
 func printHeader(name string, needSep bool) {
 	if needSep {
 		fmt.Println()
@@ -171,18 +187,17 @@ func outputContent(r io.Reader, cfg config) error {
 		if cfg.mode == modeBytes {
 			return outputFromByte(r, cfg.count)
 		}
-		return outputFromLine(r, cfg.count)
+		return outputFromLine(r, cfg.count, cfg.delimiter())
 	}
 	if cfg.mode == modeBytes {
 		return outputLastBytes(r, cfg.count)
 	}
-	return outputLastLines(r, cfg.count)
+	return outputLastLines(r, cfg.count, cfg.delimiter())
 }
 
-// outputLastLines reads all lines, then outputs the last n.
-// R1.1/R1.2: line-count output preserving original line endings.
-func outputLastLines(r io.Reader, n int64) error {
-	lines, err := readAllLines(r)
+// outputLastLines reads all lines using the given delimiter, outputs the last n.
+func outputLastLines(r io.Reader, n int64, delim byte) error {
+	lines, err := readAllLines(r, delim)
 	if err != nil {
 		return err
 	}
@@ -193,14 +208,13 @@ func outputLastLines(r io.Reader, n int64) error {
 	return writeLines(lines[start:])
 }
 
-// outputFromLine outputs starting from line n to the end.
-// R1.3: +N means start from line N (1-based).
-func outputFromLine(r io.Reader, n int64) error {
+// outputFromLine outputs starting from line n using the given delimiter.
+func outputFromLine(r io.Reader, n int64, delim byte) error {
 	br := bufio.NewReaderSize(r, 64*1024)
 	var lineNum int64
 
 	for {
-		line, err := br.ReadBytes('\n')
+		line, err := br.ReadBytes(delim)
 		if len(line) > 0 {
 			lineNum++
 			if lineNum >= n {
@@ -219,7 +233,6 @@ func outputFromLine(r io.Reader, n int64) error {
 }
 
 // outputLastBytes reads all data, then outputs the last n bytes.
-// R2.1: byte-count mode.
 func outputLastBytes(r io.Reader, n int64) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -234,7 +247,6 @@ func outputLastBytes(r io.Reader, n int64) error {
 }
 
 // outputFromByte outputs starting from byte n to the end.
-// R2.2: +N means start from byte N (1-based).
 func outputFromByte(r io.Reader, n int64) error {
 	if n > 1 {
 		discarded, err := io.CopyN(io.Discard, r, n-1)
@@ -249,13 +261,13 @@ func outputFromByte(r io.Reader, n int64) error {
 	return err
 }
 
-// readAllLines reads all lines from r and returns them.
-func readAllLines(r io.Reader) ([][]byte, error) {
+// readAllLines reads all lines from r split by the given delimiter.
+func readAllLines(r io.Reader, delim byte) ([][]byte, error) {
 	br := bufio.NewReaderSize(r, 64*1024)
 	var lines [][]byte
 
 	for {
-		line, err := br.ReadBytes('\n')
+		line, err := br.ReadBytes(delim)
 		if len(line) > 0 {
 			lines = append(lines, append([]byte(nil), line...))
 		}
@@ -298,7 +310,7 @@ func parseArgs(args []string) (cfg config, files []string, exit int) {
 	return
 }
 
-// parseOneArg handles a single argument and returns exit code (-1 to continue).
+// parseOneArg handles a single argument for core flags.
 func parseOneArg(
 	arg string, args []string, i *int, cfg *config, files *[]string,
 ) int {
@@ -311,6 +323,8 @@ func parseOneArg(
 		cfg.header = headerQuiet
 	case arg == "-v" || arg == "--verbose":
 		cfg.header = headerVerbose
+	case arg == "-z" || arg == "--zero-terminated":
+		cfg.zeroTerminated = true
 	case strings.HasPrefix(arg, "--lines="):
 		return applyCount(cfg, modeLines, arg[len("--lines="):])
 	case strings.HasPrefix(arg, "--bytes="):
@@ -325,12 +339,118 @@ func parseOneArg(
 		return applyCount(cfg, modeBytes, arg[2:])
 	case isNumericArg(arg):
 		return applyCount(cfg, modeLines, arg[1:])
+	default:
+		return parseExtendedArg(arg, args, i, cfg, files)
+	}
+	return -1
+}
+
+// parseExtendedArg handles follow-mode flags and file arguments.
+func parseExtendedArg(
+	arg string, args []string, i *int, cfg *config, files *[]string,
+) int {
+	switch {
+	case isFollowArg(arg):
+		applyFollowArg(arg, cfg)
+	case arg == "--retry":
+		cfg.retry = true
+	case strings.HasPrefix(arg, "--pid="):
+		return parsePIDValue(cfg, arg[len("--pid="):])
+	case arg == "--pid":
+		return consumeAndParse(args, i, "pid", func(v string) int {
+			return parsePIDValue(cfg, v)
+		})
+	case strings.HasPrefix(arg, "--sleep-interval="):
+		return parseSleepValue(cfg, arg[len("--sleep-interval="):])
+	case arg == "-s" || arg == "--sleep-interval":
+		return consumeAndParse(args, i, "sleep-interval", func(v string) int {
+			return parseSleepValue(cfg, v)
+		})
+	case strings.HasPrefix(arg, "-s") && len(arg) > 2:
+		return parseSleepValue(cfg, arg[2:])
+	case strings.HasPrefix(arg, "--max-unchanged-stats="):
+		return parseMaxUnchanged(cfg, arg[len("--max-unchanged-stats="):])
+	case arg == "--max-unchanged-stats":
+		return consumeAndParse(args, i, "max-unchanged-stats", func(v string) int {
+			return parseMaxUnchanged(cfg, v)
+		})
 	case strings.HasPrefix(arg, "-") && len(arg) > 1:
 		fmt.Fprintf(os.Stderr, "tail: unrecognized option '%s'\n", arg)
 		return 1
 	default:
 		*files = append(*files, arg)
 	}
+	return -1
+}
+
+// consumeAndParse reads the next argument and passes it to the parser.
+func consumeAndParse(
+	args []string, i *int, label string, parse func(string) int,
+) int {
+	if *i+1 >= len(args) {
+		fmt.Fprintf(os.Stderr,
+			"tail: option requires an argument -- '%s'\n", label)
+		return 1
+	}
+	*i++
+	return parse(args[*i])
+}
+
+// isFollowArg returns true for follow-mode flag variants.
+func isFollowArg(arg string) bool {
+	return arg == "-f" || arg == "--follow" ||
+		arg == "--follow=descriptor" || arg == "--follow=name" ||
+		arg == "-F"
+}
+
+// applyFollowArg sets follow mode from the given flag.
+func applyFollowArg(arg string, cfg *config) {
+	switch arg {
+	case "-f", "--follow", "--follow=descriptor":
+		cfg.follow = followDescriptor
+	case "--follow=name":
+		cfg.follow = followName
+	case "-F":
+		cfg.follow = followName
+		cfg.retry = true
+	}
+}
+
+// parsePIDValue parses a PID string and stores it in config.
+// R3.3: --pid=PID terminates follow when process dies.
+func parsePIDValue(cfg *config, val string) int {
+	pid, err := strconv.Atoi(val)
+	if err != nil || pid < 0 {
+		fmt.Fprintf(os.Stderr, "tail: invalid PID: '%s'\n", val)
+		return 1
+	}
+	cfg.pid = pid
+	return -1
+}
+
+// parseSleepValue parses a sleep interval and stores it in config.
+// R3.1: --sleep-interval=N configures polling frequency.
+func parseSleepValue(cfg *config, val string) int {
+	s, err := strconv.ParseFloat(val, 64)
+	if err != nil || s < 0 {
+		fmt.Fprintf(os.Stderr,
+			"tail: invalid number of seconds: '%s'\n", val)
+		return 1
+	}
+	cfg.sleepInterval = s
+	return -1
+}
+
+// parseMaxUnchanged parses the max-unchanged-stats value.
+// R3.4: reopen after N iterations with no change.
+func parseMaxUnchanged(cfg *config, val string) int {
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 0 {
+		fmt.Fprintf(os.Stderr,
+			"tail: invalid maximum unchanged stats count: '%s'\n", val)
+		return 1
+	}
+	cfg.maxUnchangedStats = n
 	return -1
 }
 
@@ -399,7 +519,6 @@ func modeLabel(m countMode) string {
 }
 
 // printHelp writes usage information to stdout and returns exit code.
-// R1.4: --help prints usage and exits 0.
 func printHelp() int {
 	_, err := fmt.Fprint(os.Stdout, `Usage: tail [OPTION]... [FILE]...
 Print the last 10 lines of each FILE to standard output.
@@ -407,12 +526,22 @@ With more than one FILE, precede each with a header giving the file name.
 
 With no FILE, or when FILE is -, read standard input.
 
-  -c, --bytes=[+]NUM      output the last NUM bytes; or use -c +NUM to
-                             output starting with byte NUM of each file
-  -n, --lines=[+]NUM      output the last NUM lines, instead of the last 10;
-                             or use -n +NUM to output starting with line NUM
-  -q, --quiet, --silent   never output headers giving file names
-  -v, --verbose            always output headers giving file names
+  -c, --bytes=[+]NUM       output the last NUM bytes; or use -c +NUM to
+                              output starting with byte NUM of each file
+  -f, --follow[=HOW]       output appended data as the file grows;
+                              an absent option argument means 'descriptor'
+  -F                        same as --follow=name --retry
+  -n, --lines=[+]NUM       output the last NUM lines, instead of the last 10;
+                              or use -n +NUM to output starting with line NUM
+      --max-unchanged-stats=N  with --follow=name, reopen a FILE which has not
+                              changed size in N iterations (default 5)
+      --pid=PID             with -f, terminate after process ID PID dies
+  -q, --quiet, --silent    never output headers giving file names
+      --retry               keep trying to open a file if it is inaccessible
+  -s, --sleep-interval=N   with -f, sleep for approximately N seconds
+                              (default 1.0) between iterations
+  -v, --verbose             always output headers giving file names
+  -z, --zero-terminated    line delimiter is NUL, not newline
 
       --help     display this help and exit
       --version  output version information and exit
