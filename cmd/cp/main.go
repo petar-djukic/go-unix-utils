@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd056-cp: Copy files and directories.
-// R1.1 (basic file copying), R1.2 (-i interactive), R1.3 (-f force),
-// R1.4 (-n no-clobber), R2.1 (-r recursive), R2.2 (refuse directory without -r).
+// R1.1-R1.4 (basic copy, interactive, force, no-clobber),
+// R2.1-R2.4 (recursive, directory refusal, dereference, no-dereference),
+// R3.1-R3.4 (preserve mode/ownership/timestamps, archive, attr list, verbose),
+// R4.1-R4.3 (exit codes, target-directory).
 package main
 
 import (
@@ -36,14 +38,20 @@ type config struct {
 	targetDir     string
 }
 
+// preserveFlags controls which attributes are preserved on copy.
+// R3.3: comma-separated attribute list support.
+type preserveFlags struct {
+	mode       bool
+	ownership  bool
+	timestamps bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-
 	cfg, args, exitCode := parseArgs(os.Args[1:])
 	if exitCode >= 0 {
 		os.Exit(exitCode)
 	}
-
 	os.Exit(run(cfg, args))
 }
 
@@ -54,18 +62,16 @@ func run(cfg config, args []string) int {
 		fmt.Fprintln(os.Stderr, "cp: missing file operand")
 		return 1
 	}
-
 	dest := args[len(args)-1]
 	sources := args[:len(args)-1]
-
 	if cfg.targetDir != "" {
 		dest = cfg.targetDir
 	}
-
 	return dispatch(cfg, sources, dest)
 }
 
 // dispatch routes to single-file or multi-source copy.
+// R3.4: multi-source to directory copy.
 func dispatch(cfg config, sources []string, dest string) int {
 	if len(sources) == 1 && !isDir(dest) {
 		return copySingle(cfg, sources[0], dest)
@@ -80,7 +86,6 @@ func copyMultiple(cfg config, sources []string, dest string) int {
 			"cp: target '%s' is not a directory\n", dest)
 		return 1
 	}
-
 	exitCode := 0
 	for _, src := range sources {
 		target := filepath.Join(dest, filepath.Base(src))
@@ -92,20 +97,45 @@ func copyMultiple(cfg config, sources []string, dest string) int {
 }
 
 // copySingle copies a single source to a destination path.
-// R1.1: copy SOURCE to DEST.
-// R2.2: refuse to copy a directory without -r.
+// R2.3/R2.4: handles symlink dereference decision.
 func copySingle(cfg config, src, dest string) int {
 	info, err := os.Lstat(src)
 	if err != nil {
 		printErr("cannot stat '%s': %v", src, unwrapErr(err))
 		return 1
 	}
-
+	if isSymlink(info) && !shouldDereference(cfg) {
+		return copySymlink(cfg, src, dest)
+	}
+	if isSymlink(info) {
+		info, err = os.Stat(src)
+		if err != nil {
+			printErr("cannot stat '%s': %v", src, unwrapErr(err))
+			return 1
+		}
+	}
 	if info.IsDir() {
 		return copyDirectory(cfg, src, dest, info)
 	}
+	return copyFile(cfg, src, dest, info)
+}
 
-	return copyFile(cfg, src, dest, info.Mode())
+// isSymlink reports whether the file info indicates a symbolic link.
+func isSymlink(info os.FileInfo) bool {
+	return info.Mode()&os.ModeSymlink != 0
+}
+
+// shouldDereference returns true if symlinks should be followed.
+// R2.3: -L always follows. R2.4: -P/-d never follows; default with -r.
+func shouldDereference(cfg config) bool {
+	if cfg.dereference {
+		return true
+	}
+	if cfg.noDereference {
+		return false
+	}
+	// R2.4: default is no-dereference when recursive
+	return !cfg.recursive
 }
 
 // copyDirectory handles directory source arguments.
@@ -124,14 +154,15 @@ func copyDirRecursive(cfg config, src, dest string, info fs.FileInfo) int {
 		printErr("cannot create directory '%s': %v", dest, unwrapErr(err))
 		return 1
 	}
-
-	exitCode := 0
+	if cfg.verbose {
+		printVerbose(src, dest)
+	}
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		printErr("cannot read directory '%s': %v", src, unwrapErr(err))
 		return 1
 	}
-
+	exitCode := 0
 	for _, entry := range entries {
 		s := filepath.Join(src, entry.Name())
 		d := filepath.Join(dest, entry.Name())
@@ -139,23 +170,51 @@ func copyDirRecursive(cfg config, src, dest string, info fs.FileInfo) int {
 			exitCode = 1
 		}
 	}
+	preserveAttrs(cfg, src, dest)
 	return exitCode
 }
 
-// copyFile copies a regular file from src to dest.
-// R1.4: -n skips if dest exists. R1.2: -i prompts. R1.3: -f forces.
-func copyFile(cfg config, src, dest string, srcMode os.FileMode) int {
+// copySymlink copies a symlink as a symlink without following it.
+// R2.4: -P/--no-dereference preserves symlinks.
+func copySymlink(cfg config, src, dest string) int {
 	if shouldSkipExisting(cfg, dest) {
 		return 0
 	}
+	target, err := os.Readlink(src)
+	if err != nil {
+		printErr("cannot read symlink '%s': %v", src, unwrapErr(err))
+		return 1
+	}
+	if fileExists(dest) {
+		if err := os.Remove(dest); err != nil {
+			printErr("cannot remove '%s': %v", dest, unwrapErr(err))
+			return 1
+		}
+	}
+	if err := os.Symlink(target, dest); err != nil {
+		printErr("cannot create symlink '%s': %v", dest, unwrapErr(err))
+		return 1
+	}
+	if cfg.verbose {
+		printVerbose(src, dest)
+	}
+	return 0
+}
 
-	if err := performCopy(cfg, src, dest, srcMode); err != nil {
+// copyFile copies a regular file from src to dest.
+// R1.4: -n skips if dest exists. R3.1: preserves attrs if -p.
+func copyFile(cfg config, src, dest string, info os.FileInfo) int {
+	if shouldSkipExisting(cfg, dest) {
+		return 0
+	}
+	if err := performCopy(cfg, src, dest, info.Mode()); err != nil {
 		printErr("%v", err)
 		return 1
 	}
 	if cfg.verbose {
-		fmt.Fprintf(os.Stderr, "'%s' -> '%s'\n", src, dest)
+		printVerbose(src, dest)
 	}
+	preserveAttrs(cfg, src, dest)
 	return 0
 }
 
@@ -195,7 +254,6 @@ func performCopy(cfg config, src, dest string, srcMode os.FileMode) error {
 			src, unwrapErr(err))
 	}
 	defer srcFile.Close()
-
 	return writeDestFile(cfg, srcFile, dest, srcMode)
 }
 
@@ -213,7 +271,6 @@ func writeDestFile(
 			dest, unwrapErr(err))
 	}
 	defer dstFile.Close()
-
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("error writing '%s': %v", dest, unwrapErr(err))
 	}
@@ -233,6 +290,64 @@ func forceCreateDest(dest string, mode os.FileMode) (*os.File, error) {
 		return nil, err
 	}
 	return createDest(dest, mode)
+}
+
+// preserveAttrs applies mode, ownership, and timestamps from src to dest.
+// R3.1/R3.2/R3.3: preserve selected attributes after copy.
+func preserveAttrs(cfg config, src, dest string) {
+	if cfg.preserve == "" {
+		return
+	}
+	attrs := parsePreserveAttrs(cfg.preserve)
+	si, err := sys.Stat(src)
+	if err != nil {
+		return // cannot stat source for preservation
+	}
+	if attrs.mode {
+		if err := os.Chmod(dest, si.Mode.Perm()); err != nil {
+			printErr("preserving permissions for '%s': %v",
+				dest, unwrapErr(err))
+		}
+	}
+	if attrs.timestamps {
+		if err := os.Chtimes(dest, si.AccessTime, si.ModTime); err != nil {
+			printErr("preserving timestamps for '%s': %v",
+				dest, unwrapErr(err))
+		}
+	}
+	if attrs.ownership {
+		// Ownership preservation often fails for non-root; warn only
+		if err := os.Lchown(dest, int(si.Uid), int(si.Gid)); err != nil {
+			printErr("preserving ownership for '%s': %v",
+				dest, unwrapErr(err))
+		}
+	}
+}
+
+// parsePreserveAttrs converts a preserve attribute string to flags.
+// R3.3: supports comma-separated list and "all" keyword.
+func parsePreserveAttrs(preserve string) preserveFlags {
+	if preserve == "all" {
+		return preserveFlags{mode: true, ownership: true, timestamps: true}
+	}
+	var pf preserveFlags
+	for _, attr := range strings.Split(preserve, ",") {
+		switch strings.TrimSpace(attr) {
+		case "mode":
+			pf.mode = true
+		case "ownership":
+			pf.ownership = true
+		case "timestamps":
+			pf.timestamps = true
+		}
+	}
+	return pf
+}
+
+// printVerbose prints the copy operation to stdout in GNU cp format.
+// R3.4: verbose output for each file copied.
+func printVerbose(src, dest string) {
+	fmt.Printf("'%s' -> '%s'\n", src, dest)
 }
 
 // fileExists reports whether path exists.
@@ -265,7 +380,6 @@ func printErr(format string, args ...any) {
 // exit is -1 when processing should continue; >= 0 for early exit.
 func parseArgs(args []string) (cfg config, operands []string, exit int) {
 	exit = -1
-
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
 			operands = append(operands, args[i+1:]...)
@@ -340,7 +454,9 @@ func parseShortFlags(
 	flags string, args []string, i *int, cfg *config,
 ) int {
 	for j := 0; j < len(flags); j++ {
-		if exit := applyShortFlag(flags[j], flags[j+1:], args, i, cfg); exit >= 0 {
+		if exit := applyShortFlag(
+			flags[j], flags[j+1:], args, i, cfg,
+		); exit >= 0 {
 			return exit
 		}
 		if consumesRemainder(flags[j]) {
@@ -371,6 +487,8 @@ func applyShortFlag(
 	case 'L':
 		cfg.dereference = true
 	case 'P':
+		cfg.noDereference = true
+	case 'd':
 		cfg.noDereference = true
 	case 'p':
 		cfg.preserve = "mode,ownership,timestamps"
@@ -454,6 +572,7 @@ func printHelp() int {
 Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY.
 
   -a, --archive                same as -dR --preserve=all
+  -d                           same as --no-dereference
   -f, --force                  if an existing destination file cannot be
                                  opened, remove it and try again
   -i, --interactive            prompt before overwrite
