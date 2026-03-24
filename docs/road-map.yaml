@@ -27,7 +27,7 @@ releases:
           status: implemented
     - version: "01.1"
       name: "Batch 1.1 — cat specification and differential test"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement cat for file concatenation and display. cat depends on pkg/testutils from
