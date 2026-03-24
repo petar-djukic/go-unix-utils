@@ -194,7 +194,7 @@ releases:
         - id: rel05.0-uc003-nl
           status: implemented
         - id: rel05.0-uc004-fold
-          status: spec_complete
+          status: implemented
     - version: "05.1"
       name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
       status: spec_complete
