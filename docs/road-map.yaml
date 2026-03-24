@@ -87,7 +87,7 @@ releases:
         mode (-a) and SIGINT suppression (-i).
       use_cases:
         - id: rel02.1-uc001-tee
-          status: spec_complete
+          status: implemented
     - version: "02.2"
       name: "Batch 2.2 — head and seq specification and differential test"
       status: spec_complete
