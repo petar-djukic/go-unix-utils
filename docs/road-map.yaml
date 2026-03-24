@@ -226,7 +226,7 @@ releases:
         - id: rel05.2-uc001-cut
           status: implemented
         - id: rel05.2-uc002-paste
-          status: spec_complete
+          status: implemented
     - version: "05.3"
       name: "Batch 5.3 — sorted-stream comparison pair (uniq, comm)"
       status: spec_complete
