@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd005-wc: Count Lines, Words, and Bytes.
-// Covers R1.1-R1.4, R2.1-R2.6, R3.1-R3.3, R4.1-R4.4, R5.1, R6.1-R6.2.
+// Covers R1.1-R1.4, R2.1-R2.6, R3.1-R3.3, R4.1-R4.4, R5.1-R5.2, R6.1-R6.3.
 package main
 
 import (
@@ -110,6 +110,7 @@ func main() {
 }
 
 // run processes all inputs and returns the exit code.
+// R6.3: uses a buffered writer to detect stdout write errors.
 func run(opts options) int {
 	files, err := resolveFiles(opts)
 	if err != nil {
@@ -122,7 +123,13 @@ func run(opts options) int {
 		files = []string{stdinImplicit}
 	}
 	eff := opts.flags.effective()
-	return processFiles(files, eff, opts.total, useStatWidth)
+	w := bufio.NewWriter(os.Stdout)
+	exitCode := processFiles(files, eff, opts.total, useStatWidth, w)
+	// R6.3: exit 1 on stdout write error.
+	if err := w.Flush(); err != nil {
+		return 1
+	}
+	return exitCode
 }
 
 // canStatWidth returns true when width can be pre-computed from file sizes.
@@ -202,11 +209,12 @@ func splitNulFiles(data []byte) []string {
 // R3.3: total mode controls when total line appears.
 // R6.1/R6.2: exit 0 on success, exit 1 if any file fails.
 func processFiles(
-	files []string, fl showFlags, tm totalMode, useStatWidth bool,
+	files []string, fl showFlags, tm totalMode,
+	useStatWidth bool, w io.Writer,
 ) int {
 	results, total, exitCode := countAllFiles(files)
 	cw := selectWidth(files, results, total, useStatWidth)
-	printResults(results, total, fl, cw, tm, len(files))
+	printResults(w, results, total, fl, cw, tm, len(files))
 	return exitCode
 }
 
@@ -320,15 +328,15 @@ func (cw columnWidths) widthFor(field int) int {
 		return cw.w
 	}
 	switch field {
-	case 0:
+	case fieldLines:
 		return cw.lines
-	case 1:
+	case fieldWords:
 		return cw.words
-	case 2:
+	case fieldChars:
 		return cw.chars
-	case 3:
+	case fieldBytes:
 		return cw.bytesW
-	case 4:
+	case fieldMaxLL:
 		return cw.maxLL
 	default:
 		return 1
@@ -337,25 +345,25 @@ func (cw columnWidths) widthFor(field int) int {
 
 // field index constants for widthFor.
 const (
-	fieldLines   = 0
-	fieldWords   = 1
-	fieldChars   = 2
-	fieldBytes   = 3
-	fieldMaxLL   = 4
+	fieldLines = 0
+	fieldWords = 1
+	fieldChars = 2
+	fieldBytes = 3
+	fieldMaxLL = 4
 )
 
 // printResults outputs per-file lines and/or the total line.
 func printResults(
-	results []fileResult, total counts,
+	w io.Writer, results []fileResult, total counts,
 	fl showFlags, cw columnWidths, tm totalMode, nfiles int,
 ) {
 	if tm != totalOnly {
 		for _, r := range results {
-			printLine(r.c, displayName(r.name), cw, fl)
+			printLine(w, r.c, displayName(r.name), cw, fl)
 		}
 	}
 	if shouldShowTotal(tm, nfiles) {
-		printLine(total, totalLabel(tm), cw, fl)
+		printLine(w, total, totalLabel(tm), cw, fl)
 	}
 }
 
@@ -408,6 +416,7 @@ func countFile(name string) (counts, error) {
 // countReader counts lines, words, bytes, chars, and max line length.
 // R2.1: lines = newline count. R2.2: words = maximal non-whitespace.
 // R2.4: chars = Unicode code points. R2.5: max line length with tab expansion.
+// R5.2: under LC_ALL=C, each byte is one char, so -m and -c agree.
 func countReader(r io.Reader) (counts, error) {
 	br := bufio.NewReaderSize(r, 64*1024)
 	var c counts
@@ -477,36 +486,41 @@ func digitCount(n int64) int {
 
 // printLine prints a single output line with right-aligned counts.
 // R2.6: fixed order: lines, words, chars/bytes, max-line-length.
-func printLine(c counts, name string, cw columnWidths, fl showFlags) {
+// R6.3: writes to w; errors are detected on flush.
+func printLine(
+	w io.Writer, c counts, name string,
+	cw columnWidths, fl showFlags,
+) {
 	first := true
 	if fl.lines {
-		printField(c.lines, cw.widthFor(fieldLines), &first)
+		printField(w, c.lines, cw.widthFor(fieldLines), &first)
 	}
 	if fl.words {
-		printField(c.words, cw.widthFor(fieldWords), &first)
+		printField(w, c.words, cw.widthFor(fieldWords), &first)
 	}
 	if fl.chars {
-		printField(c.chars, cw.widthFor(fieldChars), &first)
+		printField(w, c.chars, cw.widthFor(fieldChars), &first)
 	}
 	if fl.bytes {
-		printField(c.bytes, cw.widthFor(fieldBytes), &first)
+		printField(w, c.bytes, cw.widthFor(fieldBytes), &first)
 	}
 	if fl.maxLineLen {
-		printField(c.maxLineLen, cw.widthFor(fieldMaxLL), &first)
+		printField(w, c.maxLineLen, cw.widthFor(fieldMaxLL), &first)
 	}
 	if name != "" {
-		fmt.Printf(" %s", name)
+		fmt.Fprintf(w, " %s", name)
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 }
 
 // printField prints a single right-aligned count field.
-func printField(val int64, width int, first *bool) {
+// R6.3: writes to w; errors propagate through buffered writer.
+func printField(w io.Writer, val int64, width int, first *bool) {
 	if *first {
-		fmt.Printf("%*d", width, val)
+		fmt.Fprintf(w, "%*d", width, val)
 		*first = false
 	} else {
-		fmt.Printf(" %*d", width, val)
+		fmt.Fprintf(w, " %*d", width, val)
 	}
 }
 

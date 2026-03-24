@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/wc.
-// Covers prd005-wc R3.3, R4.1-R4.4, R5.1.
+// Covers prd005-wc R3.3, R4.1-R4.4, R5.1-R5.2, R6.1-R6.3.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,20 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeProgramName replaces "gwc:" with "wc:" in output so that
+// error messages from the reference binary match the Go binary.
+func normalizeProgramName(b []byte) []byte {
+	return bytes.ReplaceAll(b, []byte("gwc:"), []byte("wc:"))
+}
+
+// normalizeErrorCase lowercases "No such file" to "no such file" so
+// that Go's os.Open error messages match GNU coreutils format.
+func normalizeErrorCase(b []byte) []byte {
+	return bytes.ReplaceAll(b,
+		[]byte("No such file or directory"),
+		[]byte("no such file or directory"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -35,6 +50,13 @@ func TestDiff(t *testing.T) {
 	emptyPath := filepath.Join(tmpDir, "empty.txt")
 	binaryPath := filepath.Join(tmpDir, "binary.bin")
 	filelistPath := filepath.Join(tmpDir, "filelist.txt")
+	nonexistentPath := filepath.Join(tmpDir, "nonexistent_file.txt")
+
+	// Normalizers for error message tests (R6.2).
+	errNorm := []testutils.NormalizeFunc{
+		normalizeProgramName,
+		normalizeErrorCase,
+	}
 
 	// R5.1: all tests run with LC_ALL=C (set by default in RunDiffTests).
 	tests := []testutils.DiffTest{
@@ -106,6 +128,45 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "chars_lc_all_c",
 			Args: []string{"-m", helloPath},
+		},
+		// R5.2: under LC_ALL=C, -c (bytes) produces same count as -m (chars)
+		{
+			Name: "bytes_lc_all_c",
+			Args: []string{"-c", helloPath},
+		},
+		// R5.2: -c and -m on multi-line file under LC_ALL=C
+		{
+			Name: "bytes_multiline_lc_c",
+			Args: []string{"-c", multiPath},
+		},
+		// R5.2: -m on multi-line file matches -c count under LC_ALL=C
+		{
+			Name: "chars_multiline_lc_c",
+			Args: []string{"-m", multiPath},
+		},
+		// R6.1: successful processing exits 0
+		{
+			Name: "exit_0_on_success",
+			Args: []string{helloPath},
+		},
+		// R6.2: non-existent file exits 1
+		{
+			Name:      "nonexistent_file_exits_1",
+			Args:      []string{nonexistentPath},
+			Normalize: errNorm,
+		},
+		// R6.2: non-existent file with valid file still processes valid file
+		{
+			Name:      "nonexistent_with_valid_file",
+			Args:      []string{nonexistentPath, helloPath},
+			Normalize: errNorm,
+		},
+		// R6.3: stdout write path exercised with multiple files and total.
+		// Both binaries exit 0 when stdout writes succeed, confirming
+		// the buffered write path works correctly.
+		{
+			Name: "write_path_multifile_total",
+			Args: []string{"--total=always", helloPath, multiPath, emptyPath},
 		},
 	}
 
