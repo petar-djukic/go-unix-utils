@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd053-sort R1.1–R1.7, R3.1–R3.3:
+// Implements prd053-sort R1.1–R1.7, R2.1–R2.4, R3.1–R3.4:
 // core entry point with basic line sorting, reverse (-r), numeric (-n),
-// unique (-u), output file (-o), stable (-s), field separator (-t),
-// and key definitions (-k).
+// general numeric (-g), human numeric (-h), version sort (-V),
+// fold case (-f), dictionary order (-d), ignore non-printing (-i),
+// ignore leading blanks (-b), unique (-u), output file (-o),
+// stable (-s), merge (-m), field separator (-t), and key definitions (-k).
 package main
 
 import (
@@ -23,14 +25,22 @@ var version = "dev"
 
 // config holds parsed command-line state.
 type config struct {
-	reverse    bool
-	numeric    bool
-	unique     bool
-	stable     bool
-	outputFile string
-	separator  string    // R3.1: -t field separator
-	keys       []sortKey // R3.2: -k key definitions
-	files      []string
+	reverse     bool
+	numeric     bool
+	unique      bool
+	stable      bool
+	generalNum  bool
+	humanNum    bool
+	versionSort bool
+	foldCase    bool
+	dictOrder   bool
+	ignoreNP    bool
+	blanks      bool
+	merge       bool
+	outputFile  string
+	separator   string    // R3.1: -t field separator
+	keys        []sortKey // R3.2: -k key definitions
+	files       []string
 }
 
 func main() {
@@ -38,6 +48,9 @@ func main() {
 	cfg, exitCode := parseArgs(os.Args[1:])
 	if exitCode >= 0 {
 		os.Exit(exitCode)
+	}
+	if cfg.merge {
+		os.Exit(runMerge(cfg))
 	}
 	os.Exit(run(cfg))
 }
@@ -263,6 +276,22 @@ func parseLongBool(arg string, cfg *config) bool {
 		cfg.unique = true
 	case "--stable":
 		cfg.stable = true
+	case "--general-numeric-sort":
+		cfg.generalNum = true
+	case "--human-numeric-sort":
+		cfg.humanNum = true
+	case "--version-sort":
+		cfg.versionSort = true
+	case "--ignore-case":
+		cfg.foldCase = true
+	case "--dictionary-order":
+		cfg.dictOrder = true
+	case "--ignore-nonprinting":
+		cfg.ignoreNP = true
+	case "--ignore-leading-blanks":
+		cfg.blanks = true
+	case "--merge":
+		cfg.merge = true
 	default:
 		return false
 	}
@@ -334,6 +363,22 @@ func applyBoolFlag(ch byte, cfg *config) int {
 		cfg.unique = true
 	case 's':
 		cfg.stable = true
+	case 'g':
+		cfg.generalNum = true
+	case 'h':
+		cfg.humanNum = true
+	case 'V':
+		cfg.versionSort = true
+	case 'f':
+		cfg.foldCase = true
+	case 'd':
+		cfg.dictOrder = true
+	case 'i':
+		cfg.ignoreNP = true
+	case 'b':
+		cfg.blanks = true
+	case 'm':
+		cfg.merge = true
 	default:
 		fmt.Fprintf(os.Stderr, "sort: invalid option -- '%c'\n", ch)
 		return 2
@@ -386,20 +431,28 @@ With no FILE, or when FILE is -, read standard input.
 
 Ordering options:
 
-  -n, --numeric-sort          compare according to string numerical value
-  -r, --reverse               reverse the result of comparisons
+  -b, --ignore-leading-blanks  ignore leading blanks
+  -d, --dictionary-order       consider only blanks and alphanumeric characters
+  -f, --ignore-case            fold lower case to upper case characters
+  -g, --general-numeric-sort   compare according to general numerical value
+  -i, --ignore-nonprinting     consider only printable characters
+  -h, --human-numeric-sort     compare human readable numbers (e.g., 2K 1G)
+  -n, --numeric-sort           compare according to string numerical value
+  -V, --version-sort           natural sort of (version) numbers within text
+  -r, --reverse                reverse the result of comparisons
 
 Key options:
 
-  -k, --key=KEYDEF            sort via a key; KEYDEF gives location and type
-  -t, --field-separator=SEP   use SEP instead of non-blank to blank transition
+  -k, --key=KEYDEF             sort via a key; KEYDEF gives location and type
+  -t, --field-separator=SEP    use SEP instead of non-blank to blank transition
 
 Other options:
 
-  -o, --output=FILE   write result to FILE instead of standard output
-  -s, --stable        stabilize sort by disabling last-resort comparison
-  -u, --unique        with -c, check for strict ordering;
-                        without -c, output only the first of an equal run
+  -m, --merge              merge already sorted files; do not sort
+  -o, --output=FILE        write result to FILE instead of standard output
+  -s, --stable             stabilize sort by disabling last-resort comparison
+  -u, --unique             with -c, check for strict ordering;
+                             without -c, output only the first of an equal run
       --help     display this help and exit
       --version  output version information and exit
 `)

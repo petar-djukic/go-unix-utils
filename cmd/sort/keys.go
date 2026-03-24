@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd053-sort R3.1–R3.3:
-// field separator (-t), key definitions (-k), and key-based comparison.
+// Implements prd053-sort R2.1–R2.4, R3.1–R3.4:
+// field separator (-t), key definitions (-k), key-based comparison,
+// and all sort mode comparisons.
 package main
 
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 )
@@ -297,7 +297,7 @@ func isBlank(b byte) bool {
 // --- Comparison ---
 
 // makeCompare returns the less-than function for sorting.
-// D2: When no -k is specified, the entire line is the sort key.
+// When no -k is specified, the entire line is the sort key.
 func makeCompare(cfg config) func(a, b []byte) bool {
 	if len(cfg.keys) > 0 {
 		return func(a, b []byte) bool {
@@ -318,7 +318,7 @@ func makeEqual(cfg config) func(a, b []byte) bool {
 }
 
 // compareKeys compares two lines using all configured keys.
-// D3: keys evaluated left to right; fall back to whole-line if all equal.
+// Keys evaluated left to right; fall back to whole-line if all equal.
 func compareKeys(a, b []byte, cfg config) int {
 	for _, key := range cfg.keys {
 		ka := extractKey(a, key, cfg.separator)
@@ -367,19 +367,61 @@ func effectiveMods(mods keyMods, cfg config) keyMods {
 		return mods
 	}
 	return keyMods{
-		numeric: cfg.numeric,
-		reverse: cfg.reverse,
+		numeric:    cfg.numeric,
+		reverse:    cfg.reverse,
+		generalNum: cfg.generalNum,
+		humanNum:   cfg.humanNum,
+		version:    cfg.versionSort,
+		foldCase:   cfg.foldCase,
+		dict:       cfg.dictOrder,
+		ignoreNP:   cfg.ignoreNP,
+		blanks:     cfg.blanks,
+	}
+}
+
+// globalMods returns the global modifier flags for non-key comparison.
+// R3.2: reverse is excluded; the caller handles it separately.
+func globalMods(cfg config) keyMods {
+	return keyMods{
+		numeric:    cfg.numeric,
+		generalNum: cfg.generalNum,
+		humanNum:   cfg.humanNum,
+		version:    cfg.versionSort,
+		foldCase:   cfg.foldCase,
+		dict:       cfg.dictOrder,
+		ignoreNP:   cfg.ignoreNP,
+		blanks:     cfg.blanks,
 	}
 }
 
 // compareByMods compares two key values using the specified modifiers.
+// R3.1: sort mode priority: generalNum > humanNum > numeric > version > lexicographic.
 func compareByMods(a, b []byte, mods keyMods) int {
 	if mods.blanks {
 		a = trimLeadingBlanks(a)
 		b = trimLeadingBlanks(b)
 	}
+	if mods.generalNum {
+		return generalNumericCompare(a, b)
+	}
+	if mods.humanNum {
+		return humanNumericCompare(a, b)
+	}
 	if mods.numeric {
 		return numericCompare(a, b)
+	}
+	if mods.version {
+		return versionCompare(a, b)
+	}
+	return lexicographicCompare(a, b, mods)
+}
+
+// lexicographicCompare compares with optional text transforms.
+func lexicographicCompare(a, b []byte, mods keyMods) int {
+	if mods.foldCase || mods.dict || mods.ignoreNP {
+		ta := transformForCompare(a, mods)
+		tb := transformForCompare(b, mods)
+		return bytes.Compare(ta, tb)
 	}
 	return bytes.Compare(a, b)
 }
@@ -388,46 +430,32 @@ func compareByMods(a, b []byte, mods keyMods) int {
 
 // selectCompare returns the less-than function for non-key sorting.
 func selectCompare(cfg config) func(a, b []byte) bool {
-	var less func(a, b []byte) bool
-	if cfg.numeric {
-		less = numericLess
-	} else {
-		less = byteLess
+	mods := globalMods(cfg)
+	return func(a, b []byte) bool {
+		cmp := compareByMods(a, b, mods)
+		if cmp != 0 {
+			if cfg.reverse {
+				return cmp > 0
+			}
+			return cmp < 0
+		}
+		if cfg.stable {
+			return false
+		}
+		lr := bytes.Compare(a, b)
+		if cfg.reverse {
+			return lr > 0
+		}
+		return lr < 0
 	}
-	if cfg.reverse {
-		fwd := less
-		less = func(a, b []byte) bool { return fwd(b, a) }
-	}
-	return less
 }
 
 // selectEqual returns the equality function for non-key deduplication.
 func selectEqual(cfg config) func(a, b []byte) bool {
-	if cfg.numeric {
-		return func(a, b []byte) bool {
-			va := parseLeadingNumber(a)
-			vb := parseLeadingNumber(b)
-			return va == vb || (math.IsNaN(va) && math.IsNaN(vb))
-		}
-	}
+	mods := globalMods(cfg)
 	return func(a, b []byte) bool {
-		return bytes.Equal(a, b)
+		return compareByMods(a, b, mods) == 0
 	}
-}
-
-// byteLess compares two lines lexicographically by raw byte values.
-func byteLess(a, b []byte) bool {
-	return bytes.Compare(a, b) < 0
-}
-
-// numericLess compares two lines by leading numeric value.
-func numericLess(a, b []byte) bool {
-	va := parseLeadingNumber(a)
-	vb := parseLeadingNumber(b)
-	if va != vb {
-		return va < vb
-	}
-	return bytes.Compare(a, b) < 0
 }
 
 // numericCompare compares two byte slices by leading numeric value.
