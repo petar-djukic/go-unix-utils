@@ -3,7 +3,8 @@
 
 // Implements prd026-cut: Remove Sections from Lines.
 // Covers R1.1-R1.4 (byte and character selection),
-// R2.1-R2.2 (field selection with delimiter).
+// R2.1-R2.4 (field selection, delimiter, suppress, output-delimiter),
+// R3.1-R3.3 (complement mode).
 package main
 
 import (
