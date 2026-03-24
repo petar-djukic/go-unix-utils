@@ -278,7 +278,7 @@ releases:
         - id: rel06.0-uc001-mkdir
           status: implemented
         - id: rel06.0-uc002-rmdir
-          status: spec_complete
+          status: implemented
         - id: rel06.0-uc003-mktemp
           status: spec_complete
         - id: rel06.0-uc004-ln
