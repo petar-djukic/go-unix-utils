@@ -6,7 +6,9 @@
 // R1.3 (refuse . and ..), R1.4 (continue on error),
 // R2.1-R2.3 (recursive removal with force), R2.4 (empty dir removal),
 // R3.1 (-i always prompt), R3.2 (-I once prompt),
-// R3.3 (-v verbose), R3.4 (--interactive=WHEN).
+// R3.3 (-v verbose), R3.4 (--interactive=WHEN),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on failure, continue),
+// R4.3 (-f exits 0 for nonexistent), R4.4 (differential tests).
 package main
 
 import (

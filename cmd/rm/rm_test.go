@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/rm against GNU grm.
 // Covers prd058-rm R1.1-R1.4 (basic removal), R2.1-R2.4 (recursive/force/dir),
-// R3.1-R3.4 (interactive modes, verbose, --interactive=WHEN).
+// R3.1-R3.4 (interactive modes, verbose, --interactive=WHEN),
+// R4.1-R4.4 (exit codes, error handling, and differential tests).
 package main
 
 import (
@@ -35,11 +36,16 @@ func stderrNormalizer(b []byte) []byte {
 	noSuch := regexp.MustCompile(`(?i)no such file or directory`)
 	isDir := regexp.MustCompile(`(?i)is a directory`)
 	dirNotEmpty := regexp.MustCompile(`(?i)directory not empty`)
+	permDenied := regexp.MustCompile(`(?i)permission denied`)
+	opNotPerm := regexp.MustCompile(
+		`(?i)operation not permitted`)
 	b = binPath.ReplaceAll(b, []byte("rm"))
 	b = tryHelp.ReplaceAll(b, nil)
 	b = noSuch.ReplaceAll(b, []byte("No such file or directory"))
 	b = isDir.ReplaceAll(b, []byte("Is a directory"))
 	b = dirNotEmpty.ReplaceAll(b, []byte("Directory not empty"))
+	b = permDenied.ReplaceAll(b, []byte("Permission denied"))
+	b = opNotPerm.ReplaceAll(b, []byte("Operation not permitted"))
 	return b
 }
 
@@ -322,6 +328,89 @@ func TestDiff(t *testing.T) {
 				return []string{"-f"}
 			},
 		},
+		{
+			// R4.2: multiple nonexistent files without -f.
+			name: "multi_nonexistent_error",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				return []string{
+					filepath.Join(dir, "no1.txt"),
+					filepath.Join(dir, "no2.txt"),
+				}
+			},
+		},
+		{
+			// R4.3: -f with mixed existing and nonexistent.
+			name: "force_mixed_exist_nonexist",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				f := writeFile(t, dir, "real.txt",
+					[]byte("data\n"))
+				return []string{"-f", f,
+					filepath.Join(dir, "ghost.txt")}
+			},
+		},
+		{
+			// R4.1: exit 0 after removing multiple files.
+			name: "multi_file_exit_zero",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				f1 := writeFile(t, dir, "a.txt", []byte("a\n"))
+				f2 := writeFile(t, dir, "b.txt", []byte("b\n"))
+				f3 := writeFile(t, dir, "c.txt", []byte("c\n"))
+				return []string{f1, f2, f3}
+			},
+		},
+		{
+			// R4.2: partial failure — first missing, second exists.
+			name: "partial_fail_first_missing",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				f := writeFile(t, dir, "ok.txt", []byte("ok\n"))
+				return []string{
+					filepath.Join(dir, "missing.txt"), f}
+			},
+		},
+		{
+			// R4.4: permission denied on file in read-only dir.
+			name: "permission_denied",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				sub := makeDir(t, dir, "locked")
+				writeFile(t, sub, "secret.txt",
+					[]byte("secret\n"))
+				// Remove write permission from parent.
+				if err := os.Chmod(sub, 0o555); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() {
+					// best-effort restore for cleanup
+					os.Chmod(sub, 0o755)
+				})
+				return []string{
+					filepath.Join(sub, "secret.txt")}
+			},
+		},
+		{
+			// R4.3: -rf on nonexistent directory exits 0.
+			name: "rf_nonexistent_dir",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				return []string{"-rf",
+					filepath.Join(dir, "nodir")}
+			},
+		},
+		{
+			// R4.2: dir without -r, then file — partial failure.
+			name: "dir_then_file_partial",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				d := makeDir(t, dir, "adir")
+				f := writeFile(t, dir, "afile.txt",
+					[]byte("ok\n"))
+				return []string{d, f}
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -576,6 +665,105 @@ func TestInteractiveWhen(t *testing.T) {
 			t.Errorf("exit: got %d, want 1", res.exitCode)
 		}
 	})
+}
+
+// TestDiffDotDotRefusal verifies dot/dotdot refusal against grm.
+// R1.3: refuse . and .. in differential mode.
+func TestDiffDotDotRefusal(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+	dotPaths := []rmTestCase{
+		{
+			name: "dot_refusal",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				return []string{"-rf", "."}
+			},
+		},
+		{
+			name: "dotdot_refusal",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				return []string{"-rf", ".."}
+			},
+		},
+	}
+	for _, tc := range dotPaths {
+		runRmDiffTest(t, goBin, refBin, tc)
+	}
+}
+
+// TestDiffFileState verifies filesystem state matches between go and ref.
+// R4.4: differential tests compare resulting file system state.
+func TestDiffFileState(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skipf("reference binary grm not in PATH: %v", err)
+	}
+	tests := []rmTestCase{
+		{
+			name: "state_partial_fail",
+			setup: func(t *testing.T, dir string) []string {
+				t.Helper()
+				writeFile(t, dir, "keep.txt", []byte("k\n"))
+				f := writeFile(t, dir, "gone.txt",
+					[]byte("g\n"))
+				d := makeDir(t, dir, "adir")
+				// dir without -r will fail, file succeeds.
+				return []string{d, f}
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Helper()
+			refDir := t.TempDir()
+			goDir := t.TempDir()
+			refArgs := tc.setup(t, refDir)
+			goArgs := tc.setup(t, goDir)
+			refRes := runBin(t, refBin, refArgs, refDir)
+			goRes := runBin(t, goBin, goArgs, goDir)
+			compareRmResults(
+				t, tc.name, refRes, goRes, refDir, goDir)
+			compareFileState(t, refDir, goDir)
+		})
+	}
+}
+
+// compareFileState verifies that both directories have the same entries.
+func compareFileState(t *testing.T, refDir, goDir string) {
+	t.Helper()
+	refEntries := listDir(t, refDir)
+	goEntries := listDir(t, goDir)
+	if len(refEntries) != len(goEntries) {
+		t.Errorf("file state divergence: ref has %v, go has %v",
+			refEntries, goEntries)
+		return
+	}
+	for i := range refEntries {
+		if refEntries[i] != goEntries[i] {
+			t.Errorf("file state divergence at %d: ref=%s go=%s",
+				i, refEntries[i], goEntries[i])
+		}
+	}
+}
+
+// listDir returns sorted entry names in a directory.
+func listDir(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir %s: %v", dir, err)
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	return names
 }
 
 // TestRootRefusal verifies that rm -r / is refused by default.
