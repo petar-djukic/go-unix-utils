@@ -3,7 +3,9 @@
 
 // Implements prd022-nl: Number Lines of Files.
 // Covers R1.1-R1.4 (default line numbering, file/stdin reading),
-// R2.1-R2.2 (numbering style flags, section delimiter configuration).
+// R2.1-R2.4 (numbering style flags, section delimiter configuration),
+// R3.1-R3.4 (format, width, separator, start, increment, join blank),
+// R4.1-R4.4 (section delimiters, page reset, -p, -l).
 package main
 
 import (
@@ -51,12 +53,20 @@ const (
 
 // nlConfig holds parsed command-line options.
 type nlConfig struct {
-	bodyStyle numberStyle
-	bodyRegex *regexp.Regexp
-	format    numberFormat
-	width     int
-	separator string
-	delimiter string // two-character section delimiter (default `\:`)
+	bodyStyle   numberStyle
+	bodyRegex   *regexp.Regexp
+	headerStyle numberStyle    // R2.2: -h flag, default n
+	headerRegex *regexp.Regexp
+	footerStyle numberStyle    // R2.3: -f flag, default n
+	footerRegex *regexp.Regexp
+	format      numberFormat
+	width       int
+	separator   string
+	delimiter   string // two-character section delimiter (default `\:`)
+	startNumber int    // R3.4: -v flag, default 1
+	increment   int    // R3.4: -i flag, default 1
+	joinBlank   int    // R4.4: -l flag, default 1
+	noReset     bool   // R4.3: -p flag, suppress counter reset
 }
 
 // nlState holds numbering state across files.
@@ -64,6 +74,7 @@ type nlConfig struct {
 type nlState struct {
 	lineNumber int
 	section    sectionKind
+	emptyCount int // consecutive empty lines seen (for -l)
 }
 
 func main() {
@@ -79,11 +90,16 @@ func main() {
 // R1.1: files listed as arguments; stdin when no files or - given.
 func parseArgs(args []string) (nlConfig, []string) {
 	cfg := nlConfig{
-		bodyStyle: styleNonEmpty,
-		format:    formatRN,
-		width:     6,
-		separator: "\t",
-		delimiter: `\:`,
+		bodyStyle:   styleNonEmpty,
+		headerStyle: styleNone,
+		footerStyle: styleNone,
+		format:      formatRN,
+		width:       6,
+		separator:   "\t",
+		delimiter:   `\:`,
+		startNumber: 1,
+		increment:   1,
+		joinBlank:   1,
 	}
 	var files []string
 	i := 0
@@ -110,21 +126,29 @@ func parseArgs(args []string) (nlConfig, []string) {
 
 // parseFlag tries to parse a single flag starting at args[i].
 // Returns the number of args consumed, or 0 if arg is not a flag.
+// R3.4: prints error to stderr and exits 1 on invalid flag values.
 func parseFlag(arg string, args []string, i int, cfg *nlConfig) (int, error) {
 	if len(arg) < 2 || arg[0] != '-' {
 		return 0, nil
 	}
+	return parseFlagByPrefix(arg, args, i, cfg)
+}
+
+// parseFlagByPrefix dispatches flag parsing based on the flag prefix.
+func parseFlagByPrefix(arg string, args []string, i int, cfg *nlConfig) (int, error) {
 	switch {
 	case strings.HasPrefix(arg, "-b"):
-		return parseFlagValue(arg, args, i, "-b", func(v string) error {
-			return parseStyle(v, &cfg.bodyStyle, &cfg.bodyRegex)
-		})
+		return parseFlagValue(arg, args, i, "-b", styleApply(&cfg.bodyStyle, &cfg.bodyRegex))
+	case strings.HasPrefix(arg, "-h"):
+		return parseFlagValue(arg, args, i, "-h", styleApply(&cfg.headerStyle, &cfg.headerRegex))
+	case strings.HasPrefix(arg, "-f"):
+		return parseFlagValue(arg, args, i, "-f", styleApply(&cfg.footerStyle, &cfg.footerRegex))
 	case strings.HasPrefix(arg, "-n"):
 		return parseFlagValue(arg, args, i, "-n", func(v string) error {
 			return parseFormat(v, &cfg.format)
 		})
 	case strings.HasPrefix(arg, "-w"):
-		return parseFlagValue(arg, args, i, "-w", parseWidth(cfg))
+		return parseFlagValue(arg, args, i, "-w", parseIntFlag(&cfg.width, "width"))
 	case strings.HasPrefix(arg, "-s"):
 		return parseFlagValue(arg, args, i, "-s", func(v string) error {
 			cfg.separator = v
@@ -132,19 +156,35 @@ func parseFlag(arg string, args []string, i int, cfg *nlConfig) (int, error) {
 		})
 	case strings.HasPrefix(arg, "-d"):
 		return parseFlagValue(arg, args, i, "-d", parseDelimiter(cfg))
+	case strings.HasPrefix(arg, "-v"):
+		return parseFlagValue(arg, args, i, "-v", parseIntFlag(&cfg.startNumber, "starting line number"))
+	case strings.HasPrefix(arg, "-i"):
+		return parseFlagValue(arg, args, i, "-i", parseIntFlag(&cfg.increment, "line number increment"))
+	case strings.HasPrefix(arg, "-l"):
+		return parseFlagValue(arg, args, i, "-l", parseIntFlag(&cfg.joinBlank, "number of blank lines"))
+	case arg == "-p":
+		cfg.noReset = true
+		return 1, nil
 	default:
 		return 0, fmt.Errorf("invalid option -- '%s'", arg[1:])
 	}
 }
 
-// parseWidth returns a parser function for the -w flag value.
-func parseWidth(cfg *nlConfig) func(string) error {
+// styleApply returns a parser function for a numbering style flag value.
+func styleApply(style *numberStyle, re **regexp.Regexp) func(string) error {
 	return func(v string) error {
-		w, err := strconv.Atoi(v)
+		return parseStyle(v, style, re)
+	}
+}
+
+// parseIntFlag returns a parser function for an integer flag value.
+func parseIntFlag(target *int, name string) func(string) error {
+	return func(v string) error {
+		n, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("invalid width: '%s'", v)
+			return fmt.Errorf("invalid %s: '%s'", name, v)
 		}
-		cfg.width = w
+		*target = n
 		return nil
 	}
 }
@@ -223,7 +263,10 @@ func run(cfg nlConfig, files []string, stdin io.Reader, stdout io.Writer, stderr
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
-	state := &nlState{section: sectionBody}
+	state := &nlState{
+		lineNumber: cfg.startNumber - cfg.increment,
+		section:    sectionBody,
+	}
 	bw := bufio.NewWriter(stdout)
 	exitCode := 0
 	for _, name := range files {
@@ -277,8 +320,8 @@ func processFile(r io.Reader, bw *bufio.Writer, cfg nlConfig, state *nlState) er
 }
 
 // handleDelimiter checks if a line is a section delimiter.
-// R2.1: \:\:\: = header (resets counter), \:\: = body, \: = footer.
-// Returns true if the line was a delimiter (consumed).
+// R2.1: \:\:\: = header, \:\: = body, \: = footer.
+// R4.2: header delimiter resets counter to startNumber unless -p is given.
 func handleDelimiter(line string, cfg nlConfig, state *nlState) bool {
 	delim := cfg.delimiter
 	if delim == "" {
@@ -290,7 +333,10 @@ func handleDelimiter(line string, cfg nlConfig, state *nlState) bool {
 	switch line {
 	case headerDelim:
 		state.section = sectionHeader
-		state.lineNumber = 0
+		if !cfg.noReset {
+			state.lineNumber = cfg.startNumber - cfg.increment
+		}
+		state.emptyCount = 0
 		return true
 	case bodyDelim:
 		state.section = sectionBody
@@ -304,16 +350,20 @@ func handleDelimiter(line string, cfg nlConfig, state *nlState) bool {
 
 // writeLine writes one line of output with optional numbering.
 // R1.2: unnumbered lines pass through with no number and no separator.
+// R3.4: uses configured increment instead of 1.
 func writeLine(bw *bufio.Writer, line string, cfg nlConfig, state *nlState) error {
 	style := activeStyle(cfg, state.section)
-	if shouldNumber(style, line, cfg.bodyRegex) {
-		state.lineNumber++
+	re := activeRegex(cfg, state.section)
+	if shouldNumberLine(style, line, re, cfg, state) {
+		state.lineNumber += cfg.increment
 		if _, err := bw.WriteString(formatNumber(state.lineNumber, cfg)); err != nil {
 			return err
 		}
 		if _, err := bw.WriteString(cfg.separator); err != nil {
 			return err
 		}
+	} else if line != "" {
+		state.emptyCount = 0
 	}
 	if _, err := bw.WriteString(line); err != nil {
 		return err
@@ -321,16 +371,46 @@ func writeLine(bw *bufio.Writer, line string, cfg nlConfig, state *nlState) erro
 	return bw.WriteByte('\n')
 }
 
+// shouldNumberLine checks if a line should be numbered, accounting for -l.
+// R4.4: with -l N, N consecutive empty lines count as one for numbering.
+func shouldNumberLine(style numberStyle, line string, re *regexp.Regexp, cfg nlConfig, state *nlState) bool {
+	if !shouldNumber(style, line, re) {
+		return false
+	}
+	if line == "" {
+		state.emptyCount++
+		if state.emptyCount < cfg.joinBlank {
+			return false
+		}
+		state.emptyCount = 0
+		return true
+	}
+	state.emptyCount = 0
+	return true
+}
+
 // activeStyle returns the numbering style for the current section.
-// Header and footer default to styleNone; body uses cfg.bodyStyle.
+// R2.2: header uses headerStyle; R2.3: footer uses footerStyle.
 func activeStyle(cfg nlConfig, section sectionKind) numberStyle {
 	switch section {
 	case sectionHeader:
-		return styleNone
+		return cfg.headerStyle
 	case sectionFooter:
-		return styleNone
+		return cfg.footerStyle
 	default:
 		return cfg.bodyStyle
+	}
+}
+
+// activeRegex returns the regex for the current section's style.
+func activeRegex(cfg nlConfig, section sectionKind) *regexp.Regexp {
+	switch section {
+	case sectionHeader:
+		return cfg.headerRegex
+	case sectionFooter:
+		return cfg.footerRegex
+	default:
+		return cfg.bodyRegex
 	}
 }
 
