@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/readlink implements prd050-readlink R1.1–R1.6.
+// cmd/readlink implements prd050-readlink R1.1–R1.6, R2.1–R2.2, R3.1–R3.2.
 // It prints the target of a symbolic link or canonicalizes paths.
 package main
 
@@ -19,6 +19,8 @@ import (
 
 const programName = "readlink"
 
+var errVersion = errors.New("version requested")
+
 // canonMode represents the canonicalization mode.
 type canonMode int
 
@@ -34,6 +36,7 @@ type config struct {
 	mode      canonMode
 	noNewline bool // R1.6: -n/--no-newline
 	zero      bool // -z/--zero: NUL delimiter
+	verbose   bool // R2.2: -v/--verbose: report errors
 }
 
 // R1.1: Install SIGPIPE handler at startup.
@@ -51,9 +54,14 @@ func run() int {
 	return processArgs(cfg)
 }
 
-// handleParseError handles flag parsing errors.
+// handleParseError handles flag parsing errors, --help, and --version.
 func handleParseError(err error) int {
 	if errors.Is(err, flag.ErrHelp) {
+		printUsage(os.Stdout)
+		return 0
+	}
+	if errors.Is(err, errVersion) {
+		printVersion()
 		return 0
 	}
 	fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
@@ -62,7 +70,8 @@ func handleParseError(err error) int {
 }
 
 // processArgs iterates over arguments and resolves each.
-// R3.1: exits 1 with usage error if no operands given.
+// R2.1: prints each result on a separate line.
+// R3.1: exits 0 when all succeed, 1 when any fails.
 func processArgs(cfg config) int {
 	args := flag.Args()
 	if len(args) == 0 {
@@ -73,7 +82,7 @@ func processArgs(cfg config) int {
 	exitCode := 0
 	for i, arg := range args {
 		if err := processArg(arg, cfg, i, len(args)); err != nil {
-			printError(arg, err)
+			reportError(arg, err, cfg)
 			exitCode = 1
 		}
 	}
@@ -93,7 +102,7 @@ func processArg(arg string, cfg config, _, total int) error {
 
 // delimiter returns the appropriate line ending.
 // R1.6: -n suppresses newline for a single operand.
-// R2.2: -n is ignored when multiple operands are given.
+// R2.2 (PRD): -n is ignored when multiple operands are given.
 func delimiter(cfg config, total int) string {
 	if cfg.zero {
 		return "\x00"
@@ -178,6 +187,7 @@ func resolveMissing(path string) (string, error) {
 func parseFlags() (config, error) {
 	var cfg config
 	var canonF, canonE, canonM bool
+	var showHelp, showVersion bool
 
 	flag.CommandLine = flag.NewFlagSet(programName, flag.ContinueOnError)
 	flag.CommandLine.SetOutput(io.Discard)
@@ -197,9 +207,22 @@ func parseFlags() (config, error) {
 	// -z / --zero
 	flag.BoolVar(&cfg.zero, "z", false, "")
 	flag.BoolVar(&cfg.zero, "zero", false, "")
+	// R2.2: -v / --verbose
+	flag.BoolVar(&cfg.verbose, "v", false, "")
+	flag.BoolVar(&cfg.verbose, "verbose", false, "")
+	// R3.2: --help
+	flag.BoolVar(&showHelp, "help", false, "")
+	// R3.2: --version
+	flag.BoolVar(&showVersion, "version", false, "")
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return config{}, err
+	}
+	if showHelp {
+		return config{}, flag.ErrHelp
+	}
+	if showVersion {
+		return config{}, errVersion
 	}
 	cfg.mode = selectMode(canonF, canonE, canonM)
 	return cfg, nil
@@ -219,7 +242,18 @@ func selectMode(f, e, m bool) canonMode {
 	}
 }
 
+// reportError conditionally prints an error based on mode and verbose flag.
+// R2.2: -v/--verbose reports error messages for individual failures.
+// Canon modes (-f, -e, -m) always report errors; default mode requires -v.
+func reportError(path string, err error, cfg config) {
+	if cfg.mode == modeDefault && !cfg.verbose {
+		return
+	}
+	printError(path, err)
+}
+
 // printError writes a GNU-format error message to stderr.
+// R3.2: error format matches GNU readlink output.
 func printError(path string, err error) {
 	var pathErr *fs.PathError
 	if errors.As(err, &pathErr) {
@@ -227,4 +261,32 @@ func printError(path string, err error) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", programName, path, err)
+}
+
+// printUsage writes GNU-format usage information to the given writer.
+// R3.2: --help prints usage to stdout and exits 0.
+func printUsage(w io.Writer) {
+	fmt.Fprintf(w, "Usage: %s [OPTION]... FILE...\n", programName)
+	fmt.Fprintln(w, "Print value of a symbolic link or canonical file name")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -f, --canonicalize            canonicalize by following every symlink in")
+	fmt.Fprintln(w, "                                  every component of the given name recursively;")
+	fmt.Fprintln(w, "                                  all but the last component must exist")
+	fmt.Fprintln(w, "  -e, --canonicalize-existing    canonicalize by following every symlink in")
+	fmt.Fprintln(w, "                                  every component of the given name recursively,")
+	fmt.Fprintln(w, "                                  all components must exist")
+	fmt.Fprintln(w, "  -m, --canonicalize-missing     canonicalize by following every symlink in")
+	fmt.Fprintln(w, "                                  every component of the given name recursively,")
+	fmt.Fprintln(w, "                                  without requirements on components existence")
+	fmt.Fprintln(w, "  -n, --no-newline               do not output the trailing delimiter")
+	fmt.Fprintln(w, "  -v, --verbose                  report error messages")
+	fmt.Fprintln(w, "  -z, --zero                     end each output line with NUL, not newline")
+	fmt.Fprintln(w, "      --help                     display this help and exit")
+	fmt.Fprintln(w, "      --version                  output version information and exit")
+}
+
+// printVersion writes version information to stdout.
+// R3.2: --version prints version and exits 0.
+func printVersion() {
+	fmt.Println("readlink (go-unix-utils) 1.0")
 }
