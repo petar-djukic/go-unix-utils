@@ -298,8 +298,8 @@ func computeLongWidths(entries []entry, cfg lsConfig) longWidths {
 			continue
 		}
 		updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
-		updateWidth(&w.owner, len(lookupUser(e.info.Uid)))
-		updateWidth(&w.group, len(lookupGroup(e.info.Gid)))
+		updateWidth(&w.owner, len(ownerString(e.info.Uid, cfg.numericIDs)))
+		updateWidth(&w.group, len(groupString(e.info.Gid, cfg.numericIDs)))
 		updateWidth(&w.size, len(sizeString(e.info.Size, cfg.humanReadable)))
 	}
 	return w
@@ -322,8 +322,8 @@ func printLongLine(e entry, cfg lsConfig, lw longWidths, pw prefixWidths) {
 
 	perm := permissionString(e.info.Mode)
 	nlink := format.PadLeft(strconv.FormatUint(e.info.Nlink, 10), lw.nlink)
-	owner := format.PadRight(lookupUser(e.info.Uid), lw.owner)
-	group := format.PadRight(lookupGroup(e.info.Gid), lw.group)
+	owner := format.PadRight(ownerString(e.info.Uid, cfg.numericIDs), lw.owner)
+	group := format.PadRight(groupString(e.info.Gid, cfg.numericIDs), lw.group)
 	size := format.PadLeft(sizeString(e.info.Size, cfg.humanReadable), lw.size)
 	ts := entryTime(e.info, cfg.timeSelect)
 	mtime := formatEntryTime(ts, cfg.timeStyle)
@@ -457,6 +457,26 @@ func rwChar(perm os.FileMode, bit os.FileMode, ch byte) byte {
 		return ch
 	}
 	return '-'
+}
+
+// ownerString returns the owner field string: numeric when -n is active,
+// otherwise resolved via lookupUser.
+// R4.6: -n displays numeric UID.
+func ownerString(uid uint32, numeric bool) string {
+	if numeric {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return lookupUser(uid)
+}
+
+// groupString returns the group field string: numeric when -n is active,
+// otherwise resolved via lookupGroup.
+// R4.6: -n displays numeric GID.
+func groupString(gid uint32, numeric bool) string {
+	if numeric {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	return lookupGroup(gid)
 }
 
 // lookupUser resolves a UID to a username, falling back to numeric string.

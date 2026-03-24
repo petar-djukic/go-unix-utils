@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.3:
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.9:
 // directory listing with output modes (-1, -C, -m, -x), sorting flags
 // (-t, -S, -r, -U, -v), filtering (-a, -A, -d), metadata display (-s, -i, -n),
 // human-readable sizes (-h), color output (--color), symlink handling (-L, -H),
@@ -113,6 +113,10 @@ type entry struct {
 
 func main() {
 	sys.InstallSIGPIPEHandler()
+	// R4.5: install SIGWINCH handler for terminal resize adaptation.
+	// Terminal width is queried dynamically in termWidthOrDefault,
+	// so the callback ensures the process responds to SIGWINCH signals.
+	sys.OnTerminalResize(func(_ int) {})
 	// R1.3: C locale sort order.
 	os.Setenv("LC_ALL", "C")
 
