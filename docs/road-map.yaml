@@ -341,7 +341,7 @@ releases:
         - id: rel07.1-uc002-mv
           status: implemented
         - id: rel07.1-uc003-rm
-          status: spec_complete
+          status: implemented
     - version: "08.0"
       name: "Batch 8.0 — time, randomness, and expression utilities (date, sleep, touch, timeout, shuf, factor, expr)"
       status: spec_complete
