@@ -245,7 +245,7 @@ releases:
           status: implemented
     - version: "05.4"
       name: "Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement md5sum, sha1sum, sha256sum, and sha512sum. All four share the same
