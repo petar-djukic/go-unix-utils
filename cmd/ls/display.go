@@ -121,7 +121,7 @@ func buildDisplayName(e entry, cfg lsConfig, pw prefixWidths) string {
 	if cfg.showBlocks {
 		parts = append(parts, format.PadLeft(blockString(e, cfg.humanReadable), pw.blocks))
 	}
-	parts = append(parts, e.name)
+	parts = append(parts, e.name+typeIndicator(e.info, cfg.indicator))
 	return strings.Join(parts, " ")
 }
 
@@ -298,7 +298,7 @@ func printLongLine(e entry, cfg lsConfig, lw longWidths, pw prefixWidths) {
 	group := format.PadRight(lookupGroup(e.info.Gid), lw.group)
 	size := format.PadLeft(sizeString(e.info.Size, cfg.humanReadable), lw.size)
 	mtime := formatMtime(e.info.ModTime)
-	display := symlinkDisplay(e)
+	display := symlinkDisplay(e) + typeIndicator(e.info, cfg.indicator)
 
 	fmt.Printf("%s%s %s %s %s %s %s %s\n",
 		prefix, perm, nlink, owner, group, size, mtime, display)

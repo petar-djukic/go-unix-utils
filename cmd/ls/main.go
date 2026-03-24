@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd008-ls R1.1-R1.12, R2.1-R2.12: directory listing with output
-// modes, sorting flags (-t, -S, -r, -U), filtering (-a, -A, -d), metadata
-// display (-s, -i), human-readable sizes (-h), and recursive listing (-R).
+// Implements prd008-ls R1.1-R1.14, R2.1-R2.12, R3.8-R3.15: directory listing
+// with output modes, sorting flags (-t, -S, -r, -U), filtering (-a, -A, -d),
+// metadata display (-s, -i), human-readable sizes (-h), type indicators (-F, -p),
+// and recursive listing (-R).
 package main
 
 import (
@@ -19,11 +20,11 @@ import (
 type outputMode int
 
 const (
-	modeDefault outputMode = iota
-	modeSingle             // -1: one entry per line
-	modeLong               // -l: long format
-	modeColumns            // -C: forced multi-column (vertical)
-	modeHorizontal         // -x: forced multi-column (horizontal)
+	modeDefault    outputMode = iota
+	modeSingle                // -1: one entry per line
+	modeLong                  // -l: long format
+	modeColumns               // -C: forced multi-column (vertical)
+	modeHorizontal            // -x: forced multi-column (horizontal)
 )
 
 // filterMode selects which entries to show.
@@ -45,17 +46,27 @@ const (
 	sortNone                 // -U: directory order (no sort)
 )
 
+// indicatorMode selects which type indicators to append.
+type indicatorMode int
+
+const (
+	indicatorNone    indicatorMode = iota // no indicator
+	indicatorClassify                     // -F: full type classification
+	indicatorSlash                        // -p: / for directories only
+)
+
 // lsConfig holds parsed command-line options.
 type lsConfig struct {
 	output        outputMode
 	filter        filterMode
 	sorting       sortMode
-	reverse       bool // -r: reverse sort order
-	humanReadable bool // -h: human-readable sizes
-	showBlocks    bool // -s: show allocated block count
-	showInode     bool // -i: show inode number
-	dirOnly       bool // -d: list directories themselves
-	recursive     bool // -R: recurse into subdirectories
+	reverse       bool          // -r: reverse sort order
+	humanReadable bool          // -h: human-readable sizes
+	showBlocks    bool          // -s: show allocated block count
+	showInode     bool          // -i: show inode number
+	dirOnly       bool          // -d: list directories themselves
+	recursive     bool          // -R: recurse into subdirectories
+	indicator     indicatorMode // -F or -p
 	args          []string
 }
 
@@ -107,41 +118,50 @@ func parseArgs(args []string) lsConfig {
 	return cfg
 }
 
-// parseShortFlags processes a cluster of short flags (e.g., "-laRtSr").
+// parseShortFlags processes a cluster of short flags (e.g., "-laRtSrFp").
 func parseShortFlags(flags string, cfg *lsConfig) {
 	for _, ch := range flags {
-		switch ch {
-		case 'a':
-			cfg.filter = filterAll
-		case 'A':
-			cfg.filter = filterAlmostAll
-		case 'l':
-			cfg.output = modeLong
-		case '1':
-			cfg.output = modeSingle
-		case 'C':
-			cfg.output = modeColumns
-		case 'x':
-			cfg.output = modeHorizontal
-		case 'R':
-			cfg.recursive = true
-		case 't':
-			cfg.sorting = sortTime
-		case 'S':
-			cfg.sorting = sortSize
-		case 'r':
-			cfg.reverse = true
-		case 'U':
-			cfg.sorting = sortNone
-		case 'h':
-			cfg.humanReadable = true
-		case 's':
-			cfg.showBlocks = true
-		case 'i':
-			cfg.showInode = true
-		case 'd':
-			cfg.dirOnly = true
-		}
+		applyShortFlag(ch, cfg)
+	}
+}
+
+// applyShortFlag applies a single short flag character to the config.
+func applyShortFlag(ch rune, cfg *lsConfig) {
+	switch ch {
+	case 'a':
+		cfg.filter = filterAll
+	case 'A':
+		cfg.filter = filterAlmostAll
+	case 'l':
+		cfg.output = modeLong
+	case '1':
+		cfg.output = modeSingle
+	case 'C':
+		cfg.output = modeColumns
+	case 'x':
+		cfg.output = modeHorizontal
+	case 'R':
+		cfg.recursive = true
+	case 't':
+		cfg.sorting = sortTime
+	case 'S':
+		cfg.sorting = sortSize
+	case 'r':
+		cfg.reverse = true
+	case 'U':
+		cfg.sorting = sortNone
+	case 'h':
+		cfg.humanReadable = true
+	case 's':
+		cfg.showBlocks = true
+	case 'i':
+		cfg.showInode = true
+	case 'd':
+		cfg.dirOnly = true
+	case 'F':
+		cfg.indicator = indicatorClassify
+	case 'p':
+		cfg.indicator = indicatorSlash
 	}
 }
 
@@ -158,6 +178,8 @@ func handleLongFlag(arg string, cfg *lsConfig) bool {
 		cfg.reverse = true
 	case "--human-readable":
 		cfg.humanReadable = true
+	case "--classify":
+		cfg.indicator = indicatorClassify
 	default:
 		return false
 	}
@@ -173,9 +195,11 @@ List information about the FILEs (the current directory by default).
   -A, --almost-all     do not list implied . and ..
   -C                   list entries by columns
   -d                   list directories themselves, not their contents
+  -F, --classify       append indicator (one of /=>@|) to entries
   -h, --human-readable print sizes in human-readable format
   -i                   print the index number of each file
   -l                   use a long listing format
+  -p                   append / indicator to directories
   -r, --reverse        reverse order while sorting
   -R, --recursive      list subdirectories recursively
   -s                   print the allocated size of each file
@@ -320,7 +344,8 @@ func needsStat(cfg lsConfig) bool {
 		cfg.sorting == sortSize ||
 		cfg.showBlocks ||
 		cfg.showInode ||
-		cfg.recursive
+		cfg.recursive ||
+		cfg.indicator != indicatorNone
 }
 
 // statEntriesInPlace populates the info field for each entry via Lstat.
@@ -391,6 +416,39 @@ func compareBySize(a, b entry) bool {
 		return a.info.Size > b.info.Size
 	}
 	return a.name < b.name
+}
+
+// typeIndicator returns the suffix character for -F or -p.
+// R3.8: -F appends / for dirs, * for executables, @ for symlinks,
+// | for FIFOs, = for sockets. -p appends / for dirs only.
+func typeIndicator(info *sys.FileInfo, im indicatorMode) string {
+	if im == indicatorNone || info == nil {
+		return ""
+	}
+	if info.Mode.IsDir() {
+		return "/"
+	}
+	if im == indicatorSlash {
+		return ""
+	}
+	return classifyIndicator(info.Mode)
+}
+
+// classifyIndicator returns the -F indicator for non-directory entries.
+// R3.9: executable is any execute bit set (0o111).
+func classifyIndicator(mode os.FileMode) string {
+	switch {
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.IsRegular() && mode&0o111 != 0:
+		return "*"
+	default:
+		return ""
+	}
 }
 
 // recurseSubdirs handles -R recursive listing for subdirectories.
