@@ -3,9 +3,8 @@
 
 // Implements prd041-id: Print User and Group Information.
 // Covers R1.1-R1.3 (default output, group ordering, exit code),
-// R2.1-R2.3 (-u, -g, -G selection flags),
-// R2.4 (conflicting flag detection),
-// R3.1-R3.2 (-n name modifier, -r real ID modifier).
+// R2.1-R2.4 (-u, -g, -G selection flags, conflicting flag detection),
+// R3.1-R3.3 (-n name modifier, -r real ID modifier, named user support).
 package main
 
 import (
@@ -25,11 +24,21 @@ var version = "dev"
 
 // options holds parsed command-line flags.
 type options struct {
-	showUser   bool // -u / --user
-	showGroup  bool // -g / --group
-	showGroups bool // -G / --groups
-	showName   bool // -n / --name
-	showReal   bool // -r / --real
+	showUser   bool   // -u / --user
+	showGroup  bool   // -g / --group
+	showGroups bool   // -G / --groups
+	showName   bool   // -n / --name
+	showReal   bool   // -r / --real
+	username   string // R3.3: optional USER operand
+}
+
+// userInfo holds resolved identity information for output formatting.
+type userInfo struct {
+	uid     int   // effective UID (or named user's UID)
+	gid     int   // effective GID (or named user's GID)
+	realUID int   // real UID (same as uid for named users)
+	realGID int   // real GID (same as gid for named users)
+	groups  []int // all group IDs with primary first
 }
 
 func main() {
@@ -38,7 +47,7 @@ func main() {
 }
 
 // run parses arguments and prints identity information. Returns exit code.
-// R1.3: returns 0 on success.
+// R1.3, R3.1: returns 0 on success, 1 on failure.
 func run(args []string) int {
 	for _, a := range args {
 		switch a {
@@ -78,6 +87,7 @@ func parseArgs(args []string) (options, error) {
 }
 
 // parseOneArg processes a single command-line argument.
+// R3.3: non-flag arguments are treated as a username operand.
 func parseOneArg(arg string, opts *options) error {
 	switch {
 	case arg == "--user":
@@ -96,6 +106,12 @@ func parseOneArg(arg string, opts *options) error {
 		return fmt.Errorf("unrecognized option '%s'", arg)
 	case strings.HasPrefix(arg, "-") && len(arg) > 1:
 		return parseShortFlags(arg[1:], opts)
+	default:
+		// R3.3: positional argument is a username.
+		if opts.username != "" {
+			return fmt.Errorf("extra operand '%s'", arg)
+		}
+		opts.username = arg
 	}
 	return nil
 }
@@ -152,20 +168,84 @@ func countTrue(vals ...bool) int {
 	return n
 }
 
+// resolveUser resolves identity information for the target user.
+// R3.3: when username is set, looks up from the system user database.
+func resolveUser(opts options) (*userInfo, error) {
+	if opts.username != "" {
+		return resolveNamedUser(opts.username)
+	}
+	return resolveCurrentUser()
+}
+
+// resolveNamedUser looks up a user by name from the system database.
+// R3.3: returns error if user does not exist.
+func resolveNamedUser(username string) (*userInfo, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return nil, fmt.Errorf("'%s': no such user", username)
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+	groups, err := resolveNamedUserGroups(u, gid)
+	if err != nil {
+		return nil, err
+	}
+	return &userInfo{
+		uid: uid, gid: gid,
+		realUID: uid, realGID: gid,
+		groups: groups,
+	}, nil
+}
+
+// resolveNamedUserGroups returns group IDs for a named user with GID first.
+func resolveNamedUserGroups(u *user.User, primaryGID int) ([]int, error) {
+	gidStrs, err := u.GroupIds()
+	if err != nil {
+		return nil, fmt.Errorf("getting groups: %w", err)
+	}
+	gids := make([]int, 0, len(gidStrs))
+	for _, s := range gidStrs {
+		g, convErr := strconv.Atoi(s)
+		if convErr != nil {
+			continue
+		}
+		gids = append(gids, g)
+	}
+	return prependUnique(primaryGID, gids), nil
+}
+
+// resolveCurrentUser resolves identity from the current process.
+func resolveCurrentUser() (*userInfo, error) {
+	groups, err := getCurrentGroups()
+	if err != nil {
+		return nil, err
+	}
+	return &userInfo{
+		uid: os.Geteuid(), gid: os.Getegid(),
+		realUID: os.Getuid(), realGID: os.Getgid(),
+		groups: groups,
+	}, nil
+}
+
+// getCurrentGroups returns process group IDs with effective GID first.
+// R1.2: effective GID appears first, followed by supplementary groups.
+func getCurrentGroups() ([]int, error) {
+	egid := os.Getegid()
+	gids, err := os.Getgroups()
+	if err != nil {
+		return nil, fmt.Errorf("getting groups: %w", err)
+	}
+	return prependUnique(egid, gids), nil
+}
+
 // printIdentity dispatches to the appropriate formatter and prints output.
 func printIdentity(opts options) int {
-	var output string
-	var err error
-	switch {
-	case opts.showUser:
-		output, err = formatUser(opts)
-	case opts.showGroup:
-		output, err = formatGroup(opts)
-	case opts.showGroups:
-		output, err = formatGroups(opts)
-	default:
-		output, err = formatDefault()
+	info, err := resolveUser(opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
 	}
+	output, err := formatOutput(info, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 1
@@ -176,108 +256,105 @@ func printIdentity(opts options) int {
 	return 0
 }
 
+// formatOutput selects the appropriate output format based on flags.
+func formatOutput(info *userInfo, opts options) (string, error) {
+	switch {
+	case opts.showUser:
+		return formatUser(info, opts), nil
+	case opts.showGroup:
+		return formatGroup(info, opts), nil
+	case opts.showGroups:
+		return formatGroups(info, opts), nil
+	default:
+		return formatDefault(info)
+	}
+}
+
 // formatDefault produces the full identity line.
 // R1.1: uid=N(name) gid=N(name) groups=N(name),...
-func formatDefault() (string, error) {
-	uid := os.Geteuid()
-	gid := os.Getegid()
-	uname, err := lookupUsername(uid)
+func formatDefault(info *userInfo) (string, error) {
+	uname, err := lookupUsername(info.uid)
 	if err != nil {
 		return "", err
 	}
-	gname, err := lookupGroupName(gid)
+	gname, err := lookupGroupName(info.gid)
 	if err != nil {
 		return "", err
 	}
-	groupStr, err := formatGroupEntries()
-	if err != nil {
-		return "", err
-	}
+	groupStr := formatGroupEntries(info.groups)
 	return fmt.Sprintf("uid=%d(%s) gid=%d(%s) groups=%s",
-		uid, uname, gid, gname, groupStr), nil
+		info.uid, uname, info.gid, gname, groupStr), nil
 }
 
 // formatGroupEntries builds the comma-separated groups list for default output.
 // R1.2: includes all supplementary groups in system order.
-func formatGroupEntries() (string, error) {
-	gids, err := getGroupIDs()
-	if err != nil {
-		return "", err
-	}
+func formatGroupEntries(gids []int) string {
 	parts := make([]string, 0, len(gids))
 	for _, g := range gids {
-		name, lookupErr := lookupGroupName(g)
-		if lookupErr != nil {
+		name, err := lookupGroupName(g)
+		if err != nil {
 			parts = append(parts, strconv.Itoa(g))
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("%d(%s)", g, name))
 	}
-	return strings.Join(parts, ","), nil
+	return strings.Join(parts, ",")
 }
 
 // formatUser produces output for -u flag.
-// R2.1: prints effective UID (or real with -r, name with -n).
-func formatUser(opts options) (string, error) {
-	uid := os.Geteuid()
+// R2.1: prints UID (real with -r, name with -n).
+func formatUser(info *userInfo, opts options) string {
+	uid := info.uid
 	if opts.showReal {
-		uid = os.Getuid()
+		uid = info.realUID
 	}
 	if opts.showName {
-		return lookupUsername(uid)
+		name, err := lookupUsername(uid)
+		if err != nil {
+			return strconv.Itoa(uid)
+		}
+		return name
 	}
-	return strconv.Itoa(uid), nil
+	return strconv.Itoa(uid)
 }
 
 // formatGroup produces output for -g flag.
-// R2.2: prints effective GID (or real with -r, name with -n).
-func formatGroup(opts options) (string, error) {
-	gid := os.Getegid()
+// R2.2: prints GID (real with -r, name with -n).
+func formatGroup(info *userInfo, opts options) string {
+	gid := info.gid
 	if opts.showReal {
-		gid = os.Getgid()
+		gid = info.realGID
 	}
 	if opts.showName {
-		return lookupGroupName(gid)
+		name, err := lookupGroupName(gid)
+		if err != nil {
+			return strconv.Itoa(gid)
+		}
+		return name
 	}
-	return strconv.Itoa(gid), nil
+	return strconv.Itoa(gid)
 }
 
 // formatGroups produces output for -G flag.
 // R2.3: prints all group IDs space-separated (names with -n).
-func formatGroups(opts options) (string, error) {
-	gids, err := getGroupIDs()
-	if err != nil {
-		return "", err
+func formatGroups(info *userInfo, opts options) string {
+	parts := make([]string, 0, len(info.groups))
+	for _, g := range info.groups {
+		parts = append(parts, formatOneGroupID(g, opts.showName))
 	}
-	parts := make([]string, 0, len(gids))
-	for _, g := range gids {
-		s, fmtErr := formatOneGroupID(g, opts.showName)
-		if fmtErr != nil {
-			parts = append(parts, strconv.Itoa(g))
-			continue
-		}
-		parts = append(parts, s)
-	}
-	return strings.Join(parts, " "), nil
+	return strings.Join(parts, " ")
 }
 
 // formatOneGroupID formats a single group ID as name or number.
-func formatOneGroupID(gid int, showName bool) (string, error) {
+func formatOneGroupID(gid int, showName bool) string {
 	if showName {
-		return lookupGroupName(gid)
+		name, err := lookupGroupName(gid)
+		if err != nil {
+			return strconv.Itoa(gid)
+		}
+		return name
 	}
-	return strconv.Itoa(gid), nil
-}
-
-// getGroupIDs returns all group IDs with the effective GID first.
-// R1.2: effective GID appears first, followed by supplementary groups.
-func getGroupIDs() ([]int, error) {
-	egid := os.Getegid()
-	gids, err := os.Getgroups()
-	if err != nil {
-		return nil, fmt.Errorf("getting groups: %w", err)
-	}
-	return prependUnique(egid, gids), nil
+	return strconv.Itoa(gid)
 }
 
 // prependUnique ensures id appears first, removing duplicates.
