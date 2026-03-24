@@ -1,16 +1,18 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd053-sort R1.1–R1.7, R2.1–R2.4, R3.1–R3.4:
+// Implements prd053-sort R1.1–R1.7, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4:
 // core entry point with basic line sorting, reverse (-r), numeric (-n),
 // general numeric (-g), human numeric (-h), version sort (-V),
 // fold case (-f), dictionary order (-d), ignore non-printing (-i),
 // ignore leading blanks (-b), unique (-u), output file (-o),
-// stable (-s), merge (-m), field separator (-t), and key definitions (-k).
+// stable (-s), merge (-m), field separator (-t), key definitions (-k),
+// check mode (-c/-C), zero-terminated lines (-z), and exit codes.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -25,22 +27,33 @@ var version = "dev"
 
 // config holds parsed command-line state.
 type config struct {
-	reverse     bool
-	numeric     bool
-	unique      bool
-	stable      bool
-	generalNum  bool
-	humanNum    bool
-	versionSort bool
-	foldCase    bool
-	dictOrder   bool
-	ignoreNP    bool
-	blanks      bool
-	merge       bool
-	outputFile  string
-	separator   string    // R3.1: -t field separator
-	keys        []sortKey // R3.2: -k key definitions
-	files       []string
+	reverse        bool
+	numeric        bool
+	unique         bool
+	stable         bool
+	generalNum     bool
+	humanNum       bool
+	versionSort    bool
+	foldCase       bool
+	dictOrder      bool
+	ignoreNP       bool
+	blanks         bool
+	merge          bool
+	check          bool // R4.2: -c check mode
+	checkQuiet     bool // R4.2: -C quiet check mode
+	zeroTerminated bool // -z NUL line delimiter
+	outputFile     string
+	separator      string    // R3.1: -t field separator
+	keys           []sortKey // R3.2: -k key definitions
+	files          []string
+}
+
+// lineTerminator returns the line terminator byte for the mode.
+func lineTerminator(zeroTerm bool) byte {
+	if zeroTerm {
+		return 0
+	}
+	return '\n'
 }
 
 func main() {
@@ -48,6 +61,9 @@ func main() {
 	cfg, exitCode := parseArgs(os.Args[1:])
 	if exitCode >= 0 {
 		os.Exit(exitCode)
+	}
+	if cfg.check || cfg.checkQuiet {
+		os.Exit(runCheck(cfg))
 	}
 	if cfg.merge {
 		os.Exit(runMerge(cfg))
@@ -57,7 +73,7 @@ func main() {
 
 // run reads input, sorts lines, and writes output.
 func run(cfg config) int {
-	lines, err := readAllLines(cfg.files)
+	lines, err := readAllLines(cfg.files, cfg.zeroTerminated)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sort: %v\n", err)
 		return 2
@@ -66,7 +82,7 @@ func run(cfg config) int {
 	if cfg.unique {
 		lines = dedup(lines, cfg)
 	}
-	return writeOutput(lines, cfg.outputFile)
+	return writeOutput(lines, cfg.outputFile, lineTerminator(cfg.zeroTerminated))
 }
 
 // --- Input reading ---
@@ -74,13 +90,13 @@ func run(cfg config) int {
 // readAllLines reads lines from files or stdin.
 // R1.1: read from stdin when no files or file is "-".
 // R1.2: concatenate multiple files in order.
-func readAllLines(files []string) ([][]byte, error) {
+func readAllLines(files []string, zeroTerm bool) ([][]byte, error) {
 	if len(files) == 0 {
-		return readLines(os.Stdin)
+		return readLines(os.Stdin, zeroTerm)
 	}
 	var all [][]byte
 	for _, f := range files {
-		lines, err := readFile(f)
+		lines, err := readFile(f, zeroTerm)
 		if err != nil {
 			return nil, err
 		}
@@ -90,33 +106,57 @@ func readAllLines(files []string) ([][]byte, error) {
 }
 
 // readFile opens a single file (or stdin for "-") and reads its lines.
-func readFile(name string) ([][]byte, error) {
+func readFile(name string, zeroTerm bool) ([][]byte, error) {
 	if name == "-" {
-		return readLines(os.Stdin)
+		return readLines(os.Stdin, zeroTerm)
 	}
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open failed: %s: %w", name, err)
 	}
 	defer f.Close() // best-effort close on read path
-	return readLines(f)
+	return readLines(f, zeroTerm)
 }
 
-// readLines reads all lines from r, preserving line content without newlines.
-func readLines(r io.Reader) ([][]byte, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+// readLines reads all lines from r using the configured delimiter.
+func readLines(r io.Reader, zeroTerm bool) ([][]byte, error) {
+	scanner := makeScanner(r, zeroTerm)
 	var lines [][]byte
 	for scanner.Scan() {
-		line := scanner.Bytes()
-		cp := make([]byte, len(line))
-		copy(cp, line)
-		lines = append(lines, cp)
+		lines = append(lines, copyBytes(scanner.Bytes()))
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	return lines, scanner.Err()
+}
+
+// makeScanner creates a scanner with the appropriate split function.
+func makeScanner(r io.Reader, zeroTerm bool) *bufio.Scanner {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	if zeroTerm {
+		scanner.Split(splitNUL)
 	}
-	return lines, nil
+	return scanner
+}
+
+// splitNUL is a bufio.SplitFunc that splits on NUL bytes.
+func splitNUL(data []byte, atEOF bool) (int, []byte, error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, 0); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+// copyBytes returns a copy of b.
+func copyBytes(b []byte) []byte {
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	return cp
 }
 
 // --- Sorting ---
@@ -156,13 +196,13 @@ func dedup(lines [][]byte, cfg config) [][]byte {
 // --- Output ---
 
 // writeOutput writes sorted lines to stdout or the named file.
-func writeOutput(lines [][]byte, outputFile string) int {
-	w, closer, err := openOutput(outputFile)
+func writeOutput(lines [][]byte, outFile string, term byte) int {
+	w, closer, err := openOutput(outFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sort: %v\n", err)
 		return 2
 	}
-	if code := writeLines(w, lines); code != 0 {
+	if code := writeLines(w, lines, term); code != 0 {
 		return code
 	}
 	if closer != nil {
@@ -174,15 +214,15 @@ func writeOutput(lines [][]byte, outputFile string) int {
 	return 0
 }
 
-// writeLines writes all lines to w with newline terminators.
-func writeLines(w io.Writer, lines [][]byte) int {
+// writeLines writes all lines to w with the specified terminator.
+func writeLines(w io.Writer, lines [][]byte, term byte) int {
 	bw := bufio.NewWriter(w)
 	for _, line := range lines {
 		if _, err := bw.Write(line); err != nil {
 			fmt.Fprintf(os.Stderr, "sort: write error: %v\n", err)
 			return 2
 		}
-		if err := bw.WriteByte('\n'); err != nil {
+		if err := bw.WriteByte(term); err != nil {
 			fmt.Fprintf(os.Stderr, "sort: write error: %v\n", err)
 			return 2
 		}
@@ -202,6 +242,18 @@ func openOutput(path string) (io.Writer, io.Closer, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open '%s': %w", path, err)
+	}
+	return f, f, nil
+}
+
+// openInput opens a file for reading, returning stdin for "-".
+func openInput(name string) (io.Reader, io.Closer, error) {
+	if name == "-" {
+		return os.Stdin, nil, nil
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open failed: %s: %w", name, err)
 	}
 	return f, f, nil
 }
@@ -238,8 +290,27 @@ func handleArg(args []string, i *int, cfg *config) int {
 		return -1
 	case arg == "--output":
 		return parseLongWithValue(args, i, &cfg.outputFile)
+	case arg == "--check" || strings.HasPrefix(arg, "--check="):
+		return parseCheckFlag(arg, cfg)
 	default:
 		return handleArgLong(arg, args, i, cfg)
+	}
+}
+
+// parseCheckFlag handles --check and --check=<mode> variants.
+// R4.2: --check=quiet or --check=silent suppress the diagnostic.
+func parseCheckFlag(arg string, cfg *config) int {
+	cfg.check = true
+	switch arg {
+	case "--check", "--check=diagnose-first":
+		return -1
+	case "--check=quiet", "--check=silent":
+		cfg.checkQuiet = true
+		return -1
+	default:
+		fmt.Fprintf(os.Stderr,
+			"sort: invalid argument '%s' for '--check'\n", arg[len("--check="):])
+		return 2
 	}
 }
 
@@ -292,6 +363,8 @@ func parseLongBool(arg string, cfg *config) bool {
 		cfg.blanks = true
 	case "--merge":
 		cfg.merge = true
+	case "--zero-terminated":
+		cfg.zeroTerminated = true
 	default:
 		return false
 	}
@@ -379,6 +452,13 @@ func applyBoolFlag(ch byte, cfg *config) int {
 		cfg.blanks = true
 	case 'm':
 		cfg.merge = true
+	case 'c':
+		cfg.check = true
+	case 'C':
+		cfg.check = true
+		cfg.checkQuiet = true
+	case 'z':
+		cfg.zeroTerminated = true
 	default:
 		fmt.Fprintf(os.Stderr, "sort: invalid option -- '%c'\n", ch)
 		return 2
@@ -448,11 +528,14 @@ Key options:
 
 Other options:
 
-  -m, --merge              merge already sorted files; do not sort
-  -o, --output=FILE        write result to FILE instead of standard output
-  -s, --stable             stabilize sort by disabling last-resort comparison
-  -u, --unique             with -c, check for strict ordering;
-                             without -c, output only the first of an equal run
+  -c, --check                check for sorted input; do not sort
+  -C, --check=quiet          like -c, but do not report first bad line
+  -m, --merge                merge already sorted files; do not sort
+  -o, --output=FILE          write result to FILE instead of standard output
+  -s, --stable               stabilize sort by disabling last-resort comparison
+  -u, --unique               with -c, check for strict ordering;
+                               without -c, output only the first of an equal run
+  -z, --zero-terminated      line delimiter is NUL, not newline
       --help     display this help and exit
       --version  output version information and exit
 `)
