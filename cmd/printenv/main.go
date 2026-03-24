@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd040-printenv: Print Environment Variables.
-// Covers R1.1-R1.3 (default behavior), R2.1-R2.4 (output formatting and exit codes).
+// Covers R1.1-R1.3 (default behavior), R2.1-R2.4 (output formatting and exit codes),
+// R3.1-R3.3 (differential testing and edge cases).
 package main
 
 import (
