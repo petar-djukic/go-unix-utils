@@ -134,14 +134,35 @@ func printFactors(w *bufio.Writer, n uint64) {
 // D2: trial division is sufficient for the uint64 range.
 func writeFactors(w *bufio.Writer, n uint64) {
 	n = extractFactor(w, n, 2)
-	limit := uint64(math.Sqrt(float64(n)))
+	limit := isqrt(n)
 	for d := uint64(3); d <= limit; d += 2 {
 		n = extractFactor(w, n, d)
-		limit = uint64(math.Sqrt(float64(n)))
+		limit = isqrt(n)
 	}
 	if n > 1 {
 		fmt.Fprintf(w, " %d", n)
 	}
+}
+
+// isqrt returns the integer square root of n (largest x where x*x <= n).
+// Uses float64 sqrt as initial estimate, then corrects for precision loss
+// on large values near 2^63-1. R2.2/R3.1: required for correct factorization
+// of numbers up to 2^63-1.
+func isqrt(n uint64) uint64 {
+	if n < 2 {
+		return n
+	}
+	x := uint64(math.Sqrt(float64(n)))
+	if x > 0xFFFFFFFF {
+		x = 0xFFFFFFFF
+	}
+	for x*x > n {
+		x--
+	}
+	for x < 0xFFFFFFFF && (x+1)*(x+1) <= n {
+		x++
+	}
+	return x
 }
 
 // extractFactor divides n by d as many times as possible, writing each.
