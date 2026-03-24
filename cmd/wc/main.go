@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd005-wc: Count Lines, Words, and Bytes.
-// Covers R1.1-R1.4, R2.1-R2.6, R3.1-R3.2, R4.1-R4.4, R6.1-R6.2.
+// Covers R1.1-R1.4, R2.1-R2.6, R3.1-R3.3, R4.1-R4.4, R5.1, R6.1-R6.2.
 package main
 
 import (
@@ -23,6 +23,33 @@ var version = "dev"
 
 const defaultWidth = 7
 
+// stdinImplicit is a sentinel filename for implicit stdin (no file args).
+const stdinImplicit = ""
+
+// totalMode controls when the total line is printed.
+// R3.3: --total=auto|always|only|never.
+type totalMode int
+
+const (
+	totalAuto   totalMode = iota // print total when >1 file
+	totalAlways                  // always print total
+	totalOnly                    // print only the total line
+	totalNever                   // never print total
+)
+
+// columnWidths holds per-column widths for output formatting.
+// When uniform is true, all columns use the single width w.
+// When uniform is false, each column uses its individual width.
+type columnWidths struct {
+	uniform bool
+	w       int // uniform width (when uniform is true)
+	lines   int
+	words   int
+	chars   int
+	bytesW  int
+	maxLL   int
+}
+
 // counts holds computed counts for a single input.
 type counts struct {
 	lines      int64
@@ -30,6 +57,12 @@ type counts struct {
 	bytes      int64
 	chars      int64
 	maxLineLen int64
+}
+
+// fileResult holds the result of counting one file.
+type fileResult struct {
+	name string
+	c    counts
 }
 
 // showFlags holds which counts to display.
@@ -46,6 +79,7 @@ type options struct {
 	flags      showFlags
 	files      []string
 	files0From string
+	total      totalMode
 }
 
 // noFlagsSet returns true when no counting flags were specified.
@@ -82,12 +116,27 @@ func run(opts options) int {
 		fmt.Fprintf(os.Stderr, "wc: %v\n", err)
 		return 1
 	}
+	useStatWidth := canStatWidth(opts)
 	if len(files) == 0 {
-		files = []string{"-"}
+		// R1.2: no file args means implicit stdin (no name in output).
+		files = []string{stdinImplicit}
 	}
-	width := computeWidth(files)
 	eff := opts.flags.effective()
-	return processFiles(files, eff, width)
+	return processFiles(files, eff, opts.total, useStatWidth)
+}
+
+// canStatWidth returns true when width can be pre-computed from file sizes.
+// When --files0-from=- is used, filenames come from stdin so we cannot
+// stat them before counting. --total=only outputs a single line so
+// pre-stat width is also skipped to match GNU wc behavior.
+func canStatWidth(opts options) bool {
+	if opts.files0From == "-" {
+		return false
+	}
+	if opts.total == totalOnly {
+		return false
+	}
+	return true
 }
 
 // resolveFiles determines the file list from options.
@@ -149,12 +198,23 @@ func splitNulFiles(data []byte) []string {
 	return files
 }
 
-// processFiles counts and prints results for each file.
+// processFiles counts all files, then prints results.
+// R3.3: total mode controls when total line appears.
 // R6.1/R6.2: exit 0 on success, exit 1 if any file fails.
-func processFiles(files []string, fl showFlags, width int) int {
+func processFiles(
+	files []string, fl showFlags, tm totalMode, useStatWidth bool,
+) int {
+	results, total, exitCode := countAllFiles(files)
+	cw := selectWidth(files, results, total, useStatWidth)
+	printResults(results, total, fl, cw, tm, len(files))
+	return exitCode
+}
+
+// countAllFiles counts every file and returns per-file results and total.
+func countAllFiles(files []string) ([]fileResult, counts, int) {
+	results := make([]fileResult, 0, len(files))
 	var total counts
 	exitCode := 0
-	showTotal := len(files) > 1
 
 	for _, name := range files {
 		c, err := countFile(name)
@@ -164,13 +224,161 @@ func processFiles(files []string, fl showFlags, width int) int {
 			continue
 		}
 		addCounts(&total, c)
-		printLine(c, displayName(name), width, fl)
+		results = append(results, fileResult{name: name, c: c})
+	}
+	return results, total, exitCode
+}
+
+// selectWidth chooses column widths based on stat or count heuristic.
+func selectWidth(
+	files []string, results []fileResult, total counts,
+	useStatWidth bool,
+) columnWidths {
+	if useStatWidth {
+		return uniformWidth(computeStatWidth(files))
+	}
+	return computeCountWidths(results, total)
+}
+
+// uniformWidth creates a columnWidths where all columns share one width.
+func uniformWidth(w int) columnWidths {
+	return columnWidths{uniform: true, w: w}
+}
+
+// computeStatWidth determines width from file sizes (pre-counting).
+func computeStatWidth(files []string) int {
+	var totalSize int64
+	anyRegular := false
+
+	for _, name := range files {
+		if name == "-" || name == stdinImplicit {
+			continue
+		}
+		info, err := os.Stat(name)
+		if err == nil {
+			totalSize += info.Size()
+			anyRegular = true
+		}
 	}
 
-	if showTotal {
-		printLine(total, "total", width, fl)
+	if !anyRegular {
+		return defaultWidth
 	}
-	return exitCode
+	w := digitCount(totalSize)
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// computeCountWidths determines per-column widths from actual counts.
+func computeCountWidths(results []fileResult, total counts) columnWidths {
+	maxC := total
+	for _, r := range results {
+		maxC = maxCounts(maxC, r.c)
+	}
+	return columnWidths{
+		lines:  maxDigits(maxC.lines),
+		words:  maxDigits(maxC.words),
+		chars:  maxDigits(maxC.chars),
+		bytesW: maxDigits(maxC.bytes),
+		maxLL:  maxDigits(maxC.maxLineLen),
+	}
+}
+
+// maxCounts returns element-wise maximum of two counts.
+func maxCounts(a, b counts) counts {
+	return counts{
+		lines:      maxInt64(a.lines, b.lines),
+		words:      maxInt64(a.words, b.words),
+		bytes:      maxInt64(a.bytes, b.bytes),
+		chars:      maxInt64(a.chars, b.chars),
+		maxLineLen: maxInt64(a.maxLineLen, b.maxLineLen),
+	}
+}
+
+// maxInt64 returns the larger of two int64 values.
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// maxDigits returns the digit count for a value, minimum 1.
+func maxDigits(v int64) int {
+	d := digitCount(v)
+	if d < 1 {
+		return 1
+	}
+	return d
+}
+
+// widthFor returns the column width for a given field.
+func (cw columnWidths) widthFor(field int) int {
+	if cw.uniform {
+		return cw.w
+	}
+	switch field {
+	case 0:
+		return cw.lines
+	case 1:
+		return cw.words
+	case 2:
+		return cw.chars
+	case 3:
+		return cw.bytesW
+	case 4:
+		return cw.maxLL
+	default:
+		return 1
+	}
+}
+
+// field index constants for widthFor.
+const (
+	fieldLines   = 0
+	fieldWords   = 1
+	fieldChars   = 2
+	fieldBytes   = 3
+	fieldMaxLL   = 4
+)
+
+// printResults outputs per-file lines and/or the total line.
+func printResults(
+	results []fileResult, total counts,
+	fl showFlags, cw columnWidths, tm totalMode, nfiles int,
+) {
+	if tm != totalOnly {
+		for _, r := range results {
+			printLine(r.c, displayName(r.name), cw, fl)
+		}
+	}
+	if shouldShowTotal(tm, nfiles) {
+		printLine(total, totalLabel(tm), cw, fl)
+	}
+}
+
+// totalLabel returns the label for the total line.
+// R3.3: --total=only omits the "total" label.
+func totalLabel(tm totalMode) string {
+	if tm == totalOnly {
+		return ""
+	}
+	return "total"
+}
+
+// shouldShowTotal determines whether to print the total line.
+// R3.3: auto=multi-file, always=always, only=always, never=never.
+func shouldShowTotal(tm totalMode, nfiles int) bool {
+	switch tm {
+	case totalAlways, totalOnly:
+		return true
+	case totalNever:
+		return false
+	default:
+		return nfiles > 1
+	}
 }
 
 // addCounts accumulates src into dst.
@@ -254,32 +462,6 @@ func updateMaxLineLen(c *counts, lineLen int64) {
 	}
 }
 
-// computeWidth determines the column width for output formatting.
-func computeWidth(files []string) int {
-	var totalSize int64
-	anyRegular := false
-
-	for _, name := range files {
-		if name == "-" {
-			continue
-		}
-		info, err := os.Stat(name)
-		if err == nil {
-			totalSize += info.Size()
-			anyRegular = true
-		}
-	}
-
-	if !anyRegular {
-		return defaultWidth
-	}
-	w := digitCount(totalSize)
-	if w < 1 {
-		w = 1
-	}
-	return w
-}
-
 // digitCount returns the number of decimal digits in n.
 func digitCount(n int64) int {
 	if n <= 0 {
@@ -295,22 +477,22 @@ func digitCount(n int64) int {
 
 // printLine prints a single output line with right-aligned counts.
 // R2.6: fixed order: lines, words, chars/bytes, max-line-length.
-func printLine(c counts, name string, width int, fl showFlags) {
+func printLine(c counts, name string, cw columnWidths, fl showFlags) {
 	first := true
 	if fl.lines {
-		printField(c.lines, width, &first)
+		printField(c.lines, cw.widthFor(fieldLines), &first)
 	}
 	if fl.words {
-		printField(c.words, width, &first)
+		printField(c.words, cw.widthFor(fieldWords), &first)
 	}
 	if fl.chars {
-		printField(c.chars, width, &first)
+		printField(c.chars, cw.widthFor(fieldChars), &first)
 	}
 	if fl.bytes {
-		printField(c.bytes, width, &first)
+		printField(c.bytes, cw.widthFor(fieldBytes), &first)
 	}
 	if fl.maxLineLen {
-		printField(c.maxLineLen, width, &first)
+		printField(c.maxLineLen, cw.widthFor(fieldMaxLL), &first)
 	}
 	if name != "" {
 		fmt.Printf(" %s", name)
@@ -329,18 +511,19 @@ func printField(val int64, width int, first *bool) {
 }
 
 // displayName returns the display name for output.
-// R1.3: stdin has no filename in output.
+// R4.1: "-" is displayed as "-" when explicitly given.
+// R1.3: implicit stdin (no file args) has no filename.
 func displayName(name string) string {
-	if name == "-" {
+	if name == stdinImplicit {
 		return ""
 	}
 	return name
 }
 
-// openInput opens a named file or returns stdin for "-".
+// openInput opens a named file or returns stdin for "-" and implicit stdin.
 // R4.1: "-" means stdin.
 func openInput(name string) (*os.File, error) {
-	if name == "-" {
+	if name == "-" || name == stdinImplicit {
 		return os.Stdin, nil
 	}
 	f, err := os.Open(name)
@@ -394,6 +577,8 @@ func parseOneArg(arg string, opts *options) int {
 		opts.flags.maxLineLen = true
 	case strings.HasPrefix(arg, "--files0-from="):
 		opts.files0From = arg[len("--files0-from="):]
+	case strings.HasPrefix(arg, "--total="):
+		return parseTotalMode(arg[len("--total="):], opts)
 	case isShortFlag(arg):
 		return parseShortFlags(arg[1:], &opts.flags)
 	case strings.HasPrefix(arg, "--"):
@@ -432,6 +617,26 @@ func parseShortFlags(s string, fl *showFlags) int {
 	return -1
 }
 
+// parseTotalMode parses --total=MODE and sets options.total.
+// R3.3: valid modes are auto, always, only, never.
+func parseTotalMode(mode string, opts *options) int {
+	switch mode {
+	case "auto":
+		opts.total = totalAuto
+	case "always":
+		opts.total = totalAlways
+	case "only":
+		opts.total = totalOnly
+	case "never":
+		opts.total = totalNever
+	default:
+		fmt.Fprintf(os.Stderr,
+			"wc: invalid argument '%s' for '--total'\n", mode)
+		return 1
+	}
+	return -1
+}
+
 // printHelp writes usage information to stdout and returns exit code.
 func printHelp() int {
 	_, err := fmt.Fprint(os.Stdout, `Usage: wc [OPTION]... [FILE]...
@@ -452,6 +657,8 @@ the following order: newline, word, character, byte, maximum line length.
       --files0-from=F    read input from the files specified by
                            NUL-terminated names in file F;
                            If F is - then read names from standard input
+      --total=WHEN       when to print a line with total counts;
+                           WHEN can be: auto, always, only, never
       --help     display this help and exit
       --version  output version information and exit
 `)
