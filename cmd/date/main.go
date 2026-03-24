@@ -3,7 +3,8 @@
 
 // Implements prd060-date: Display and Format Date and Time.
 // Covers R1.1-R1.4 (entry point, default output, format strings, directives),
-// R3.1 (-u/--utc/--universal UTC mode), and -R/--rfc-email RFC 5322 format.
+// R2.1-R2.4 (-d/--date with epoch and ISO parsing, error handling),
+// R3.1-R3.4 (-u UTC mode, -r/--reference file time, error cases, exit codes).
 package main
 
 import (
@@ -41,6 +42,8 @@ type config struct {
 	utc         bool
 	rfcEmail    bool
 	format      string
+	dateStr     string
+	refFile     string
 	showHelp    bool
 	showVersion bool
 }
@@ -68,18 +71,34 @@ func run(args []string) int {
 }
 
 // printDate formats and prints the date/time per the configuration.
-// R1.1: default output with current time. R3.1: UTC mode.
+// R1.1: default output. R2.1-R2.3: -d parsing. R3.1: UTC. R3.2: -r file.
 func printDate(cfg config) int {
-	now := time.Now()
+	t, err := resolveTime(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
 	if cfg.utc {
-		now = now.UTC()
+		t = t.UTC()
 	}
 	format := selectFormat(cfg)
-	result := formatTime(now, format)
+	result := formatTime(t, format)
 	if _, err := fmt.Fprintln(os.Stdout, result); err != nil {
 		return 1
 	}
 	return 0
+}
+
+// resolveTime determines the time to display based on config.
+// R2.1: -d/--date. R3.2: -r/--reference. Default: current time.
+func resolveTime(cfg config) (time.Time, error) {
+	if cfg.dateStr != "" {
+		return parseDateStr(cfg.dateStr)
+	}
+	if cfg.refFile != "" {
+		return fileModTime(cfg.refFile)
+	}
+	return time.Now(), nil
 }
 
 // selectFormat returns the format string based on config flags.
@@ -94,16 +113,77 @@ func selectFormat(cfg config) string {
 	return defaultFormat
 }
 
+// parseDateStr parses a date string from -d/--date.
+// R2.2: @epoch timestamps. R2.3: ISO 8601 date strings.
+func parseDateStr(s string) (time.Time, error) {
+	if strings.HasPrefix(s, "@") {
+		return parseEpoch(s[1:])
+	}
+	return parseISO(s)
+}
+
+// parseEpoch parses a Unix epoch timestamp string.
+// R2.2: supports integer epoch like @1234567890.
+func parseEpoch(s string) (time.Time, error) {
+	sec, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date '@%s'", s)
+	}
+	return time.Unix(sec, 0), nil
+}
+
+// isoLayouts lists Go time layouts for ISO 8601 parsing, most specific first.
+var isoLayouts = []string{
+	"2006-01-02T15:04:05Z07:00",
+	"2006-01-02 15:04:05 -07:00",
+	"2006-01-02 15:04:05 -0700",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02",
+}
+
+// parseISO attempts to parse s as an ISO 8601 date string.
+// R2.3: ISO 8601 parsing. R2.4: returns error on failure.
+func parseISO(s string) (time.Time, error) {
+	for _, layout := range isoLayouts {
+		t, err := time.ParseInLocation(layout, s, time.Local)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid date '%s'", s)
+}
+
+// fileModTime returns the modification time of the named file.
+// R3.2: -r/--reference. R3.3: error on missing file.
+func fileModTime(path string) (time.Time, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, fmt.Errorf(
+				"%s: No such file or directory", path)
+		}
+		if pe, ok := err.(*os.PathError); ok {
+			return time.Time{}, fmt.Errorf("%s: %v", path, pe.Err)
+		}
+		return time.Time{}, fmt.Errorf("%s: %v", path, err)
+	}
+	return info.ModTime(), nil
+}
+
 // parseArgs processes all command-line arguments into a config.
 func parseArgs(args []string) (config, error) {
 	var cfg config
-	for i := range len(args) {
+	for i := 0; i < len(args); {
 		if args[i] == "--" {
 			return parseOperands(&cfg, args[i+1:])
 		}
-		if err := parseArg(&cfg, args[i]); err != nil {
+		adv, err := parseArg(&cfg, args, i)
+		if err != nil {
 			return cfg, err
 		}
+		i += adv
 		if cfg.showHelp || cfg.showVersion {
 			return cfg, nil
 		}
@@ -123,42 +203,88 @@ func parseOperands(cfg *config, args []string) (config, error) {
 	return *cfg, nil
 }
 
-// parseArg processes a single command-line argument.
-func parseArg(cfg *config, arg string) error {
+// parseArg processes one argument, returning how many args were consumed.
+func parseArg(cfg *config, args []string, i int) (int, error) {
+	arg := args[i]
 	switch {
 	case arg == "--help":
 		cfg.showHelp = true
+		return 1, nil
 	case arg == "--version":
 		cfg.showVersion = true
+		return 1, nil
 	case arg == "--utc" || arg == "--universal":
 		cfg.utc = true
+		return 1, nil
 	case arg == "--rfc-email":
 		cfg.rfcEmail = true
+		return 1, nil
+	case strings.HasPrefix(arg, "--date="):
+		cfg.dateStr = arg[len("--date="):]
+		return 1, nil
+	case arg == "--date":
+		return consumeNextArg(&cfg.dateStr, args, i, arg)
+	case strings.HasPrefix(arg, "--reference="):
+		cfg.refFile = arg[len("--reference="):]
+		return 1, nil
+	case arg == "--reference":
+		return consumeNextArg(&cfg.refFile, args, i, arg)
 	case strings.HasPrefix(arg, "--"):
-		return fmt.Errorf("unrecognized option '%s'", arg)
+		return 0, fmt.Errorf("unrecognized option '%s'", arg)
 	case strings.HasPrefix(arg, "-") && len(arg) > 1:
-		return parseShortFlags(cfg, arg[1:])
+		return parseShortFlags(cfg, args, i)
 	case strings.HasPrefix(arg, "+"):
 		cfg.format = arg[1:]
+		return 1, nil
 	default:
-		return fmt.Errorf("extra operand '%s'", arg)
+		return 0, fmt.Errorf("extra operand '%s'", arg)
 	}
-	return nil
 }
 
-// parseShortFlags processes combined short flags (e.g., -uR).
-func parseShortFlags(cfg *config, flags string) error {
-	for _, ch := range flags {
-		switch ch {
+// consumeNextArg sets dst to the argument following the current one.
+func consumeNextArg(dst *string, args []string, i int, opt string) (int, error) {
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option '%s' requires an argument", opt)
+	}
+	*dst = args[i+1]
+	return 2, nil
+}
+
+// parseShortFlags processes combined short flags (e.g., -uR, -d VALUE).
+func parseShortFlags(cfg *config, args []string, i int) (int, error) {
+	flags := args[i][1:]
+	for j := 0; j < len(flags); j++ {
+		switch flags[j] {
 		case 'u':
 			cfg.utc = true
 		case 'R':
 			cfg.rfcEmail = true
+		case 'd':
+			return consumeShortOptArg(
+				&cfg.dateStr, flags[j+1:], flags[j], args, i)
+		case 'r':
+			return consumeShortOptArg(
+				&cfg.refFile, flags[j+1:], flags[j], args, i)
 		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
 	}
-	return nil
+	return 1, nil
+}
+
+// consumeShortOptArg sets dst from the flag tail or the next argument.
+func consumeShortOptArg(
+	dst *string, rest string, ch byte, args []string, i int,
+) (int, error) {
+	if rest != "" {
+		*dst = rest
+		return 1, nil
+	}
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option requires an argument -- '%c'", ch)
+	}
+	*dst = args[i+1]
+	return 2, nil
 }
 
 // formatTime translates a strftime-style format string using the given time.
@@ -406,10 +532,12 @@ func printTryHelp() {
 const helpText = `Usage: date [OPTION]... [+FORMAT]
 Display the current time in the given FORMAT.
 
-  -R, --rfc-email          output date and time in RFC 5322 format
-  -u, --utc, --universal   print or set Coordinated Universal Time (UTC)
-      --help               display this help and exit
-      --version            output version information and exit
+  -d, --date=STRING      display time described by STRING, not 'now'
+  -r, --reference=FILE   display the last modification time of FILE
+  -R, --rfc-email        output date and time in RFC 5322 format
+  -u, --utc, --universal print or set Coordinated Universal Time (UTC)
+      --help             display this help and exit
+      --version          output version information and exit
 
 FORMAT controls the output. Interpreted sequences are:
   %%   a literal %              %n   a newline
