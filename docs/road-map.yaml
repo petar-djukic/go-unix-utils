@@ -129,15 +129,15 @@ releases:
         differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel03.1-uc001-uname
-          status: spec_complete
+          status: implemented
         - id: rel03.1-uc002-arch
-          status: spec_complete
+          status: implemented
         - id: rel03.1-uc003-nproc
-          status: spec_complete
+          status: implemented
         - id: rel03.1-uc004-hostname
-          status: spec_complete
+          status: implemented
         - id: rel03.1-uc005-hostid
-          status: spec_complete
+          status: implemented
     - version: "04.0"
       name: "Batch 4 — ls specification and differential test"
       status: spec_complete
