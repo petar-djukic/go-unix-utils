@@ -34,7 +34,7 @@ releases:
         rel00.0 for differential testing and does not require pkg/sys or pkg/format.
       use_cases:
         - id: rel01.1-uc001-cat
-          status: spec_complete
+          status: implemented
     - version: "01.2"
       name: "Batch 1.2 — sponge specification and differential test"
       status: spec_complete
