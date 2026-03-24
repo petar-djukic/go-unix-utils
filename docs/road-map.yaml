@@ -229,7 +229,7 @@ releases:
           status: implemented
     - version: "05.3"
       name: "Batch 5.3 — sorted-stream comparison pair (uniq, comm)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement uniq (filter adjacent duplicate lines) and comm (compare two sorted files).
