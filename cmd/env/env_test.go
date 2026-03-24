@@ -4,7 +4,9 @@
 // Differential tests for cmd/env against GNU genv.
 // Covers prd039-env R1.1 (environment print), R1.2 (command execution),
 // R1.3 (exit codes 127/126), R2.1 (-i ignore), R2.2 (-u unset),
-// R2.3 (NAME=VALUE setting).
+// R2.3 (NAME=VALUE setting), R3.1 (-0/--null NUL output),
+// R3.2 (exit code passthrough), R3.3 (invalid option exit 125),
+// R4.1-R4.3 (differential test coverage).
 package main
 
 import (
@@ -54,6 +56,25 @@ func envSortNormalizer() testutils.NormalizeFunc {
 	}
 }
 
+// nullSortNormalizer sorts NUL-delimited output entries for deterministic
+// comparison between Go and reference binary.
+func nullSortNormalizer() testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		s := string(b)
+		if s == "" {
+			return b
+		}
+		// Split on NUL, sort, rejoin with NUL.
+		parts := strings.Split(s, "\x00")
+		// Remove trailing empty part from final NUL.
+		if len(parts) > 0 && parts[len(parts)-1] == "" {
+			parts = parts[:len(parts)-1]
+		}
+		sort.Strings(parts)
+		return []byte(strings.Join(parts, "\x00") + "\x00")
+	}
+}
+
 // TestDiff runs differential tests for env core behavior.
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -65,6 +86,7 @@ func TestDiff(t *testing.T) {
 
 	errNorm := stderrNormalizer()
 	sortNorm := envSortNormalizer()
+	nullSort := nullSortNormalizer()
 
 	tests := []testutils.DiffTest{
 		// R1.1: print empty environment (deterministic via -i).
@@ -164,6 +186,60 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "ignore_unset_set_combo",
 			Args: []string{"-i", "-u", "NONEXISTENT", "KEY=val"},
+		},
+		// R3.1: -0 NUL-delimited output with -i for determinism.
+		{
+			Name: "null_delim_short",
+			Args: []string{"-i", "-0", "A=1", "B=2"},
+			Normalize: []testutils.NormalizeFunc{nullSort},
+		},
+		// R3.1: --null long form NUL-delimited output.
+		{
+			Name: "null_delim_long",
+			Args: []string{"-i", "--null", "X=hello"},
+		},
+		// R3.1: -0 with empty environment produces empty output.
+		{
+			Name: "null_delim_empty",
+			Args: []string{"-i", "-0"},
+		},
+		// R3.1: -0 combined with other short flags.
+		{
+			Name: "null_delim_combined",
+			Args: []string{"-i0", "VAR=test"},
+		},
+		// R3.2: exit code 0 passthrough.
+		{
+			Name: "exit_code_zero",
+			Args: []string{"/bin/sh", "-c", "exit 0"},
+		},
+		// R3.2: exit code 1 passthrough.
+		{
+			Name: "exit_code_one",
+			Args: []string{"/bin/sh", "-c", "exit 1"},
+		},
+		// R3.3: invalid option exits 125.
+		{
+			Name:      "invalid_option_long",
+			Args:      []string{"--bogus-flag"},
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
+		// R3.3: invalid short option exits 125.
+		{
+			Name:      "invalid_option_short",
+			Args:      []string{"-z"},
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
+		// R4.2: NAME=VALUE with value containing equals sign.
+		{
+			Name: "value_with_equals",
+			Args: []string{"-i", "KEY=a=b=c"},
+		},
+		// R4.3: command not found with -i.
+		{
+			Name:      "cmd_not_found_with_ignore",
+			Args:      []string{"-i", "nonexistent_cmd_xyz_98765"},
+			Normalize: []testutils.NormalizeFunc{errNorm},
 		},
 	}
 

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd039-env: Run a Command in a Modified Environment.
-// Covers R1.1-R1.3 (default behavior), R2.1-R2.3 (environment modification).
+// Covers R1.1-R1.3 (default behavior), R2.1-R2.3 (environment modification),
+// R3.1-R3.3 (output formatting and exit codes), R4.1-R4.3 (differential testing).
 package main
 
 import (
@@ -24,6 +25,7 @@ var version = "dev"
 // config holds parsed command-line options and arguments.
 type config struct {
 	ignoreEnv   bool
+	nullDelim   bool
 	unsetVars   []string
 	setVars     []string // NAME=VALUE pairs
 	command     []string
@@ -52,7 +54,7 @@ func run(args []string) int {
 	}
 	env := buildEnvironment(cfg)
 	if len(cfg.command) == 0 {
-		return printEnvironment(env)
+		return printEnvironment(env, cfg.nullDelim)
 	}
 	return execCommand(cfg.command, env)
 }
@@ -80,8 +82,8 @@ func parseArgs(args []string) (config, error) {
 }
 
 // parseOptions processes command-line flags and returns the index of the
-// first non-option argument. Handles -i, -u, --, --help, --version, and
-// bare '-' (alias for -i).
+// first non-option argument. Handles -i, -0, -u, --, --help, --version,
+// and bare '-' (alias for -i).
 func parseOptions(cfg *config, args []string) (int, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -92,6 +94,9 @@ func parseOptions(cfg *config, args []string) (int, error) {
 			cfg.ignoreEnv = true
 		case arg == "--ignore-environment":
 			cfg.ignoreEnv = true
+		case arg == "--null":
+			// R3.1: NUL-delimited output.
+			cfg.nullDelim = true
 		case arg == "--help":
 			cfg.showHelp = true
 			return i + 1, nil
@@ -138,6 +143,9 @@ func parseShortFlags(cfg *config, args []string, i int) (int, error) {
 		switch arg[j] {
 		case 'i':
 			cfg.ignoreEnv = true
+		case '0':
+			// R3.1: NUL-delimited output.
+			cfg.nullDelim = true
 		case 'u':
 			name, consumed, err := consumeFlagArg(args, i, j)
 			if err != nil {
@@ -214,9 +222,14 @@ func setEnvPair(env []string, pair string) []string {
 
 // printEnvironment writes each environment entry to stdout.
 // R1.1: prints NAME=VALUE per line, exits 0.
-func printEnvironment(env []string) int {
+// R3.1: when nullDelim is true, terminates lines with NUL instead of newline.
+func printEnvironment(env []string, nullDelim bool) int {
+	delim := "\n"
+	if nullDelim {
+		delim = "\x00"
+	}
 	for _, e := range env {
-		if _, err := fmt.Fprintln(os.Stdout, e); err != nil {
+		if _, err := fmt.Fprint(os.Stdout, e+delim); err != nil {
 			return 1
 		}
 	}
@@ -226,6 +239,7 @@ func printEnvironment(env []string) int {
 // execCommand replaces the current process with COMMAND.
 // R1.2: executes COMMAND with the resulting environment.
 // R1.3: exits 127 if not found, 126 if cannot execute.
+// R3.2: exit code passthrough is implicit via syscall.Exec.
 func execCommand(command []string, env []string) int {
 	path, err := exec.LookPath(command[0])
 	if err != nil {
@@ -260,6 +274,7 @@ func printHelp() int {
 Set each NAME to VALUE in the environment and run COMMAND.
 
   -i, --ignore-environment  start with an empty environment
+  -0, --null                end each output line with NUL, not newline
   -u, --unset=NAME          remove variable from the environment
       --help                display this help and exit
       --version             output version information and exit
