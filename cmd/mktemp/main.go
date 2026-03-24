@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd036-mktemp: Create Temporary Files or Directories.
-// Covers R1.1-R1.5 (default behavior, template expansion, path output,
-// trailing X validation, exit codes), R2.1 (directory mode with -d).
+// Covers R1.1-R1.5 (default behavior), R2.1-R2.3 (directory mode),
+// R3.1-R3.4 (template and location control).
 package main
 
 import (
@@ -44,12 +44,22 @@ func main() {
 
 // config holds parsed flag state.
 type config struct {
-	directory bool // R2.1: create directory instead of file.
+	directory bool   // R2.1: create directory instead of file.
+	parentDir string // R3.1: -p DIR or --tmpdir=DIR override.
+	suffix    string // R3.3: --suffix=SUFF appended after random chars.
+	tFlag     bool   // R3.4: -t legacy BSD mode.
+	useTmpdir bool   // R3.2: --tmpdir without value.
 }
 
 // run validates the template and creates the temporary file or directory.
 // R1.5: exits 0 on success, 1 on failure with stderr diagnostic.
 func run(cfg config, template string) int {
+	// R3.3: suffix must not contain directory separator.
+	if err := validateSuffix(cfg.suffix); err != nil {
+		fmt.Fprintf(os.Stderr, "mktemp: %v\n", err)
+		return 1
+	}
+
 	trailingXs := countTrailingXs(template)
 	if trailingXs < minTrailingXs {
 		fmt.Fprintf(os.Stderr,
@@ -57,16 +67,40 @@ func run(cfg config, template string) int {
 		return 1
 	}
 
-	dir, base := splitTemplate(template)
+	dir, base := resolveTemplate(cfg, template)
 	path, err := createTemp(cfg, dir, base, trailingXs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mktemp: %v\n", err)
 		return 1
 	}
 
-	// R1.3: print the path of the created file or directory to stdout.
+	// R1.3, R2.3: print the path of the created file or directory to stdout.
 	fmt.Println(path)
 	return 0
+}
+
+// validateSuffix checks that the suffix doesn't contain directory separators.
+// R3.3: suffix must not contain '/'.
+func validateSuffix(suffix string) error {
+	if strings.Contains(suffix, "/") {
+		return fmt.Errorf(
+			"invalid suffix '%s', contains directory separator", suffix)
+	}
+	return nil
+}
+
+// resolveTemplate determines the parent directory and base name.
+// R3.1: -p DIR overrides TMPDIR.
+// R3.2: --tmpdir without value uses TMPDIR or /tmp.
+// R3.4: -t forces template into TMPDIR (or -p dir).
+func resolveTemplate(cfg config, template string) (string, string) {
+	if cfg.parentDir != "" {
+		return cfg.parentDir, filepath.Base(template)
+	}
+	if cfg.tFlag || cfg.useTmpdir {
+		return effectiveTmpDir(), filepath.Base(template)
+	}
+	return splitTemplate(template)
 }
 
 // splitTemplate separates the template into directory and base name.
@@ -102,11 +136,11 @@ func countTrailingXs(template string) int {
 func createTemp(cfg config, dir, base string, xs int) (string, error) {
 	prefix := base[:len(base)-xs]
 	for range maxAttempts {
-		suffix, err := randomString(xs)
+		randPart, err := randomString(xs)
 		if err != nil {
 			return "", fmt.Errorf("generating random name: %w", err)
 		}
-		path := filepath.Join(dir, prefix+suffix)
+		path := filepath.Join(dir, prefix+randPart+cfg.suffix)
 		err = createEntry(cfg, path)
 		if err == nil {
 			return path, nil
@@ -119,9 +153,9 @@ func createTemp(cfg config, dir, base string, xs int) (string, error) {
 }
 
 // createEntry creates a file or directory at the given path.
+// R2.1: -d creates directory; R2.2: directory mode 0700.
 func createEntry(cfg config, path string) error {
 	if cfg.directory {
-		// R2.1, R2.2: create directory with mode 0700.
 		return os.Mkdir(path, 0o700)
 	}
 	return createFile(path)
@@ -178,33 +212,26 @@ func parseArgs(args []string) (cfg config, template string, exit int) {
 	template = defaultTemplate
 	templateSet := false
 
-	for i, arg := range args {
+	i := 0
+	for i < len(args) {
+		arg := args[i]
 		switch {
 		case arg == "--":
-			rest := args[i+1:]
-			if len(rest) > 0 {
-				template = rest[0]
-			}
-			if len(rest) > 1 {
-				fmt.Fprintln(os.Stderr, "mktemp: too many templates")
-				return config{}, "", 1
-			}
-			return
+			return handleDoubleDash(cfg, args[i+1:])
 		case arg == "--help":
 			return config{}, "", printHelp()
 		case arg == "--version":
 			return config{}, "", printVersion()
-		case arg == "-d" || arg == "--directory":
-			cfg.directory = true
+		case strings.HasPrefix(arg, "--"):
+			exit = parseLongFlag(arg, &cfg)
+			if exit >= 0 {
+				return config{}, "", exit
+			}
 		case isShortFlags(arg):
-			exit = parseShortFlags(arg, &cfg)
+			exit = parseShortFlags(arg, &cfg, args, &i)
 			if exit >= 0 {
 				return
 			}
-		case strings.HasPrefix(arg, "--"):
-			fmt.Fprintf(os.Stderr,
-				"mktemp: unrecognized option '%s'\n", arg)
-			return config{}, "", 1
 		default:
 			if templateSet {
 				fmt.Fprintln(os.Stderr, "mktemp: too many templates")
@@ -213,8 +240,44 @@ func parseArgs(args []string) (cfg config, template string, exit int) {
 			template = arg
 			templateSet = true
 		}
+		i++
 	}
 	return
+}
+
+// parseLongFlag handles long-form options (--directory, --tmpdir, --suffix).
+func parseLongFlag(arg string, cfg *config) int {
+	switch {
+	case arg == "--directory":
+		cfg.directory = true
+	case arg == "--tmpdir":
+		// R3.2: --tmpdir without value uses TMPDIR or /tmp.
+		cfg.useTmpdir = true
+	case strings.HasPrefix(arg, "--tmpdir="):
+		// R3.1: --tmpdir=DIR uses DIR as parent directory.
+		cfg.parentDir = arg[len("--tmpdir="):]
+	case strings.HasPrefix(arg, "--suffix="):
+		// R3.3: --suffix=SUFF appends SUFF after random chars.
+		cfg.suffix = arg[len("--suffix="):]
+	default:
+		fmt.Fprintf(os.Stderr,
+			"mktemp: unrecognized option '%s'\n", arg)
+		return 1
+	}
+	return -1
+}
+
+// handleDoubleDash processes arguments after "--".
+func handleDoubleDash(cfg config, rest []string) (config, string, int) {
+	tmpl := defaultTemplate
+	if len(rest) > 0 {
+		tmpl = rest[0]
+	}
+	if len(rest) > 1 {
+		fmt.Fprintln(os.Stderr, "mktemp: too many templates")
+		return config{}, "", 1
+	}
+	return cfg, tmpl, -1
 }
 
 // isShortFlags returns true if the argument looks like a short flag group.
@@ -223,19 +286,41 @@ func isShortFlags(arg string) bool {
 		!strings.HasPrefix(arg, "--")
 }
 
-// parseShortFlags handles combined single-char flags like -d.
+// parseShortFlags handles combined single-char flags like -d, -t, -p.
 // Returns -1 to continue, >= 0 for early exit.
-func parseShortFlags(arg string, cfg *config) int {
+func parseShortFlags(arg string, cfg *config, args []string, idx *int) int {
 	for j := 1; j < len(arg); j++ {
 		switch arg[j] {
 		case 'd':
 			cfg.directory = true
+		case 't':
+			// R3.4: -t treats template as filename in TMPDIR.
+			cfg.tFlag = true
+		case 'p':
+			return parsePFlag(arg[j+1:], cfg, args, idx)
 		default:
 			fmt.Fprintf(os.Stderr,
 				"mktemp: invalid option -- '%c'\n", arg[j])
 			return 1
 		}
 	}
+	return -1
+}
+
+// parsePFlag handles the -p flag which takes a directory argument.
+// R3.1: -p DIR uses DIR as the parent directory.
+func parsePFlag(rest string, cfg *config, args []string, idx *int) int {
+	if rest != "" {
+		cfg.parentDir = rest
+		return -1
+	}
+	*idx++
+	if *idx >= len(args) {
+		fmt.Fprintln(os.Stderr,
+			"mktemp: option requires an argument -- 'p'")
+		return 1
+	}
+	cfg.parentDir = args[*idx]
 	return -1
 }
 
@@ -246,7 +331,11 @@ Create a temporary file or directory, safely, and print its name.
 TEMPLATEs must contain at least 3 consecutive 'X's in last component.
 If TEMPLATE is not specified, use tmp.XXXXXXXXXX.
 
-  -d, --directory  create a directory, not a file
+  -d, --directory     create a directory, not a file
+  -p DIR, --tmpdir=DIR  use DIR as the parent directory
+      --tmpdir        use $TMPDIR or /tmp as parent directory
+      --suffix=SUFF   append SUFF to TEMPLATE
+  -t                  interpret TEMPLATE as a single file name component
 
       --help     display this help and exit
       --version  output version information and exit

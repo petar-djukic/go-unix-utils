@@ -68,6 +68,42 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"noXatend"},
 			Normalize: normalize,
 		},
+		{
+			// R3.1: -p with explicit directory.
+			Name:      "p_flag_explicit_dir",
+			Args:      []string{"-p", t.TempDir(), "test.XXXXXX"},
+			Normalize: normalize,
+		},
+		{
+			// R3.1: --tmpdir= with explicit directory.
+			Name:      "tmpdir_eq_explicit_dir",
+			Args:      []string{"--tmpdir=" + t.TempDir(), "test.XXXXXX"},
+			Normalize: normalize,
+		},
+		{
+			// R3.2: --tmpdir without value uses TMPDIR.
+			Name:      "tmpdir_no_value",
+			Args:      []string{"--tmpdir", "test.XXXXXX"},
+			Normalize: normalize,
+		},
+		{
+			// R3.3: --suffix appends after random chars.
+			Name:      "suffix_flag",
+			Args:      []string{"--suffix=.txt"},
+			Normalize: normalize,
+		},
+		{
+			// R3.4: -t treats template as name in TMPDIR.
+			Name:      "t_flag_legacy",
+			Args:      []string{"-t", "myprefix.XXXXXX"},
+			Normalize: normalize,
+		},
+		{
+			// R3.3: suffix with directory separator must fail.
+			Name:      "suffix_with_slash",
+			Args:      []string{"--suffix=/bad"},
+			Normalize: normalize,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -123,6 +159,20 @@ func TestStructural(t *testing.T) {
 		}
 	})
 
+	t.Run("directory_prints_path", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R2.3: must print path of created directory to stdout.
+		path := runMktemp(t, goBin, tmpDir, "-d")
+		if dir := filepath.Dir(path); dir != tmpDir {
+			t.Errorf("expected dir %s, got %s", tmpDir, dir)
+		}
+		info := statOrFail(t, path)
+		if !info.IsDir() {
+			t.Error("expected directory, got file")
+		}
+	})
+
 	t.Run("custom_template", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
@@ -155,26 +205,7 @@ func TestStructural(t *testing.T) {
 
 	t.Run("too_few_xs_fails", func(t *testing.T) {
 		t.Parallel()
-		// R1.5: exit 1 with diagnostic to stderr.
-		cmd := exec.Command(goBin, "abcXX")
-		cmd.Env = buildEnv(t.TempDir())
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		if err == nil {
-			t.Fatal("expected failure for template with too few Xs")
-		}
-		exitErr, ok := err.(*exec.ExitError)
-		if !ok {
-			t.Fatalf("unexpected error type: %v", err)
-		}
-		if exitErr.ExitCode() != 1 {
-			t.Errorf("expected exit 1, got %d", exitErr.ExitCode())
-		}
-		// R1.5: diagnostic to stderr.
-		if stderr.Len() == 0 {
-			t.Error("expected stderr diagnostic, got empty")
-		}
+		assertFailure(t, goBin, t.TempDir(), "abcXX")
 	})
 
 	t.Run("absolute_path_in_tmpdir", func(t *testing.T) {
@@ -187,19 +218,170 @@ func TestStructural(t *testing.T) {
 			t.Errorf("expected dir %s, got %s", tmpDir, dir)
 		}
 	})
+
+	t.Run("p_flag_overrides_tmpdir", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		pDir := t.TempDir()
+		// R3.1: -p DIR overrides TMPDIR.
+		path := runMktempWithEnvAndArgs(t, goBin, tmpDir,
+			[]string{"-p", pDir, "test.XXXXXX"})
+		if dir := filepath.Dir(path); dir != pDir {
+			t.Errorf("expected dir %s, got %s", pDir, dir)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("tmpdir_eq_overrides_tmpdir", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		pDir := t.TempDir()
+		// R3.1: --tmpdir=DIR overrides TMPDIR.
+		path := runMktempWithEnvAndArgs(t, goBin, tmpDir,
+			[]string{"--tmpdir=" + pDir, "test.XXXXXX"})
+		if dir := filepath.Dir(path); dir != pDir {
+			t.Errorf("expected dir %s, got %s", pDir, dir)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("tmpdir_no_value_uses_tmpdir", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.2: --tmpdir without value uses TMPDIR.
+		path := runMktempWithEnvAndArgs(t, goBin, tmpDir,
+			[]string{"--tmpdir", "test.XXXXXX"})
+		if dir := filepath.Dir(path); dir != tmpDir {
+			t.Errorf("expected dir %s, got %s", tmpDir, dir)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("suffix_appended", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.3: --suffix=SUFF appends after random chars.
+		path := runMktemp(t, goBin, tmpDir, "--suffix=.txt")
+		base := filepath.Base(path)
+		if !strings.HasSuffix(base, ".txt") {
+			t.Errorf("expected suffix '.txt', got %s", base)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("suffix_with_custom_template", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.3: suffix with custom template.
+		path := runMktemp(t, goBin, tmpDir, "--suffix=.log", "app.XXXXXX")
+		base := filepath.Base(path)
+		if !strings.HasPrefix(base, "app.") {
+			t.Errorf("expected prefix 'app.', got %s", base)
+		}
+		if !strings.HasSuffix(base, ".log") {
+			t.Errorf("expected suffix '.log', got %s", base)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("suffix_with_slash_fails", func(t *testing.T) {
+		t.Parallel()
+		// R3.3: suffix must not contain directory separator.
+		assertFailure(t, goBin, t.TempDir(), "--suffix=/bad")
+	})
+
+	t.Run("t_flag_uses_tmpdir", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R3.4: -t forces template into TMPDIR.
+		path := runMktemp(t, goBin, tmpDir, "-t", "myprefix.XXXXXX")
+		if dir := filepath.Dir(path); dir != tmpDir {
+			t.Errorf("expected dir %s, got %s", tmpDir, dir)
+		}
+		base := filepath.Base(path)
+		if !strings.HasPrefix(base, "myprefix.") {
+			t.Errorf("expected prefix 'myprefix.', got %s", base)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("t_flag_with_p_flag", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		pDir := t.TempDir()
+		// R3.4 + R3.1: -p overrides -t's directory choice.
+		path := runMktempWithEnvAndArgs(t, goBin, tmpDir,
+			[]string{"-t", "-p", pDir, "foo.XXXXXX"})
+		if dir := filepath.Dir(path); dir != pDir {
+			t.Errorf("expected dir %s, got %s", pDir, dir)
+		}
+		statOrFail(t, path)
+	})
+
+	t.Run("d_with_suffix", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		// R2.1 + R3.3: directory mode with suffix.
+		path := runMktemp(t, goBin, tmpDir, "-d", "--suffix=.dir")
+		base := filepath.Base(path)
+		if !strings.HasSuffix(base, ".dir") {
+			t.Errorf("expected suffix '.dir', got %s", base)
+		}
+		info := statOrFail(t, path)
+		if !info.IsDir() {
+			t.Error("expected directory, got file")
+		}
+		// R2.2: directory mode 0700.
+		if perm := info.Mode().Perm(); perm != 0o700 {
+			t.Errorf("expected mode 0700, got %04o", perm)
+		}
+	})
 }
 
 // runMktemp executes the Go mktemp binary with TMPDIR set and returns
 // the trimmed stdout output.
 func runMktemp(t *testing.T, bin, tmpDir string, args ...string) string {
 	t.Helper()
+	return runMktempWithEnvAndArgs(t, bin, tmpDir, args)
+}
+
+// runMktempWithEnvAndArgs runs mktemp with the given TMPDIR and args.
+func runMktempWithEnvAndArgs(t *testing.T, bin, tmpDir string, args []string) string {
+	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = buildEnv(tmpDir)
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("mktemp %v failed: %v", args, err)
+		var stderr []byte
+		if ee, ok := err.(*exec.ExitError); ok {
+			stderr = ee.Stderr
+		}
+		t.Fatalf("mktemp %v failed: %v\nstderr: %s", args, err, stderr)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// assertFailure runs mktemp and verifies it exits with status 1.
+func assertFailure(t *testing.T, bin, tmpDir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = buildEnv(tmpDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected failure, got success")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("unexpected error type: %v", err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit 1, got %d", exitErr.ExitCode())
+	}
+	if stderr.Len() == 0 {
+		t.Error("expected stderr diagnostic, got empty")
+	}
 }
 
 // buildEnv constructs an environment with TMPDIR and LC_ALL=C set.
