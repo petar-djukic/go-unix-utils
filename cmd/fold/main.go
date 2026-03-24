@@ -4,7 +4,8 @@
 // Implements prd023-fold: Wrap Long Lines to a Specified Width.
 // Covers R1.1-R1.4 (core line wrapping, stdin/file reading),
 // R2.1 (-w width flag), R2.2 (column-mode tab handling),
-// R2.3 (-b byte-mode flag).
+// R2.3 (-b byte-mode flag), R3.1-R3.4 (-s space-break mode),
+// R4.1-R4.4 (exit codes and SIGPIPE).
 package main
 
 import (
@@ -24,6 +25,7 @@ const tabSize = 8
 type foldConfig struct {
 	width    int  // R2.1: fold width, default 80
 	byteMode bool // R2.3: count bytes instead of columns
+	spaces   bool // R3.1: break at last space within width
 }
 
 func main() {
@@ -66,10 +68,15 @@ func parseArgs(args []string) (foldConfig, []string, error) {
 }
 
 // parseFoldFlag parses a single flag and returns args consumed.
+// R3.4: rejects unrecognized options.
 func parseFoldFlag(arg string, args []string, i int, cfg *foldConfig) (int, error) {
 	switch {
 	case arg == "-b" || arg == "--bytes":
 		cfg.byteMode = true
+		return 1, nil
+	case arg == "-s" || arg == "--spaces":
+		// R3.1: enable space-break mode.
+		cfg.spaces = true
 		return 1, nil
 	case strings.HasPrefix(arg, "-w"):
 		return parseShortWidth(arg, args, i, cfg)
@@ -106,7 +113,7 @@ func parseLongWidth(arg string, args []string, i int, cfg *foldConfig) (int, err
 }
 
 // applyWidth validates and sets the fold width.
-// R2.1: width must be a positive integer.
+// R3.1 (task): invalid width values produce an error to stderr and exit 1.
 func applyWidth(val string, cfg *foldConfig) error {
 	w, err := strconv.Atoi(val)
 	if err != nil || w <= 0 {
@@ -119,6 +126,7 @@ func applyWidth(val string, cfg *foldConfig) error {
 // run processes all files and returns the exit code.
 // R1.1: reads stdin when no files given.
 // R1.3: concatenates output from multiple files.
+// R4.1/R4.2: exit 0 on success, 1 on any error.
 func run(cfg foldConfig, files []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(files) == 0 {
 		files = []string{"-"}
@@ -138,6 +146,7 @@ func run(cfg foldConfig, files []string, stdin io.Reader, stdout, stderr io.Writ
 }
 
 // processOneFile opens and folds a single file.
+// R3.2 (task): prints error and continues for nonexistent files.
 func processOneFile(name string, stdin io.Reader, bw *bufio.Writer, cfg foldConfig) error {
 	r, err := openInput(name, stdin)
 	if err != nil {
@@ -158,14 +167,22 @@ func openInput(name string, stdin io.Reader) (io.ReadCloser, error) {
 	return os.Open(name)
 }
 
-// foldInput dispatches to byte or column folding.
+// foldInput dispatches to the appropriate folding strategy.
 func foldInput(r io.Reader, bw *bufio.Writer, cfg foldConfig) error {
 	br := bufio.NewReader(r)
-	if cfg.byteMode {
+	switch {
+	case cfg.byteMode && cfg.spaces:
+		return foldBytesSpaces(br, bw, cfg.width)
+	case cfg.byteMode:
 		return foldBytes(br, bw, cfg.width)
+	case cfg.spaces:
+		return foldColumnsSpaces(br, bw, cfg.width)
+	default:
+		return foldColumns(br, bw, cfg.width)
 	}
-	return foldColumns(br, bw, cfg.width)
 }
+
+// --- Non-space-break fold functions ---
 
 // foldBytes folds input counting bytes.
 // R2.3: each byte counts as 1 regardless of character type.
@@ -274,4 +291,178 @@ func foldTab(col, width int, bw *bufio.Writer) (int, error) {
 // nextTabStop returns the column position of the next tab stop after col.
 func nextTabStop(col int) int {
 	return (col/tabSize + 1) * tabSize
+}
+
+// --- Space-break mode (-s) functions ---
+
+// foldBytesSpaces folds input counting bytes with space-breaking.
+// R3.1: breaks at last space within width.
+// R3.4: compatible with -b byte counting.
+func foldBytesSpaces(br *bufio.Reader, bw *bufio.Writer, width int) error {
+	var buf []byte
+	for {
+		c, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				_, wErr := bw.Write(buf)
+				return wErr
+			}
+			return err
+		}
+		if c == '\n' {
+			if wErr := writeBufNewline(buf, bw); wErr != nil {
+				return wErr
+			}
+			buf = buf[:0]
+			continue
+		}
+		buf = append(buf, c)
+		for len(buf) >= width {
+			var wErr error
+			buf, wErr = breakBytesAtSpace(buf, width, bw)
+			if wErr != nil {
+				return wErr
+			}
+		}
+	}
+}
+
+// breakBytesAtSpace breaks a byte buffer at the last space within width.
+// R3.2: falls back to hard break if no space found.
+// R3.3: space is written as last character before the newline.
+func breakBytesAtSpace(buf []byte, width int, bw *bufio.Writer) ([]byte, error) {
+	breakIdx := lastSpaceIn(buf, width)
+	if breakIdx >= 0 {
+		return writeBreak(buf, breakIdx+1, bw)
+	}
+	return writeBreak(buf, width, bw)
+}
+
+// foldColumnsSpaces folds input counting columns with space-breaking.
+// R3.1: breaks at last space within width.
+func foldColumnsSpaces(br *bufio.Reader, bw *bufio.Writer, width int) error {
+	var buf []byte
+	col := 0
+	lastSpIdx := -1
+	for {
+		c, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				_, wErr := bw.Write(buf)
+				return wErr
+			}
+			return err
+		}
+		if c == '\n' {
+			if wErr := writeBufNewline(buf, bw); wErr != nil {
+				return wErr
+			}
+			buf, col, lastSpIdx = nil, 0, -1
+			continue
+		}
+		newCol := advanceColumn(c, col)
+		buf, col, lastSpIdx, err = handleColOverflow(
+			buf, col, lastSpIdx, c, newCol, width, bw,
+		)
+		if err != nil {
+			return err
+		}
+		buf = append(buf, c)
+		col = advanceColumn(c, col)
+		if c == ' ' {
+			lastSpIdx = len(buf) - 1
+		}
+	}
+}
+
+// handleColOverflow breaks the buffer when adding c would exceed width.
+// R3.2: falls back to hard break when no space exists in the buffer.
+func handleColOverflow(
+	buf []byte, col, lastSpIdx int, c byte, newCol, width int,
+	bw *bufio.Writer,
+) ([]byte, int, int, error) {
+	for newCol > width && len(buf) > 0 {
+		var err error
+		if lastSpIdx >= 0 {
+			buf, err = writeBreak(buf, lastSpIdx+1, bw)
+		} else {
+			buf, err = writeBreak(buf, len(buf), bw)
+		}
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		col = computeColumns(buf)
+		lastSpIdx = findLastSpace(buf)
+		newCol = advanceColumn(c, col)
+	}
+	return buf, col, lastSpIdx, nil
+}
+
+// --- Shared helpers ---
+
+// writeBreak writes buf[:n] followed by a newline and returns the remainder.
+func writeBreak(buf []byte, n int, bw *bufio.Writer) ([]byte, error) {
+	if _, err := bw.Write(buf[:n]); err != nil {
+		return nil, err
+	}
+	if err := bw.WriteByte('\n'); err != nil {
+		return nil, err
+	}
+	remaining := make([]byte, len(buf)-n)
+	copy(remaining, buf[n:])
+	return remaining, nil
+}
+
+// writeBufNewline writes buf contents followed by a newline.
+func writeBufNewline(buf []byte, bw *bufio.Writer) error {
+	if _, err := bw.Write(buf); err != nil {
+		return err
+	}
+	return bw.WriteByte('\n')
+}
+
+// advanceColumn returns the column position after byte c at column col.
+func advanceColumn(c byte, col int) int {
+	switch c {
+	case '\t':
+		return nextTabStop(col)
+	case '\b':
+		if col > 0 {
+			return col - 1
+		}
+		return 0
+	case '\r':
+		return 0
+	default:
+		return col + 1
+	}
+}
+
+// computeColumns calculates the total column width of a byte buffer.
+func computeColumns(buf []byte) int {
+	col := 0
+	for _, c := range buf {
+		col = advanceColumn(c, col)
+	}
+	return col
+}
+
+// lastSpaceIn returns the index of the last space in buf[0:limit], or -1.
+func lastSpaceIn(buf []byte, limit int) int {
+	for j := limit - 1; j >= 0; j-- {
+		if buf[j] == ' ' {
+			return j
+		}
+	}
+	return -1
+}
+
+// findLastSpace returns the index of the last space in buf, or -1.
+func findLastSpace(buf []byte) int {
+	for j := len(buf) - 1; j >= 0; j-- {
+		if buf[j] == ' ' {
+			return j
+		}
+	}
+	return -1
 }
