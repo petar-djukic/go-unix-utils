@@ -438,11 +438,11 @@ func printDiagnostic(path string, oldGid, newGid int, f chgrpFlags) {
 	groupName := resolveGroupName(newGid)
 	if changed {
 		fmt.Fprintf(os.Stdout,
-			"changed group of '%s' to '%s'\n", path, groupName)
+			"changed group of '%s' to %s\n", path, groupName)
 		return
 	}
 	fmt.Fprintf(os.Stdout,
-		"group of '%s' retained as '%s'\n", path, groupName)
+		"group of '%s' retained as %s\n", path, groupName)
 }
 
 // reportError prints an error to stderr unless silent mode is active (R3.1).
