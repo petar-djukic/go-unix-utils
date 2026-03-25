@@ -3,7 +3,9 @@
 
 // Implements prd098-pinky: Lightweight Finger Information Lookup.
 // Covers R1.1 (short format default), R1.2 (USER argument filtering),
-// R1.3 (-s short format flag).
+// R1.3 (-s short format flag), R2.1 (-l long format with GECOS fields),
+// R2.2 (-f, -w, -i, -q short format suppression),
+// R2.3 (-b, -h, -p long format suppression).
 package main
 
 /*
@@ -36,18 +38,25 @@ type utmpEntry struct {
 	host      string
 }
 
+// gecosInfo holds parsed GECOS field information.
+type gecosInfo struct {
+	name        string
+	office      string
+	officePhone string
+}
+
 // options holds parsed command-line flags.
 type options struct {
-	longFmt   bool
-	shortFmt  bool
-	showName  bool
-	showHost  bool
-	showIdle  bool
-	showHead  bool
-	omitHome  bool
-	omitProj  bool
-	omitPlan  bool
-	users     []string
+	longFmt  bool
+	shortFmt bool
+	showName bool
+	showHost bool
+	showIdle bool
+	showHead bool
+	omitHome bool
+	omitProj bool
+	omitPlan bool
+	users    []string
 }
 
 func main() {
@@ -60,14 +69,6 @@ func run(args []string) int {
 	opts, code := parseArgs(args)
 	if code >= 0 {
 		return code
-	}
-	if opts.longFmt && len(opts.users) == 0 {
-		fmt.Fprintf(os.Stderr,
-			"pinky: no username specified; at least one must be"+
-				" specified when using -l\n")
-		fmt.Fprintf(os.Stderr,
-			"Try 'pinky --help' for more information.\n")
-		return 1
 	}
 	return execute(opts)
 }
@@ -157,6 +158,9 @@ func applyShortFlags(flags string, opts *options) int {
 }
 
 // applyShortFlag handles a single short flag character.
+// R2.1: -s forces short format, -l forces long format (last wins).
+// R2.2: -f, -w, -i, -q suppress columns in short format.
+// R2.3: -b, -h, -p suppress fields in long format.
 func applyShortFlag(ch rune, opts *options) int {
 	switch ch {
 	case 'l':
@@ -309,19 +313,29 @@ func lookupFullName(username string) string {
 		return " ???"
 	}
 	gecos := C.GoString(pw.pw_gecos)
-	return extractName(gecos, username)
+	return parseGECOS(gecos, username).name
 }
 
-// extractName returns the full name from a GECOS string.
+// parseGECOS parses a GECOS string into component fields.
+// GECOS format: name,office,work-phone,home-phone.
 // Handles '&' replacement with capitalized login name.
-func extractName(gecos, login string) string {
-	// GECOS format: name,office,work-phone,home-phone
-	name, _, _ := strings.Cut(gecos, ",")
-	if strings.Contains(name, "&") {
-		cap := strings.ToUpper(login[:1]) + login[1:]
-		name = strings.ReplaceAll(name, "&", cap)
+func parseGECOS(gecos, login string) gecosInfo {
+	parts := strings.SplitN(gecos, ",", 4)
+	info := gecosInfo{}
+	if len(parts) > 0 {
+		info.name = parts[0]
 	}
-	return name
+	if len(parts) > 1 {
+		info.office = strings.TrimSpace(parts[1])
+	}
+	if len(parts) > 2 {
+		info.officePhone = strings.TrimSpace(parts[2])
+	}
+	if strings.Contains(info.name, "&") {
+		cap := strings.ToUpper(login[:1]) + login[1:]
+		info.name = strings.ReplaceAll(info.name, "&", cap)
+	}
+	return info
 }
 
 // idleString returns the idle time display string for a terminal.
@@ -352,32 +366,39 @@ func formatTime(t time.Time) string {
 }
 
 // longPinky prints long format output for a single user.
+// R2.1: shows login name, real name, office, phone, directory, shell.
 func longPinky(username string, opts options) int {
 	cname := C.CString(username)
 	defer C.free(unsafe.Pointer(cname))
 	pw := C.getpwnam(cname)
 
-	name := "???"
+	gecos := gecosInfo{name: "???"}
 	dir := ""
 	shell := ""
 	if pw != nil {
-		gecos := C.GoString(pw.pw_gecos)
-		name = extractName(gecos, username)
+		raw := C.GoString(pw.pw_gecos)
+		gecos = parseGECOS(raw, username)
 		dir = C.GoString(pw.pw_dir)
 		shell = C.GoString(pw.pw_shell)
 	}
-	if err := printLongName(username, name); err != nil {
+	if err := printLongName(username, gecos.name); err != nil {
 		return 1
 	}
 	if pw == nil {
+		if _, err := fmt.Println(); err != nil {
+			return 1
+		}
 		return 0
+	}
+	if err := printLongOffice(gecos); err != nil {
+		return 1
 	}
 	if !opts.omitHome {
 		if err := printLongDirShell(dir, shell); err != nil {
 			return 1
 		}
 	}
-	// R1.3/non_goals: .plan and .project not read on macOS
+	// non_goals: .plan and .project not read on macOS
 	if _, err := fmt.Println(); err != nil {
 		return 1
 	}
@@ -388,6 +409,22 @@ func longPinky(username string, opts options) int {
 func printLongName(username, fullname string) error {
 	_, err := fmt.Printf("Login name: %-28sIn real life:  %s\n",
 		username, fullname)
+	return err
+}
+
+// printLongOffice prints the office location and phone line.
+// Only prints if at least one field is non-empty.
+func printLongOffice(gecos gecosInfo) error {
+	if gecos.office == "" && gecos.officePhone == "" {
+		return nil
+	}
+	val := gecos.office
+	if val != "" && gecos.officePhone != "" {
+		val += ", " + gecos.officePhone
+	} else if gecos.officePhone != "" {
+		val = gecos.officePhone
+	}
+	_, err := fmt.Printf("Office: %s\n", val)
 	return err
 }
 
