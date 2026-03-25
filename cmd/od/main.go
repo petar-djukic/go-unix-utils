@@ -43,7 +43,7 @@ type odOptions struct {
 	types     []typeSpec
 	addrRadix byte  // 'o', 'd', 'x', 'n'
 	skipBytes int64
-	readBytes int64 // 0 = unlimited
+	readBytes int64 // -1 = unlimited
 	width     int
 	showDupes bool // -v
 }
@@ -99,6 +99,7 @@ func run(opts odOptions, files []string, stdin io.Reader, stdout, stderr io.Writ
 	if opts.skipBytes > 0 {
 		if _, err := io.CopyN(io.Discard, r, opts.skipBytes); err != nil {
 			fmt.Fprintf(stderr, "od: cannot skip past end of combined input\n")
+			return 1
 		}
 	}
 	w := bufio.NewWriter(stdout)
@@ -110,7 +111,7 @@ func run(opts odOptions, files []string, stdin io.Reader, stdout, stderr io.Writ
 // parseArgs processes command-line arguments into options and file list.
 // R1.1: parses all od flags; defaults to octal 2-byte words.
 func parseArgs(args []string) (odOptions, []string, error) {
-	opts := odOptions{addrRadix: 'o', width: defaultWidth}
+	opts := odOptions{addrRadix: 'o', width: defaultWidth, readBytes: -1}
 	var files []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -272,7 +273,7 @@ func applyBoolFlag(c byte, opts *odOptions) error {
 // R2.1: d, o, x, n are valid radix values.
 func parseAddrRadix(val string, opts *odOptions) error {
 	if len(val) != 1 || !strings.ContainsRune("doxn", rune(val[0])) {
-		return fmt.Errorf("invalid address radix '%s'; must be one of [doxn]", val)
+		return fmt.Errorf("invalid output address radix '%s'; it must be one character from [doxn]", val)
 	}
 	opts.addrRadix = val[0]
 	return nil
@@ -303,7 +304,7 @@ func parseTypeString(s string) (typeSpec, error) {
 		w := intFieldWidth(s[0], size)
 		return typeSpec{size: size, format: makeIntFmt(s[0], size, w)}, nil
 	default:
-		return typeSpec{}, fmt.Errorf("invalid type string '%s'", s)
+		return typeSpec{}, fmt.Errorf("invalid character '%c' in type string '%s'", s[0], s)
 	}
 }
 
@@ -390,11 +391,15 @@ func makeFloatFmt(size int) func([]byte) string {
 	if size == 4 {
 		return func(data []byte) string {
 			bits := uint32(readUint(data, 4))
-			return fmt.Sprintf("%15.7e", float64(math.Float32frombits(bits)))
+			s := strconv.FormatFloat(
+				float64(math.Float32frombits(bits)), 'g', -1, 32)
+			return fmt.Sprintf("%15s", s)
 		}
 	}
 	return func(data []byte) string {
-		return fmt.Sprintf("%24.17e", math.Float64frombits(readUint(data, 8)))
+		s := strconv.FormatFloat(
+			math.Float64frombits(readUint(data, 8)), 'g', -1, 64)
+		return fmt.Sprintf("%24s", s)
 	}
 }
 
@@ -498,7 +503,7 @@ func isDuplicate(cur, prev []byte, first, showDupes bool) bool {
 // readBlock reads up to len(buf) bytes, respecting readBytes limit.
 func readBlock(r io.Reader, buf []byte, readBytes, bytesRead int64) (int, error) {
 	limit := len(buf)
-	if readBytes > 0 {
+	if readBytes >= 0 {
 		remaining := readBytes - bytesRead
 		if remaining <= 0 {
 			return 0, io.EOF
@@ -573,14 +578,19 @@ func formatAddress(offset int64, radix byte) string {
 // R1.4: reads files in order; '-' means stdin.
 func openInputs(files []string, stdin io.Reader, stderr io.Writer) (io.ReadCloser, error) {
 	if len(files) == 1 {
-		return openSingle(files[0], stdin)
+		rc, err := openSingle(files[0], stdin)
+		if err != nil {
+			printFileError(stderr, files[0], err)
+			return nil, err
+		}
+		return rc, nil
 	}
 	readers := make([]io.Reader, 0, len(files))
 	closers := make([]io.Closer, 0, len(files))
 	for _, name := range files {
 		rc, err := openSingle(name, stdin)
 		if err != nil {
-			fmt.Fprintf(stderr, "od: %s: %s\n", name, err)
+			printFileError(stderr, name, err)
 			for _, c := range closers {
 				c.Close() // best-effort cleanup
 			}
@@ -597,6 +607,16 @@ func openSingle(name string, stdin io.Reader) (io.ReadCloser, error) {
 		return io.NopCloser(stdin), nil
 	}
 	return os.Open(name)
+}
+
+// printFileError formats a file open error to match GNU od style.
+// GNU format: "od: <path>: <os error>"
+func printFileError(w io.Writer, path string, err error) {
+	if pe, ok := err.(*os.PathError); ok {
+		fmt.Fprintf(w, "od: %s: %s\n", path, pe.Err)
+	} else {
+		fmt.Fprintf(w, "od: %s: %s\n", path, err)
+	}
 }
 
 // multiRC wraps a MultiReader with close-all semantics.
