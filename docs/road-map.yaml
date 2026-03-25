@@ -486,7 +486,7 @@ releases:
         GNU coreutils reference binaries.
       use_cases:
         - id: rel11.0-uc001-mkfifo
-          status: spec_complete
+          status: implemented
         - id: rel11.0-uc002-mknod
           status: spec_complete
         - id: rel11.0-uc003-nice
