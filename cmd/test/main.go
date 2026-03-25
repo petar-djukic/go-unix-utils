@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/test implements the POSIX test (and [) conditional expression evaluator.
-// Implements prd104-test R1.1, R1.2, R2.1, R2.2.
+// Implements prd104-test R1.1, R1.2, R2.1, R2.2, R3.1, R3.2, R4.1, R4.2.
 package main
 
 import (
@@ -50,22 +50,205 @@ func main() {
 	os.Exit(exitFalse)
 }
 
-// evaluate dispatches expression evaluation based on argument count.
+// evaluate dispatches expression evaluation using POSIX argument-count rules
+// for 0–4 arguments and recursive descent for 5+.
+// R3.1: supports !, -a, -o, and ( ) for multi-argument expressions.
+// R3.2, R4.1: returns error for syntax errors (caller exits 2).
 func evaluate(args []string) (bool, error) {
 	switch len(args) {
 	case 0:
 		return false, nil
 	case 1:
-		// R2.1: bare STRING is true if non-empty
+		// R2.1: bare STRING is true if non-empty.
 		return args[0] != "", nil
 	case 2:
-		return evalUnary(args[0], args[1])
+		return evalTwoArgs(args)
 	case 3:
-		return evalBinary(args[0], args[1], args[2])
+		return evalThreeArgs(args)
+	case 4:
+		return evalFourArgs(args)
 	default:
-		// TODO: R3.1 will add logical operators for multi-argument expressions
-		return false, fmt.Errorf("too many arguments")
+		return evalMulti(args)
 	}
+}
+
+// evalTwoArgs handles POSIX 2-argument forms.
+// R3.1: ! STRING negates the single-string test.
+func evalTwoArgs(args []string) (bool, error) {
+	if args[0] == "!" {
+		return args[1] == "", nil
+	}
+	return evalUnary(args[0], args[1])
+}
+
+// evalThreeArgs handles POSIX 3-argument forms.
+// R3.1: supports ! EXPR and ( EXPR ) grouping.
+func evalThreeArgs(args []string) (bool, error) {
+	if isBinaryOp(args[1]) {
+		return evalBinary(args[0], args[1], args[2])
+	}
+	if args[0] == "!" {
+		result, err := evalTwoArgs(args[1:])
+		if err != nil {
+			return false, err
+		}
+		return !result, nil
+	}
+	if args[0] == "(" && args[2] == ")" {
+		return args[1] != "", nil
+	}
+	// Fall through: try as binary for GNU-compatible error messages.
+	return evalBinary(args[0], args[1], args[2])
+}
+
+// evalFourArgs handles POSIX 4-argument forms.
+// R3.1: supports ! 3-arg and ( 2-arg ) grouping.
+func evalFourArgs(args []string) (bool, error) {
+	if args[0] == "!" {
+		result, err := evalThreeArgs(args[1:])
+		if err != nil {
+			return false, err
+		}
+		return !result, nil
+	}
+	if args[0] == "(" && args[3] == ")" {
+		return evalTwoArgs(args[1:3])
+	}
+	return evalMulti(args)
+}
+
+// parser holds state for recursive descent expression parsing.
+// R3.1: used for expressions with 5+ arguments.
+type parser struct {
+	args []string
+	pos  int
+}
+
+// evalMulti evaluates expressions using recursive descent.
+func evalMulti(args []string) (bool, error) {
+	p := &parser{args: args}
+	result, err := p.orExpr()
+	if err != nil {
+		return false, err
+	}
+	if p.pos < len(p.args) {
+		return false, fmt.Errorf("extra argument %q", p.args[p.pos])
+	}
+	return result, nil
+}
+
+// orExpr parses: and_expr ('-o' and_expr)*
+// R3.1: -o is the lowest-precedence logical operator.
+func (p *parser) orExpr() (bool, error) {
+	result, err := p.andExpr()
+	if err != nil {
+		return false, err
+	}
+	for p.pos < len(p.args) && p.args[p.pos] == "-o" {
+		p.pos++
+		right, err := p.andExpr()
+		if err != nil {
+			return false, err
+		}
+		result = result || right
+	}
+	return result, nil
+}
+
+// andExpr parses: not_expr ('-a' not_expr)*
+// R3.1: -a has higher precedence than -o.
+func (p *parser) andExpr() (bool, error) {
+	result, err := p.notExpr()
+	if err != nil {
+		return false, err
+	}
+	for p.pos < len(p.args) && p.args[p.pos] == "-a" {
+		p.pos++
+		right, err := p.notExpr()
+		if err != nil {
+			return false, err
+		}
+		result = result && right
+	}
+	return result, nil
+}
+
+// notExpr parses: '!' not_expr | primary
+// R3.1: ! has higher precedence than -a and -o.
+func (p *parser) notExpr() (bool, error) {
+	if p.pos < len(p.args) && p.args[p.pos] == "!" {
+		p.pos++
+		result, err := p.notExpr()
+		if err != nil {
+			return false, err
+		}
+		return !result, nil
+	}
+	return p.primary()
+}
+
+// primary parses: '(' expr ')' | unary_op arg | arg binary_op arg | STRING
+func (p *parser) primary() (bool, error) {
+	remaining := len(p.args) - p.pos
+	if remaining == 0 {
+		return false, fmt.Errorf("argument expected")
+	}
+	if p.args[p.pos] == "(" {
+		return p.parenExpr()
+	}
+	if isUnaryOp(p.args[p.pos]) && remaining >= 2 {
+		op := p.args[p.pos]
+		arg := p.args[p.pos+1]
+		p.pos += 2
+		return evalUnary(op, arg)
+	}
+	if remaining >= 3 && isBinaryOp(p.args[p.pos+1]) {
+		left := p.args[p.pos]
+		op := p.args[p.pos+1]
+		right := p.args[p.pos+2]
+		p.pos += 3
+		return evalBinary(left, op, right)
+	}
+	// R2.1: bare STRING is true if non-empty.
+	s := p.args[p.pos]
+	p.pos++
+	return s != "", nil
+}
+
+// parenExpr parses a parenthesized expression: '(' expr ')'
+// R3.1: parentheses override operator precedence.
+func (p *parser) parenExpr() (bool, error) {
+	p.pos++ // consume '('
+	result, err := p.orExpr()
+	if err != nil {
+		return false, err
+	}
+	if p.pos >= len(p.args) || p.args[p.pos] != ")" {
+		return false, fmt.Errorf("')' expected")
+	}
+	p.pos++ // consume ')'
+	return result, nil
+}
+
+// isUnaryOp returns true if s is a recognized unary test operator.
+func isUnaryOp(s string) bool {
+	switch s {
+	case "-e", "-f", "-d", "-s", "-r", "-w", "-x", "-L", "-h",
+		"-b", "-c", "-p", "-S", "-g", "-u", "-k", "-G", "-O",
+		"-t", "-z", "-n":
+		return true
+	}
+	return false
+}
+
+// isBinaryOp returns true if s is a recognized binary test operator.
+func isBinaryOp(s string) bool {
+	switch s {
+	case "=", "!=", "-eq", "-ne", "-lt", "-le", "-gt", "-ge",
+		"-nt", "-ot", "-ef":
+		return true
+	}
+	return false
 }
 
 // evalUnary evaluates a two-argument unary expression.
