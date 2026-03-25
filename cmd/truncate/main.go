@@ -3,7 +3,8 @@
 
 // Implements prd083-truncate: Shrink or Extend File Size.
 // Covers R1.1-R1.4 (size specification, relative prefixes, no-create, multiple files),
-// R2.1-R2.2 (reference file, error exit), R3.1-R3.3 (exit codes, SIGPIPE).
+// R2.1-R2.2 (reference file, error exit), R3.1-R3.3 (error diagnostics, invalid args,
+// version/help output, SIGPIPE).
 package main
 
 import (
@@ -56,6 +57,7 @@ func main() {
 
 // run executes the truncate operation on all target files.
 // R1.3: applies the same size operation to each file.
+// R3.1: prints error, continues with remaining files, exits 1 if any failed.
 func run(cfg config) int {
 	baseSize, err := resolveBaseSize(cfg)
 	if err != nil {
@@ -82,7 +84,7 @@ func resolveBaseSize(cfg config) (int64, error) {
 	info, err := os.Stat(cfg.refFile)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"cannot stat %q: %v", cfg.refFile, err,
+			"cannot stat '%s': %v", cfg.refFile, unwrapErr(err),
 		)
 	}
 	return info.Size(), nil
@@ -90,6 +92,7 @@ func resolveBaseSize(cfg config) (int64, error) {
 
 // processFile applies the truncate operation to a single file.
 // R1.4: when -c is set, skip files that do not exist.
+// R3.1: returns error on failure; caller continues with remaining files.
 func processFile(path string, cfg config, baseSize int64) error {
 	currentSize, err := getOrCreateFile(path, cfg.noCreate)
 	if err != nil {
@@ -100,7 +103,13 @@ func processFile(path string, cfg config, baseSize int64) error {
 	}
 
 	targetSize := max(computeTarget(cfg, currentSize, baseSize), 0)
-	return os.Truncate(path, targetSize)
+	if err := os.Truncate(path, targetSize); err != nil {
+		return fmt.Errorf(
+			"failed to truncate '%s' at %d bytes: %v",
+			path, targetSize, unwrapErr(err),
+		)
+	}
+	return nil
 }
 
 // getOrCreateFile returns the current file size, creating the file if
@@ -112,7 +121,7 @@ func getOrCreateFile(path string, noCreate bool) (int64, error) {
 	}
 	if !os.IsNotExist(err) {
 		return 0, fmt.Errorf(
-			"cannot stat %q: %v", path, err,
+			"cannot stat '%s': %v", path, unwrapErr(err),
 		)
 	}
 	// R1.4/R2.1: file does not exist.
@@ -122,11 +131,20 @@ func getOrCreateFile(path string, noCreate bool) (int64, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"cannot create %q: %v", path, err,
+			"cannot open '%s' for writing: %v",
+			path, unwrapErr(err),
 		)
 	}
 	f.Close() // best-effort close of newly created empty file
 	return 0, nil
+}
+
+// unwrapErr extracts the underlying error from *os.PathError.
+func unwrapErr(err error) error {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err
+	}
+	return err
 }
 
 // computeTarget applies the size operation to determine the final size.
@@ -190,14 +208,15 @@ func roundUp(n, m int64) int64 {
 
 // parseSizeSpec parses a SIZE string with optional operator prefix.
 // R1.1: plain bytes or with suffixes. R1.2: operator prefixes.
+// R3.2: returns error for unparseable size values.
 func parseSizeSpec(s string) (sizeOp, int64, error) {
 	if s == "" {
-		return opAbsolute, 0, fmt.Errorf("invalid number: %q", s)
+		return opAbsolute, 0, fmt.Errorf("invalid number: '%s'", s)
 	}
 	op, rest := extractOp(s)
 	n, err := sizeparse.Parse(rest)
 	if err != nil {
-		return opAbsolute, 0, fmt.Errorf("invalid number: %q", s)
+		return opAbsolute, 0, fmt.Errorf("invalid number: '%s'", s)
 	}
 	return op, n, nil
 }
@@ -313,10 +332,12 @@ func consumeStringArg(
 }
 
 // validateConfig checks that required flags and operands are present.
+// R3.2: missing file operands or missing -s/-r produce diagnostics to stderr.
 func validateConfig(cfg config) (config, int) {
 	if cfg.sizeStr == "" && cfg.refFile == "" {
-		fmt.Fprintln(os.Stderr,
-			"truncate: you must specify either '--size' or '--reference'")
+		fmt.Fprintf(os.Stderr,
+			"truncate: you must specify either "+
+				"'--size' or '--reference'\n")
 		return config{}, 1
 	}
 	if len(cfg.files) == 0 {
@@ -337,6 +358,7 @@ func validateConfig(cfg config) (config, int) {
 }
 
 // printHelp writes usage information and returns exit code 0.
+// R3.3: --help outputs usage to stdout and exits 0.
 func printHelp() int {
 	fmt.Fprint(os.Stdout, `Usage: truncate OPTION... FILE...
 Shrink or extend the size of each FILE to the specified size.
@@ -365,6 +387,7 @@ SIZE may also be prefixed by one of the following modifying characters:
 }
 
 // printVersion writes version information and returns exit code 0.
+// R3.3: --version outputs version information to stdout and exits 0.
 func printVersion() int {
 	fmt.Fprintf(os.Stdout, "truncate (go-unix-utils) %s\n", version)
 	return 0

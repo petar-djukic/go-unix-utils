@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/truncate comparing against gtruncate (GNU coreutils).
-// Covers prd083-truncate R1.1-R1.4, R2.1-R2.2, R3.1-R3.2.
+// Covers prd083-truncate R1.1-R1.4, R2.1-R2.2, R3.1-R3.3.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,6 +163,7 @@ func truncateTest(
 }
 
 // TestDiffErrors tests error cases using RunDiffTests directly.
+// R3.1: error diagnostics to stderr. R3.2: invalid argument handling.
 func TestDiffErrors(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtruncate")
@@ -181,9 +183,31 @@ func TestDiffErrors(t *testing.T) {
 			Args:      []string{"somefile"},
 			Normalize: []testutils.NormalizeFunc{errNorm},
 		},
+		{
+			// R3.2: invalid size argument.
+			Name:      "invalid_size",
+			Args:      []string{"-s", "INVALID", "somefile"},
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestErrorNonexistentPath verifies R3.1: error on nonexistent parent
+// directory prints diagnostic to stderr and exits 1.
+func TestErrorNonexistentPath(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtruncate")
+	if err != nil {
+		t.Skipf("reference binary gtruncate not in PATH: %v", err)
+	}
+
+	truncateTest(t, "nonexistent_path", goBin, refBin,
+		[]string{"-s", "100", "/nonexistent/dir/file"},
+		nil,
+		nil,
+	)
 }
 
 // TestAbsoluteSize verifies R1.1: -s SIZE sets file to SIZE bytes.
@@ -536,4 +560,30 @@ func TestSizeSuffix(t *testing.T) {
 				refSz, label)
 		},
 	)
+}
+
+// TestVersion verifies R3.3: --version outputs version to stdout, exits 0.
+func TestVersion(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	res := runBin(t, goBin, []string{"--version"}, t.TempDir())
+	if res.exitCode != 0 {
+		t.Errorf("--version exit code: want 0, got %d", res.exitCode)
+	}
+	out := string(res.stdout)
+	if !strings.Contains(out, "truncate") {
+		t.Errorf("--version stdout should contain 'truncate': %q", out)
+	}
+}
+
+// TestHelp verifies R3.3: --help outputs usage to stdout, exits 0.
+func TestHelp(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	res := runBin(t, goBin, []string{"--help"}, t.TempDir())
+	if res.exitCode != 0 {
+		t.Errorf("--help exit code: want 0, got %d", res.exitCode)
+	}
+	out := string(res.stdout)
+	if !strings.Contains(out, "Usage:") {
+		t.Errorf("--help stdout should contain 'Usage:': %q", out)
+	}
 }
