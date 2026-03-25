@@ -74,15 +74,17 @@ func wrapStdout(zero bool) io.Writer {
 
 // runCheck verifies checksums from the given files.
 // R2.1-R2.2: reads checksum file, prints OK/FAILED per entry.
+// R2.3: --strict exits non-zero when malformed lines exist.
 func runCheck(opts sha384sumOptions, files []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	checkOpts := buildCheckOptions(opts)
+	interceptor := &malformedInterceptor{w: os.Stderr}
 	exitCode := 0
 	for _, f := range files {
 		ok, err := hashutil.VerifyChecksums(
-			f, sha384Config, checkOpts, os.Stdout, os.Stderr,
+			f, sha384Config, checkOpts, os.Stdout, interceptor,
 		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "sha384sum: %v\n", err)
@@ -90,6 +92,10 @@ func runCheck(opts sha384sumOptions, files []string) int {
 		} else if !ok {
 			exitCode = 1
 		}
+	}
+	// R2.3: --strict exits non-zero when improperly formatted lines exist.
+	if opts.strict && interceptor.detected {
+		exitCode = 1
 	}
 	return exitCode
 }
@@ -116,6 +122,22 @@ func (n *nulWriter) Write(p []byte) (int, error) {
 		return len(p), err
 	}
 	return written, err
+}
+
+// malformedInterceptor wraps an io.Writer and detects "improperly formatted"
+// warnings for --strict mode support.
+// R2.3: enables exit non-zero when improperly formatted lines exist.
+type malformedInterceptor struct {
+	w        io.Writer
+	detected bool
+}
+
+// Write passes through to the underlying writer and detects malformed warnings.
+func (m *malformedInterceptor) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("improperly formatted")) {
+		m.detected = true
+	}
+	return m.w.Write(p)
 }
 
 // parseFlags parses GNU sha384sum-compatible flags from the argument list.
