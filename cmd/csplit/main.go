@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd068-csplit: Split a File into Context-Determined Pieces.
-// Covers R1.1-R1.4 (pattern-based splitting, integer/regexp/skip patterns),
-// R2.1-R2.2 (repeat counts {N} and {*}), R2.1-R2.2 (task: output control).
+// Covers R1.1-R1.4 (pattern-based splitting), R2.1-R2.4 (repeat counts,
+// offsets, suppress-matched), R3.1-R3.4 (output control, error handling).
 package main
 
 import (
@@ -29,12 +29,14 @@ const (
 
 // config holds parsed flag state for csplit.
 type config struct {
-	file         string
-	prefix       string
-	digits       int
-	suffixFormat string
-	elideEmpty   bool
-	silent       bool
+	file            string
+	prefix          string
+	digits          int
+	suffixFormat    string
+	elideEmpty      bool
+	silent          bool
+	keepFiles       bool
+	suppressMatched bool
 }
 
 // patternKind distinguishes integer, regexp, and skip patterns.
@@ -53,6 +55,12 @@ type pattern struct {
 	re     *regexp.Regexp
 	offset int
 	repeat int // 0=no repeat, >0=N additional, -1=infinite
+}
+
+// splitResult holds the split position and the matched line index.
+type splitResult struct {
+	splitPos int
+	matchIdx int // -1 for line patterns (no line to suppress)
 }
 
 // splitter tracks state during pattern-based file splitting.
@@ -84,7 +92,9 @@ func run(cfg config, patterns []pattern) int {
 	}
 	s := &splitter{cfg: cfg, lines: lines}
 	if err := s.split(patterns); err != nil {
-		removeFiles(s.files)
+		if !cfg.keepFiles {
+			removeFiles(s.files)
+		}
 		fmt.Fprintf(os.Stderr, "csplit: %v\n", err)
 		return 1
 	}
@@ -165,15 +175,37 @@ func (s *splitter) applyPattern(pat *pattern) error {
 
 // applyOnce applies a pattern once for a given repetition index.
 func (s *splitter) applyOnce(pat *pattern, rep int) error {
-	splitPos, err := findSplit(pat, s.lines, s.pos, rep)
+	result, err := findSplit(pat, s.lines, s.pos, rep)
 	if err != nil {
 		return err
+	}
+	splitPos := result.splitPos
+	if s.cfg.suppressMatched && result.matchIdx >= 0 {
+		splitPos = s.removeSuppressedLine(result)
 	}
 	if pat.kind == patternSkip {
 		s.pos = splitPos
 		return nil
 	}
 	return s.writeAndAdvance(splitPos)
+}
+
+// removeSuppressedLine removes the matched line from the lines slice
+// and returns the adjusted split position.
+func (s *splitter) removeSuppressedLine(r splitResult) int {
+	idx := r.matchIdx
+	if idx < 0 || idx >= len(s.lines) {
+		return r.splitPos
+	}
+	s.lines = append(s.lines[:idx], s.lines[idx+1:]...)
+	splitPos := r.splitPos
+	if idx < splitPos {
+		splitPos--
+	}
+	if idx < s.pos {
+		s.pos--
+	}
+	return splitPos
 }
 
 // writeAndAdvance writes a section and advances position.
@@ -205,7 +237,7 @@ func (s *splitter) writeFinal() error {
 // findSplit dispatches to the appropriate split-point finder.
 func findSplit(
 	pat *pattern, lines []string, pos, rep int,
-) (int, error) {
+) (splitResult, error) {
 	if pat.kind == patternLine {
 		return findLineSplit(pat.lineNo, len(lines), pos, rep)
 	}
@@ -218,9 +250,10 @@ func findSplit(
 
 // findLineSplit computes the split point for an integer pattern.
 // R1.4: first application uses absolute line number; repeats are relative.
+// R3.2: returns error when line number is beyond end of input.
 func findLineSplit(
 	lineNo, totalLines, pos, rep int,
-) (int, error) {
+) (splitResult, error) {
 	var target int
 	if rep == 0 {
 		target = lineNo - 1
@@ -228,27 +261,45 @@ func findLineSplit(
 		target = pos + lineNo
 	}
 	if target < pos {
-		return 0, fmt.Errorf("'%d': line number out of range", lineNo)
+		return splitResult{}, fmt.Errorf(
+			"'%d': line number out of range", lineNo)
 	}
 	if target > totalLines {
-		return 0, fmt.Errorf("'%d': line number out of range", lineNo)
+		return splitResult{}, fmt.Errorf(
+			"'%d': line number out of range", lineNo)
 	}
-	return target, nil
+	return splitResult{splitPos: target, matchIdx: -1}, nil
 }
 
 // findRegexpSplit finds the next matching line and returns the split point.
 // R1.2: /REGEXP/ splits before the matching line.
 // R1.3: %REGEXP% skips to the matching line.
+// R3.1: returns error when regexp does not match any remaining input.
 func findRegexpSplit(
 	pat *pattern, lines []string, pos, searchFrom int,
-) (int, error) {
+) (splitResult, error) {
 	for i := searchFrom; i < len(lines); i++ {
 		if pat.re.MatchString(lines[i]) {
 			target := i + pat.offset
-			return clampTarget(target, pos, len(lines))
+			clamped, err := clampTarget(target, pos, len(lines))
+			if err != nil {
+				return splitResult{}, err
+			}
+			return splitResult{splitPos: clamped, matchIdx: i}, nil
 		}
 	}
-	return 0, fmt.Errorf("'%s': match not found", pat.re.String())
+	return splitResult{}, regexpNoMatchError(pat)
+}
+
+// regexpNoMatchError formats the error for a regexp that didn't match.
+// Uses the original delimiters (/ for regexp, % for skip).
+func regexpNoMatchError(pat *pattern) error {
+	delim := byte('/')
+	if pat.kind == patternSkip {
+		delim = '%'
+	}
+	return fmt.Errorf("'%c%s%c': match not found",
+		delim, pat.re.String(), delim)
 }
 
 // clampTarget ensures target is within valid bounds.
@@ -361,6 +412,12 @@ func parseLongFlag(args []string, i *int, cfg *config) int {
 	case arg == "--quiet", arg == "--silent":
 		cfg.silent = true
 		return -1
+	case arg == "--keep-files":
+		cfg.keepFiles = true
+		return -1
+	case arg == "--suppress-matched":
+		cfg.suppressMatched = true
+		return -1
 	case strings.HasPrefix(arg, "--prefix="):
 		cfg.prefix = arg[len("--prefix="):]
 		return -1
@@ -391,6 +448,9 @@ func parseShortFlag(args []string, i *int, cfg *config) int {
 		return -1
 	case arg == "-s":
 		cfg.silent = true
+		return -1
+	case arg == "-k":
+		cfg.keepFiles = true
 		return -1
 	case arg == "-f":
 		return consumeString(args, i, &cfg.prefix)
@@ -592,6 +652,7 @@ func parseOffset(s string) (int, error) {
 }
 
 // printHelp writes usage information and returns exit code 0.
+// R3.4: --help prints usage to stdout and exits 0.
 func printHelp() int {
 	fmt.Fprint(os.Stdout, `Usage: csplit [OPTION]... FILE PATTERN...
 Output pieces of FILE separated by PATTERN(s) to files 'xx00', 'xx01', ...,
@@ -599,9 +660,11 @@ and output byte counts of each piece to standard output.
 
   -b, --suffix-format=FORMAT  use sprintf FORMAT instead of %02d
   -f, --prefix=PREFIX         use PREFIX instead of 'xx'
+  -k, --keep-files            do not remove output files on errors
   -n, --digits=DIGITS         use specified number of digits instead of 2
   -s, --quiet, --silent       do not print counts of output file sizes
   -z, --elide-empty-files     suppress empty output files
+      --suppress-matched      suppress the lines matching PATTERN
       --help                  display this help and exit
       --version               output version information and exit
 `)
@@ -609,6 +672,7 @@ and output byte counts of each piece to standard output.
 }
 
 // printVersion writes version information and returns exit code 0.
+// R3.4: --version prints version info to stdout and exits 0.
 func printVersion() int {
 	fmt.Fprintf(os.Stdout, "csplit (go-unix-utils) %s\n", version)
 	return 0
