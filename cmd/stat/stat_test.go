@@ -2,18 +2,59 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/stat against GNU gstat.
-// Covers prd082-stat R1.1-R1.4, R2.1-R2.2.
+// Covers prd082-stat R1.1-R1.4, R2.1-R2.3, R4.1-R4.3.
 package main
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// cmdResult holds captured output from a binary invocation.
+type cmdResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
+}
+
+// runBin runs a binary with args in the given working directory.
+func runBin(t *testing.T, binary string, args []string, dir string) cmdResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	runErr := cmd.Run()
+	exitCode := 0
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run %s: %v", binary, runErr)
+		}
+	}
+	return cmdResult{
+		stdout:   stdout.Bytes(),
+		stderr:   stderr.Bytes(),
+		exitCode: exitCode,
+	}
+}
 
 // stderrNormalizer normalizes error messages between GNU gstat and Go stat.
 func stderrNormalizer() testutils.NormalizeFunc {
@@ -270,7 +311,131 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"--printf=%s\\n", helloFile},
 			WorkDir: workDir,
 		},
+
+		// ===== R2.3: Terse mode =====
+		{
+			Name:    "terse_short",
+			Args:    []string{"-t", helloFile},
+			WorkDir: workDir,
+		},
+		{
+			Name:    "terse_long",
+			Args:    []string{"--terse", helloFile},
+			WorkDir: workDir,
+		},
+		{
+			Name:    "terse_directory",
+			Args:    []string{"-t", subDir},
+			WorkDir: workDir,
+		},
+
+		// ===== R4.2: Missing operand exits 1 =====
+		{
+			Name:      "missing_operand",
+			Normalize: []testutils.NormalizeFunc{errNorm},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersion verifies R4.1: --version outputs version to stdout, exits 0.
+func TestVersion(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	res := runBin(t, goBin, []string{"--version"}, t.TempDir())
+	if res.exitCode != 0 {
+		t.Errorf("--version exit code: want 0, got %d", res.exitCode)
+	}
+	out := string(res.stdout)
+	if !strings.Contains(out, "stat") {
+		t.Errorf("--version stdout should contain 'stat': %q", out)
+	}
+}
+
+// TestHelp verifies R4.1: --help outputs usage to stdout, exits 0.
+func TestHelp(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	res := runBin(t, goBin, []string{"--help"}, t.TempDir())
+	if res.exitCode != 0 {
+		t.Errorf("--help exit code: want 0, got %d", res.exitCode)
+	}
+	out := string(res.stdout)
+	if !strings.Contains(out, "Usage:") {
+		t.Errorf("--help stdout should contain 'Usage:': %q", out)
+	}
+}
+
+// TestVersionDiff verifies --version exit code matches gstat --version.
+func TestVersionDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gstat")
+	if err != nil {
+		t.Skipf("reference binary gstat not in PATH: %v", err)
+	}
+
+	goRes := runBin(t, goBin, []string{"--version"}, t.TempDir())
+	refRes := runBin(t, refBin, []string{"--version"}, t.TempDir())
+
+	// R4.1: both must exit 0.
+	if refRes.exitCode != goRes.exitCode {
+		t.Errorf("--version exit code mismatch: ref=%d go=%d",
+			refRes.exitCode, goRes.exitCode)
+	}
+	// Version text differs between implementations; verify structure only.
+	if len(goRes.stdout) == 0 {
+		t.Error("--version produced no stdout")
+	}
+	if len(goRes.stderr) != 0 {
+		t.Errorf("--version wrote to stderr: %q", goRes.stderr)
+	}
+}
+
+// TestHelpDiff verifies --help exit code matches gstat --help.
+func TestHelpDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gstat")
+	if err != nil {
+		t.Skipf("reference binary gstat not in PATH: %v", err)
+	}
+
+	goRes := runBin(t, goBin, []string{"--help"}, t.TempDir())
+	refRes := runBin(t, refBin, []string{"--help"}, t.TempDir())
+
+	// R4.1: both must exit 0.
+	if refRes.exitCode != goRes.exitCode {
+		t.Errorf("--help exit code mismatch: ref=%d go=%d",
+			refRes.exitCode, goRes.exitCode)
+	}
+	// Help text differs between implementations; verify structure only.
+	if len(goRes.stdout) == 0 {
+		t.Error("--help produced no stdout")
+	}
+	if len(goRes.stderr) != 0 {
+		t.Errorf("--help wrote to stderr: %q", goRes.stderr)
+	}
+}
+
+// TestExitCodeSuccess verifies R4.1: exit 0 when all files processed.
+func TestExitCodeSuccess(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	f := createTestFile(t, dir, "ok.txt", "data")
+	res := runBin(t, goBin, []string{"-c", "%s", f}, dir)
+	if res.exitCode != 0 {
+		t.Errorf("exit code: want 0, got %d", res.exitCode)
+	}
+}
+
+// TestExitCodeFailure verifies R4.2: exit 1 when a file cannot be accessed.
+func TestExitCodeFailure(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	res := runBin(t, goBin,
+		[]string{filepath.Join(dir, "nonexistent")}, dir)
+	if res.exitCode != 1 {
+		t.Errorf("exit code: want 1, got %d", res.exitCode)
+	}
+	if len(res.stderr) == 0 {
+		t.Error("expected error message on stderr")
+	}
 }

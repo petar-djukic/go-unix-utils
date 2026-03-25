@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd082-stat R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: core stat output,
-// format directives, terse mode, and error handling.
+// Implements prd082-stat R1.1-R1.4, R2.1-R2.3, R3.1-R3.2, R4.1-R4.3: core stat
+// output, format directives, terse mode, error handling, exit codes, version/help
+// output, and SIGPIPE handling.
 // Covers default multi-line output, -c/--format, --printf, -L/--dereference,
 // -t/--terse, and format directives for file metadata (%a, %A, %b, %B, %d, %D,
 // %f, %F, %g, %G, %h, %i, %n, %N, %o, %s, %t, %T, %u, %U, %w, %W, %x, %X,
