@@ -5,8 +5,9 @@
 // output format with built-in default color database.
 // Implements prd109-dircolors R2.1-R2.5: database parsing, TERM matching,
 // shell output modes, -p/--print-database, and stdin via "-".
-// Implements prd109-dircolors R3.1-R3.3: TERM glob patterns, comment/blank
-// line handling, all file type keywords and extension entries.
+// Implements prd109-dircolors R3.1-R3.5: TERM glob patterns, comment/blank
+// line handling, all file type keywords/extensions, error handling with
+// filename:line diagnostics, and SIGPIPE handler.
 
 package main
 
@@ -256,7 +257,7 @@ func parseArgs(args []string) (config, error) {
 			printUsage()
 			os.Exit(0)
 		case "--version":
-			fmt.Printf("%s (go-unix-utils)\n", progName)
+			printVersion()
 			os.Exit(0)
 		default:
 			if err := handlePositional(&cfg, arg); err != nil {
@@ -280,10 +281,30 @@ func handlePositional(cfg *config, arg string) error {
 	return nil
 }
 
-// printUsage prints a brief usage message.
+// printUsage prints usage information matching GNU dircolors --help format.
+// R3.5: --help outputs usage information and exits 0.
 func printUsage() {
-	fmt.Fprintf(os.Stdout, "Usage: %s [OPTION]... [FILE]\n", progName)
-	fmt.Fprintln(os.Stdout, "Output commands to set LS_COLORS.")
+	fmt.Printf("Usage: %s [OPTION]... [FILE]\n", progName)
+	fmt.Println("Output commands to set LS_COLORS.")
+	fmt.Println()
+	fmt.Println("Determine format of output:")
+	fmt.Println("  -b, --sh, --bourne-shell    output Bourne shell code to set LS_COLORS")
+	fmt.Println("  -c, --csh, --c-shell        output C shell code to set LS_COLORS")
+	fmt.Println("  -p, --print-database         show defaults")
+	fmt.Println()
+	fmt.Println("      --help        display this help and exit")
+	fmt.Println("      --version     output version information and exit")
+}
+
+// printVersion prints version information.
+// R3.5: --version outputs version information and exits 0.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils)\n", progName)
+}
+
+// printTryHelp prints a hint to use --help, matching GNU error format.
+func printTryHelp() {
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 }
 
 // outputForShell dispatches to the appropriate shell output function.
@@ -306,23 +327,26 @@ func openDatabase(filename string) (io.ReadCloser, error) {
 }
 
 // parseDatabase reads and parses a dircolors configuration file.
-// R3.1: collects TERM entries with glob patterns.
-// R3.2: skips comments and blank lines.
-// R3.3: supports all file type keywords and extension entries.
-func parseDatabase(r io.Reader, filename string) (*colorDatabase, error) {
+// R3.4: reports all errors with filename and line number to stderr,
+// continuing to parse after each error. Returns the database and
+// the count of errors found.
+func parseDatabase(r io.Reader, filename string) (*colorDatabase, int) {
 	db := &colorDatabase{}
 	scanner := bufio.NewScanner(r)
 	lineNum := 0
+	errCount := 0
 	for scanner.Scan() {
 		lineNum++
 		if err := parseLine(db, scanner.Text(), filename, lineNum); err != nil {
-			return nil, err
+			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+			errCount++
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", filename, err)
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, filename, err)
+		errCount++
 	}
-	return db, nil
+	return db, errCount
 }
 
 // stripComment removes an inline comment (everything from # onward).
@@ -336,6 +360,7 @@ func stripComment(line string) string {
 
 // parseLine parses a single configuration file line into the database.
 // R3.2: blank lines and comment-only lines are silently skipped.
+// R3.4: two spaces before "missing" matches GNU dircolors format.
 func parseLine(db *colorDatabase, raw, filename string, lineNum int) error {
 	line := strings.TrimSpace(stripComment(raw))
 	if line == "" {
@@ -343,7 +368,7 @@ func parseLine(db *colorDatabase, raw, filename string, lineNum int) error {
 	}
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
-		return fmt.Errorf("%s:%d: invalid line; missing second token",
+		return fmt.Errorf("%s:%d: invalid line;  missing second token",
 			filename, lineNum)
 	}
 	return classifyEntry(db, fields[0], fields[1], filename, lineNum)
@@ -382,6 +407,7 @@ func ensureStarPrefix(ext string) string {
 // handleFileDB reads a custom database file and outputs LS_COLORS.
 // R2.4: file argument replaces built-in defaults.
 // R2.5: "-" reads from stdin.
+// R3.4: reports all parse errors and exits 1 if any found.
 func handleFileDB(filename string, shell shellMode) int {
 	r, err := openDatabase(filename)
 	if err != nil {
@@ -391,9 +417,8 @@ func handleFileDB(filename string, shell shellMode) int {
 	if filename != "-" {
 		defer r.Close() // best-effort file close
 	}
-	db, err := parseDatabase(r, filename)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+	db, errCount := parseDatabase(r, filename)
+	if errCount > 0 {
 		return 1
 	}
 	lsColors := ""
@@ -409,6 +434,7 @@ func run() int {
 	cfg, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		printTryHelp()
 		return 1
 	}
 	if cfg.printDB {
@@ -432,11 +458,15 @@ func run() int {
 // handlePrintDB handles the -p/--print-database option.
 // R3.1: prints the built-in default color database.
 // R3.2: -p is incompatible with a filename argument.
+// R3.4: error format matches GNU dircolors.
 func handlePrintDB(cfg config) int {
 	if cfg.filename != "" {
 		fmt.Fprintf(os.Stderr,
-			"%s: the options to output dircolors' internal database and\n"+
-				"to select a shell syntax are mutually exclusive\n", progName)
+			"%s: extra operand '%s'\n", progName, cfg.filename)
+		fmt.Fprintln(os.Stderr,
+			"file operands cannot be combined with "+
+				"--print-database (-p)")
+		printTryHelp()
 		return 1
 	}
 	fmt.Print(defaultDBText)

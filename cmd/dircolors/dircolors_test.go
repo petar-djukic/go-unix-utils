@@ -5,10 +5,12 @@
 // Covers prd109-dircolors R1.1 (Bourne shell output), R1.2 (C shell output),
 // R1.3 (shell auto-detection), R1.4 (mutually exclusive -b/-c flags),
 // R2.1-R2.5 (database parsing, file argument, stdin via "-"),
-// R3.1-R3.3 (TERM glob matching, comments/blanks, all keywords/extensions).
+// R3.1-R3.5 (TERM glob matching, comments/blanks, all keywords/extensions,
+// error handling with filename:line diagnostics, --version/--help).
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -199,6 +201,116 @@ func TestDiffCustomDB(t *testing.T) {
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// normalizeProgramName replaces "gdircolors" with "dircolors" in output
+// so that error messages from the reference binary match the Go binary.
+func normalizeProgramName(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("gdircolors"), []byte("dircolors"))
+	return data
+}
+
+// normalizeTryHelp normalizes the "Try '...' --help" line to remove
+// full binary paths that differ between Go and GNU binaries.
+func normalizeTryHelp(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	for i, line := range lines {
+		if !bytes.HasPrefix(line, []byte("Try '")) {
+			continue
+		}
+		if !bytes.HasSuffix(line, []byte("' for more information.")) {
+			continue
+		}
+		lines[i] = []byte("Try 'dircolors --help' for more information.")
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// TestDiffErrors tests error handling for invalid configuration files.
+// R3.4: error diagnostics with filename and line number.
+func TestDiffErrors(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdircolors")
+	if err != nil {
+		t.Skip("reference binary gdircolors not in PATH")
+	}
+
+	tmpDir := t.TempDir()
+	writeTestFile(t, filepath.Join(tmpDir, "badkeyword.db"),
+		"TERM xterm*\nBADKEYWORD 01;34\n")
+	writeTestFile(t, filepath.Join(tmpDir, "missing_token.db"),
+		"TERM xterm*\nDIR\n")
+	writeTestFile(t, filepath.Join(tmpDir, "multiple_errors.db"),
+		"TERM xterm*\nBADKEY1 01;34\nDIR 01;34\nBADKEY2 01;35\n")
+
+	norm := []testutils.NormalizeFunc{normalizeProgramName, normalizeTryHelp}
+
+	tests := []testutils.DiffTest{
+		// R3.4: Unrecognized keyword produces error with filename:line
+		{
+			Name:      "error-unrecognized-keyword",
+			Args:      []string{"--sh", filepath.Join(tmpDir, "badkeyword.db")},
+			Env:       []string{"TERM=xterm-256color"},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		// R3.4: Missing second token produces error with filename:line
+		{
+			Name:      "error-missing-second-token",
+			Args:      []string{"--sh", filepath.Join(tmpDir, "missing_token.db")},
+			Env:       []string{"TERM=xterm-256color"},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		// R3.4: Multiple errors are all reported
+		{
+			Name:      "error-multiple-errors",
+			Args:      []string{"--sh", filepath.Join(tmpDir, "multiple_errors.db")},
+			Env:       []string{"TERM=xterm-256color"},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		// R3.4: -p with filename gives extra operand error
+		{
+			Name:      "error-print-db-with-file",
+			Args:      []string{"-p", filepath.Join(tmpDir, "badkeyword.db")},
+			Env:       []string{"TERM=xterm-256color"},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersionFlag verifies --version outputs version info and exits 0.
+// R3.5: --version flag support.
+func TestVersionFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if !bytes.Contains(out, []byte("dircolors")) {
+		t.Errorf("--version output missing program name: %q", out)
+	}
+}
+
+// TestHelpFlag verifies --help outputs usage info and exits 0.
+// R3.5: --help flag support.
+func TestHelpFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+	if !bytes.Contains(out, []byte("Usage:")) {
+		t.Errorf("--help output missing Usage line: %q", out)
+	}
 }
 
 // writeTestFile creates a file with the given content for testing.
