@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,21 +15,21 @@ import (
 )
 
 // stderrNormalizer normalizes binary name and path in stderr messages
-// so that gdir and dir produce comparable output.
+// so that gvdir and vdir produce comparable output.
 var stderrNormalizer = testutils.ComposeNormalizers(
 	normalizeBinName,
 	normalizeErrCase,
 )
 
-// normalizeBinName replaces the reference binary path/name with "dir"
+// normalizeBinName replaces the reference binary path/name with "vdir"
 // in both the error prefix and "Try '...' --help" messages.
 func normalizeBinName(data []byte) []byte {
-	// Normalize "gdir:" or "/opt/homebrew/bin/gdir:" at line start.
+	// Normalize "gvdir:" or "/opt/homebrew/bin/gvdir:" at line start.
 	rePrefix := regexp.MustCompile(`(?m)^[^\s:]+:`)
-	data = rePrefix.ReplaceAll(data, []byte("dir:"))
-	// Normalize "Try '/path/to/gdir --help' for ..." to canonical form.
+	data = rePrefix.ReplaceAll(data, []byte("vdir:"))
+	// Normalize "Try '/path/to/gvdir --help' for ..." to canonical form.
 	reTry := regexp.MustCompile(`(?m)Try '.*' for more information\.`)
-	data = reTry.ReplaceAll(data, []byte("Try 'dir --help' for more information."))
+	data = reTry.ReplaceAll(data, []byte("Try 'vdir --help' for more information."))
 	return data
 }
 
@@ -45,12 +44,12 @@ func normalizeErrCase(data []byte) []byte {
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	if _, err := os.Stat(filepath.Join(".", "main.go")); os.IsNotExist(err) {
-		t.Skip("cmd/dir not yet generated")
+		t.Skip("cmd/vdir not yet generated")
 	}
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gdir")
+	refBin, err := exec.LookPath("gvdir")
 	if err != nil {
-		t.Skipf("reference binary gdir not in PATH: %v", err)
+		t.Skipf("reference binary gvdir not in PATH: %v", err)
 	}
 	tests := buildDiffTests(t)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -59,46 +58,28 @@ func TestDiff(t *testing.T) {
 func buildDiffTests(t *testing.T) []testutils.DiffTest {
 	t.Helper()
 	return []testutils.DiffTest{
-		multiColumnTest(t),
+		longFormatDefaultTest(t),
 		escapeTest(t),
+		totalLineTest(t),
 		sortFilterTest(t),
 		showAllTest(t),
 		defaultCwdTest(t),
-		longFormatTest(t),
+		singleColumnOverrideTest(t),
+		columnarOverrideTest(t),
 		reverseTest(t),
 		recursiveTest(t),
-		singleColumnTest(t),
 		exitZeroTest(t),
 		exitOneTest(t),
 		exitTwoTest(t),
-		classifyTest(t),
-		sigpipeTest(t),
 	}
 }
 
-// sigpipeTest verifies R2.4: SIGPIPE handler prevents broken-pipe errors.
-// We test with enough entries that output is produced, validating that the
-// binary does not crash or produce extra error output when run normally.
-// The SIGPIPE handler is installed at startup via sys.InstallSIGPIPEHandler().
-func sigpipeTest(t *testing.T) testutils.DiffTest {
-	t.Helper()
-	names := make([]string, 50)
-	for i := range names {
-		names[i] = fmt.Sprintf("file_%03d", i)
-	}
-	return testutils.DiffTest{
-		Name:    "R2.4_sigpipe_handler",
-		Args:    []string{"-1"},
-		WorkDir: setupTestDir(t, names...),
-	}
-}
-
-// multiColumnTest verifies R1.1: multi-column output by default.
-func multiColumnTest(t *testing.T) testutils.DiffTest {
+// longFormatDefaultTest verifies R1.1: long format output by default.
+func longFormatDefaultTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
-		Name:    "R1.1_multi_column_output",
-		WorkDir: setupTestDir(t, "alpha", "bravo", "charlie", "delta", "echo", "foxtrot"),
+		Name:    "R1.1_long_format_default",
+		WorkDir: setupTestDir(t, "alpha", "bravo", "charlie"),
 	}
 }
 
@@ -111,55 +92,82 @@ func escapeTest(t *testing.T) testutils.DiffTest {
 	}
 }
 
-// sortFilterTest verifies R1.3: C locale sort order, dot-entries hidden.
+// totalLineTest verifies R1.3: "total N" block count line.
+func totalLineTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	// Create files with some content to produce non-zero block counts.
+	for _, name := range []string{"aaa", "bbb", "ccc"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("content\n"), 0o644); err != nil {
+			t.Fatalf("creating test file %q: %v", path, err)
+		}
+	}
+	return testutils.DiffTest{
+		Name:    "R1.3_total_line",
+		WorkDir: dir,
+	}
+}
+
+// sortFilterTest verifies R1.4: C locale sort order, dot-entries hidden.
 func sortFilterTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
-		Name:    "R1.3_sort_and_filter",
+		Name:    "R1.4_sort_and_filter",
 		WorkDir: setupTestDir(t, "Zulu", "alpha", ".hidden", "Bravo", "charlie"),
 	}
 }
 
-// showAllTest verifies R1.3: -a shows dot-entries including . and ..
+// showAllTest verifies -a shows dot-entries including . and ..
 func showAllTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
-		Name:    "R1.3_show_all",
+		Name:    "show_all",
 		Args:    []string{"-a"},
 		WorkDir: setupTestDir(t, ".hidden", "visible"),
 	}
 }
 
-// defaultCwdTest verifies R1.4: defaults to current directory when no args.
+// defaultCwdTest verifies R1.5: defaults to current directory when no args.
 func defaultCwdTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
-		Name:    "R1.4_default_cwd",
+		Name:    "R1.5_default_cwd",
 		WorkDir: setupTestDir(t, "file1", "file2", "file3"),
 	}
 }
 
-// longFormatTest verifies R1.5: dir accepts -l flag (ls long format).
-func longFormatTest(t *testing.T) testutils.DiffTest {
+// singleColumnOverrideTest verifies R1.6: accepts -1 to override long format.
+func singleColumnOverrideTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
-		Name:    "R1.5_long_format",
-		Args:    []string{"-l"},
-		WorkDir: setupTestDir(t, "aaa", "bbb"),
+		Name:    "R1.6_single_column_override",
+		Args:    []string{"-1"},
+		WorkDir: setupTestDir(t, "one", "two", "three"),
 	}
 }
 
-// reverseTest verifies R1.5: dir accepts -r flag (reverse sort).
+// columnarOverrideTest verifies R1.6: accepts -C to override long format.
+func columnarOverrideTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	return testutils.DiffTest{
+		Name:    "R1.6_columnar_override",
+		Args:    []string{"-C"},
+		WorkDir: setupTestDir(t, "alpha", "bravo", "charlie", "delta"),
+	}
+}
+
+// reverseTest verifies R1.6: accepts -r flag (reverse sort).
 func reverseTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
-		Name:    "R1.5_reverse_sort",
+		Name:    "R1.6_reverse_sort",
 		Args:    []string{"-r"},
 		WorkDir: setupTestDir(t, "alpha", "bravo", "charlie"),
 	}
 }
 
-// recursiveTest verifies R1.5: dir accepts -R flag (recursive listing).
+// recursiveTest verifies R1.6: accepts -R flag (recursive listing).
 func recursiveTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	dir := t.TempDir()
@@ -172,19 +180,9 @@ func recursiveTest(t *testing.T) testutils.DiffTest {
 	}
 	writeTestFile(t, filepath.Join(sub, "nested"))
 	return testutils.DiffTest{
-		Name:    "R1.5_recursive",
+		Name:    "R1.6_recursive",
 		Args:    []string{"-R"},
 		WorkDir: dir,
-	}
-}
-
-// singleColumnTest verifies R1.5: dir accepts -1 flag (one entry per line).
-func singleColumnTest(t *testing.T) testutils.DiffTest {
-	t.Helper()
-	return testutils.DiffTest{
-		Name:    "R1.5_single_column",
-		Args:    []string{"-1"},
-		WorkDir: setupTestDir(t, "one", "two", "three"),
 	}
 }
 
@@ -202,7 +200,7 @@ func exitOneTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
 		Name:      "R2.2_exit_minor_error",
-		Args:      []string{"/nonexistent_path_for_dir_test"},
+		Args:      []string{"/nonexistent_path_for_vdir_test"},
 		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 	}
 }
@@ -214,22 +212,6 @@ func exitTwoTest(t *testing.T) testutils.DiffTest {
 		Name:      "R2.3_exit_two_invalid_option",
 		Args:      []string{"--invalid-option-xyz"},
 		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
-	}
-}
-
-// classifyTest verifies R1.5: dir accepts -F flag (classify indicator).
-func classifyTest(t *testing.T) testutils.DiffTest {
-	t.Helper()
-	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "regular"))
-	sub := filepath.Join(dir, "subdir")
-	if err := os.Mkdir(sub, 0o755); err != nil {
-		t.Fatalf("creating subdir: %v", err)
-	}
-	return testutils.DiffTest{
-		Name:    "R1.5_classify",
-		Args:    []string{"-F"},
-		WorkDir: dir,
 	}
 }
 
