@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/shuf implements GNU shuf: shuffle lines randomly.
-// Implements prd064-shuf R1.1-R1.4, R2.1, R2.2.
+// Implements prd064-shuf R1.1-R1.4, R2.1-R2.4, R3.1, R3.4.
 package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -25,6 +26,11 @@ type config struct {
 	hasHeadCount bool
 	outputFile   string
 	zeroTerm     bool
+	repeat       bool
+	inputRange   string
+	rangeLo      int
+	rangeHi      int
+	randomSource string
 	files        []string
 }
 
@@ -57,11 +63,33 @@ func parseArgs(args []string) (*config, error) {
 		i += consumed
 	}
 	cfg.files = args[i:]
-	return cfg, nil
+	return cfg, validateParsedArgs(cfg)
 }
 
-// parseFlag parses a single flag starting at args[0].
+// validateParsedArgs validates parsed arguments for consistency.
+func validateParsedArgs(cfg *config) error {
+	if cfg.inputRange == "" {
+		return nil
+	}
+	if err := parseRange(cfg); err != nil {
+		return err
+	}
+	if len(cfg.files) > 0 {
+		return fmt.Errorf("extra operand '%s'", cfg.files[0])
+	}
+	return nil
+}
+
+// parseFlag dispatches to long or short flag parsing.
 func parseFlag(cfg *config, args []string) (int, error) {
+	if strings.HasPrefix(args[0], "--") {
+		return parseLongFlag(cfg, args)
+	}
+	return parseShortFlag(cfg, args)
+}
+
+// parseLongFlag handles --prefixed flags.
+func parseLongFlag(cfg *config, args []string) (int, error) {
 	arg := args[0]
 	switch {
 	case arg == "--help":
@@ -70,22 +98,58 @@ func parseFlag(cfg *config, args []string) (int, error) {
 	case arg == "--version":
 		printVersion()
 		os.Exit(0)
-	case arg == "-z" || arg == "--zero-terminated":
+	case arg == "--zero-terminated":
 		cfg.zeroTerm = true
+		return 1, nil
+	case arg == "--repeat":
+		cfg.repeat = true
 		return 1, nil
 	case strings.HasPrefix(arg, "--head-count="):
 		return parseHeadCountValue(cfg, arg[len("--head-count="):])
+	case arg == "--head-count":
+		return parseHeadCountNext(cfg, args)
 	case strings.HasPrefix(arg, "--output="):
 		cfg.outputFile = arg[len("--output="):]
 		return 1, nil
-	case arg == "-n" || arg == "--head-count":
-		return parseHeadCountNext(cfg, args)
-	case arg == "-o" || arg == "--output":
+	case arg == "--output":
 		return parseOutputNext(cfg, args)
+	case strings.HasPrefix(arg, "--input-range="):
+		cfg.inputRange = arg[len("--input-range="):]
+		return 1, nil
+	case arg == "--input-range":
+		return parseInputRangeNext(cfg, args)
+	case strings.HasPrefix(arg, "--random-source="):
+		cfg.randomSource = arg[len("--random-source="):]
+		return 1, nil
+	case arg == "--random-source":
+		return parseRandomSourceNext(cfg, args)
+	}
+	return 0, fmt.Errorf("unrecognized option '%s'", arg)
+}
+
+// parseShortFlag handles single-dash flags.
+func parseShortFlag(cfg *config, args []string) (int, error) {
+	arg := args[0]
+	switch {
+	case arg == "-z":
+		cfg.zeroTerm = true
+		return 1, nil
+	case arg == "-r":
+		cfg.repeat = true
+		return 1, nil
+	case arg == "-n":
+		return parseHeadCountNext(cfg, args)
 	case strings.HasPrefix(arg, "-n"):
 		return parseHeadCountValue(cfg, arg[2:])
+	case arg == "-o":
+		return parseOutputNext(cfg, args)
 	case strings.HasPrefix(arg, "-o"):
 		cfg.outputFile = arg[2:]
+		return 1, nil
+	case arg == "-i":
+		return parseInputRangeNext(cfg, args)
+	case strings.HasPrefix(arg, "-i"):
+		cfg.inputRange = arg[2:]
 		return 1, nil
 	}
 	return 0, fmt.Errorf("unrecognized option '%s'", arg)
@@ -125,20 +189,90 @@ func parseOutputNext(cfg *config, args []string) (int, error) {
 	return 2, nil
 }
 
+// parseInputRangeNext parses -i LO-HI where the value is the next arg.
+func parseInputRangeNext(cfg *config, args []string) (int, error) {
+	if len(args) < 2 {
+		return 0, fmt.Errorf("option requires an argument -- 'i'")
+	}
+	cfg.inputRange = args[1]
+	return 2, nil
+}
+
+// parseRandomSourceNext parses --random-source FILE where the value is the next arg.
+func parseRandomSourceNext(cfg *config, args []string) (int, error) {
+	if len(args) < 2 {
+		return 0, fmt.Errorf("option requires an argument -- 'random-source'")
+	}
+	cfg.randomSource = args[1]
+	return 2, nil
+}
+
+// parseRange parses the LO-HI input range string.
+// R2.1: generate integers from LO to HI inclusive.
+func parseRange(cfg *config) error {
+	parts := strings.SplitN(cfg.inputRange, "-", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid input range: '%s'", cfg.inputRange)
+	}
+	lo, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return fmt.Errorf("invalid input range: '%s'", cfg.inputRange)
+	}
+	hi, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid input range: '%s'", cfg.inputRange)
+	}
+	if lo > hi {
+		return fmt.Errorf("invalid input range: '%s'", cfg.inputRange)
+	}
+	cfg.rangeLo = lo
+	cfg.rangeHi = hi
+	return nil
+}
+
 // runShuf executes the shuffle operation.
 func runShuf(cfg *config) int {
-	lines, err := readLines(cfg)
+	lines, err := getLines(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		return 1
 	}
-	shuffleLines(lines)
+	if len(lines) == 0 {
+		return 0
+	}
+	rng, err := makeRand(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
+	if cfg.repeat {
+		return writeRepeatOutput(cfg, lines, rng)
+	}
+	shuffleLines(lines, rng)
 	return writeOutput(cfg, lines)
+}
+
+// getLines returns input lines from range generation or file/stdin reading.
+func getLines(cfg *config) ([]string, error) {
+	if cfg.inputRange != "" {
+		return generateRange(cfg), nil
+	}
+	return readLines(cfg)
+}
+
+// generateRange produces a slice of integer strings from rangeLo to rangeHi.
+// R2.1: generate integers from LO to HI inclusive.
+func generateRange(cfg *config) []string {
+	n := cfg.rangeHi - cfg.rangeLo + 1
+	lines := make([]string, n)
+	for i := range n {
+		lines[i] = strconv.Itoa(cfg.rangeLo + i)
+	}
+	return lines
 }
 
 // readLines reads all input lines from files or stdin.
 // R1.2: read from stdin when no file arguments or "-".
-// R1.3: read from named files.
 // R1.4: handle lines terminated by newline; include last line without terminator.
 func readLines(cfg *config) ([]string, error) {
 	delim := byte('\n')
@@ -194,17 +328,44 @@ func readFromReader(r io.Reader, delim byte) ([]string, error) {
 	return lines, nil
 }
 
+// makeRand creates a random number generator from the random source file.
+// R3.1: --random-source=FILE uses FILE as random byte source.
+func makeRand(cfg *config) (*rand.Rand, error) {
+	if cfg.randomSource == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(cfg.randomSource)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %v", cfg.randomSource, err)
+	}
+	seed := sha256.Sum256(data)
+	return rand.New(rand.NewChaCha8(seed)), nil
+}
+
+// randIntn returns a random int in [0, n) using rng or the global source.
+func randIntn(rng *rand.Rand, n int) int {
+	if rng == nil {
+		return rand.IntN(n)
+	}
+	return rng.IntN(n)
+}
+
 // shuffleLines randomly permutes lines in place.
 // R1.3: produces a permutation (each line exactly once).
-func shuffleLines(lines []string) {
-	rand.Shuffle(len(lines), func(i, j int) {
+func shuffleLines(lines []string, rng *rand.Rand) {
+	if rng == nil {
+		rand.Shuffle(len(lines), func(i, j int) {
+			lines[i], lines[j] = lines[j], lines[i]
+		})
+		return
+	}
+	rng.Shuffle(len(lines), func(i, j int) {
 		lines[i], lines[j] = lines[j], lines[i]
 	})
 }
 
 // writeOutput writes shuffled lines to stdout or the output file.
-// R2.1: -o writes to a named file.
-// R2.2: -z uses NUL delimiter in output.
+// R2.2: -n limits output count. R2.4: -o writes to a named file.
 func writeOutput(cfg *config, lines []string) int {
 	w, cleanup, err := openOutput(cfg)
 	if err != nil {
@@ -216,15 +377,34 @@ func writeOutput(cfg *config, lines []string) int {
 	if cfg.hasHeadCount && cfg.headCount < count {
 		count = cfg.headCount
 	}
-	delim := byte('\n')
-	if cfg.zeroTerm {
-		delim = 0
-	}
+	delim := outputDelim(cfg)
 	for i := 0; i < count; i++ {
 		if _, err := fmt.Fprintf(w, "%s%c", lines[i], delim); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, err)
 			return 1
 		}
+	}
+	return 0
+}
+
+// writeRepeatOutput writes lines with replacement, possibly indefinitely.
+// R2.3: -r allows repeated output lines. Without -n, runs until killed.
+func writeRepeatOutput(cfg *config, lines []string, rng *rand.Rand) int {
+	w, cleanup, err := openOutput(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
+	defer cleanup()
+	delim := outputDelim(cfg)
+	n := len(lines)
+	count := 0
+	for !cfg.hasHeadCount || count < cfg.headCount {
+		idx := randIntn(rng, n)
+		if _, err := fmt.Fprintf(w, "%s%c", lines[idx], delim); err != nil {
+			return 1
+		}
+		count++
 	}
 	return 0
 }
@@ -241,21 +421,34 @@ func openOutput(cfg *config) (io.Writer, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
+// outputDelim returns the output line delimiter.
+func outputDelim(cfg *config) byte {
+	if cfg.zeroTerm {
+		return 0
+	}
+	return '\n'
+}
+
 // printHelp outputs usage information to stdout.
+// R3.4: --help prints usage and exits 0.
 func printHelp() {
 	fmt.Printf("Usage: %s [OPTION]... [FILE]\n", progName)
 	fmt.Printf("  or:  %s -i LO-HI [OPTION]...\n", progName)
 	fmt.Printf("  or:  %s -e [OPTION]... [ARG]...\n", progName)
 	fmt.Println("Write a random permutation of the input lines to standard output.")
 	fmt.Println()
-	fmt.Println("  -n, --head-count=COUNT  output at most COUNT lines")
-	fmt.Println("  -o, --output=FILE       write result to FILE instead of standard output")
-	fmt.Println("  -z, --zero-terminated   line delimiter is NUL, not newline")
+	fmt.Println("  -i, --input-range=LO-HI  treat each number LO through HI as an input line")
+	fmt.Println("  -n, --head-count=COUNT   output at most COUNT lines")
+	fmt.Println("  -o, --output=FILE        write result to FILE instead of standard output")
+	fmt.Println("  -r, --repeat             output lines can repeat")
+	fmt.Println("      --random-source=FILE get random bytes from FILE")
+	fmt.Println("  -z, --zero-terminated    line delimiter is NUL, not newline")
 	fmt.Println("      --help     display this help and exit")
 	fmt.Println("      --version  output version information and exit")
 }
 
 // printVersion outputs version information to stdout.
+// R3.4: --version prints version and exits 0.
 func printVersion() {
 	fmt.Printf("%s (go-unix-utils)\n", progName)
 }
