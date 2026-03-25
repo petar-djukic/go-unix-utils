@@ -3,7 +3,7 @@
 
 // Implements prd099-shred: Overwrite a File to Hide Its Contents.
 // Covers R1.1-R1.4 (overwrite, iterations, zero pass, remove),
-// R2.1-R2.4 (verbose, size, multiple files, error handling),
+// R2.1-R2.4 (verbose, exact, size, multiple files, error handling),
 // R3.1-R3.3 (exit codes, SIGPIPE).
 package main
 
@@ -29,6 +29,7 @@ type config struct {
 	addZero     bool
 	remove      bool
 	verbose     bool
+	exact       bool
 	sizeStr     string
 	showHelp    bool
 	showVersion bool
@@ -103,15 +104,17 @@ func shredOne(cfg config, path string, size int64) error {
 	if err != nil {
 		return fmt.Errorf("%s: %v", path, unwrapErr(err))
 	}
-	fileSize := fi.Size()
-	if size > 0 {
-		fileSize = size
+	fileSize := computeWriteSize(fi, size, cfg.exact)
+	// D2: total passes includes the zero pass when --zero is set.
+	totalPasses := cfg.iterations
+	if cfg.addZero {
+		totalPasses++
 	}
-	if err := overwritePasses(cfg, path, fileSize); err != nil {
+	if err := overwritePasses(cfg, path, fileSize, totalPasses); err != nil {
 		return err
 	}
 	if cfg.addZero {
-		if err := zeroPass(cfg, path, fileSize); err != nil {
+		if err := zeroPass(cfg, path, fileSize, totalPasses); err != nil {
 			return err
 		}
 	}
@@ -121,11 +124,35 @@ func shredOne(cfg config, path string, size int64) error {
 	return nil
 }
 
+// computeWriteSize determines the byte count to overwrite.
+// R2.2: --exact skips block rounding. Without --exact, rounds up
+// to the next full block boundary.
+func computeWriteSize(fi os.FileInfo, explicitSize int64, exact bool) int64 {
+	if explicitSize > 0 {
+		return explicitSize
+	}
+	fileSize := fi.Size()
+	if exact || fileSize == 0 {
+		return fileSize
+	}
+	return roundUpToBlock(fileSize)
+}
+
+// roundUpToBlock rounds n up to the next multiple of blockSize.
+func roundUpToBlock(n int64) int64 {
+	remainder := n % blockSize
+	if remainder == 0 {
+		return n
+	}
+	return n + blockSize - remainder
+}
+
 // overwritePasses performs N random overwrite passes. R1.1, R1.2.
-func overwritePasses(cfg config, path string, size int64) error {
+// R2.1: verbose prints pass progress with total including zero pass.
+func overwritePasses(cfg config, path string, size int64, totalPasses int) error {
 	for i := 0; i < cfg.iterations; i++ {
 		if cfg.verbose {
-			printProgress(path, i, cfg.iterations, "random")
+			printProgress(path, i+1, totalPasses, "random")
 		}
 		if err := writePass(path, size, false); err != nil {
 			return err
@@ -135,17 +162,15 @@ func overwritePasses(cfg config, path string, size int64) error {
 }
 
 // zeroPass performs a final zero-overwrite pass. R1.3.
-func zeroPass(cfg config, path string, size int64) error {
-	label := fmt.Sprintf("pass %d/%d (000000)",
-		cfg.iterations+1, cfg.iterations+1)
+// R2.1: verbose prints pass N+1/N+1 with (000000).
+func zeroPass(cfg config, path string, size int64, totalPasses int) error {
 	if cfg.verbose {
-		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, path, label)
+		printProgress(path, totalPasses, totalPasses, "000000")
 	}
 	return writePass(path, size, true)
 }
 
 // writePass overwrites a file with random or zero data and syncs.
-// D1: crypto/rand for random. D2: O_WRONLY + Sync.
 func writePass(path string, size int64, zero bool) error {
 	f, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {
@@ -230,7 +255,7 @@ func truncateSteps(path string, size int64) error {
 	return nil
 }
 
-// renameSteps renames file to progressively shorter names. R1.3 (remove).
+// renameSteps renames file to progressively shorter names. R1.4 (remove).
 func renameSteps(cfg config, path string) (string, error) {
 	dir := filepath.Dir(path)
 	name := filepath.Base(path)
@@ -251,10 +276,11 @@ func renameSteps(cfg config, path string) (string, error) {
 	return current, nil
 }
 
-// printProgress prints verbose progress for a random pass. R2.1.
+// printProgress prints verbose progress for a pass. R2.1.
+// D1: format matches GNU shred: 'shred: FILE: pass N/N (kind)...'
 func printProgress(path string, pass, total int, kind string) {
 	fmt.Fprintf(os.Stderr, "%s: %s: pass %d/%d (%s)...\n",
-		progName, path, pass+1, total, kind)
+		progName, path, pass, total, kind)
 }
 
 // unwrapErr extracts the inner error from *os.PathError.
@@ -310,6 +336,9 @@ func parseArg(cfg *config, args []string, i int) (int, error) {
 		return 1, nil
 	case arg == "--verbose":
 		cfg.verbose = true
+		return 1, nil
+	case arg == "--exact":
+		cfg.exact = true
 		return 1, nil
 	case strings.HasPrefix(arg, "--iterations="):
 		return 1, parseIterationsValue(cfg, arg[len("--iterations="):])
@@ -397,6 +426,8 @@ func parseShortFlags(cfg *config, args []string, i int) (int, error) {
 			cfg.remove = true
 		case 'v':
 			cfg.verbose = true
+		case 'x':
+			cfg.exact = true
 		case 'n':
 			return consumeShortOptArgInt(
 				cfg, flags[j+1:], flags[j], args, i)
@@ -453,6 +484,7 @@ Mandatory arguments to long options are mandatory for short options too.
   -s, --size=N         shred this many bytes (suffixes like K, M, G accepted)
   -u, --remove         truncate and remove file after overwriting
   -v, --verbose        show progress
+  -x, --exact          do not round file sizes up to the next full block
   -z, --zero           add a final overwrite with zeros to hide shredding
       --help           display this help and exit
       --version        output version information and exit
