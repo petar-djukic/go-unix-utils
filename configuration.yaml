@@ -16,7 +16,6 @@ project:
         docs/prompts/
         cmd/
     releases:
-        - "08.0"
         - "08.1"
         - "09.0"
         - "09.1"
