@@ -3,13 +3,17 @@
 
 // Implements prd109-dircolors R1.1, R1.2, R1.3, R1.4: dircolors shell
 // output format with built-in default color database.
-// Implements prd109-dircolors R2.1, R2.2, R2.3, R2.4: shell output modes
-// (-b, -c, -p flags) and SHELL-based auto-detection.
+// Implements prd109-dircolors R2.1-R2.5: database parsing, TERM matching,
+// shell output modes, -p/--print-database, and stdin via "-".
+// Implements prd109-dircolors R3.1-R3.3: TERM glob patterns, comment/blank
+// line handling, all file type keywords and extension entries.
 
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +44,6 @@ var defaultTermPatterns = []string{
 
 // defaultTypeEntries contains the file type LS_COLORS pairs from the
 // built-in database. Order matches the GNU dircolors compiled-in defaults.
-// R1.3 (AC2): includes all standard file types.
 var defaultTypeEntries = [][2]string{
 	{"rs", "0"}, {"di", "01;34"}, {"ln", "01;36"}, {"mh", "00"},
 	{"pi", "40;33"}, {"so", "01;35"}, {"do", "01;35"},
@@ -51,7 +54,6 @@ var defaultTypeEntries = [][2]string{
 
 // defaultExtEntries contains the extension LS_COLORS pairs from the
 // built-in database. Order matches the GNU dircolors compiled-in defaults.
-// R1.4 (AC3): includes archives, images, audio, video, backups.
 var defaultExtEntries = [][2]string{
 	// Archives (bright red)
 	{"*.7z", "01;31"}, {"*.ace", "01;31"}, {"*.alz", "01;31"},
@@ -109,14 +111,47 @@ var defaultExtEntries = [][2]string{
 	{"*.ucf-dist", "00;90"}, {"*.ucf-new", "00;90"}, {"*.ucf-old", "00;90"},
 }
 
+// keywordMap maps dircolors file type keywords to LS_COLORS codes.
+// R2.3, R3.3: all standard file type keywords.
+var keywordMap = map[string]string{
+	"NORMAL": "no", "FILE": "fi", "RESET": "rs",
+	"DIR": "di", "LINK": "ln", "MULTIHARDLINK": "mh",
+	"FIFO": "pi", "SOCK": "so", "DOOR": "do",
+	"BLK": "bd", "CHR": "cd", "ORPHAN": "or",
+	"MISSING": "mi", "SETUID": "su", "SETGID": "sg",
+	"CAPABILITY": "ca", "STICKY_OTHER_WRITABLE": "tw",
+	"OTHER_WRITABLE": "ow", "STICKY": "st", "EXEC": "ex",
+	"LEFT": "lc", "RIGHT": "rc", "END": "ec",
+}
+
+// ignoredKeywords are recognized by GNU dircolors but silently skipped.
+var ignoredKeywords = map[string]bool{
+	"COLOR": true, "OPTIONS": true, "EIGHTBIT": true,
+}
+
+// colorDatabase holds entries parsed from a dircolors configuration file.
+// R3.1: includes TERM patterns for terminal type matching.
+type colorDatabase struct {
+	termPatterns      []string
+	colortermPatterns []string
+	typeEntries       [][2]string
+	extEntries        [][2]string
+}
+
 // buildLSColors constructs the colon-separated LS_COLORS value string
-// from the default type and extension entries. Each pair is followed by
-// a colon, including the last one, matching GNU dircolors output.
+// from the default type and extension entries.
 func buildLSColors() string {
-	total := len(defaultTypeEntries) + len(defaultExtEntries)
+	return buildLSColorsFromEntries(defaultTypeEntries, defaultExtEntries)
+}
+
+// buildLSColorsFromEntries constructs the colon-separated LS_COLORS value
+// from type and extension entry slices. Each pair is followed by a colon,
+// including the last one, matching GNU dircolors output.
+func buildLSColorsFromEntries(types, exts [][2]string) string {
+	total := len(types) + len(exts)
 	entries := make([][2]string, 0, total)
-	entries = append(entries, defaultTypeEntries...)
-	entries = append(entries, defaultExtEntries...)
+	entries = append(entries, types...)
+	entries = append(entries, exts...)
 	var b strings.Builder
 	for _, e := range entries {
 		b.WriteString(e[0])
@@ -127,20 +162,33 @@ func buildLSColors() string {
 	return b.String()
 }
 
-// termMatches checks if the given terminal name matches any default
-// TERM glob pattern from the built-in database.
-func termMatches(term string) bool {
-	for _, p := range defaultTermPatterns {
-		if matched, _ := filepath.Match(p, term); matched {
+// buildLSColorsFromDB constructs the LS_COLORS value from a parsed database.
+func buildLSColorsFromDB(db *colorDatabase) string {
+	return buildLSColorsFromEntries(db.typeEntries, db.extEntries)
+}
+
+// matchesAnyPattern checks if value matches any of the glob patterns.
+// R3.1: uses filepath.Match for TERM glob matching.
+func matchesAnyPattern(value string, patterns []string) bool {
+	if value == "" {
+		return false
+	}
+	for _, p := range patterns {
+		if matched, _ := filepath.Match(p, value); matched {
 			return true
 		}
 	}
 	return false
 }
 
+// termMatches checks if the given terminal name matches any default
+// TERM glob pattern from the built-in database.
+func termMatches(term string) bool {
+	return matchesAnyPattern(term, defaultTermPatterns)
+}
+
 // colorsApply checks if colors should be applied based on the current
-// terminal environment. The built-in database has "COLORTERM ?*" (any
-// non-empty COLORTERM) and a list of TERM glob patterns.
+// terminal environment using the built-in database patterns.
 func colorsApply() bool {
 	if os.Getenv("COLORTERM") != "" {
 		return true
@@ -149,8 +197,22 @@ func colorsApply() bool {
 	return term != "" && termMatches(term)
 }
 
+// dbColorsApply checks if colors should apply based on a parsed database's
+// TERM and COLORTERM patterns. R2.2, R3.1: when no filter lines are
+// present, colors apply to all terminals.
+func dbColorsApply(db *colorDatabase) bool {
+	hasFilters := len(db.termPatterns) > 0 || len(db.colortermPatterns) > 0
+	if !hasFilters {
+		return true
+	}
+	if matchesAnyPattern(os.Getenv("COLORTERM"), db.colortermPatterns) {
+		return true
+	}
+	return matchesAnyPattern(os.Getenv("TERM"), db.termPatterns)
+}
+
 // detectShell determines shell format from the SHELL environment variable.
-// R2.3: if SHELL ends with "csh", use C shell format; otherwise Bourne.
+// R1.3: if SHELL ends with "csh", use C shell format; otherwise Bourne.
 func detectShell() shellMode {
 	shell := os.Getenv("SHELL")
 	if strings.HasSuffix(shell, "csh") {
@@ -160,13 +222,13 @@ func detectShell() shellMode {
 }
 
 // outputBourne prints LS_COLORS in Bourne shell format.
-// R2.1: LS_COLORS='<value>';\nexport LS_COLORS
+// R1.1: LS_COLORS='<value>';\nexport LS_COLORS
 func outputBourne(value string) {
 	fmt.Printf("LS_COLORS='%s';\nexport LS_COLORS\n", value)
 }
 
 // outputCShell prints LS_COLORS in C shell format.
-// R2.2: setenv LS_COLORS '<value>'
+// R1.2: setenv LS_COLORS '<value>'
 func outputCShell(value string) {
 	fmt.Printf("setenv LS_COLORS '%s'\n", value)
 }
@@ -206,8 +268,9 @@ func parseArgs(args []string) (config, error) {
 }
 
 // handlePositional processes a non-flag argument as a filename.
+// R2.5: "-" is accepted as a valid filename meaning stdin.
 func handlePositional(cfg *config, arg string) error {
-	if strings.HasPrefix(arg, "-") {
+	if arg != "-" && strings.HasPrefix(arg, "-") {
 		return fmt.Errorf("unrecognized option '%s'", arg)
 	}
 	if cfg.filename != "" {
@@ -233,6 +296,114 @@ func outputForShell(shell shellMode, value string) {
 	}
 }
 
+// openDatabase opens the database source.
+// R2.5: when filename is "-", reads from stdin.
+func openDatabase(filename string) (io.ReadCloser, error) {
+	if filename == "-" {
+		return os.Stdin, nil
+	}
+	return os.Open(filename)
+}
+
+// parseDatabase reads and parses a dircolors configuration file.
+// R3.1: collects TERM entries with glob patterns.
+// R3.2: skips comments and blank lines.
+// R3.3: supports all file type keywords and extension entries.
+func parseDatabase(r io.Reader, filename string) (*colorDatabase, error) {
+	db := &colorDatabase{}
+	scanner := bufio.NewScanner(r)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		if err := parseLine(db, scanner.Text(), filename, lineNum); err != nil {
+			return nil, err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", filename, err)
+	}
+	return db, nil
+}
+
+// stripComment removes an inline comment (everything from # onward).
+func stripComment(line string) string {
+	before, _, found := strings.Cut(line, "#")
+	if found {
+		return before
+	}
+	return line
+}
+
+// parseLine parses a single configuration file line into the database.
+// R3.2: blank lines and comment-only lines are silently skipped.
+func parseLine(db *colorDatabase, raw, filename string, lineNum int) error {
+	line := strings.TrimSpace(stripComment(raw))
+	if line == "" {
+		return nil
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return fmt.Errorf("%s:%d: invalid line; missing second token",
+			filename, lineNum)
+	}
+	return classifyEntry(db, fields[0], fields[1], filename, lineNum)
+}
+
+// classifyEntry routes a keyword-value pair to the correct database slot.
+// R3.3: handles TERM, COLORTERM, ignored keywords, file type keywords,
+// and extension entries.
+func classifyEntry(db *colorDatabase, kw, val, fn string, ln int) error {
+	switch {
+	case kw == "TERM":
+		db.termPatterns = append(db.termPatterns, val)
+	case kw == "COLORTERM":
+		db.colortermPatterns = append(db.colortermPatterns, val)
+	case ignoredKeywords[kw]:
+		// Silently ignored per GNU dircolors behavior
+	case keywordMap[kw] != "":
+		db.typeEntries = append(db.typeEntries, [2]string{keywordMap[kw], val})
+	case strings.HasPrefix(kw, ".") || strings.HasPrefix(kw, "*"):
+		db.extEntries = append(db.extEntries, [2]string{ensureStarPrefix(kw), val})
+	default:
+		return fmt.Errorf("%s:%d: unrecognized keyword %s", fn, ln, kw)
+	}
+	return nil
+}
+
+// ensureStarPrefix ensures extension entries have the "*" prefix for LS_COLORS.
+// ".tar" becomes "*.tar"; "*~" stays "*~".
+func ensureStarPrefix(ext string) string {
+	if strings.HasPrefix(ext, ".") {
+		return "*" + ext
+	}
+	return ext
+}
+
+// handleFileDB reads a custom database file and outputs LS_COLORS.
+// R2.4: file argument replaces built-in defaults.
+// R2.5: "-" reads from stdin.
+func handleFileDB(filename string, shell shellMode) int {
+	r, err := openDatabase(filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
+	if filename != "-" {
+		defer r.Close() // best-effort file close
+	}
+	db, err := parseDatabase(r, filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
+	lsColors := ""
+	if dbColorsApply(db) {
+		lsColors = buildLSColorsFromDB(db)
+	}
+	outputForShell(shell, lsColors)
+	return 0
+}
+
 // run contains the main logic and returns the exit code.
 func run() int {
 	cfg, err := parseArgs(os.Args[1:])
@@ -247,6 +418,9 @@ func run() int {
 	if shell == shellAuto {
 		shell = detectShell()
 	}
+	if cfg.filename != "" {
+		return handleFileDB(cfg.filename, shell)
+	}
 	lsColors := ""
 	if colorsApply() {
 		lsColors = buildLSColors()
@@ -256,7 +430,7 @@ func run() int {
 }
 
 // handlePrintDB handles the -p/--print-database option.
-// R2.4: prints the built-in default color database in human-readable format.
+// R3.1: prints the built-in default color database.
 // R3.2: -p is incompatible with a filename argument.
 func handlePrintDB(cfg config) int {
 	if cfg.filename != "" {
@@ -270,9 +444,7 @@ func handlePrintDB(cfg config) int {
 }
 
 // defaultDBText contains the full built-in default color database text
-// matching the output of gdircolors --print-database. This is the
-// human-readable format used by -p/--print-database.
-// R2.4: must match gdircolors -p output byte-for-byte.
+// matching the output of gdircolors --print-database.
 const defaultDBText = `# Configuration file for dircolors, a utility to help you set the
 # LS_COLORS environment variable used by GNU ls with the --color option.
 # Copyright (C) 1996-2026 Free Software Foundation, Inc.
