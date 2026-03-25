@@ -395,7 +395,7 @@ releases:
         - id: rel08.1-uc005-numfmt
           status: implemented
         - id: rel08.1-uc006-od
-          status: spec_complete
+          status: implemented
         - id: rel08.1-uc007-printf
           status: spec_complete
     - version: "09.0"
