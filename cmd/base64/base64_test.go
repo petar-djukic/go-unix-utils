@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/base64 against gbase64 (Homebrew coreutils).
-// Covers prd080-base64 R1.1–R1.4, R2.1–R2.2.
+// Covers prd080-base64 R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
 package main
 
 import (
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -71,7 +72,7 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-w0"},
 			Stdin: []byte("abc"),
 		},
-		// File error (R1.4)
+		// File error (R1.4, R3.2)
 		{
 			Name:      "missing_file",
 			Args:      []string{"/nonexistent/path/to/file"},
@@ -113,6 +114,7 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-d"},
 			Stdin: []byte(""),
 		},
+		// Decode error handling (R2.4, R3.2)
 		{
 			Name:      "decode_invalid_input",
 			Args:      []string{"-d"},
@@ -120,6 +122,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},
+		// Ignore garbage (R2.3)
 		{
 			Name:  "decode_ignore_garbage",
 			Args:  []string{"-d", "-i"},
@@ -135,7 +138,56 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-di"},
 			Stdin: []byte("SGVsbG8=\n"),
 		},
+		{
+			Name:  "decode_ignore_garbage_mixed",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("aGVs\n###\nbG8g\nd29ybGQ=\n"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersion verifies --version prints version info and exits 0 (R3.1).
+func TestVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version exited with error: %v", err)
+	}
+	output := string(out)
+	if !strings.Contains(output, "base64") {
+		t.Errorf("--version output missing 'base64': %q", output)
+	}
+	if !strings.Contains(output, "go-unix-utils") {
+		t.Errorf("--version output missing 'go-unix-utils': %q", output)
+	}
+}
+
+// TestHelp verifies --help prints usage info and exits 0 (R3.2).
+func TestHelp(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help exited with error: %v", err)
+	}
+	output := string(out)
+	if !strings.Contains(output, "Usage:") {
+		t.Errorf("--help output missing 'Usage:': %q", output)
+	}
+	if !strings.Contains(output, "--decode") {
+		t.Errorf("--help output missing '--decode': %q", output)
+	}
+	if !strings.Contains(output, "--ignore-garbage") {
+		t.Errorf("--help output missing '--ignore-garbage': %q", output)
+	}
+	if !strings.Contains(output, "--wrap") {
+		t.Errorf("--help output missing '--wrap': %q", output)
+	}
 }

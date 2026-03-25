@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd080-base64 R1.1–R1.4, R2.1–R2.2: Base64 encode and decode
-// from file or stdin with configurable line wrapping, decode mode, and
-// ignore-garbage support using pkg/encutil for shared encode/decode logic
-// and encoding/base64 from the Go standard library.
+// Implements prd080-base64 R1.1–R1.4, R2.1–R2.4, R3.1–R3.3: Base64 encode
+// and decode from file or stdin with configurable line wrapping, decode mode,
+// ignore-garbage support, decode error handling, --version, --help, and
+// diagnostic messages to stderr using pkg/encutil for shared encode/decode
+// logic and encoding/base64 from the Go standard library.
 package main
 
 import (
