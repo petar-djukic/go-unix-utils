@@ -364,7 +364,7 @@ releases:
         - id: rel08.0-uc004-timeout
           status: implemented
         - id: rel08.0-uc005-shuf
-          status: spec_complete
+          status: implemented
         - id: rel08.0-uc006-factor
           status: implemented
         - id: rel08.0-uc007-expr
