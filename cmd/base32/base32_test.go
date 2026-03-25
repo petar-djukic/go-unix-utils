@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/base32 against gbase32 (Homebrew coreutils).
-// Covers prd079-base32 R1.1–R1.4, R2.1–R2.2.
+// Covers prd079-base32 R1.1–R1.4, R2.1–R2.4, R3.1–R3.3.
 package main
 
 import (
@@ -23,6 +23,7 @@ func normalizeStderr(b []byte) []byte {
 	return stderrProgramName.ReplaceAll(b, []byte("BASE32: "))
 }
 
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -33,6 +34,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// Encoding tests (R1.x, R2.1-R2.2)
 		{
 			Name:  "encode_hello_stdin",
 			Stdin: []byte("hello\n"),
@@ -87,6 +89,49 @@ func TestDiff(t *testing.T) {
 		{
 			Name:  "newline_only",
 			Stdin: []byte("\n"),
+		},
+		// Decode tests (R2.1-R2.4)
+		{
+			Name:  "decode_hello",
+			Args:  []string{"-d"},
+			Stdin: []byte("NBSWY3DPEB3W64TMMQ======\n"),
+		},
+		{
+			Name:  "decode_simple",
+			Args:  []string{"--decode"},
+			Stdin: []byte("JBSWY3DP\n"),
+		},
+		{
+			Name:  "decode_multiline_input",
+			Args:  []string{"-d"},
+			Stdin: []byte("NBSWY3DP\nEB3W64TM\nMQ======\n"),
+		},
+		{
+			Name:  "decode_empty_stdin",
+			Args:  []string{"-d"},
+			Stdin: []byte(""),
+		},
+		{
+			Name:      "decode_invalid_input",
+			Args:      []string{"-d"},
+			Stdin:     []byte("!!!invalid!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		{
+			Name:  "decode_ignore_garbage",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("NBSWY3DP\n!!!garbage!!!\nEB3W64TMMQ======\n"),
+		},
+		{
+			Name:  "decode_ignore_garbage_long",
+			Args:  []string{"--decode", "--ignore-garbage"},
+			Stdin: []byte("JBSWY3DP\n"),
+		},
+		{
+			Name:  "decode_combined_short_flags",
+			Args:  []string{"-di"},
+			Stdin: []byte("JBSWY3DP\n"),
 		},
 	}
 
