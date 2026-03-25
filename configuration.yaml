@@ -40,7 +40,7 @@ cobbler:
     go_style_constitution: docs/constitutions/go-style.yaml
     estimated_lines_min: 300
     estimated_lines_max: 500
-    max_requirements_per_task: 6
+    max_requirements_per_task: 4
     history_dir: history
     doc_tag_prefix: v0.
     base_branch: main
