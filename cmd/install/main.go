@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd101-install: Copy files and set attributes.
-// R1.1 (basic file copy with 755 default), R1.2 (-m mode),
+// R1.1 (basic file copy with 755 default), R1.2 (-m mode with octal and symbolic),
 // R1.3 (-o owner), R1.4 (-g group), R2.1 (-d directory creation),
-// R3.2 (exit codes), R3.3 (SIGPIPE handling).
+// R2.2 (-D create leading dirs), R2.3 (-b backup, -S/--suffix),
+// R2.4 (-v verbose), R3.1 (-C compare), R3.2 (exit codes), R3.3 (SIGPIPE).
+//
+// TODO: -s/--strip and --strip-program are listed in non_goals of prd101-install
+// ("cmd/install does not implement --strip"). Per execution constitution E6,
+// these flags are not implemented. Task R3 references this non-goal feature.
 package main
 
 import (
@@ -29,16 +34,17 @@ const defaultMode os.FileMode = 0o755
 
 // config holds the parsed command-line flags for install.
 type config struct {
-	dirMode    bool   // -d: create directories
-	mode       string // -m MODE: permission mode (octal)
-	owner      string // -o OWNER
-	group      string // -g GROUP
-	verbose    bool   // -v
-	targetDir  string // -t DIR
-	createDirs bool   // -D: create leading dirs
-	compare    bool   // -C: compare before install
-	backup     bool   // -b: backup existing files
-	suffix     string // --suffix: backup suffix
+	dirMode     bool   // -d: create directories
+	mode        string // -m MODE: permission mode (octal or symbolic)
+	owner       string // -o OWNER
+	group       string // -g GROUP
+	verbose     bool   // -v
+	targetDir   string // -t DIR
+	createDirs  bool   // -D: create leading dirs
+	compare     bool   // -C: compare before install
+	backup      bool   // -b: backup existing files
+	suffix      string // -S/--suffix: backup suffix
+	noTargetDir bool   // -T: treat dest as normal file
 }
 
 func main() {
@@ -92,8 +98,8 @@ func mkdirWithVerbose(cfg config, dir string, perm os.FileMode) int {
 
 // runCopyMode handles the file installation mode.
 func runCopyMode(cfg config, args []string) int {
-	if len(args) < 2 && cfg.targetDir == "" {
-		printErr("missing file operand")
+	if err := validateCopyArgs(cfg, args); err != nil {
+		printErr("%s", err)
 		return 1
 	}
 	if cfg.targetDir != "" {
@@ -102,6 +108,21 @@ func runCopyMode(cfg config, args []string) int {
 	dest := args[len(args)-1]
 	sources := args[:len(args)-1]
 	return dispatch(cfg, sources, dest)
+}
+
+// validateCopyArgs checks preconditions for copy mode.
+func validateCopyArgs(cfg config, args []string) error {
+	if cfg.targetDir != "" && cfg.noTargetDir {
+		return fmt.Errorf("cannot combine " +
+			"--target-directory (-t) and --no-target-directory (-T)")
+	}
+	if len(args) < 2 && cfg.targetDir == "" {
+		return fmt.Errorf("missing file operand")
+	}
+	if cfg.noTargetDir && len(args) > 2 {
+		return fmt.Errorf("extra operand '%s'", args[2])
+	}
+	return nil
 }
 
 // installToTarget copies sources into the -t target directory.
@@ -115,8 +136,9 @@ func installToTarget(cfg config, sources []string) int {
 
 // dispatch routes to single-file or multi-source install.
 // R1.3: when destination is an existing directory, copy into it.
+// -T overrides directory detection to treat dest as a normal file.
 func dispatch(cfg config, sources []string, dest string) int {
-	if len(sources) == 1 && !isDir(dest) {
+	if cfg.noTargetDir || (len(sources) == 1 && !isDir(dest)) {
 		return installFile(cfg, sources[0], dest)
 	}
 	return installMultiple(cfg, sources, dest)
@@ -162,10 +184,10 @@ func installFile(cfg config, src, dest string) int {
 
 // performInstall executes the file copy with permissions.
 func performInstall(cfg config, src, dest string) int {
-	if cfg.compare && filesMatch(src, dest, resolveMode(cfg)) {
+	perm := resolveMode(cfg)
+	if cfg.compare && filesMatch(src, dest, perm) {
 		return 0
 	}
-	perm := resolveMode(cfg)
 	if cfg.backup && fileExists(dest) {
 		makeBackup(cfg, dest)
 	}
@@ -244,20 +266,6 @@ func writeDest(srcFile *os.File, dest string, perm os.FileMode) error {
 			dest, unwrapErr(err))
 	}
 	return nil
-}
-
-// resolveMode parses the -m flag value or returns the default.
-// R1.2: -m MODE sets the permission mode (octal).
-func resolveMode(cfg config) os.FileMode {
-	if cfg.mode == "" {
-		return defaultMode
-	}
-	mode, err := strconv.ParseUint(cfg.mode, 8, 32)
-	if err != nil {
-		printErr("invalid mode '%s'", cfg.mode)
-		return defaultMode
-	}
-	return os.FileMode(mode)
 }
 
 // applyOwnership sets owner and group on the installed file.
@@ -389,6 +397,8 @@ func parseLongFlag(
 		cfg.compare = true
 	case arg == "--backup":
 		cfg.backup = true
+	case arg == "--no-target-directory":
+		cfg.noTargetDir = true
 	case strings.HasPrefix(arg, "--mode"):
 		return parseFlagValue(arg, "--mode", args, i, &cfg.mode)
 	case strings.HasPrefix(arg, "--owner"):
@@ -451,7 +461,8 @@ func parseShortFlags(
 
 // shortFlagConsumesRest returns true for flags that consume remainder.
 func shortFlagConsumesRest(ch byte) bool {
-	return ch == 'm' || ch == 'o' || ch == 'g' || ch == 't'
+	return ch == 'm' || ch == 'o' || ch == 'g' ||
+		ch == 't' || ch == 'S'
 }
 
 // applyShortFlag applies a single short flag character.
@@ -469,6 +480,8 @@ func applyShortFlag(
 		cfg.createDirs = true
 	case 'b':
 		cfg.backup = true
+	case 'T':
+		cfg.noTargetDir = true
 	case 'm':
 		return consumeShortValue(remainder, args, i, &cfg.mode, 'm')
 	case 'o':
@@ -478,6 +491,9 @@ func applyShortFlag(
 	case 't':
 		return consumeShortValue(
 			remainder, args, i, &cfg.targetDir, 't')
+	case 'S':
+		return consumeShortValue(
+			remainder, args, i, &cfg.suffix, 'S')
 	default:
 		fmt.Fprintf(os.Stderr,
 			"install: invalid option -- '%c'\n", ch)
@@ -504,9 +520,8 @@ func consumeShortValue(
 	return -1
 }
 
-// printHelp writes usage information to stdout and returns exit code.
-func printHelp() int {
-	_, err := fmt.Fprint(os.Stdout, `Usage: install [OPTION]... SOURCE DEST
+// helpText is the usage information for install.
+const helpText = `Usage: install [OPTION]... SOURCE DEST
   or:  install [OPTION]... SOURCE... DIRECTORY
   or:  install [OPTION]... -t DIRECTORY SOURCE...
   or:  install [OPTION]... -d DIRECTORY...
@@ -520,12 +535,17 @@ Copy files and set attributes.
   -g, --group=GROUP          set group ownership
   -m, --mode=MODE            set permission mode (default 0755)
   -o, --owner=OWNER          set ownership
+  -S, --suffix=SUFFIX        override the usual backup suffix
   -t, --target-directory=DIR copy all SOURCE arguments into DIR
+  -T, --no-target-directory  treat DEST as a normal file
   -v, --verbose              print the name of each file as installed
-      --suffix=SUFFIX        override the usual backup suffix
       --help     display this help and exit
       --version  output version information and exit
-`)
+`
+
+// printHelp writes usage information to stdout and returns exit code.
+func printHelp() int {
+	_, err := fmt.Fprint(os.Stdout, helpText)
 	if err != nil {
 		return 1
 	}
