@@ -4,6 +4,8 @@
 // Implements prd069-join: Join Lines of Two Files on a Common Field.
 // Covers R1.1-R1.4 (default join), R2.1-R2.4 (field selection, output format, separator),
 // R3.1-R3.4 (unpairable lines, empty replacement, header), R4.1-R4.2 (exit codes).
+// R2.3 (-e empty replacement), R2.4 (-i case-insensitive), R3.1 (--check-order),
+// R3.3 (sort-order diagnostics), R3.4 (--version/--help).
 package main
 
 import (
@@ -39,6 +41,7 @@ type config struct {
 	onlyFile2   bool         // R3.2: -v 2 — only unpairable from file 2
 	empty       string       // R3.3: -e STRING replacement for missing fields
 	header      bool         // R3.4: --header treats first lines as headers
+	ignoreCase  bool         // R2.4: -i/--ignore-case for case-insensitive join
 }
 
 // lineReader wraps a bufio.Scanner with one-line pushback for merge-join.
@@ -47,6 +50,7 @@ type lineReader struct {
 	pending string // pushed-back line
 	hasPend bool   // whether pending is valid
 	done    bool   // scanner exhausted
+	lineNum int    // 1-indexed line number of last returned line
 }
 
 // newLineReader creates a lineReader from an io.Reader.
@@ -66,6 +70,7 @@ func (lr *lineReader) next() (string, bool) {
 		return "", false
 	}
 	if lr.scanner.Scan() {
+		lr.lineNum++
 		return lr.scanner.Text(), true
 	}
 	lr.done = true
@@ -81,6 +86,53 @@ func (lr *lineReader) pushBack(line string) {
 // err returns any scanner error.
 func (lr *lineReader) err() error {
 	return lr.scanner.Err()
+}
+
+// merger holds state for the merge-join algorithm including order checking.
+type merger struct {
+	cfg          config
+	lr1, lr2     *lineReader
+	bw           *bufio.Writer
+	name1, name2 string
+	prev1, prev2 string
+	has1, has2   bool
+	unsorted     bool
+}
+
+// compareKeys compares two join keys, returning -1, 0, or 1.
+// R2.4: when ignoreCase is true, comparison is case-insensitive.
+func compareKeys(a, b string, ignoreCase bool) int {
+	if ignoreCase {
+		a = strings.ToLower(a)
+		b = strings.ToLower(b)
+	}
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+// checkKey checks sort order for a file's key and updates tracking state.
+// R3.1/R3.3: emits "join: FILE:LINE: is not sorted: LINE" diagnostics.
+func (m *merger) checkKey(fileNum int, key, line string) {
+	var prev *string
+	var has *bool
+	var name string
+	var num int
+	if fileNum == 1 {
+		prev, has, name, num = &m.prev1, &m.has1, m.name1, m.lr1.lineNum
+	} else {
+		prev, has, name, num = &m.prev2, &m.has2, m.name2, m.lr2.lineNum
+	}
+	if *has && compareKeys(key, *prev, m.cfg.ignoreCase) < 0 {
+		fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", name, num, line)
+		m.unsorted = true
+	}
+	*prev = key
+	*has = true
 }
 
 func main() {
@@ -104,7 +156,7 @@ func run(cfg config, name1, name2 string) int {
 	defer cleanup()
 
 	bw := bufio.NewWriter(os.Stdout)
-	exitCode := joinFiles(cfg, r1, r2, bw)
+	exitCode := joinFiles(cfg, r1, r2, bw, name1, name2)
 	if flushErr := bw.Flush(); flushErr != nil {
 		fmt.Fprintf(os.Stderr, "join: write error: %s\n", flushErr)
 		return 1
@@ -276,7 +328,7 @@ func resolveUnpairSpec(spec outputSpec, key string, fields []string, cfg config,
 }
 
 // joinFiles performs the join algorithm on two sorted inputs.
-func joinFiles(cfg config, r1, r2 io.Reader, bw *bufio.Writer) int {
+func joinFiles(cfg config, r1, r2 io.Reader, bw *bufio.Writer, name1, name2 string) int {
 	lr1 := newLineReader(r1)
 	lr2 := newLineReader(r2)
 
@@ -285,11 +337,15 @@ func joinFiles(cfg config, r1, r2 io.Reader, bw *bufio.Writer) int {
 			return code
 		}
 	}
-	code := mergeJoin(cfg, lr1, lr2, bw)
-	if code != 0 {
-		return code
+	m := &merger{
+		cfg: cfg, lr1: lr1, lr2: lr2, bw: bw,
+		name1: name1, name2: name2,
 	}
-	return checkReaderErrors(lr1, lr2)
+	mergeCode := m.run()
+	if errCode := checkReaderErrors(lr1, lr2); errCode != 0 {
+		return errCode
+	}
+	return mergeCode
 }
 
 // processHeader reads and joins the first line of each file as a header.
@@ -311,84 +367,94 @@ func processHeader(cfg config, lr1, lr2 *lineReader, bw *bufio.Writer) int {
 	return 0
 }
 
-// mergeJoin performs the merge-join on two lineReaders.
-func mergeJoin(cfg config, lr1, lr2 *lineReader, bw *bufio.Writer) int {
-	line1, ok1 := lr1.next()
-	line2, ok2 := lr2.next()
+// run performs the merge-join with sort-order checking.
+// R3.1: checks input order and returns 1 if unsorted input is detected.
+func (m *merger) run() int {
+	line1, ok1 := m.lr1.next()
+	line2, ok2 := m.lr2.next()
 
 	for ok1 && ok2 {
 		var code int
-		code, line1, ok1, line2, ok2 = joinStep(cfg, lr1, lr2, line1, line2, bw)
+		code, line1, ok1, line2, ok2 = m.step(line1, line2)
 		if code != 0 {
 			return code
 		}
 	}
-	if code := drainUnpaired(cfg, lr1, line1, ok1, cfg.field1, 1, bw); code != 0 {
+	if code := drainUnpaired(m.cfg, m.lr1, line1, ok1, m.cfg.field1, 1, m.bw); code != 0 {
 		return code
 	}
-	return drainUnpaired(cfg, lr2, line2, ok2, cfg.field2, 2, bw)
+	if code := drainUnpaired(m.cfg, m.lr2, line2, ok2, m.cfg.field2, 2, m.bw); code != 0 {
+		return code
+	}
+	if m.unsorted {
+		fmt.Fprintln(os.Stderr, "join: input is not in sorted order")
+		return 1
+	}
+	return 0
 }
 
-// joinStep processes one step of the merge-join.
-func joinStep(
-	cfg config, lr1, lr2 *lineReader, line1, line2 string, bw *bufio.Writer,
-) (int, string, bool, string, bool) {
-	f1 := splitFields(line1, cfg)
-	f2 := splitFields(line2, cfg)
-	key1 := joinKey(f1, cfg.field1)
-	key2 := joinKey(f2, cfg.field2)
+// step processes one step of the merge-join with order checking.
+func (m *merger) step(line1, line2 string) (int, string, bool, string, bool) {
+	f1 := splitFields(line1, m.cfg)
+	f2 := splitFields(line2, m.cfg)
+	key1 := joinKey(f1, m.cfg.field1)
+	key2 := joinKey(f2, m.cfg.field2)
+	m.checkKey(1, key1, line1)
+	m.checkKey(2, key2, line2)
 
-	if key1 < key2 {
-		code := emitUnpair(cfg, f1, cfg.field1, 1, bw)
-		next, ok := lr1.next()
+	cmp := compareKeys(key1, key2, m.cfg.ignoreCase)
+	if cmp < 0 {
+		code := emitUnpair(m.cfg, f1, m.cfg.field1, 1, m.bw)
+		next, ok := m.lr1.next()
 		return code, next, ok, line2, true
 	}
-	if key1 > key2 {
-		code := emitUnpair(cfg, f2, cfg.field2, 2, bw)
-		next, ok := lr2.next()
+	if cmp > 0 {
+		code := emitUnpair(m.cfg, f2, m.cfg.field2, 2, m.bw)
+		next, ok := m.lr2.next()
 		return code, line1, true, next, ok
 	}
-	return emitMatches(cfg, lr1, lr2, key1, f1, f2, bw)
+	return m.emitMatches(key1, f1, f2)
 }
 
 // emitMatches handles matching keys with cartesian product for duplicates.
-func emitMatches(
-	cfg config, lr1, lr2 *lineReader, key string,
-	f1 []string, f2Init []string, bw *bufio.Writer,
+// Checks file-1 sort order for each additional line read.
+func (m *merger) emitMatches(
+	key string, f1 []string, f2Init []string,
 ) (int, string, bool, string, bool) {
-	// R1.1: collect all file-2 lines with this key for cartesian product.
-	group2 := collectGroup(lr2, key, cfg.field2, cfg, f2Init)
-
-	// Pair current and subsequent file-1 lines with the group.
+	group2 := m.collectGroup2(key, f2Init)
 	for {
-		if code := emitPairs(cfg, key, f1, group2, bw); code != 0 {
+		if code := emitPairs(m.cfg, key, f1, group2, m.bw); code != 0 {
 			return code, "", false, "", false
 		}
-		next1, ok1 := lr1.next()
+		next1, ok1 := m.lr1.next()
 		if !ok1 {
-			next2, ok2 := lr2.next()
+			next2, ok2 := m.lr2.next()
 			return 0, "", false, next2, ok2
 		}
-		nf1 := splitFields(next1, cfg)
-		if joinKey(nf1, cfg.field1) != key {
-			next2, ok2 := lr2.next()
+		nf1 := splitFields(next1, m.cfg)
+		nk1 := joinKey(nf1, m.cfg.field1)
+		m.checkKey(1, nk1, next1)
+		if compareKeys(nk1, key, m.cfg.ignoreCase) != 0 {
+			next2, ok2 := m.lr2.next()
 			return 0, next1, true, next2, ok2
 		}
 		f1 = nf1
 	}
 }
 
-// collectGroup collects all lines from lr that match key, pushes back the first non-match.
-func collectGroup(lr *lineReader, key string, fieldIdx int, cfg config, initial []string) [][]string {
+// collectGroup2 collects file-2 lines matching key, with order checking.
+func (m *merger) collectGroup2(key string, initial []string) [][]string {
 	group := [][]string{initial}
 	for {
-		line, ok := lr.next()
+		line, ok := m.lr2.next()
 		if !ok {
 			return group
 		}
-		fields := splitFields(line, cfg)
-		if joinKey(fields, fieldIdx) != key {
-			lr.pushBack(line)
+		fields := splitFields(line, m.cfg)
+		fk := joinKey(fields, m.cfg.field2)
+		m.checkKey(2, fk, line)
+		if compareKeys(fk, key, m.cfg.ignoreCase) != 0 {
+			m.lr2.pushBack(line)
 			return group
 		}
 		group = append(group, fields)
@@ -501,6 +567,13 @@ func parseLongFlag(arg string, cfg *config) int {
 	case "--header":
 		cfg.header = true
 		return -1
+	case "--ignore-case":
+		cfg.ignoreCase = true
+		return -1
+	case "--check-order":
+		// R3.1: --check-order is the default behavior; recognized as no-op.
+		return -1
+	// TODO: --nocheck-order not implemented per prd069-join non_goals (E6).
 	case "--help":
 		return printHelp()
 	case "--version":
@@ -512,7 +585,7 @@ func parseLongFlag(arg string, cfg *config) int {
 	}
 }
 
-// parseShortFlag handles short flags like -1, -2, -j, -t, -o, -a, -v, -e.
+// parseShortFlag handles short flags like -1, -2, -j, -t, -o, -a, -v, -e, -i.
 func parseShortFlag(arg string, args []string, i *int, cfg *config) int {
 	flag := arg[1:]
 	if len(flag) == 0 {
@@ -535,6 +608,10 @@ func parseShortFlag(arg string, args []string, i *int, cfg *config) int {
 		return parseFileNumFlag(flag[1:], args, i, cfg, setOnly)
 	case 'e':
 		return parseEmptyFlag(flag[1:], args, i, cfg)
+	case 'i':
+		// R2.4: -i for case-insensitive join field comparison.
+		cfg.ignoreCase = true
+		return -1
 	default:
 		fmt.Fprintf(os.Stderr, "join: invalid option -- '%c'\n", flag[0])
 		fmt.Fprintln(os.Stderr, "Try 'join --help' for more information.")
@@ -754,12 +831,14 @@ Join lines of two sorted files on a common field.
 
   -a FILENUM        also print unpairable lines from file FILENUM
   -e STRING         replace missing (empty) input fields with STRING
+  -i, --ignore-case ignore differences in case when comparing fields
   -j FIELD          equivalent to '-1 FIELD -2 FIELD'
   -o FORMAT         output FORMAT is a comma or space separated list
   -t CHAR           use CHAR as input and output field separator
   -v FILENUM        like -a FILENUM, but suppress joined output lines
   -1 FIELD          join on this FIELD of file 1
   -2 FIELD          join on this FIELD of file 2
+      --check-order check that input is sorted (default)
       --header      treat the first line in each file as a header
       --help        display this help and exit
       --version     output version information and exit
