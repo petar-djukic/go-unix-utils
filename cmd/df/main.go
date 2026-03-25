@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd106-df R1.1–R1.5, R2.1–R2.3, R3.1–R3.7 -- df core filesystem
-// queries, output formatting, type display, inode display, filtering, and
-// column selection.
+// Implements prd106-df R1.1–R1.5, R2.1–R2.3, R3.1–R3.7, R4.1–R4.3 -- df core
+// filesystem queries, output formatting, type display, inode display, filtering,
+// column selection, error handling, and signal handling.
 
 package main
 

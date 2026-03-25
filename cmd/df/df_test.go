@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/df.
-// Implements prd106-df R3.1–R3.7 test coverage.
+// Implements prd106-df R3.1–R3.7, R4.1–R4.3 test coverage.
 
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"regexp"
 	"testing"
@@ -19,6 +20,19 @@ import (
 var numNormalizer = testutils.NormalizeFunc(func(b []byte) []byte {
 	re := regexp.MustCompile(`[0-9]+`)
 	return re.ReplaceAll(b, []byte("N"))
+})
+
+// stderrNormalizer normalizes stderr for comparison: strips binary path
+// prefixes, removes GNU "Try ..." hints, and lowercases for portability.
+var stderrNormalizer = testutils.NormalizeFunc(func(b []byte) []byte {
+	// Replace binary path prefix with "df:".
+	re := regexp.MustCompile(`(?m)^[^\s:]+:`)
+	result := re.ReplaceAll(b, []byte("df:"))
+	// Remove "Try '...' for more information." lines.
+	tryRe := regexp.MustCompile(`(?m)^Try '.*' for more information\.\n?`)
+	result = tryRe.ReplaceAll(result, nil)
+	// Lowercase for portable comparison of OS error strings.
+	return bytes.ToLower(result)
 })
 
 func TestDiff(t *testing.T) {
@@ -117,6 +131,24 @@ func TestDiff(t *testing.T) {
 			Name:      "output_all_fields",
 			Args:      []string{"--output", "/"},
 			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		// R4.1: exit 0 on successful filesystem report.
+		{
+			Name:      "exit_zero_on_success",
+			Args:      []string{"/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		// R4.2: exit 1 on inaccessible FILE argument with diagnostic to stderr.
+		{
+			Name:      "exit_one_nonexistent_file",
+			Args:      []string{"/nonexistent_path_df_test"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer, stderrNormalizer},
+		},
+		// R4.2: exit 1 on invalid option.
+		{
+			Name:      "exit_one_invalid_option",
+			Args:      []string{"--invalid-option-df-test"},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
