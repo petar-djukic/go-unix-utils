@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd082-stat R1.1-R1.4, R2.1-R2.2: core stat output and format directives.
+// Implements prd082-stat R1.1-R1.4, R2.1-R2.3, R3.1-R3.2: core stat output,
+// format directives, terse mode, and error handling.
 // Covers default multi-line output, -c/--format, --printf, -L/--dereference,
-// and format directives for file metadata (%a, %A, %b, %B, %d, %D, %f, %F,
-// %g, %G, %h, %i, %n, %N, %o, %s, %t, %T, %u, %U, %w, %W, %x, %X, %y, %Y,
-// %z, %Z).
+// -t/--terse, and format directives for file metadata (%a, %A, %b, %B, %d, %D,
+// %f, %F, %g, %G, %h, %i, %n, %N, %o, %s, %t, %T, %u, %U, %w, %W, %x, %X,
+// %y, %Y, %z, %Z).
 package main
 
 import (
@@ -21,6 +22,10 @@ import (
 )
 
 const progName = "stat"
+
+// terseFileFormat is the predefined format string for --terse file output.
+// R2.3: matches GNU stat --terse format.
+const terseFileFormat = "%n %s %b %f %u %g %D %i %h %t %T %X %Y %Z %W %o"
 
 // version is set at build time via -ldflags "-X main.version=<tag>".
 var version = "dev"
@@ -39,6 +44,7 @@ type config struct {
 	mode        outputMode
 	format      string
 	dereference bool // -L/--dereference
+	terse       bool // -t/--terse
 	showHelp    bool
 	showVersion bool
 	args        []string
@@ -75,7 +81,18 @@ func run(args []string) int {
 		printTryHelp()
 		return 1
 	}
+	// R2.3: resolve terse mode to a predefined format string.
+	resolveTerse(&cfg)
 	return processFiles(cfg)
+}
+
+// resolveTerse applies the terse format when --terse is set and no explicit
+// format was specified.
+func resolveTerse(cfg *config) {
+	if cfg.terse && cfg.mode == modeDefault {
+		cfg.mode = modeFormat
+		cfg.format = terseFileFormat
+	}
 }
 
 // processFiles stats each file argument and prints output.
@@ -123,6 +140,7 @@ func statFunc(deref bool) func(string) (*sys.FileInfo, error) {
 }
 
 // formatStatError formats an error for display matching GNU stat style.
+// R3.1/R3.2: error messages match gstat format exactly.
 func formatStatError(path string, err error) error {
 	if pe, ok := err.(*os.PathError); ok {
 		return fmt.Errorf("cannot stat '%s': %v", path, pe.Err)
@@ -614,6 +632,9 @@ func parseArg(cfg *config, args []string, i int) (int, error) {
 	case arg == "--dereference":
 		cfg.dereference = true
 		return 1, nil
+	case arg == "--terse":
+		cfg.terse = true
+		return 1, nil
 	case strings.HasPrefix(arg, "--format="):
 		cfg.mode = modeFormat
 		cfg.format = arg[len("--format="):]
@@ -653,6 +674,8 @@ func parseShortFlags(cfg *config, args []string, i int) (int, error) {
 		switch flags[j] {
 		case 'L':
 			cfg.dereference = true
+		case 't':
+			cfg.terse = true
 		case 'c':
 			return consumeShortFormat(cfg, modeFormat, flags[j+1:], flags[j], args, i)
 		default:
@@ -689,6 +712,7 @@ Display file or file system status.
                          output a newline after each use of FORMAT
       --printf=FORMAT   like --format, but interpret backslash escapes,
                          and do not output a mandatory trailing newline
+  -t, --terse           print the information in terse form
       --help            display this help and exit
       --version         output version information and exit
 
