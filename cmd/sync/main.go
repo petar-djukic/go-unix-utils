@@ -119,11 +119,13 @@ func handleShortFlags(flags string, opts *syncOpts) int {
 	return -1
 }
 
-// checkOperands validates that file operands are present when -d or -f is set.
-// R1.3, R1.4: exit 1 if no FILE is given with -d or -f.
+// checkOperands validates that file operands are present when -d is set.
+// R1.3: exit 1 if no FILE is given with -d.
+// R1.4: --file-system without files falls through to sync-all behavior.
 func checkOperands(opts syncOpts, files []string) int {
-	if (opts.data || opts.fileSystem) && len(files) == 0 {
-		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
+	if opts.data && len(files) == 0 {
+		fmt.Fprintf(os.Stderr,
+			"%s: --data needs at least one argument\n", progName)
 		printTryHelp()
 		return 1
 	}
