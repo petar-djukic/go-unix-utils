@@ -205,17 +205,21 @@ func parsePositional(cfg config, args []string) (config, int) {
 		return parseDeviceArgs(cfg, args)
 	default:
 		fmt.Fprintf(os.Stderr,
-			"mknod: invalid device type '%s'\n", cfg.typ)
+			"mknod: missing operand after '%s'\n", cfg.typ)
+		printDeviceHint()
 		printTryHelp()
 		return cfg, 1
 	}
 }
 
 // parseFIFOArgs validates that FIFO type has no extra arguments.
+// R1.3: GNU prints "extra operand" then the fifo hint.
 func parseFIFOArgs(cfg config, args []string) (config, int) {
 	if len(args) > 2 {
+		fmt.Fprintf(os.Stderr,
+			"mknod: extra operand '%s'\n", args[2])
 		fmt.Fprintln(os.Stderr,
-			"mknod: Fifos do not have major and minor device numbers.")
+			"Fifos do not have major and minor device numbers.")
 		printTryHelp()
 		return cfg, 1
 	}
@@ -227,6 +231,10 @@ func parseDeviceArgs(cfg config, args []string) (config, int) {
 	if len(args) < 4 {
 		fmt.Fprintf(os.Stderr,
 			"mknod: missing operand after '%s'\n", args[len(args)-1])
+		// R1.3: GNU only prints the device hint when both numbers are missing.
+		if len(args) == 2 {
+			printDeviceHint()
+		}
 		printTryHelp()
 		return cfg, 1
 	}
@@ -270,6 +278,12 @@ func parseMode(s string) (os.FileMode, error) {
 		return 0, err
 	}
 	return os.FileMode(val), nil
+}
+
+// printDeviceHint prints the device number reminder to stderr.
+func printDeviceHint() {
+	fmt.Fprintln(os.Stderr,
+		"Special files require major and minor device numbers.")
 }
 
 // printTryHelp prints the standard "Try --help" hint to stderr.
