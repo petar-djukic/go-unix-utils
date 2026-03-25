@@ -1,18 +1,29 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd091-chown R1.1, R1.2, R1.3, R1.4.
+// Implements prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
 // chown changes the owner and/or group of files.
 package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+// derefMode controls symlink dereference behavior during recursion (R2.3).
+type derefMode int
+
+const (
+	derefNone    derefMode = iota // -P: never follow symlinks (default)
+	derefCmdLine                  // -H: follow command-line symlinks only
+	derefAll                      // -L: follow all symlinks
 )
 
 // ownerSpec holds the parsed owner and group from OWNER[:GROUP] syntax.
@@ -24,14 +35,15 @@ type ownerSpec struct {
 
 // chownFlags holds parsed command-line options.
 type chownFlags struct {
-	reference   string // --reference=RFILE (R1.3)
-	recursive   bool   // -R, --recursive (R2.1, stub for future)
-	noDerefer   bool   // -h, --no-dereference (R2.2, stub for future)
-	verbose     bool   // -v, --verbose (R3.1, stub for future)
-	changes     bool   // -c, --changes (R3.1, stub for future)
-	silent      bool   // -f, --silent, --quiet (R3.1, stub for future)
-	showVersion bool   // --version
-	showHelp    bool   // --help
+	reference   string    // --reference=RFILE (R1.3)
+	recursive   bool      // -R, --recursive (R2.1)
+	noDerefer   bool      // -h, --no-dereference (R2.2)
+	deref       derefMode // -H, -L, -P (R2.3)
+	verbose     bool      // -v, --verbose (R3.1)
+	changes     bool      // -c, --changes (R3.1)
+	silent      bool      // -f, --silent, --quiet (R3.1)
+	showVersion bool      // --version
+	showHelp    bool      // --help
 }
 
 // R3.3: SIGPIPE handling per shared_protocols.
@@ -63,7 +75,7 @@ func run(args []string) int {
 	return applyToFiles(spec, files, flags)
 }
 
-// printHelp writes usage information to stdout.
+// printHelp writes usage information to stdout (R3.1).
 func printHelp() {
 	fmt.Print(`Usage: chown [OPTION]... [OWNER][:[GROUP]] FILE...
   or:  chown [OPTION]... --reference=RFILE FILE...
@@ -156,6 +168,8 @@ func allShortFlags(s string) bool {
 }
 
 // applyShortFlags applies each short flag character in s.
+// R3.1: last of -v/-c wins, matching GNU behavior.
+// R2.3: last of -H/-L/-P wins, matching GNU behavior.
 func applyShortFlags(s string, f *chownFlags) {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
@@ -171,6 +185,12 @@ func applyShortFlags(s string, f *chownFlags) {
 			f.silent = true
 		case 'h':
 			f.noDerefer = true
+		case 'H':
+			f.deref = derefCmdLine
+		case 'L':
+			f.deref = derefAll
+		case 'P':
+			f.deref = derefNone
 		}
 	}
 }
@@ -336,34 +356,175 @@ func specFromReference(path string) (ownerSpec, error) {
 	return ownerSpec{uid: int(info.Uid), gid: int(info.Gid)}, nil
 }
 
-// --- Core application logic (R1.4) ---
+// --- Core application logic (R1.4, R2.1) ---
 
 // applyToFiles changes ownership on each file, returning exit code.
 // R1.4: continue on error, exit 1 if any failed.
 func applyToFiles(spec ownerSpec, files []string, f chownFlags) int {
 	exitCode := 0
 	for _, path := range files {
-		if err := changeOwnership(spec, path, f); err != nil {
-			reportError(err, f)
+		var failed bool
+		if f.recursive {
+			failed = walkRecursive(spec, path, f, true)
+		} else {
+			if err := changeAndReport(spec, path, f); err != nil {
+				reportError(err, f)
+				failed = true
+			}
+		}
+		if failed {
 			exitCode = 1
 		}
 	}
 	return exitCode
 }
 
-// changeOwnership changes the owner/group of a single file.
-func changeOwnership(spec ownerSpec, path string, f chownFlags) error {
+// walkRecursive initiates recursive ownership change on a path.
+// R2.1: -R changes ownership recursively for directories and their contents.
+// R2.3: respects -H/-L/-P for symlink dereference control.
+func walkRecursive(spec ownerSpec, path string, f chownFlags, isCmdLine bool) bool {
+	info, isSymlink, err := statForTraversal(path, f, isCmdLine)
+	if err != nil {
+		reportError(
+			fmt.Errorf("chown: cannot access '%s': %w", path, err), f)
+		return true
+	}
+	// R2.3: skip symlinks that should not be followed.
+	if isSymlink && !shouldFollow(f, isCmdLine) {
+		return changeSymlink(spec, path, f)
+	}
+	if info.IsDir() {
+		return walkDir(spec, path, f)
+	}
+	if err := changeAndReport(spec, path, f); err != nil {
+		reportError(err, f)
+		return true
+	}
+	return false
+}
+
+// statForTraversal stats a path respecting dereference mode.
+// Returns file info, whether it's a symlink, and any error.
+func statForTraversal(path string, f chownFlags, isCmdLine bool) (fs.FileInfo, bool, error) {
+	linfo, err := os.Lstat(path)
+	if err != nil {
+		return nil, false, err
+	}
+	isSymlink := linfo.Mode()&fs.ModeSymlink != 0
+	if isSymlink && shouldFollow(f, isCmdLine) {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, true, err
+		}
+		return info, true, nil
+	}
+	return linfo, isSymlink, nil
+}
+
+// shouldFollow returns true if symlinks should be followed given the flags.
+func shouldFollow(f chownFlags, isCmdLine bool) bool {
+	switch f.deref {
+	case derefAll:
+		return true
+	case derefCmdLine:
+		return isCmdLine
+	default:
+		return false
+	}
+}
+
+// walkDir recursively applies ownership changes to a directory and contents.
+// GNU processes subdirectories before files, then the directory itself.
+func walkDir(spec ownerSpec, dirPath string, f chownFlags) bool {
+	hadError := false
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		reportError(
+			fmt.Errorf("chown: cannot read directory '%s': %w", dirPath, err), f)
+		hadError = true
+	}
+	// Process subdirectories and symlinks first, then regular files.
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			child := filepath.Join(dirPath, entry.Name())
+			if walkChild(spec, child, entry, f) {
+				hadError = true
+			}
+		}
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
+			child := filepath.Join(dirPath, entry.Name())
+			if walkChild(spec, child, entry, f) {
+				hadError = true
+			}
+		}
+	}
+	if err := changeAndReport(spec, dirPath, f); err != nil {
+		reportError(err, f)
+		hadError = true
+	}
+	return hadError
+}
+
+// walkChild processes a single directory entry during recursive traversal.
+func walkChild(spec ownerSpec, child string, entry fs.DirEntry, f chownFlags) bool {
+	if entry.Type()&fs.ModeSymlink != 0 {
+		return handleSymlinkChild(spec, child, f)
+	}
+	if entry.IsDir() {
+		return walkDir(spec, child, f)
+	}
+	if err := changeAndReport(spec, child, f); err != nil {
+		reportError(err, f)
+		return true
+	}
+	return false
+}
+
+// handleSymlinkChild handles a symlink during recursive traversal.
+// R2.3: with -L, follow symlinks to directories and recurse into them.
+func handleSymlinkChild(spec ownerSpec, child string, f chownFlags) bool {
+	if f.deref == derefAll {
+		info, err := os.Stat(child)
+		if err != nil {
+			reportError(
+				fmt.Errorf("chown: cannot access '%s': %w", child, err), f)
+			return true
+		}
+		if info.IsDir() {
+			return walkDir(spec, child, f)
+		}
+		return changeSymlink(spec, child, f)
+	}
+	return changeSymlink(spec, child, f)
+}
+
+// changeSymlink changes ownership of a symlink itself.
+func changeSymlink(spec ownerSpec, path string, f chownFlags) bool {
+	if err := changeAndReport(spec, path, f); err != nil {
+		reportError(err, f)
+		return true
+	}
+	return false
+}
+
+// --- Ownership change with diagnostics (R2.2, R3.1) ---
+
+// changeAndReport changes ownership of a single file and prints diagnostics.
+func changeAndReport(spec ownerSpec, path string, f chownFlags) error {
 	info, err := sys.Lstat(path)
 	if err != nil {
-		return fmt.Errorf(
-			"chown: cannot access '%s': %w", path, err)
+		return fmt.Errorf("chown: cannot access '%s': %w", path, err)
 	}
+	oldUID := int(info.Uid)
+	oldGID := int(info.Gid)
 	uid := resolveUID(spec, info)
 	gid := resolveGID(spec, info)
 	if err := chownFile(path, uid, gid, f); err != nil {
-		return fmt.Errorf(
-			"chown: changing ownership of '%s': %w", path, err)
+		return fmt.Errorf("chown: changing ownership of '%s': %w", path, err)
 	}
+	printDiagnostic(path, oldUID, oldGID, uid, gid, f)
 	return nil
 }
 
@@ -384,6 +545,7 @@ func resolveGID(spec ownerSpec, info *sys.FileInfo) int {
 }
 
 // chownFile calls the appropriate chown function based on dereference flags.
+// R2.2: -h uses Lchown; without -h also uses Lchown (default behavior for chown).
 func chownFile(path string, uid, gid int, f chownFlags) error {
 	if f.noDerefer {
 		return os.Lchown(path, uid, gid)
@@ -391,7 +553,49 @@ func chownFile(path string, uid, gid int, f chownFlags) error {
 	return os.Lchown(path, uid, gid)
 }
 
-// reportError prints an error to stderr unless silent mode is active.
+// --- Diagnostic output (R3.1) ---
+
+// resolveUserName looks up the user name for a UID for diagnostic output.
+func resolveUserName(uid int) string {
+	u, err := user.LookupId(strconv.Itoa(uid))
+	if err != nil {
+		return strconv.Itoa(uid)
+	}
+	return u.Username
+}
+
+// resolveGroupName looks up the group name for a GID for diagnostic output.
+func resolveGroupName(gid int) string {
+	g, err := user.LookupGroupId(strconv.Itoa(gid))
+	if err != nil {
+		return strconv.Itoa(gid)
+	}
+	return g.Name
+}
+
+// printDiagnostic prints verbose or changes-only output for a file.
+// R3.1: -v prints for every file, -c prints only when changes are made.
+func printDiagnostic(path string, oldUID, oldGID, newUID, newGID int, f chownFlags) {
+	if !f.verbose && !f.changes {
+		return
+	}
+	changed := oldUID != newUID || oldGID != newGID
+	if f.changes && !changed {
+		return
+	}
+	newOwner := resolveUserName(newUID)
+	newGroup := resolveGroupName(newGID)
+	ownerGroup := newOwner + ":" + newGroup
+	if changed {
+		fmt.Fprintf(os.Stdout,
+			"changed ownership of '%s' to %s\n", path, ownerGroup)
+		return
+	}
+	fmt.Fprintf(os.Stdout,
+		"ownership of '%s' retained as %s\n", path, ownerGroup)
+}
+
+// reportError prints an error to stderr unless silent mode is active (R3.1).
 func reportError(err error, f chownFlags) {
 	if !f.silent {
 		fmt.Fprintln(os.Stderr, err)

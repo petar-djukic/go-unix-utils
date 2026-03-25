@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/chown comparing against gchown (GNU coreutils).
-// Covers prd091-chown R1.1, R1.2, R1.3, R1.4.
+// Covers prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
 package main
 
 import (
@@ -129,6 +129,20 @@ func currentUserInfo(t *testing.T) (string, string, string, string) {
 		t.Skipf("cannot resolve current GID %s: %v", u.Gid, err)
 	}
 	return u.Username, u.Uid, u.Gid, g.Name
+}
+
+// makeTree creates a directory tree for recursive tests.
+// Returns the tree root path inside the given base directory.
+func makeTree(t *testing.T, base string) string {
+	t.Helper()
+	dir := filepath.Join(base, "d")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("makeTree MkdirAll: %v", err)
+	}
+	writeFile(t, filepath.Join(dir, "a.txt"), "a", 0o644)
+	writeFile(t, filepath.Join(sub, "b.txt"), "b", 0o644)
+	return dir
 }
 
 // --- R1.1: OWNER[:GROUP] syntax differential tests ---
@@ -575,4 +589,212 @@ func TestDiffGroupOnlyDifferent(t *testing.T) {
 	refRes := runBin(t, refBin, []string{spec, "f.txt"}, refDir)
 	goRes := runBin(t, goBin, []string{spec, "f.txt"}, goDir)
 	compareResults(t, "group_only_different", refRes, goRes)
+}
+
+// --- R2.1: Recursive ownership change differential tests ---
+
+// TestDiffRecursiveBasic tests -R on a directory tree.
+// R2.1: -R changes ownership recursively for directories and their contents.
+func TestDiffRecursiveBasic(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	makeTree(t, refDir)
+	makeTree(t, goDir)
+
+	refRes := runBin(t, refBin, []string{"-R", spec, "d"}, refDir)
+	goRes := runBin(t, goBin, []string{"-R", spec, "d"}, goDir)
+	compareResults(t, "recursive_basic", refRes, goRes)
+}
+
+// TestDiffRecursiveGroupOnly tests -R with :GROUP form.
+// R2.1: recursive with group-only change.
+func TestDiffRecursiveGroupOnly(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	_, _, _, groupname := currentUserInfo(t)
+	spec := ":" + groupname
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	makeTree(t, refDir)
+	makeTree(t, goDir)
+
+	refRes := runBin(t, refBin, []string{"-R", spec, "d"}, refDir)
+	goRes := runBin(t, goBin, []string{"-R", spec, "d"}, goDir)
+	compareResults(t, "recursive_group_only", refRes, goRes)
+}
+
+// TestDiffRecursiveLongFlag tests --recursive long flag.
+// R2.1: --recursive is equivalent to -R.
+func TestDiffRecursiveLongFlag(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	makeTree(t, refDir)
+	makeTree(t, goDir)
+
+	refRes := runBin(t, refBin, []string{"--recursive", spec, "d"}, refDir)
+	goRes := runBin(t, goBin, []string{"--recursive", spec, "d"}, goDir)
+	compareResults(t, "recursive_long_flag", refRes, goRes)
+}
+
+// TestDiffRecursiveNonexistent tests -R on a nonexistent directory.
+// R2.1/R1.4: error when the target does not exist.
+func TestDiffRecursiveNonexistent(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, _ := currentUserInfo(t)
+	errNorm := stderrNormalizer()
+
+	dir := t.TempDir()
+	refRes := runBin(t, refBin,
+		[]string{"-R", username, "no_such_dir"}, dir)
+	goRes := runBin(t, goBin,
+		[]string{"-R", username, "no_such_dir"}, dir)
+	refRes.stderr = errNorm(refRes.stderr)
+	goRes.stderr = errNorm(goRes.stderr)
+	compareResults(t, "recursive_nonexistent", refRes, goRes)
+}
+
+// --- R2.2: Verbose and changes-only output differential tests ---
+
+// TestDiffVerboseRetained tests -v output when ownership is retained.
+// R3.1: -v prints diagnostic for every file, including retained.
+func TestDiffVerboseRetained(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "f.txt"), "data", 0o644)
+	writeFile(t, filepath.Join(goDir, "f.txt"), "data", 0o644)
+
+	refRes := runBin(t, refBin, []string{"-v", spec, "f.txt"}, refDir)
+	goRes := runBin(t, goBin, []string{"-v", spec, "f.txt"}, goDir)
+	compareResults(t, "verbose_retained", refRes, goRes)
+}
+
+// TestDiffChangesNoChange tests -c output when no change is made.
+// R3.1: -c suppresses output when no change occurs.
+func TestDiffChangesNoChange(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "f.txt"), "data", 0o644)
+	writeFile(t, filepath.Join(goDir, "f.txt"), "data", 0o644)
+
+	refRes := runBin(t, refBin, []string{"-c", spec, "f.txt"}, refDir)
+	goRes := runBin(t, goBin, []string{"-c", spec, "f.txt"}, goDir)
+	compareResults(t, "changes_no_change", refRes, goRes)
+}
+
+// TestDiffVerboseRecursive tests -Rv on a directory tree.
+// R3.1/R2.1: verbose with recursive.
+func TestDiffVerboseRecursive(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	makeTree(t, refDir)
+	makeTree(t, goDir)
+
+	refRes := runBin(t, refBin, []string{"-Rv", spec, "d"}, refDir)
+	goRes := runBin(t, goBin, []string{"-Rv", spec, "d"}, goDir)
+	compareResults(t, "verbose_recursive", refRes, goRes)
+}
+
+// --- R2.3: Dereference control differential tests ---
+
+// TestDiffNoDereference tests -h flag on a symlink.
+// R2.2: -h changes the symlink itself.
+func TestDiffNoDereference(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	writeFile(t, filepath.Join(refDir, "target.txt"), "data", 0o644)
+	writeFile(t, filepath.Join(goDir, "target.txt"), "data", 0o644)
+	os.Symlink("target.txt", filepath.Join(refDir, "link.txt"))
+	os.Symlink("target.txt", filepath.Join(goDir, "link.txt"))
+
+	refRes := runBin(t, refBin,
+		[]string{"-h", spec, "link.txt"}, refDir)
+	goRes := runBin(t, goBin,
+		[]string{"-h", spec, "link.txt"}, goDir)
+	compareResults(t, "no_dereference", refRes, goRes)
+}
+
+// TestDiffRecursiveP tests -R -P (default: don't follow symlinks).
+// R2.3: -P never follows symlinks during recursion.
+func TestDiffRecursiveP(t *testing.T) {
+	goBin, refBin := lookupBinaries(t)
+	username, _, _, groupname := currentUserInfo(t)
+	spec := fmt.Sprintf("%s:%s", username, groupname)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	// Create tree with symlink inside.
+	for _, base := range []string{refDir, goDir} {
+		d := filepath.Join(base, "d")
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(d, "a.txt"), "a", 0o644)
+		os.Symlink("a.txt", filepath.Join(d, "link.txt"))
+	}
+
+	refRes := runBin(t, refBin,
+		[]string{"-R", "-P", spec, "d"}, refDir)
+	goRes := runBin(t, goBin,
+		[]string{"-R", "-P", spec, "d"}, goDir)
+	compareResults(t, "recursive_P", refRes, goRes)
+}
+
+// --- R3.1: --version and --help differential tests ---
+
+// TestDiffVersion tests --version output.
+// R3.1: --version outputs version information.
+func TestDiffVersion(t *testing.T) {
+	goBin, _ := lookupBinaries(t)
+
+	res := runBin(t, goBin, []string{"--version"}, t.TempDir())
+	if res.exitCode != 0 {
+		t.Errorf("--version exit code: got %d, want 0", res.exitCode)
+	}
+	if len(res.stdout) == 0 {
+		t.Error("--version produced no output")
+	}
+}
+
+// TestDiffHelp tests --help output.
+// R3.1: --help displays usage information.
+func TestDiffHelp(t *testing.T) {
+	goBin, _ := lookupBinaries(t)
+
+	res := runBin(t, goBin, []string{"--help"}, t.TempDir())
+	if res.exitCode != 0 {
+		t.Errorf("--help exit code: got %d, want 0", res.exitCode)
+	}
+	if len(res.stdout) == 0 {
+		t.Error("--help produced no output")
+	}
+	if !bytes.Contains(res.stdout, []byte("Usage:")) {
+		t.Error("--help output missing 'Usage:'")
+	}
+	if !bytes.Contains(res.stdout, []byte("--recursive")) {
+		t.Error("--help output missing '--recursive'")
+	}
 }
