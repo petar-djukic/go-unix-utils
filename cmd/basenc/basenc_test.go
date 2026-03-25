@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/basenc against gbasenc (Homebrew coreutils).
-// Covers prd081-basenc R1.1–R1.4, R2.1–R2.2.
+// Covers prd081-basenc R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 package main
 
 import (
@@ -19,9 +19,14 @@ import (
 // so that "gbasenc" and "basenc" compare equal.
 var stderrProgramName = regexp.MustCompile(`gbasenc|basenc`)
 
+// stderrTryPath normalizes "Try '/path/to/basenc --help'" messages by
+// stripping directory prefixes from the binary path.
+var stderrTryPath = regexp.MustCompile(`Try '([^']*/)?(g?basenc)`)
+
 // normalizeStderr replaces program names in error messages so that the
 // Go and reference binaries' stderr output can be compared.
 func normalizeStderr(b []byte) []byte {
+	b = stderrTryPath.ReplaceAll(b, []byte("Try 'BASENC"))
 	return stderrProgramName.ReplaceAll(b, []byte("BASENC"))
 }
 
@@ -187,6 +192,64 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "missing_file",
 			Args:      []string{"--base64", "/nonexistent/path/to/file"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R2.3 / R3.1: --ignore-garbage across multiple encodings
+		{
+			Name:  "base32_ignore_garbage",
+			Args:  []string{"--base32", "-di"},
+			Stdin: []byte("NBSWY3DP\n!!!junk!!!\n"),
+		},
+		{
+			Name:  "base32hex_ignore_garbage",
+			Args:  []string{"--base32hex", "-di"},
+			Stdin: []byte("D1IMOR3F\n###\n"),
+		},
+		{
+			Name:  "base16_ignore_garbage",
+			Args:  []string{"--base16", "-di"},
+			Stdin: []byte("68656C6C6F\n~~!@#$%%^&*~~\n"),
+		},
+		{
+			Name:  "base64url_ignore_garbage",
+			Args:  []string{"--base64url", "-d", "--ignore-garbage"},
+			Stdin: []byte("aGVsbG8K\n###\n"),
+		},
+		// R2.4 / R3.3: decode errors without --ignore-garbage
+		{
+			Name:      "base32_decode_invalid",
+			Args:      []string{"--base32", "-d"},
+			Stdin:     []byte("!!!invalid!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		{
+			Name:      "base16_decode_invalid",
+			Args:      []string{"--base16", "-d"},
+			Stdin:     []byte("ZZZZ\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		{
+			Name:      "base64url_decode_invalid",
+			Args:      []string{"--base64url", "-d"},
+			Stdin:     []byte("!!!invalid!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		{
+			Name:      "z85_decode_invalid",
+			Args:      []string{"--z85", "-d"},
+			Stdin:     []byte("!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.3: missing encoding exits 1
+		{
+			Name:      "no_encoding_flag",
+			Args:      []string{},
+			Stdin:     []byte("hello"),
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},

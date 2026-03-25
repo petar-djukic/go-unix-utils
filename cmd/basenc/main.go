@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd081-basenc R1.1–R1.4, R2.1–R2.2: multi-encoding utility
-// supporting Base64, Base64URL, Base32, Base32hex, Base16, and Z85 encoding
-// schemes with configurable line wrapping, decode mode, ignore-garbage support,
-// --version, --help, and diagnostic messages using pkg/encutil and pkg/sys.
+// Implements prd081-basenc R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: multi-encoding
+// utility supporting Base64, Base64URL, Base32, Base32hex, Base16, and Z85
+// encoding schemes with configurable line wrapping, decode mode,
+// ignore-garbage support, --version, --help, and diagnostic messages using
+// pkg/encutil and pkg/sys.
 //
 // TODO: prd081-basenc non_goals: base2msbf and base2lsbf (Base2 binary encoding)
 // are explicitly listed as non_goals. Task R2 references them but they are not
