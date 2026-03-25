@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -26,16 +27,27 @@ const (
 func main() {
 	sys.InstallSIGPIPEHandler()
 	opts, newroot, cmd, args := parseArgs(os.Args[1:])
-	if err := applyUserSpec(opts); err != nil {
+	creds, err := resolveCredentials(opts)
+	if err != nil {
 		exitWithError(err.Error())
 	}
-	runChroot(newroot, cmd, args)
+	runChroot(newroot, cmd, args, creds)
 }
 
 // options holds parsed --userspec and --groups values.
 type options struct {
 	userspec string
 	groups   string
+}
+
+// credentials holds resolved numeric IDs for user/group switching.
+// Resolution happens before chroot; application happens after.
+type credentials struct {
+	hasUser  bool
+	uid      int
+	hasGroup bool
+	gid      int
+	suppGids []int
 }
 
 // parseArgs extracts options, NEWROOT, COMMAND, and ARGs from arguments.
@@ -102,10 +114,67 @@ func defaultCommand(args []string) (string, []string) {
 	return shell, []string{"-i"}
 }
 
-// runChroot performs the chroot, chdir, and exec sequence.
+// resolveCredentials resolves --userspec and --groups to numeric IDs.
+// R1.2, R1.3: resolution uses the host filesystem before chroot.
+func resolveCredentials(opts options) (credentials, error) {
+	var creds credentials
+	if opts.groups != "" {
+		gids, err := resolveGroupList(opts.groups)
+		if err != nil {
+			return creds, err
+		}
+		creds.suppGids = gids
+	}
+	if opts.userspec != "" {
+		return resolveUserSpec(creds, opts.userspec)
+	}
+	return creds, nil
+}
+
+// resolveUserSpec parses USER[:GROUP] and resolves to numeric IDs.
+// R1.2: USER and GROUP may be names or numeric IDs.
+func resolveUserSpec(creds credentials, spec string) (credentials, error) {
+	parts := strings.SplitN(spec, ":", 2)
+	uid, err := resolveUser(parts[0])
+	if err != nil {
+		return creds, fmt.Errorf("invalid user '%s': %w", parts[0], err)
+	}
+	creds.hasUser = true
+	creds.uid = uid
+	if len(parts) == 2 && parts[1] != "" {
+		gid, err := resolveGroup(parts[1])
+		if err != nil {
+			return creds, fmt.Errorf("invalid group '%s': %w", parts[1], err)
+		}
+		creds.hasGroup = true
+		creds.gid = gid
+	}
+	return creds, nil
+}
+
+// resolveGroupList parses a comma-separated group list to numeric GIDs.
+// R1.3: G_LIST is comma-separated group names or GIDs.
+func resolveGroupList(glist string) ([]int, error) {
+	parts := strings.Split(glist, ",")
+	gids := make([]int, 0, len(parts))
+	for _, g := range parts {
+		g = strings.TrimSpace(g)
+		if g == "" {
+			continue
+		}
+		gid, err := resolveGroup(g)
+		if err != nil {
+			return nil, fmt.Errorf("invalid group '%s': %w", g, err)
+		}
+		gids = append(gids, gid)
+	}
+	return gids, nil
+}
+
+// runChroot performs the chroot, chdir, credential switch, and exec sequence.
 // R1.1: chroot(2) then chdir("/") then exec COMMAND.
-// R2.2: exit 125 on chroot/chdir failure.
-func runChroot(newroot, cmd string, args []string) {
+// R2.2: exit 125 on chroot/chdir/credential failure.
+func runChroot(newroot, cmd string, args []string, creds credentials) {
 	if err := syscall.Chroot(newroot); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: cannot change root directory to '%s': %s\n",
 			progName, newroot, err)
@@ -115,7 +184,32 @@ func runChroot(newroot, cmd string, args []string) {
 		fmt.Fprintf(os.Stderr, "%s: cannot chdir to '/': %s\n", progName, err)
 		os.Exit(exitInternal)
 	}
+	if err := applyCredentials(creds); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		os.Exit(exitInternal)
+	}
 	execCommand(cmd, args)
+}
+
+// applyCredentials sets supplementary groups, GID, and UID after chroot.
+// R1.2, R1.3: credentials applied after chroot but before exec.
+func applyCredentials(creds credentials) error {
+	if creds.suppGids != nil {
+		if err := syscall.Setgroups(creds.suppGids); err != nil {
+			return fmt.Errorf("cannot set supplementary groups: %w", err)
+		}
+	}
+	if creds.hasGroup {
+		if err := syscall.Setgid(creds.gid); err != nil {
+			return fmt.Errorf("cannot set gid to %d: %w", creds.gid, err)
+		}
+	}
+	if creds.hasUser {
+		if err := syscall.Setuid(creds.uid); err != nil {
+			return fmt.Errorf("cannot set uid to %d: %w", creds.uid, err)
+		}
+	}
+	return nil
 }
 
 // execCommand replaces the process with the given command.
@@ -127,25 +221,40 @@ func execCommand(cmd string, args []string) {
 	err := syscall.Exec(path, argv, os.Environ())
 	// syscall.Exec only returns on error.
 	fmt.Fprintf(os.Stderr, "%s: failed to run command '%s': %s\n", progName, cmd, err)
+	if errors.Is(err, syscall.ENOENT) {
+		os.Exit(exitNotFound)
+	}
 	os.Exit(exitNoExec)
 }
 
 // resolveCommand finds the full path for a command.
-// R2.2: exits 127 if not found, or returns the path.
+// R2.2: exits 127 if not found, 126 if not executable.
 func resolveCommand(cmd string) string {
 	if strings.Contains(cmd, "/") {
-		if _, err := os.Stat(cmd); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: '%s': %s\n", progName, cmd, err)
-			os.Exit(exitNotFound)
-		}
-		return cmd
+		return resolvePathCommand(cmd)
 	}
 	path, err := lookPath(cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: '%s': %s\n", progName, cmd, err)
+		fmt.Fprintf(os.Stderr, "%s: failed to run command '%s': %s\n", progName, cmd, err)
 		os.Exit(exitNotFound)
 	}
 	return path
+}
+
+// resolvePathCommand handles commands containing a slash.
+// R2.2: exits 127 if not found, 126 if found but not executable.
+func resolvePathCommand(cmd string) string {
+	info, err := os.Stat(cmd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: failed to run command '%s': %s\n", progName, cmd, err)
+		os.Exit(exitNotFound)
+	}
+	if info.IsDir() || info.Mode()&0o111 == 0 {
+		fmt.Fprintf(os.Stderr, "%s: failed to run command '%s': Permission denied\n",
+			progName, cmd)
+		os.Exit(exitNoExec)
+	}
+	return cmd
 }
 
 // lookPath searches PATH for the named executable.
@@ -167,68 +276,7 @@ func lookPath(cmd string) (string, error) {
 	return "", fmt.Errorf("no such file or directory")
 }
 
-// applyUserSpec processes --userspec and --groups before exec.
-// R1.2: set UID and GID from --userspec=USER:GROUP.
-// R1.3: set supplementary groups from --groups=G_LIST.
-func applyUserSpec(opts options) error {
-	if opts.groups != "" {
-		if err := setSupplementaryGroups(opts.groups); err != nil {
-			return err
-		}
-	}
-	if opts.userspec != "" {
-		return applyUserGroup(opts.userspec)
-	}
-	return nil
-}
-
-// applyUserGroup parses USER[:GROUP] and sets GID then UID.
-// R1.2: USER and GROUP may be names or numeric IDs.
-func applyUserGroup(spec string) error {
-	parts := strings.SplitN(spec, ":", 2)
-	uid, err := resolveUser(parts[0])
-	if err != nil {
-		return fmt.Errorf("invalid user '%s': %w", parts[0], err)
-	}
-	if len(parts) == 2 && parts[1] != "" {
-		gid, err := resolveGroup(parts[1])
-		if err != nil {
-			return fmt.Errorf("invalid group '%s': %w", parts[1], err)
-		}
-		if err := syscall.Setgid(gid); err != nil {
-			return fmt.Errorf("cannot set gid to %d: %w", gid, err)
-		}
-	}
-	if err := syscall.Setuid(uid); err != nil {
-		return fmt.Errorf("cannot set uid to %d: %w", uid, err)
-	}
-	return nil
-}
-
-// setSupplementaryGroups parses a comma-separated group list and calls Setgroups.
-// R1.3: G_LIST is comma-separated group names or GIDs.
-func setSupplementaryGroups(glist string) error {
-	parts := strings.Split(glist, ",")
-	gids := make([]int, 0, len(parts))
-	for _, g := range parts {
-		g = strings.TrimSpace(g)
-		if g == "" {
-			continue
-		}
-		gid, err := resolveGroup(g)
-		if err != nil {
-			return fmt.Errorf("invalid group '%s': %w", g, err)
-		}
-		gids = append(gids, gid)
-	}
-	if err := syscall.Setgroups(gids); err != nil {
-		return fmt.Errorf("cannot set supplementary groups: %w", err)
-	}
-	return nil
-}
-
 // resolveUser looks up a user by name or numeric UID.
-// D2: try name first, fall back to numeric parsing.
 func resolveUser(name string) (int, error) {
 	u, err := user.Lookup(name)
 	if err == nil {
@@ -242,7 +290,6 @@ func resolveUser(name string) (int, error) {
 }
 
 // resolveGroup looks up a group by name or numeric GID.
-// D2: try name first, fall back to numeric parsing.
 func resolveGroup(name string) (int, error) {
 	g, err := user.LookupGroup(name)
 	if err == nil {
