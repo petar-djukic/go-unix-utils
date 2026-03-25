@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/timeout implements GNU timeout: run a command with a time limit.
-// Implements prd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2.
+// Implements prd063-timeout R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
@@ -184,6 +185,8 @@ func isDurationZero(s string) bool {
 
 // runTimeout executes the command with the configured timeout.
 // R1.1: launch command, start timer, send signal on expiry.
+// R3.1: create a new process group unless --foreground is set.
+// R3.2: forward signals to the child process or process group.
 func runTimeout(cfg *config) int {
 	cmd := exec.Command(cfg.command, cfg.args...)
 	cmd.Stdin = os.Stdin
@@ -195,13 +198,35 @@ func runTimeout(cfg *config) int {
 	if err := cmd.Start(); err != nil {
 		return handleStartError(err)
 	}
+	setupSignalForwarding(cmd, cfg.foreground)
 	if cfg.zeroDuration {
 		return waitForExit(cmd)
 	}
 	return waitWithTimeout(cmd, cfg)
 }
 
+// setupSignalForwarding registers to receive common signals and forwards
+// them to the child process or process group.
+// R3.2: signals received by timeout are forwarded to the child.
+func setupSignalForwarding(cmd *exec.Cmd, foreground bool) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh,
+		syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT,
+		syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
+	go forwardSignals(sigCh, cmd, foreground)
+}
+
+// forwardSignals reads signals from the channel and sends them to the child.
+func forwardSignals(sigCh <-chan os.Signal, cmd *exec.Cmd, foreground bool) {
+	for sig := range sigCh {
+		if s, ok := sig.(syscall.Signal); ok {
+			sendSignal(cmd, s, foreground)
+		}
+	}
+}
+
 // handleStartError returns the appropriate exit code for a launch failure.
+// R3.4: command not found exits 127, other exec failures exit 126.
 func handleStartError(err error) int {
 	fmt.Fprintf(os.Stderr, "%s: failed to run command: %s\n", progName, err)
 	if isCommandNotFound(err) {
@@ -218,6 +243,7 @@ func isCommandNotFound(err error) bool {
 
 // waitForExit waits for the command to complete with no timeout.
 // R1.4: duration 0 means no time limit.
+// R3.1: exit with the command's exit status.
 func waitForExit(cmd *exec.Cmd) int {
 	if err := cmd.Wait(); err != nil {
 		return exitCodeFromError(err)
@@ -246,12 +272,14 @@ func waitWithTimeout(cmd *exec.Cmd, cfg *config) int {
 }
 
 // handleExpiry sends the configured signal and waits for exit.
-// R1.1: send signal on timeout. R2.2: optionally escalate to SIGKILL.
+// R1.1: send signal on timeout.
+// R2.2: optionally escalate to SIGKILL.
+// R2.4: use preserve-status exit code when configured.
 func handleExpiry(cmd *exec.Cmd, cfg *config, done <-chan error) int {
 	sendSignal(cmd, cfg.signal, cfg.foreground)
 	if !cfg.hasKillAfter {
-		<-done
-		return exitTimeout
+		err := <-done
+		return timeoutExitCode(cfg, err)
 	}
 	return waitForKillAfter(cmd, cfg, done)
 }
@@ -263,16 +291,31 @@ func waitForKillAfter(cmd *exec.Cmd, cfg *config, done <-chan error) int {
 	defer killTimer.Stop()
 
 	select {
-	case <-done:
-		return exitTimeout
+	case err := <-done:
+		return timeoutExitCode(cfg, err)
 	case <-killTimer.C:
 		sendSignal(cmd, syscall.SIGKILL, cfg.foreground)
-		<-done
-		return exitTimeout
+		err := <-done
+		return timeoutExitCode(cfg, err)
 	}
 }
 
+// timeoutExitCode returns the appropriate exit code after a timeout.
+// R2.4: --preserve-status returns the command's actual exit status
+// instead of the timeout-specific exit code 124.
+func timeoutExitCode(cfg *config, err error) int {
+	if cfg.preserveStatus {
+		if err == nil {
+			return 0
+		}
+		return exitCodeFromError(err)
+	}
+	return exitTimeout
+}
+
 // sendSignal sends a signal to the command's process or process group.
+// R2.3: when --foreground is set, signal only the child PID.
+// R3.1: otherwise, signal the entire process group.
 func sendSignal(cmd *exec.Cmd, sig syscall.Signal, foreground bool) {
 	if cmd.Process == nil {
 		return
@@ -286,6 +329,7 @@ func sendSignal(cmd *exec.Cmd, sig syscall.Signal, foreground bool) {
 }
 
 // exitCodeFromError extracts the exit code from a command execution error.
+// R3.3: if the command was killed by a signal, return 128+signum.
 func exitCodeFromError(err error) int {
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok {
