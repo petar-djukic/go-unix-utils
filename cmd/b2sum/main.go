@@ -1,15 +1,18 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd076-b2sum R1.1-R1.4, R2.1-R2.2: Compute and check BLAKE2b
-// message digests using pkg/hashutil for shared formatting and verification.
-// Supports --length for variable digest sizes, --tag for BSD-style output,
-// and --check with --warn, --quiet, --status options.
+// Implements prd076-b2sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.3: Compute and check
+// BLAKE2b message digests using pkg/hashutil for shared formatting and
+// verification. Supports --length for variable digest sizes, --tag for
+// BSD-style output, --check with --warn, --quiet, --status, --strict options,
+// and --version/--help output.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"hash"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -92,30 +95,46 @@ func run(opts b2sumOptions, files []string) int {
 
 // runCheck verifies checksums from the given files.
 // R2.1-R2.2: reads checksum file, prints OK/FAILED per entry.
+// R2.3: --strict exits non-zero when improperly formatted lines exist.
 func runCheck(opts b2sumOptions, files []string, cfg hashutil.HashConfig) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	checkOpts := buildCheckOptions(opts)
+	interceptor := &malformedInterceptor{w: os.Stderr}
 	exitCode := 0
 	for _, f := range files {
-		if !verifyOneFile(f, cfg, checkOpts) {
+		ok, err := hashutil.VerifyChecksums(
+			f, cfg, checkOpts, os.Stdout, interceptor,
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "b2sum: %v\n", err)
+			exitCode = 1
+		} else if !ok {
 			exitCode = 1
 		}
+	}
+	// R2.3: --strict exits non-zero when improperly formatted lines exist.
+	if opts.strict && interceptor.detected {
+		exitCode = 1
 	}
 	return exitCode
 }
 
-// verifyOneFile verifies checksums from a single file and returns true if all pass.
-func verifyOneFile(f string, cfg hashutil.HashConfig, opts hashutil.CheckOptions) bool {
-	ok, err := hashutil.VerifyChecksums(
-		f, cfg, opts, os.Stdout, os.Stderr,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "b2sum: %v\n", err)
-		return false
+// malformedInterceptor wraps an io.Writer and detects "improperly formatted"
+// warnings for --strict mode support.
+// R2.3: enables exit non-zero when improperly formatted lines exist.
+type malformedInterceptor struct {
+	w        io.Writer
+	detected bool
+}
+
+// Write passes through to the underlying writer and detects malformed warnings.
+func (m *malformedInterceptor) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("improperly formatted")) {
+		m.detected = true
 	}
-	return ok
+	return m.w.Write(p)
 }
 
 // buildCheckOptions constructs CheckOptions from b2sumOptions.
