@@ -3,11 +3,17 @@
 
 // Implements prd072-od: Octal and Other Format Dump.
 // Covers R1.1-R1.4 (default behavior and type specifiers),
-// R2.1-R2.2 (address format and byte range).
+// R2.1-R2.4 (address format and byte range),
+// R3.1-R3.4 (output width, traditional options, duplicate suppression).
+//
+// TODO: R3.3 (-S/--strings) is a PRD non_goal; not implemented.
+// TODO: R3.4 (--endian) is a PRD non_goal; not implemented.
+// TODO: --traditional syntax is not specified in prd072-od; not implemented.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -444,16 +450,33 @@ func signExtend(val uint64, size int) int64 {
 // dumpData reads input and writes formatted output.
 // R1.3: multiple type specs produce multiple lines per block.
 // R2.4: final address line after all data.
+// R3.3: duplicate lines suppressed with '*' by default.
+// R3.4: -v disables duplicate suppression.
 func dumpData(r io.Reader, opts odOptions, w *bufio.Writer) {
 	buf := make([]byte, opts.width)
+	prev := make([]byte, opts.width)
 	offset := opts.skipBytes
 	var bytesRead int64
+	var prevN int
+	first := true
+	suppressing := false
 	for {
 		n, readErr := readBlock(r, buf, opts.readBytes, bytesRead)
 		if n == 0 {
 			break
 		}
-		writeBlock(w, buf[:n], offset, opts)
+		if isDuplicate(buf[:n], prev[:prevN], first, opts.showDupes) {
+			if !suppressing {
+				fmt.Fprintln(w, "*")
+				suppressing = true
+			}
+		} else {
+			writeBlock(w, buf[:n], offset, opts)
+			copy(prev[:n], buf[:n])
+			prevN = n
+			suppressing = false
+		}
+		first = false
 		offset += int64(n)
 		bytesRead += int64(n)
 		if readErr != nil {
@@ -461,6 +484,15 @@ func dumpData(r io.Reader, opts odOptions, w *bufio.Writer) {
 		}
 	}
 	writeEndAddress(w, offset, opts.addrRadix)
+}
+
+// isDuplicate returns true when a block matches the previous and
+// duplicate suppression is active (showDupes is false).
+func isDuplicate(cur, prev []byte, first, showDupes bool) bool {
+	if first || showDupes {
+		return false
+	}
+	return len(cur) == len(prev) && bytes.Equal(cur, prev)
 }
 
 // readBlock reads up to len(buf) bytes, respecting readBytes limit.
