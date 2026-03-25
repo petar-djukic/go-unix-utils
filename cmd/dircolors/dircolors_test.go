@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/dircolors against GNU gdircolors.
 // Covers prd109-dircolors R1.1 (Bourne shell output), R1.2 (C shell output),
-// R1.3 (shell auto-detection), R1.4 (mutually exclusive -b/-c flags).
+// R1.3 (shell auto-detection), R1.4 (mutually exclusive -b/-c flags),
+// R2.1-R2.4 (shell output modes and -p/--print-database).
 package main
 
 import (
@@ -21,7 +22,7 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary gdircolors not in PATH")
 	}
 	tests := []testutils.DiffTest{
-		// R1.1: Bourne shell output format
+		// R2.1: Bourne shell output format (-b/--sh/--bourne-shell)
 		{
 			Name: "sh-flag",
 			Args: []string{"--sh"},
@@ -37,7 +38,7 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--bourne-shell"},
 			Env:  []string{"TERM=xterm-256color"},
 		},
-		// R1.2: C shell output format
+		// R2.2: C shell output format (-c/--csh/--c-shell)
 		{
 			Name: "csh-flag",
 			Args: []string{"--csh"},
@@ -53,7 +54,7 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--c-shell"},
 			Env:  []string{"TERM=xterm-256color"},
 		},
-		// R1.3: Auto-detect shell from SHELL env
+		// R2.3: Auto-detect shell from SHELL env
 		{
 			Name: "auto-detect-bash",
 			Args: []string{},
@@ -84,6 +85,15 @@ func TestDiff(t *testing.T) {
 			Name: "last-wins-c-then-b",
 			Args: []string{"-c", "-b"},
 			Env:  []string{"TERM=xterm-256color"},
+		},
+		// R2.4: -p/--print-database prints human-readable database
+		{
+			Name: "print-database-short",
+			Args: []string{"-p"},
+		},
+		{
+			Name: "print-database-long",
+			Args: []string{"--print-database"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
