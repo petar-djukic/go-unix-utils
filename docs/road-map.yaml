@@ -476,7 +476,7 @@ releases:
           status: implemented
     - version: "11.0"
       name: "Batch 11.0 — special files and process control (mkfifo, mknod, nice, nohup)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement four special file and process control utilities. mkfifo creates named

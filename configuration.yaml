@@ -16,7 +16,6 @@ project:
         docs/prompts/
         cmd/
     releases:
-        - "11.0"
         - "11.1"
         - "12.0"
         - "12.1"
