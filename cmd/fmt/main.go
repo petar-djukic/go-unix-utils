@@ -5,15 +5,14 @@
 // Covers R1.1-R1.4 (entry point, paragraph detection, indentation, file input),
 // R2.1 (-w width), R2.2 (-g goal), R2.3 (word boundary breaking),
 // R2.4 (sentence-ending double space), R3.1 (-s split-only),
-// R3.2 (-u uniform-spacing).
+// R3.2 (-u uniform-spacing), R4.1 (-p prefix), R4.2 (-t tagged-paragraph).
 //
-// TODO: prd070-fmt R4.1 (-p prefix), R4.2 (-t tagged-paragraph)
-// are not implemented in this task.
 // TODO: -c/--crown-margin is listed in prd070-fmt non_goals; skipped per article E6.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -31,10 +30,12 @@ const (
 
 // fmtConfig holds parsed command-line options.
 type fmtConfig struct {
-	width   int  // R2.1: maximum line width
-	goal    int  // R2.2: goal line width
-	split   bool // R3.1: split long lines only
-	uniform bool // R3.2: uniform spacing
+	width   int    // R2.1: maximum line width
+	goal    int    // R2.2: goal line width
+	split   bool   // R3.1: split long lines only
+	uniform bool   // R3.2: uniform spacing
+	prefix  string // R4.1: prefix mode
+	tagged  bool   // R4.2: tagged paragraph mode
 }
 
 func main() {
@@ -97,6 +98,10 @@ func parseFmtFlag(arg string, args []string, i int, cfg *fmtConfig) (int, bool, 
 		// R3.2: uniform spacing mode.
 		cfg.uniform = true
 		return 1, false, nil
+	case arg == "-t" || arg == "--tagged-paragraph":
+		// R4.2: tagged paragraph mode.
+		cfg.tagged = true
+		return 1, false, nil
 	case strings.HasPrefix(arg, "-w"):
 		return parseShortWidth(arg, args, i, cfg)
 	case strings.HasPrefix(arg, "--width"):
@@ -105,6 +110,10 @@ func parseFmtFlag(arg string, args []string, i int, cfg *fmtConfig) (int, bool, 
 		return parseShortGoal(arg, args, i, cfg)
 	case strings.HasPrefix(arg, "--goal"):
 		return parseLongGoal(arg, args, i, cfg)
+	case strings.HasPrefix(arg, "-p"):
+		return parseShortPrefix(arg, args, i, cfg)
+	case strings.HasPrefix(arg, "--prefix"):
+		return parseLongPrefix(arg, args, i, cfg)
 	default:
 		return 0, false, fmt.Errorf("invalid option -- '%s'", arg)
 	}
@@ -148,6 +157,37 @@ func parseLongGoal(arg string, args []string, i int, cfg *fmtConfig) (int, bool,
 	}
 	cfg.goal = v
 	return consumed, true, nil
+}
+
+// parseShortPrefix handles -pPREFIX or -p PREFIX.
+// R4.1: prefix mode flag.
+func parseShortPrefix(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
+	if len(arg) > 2 {
+		cfg.prefix = arg[2:]
+		return 1, false, nil
+	}
+	if i+1 >= len(args) {
+		return 0, false, fmt.Errorf("option requires an argument -- 'p'")
+	}
+	cfg.prefix = args[i+1]
+	return 2, false, nil
+}
+
+// parseLongPrefix handles --prefix=PREFIX or --prefix PREFIX.
+// R4.1: prefix mode flag (long form).
+func parseLongPrefix(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
+	if strings.HasPrefix(arg, "--prefix=") {
+		cfg.prefix = arg[len("--prefix="):]
+		return 1, false, nil
+	}
+	if arg != "--prefix" {
+		return 0, false, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	if i+1 >= len(args) {
+		return 0, false, fmt.Errorf("option '--prefix' requires an argument")
+	}
+	cfg.prefix = args[i+1]
+	return 2, false, nil
 }
 
 // shortNumeric parses a short flag value: -fVAL or -f VAL.
@@ -259,11 +299,99 @@ func unwrapOSError(err error) string {
 
 // formatInput dispatches to the appropriate formatting mode.
 func formatInput(r io.Reader, bw *bufio.Writer, cfg fmtConfig) error {
+	if cfg.prefix != "" {
+		return formatWithPrefix(r, bw, cfg)
+	}
 	if cfg.split {
 		return formatSplitOnly(r, bw, cfg)
 	}
 	return formatParagraphs(r, bw, cfg)
 }
+
+// --- Prefix mode (R4.1) ---
+
+// formatWithPrefix processes input in prefix mode.
+// R4.1: only reformats lines beginning with the prefix.
+func formatWithPrefix(r io.Reader, bw *bufio.Writer, cfg fmtConfig) error {
+	scanner := bufio.NewScanner(r)
+	var group []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimLeft(line, " \t")
+		if !strings.HasPrefix(trimmed, cfg.prefix) {
+			if err := flushPfxGroup(group, bw, cfg); err != nil {
+				return err
+			}
+			group = nil
+			if err := writeLine(bw, line); err != nil {
+				return err
+			}
+			continue
+		}
+		group = append(group, line)
+	}
+	if err := flushPfxGroup(group, bw, cfg); err != nil {
+		return err
+	}
+	return scanner.Err()
+}
+
+// flushPfxGroup formats and outputs a group of prefixed lines.
+// R4.1: strips prefix before formatting and re-adds it afterward.
+func flushPfxGroup(lines []string, bw *bufio.Writer, cfg fmtConfig) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	pfx := extractPfx(lines[0], cfg.prefix)
+	stripped := make([]string, len(lines))
+	for i, l := range lines {
+		if idx := strings.Index(l, cfg.prefix); idx >= 0 {
+			stripped[i] = l[idx+len(cfg.prefix):]
+		}
+	}
+	formatted := formatStripped(stripped, cfg, len(pfx))
+	for _, out := range strings.Split(strings.TrimRight(formatted, "\n"), "\n") {
+		if _, err := fmt.Fprintf(bw, "%s%s\n", pfx, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// formatStripped formats stripped prefix lines to a string.
+func formatStripped(lines []string, cfg fmtConfig, pfxLen int) string {
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	pcfg := cfg
+	pcfg.prefix = ""
+	pcfg.width -= pfxLen
+	if pcfg.width < 1 {
+		pcfg.width = 1
+	}
+	pcfg.goal = pcfg.width * goalPercent / 100
+	if pcfg.goal > pcfg.width {
+		pcfg.goal = pcfg.width
+	}
+	input := strings.NewReader(strings.Join(lines, "\n") + "\n")
+	if pcfg.split {
+		_ = formatSplitOnly(input, bw, pcfg) // best-effort
+	} else {
+		_ = formatParagraphs(input, bw, pcfg) // best-effort
+	}
+	_ = bw.Flush() // best-effort flush to buffer
+	return buf.String()
+}
+
+// extractPfx returns the leading whitespace + prefix from a line.
+func extractPfx(line, prefix string) string {
+	idx := strings.Index(line, prefix)
+	if idx < 0 {
+		return prefix
+	}
+	return line[:idx+len(prefix)]
+}
+
+// --- Split-only mode (R3.1) ---
 
 // formatSplitOnly processes input in split-only mode.
 // R3.1: splits long lines without joining short ones.
@@ -291,6 +419,8 @@ func splitLine(line string, bw *bufio.Writer, cfg fmtConfig) error {
 	}
 	return fillWords(words, indent, indent, bw, cfg)
 }
+
+// --- Paragraph formatting ---
 
 // formatParagraphs reads input, detects paragraphs, and formats each.
 // R1.2: blank lines delimit paragraphs.
@@ -341,8 +471,6 @@ func flushParagraph(lines []string, bw *bufio.Writer, cfg fmtConfig) error {
 	}
 	return writeFormatted(lines, bw, cfg)
 }
-
-// --- Paragraph formatting ---
 
 // writeFormatted fills a paragraph's words to the goal/width.
 // R1.3: preserves first-line and body indentation.
