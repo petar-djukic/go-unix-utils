@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/df.
-// Implements prd106-df R3.1–R3.4 test coverage.
+// Implements prd106-df R3.1–R3.7 test coverage.
 
 package main
 
@@ -83,6 +83,39 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "all_and_local_with_root",
 			Args:      []string{"-a", "-l", "/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		// R3.5: -t TYPE includes only matching filesystem types.
+		{
+			Name:      "type_filter_apfs_with_root",
+			Args:      []string{"-t", "apfs", "/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		{
+			Name:      "type_filter_long_flag_with_root",
+			Args:      []string{"--type=apfs", "/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		// R3.6: -x TYPE excludes matching filesystem types.
+		{
+			Name:      "exclude_type_devfs_with_root",
+			Args:      []string{"-x", "devfs", "/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		{
+			Name:      "exclude_type_long_flag_with_root",
+			Args:      []string{"--exclude-type=devfs", "/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		// R3.7: --output column selection.
+		{
+			Name:      "output_source_size_target",
+			Args:      []string{"--output=source,size,used,avail,pcent,target", "/"},
+			Normalize: []testutils.NormalizeFunc{numNormalizer},
+		},
+		{
+			Name:      "output_all_fields",
+			Args:      []string{"--output", "/"},
 			Normalize: []testutils.NormalizeFunc{numNormalizer},
 		},
 	}
