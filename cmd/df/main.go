@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd106-df R1.1–R1.5, R2.1–R2.3 -- df core filesystem queries
-// and output formatting options (human-readable and SI units).
+// Implements prd106-df R1.1–R1.5, R2.1–R2.3, R3.1–R3.4 -- df core filesystem
+// queries, output formatting, type display, inode display, and filtering.
 
 package main
 
@@ -37,19 +37,21 @@ const (
 	sizeSI                      // R2.2: -H SI 1000-based
 )
 
+// networkFSTypes lists filesystem types considered non-local per R3.4.
+var networkFSTypes = map[string]bool{
+	"nfs": true, "nfs4": true, "cifs": true, "smbfs": true,
+	"afs": true, "ncpfs": true, "coda": true, "gfs": true,
+	"gfs2": true, "glusterfs": true, "lustre": true,
+	"fuse.sshfs": true, "9p": true,
+}
+
 // options holds parsed command-line flags.
 type options struct {
-	mode sizeMode
-}
-
-// R1.2: column headers matching GNU df exactly.
-var defaultHeader = []string{
-	"Filesystem", "1K-blocks", "Used", "Available", "Use%", "Mounted on",
-}
-
-// humanHeader replaces "1K-blocks" with "Size" for -h and -H per R2.1/R2.2.
-var humanHeader = []string{
-	"Filesystem", "Size", "Used", "Available", "Use%", "Mounted on",
+	mode      sizeMode
+	printType bool // R3.1: -T
+	inodes    bool // R3.2: -i
+	all       bool // R3.3: -a
+	local     bool // R3.4: -l
 }
 
 func main() {
@@ -101,22 +103,55 @@ func parseFlag(arg string, opts *options) error {
 		opts.mode = sizeSI
 	case "-k":
 		// Non-goals: -k accepted, no visible effect (1K is default).
+	case "-T", "--print-type":
+		// R3.1: show filesystem type column.
+		opts.printType = true
+	case "-i", "--inodes":
+		// R3.2: display inode information.
+		opts.inodes = true
+	case "-a", "--all":
+		// R3.3: include pseudo-filesystems.
+		opts.all = true
+	case "-l", "--local":
+		// R3.4: local filesystems only.
+		opts.local = true
 	default:
 		return fmt.Errorf("unrecognized option '%s'", arg)
 	}
 	return nil
 }
 
-// R1.1: list all mounted filesystems, excluding pseudo-filesystems.
+// R1.1: list all mounted filesystems, applying filters.
 func listAllFilesystems(opts options) int {
 	all, err := getAllFilesystems()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
 		return 1
 	}
-	entries := filterPseudo(all)
+	entries := applyFilters(all, opts)
 	printTable(entries, opts)
 	return 0
+}
+
+// applyFilters applies pseudo-fs, local, and other filters per options.
+func applyFilters(entries []fsInfo, opts options) []fsInfo {
+	result := make([]fsInfo, 0, len(entries))
+	for _, e := range entries {
+		if !opts.all && e.TotalBlocks == 0 {
+			continue
+		}
+		if opts.local && isNetworkFS(e.FSType) {
+			continue
+		}
+		result = append(result, e)
+	}
+	return result
+}
+
+// isNetworkFS returns true if the filesystem type is a network filesystem.
+// R3.4: used to exclude non-local filesystems when -l is given.
+func isNetworkFS(fsType string) bool {
+	return networkFSTypes[strings.ToLower(fsType)]
 }
 
 // R1.4: report the filesystem containing each FILE argument.
@@ -136,17 +171,6 @@ func listPathFilesystems(args []string, opts options) int {
 		printTable(entries, opts)
 	}
 	return exitCode
-}
-
-// filterPseudo removes filesystems with 0 total blocks per R1.1.
-func filterPseudo(entries []fsInfo) []fsInfo {
-	result := make([]fsInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.TotalBlocks > 0 {
-			result = append(result, e)
-		}
-	}
-	return result
 }
 
 // R1.3: Use% = ceiling((total - available) * 100 / total).
@@ -175,14 +199,17 @@ func toBytes(blocks, blockSize uint64) int64 {
 
 // formatRow produces column values for one filesystem entry.
 func formatRow(e fsInfo, opts options) []string {
+	if opts.inodes {
+		return formatInodeRow(e, opts)
+	}
 	if opts.mode == sizeDefault {
-		return formatDefaultRow(e)
+		return formatDefaultRow(e, opts)
 	}
 	return formatHumanRow(e, opts)
 }
 
 // formatDefaultRow formats sizes in 1K-block units per R1.1.
-func formatDefaultRow(e fsInfo) []string {
+func formatDefaultRow(e fsInfo, opts options) []string {
 	kbTotal := to1K(e.TotalBlocks, e.BlockSize)
 	kbFree := to1K(e.FreeBlocks, e.BlockSize)
 	kbAvail := to1K(e.AvailBlocks, e.BlockSize)
@@ -190,14 +217,18 @@ func formatDefaultRow(e fsInfo) []string {
 	if kbTotal > kbFree {
 		kbUsed = kbTotal - kbFree
 	}
-	return []string{
-		e.Device,
+	row := []string{e.Device}
+	if opts.printType {
+		row = append(row, e.FSType)
+	}
+	row = append(row,
 		fmt.Sprintf("%d", kbTotal),
 		fmt.Sprintf("%d", kbUsed),
 		fmt.Sprintf("%d", kbAvail),
 		computeUsePercent(e.TotalBlocks, e.AvailBlocks),
 		e.MountPoint,
-	}
+	)
+	return row
 }
 
 // formatHumanRow formats sizes using human-readable units per R2.1/R2.2.
@@ -211,22 +242,78 @@ func formatHumanRow(e fsInfo, opts options) []string {
 	if total > free {
 		used = total - free
 	}
-	return []string{
-		e.Device,
+	row := []string{e.Device}
+	if opts.printType {
+		row = append(row, e.FSType)
+	}
+	row = append(row,
 		format.HumanSize(total, hsOpts),
 		format.HumanSize(used, hsOpts),
 		format.HumanSize(avail, hsOpts),
 		computeUsePercent(e.TotalBlocks, e.AvailBlocks),
 		e.MountPoint,
-	}
+	)
+	return row
 }
 
-// selectHeader returns the appropriate header based on the size mode.
-func selectHeader(opts options) []string {
-	if opts.mode == sizeDefault {
-		return defaultHeader
+// formatInodeRow formats inode counts per R3.2.
+func formatInodeRow(e fsInfo, opts options) []string {
+	iUsed := uint64(0)
+	if e.TotalInodes > e.FreeInodes {
+		iUsed = e.TotalInodes - e.FreeInodes
 	}
-	return humanHeader
+	row := []string{e.Device}
+	if opts.printType {
+		row = append(row, e.FSType)
+	}
+	row = append(row,
+		fmt.Sprintf("%d", e.TotalInodes),
+		fmt.Sprintf("%d", iUsed),
+		fmt.Sprintf("%d", e.FreeInodes),
+		computeUsePercent(e.TotalInodes, e.FreeInodes),
+		e.MountPoint,
+	)
+	return row
+}
+
+// selectHeader returns the appropriate header based on options.
+func selectHeader(opts options) []string {
+	var header []string
+	if opts.inodes {
+		header = buildInodeHeader(opts)
+	} else if opts.mode == sizeDefault {
+		header = buildDefaultHeader(opts)
+	} else {
+		header = buildHumanHeader(opts)
+	}
+	return header
+}
+
+// buildDefaultHeader returns the default column header with optional Type.
+func buildDefaultHeader(opts options) []string {
+	h := []string{"Filesystem"}
+	if opts.printType {
+		h = append(h, "Type")
+	}
+	return append(h, "1K-blocks", "Used", "Available", "Use%", "Mounted on")
+}
+
+// buildHumanHeader returns the human-readable header with optional Type.
+func buildHumanHeader(opts options) []string {
+	h := []string{"Filesystem"}
+	if opts.printType {
+		h = append(h, "Type")
+	}
+	return append(h, "Size", "Used", "Available", "Use%", "Mounted on")
+}
+
+// buildInodeHeader returns the inode header per R3.2 with optional Type.
+func buildInodeHeader(opts options) []string {
+	h := []string{"Filesystem"}
+	if opts.printType {
+		h = append(h, "Type")
+	}
+	return append(h, "Inodes", "IUsed", "IFree", "IUse%", "Mounted on")
 }
 
 // computeWidths returns per-column maximum widths across header and rows.
