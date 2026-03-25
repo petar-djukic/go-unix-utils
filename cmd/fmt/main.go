@@ -3,9 +3,11 @@
 
 // Implements prd070-fmt: Simple Text Formatter.
 // Covers R1.1-R1.4 (entry point, paragraph detection, indentation, file input),
-// R2.1 (-w width), R2.2 (-g goal), R3.1 (-s split-only).
+// R2.1 (-w width), R2.2 (-g goal), R2.3 (word boundary breaking),
+// R2.4 (sentence-ending double space), R3.1 (-s split-only),
+// R3.2 (-u uniform-spacing).
 //
-// TODO: prd070-fmt R3.2 (-u uniform-spacing), R4.1 (-p prefix), R4.2 (-t tagged-paragraph)
+// TODO: prd070-fmt R4.1 (-p prefix), R4.2 (-t tagged-paragraph)
 // are not implemented in this task.
 // TODO: -c/--crown-margin is listed in prd070-fmt non_goals; skipped per article E6.
 package main
@@ -29,9 +31,10 @@ const (
 
 // fmtConfig holds parsed command-line options.
 type fmtConfig struct {
-	width     int  // R2.1: maximum line width
-	goal      int  // R2.2: goal line width
-	splitOnly bool // R3.1: split long lines only
+	width   int  // R2.1: maximum line width
+	goal    int  // R2.2: goal line width
+	split   bool // R3.1: split long lines only
+	uniform bool // R3.2: uniform spacing
 }
 
 func main() {
@@ -88,39 +91,63 @@ func parseArgs(args []string) (fmtConfig, []string, error) {
 func parseFmtFlag(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
 	switch {
 	case arg == "-s" || arg == "--split-only":
-		cfg.splitOnly = true
+		cfg.split = true
+		return 1, false, nil
+	case arg == "-u" || arg == "--uniform-spacing":
+		// R3.2: uniform spacing mode.
+		cfg.uniform = true
 		return 1, false, nil
 	case strings.HasPrefix(arg, "-w"):
-		v, consumed, err := shortNumeric(arg[2:], args, i, "w")
-		if err != nil {
-			return 0, false, err
-		}
-		cfg.width = v
-		return consumed, false, nil
+		return parseShortWidth(arg, args, i, cfg)
 	case strings.HasPrefix(arg, "--width"):
-		v, consumed, err := longNumeric(arg, "--width", args, i)
-		if err != nil {
-			return 0, false, err
-		}
-		cfg.width = v
-		return consumed, false, nil
+		return parseLongWidth(arg, args, i, cfg)
 	case strings.HasPrefix(arg, "-g"):
-		v, consumed, err := shortNumeric(arg[2:], args, i, "g")
-		if err != nil {
-			return 0, false, err
-		}
-		cfg.goal = v
-		return consumed, true, nil
+		return parseShortGoal(arg, args, i, cfg)
 	case strings.HasPrefix(arg, "--goal"):
-		v, consumed, err := longNumeric(arg, "--goal", args, i)
-		if err != nil {
-			return 0, false, err
-		}
-		cfg.goal = v
-		return consumed, true, nil
+		return parseLongGoal(arg, args, i, cfg)
 	default:
 		return 0, false, fmt.Errorf("invalid option -- '%s'", arg)
 	}
+}
+
+// parseShortWidth handles -wN or -w N.
+func parseShortWidth(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
+	v, consumed, err := shortNumeric(arg[2:], args, i, "w")
+	if err != nil {
+		return 0, false, err
+	}
+	cfg.width = v
+	return consumed, false, nil
+}
+
+// parseLongWidth handles --width=N or --width N.
+func parseLongWidth(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
+	v, consumed, err := longNumeric(arg, "--width", args, i)
+	if err != nil {
+		return 0, false, err
+	}
+	cfg.width = v
+	return consumed, false, nil
+}
+
+// parseShortGoal handles -gN or -g N.
+func parseShortGoal(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
+	v, consumed, err := shortNumeric(arg[2:], args, i, "g")
+	if err != nil {
+		return 0, false, err
+	}
+	cfg.goal = v
+	return consumed, true, nil
+}
+
+// parseLongGoal handles --goal=N or --goal N.
+func parseLongGoal(arg string, args []string, i int, cfg *fmtConfig) (int, bool, error) {
+	v, consumed, err := longNumeric(arg, "--goal", args, i)
+	if err != nil {
+		return 0, false, err
+	}
+	cfg.goal = v
+	return consumed, true, nil
 }
 
 // shortNumeric parses a short flag value: -fVAL or -f VAL.
@@ -232,7 +259,7 @@ func unwrapOSError(err error) string {
 
 // formatInput dispatches to the appropriate formatting mode.
 func formatInput(r io.Reader, bw *bufio.Writer, cfg fmtConfig) error {
-	if cfg.splitOnly {
+	if cfg.split {
 		return formatSplitOnly(r, bw, cfg)
 	}
 	return formatParagraphs(r, bw, cfg)
@@ -251,14 +278,16 @@ func formatSplitOnly(r io.Reader, bw *bufio.Writer, cfg fmtConfig) error {
 }
 
 // splitLine outputs a line, breaking it at word boundaries if too long.
+// R3.1: short lines pass through unchanged without -u.
+// R3.2: with -u, normalize spacing even for short lines.
 func splitLine(line string, bw *bufio.Writer, cfg fmtConfig) error {
-	if len(line) <= cfg.width {
-		return writeLine(bw, line)
-	}
 	indent := getIndent(line)
 	words := strings.Fields(strings.TrimSpace(line))
 	if len(words) == 0 {
 		return bw.WriteByte('\n')
+	}
+	if !cfg.uniform && len(line) <= cfg.width {
+		return writeLine(bw, line)
 	}
 	return fillWords(words, indent, indent, bw, cfg)
 }
@@ -331,7 +360,9 @@ func writeFormatted(lines []string, bw *bufio.Writer, cfg fmtConfig) error {
 }
 
 // fillWords fills words into output lines respecting goal and width.
-// R1.1: reformats to goal width. R2.3: breaks at word boundaries.
+// R1.1: reformats to goal width.
+// R2.3: breaks at word boundaries; overlong words get their own line.
+// R2.4: two spaces after sentence-ending punctuation.
 func fillWords(
 	words []string, firstIndent, bodyIndent string,
 	bw *bufio.Writer, cfg fmtConfig,
@@ -339,24 +370,29 @@ func fillWords(
 	indent := firstIndent
 	lineLen := len(indent)
 	started := false
+	var prevWord string
 	for _, word := range words {
-		if started && shouldBreakLine(lineLen, len(word), cfg) {
-			if err := bw.WriteByte('\n'); err != nil {
-				return err
+		if started {
+			sp := spacesAfter(prevWord)
+			if shouldBreakLine(lineLen, len(word), sp, cfg) {
+				if err := bw.WriteByte('\n'); err != nil {
+					return err
+				}
+				indent = bodyIndent
+				lineLen = len(indent)
+				started = false
 			}
-			indent = bodyIndent
-			lineLen = len(indent)
-			started = false
 		}
-		if err := writeWord(bw, word, indent, started); err != nil {
+		if err := emitWord(bw, word, indent, started, spacesAfter(prevWord)); err != nil {
 			return err
 		}
 		if started {
-			lineLen += 1 + len(word)
+			lineLen += spacesAfter(prevWord) + len(word)
 		} else {
 			lineLen += len(word)
 			started = true
 		}
+		prevWord = word
 	}
 	if started {
 		return bw.WriteByte('\n')
@@ -364,11 +400,14 @@ func fillWords(
 	return nil
 }
 
-// writeWord writes a word to output, prefixed by indent or a space.
-func writeWord(bw *bufio.Writer, word, indent string, midLine bool) error {
+// emitWord writes a word to output, prefixed by indent or spaces.
+// R2.4: uses sp spaces between words (1 normally, 2 after sentence end).
+func emitWord(bw *bufio.Writer, word, indent string, midLine bool, sp int) error {
 	if midLine {
-		if err := bw.WriteByte(' '); err != nil {
-			return err
+		for j := 0; j < sp; j++ {
+			if err := bw.WriteByte(' '); err != nil {
+				return err
+			}
 		}
 	} else {
 		if _, err := bw.WriteString(indent); err != nil {
@@ -380,12 +419,33 @@ func writeWord(bw *bufio.Writer, word, indent string, midLine bool) error {
 }
 
 // shouldBreakLine returns true if adding a word requires a line break.
-func shouldBreakLine(lineLen, wordLen int, cfg fmtConfig) bool {
-	newLen := lineLen + 1 + wordLen
+// R2.3: respects variable space count for sentence-ending words.
+func shouldBreakLine(lineLen, wordLen, sp int, cfg fmtConfig) bool {
+	newLen := lineLen + sp + wordLen
 	if newLen > cfg.width {
 		return true
 	}
 	return lineLen >= cfg.goal && newLen > cfg.goal
+}
+
+// --- Sentence detection (R2.4) ---
+
+// isSentenceEnd returns true if a word ends with sentence-ending punctuation.
+func isSentenceEnd(word string) bool {
+	if len(word) == 0 {
+		return false
+	}
+	last := word[len(word)-1]
+	return last == '.' || last == '!' || last == '?'
+}
+
+// spacesAfter returns the number of spaces to insert after a word.
+// R2.4: two spaces after sentence-ending punctuation, one otherwise.
+func spacesAfter(word string) int {
+	if isSentenceEnd(word) {
+		return 2
+	}
+	return 1
 }
 
 // --- Helpers ---
