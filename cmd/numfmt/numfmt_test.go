@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/numfmt against gnumfmt (GNU coreutils).
-// Covers prd071-numfmt R1.1-R1.4 (core conversion), R2.1 (--format), R2.2 (--padding).
+// Covers prd071-numfmt R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -21,7 +21,6 @@ func normProgName(b []byte) []byte {
 
 // TestDiff runs differential tests comparing the Go numfmt binary against
 // the GNU reference binary (gnumfmt).
-// D4: uses testutils.BuildBinary and exec.LookPath per shared protocol.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -68,7 +67,33 @@ func TestDiff(t *testing.T) {
 		{Name: "padding-right", Args: []string{"--padding=10", "--to=si"}, Stdin: []byte("1000\n")},
 		// R2.2: --padding negative (left-align)
 		{Name: "padding-left", Args: []string{"--padding=-10", "--to=si"}, Stdin: []byte("1000\n")},
-		// Error: invalid number (normalizer handles gnumfmt vs numfmt name)
+		// R2.3: --round modes
+		{Name: "round-up", Args: []string{"--to=si", "--round=up"}, Stdin: []byte("1001\n")},
+		{Name: "round-down", Args: []string{"--to=si", "--round=down"}, Stdin: []byte("1999\n")},
+		{Name: "round-from-zero", Args: []string{"--to=si", "--round=from-zero"}, Stdin: []byte("1500\n")},
+		{Name: "round-towards-zero", Args: []string{"--to=si", "--round=towards-zero"}, Stdin: []byte("1999\n")},
+		{Name: "round-nearest", Args: []string{"--to=si", "--round=nearest"}, Stdin: []byte("1500\n")},
+		{Name: "round-up-large", Args: []string{"--to=iec", "--round=up"}, Stdin: []byte("1048577\n")},
+		{Name: "round-down-large", Args: []string{"--to=iec", "--round=down"}, Stdin: []byte("1572863\n")},
+		// R2.4: --suffix
+		{Name: "suffix-output", Args: []string{"--to=iec", "--suffix=B"}, Stdin: []byte("1048576\n")},
+		{Name: "suffix-input-output", Args: []string{"--from=si", "--to=si", "--suffix=B"}, Stdin: []byte("1kB\n")},
+		{Name: "suffix-passthrough", Args: []string{"--to=si", "--suffix=B"}, Stdin: []byte("1000\n")},
+		// R3.1: --field selection
+		{Name: "field-2", Args: []string{"--to=si", "--field=2"}, Stdin: []byte("name 1000\n")},
+		{Name: "field-range", Args: []string{"--to=si", "--field=2-3"}, Stdin: []byte("foo 1000 2000 bar\n")},
+		// R3.2: --delimiter
+		{Name: "delimiter-comma", Args: []string{"--to=si", "--field=2", "--delimiter=,"}, Stdin: []byte("name,1000\n")},
+		{Name: "delimiter-short-d", Args: []string{"--to=si", "--field=2", "-d,"}, Stdin: []byte("name,1000\n")},
+		{Name: "delimiter-tab", Args: []string{"--to=si", "--field=2", "-d\t"}, Stdin: []byte("name\t1000\n")},
+		// R3.3: --header
+		{Name: "header-default", Args: []string{"--to=si", "--header", "--field=2"}, Stdin: []byte("name value\nfoo 1000\nbar 2000\n")},
+		{Name: "header-2", Args: []string{"--to=si", "--header=2", "--field=2"}, Stdin: []byte("h1 h2\nh3 h4\nfoo 1000\n")},
+		// R3.4: --from-unit and --to-unit
+		{Name: "from-unit", Args: []string{"--from-unit=1024", "--to=iec"}, Stdin: []byte("5\n")},
+		{Name: "to-unit", Args: []string{"--to=si", "--to-unit=1000"}, Stdin: []byte("5000000\n")},
+		{Name: "from-unit-to-si", Args: []string{"--from-unit=1000000", "--to=si"}, Stdin: []byte("5\n")},
+		// Error: invalid number
 		{Name: "invalid-number", Stdin: []byte("abc\n"), ExitCode: 2,
 			Normalize: []testutils.NormalizeFunc{normProgName}},
 	}
