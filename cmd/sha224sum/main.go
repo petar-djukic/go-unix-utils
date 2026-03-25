@@ -7,8 +7,10 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/hashutil"
@@ -35,6 +37,7 @@ type sha224sumOptions struct {
 	warn   bool // -w/--warn: warn on malformed lines (R2.3)
 	quiet  bool // --quiet: suppress OK lines (R2.3)
 	status bool // --status: suppress all output (R2.3)
+	strict bool // --strict: exit non-zero on malformed lines (R2.3)
 }
 
 func main() {
@@ -60,19 +63,17 @@ func run(opts sha224sumOptions, files []string) int {
 
 // runCheck verifies checksums from the given files.
 // R2.1-R2.2: reads checksum file, prints OK/FAILED per entry.
+// R2.3: --strict exits non-zero when malformed lines are detected.
 func runCheck(opts sha224sumOptions, files []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
-	checkOpts := hashutil.CheckOptions{
-		Warn:   opts.warn,
-		Quiet:  opts.quiet,
-		Status: opts.status,
-	}
+	checkOpts := buildCheckOptions(opts)
+	stderr := stderrWriter(opts.strict)
 	exitCode := 0
 	for _, f := range files {
 		ok, err := hashutil.VerifyChecksums(
-			f, sha224Config, checkOpts, os.Stdout, os.Stderr,
+			f, sha224Config, checkOpts, os.Stdout, stderr,
 		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "sha224sum: %v\n", err)
@@ -81,7 +82,55 @@ func runCheck(opts sha224sumOptions, files []string) int {
 			exitCode = 1
 		}
 	}
+	if opts.strict && hasMalformed(stderr) {
+		exitCode = 1
+	}
 	return exitCode
+}
+
+// stderrWriter returns an io.Writer for check-mode stderr output.
+// When strict is true, returns a malformedDetector to track warnings.
+func stderrWriter(strict bool) io.Writer {
+	if strict {
+		return &malformedDetector{w: os.Stderr}
+	}
+	return os.Stderr
+}
+
+// hasMalformed checks if the writer is a malformedDetector that saw
+// the "improperly formatted" warning. Returns false for other writers.
+func hasMalformed(w io.Writer) bool {
+	if md, ok := w.(*malformedDetector); ok {
+		return md.found
+	}
+	return false
+}
+
+// malformedDetector wraps an io.Writer and detects the "improperly
+// formatted" warning emitted by hashutil.VerifyChecksums.
+// R2.3: enables --strict to exit non-zero on malformed lines.
+type malformedDetector struct {
+	w     io.Writer
+	found bool
+}
+
+// Write passes through to the underlying writer and checks for
+// the malformed warning marker.
+func (m *malformedDetector) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("improperly formatted")) {
+		m.found = true
+	}
+	return m.w.Write(p)
+}
+
+// buildCheckOptions constructs CheckOptions from sha224sumOptions.
+// R2.3: --strict implies --warn behavior.
+func buildCheckOptions(opts sha224sumOptions) hashutil.CheckOptions {
+	return hashutil.CheckOptions{
+		Warn:   opts.warn || opts.strict,
+		Quiet:  opts.quiet,
+		Status: opts.status,
+	}
 }
 
 // parseFlags parses GNU sha224sum-compatible flags from the argument list.
@@ -131,6 +180,8 @@ func handleLongFlag(arg string, opts *sha224sumOptions) bool {
 		opts.quiet = true
 	case "--status":
 		opts.status = true
+	case "--strict":
+		opts.strict = true
 	case "--version":
 		fmt.Printf("sha224sum (go-unix-utils) %s\n", version)
 		os.Exit(0)
@@ -177,6 +228,7 @@ With no FILE, or when FILE is -, read standard input.
   -w, --warn     warn about improperly formatted checksum lines
       --quiet    don't print OK for each successfully verified file
       --status   don't output anything, status code shows success
+      --strict   exit non-zero for improperly formatted checksum lines
       --help     display this help and exit
       --version  output version information and exit
 `)
