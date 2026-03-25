@@ -93,6 +93,7 @@ type vdirConfig struct {
 	derefAll      bool          // -L: dereference all symlinks
 	derefCmd      bool          // -H: dereference command-line symlinks
 	numericIDs    bool          // -n: numeric UID/GID in long format
+	showContext   bool          // -Z: show SELinux security context
 	timeSelect    timeField     // --time
 	timeStyle     string        // --time-style
 	args          []string
@@ -235,6 +236,8 @@ func applyShortFlag(ch rune, cfg *vdirConfig) {
 		cfg.derefAll = true
 	case 'H':
 		cfg.derefCmd = true
+	case 'Z':
+		cfg.showContext = true
 	default:
 		fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", binName, ch)
 		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", binName)
@@ -263,6 +266,8 @@ func handleLongFlag(arg string, cfg *vdirConfig) bool {
 		cfg.derefAll = true
 	case "--dereference-command-line":
 		cfg.derefCmd = true
+	case "--context":
+		cfg.showContext = true
 	case "--numeric-uid-gid":
 		cfg.output = modeLong
 		cfg.numericIDs = true
@@ -356,15 +361,17 @@ func dirOnlyStatFunc(cfg vdirConfig) func(string) (*sys.FileInfo, error) {
 }
 
 // runNormal processes arguments separating files and directories.
-// R2.2: command-line access failures set exit code 2 (matching gvdir).
+// R2.2: command-line access failures set exit code 2, continue processing.
 func runNormal(cfg vdirConfig) int {
 	exitCode := 0
+	errCount := 0
 	var fileEntries, dirEntries []entry
 	for _, arg := range cfg.args {
 		fi, err := sys.Stat(arg)
 		if err != nil {
 			reportError("cannot access", arg, err)
 			exitCode = 2
+			errCount++
 			continue
 		}
 		e := entry{name: arg, path: arg, info: fi}
@@ -382,7 +389,7 @@ func runNormal(cfg vdirConfig) int {
 		}
 	}
 	needBlank := len(fileEntries) > 0
-	showHeader := len(fileEntries) > 0 || len(dirEntries) > 1
+	showHeader := len(fileEntries) > 0 || len(dirEntries)+errCount > 1
 	exitCode |= listDirs(dirEntries, cfg, needBlank, showHeader)
 	return exitCode
 }

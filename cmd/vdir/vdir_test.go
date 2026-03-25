@@ -77,7 +77,10 @@ func buildDiffTests(t *testing.T) []testutils.DiffTest {
 		exitZeroTest(t),
 		exitZeroMultiDirTest(t),
 		exitOneTest(t),
+		exitOneMixedTest(t),
+		exitOneDirOnlyTest(t),
 		exitTwoTest(t),
+		exitTwoShortOptTest(t),
 	}
 }
 
@@ -296,12 +299,43 @@ func exitOneTest(t *testing.T) testutils.DiffTest {
 	}
 }
 
+// exitOneMixedTest verifies R2.2: continues processing after error, exits 1.
+func exitOneMixedTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := setupTestDir(t, "valid_file")
+	return testutils.DiffTest{
+		Name:      "R2.2_exit_one_mixed_valid_invalid",
+		Args:      []string{"/nonexistent_vdir_test_path", dir},
+		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+	}
+}
+
+// exitOneDirOnlyTest verifies R2.2: exit 1 with -d on nonexistent path.
+func exitOneDirOnlyTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	return testutils.DiffTest{
+		Name:      "R2.2_exit_one_dir_only_nonexistent",
+		Args:      []string{"-d", "/nonexistent_vdir_test_path"},
+		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+	}
+}
+
 // exitTwoTest verifies R2.3: exit 2 on serious error (invalid option).
 func exitTwoTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
 	return testutils.DiffTest{
 		Name:      "R2.3_exit_two_invalid_option",
 		Args:      []string{"--invalid-option-xyz"},
+		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+	}
+}
+
+// exitTwoShortOptTest verifies R2.3: exit 2 on invalid short option.
+func exitTwoShortOptTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	return testutils.DiffTest{
+		Name:      "R2.3_exit_two_invalid_short_option",
+		Args:      []string{"-z"},
 		Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 	}
 }

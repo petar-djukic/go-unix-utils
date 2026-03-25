@@ -38,10 +38,11 @@ type prefixWidths struct {
 
 // longWidths holds column widths for long-format alignment.
 type longWidths struct {
-	nlink int
-	owner int
-	group int
-	size  int
+	nlink   int
+	owner   int
+	group   int
+	context int
+	size    int
 }
 
 // displayEntries outputs file-argument entries (no total line).
@@ -359,6 +360,9 @@ func computeLongWidths(entries []entry, cfg vdirConfig) longWidths {
 		updateWidth(&w.nlink, len(strconv.FormatUint(e.info.Nlink, 10)))
 		updateWidth(&w.owner, len(ownerString(e.info.Uid, cfg.numericIDs)))
 		updateWidth(&w.group, len(groupString(e.info.Gid, cfg.numericIDs)))
+		if cfg.showContext {
+			updateWidth(&w.context, len(contextString()))
+		}
 		updateWidth(&w.size, len(sizeString(e.info.Size, cfg.humanReadable)))
 	}
 	return w
@@ -382,8 +386,18 @@ func printLongLine(e entry, cfg vdirConfig, lw longWidths, pw prefixWidths) {
 	ts := entryTime(e.info, cfg.timeSelect)
 	mtime := formatEntryTime(ts, cfg.timeStyle)
 	display := coloredSymlinkDisplay(e) + typeIndicator(e.info, cfg.indicator)
-	fmt.Printf("%s%s %s %s %s %s %s %s\n",
-		prefix, perm, nlink, owner, group, size, mtime, display)
+	ctx := ""
+	if cfg.showContext {
+		ctx = " " + format.PadRight(contextString(), lw.context)
+	}
+	fmt.Printf("%s%s %s %s %s%s %s %s %s\n",
+		prefix, perm, nlink, owner, group, ctx, size, mtime, display)
+}
+
+// contextString returns the SELinux security context placeholder.
+// On non-SELinux systems (macOS), always returns "?".
+func contextString() string {
+	return "?"
 }
 
 // sizeString formats a file size, optionally human-readable.
