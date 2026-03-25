@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements prd077-cksum R1.1-R1.4, R2.1-R2.2: Compute POSIX CRC-32
-// checksums and byte counts for files or stdin, with --algorithm selection
-// for modern hash algorithms (md5, sha1, sha224, sha256, sha384, sha512,
-// blake2b) and --untagged/--check output control.
+// Implements prd077-cksum R1.1-R1.4, R2.1-R2.3, R3.1-R3.3: Compute POSIX
+// CRC-32 checksums and byte counts for files or stdin, with --algorithm
+// selection for modern hash algorithms (md5, sha1, sha224, sha256, sha384,
+// sha512, blake2b), --untagged/--check output control, --strict check mode,
+// error handling, and --version/--help output.
 package main
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -186,19 +188,17 @@ func runHash(opts cksumOptions, files []string) int {
 
 // runHashCheck verifies checksums from the given files.
 // R2.2 (non-CRC): reads checksum file, prints OK/FAILED per entry.
+// R2.3: --strict exits non-zero when improperly formatted lines exist.
 func runHashCheck(opts cksumOptions, files []string, cfg hashutil.HashConfig) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
-	checkOpts := hashutil.CheckOptions{
-		Warn:   opts.warn || opts.strict,
-		Quiet:  opts.quiet,
-		Status: opts.status,
-	}
+	checkOpts := buildCheckOptions(opts)
+	interceptor := &malformedInterceptor{w: os.Stderr}
 	exitCode := 0
 	for _, f := range files {
 		ok, err := hashutil.VerifyChecksums(
-			f, cfg, checkOpts, os.Stdout, os.Stderr,
+			f, cfg, checkOpts, os.Stdout, interceptor,
 		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cksum: %v\n", err)
@@ -207,7 +207,36 @@ func runHashCheck(opts cksumOptions, files []string, cfg hashutil.HashConfig) in
 			exitCode = 1
 		}
 	}
+	// R2.3: --strict exits non-zero when improperly formatted lines exist.
+	if opts.strict && interceptor.detected {
+		exitCode = 1
+	}
 	return exitCode
+}
+
+// malformedInterceptor wraps an io.Writer and detects "improperly formatted"
+// warnings for --strict mode support.
+// R2.3: enables exit non-zero when improperly formatted lines exist.
+type malformedInterceptor struct {
+	w        io.Writer
+	detected bool
+}
+
+// Write passes through to the underlying writer and detects malformed warnings.
+func (m *malformedInterceptor) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("improperly formatted")) {
+		m.detected = true
+	}
+	return m.w.Write(p)
+}
+
+// buildCheckOptions constructs CheckOptions from cksumOptions.
+func buildCheckOptions(opts cksumOptions) hashutil.CheckOptions {
+	return hashutil.CheckOptions{
+		Warn:   opts.warn || opts.strict,
+		Quiet:  opts.quiet,
+		Status: opts.status,
+	}
 }
 
 // buildHashConfig returns a HashConfig for the named algorithm.
