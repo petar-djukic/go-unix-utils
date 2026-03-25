@@ -393,7 +393,7 @@ releases:
         - id: rel08.1-uc004-fmt
           status: implemented
         - id: rel08.1-uc005-numfmt
-          status: spec_complete
+          status: implemented
         - id: rel08.1-uc006-od
           status: spec_complete
         - id: rel08.1-uc007-printf
