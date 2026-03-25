@@ -400,7 +400,7 @@ releases:
           status: implemented
     - version: "09.0"
       name: "Batch 9.0 — hash and checksum utilities (sha224sum, sha384sum, b2sum, cksum, sum)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement five checksum and hash utilities. sha224sum and sha384sum complete the
