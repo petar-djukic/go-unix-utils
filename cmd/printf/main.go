@@ -3,7 +3,8 @@
 
 // Implements prd073-printf: Format and Print Data.
 // Covers R1.1-R1.4 (format string, escape sequences, argument cycling, defaults),
-// R2.1-R2.2 (width, precision, flags).
+// R2.1-R2.4 (width, precision, flags, %%, * modifier),
+// R3.1-R3.4 (escape sequences, argument recycling, defaults, quote prefix, --help/--version).
 package main
 
 import (
@@ -25,11 +26,57 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
 		os.Exit(1)
 	}
+	// R3.4: handle --help and --version when FORMAT is literally those strings.
+	switch os.Args[1] {
+	case "--help":
+		printHelp()
+		os.Exit(0)
+	case "--version":
+		printVersion()
+		os.Exit(0)
+	}
 	os.Exit(runPrintf(os.Args[1], os.Args[2:]))
 }
 
+// printHelp writes usage information to stdout.
+func printHelp() {
+	_, _ = os.Stdout.WriteString(`Usage: printf FORMAT [ARGUMENT]...
+  or:  printf OPTION
+Print ARGUMENT(s) according to FORMAT.
+
+FORMAT controls the output as in C printf. Interpreted sequences:
+
+  \"      double quote
+  \\      backslash
+  \a      alert (BEL)
+  \b      backspace
+  \c      produce no further output
+  \f      form feed
+  \n      new line
+  \r      carriage return
+  \t      horizontal tab
+  \v      vertical tab
+  \NNN    byte with octal value NNN (1 to 3 digits)
+  \xHH    byte with hexadecimal value HH (1 to 2 digits)
+  \uHHHH  Unicode character with hex value HHHH (4 digits)
+  \UHHHHHHHH  Unicode character with hex value HHHHHHHH (8 digits)
+  %%      a single %
+
+  %b      ARGUMENT as a string with '\' escapes interpreted
+
+and all C printf(3) format specifications ending with one of
+diouxXeEfFgGcs, with ARGUMENTs converted to proper type first.
+Variable widths are handled.
+`)
+}
+
+// printVersion writes version information to stdout.
+func printVersion() {
+	fmt.Println("printf (go-unix-utils)")
+}
+
 // runPrintf processes the format string, cycling through args.
-// R1.3: re-applies FORMAT until all arguments are consumed.
+// R1.3/R3.2: re-applies FORMAT until all arguments are consumed.
 func runPrintf(format string, args []string) int {
 	exitCode := 0
 	argIdx := 0
@@ -216,6 +263,8 @@ func writeDirective(
 		buf.WriteByte(format[pos])
 		return pos + 1, argIdx, 1, false
 	}
+	// R2.3: resolve * width and precision from arguments.
+	argIdx = resolveStarValues(&spec, args, argIdx)
 	// R1.4/R3.3: missing args default to empty/"0".
 	arg := getArg(args, argIdx)
 	argIdx++
@@ -225,14 +274,17 @@ func writeDirective(
 
 // directiveSpec holds parsed printf directive components.
 type directiveSpec struct {
-	flags   string
-	width   string
-	prec    string
-	hasPrec bool
-	verb    byte
+	flags     string
+	width     string
+	prec      string
+	hasPrec   bool
+	widthStar bool
+	precStar  bool
+	verb      byte
 }
 
 // parseSpec extracts flags, width, precision, and verb from format[pos].
+// R2.3: supports '*' for width and precision values.
 // Returns the spec and position after the verb, or pos if invalid.
 func parseSpec(format string, pos int) (directiveSpec, int) {
 	var s directiveSpec
@@ -241,20 +293,8 @@ func parseSpec(format string, pos int) (directiveSpec, int) {
 		pos++
 	}
 	s.flags = format[start:pos]
-	wStart := pos
-	for pos < len(format) && format[pos] >= '0' && format[pos] <= '9' {
-		pos++
-	}
-	s.width = format[wStart:pos]
-	if pos < len(format) && format[pos] == '.' {
-		s.hasPrec = true
-		pos++
-		pStart := pos
-		for pos < len(format) && format[pos] >= '0' && format[pos] <= '9' {
-			pos++
-		}
-		s.prec = format[pStart:pos]
-	}
+	pos = parseWidth(format, pos, &s)
+	pos = parsePrecision(format, pos, &s)
 	if pos >= len(format) || !isConvVerb(format[pos]) {
 		return s, start
 	}
@@ -262,7 +302,61 @@ func parseSpec(format string, pos int) (directiveSpec, int) {
 	return s, pos + 1
 }
 
+// parseWidth reads the width field: either '*' or digits.
+func parseWidth(format string, pos int, s *directiveSpec) int {
+	if pos < len(format) && format[pos] == '*' {
+		s.widthStar = true
+		return pos + 1
+	}
+	wStart := pos
+	for pos < len(format) && format[pos] >= '0' && format[pos] <= '9' {
+		pos++
+	}
+	s.width = format[wStart:pos]
+	return pos
+}
+
+// parsePrecision reads the precision field: '.' followed by '*' or digits.
+func parsePrecision(format string, pos int, s *directiveSpec) int {
+	if pos >= len(format) || format[pos] != '.' {
+		return pos
+	}
+	s.hasPrec = true
+	pos++
+	if pos < len(format) && format[pos] == '*' {
+		s.precStar = true
+		return pos + 1
+	}
+	pStart := pos
+	for pos < len(format) && format[pos] >= '0' && format[pos] <= '9' {
+		pos++
+	}
+	s.prec = format[pStart:pos]
+	return pos
+}
+
+// resolveStarValues resolves '*' width and precision from args.
+// R2.3: '*' takes the value from the next argument.
+func resolveStarValues(s *directiveSpec, args []string, argIdx int) int {
+	if s.widthStar {
+		wArg := getArg(args, argIdx)
+		argIdx++
+		w, _ := parseIntArg(wArg)
+		s.width = strconv.FormatInt(w, 10)
+		s.widthStar = false
+	}
+	if s.precStar {
+		pArg := getArg(args, argIdx)
+		argIdx++
+		p, _ := parseIntArg(pArg)
+		s.prec = strconv.FormatInt(p, 10)
+		s.precStar = false
+	}
+	return argIdx
+}
+
 // isConvVerb reports whether c is a valid conversion specifier.
+// TODO: %q is listed as a non_goal in prd073-printf (task R4/R3.2 conflicts with non_goals).
 func isConvVerb(c byte) bool {
 	return strings.IndexByte("diouxXeEfFgGscb", c) >= 0
 }
@@ -326,7 +420,7 @@ func applyChar(buf *strings.Builder, s directiveSpec, arg string) int {
 }
 
 // expandBArg writes arg to buf interpreting echo-style backslash escapes.
-// Returns true if \c was encountered (stop all output).
+// R3.3: returns true if \c was encountered (stop all output).
 func expandBArg(buf *strings.Builder, arg string) bool {
 	i := 0
 	for i < len(arg) {
@@ -451,7 +545,7 @@ func boolToEC(b bool) int {
 }
 
 // parseIntArg parses a string as an integer.
-// D4: leading 0 = octal, 0x = hex, quote prefix = character value.
+// R3.4: leading ' or " = character value.
 func parseIntArg(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
@@ -473,7 +567,7 @@ func parseIntArg(s string) (int64, error) {
 }
 
 // parseFloatArg parses a string as a float.
-// D4: quote prefix = character value.
+// R3.4: leading ' or " = character value.
 func parseFloatArg(s string) (float64, error) {
 	if s == "" {
 		return 0, nil
