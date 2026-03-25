@@ -62,13 +62,20 @@ func buildDiffTests(t *testing.T) []testutils.DiffTest {
 		escapeTest(t),
 		totalLineTest(t),
 		sortFilterTest(t),
+		almostAllFilterTest(t),
 		showAllTest(t),
 		defaultCwdTest(t),
 		singleColumnOverrideTest(t),
 		columnarOverrideTest(t),
 		reverseTest(t),
 		recursiveTest(t),
+		sortBySizeTest(t),
+		humanReadableTest(t),
+		classifyTest(t),
+		dirOnlyTest(t),
+		numericIDsTest(t),
 		exitZeroTest(t),
+		exitZeroMultiDirTest(t),
 		exitOneTest(t),
 		exitTwoTest(t),
 	}
@@ -186,6 +193,90 @@ func recursiveTest(t *testing.T) testutils.DiffTest {
 	}
 }
 
+// almostAllFilterTest verifies R1.4: -A shows dot-entries except . and ..
+func almostAllFilterTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	return testutils.DiffTest{
+		Name:    "R1.4_almost_all_filter",
+		Args:    []string{"-A"},
+		WorkDir: setupTestDir(t, ".secret", "visible", ".config"),
+	}
+}
+
+// sortBySizeTest verifies R1.6: accepts -S flag (sort by size).
+func sortBySizeTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFileContent(t, filepath.Join(dir, "small"), "a")
+	writeTestFileContent(t, filepath.Join(dir, "medium"), "abcdefghij")
+	writeTestFileContent(t, filepath.Join(dir, "large"), "abcdefghijklmnopqrstuvwxyz0123456789")
+	return testutils.DiffTest{
+		Name:    "R1.6_sort_by_size",
+		Args:    []string{"-S"},
+		WorkDir: dir,
+	}
+}
+
+// humanReadableTest verifies R1.6: accepts -h flag (human-readable sizes).
+func humanReadableTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFileContent(t, filepath.Join(dir, "file"), "some content here\n")
+	return testutils.DiffTest{
+		Name:    "R1.6_human_readable",
+		Args:    []string{"-h"},
+		WorkDir: dir,
+	}
+}
+
+// classifyTest verifies R1.6: accepts -F flag (append type indicator).
+func classifyTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "regular"))
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("creating subdir: %v", err)
+	}
+	return testutils.DiffTest{
+		Name:    "R1.6_classify",
+		Args:    []string{"-F"},
+		WorkDir: dir,
+	}
+}
+
+// dirOnlyTest verifies R1.6: accepts -d flag (list directories themselves).
+func dirOnlyTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir := setupTestDir(t, "child1", "child2")
+	return testutils.DiffTest{
+		Name:    "R1.6_dir_only",
+		Args:    []string{"-d", dir},
+		WorkDir: dir,
+	}
+}
+
+// numericIDsTest verifies R1.6: accepts -n flag (numeric UID/GID).
+func numericIDsTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	return testutils.DiffTest{
+		Name:    "R1.6_numeric_ids",
+		Args:    []string{"-n"},
+		WorkDir: setupTestDir(t, "file1", "file2"),
+	}
+}
+
+// exitZeroMultiDirTest verifies R2.1: exit 0 with multiple valid directories.
+func exitZeroMultiDirTest(t *testing.T) testutils.DiffTest {
+	t.Helper()
+	dir1 := setupTestDir(t, "a1")
+	dir2 := setupTestDir(t, "b1")
+	return testutils.DiffTest{
+		Name:    "R2.1_exit_zero_multi_dir",
+		Args:    []string{dir1, dir2},
+		WorkDir: t.TempDir(),
+	}
+}
+
 // exitZeroTest verifies R2.1: exit 0 on success.
 func exitZeroTest(t *testing.T) testutils.DiffTest {
 	t.Helper()
@@ -229,6 +320,14 @@ func setupTestDir(t *testing.T, names ...string) string {
 func writeTestFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatalf("creating test file %q: %v", path, err)
+	}
+}
+
+// writeTestFileContent creates a file with the given content.
+func writeTestFileContent(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("creating test file %q: %v", path, err)
 	}
 }

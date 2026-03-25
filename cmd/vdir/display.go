@@ -78,7 +78,7 @@ func printTotalLine(entries []entry, cfg vdirConfig) {
 	}
 	kBlocks := totalBlocks / 2
 	if cfg.humanReadable {
-		fmt.Printf("total %s\n", format.HumanSize(kBlocks*1024, format.HumanSizeOpts{Binary: true}))
+		fmt.Printf("total %s\n", gnuHumanSize(kBlocks*1024))
 	} else {
 		fmt.Printf("total %d\n", kBlocks)
 	}
@@ -173,7 +173,7 @@ func blockString(e entry, humanReadable bool) string {
 	}
 	kBlocks := e.info.Blocks / 2
 	if humanReadable {
-		return format.HumanSize(kBlocks*1024, format.HumanSizeOpts{Binary: true})
+		return gnuHumanSize(kBlocks * 1024)
 	}
 	return strconv.FormatInt(kBlocks, 10)
 }
@@ -389,9 +389,29 @@ func printLongLine(e entry, cfg vdirConfig, lw longWidths, pw prefixWidths) {
 // sizeString formats a file size, optionally human-readable.
 func sizeString(size int64, humanReadable bool) string {
 	if humanReadable {
-		return format.HumanSize(size, format.HumanSizeOpts{Binary: true})
+		return gnuHumanSize(size)
 	}
 	return strconv.FormatInt(size, 10)
+}
+
+// gnuHumanSize formats a byte count matching GNU coreutils behavior.
+// GNU always shows one decimal place for values with unit suffixes (e.g., 4.0K).
+func gnuHumanSize(bytes int64) string {
+	if bytes == 0 {
+		return "0"
+	}
+	const base = 1024.0
+	suffixes := []string{"", "K", "M", "G", "T", "P", "E"}
+	value := float64(bytes)
+	idx := 0
+	for value >= base && idx < len(suffixes)-1 {
+		value /= base
+		idx++
+	}
+	if suffixes[idx] == "" {
+		return strconv.FormatInt(bytes, 10)
+	}
+	return fmt.Sprintf("%.1f%s", value, suffixes[idx])
 }
 
 // coloredSymlinkDisplay returns the display name with color and symlink target.
