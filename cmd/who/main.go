@@ -3,7 +3,9 @@
 
 // Implements prd097-who: Show Who Is Logged On.
 // Covers R1.1-R1.4 (utmpx reading, FILE argument, who am i, error handling),
-// R2.1 (-H heading), R2.3 (-b boot time), R3.1-R3.3 (exit codes, SIGPIPE).
+// R2.1 (-H heading), R2.2 (-u idle time), R2.3 (-b boot time),
+// R2.4 (-q count), R2.3-task (-T message status),
+// R3.1-R3.3 (exit codes, SIGPIPE).
 package main
 
 /*
@@ -46,6 +48,7 @@ type options struct {
 	runlevel bool
 	timechg  bool
 	showIdle bool
+	mesg     bool
 	count    bool
 	all      bool
 	amI      bool
@@ -135,6 +138,7 @@ func applyAllFlag(opts *options) {
 	opts.runlevel = true
 	opts.timechg = true
 	opts.showIdle = true
+	opts.mesg = true
 }
 
 // applyLongFlag handles a single --flag. Returns -1 on success.
@@ -163,7 +167,8 @@ func applyLongFlag(name string, opts *options) int {
 	case "short":
 		// default format, ignored
 	case "mesg", "message", "writable":
-		// TODO: message status not in prd097 scope
+		// R2.3-task: message status display.
+		opts.mesg = true
 	case "lookup":
 		// TODO: DNS lookup not in prd097 scope
 	case "help":
@@ -214,7 +219,8 @@ func applyShortFlag(ch rune, opts *options) int {
 	case 't':
 		opts.timechg = true
 	case 'T', 'w':
-		// TODO: message status not in prd097 scope
+		// R2.3-task: message status display.
+		opts.mesg = true
 	case 'u':
 		opts.showIdle = true
 	default:
@@ -373,20 +379,27 @@ func printCountMode(entries []whoEntry) int {
 
 // printHeading prints the column header line. R2.1.
 func printHeading(opts options) {
-	if opts.showIdle {
-		fmt.Printf("%-8s %-12s %-16s %-6s %5s %s\n",
-			"NAME", "LINE", "TIME", "IDLE", "PID", "COMMENT")
-	} else {
-		fmt.Printf("%-8s %-12s %-16s %s\n",
-			"NAME", "LINE", "TIME", "COMMENT")
+	var b strings.Builder
+	fmt.Fprintf(&b, "%-8s", "NAME")
+	if opts.mesg {
+		fmt.Fprintf(&b, " %-4s", "MESG")
 	}
+	fmt.Fprintf(&b, " %-12s %-16s", "LINE", "TIME")
+	if opts.showIdle {
+		fmt.Fprintf(&b, " %-6s %5s", "IDLE", "PID")
+	}
+	fmt.Fprintf(&b, " %s", "COMMENT")
+	fmt.Println(b.String())
 }
 
 // formatEntry formats a single whoEntry as a display line.
 func formatEntry(e whoEntry, opts options) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%-8s %-12s %s",
-		entryLabel(e), displayLine(e), formatTime(e.loginTime))
+	fmt.Fprintf(&b, "%-8s", entryLabel(e))
+	if opts.mesg {
+		fmt.Fprintf(&b, " %s", messageStatus(e))
+	}
+	fmt.Fprintf(&b, " %-12s %s", displayLine(e), formatTime(e.loginTime))
 	if opts.showIdle && e.entryType == int(C.USER_PROCESS) {
 		appendIdleAndPID(&b, e)
 	}
@@ -419,6 +432,23 @@ func displayLine(e whoEntry) string {
 	default:
 		return e.line
 	}
+}
+
+// messageStatus returns the message status character for a terminal.
+// R2.3-task: + if group-writable, - if not, ? if stat fails or non-user entry.
+func messageStatus(e whoEntry) string {
+	if e.entryType != int(C.USER_PROCESS) {
+		return "?"
+	}
+	devPath := "/dev/" + e.line
+	info, err := os.Stat(devPath)
+	if err != nil {
+		return "?"
+	}
+	if info.Mode()&0o020 != 0 {
+		return "+"
+	}
+	return "-"
 }
 
 // appendIdleAndPID adds idle time and PID to the output.
