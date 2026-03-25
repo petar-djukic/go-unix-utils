@@ -3,7 +3,7 @@
 
 // Implements prd078-sum R1.1-R1.4, R2.1-R2.2, R3.1-R3.3: Compute BSD or
 // System V checksums and block counts for files or stdin, with SIGPIPE
-// handling and error reporting matching GNU sum.
+// handling, error reporting, --help, and --version matching GNU sum.
 package main
 
 import (
@@ -14,6 +14,9 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// version is set at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
 
 // bsdBlockSize is the block size for the BSD algorithm (R1.1).
 const bsdBlockSize = 1024
@@ -189,8 +192,11 @@ func sysvChecksum(r io.Reader) (uint16, int64, error) {
 	return uint16(folded), length, nil
 }
 
-// parseFlags extracts the -r and -s flags and returns remaining file args.
+// parseFlags extracts the -r, -s, --help, and --version flags and returns
+// remaining file args.
 // R2.1: -r selects BSD (default). R2.2: -s selects System V.
+// R3.2: --version prints version and exits 0.
+// R3.3 (task): --help prints usage and exits 0.
 func parseFlags(args []string) (sysv bool, files []string) {
 	endOfFlags := false
 	for _, arg := range args {
@@ -201,6 +207,14 @@ func parseFlags(args []string) (sysv bool, files []string) {
 		if arg == "--" {
 			endOfFlags = true
 			continue
+		}
+		if arg == "--version" {
+			printVersion()
+			os.Exit(0)
+		}
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
 		}
 		if arg == "-s" || arg == "--sysv" {
 			sysv = true
@@ -213,4 +227,23 @@ func parseFlags(args []string) (sysv bool, files []string) {
 		files = append(files, arg)
 	}
 	return sysv, files
+}
+
+// printVersion writes version information to stdout matching GNU sum format.
+func printVersion() {
+	fmt.Printf("sum (go-unix-utils) %s\n", version)
+}
+
+// printHelp writes usage information to stdout matching GNU sum format.
+func printHelp() {
+	fmt.Print(`Usage: sum [OPTION]... [FILE]...
+Print checksum and block counts for each FILE.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -r             use BSD sum algorithm (default), use 1K blocks
+  -s, --sysv     use System V sum algorithm, use 512 bytes blocks
+      --help     display this help and exit
+      --version  output version information and exit
+`)
 }

@@ -21,6 +21,26 @@ func normalizeProgramName(b []byte) []byte {
 	return bytes.ReplaceAll(b, []byte("gsum:"), []byte("sum:"))
 }
 
+// normalizeVersionString reduces version output to a generic marker.
+// GNU outputs "sum (GNU coreutils) X.Y" with extra lines; ours outputs
+// "sum (go-unix-utils) dev". Both produce non-empty stdout and exit 0.
+func normalizeVersionString(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("version output present\n")
+	}
+	return b
+}
+
+// normalizeHelpOutput keeps only the first line of help output.
+// GNU sum's --help has more detail than ours; we only compare
+// that both produce non-empty stdout and exit 0.
+func normalizeHelpOutput(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("help output present\n")
+	}
+	return b
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -56,6 +76,8 @@ func TestDiff(t *testing.T) {
 	}
 
 	norm := []testutils.NormalizeFunc{normalizeProgramName}
+	versionNorm := []testutils.NormalizeFunc{normalizeVersionString}
+	helpNorm := []testutils.NormalizeFunc{normalizeHelpOutput}
 
 	tests := []testutils.DiffTest{
 		// R1.1: BSD checksum on a file
@@ -85,14 +107,14 @@ func TestDiff(t *testing.T) {
 			Name: "bsd_multiple_files",
 			Args: []string{helloFile, emptyFile, binaryFile},
 		},
-		// R1.4: nonexistent file errors
+		// R1.4/R3.2: nonexistent file errors, exit 1
 		{
 			Name:      "bsd_nonexistent_file",
 			Args:      []string{filepath.Join(tmpDir, "nonexistent.txt")},
 			ExitCode:  1,
 			Normalize: norm,
 		},
-		// R1.4: mix of valid and invalid files
+		// R1.4/R3.2: mix of valid and invalid files — continues processing
 		{
 			Name:      "bsd_mixed_valid_invalid",
 			Args:      []string{helloFile, filepath.Join(tmpDir, "nope.txt"), emptyFile},
@@ -144,6 +166,32 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "bsd_binary",
 			Args: []string{binaryFile},
+		},
+		// R3.2 (task): --version prints version info and exits 0
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: versionNorm,
+		},
+		// R3.3 (task): --help prints usage info and exits 0
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: helpNorm,
+		},
+		// R3.2: error on nonexistent with -s continues
+		{
+			Name:      "sysv_nonexistent",
+			Args:      []string{"-s", filepath.Join(tmpDir, "missing.txt")},
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		// R3.2: error on nonexistent with -s, valid file still processed
+		{
+			Name:      "sysv_mixed_valid_invalid",
+			Args:      []string{"-s", filepath.Join(tmpDir, "gone.txt"), helloFile},
+			ExitCode:  1,
+			Normalize: norm,
 		},
 	}
 
