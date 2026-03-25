@@ -78,3 +78,7 @@ func isValidSpeed(speed uint64) bool {
 		return false
 	}
 }
+
+// getLineDiscipline returns the line discipline.
+// Darwin does not expose line discipline in Termios.
+func getLineDiscipline(_ *unix.Termios) (int, bool) { return 0, false }

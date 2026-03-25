@@ -122,6 +122,76 @@ var charOrder = []string{
 	"min", "time",
 }
 
+// cflagDisplayOrder defines control mode flags for -a display.
+var cflagDisplayOrder = []string{
+	"parenb", "parodd", "cs5", "cs6", "cs7", "cs8",
+	"hupcl", "cstopb", "cread", "clocal",
+}
+
+// iflagDisplayOrder defines input mode flags for -a display.
+var iflagDisplayOrder = []string{
+	"ignbrk", "brkint", "ignpar", "parmrk", "inpck", "istrip",
+	"inlcr", "igncr", "icrnl", "ixon", "ixoff", "ixany", "imaxbel",
+}
+
+// oflagDisplayOrder defines output mode flags for -a display.
+var oflagDisplayOrder = []string{
+	"opost", "onlcr", "ocrnl", "onocr", "onlret",
+}
+
+// lflagDisplayOrder defines local mode flags for -a display.
+var lflagDisplayOrder = []string{
+	"isig", "icanon", "iexten", "echo", "echoe", "echok",
+	"echonl", "noflsh", "tostop", "echoctl", "echoprt", "echoke",
+	"flusho", "pendin",
+}
+
+// defaultCSIZE is the default character size setting name.
+const defaultCSIZE = "cs8"
+
+// defaultChars maps special character names to their sane default values.
+// R1.1: used to determine which characters differ from defaults.
+var defaultChars = map[string]uint8{
+	"intr":    3,   // ^C
+	"quit":    28,  // ^\
+	"erase":   127, // ^?
+	"kill":    21,  // ^U
+	"eof":     4,   // ^D
+	"eol":     0,   // <undef>
+	"eol2":    0,   // <undef>
+	"start":   17,  // ^Q
+	"stop":    19,  // ^S
+	"susp":    26,  // ^Z
+	"rprnt":   18,  // ^R
+	"werase":  23,  // ^W
+	"lnext":   22,  // ^V
+	"discard": 15,  // ^O
+	"min":     1,
+	"time":    0,
+}
+
+// defaultFlagSet maps flag names to their sane default state (true = enabled).
+// Flags not in this map default to disabled.
+// R1.1: used to determine which flags differ from defaults.
+var defaultFlagSet = map[string]bool{
+	"brkint":  true,
+	"icrnl":   true,
+	"ixon":    true,
+	"imaxbel": true,
+	"opost":   true,
+	"onlcr":   true,
+	"cread":   true,
+	"hupcl":   true,
+	"isig":    true,
+	"icanon":  true,
+	"iexten":  true,
+	"echo":    true,
+	"echoe":   true,
+	"echok":   true,
+	"echoctl": true,
+	"echoke":  true,
+}
+
 // isFlagSet checks whether a flag is currently enabled in termios.
 func isFlagSet(t *unix.Termios, def flagDef) bool {
 	val := getFieldBits(t, def.field)

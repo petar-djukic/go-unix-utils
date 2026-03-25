@@ -125,3 +125,6 @@ func isValidSpeed(speed uint64) bool {
 	_, ok := speedToBaud[speed]
 	return ok
 }
+
+// getLineDiscipline returns the line discipline number.
+func getLineDiscipline(t *unix.Termios) (int, bool) { return int(t.Line), true }

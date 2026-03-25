@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -37,39 +38,79 @@ func printSave(t *unix.Termios) error {
 }
 
 // printAll prints all terminal settings in human-readable format.
-// R1.2: shows speeds, characters, and all flag groups.
+// R1.2: shows speeds, rows/columns, characters, and all flag groups.
 func printAll(t *unix.Termios, fd int) error {
-	printSpeeds(t)
+	printSpeedLine(t, fd, true)
 	printAllChars(t)
-	printAllFlags(t)
+	printAllFlagGroups(t)
 	return nil
 }
 
 // printSummary prints changed-from-default terminal settings.
-// R1.1: shows speed and line discipline.
+// R1.1: shows speed, line discipline, and non-default settings.
 func printSummary(t *unix.Termios, fd int) error {
-	printSpeeds(t)
+	printSpeedLine(t, fd, false)
+	printChangedChars(t)
+	printChangedFlags(t)
 	return nil
 }
 
-// printSpeeds prints input and output baud rates.
-func printSpeeds(t *unix.Termios) {
+// printSpeedLine prints baud rate, and optionally rows/columns/line discipline.
+func printSpeedLine(t *unix.Termios, fd int, showAll bool) {
 	ispeed := getInputSpeed(t)
 	ospeed := getOutputSpeed(t)
 	if ispeed == ospeed {
-		fmt.Printf("speed %d baud;\n", ospeed)
+		fmt.Printf("speed %d baud;", ospeed)
 	} else {
-		fmt.Printf("ispeed %d baud; ospeed %d baud;\n", ispeed, ospeed)
+		fmt.Printf("ispeed %d baud; ospeed %d baud;", ispeed, ospeed)
 	}
+	if showAll {
+		rows, cols := getWinSize(fd)
+		fmt.Printf(" rows %d; columns %d;", rows, cols)
+	}
+	if line, has := getLineDiscipline(t); has {
+		fmt.Printf(" line = %d;", line)
+	}
+	fmt.Println()
+}
+
+// getWinSize returns the terminal window size (rows, columns).
+func getWinSize(fd int) (int, int) {
+	ws, err := unix.IoctlGetWinsize(fd, unix.TIOCGWINSZ)
+	if err != nil {
+		return 0, 0
+	}
+	return int(ws.Row), int(ws.Col)
 }
 
 // printAllChars prints all special character assignments.
 func printAllChars(t *unix.Termios) {
+	var entries []string
 	for _, name := range charOrder {
 		idx := charDefs[name]
-		fmt.Printf("%s = %s; ", name, formatCC(t.Cc[idx]))
+		entries = append(entries, fmt.Sprintf("%s = %s;", name, formatCC(t.Cc[idx])))
 	}
-	fmt.Println()
+	printWrapped(entries, 80)
+}
+
+// printWrapped prints entries separated by spaces, wrapping at maxWidth.
+func printWrapped(entries []string, maxWidth int) {
+	line := ""
+	for _, e := range entries {
+		candidate := e
+		if line != "" {
+			candidate = line + " " + e
+		}
+		if len(candidate) > maxWidth && line != "" {
+			fmt.Println(line)
+			line = e
+		} else {
+			line = candidate
+		}
+	}
+	if line != "" {
+		fmt.Println(line)
+	}
 }
 
 // formatCC formats a control character value for display.
@@ -86,15 +127,100 @@ func formatCC(val uint8) string {
 	}
 }
 
-// printAllFlags prints all flag settings grouped by category.
-func printAllFlags(t *unix.Termios) {
-	for _, name := range flagOrder {
-		def := flagDefs[name]
+// printAllFlagGroups prints all flag settings grouped by category.
+func printAllFlagGroups(t *unix.Termios) {
+	printFlagGroup(t, cflagDisplayOrder)
+	printFlagGroup(t, iflagDisplayOrder)
+	printFlagGroup(t, oflagDisplayOrder)
+	printFlagGroup(t, lflagDisplayOrder)
+}
+
+// printFlagGroup prints one category of flags on a single line.
+// Multi-bit fields (CSIZE) show only the active value.
+func printFlagGroup(t *unix.Termios, names []string) {
+	var parts []string
+	for _, name := range names {
+		def, ok := flagDefs[name]
+		if !ok {
+			continue
+		}
+		if def.mask != 0 {
+			if isFlagSet(t, def) {
+				parts = append(parts, name)
+			}
+			continue
+		}
 		if isFlagSet(t, def) {
-			fmt.Printf("%s ", name)
+			parts = append(parts, name)
 		} else {
-			fmt.Printf("-%s ", name)
+			parts = append(parts, "-"+name)
 		}
 	}
-	fmt.Println()
+	if len(parts) > 0 {
+		fmt.Println(strings.Join(parts, " "))
+	}
+}
+
+// printChangedChars prints control characters that differ from sane defaults.
+func printChangedChars(t *unix.Termios) {
+	var entries []string
+	for _, name := range charOrder {
+		idx := charDefs[name]
+		dflt, ok := defaultChars[name]
+		if ok && t.Cc[idx] == dflt {
+			continue
+		}
+		entries = append(entries, fmt.Sprintf("%s = %s;", name, formatCC(t.Cc[idx])))
+	}
+	if len(entries) > 0 {
+		printWrapped(entries, 80)
+	}
+}
+
+// printChangedFlags prints flags that differ from sane defaults.
+func printChangedFlags(t *unix.Termios) {
+	var parts []string
+	allNames := concatStrings(cflagDisplayOrder, iflagDisplayOrder,
+		oflagDisplayOrder, lflagDisplayOrder)
+	for _, name := range allNames {
+		changed := isChangedFlag(t, name)
+		if changed != "" {
+			parts = append(parts, changed)
+		}
+	}
+	if len(parts) > 0 {
+		fmt.Println(strings.Join(parts, " "))
+	}
+}
+
+// isChangedFlag returns the display name if the flag differs from default,
+// or "" if it matches the default.
+func isChangedFlag(t *unix.Termios, name string) string {
+	def, ok := flagDefs[name]
+	if !ok {
+		return ""
+	}
+	isSet := isFlagSet(t, def)
+	if def.mask != 0 {
+		if isSet && name != defaultCSIZE {
+			return name
+		}
+		return ""
+	}
+	if isSet != defaultFlagSet[name] {
+		if isSet {
+			return name
+		}
+		return "-" + name
+	}
+	return ""
+}
+
+// concatStrings concatenates multiple string slices into one.
+func concatStrings(slices ...[]string) []string {
+	var result []string
+	for _, s := range slices {
+		result = append(result, s...)
+	}
+	return result
 }
