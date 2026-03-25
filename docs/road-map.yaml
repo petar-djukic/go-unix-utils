@@ -419,7 +419,7 @@ releases:
         - id: rel09.0-uc004-cksum
           status: implemented
         - id: rel09.0-uc005-sum
-          status: spec_complete
+          status: implemented
     - version: "09.1"
       name: "Batch 9.1 — encoding utilities (base32, base64, basenc)"
       status: spec_complete
