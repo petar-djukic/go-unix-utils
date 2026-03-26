@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Implements prd110-pr: Paginate or Columnate Files for Printing.
-// Covers R3.1 (exit codes: 0 on success, 1 on error),
+// Covers R1.1 (default 66-line page layout with header/body/footer),
+// R1.2 (-l/--length page length, -h/--header custom header text),
+// R1.3 (-t/--omit-header suppress header/footer, -T/--omit-pagination),
+// R1.4 (read from FILE arguments or stdin when no file or "-" given),
+// R3.1 (exit codes: 0 on success, 1 on error),
 // R3.2 (SIGPIPE handling via pkg/sys.InstallSIGPIPEHandler).
 package main
 
@@ -380,6 +384,9 @@ func paginateFile(r io.Reader, bw *bufio.Writer, displayName string, cfg prConfi
 	if err != nil {
 		return err
 	}
+	if len(lines) == 0 {
+		return nil
+	}
 	if cfg.columns > 1 {
 		return writeMultiColumn(bw, lines, displayName, cfg)
 	}
@@ -454,7 +461,11 @@ func writePageHeader(bw *bufio.Writer, displayName string, page int, cfg prConfi
 		headerText = cfg.header
 	}
 	indent := strings.Repeat(" ", cfg.indent)
-	line := fmt.Sprintf("%s%s  %s  Page %d", indent, dateStr, headerText, page)
+	pageStr := fmt.Sprintf("Page %d", page)
+	line := formatHeaderLine(dateStr, headerText, pageStr, cfg.pageWidth)
+	if _, err := bw.WriteString(indent); err != nil {
+		return err
+	}
 	if _, err := bw.WriteString(line); err != nil {
 		return err
 	}
@@ -463,6 +474,20 @@ func writePageHeader(bw *bufio.Writer, displayName string, page int, cfg prConfi
 		return err
 	}
 	return nil
+}
+
+// formatHeaderLine centers headerText between date and page within width.
+func formatHeaderLine(date, header, page string, width int) string {
+	available := width - len(date) - len(page)
+	if available < len(header)+2 {
+		if header == "" {
+			return date + " " + page
+		}
+		return date + " " + header + " " + page
+	}
+	leftPad := (available - len(header)) / 2
+	rightPad := available - len(header) - leftPad
+	return date + strings.Repeat(" ", leftPad) + header + strings.Repeat(" ", rightPad) + page
 }
 
 // formatDate returns the current date formatted for pr headers.
