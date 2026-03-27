@@ -18,39 +18,47 @@ requirements:
       - R1.1:
           text: Must format input into pages of 66 lines by default (header 5 lines, body 56 lines, footer 5 lines). Each page header shows the date, filename, and page number.
           weight: 4
-      - R1.2:
+
+  R2:
+    title: Page options
+    items:
+      - R2.1:
           text: "-l N or --length=N must set the page length to N lines. -h HEADER or --header=HEADER must replace the filename in the header."
           weight: 1
-      - R1.3:
+      - R2.2:
           text: "-t or --omit-header must suppress the 5-line header and 5-line footer. -T or --omit-pagination must suppress header/footer and do not pad page bottom."
           weight: 1
-      - R1.4:
+      - R2.3:
           text: Must read from FILE arguments or stdin when no file or "-" is given.
           weight: 1
 
-  R2:
-    title: Columns and formatting
+  R3:
+    title: Multi-column output
     items:
-      - R2.1:
+      - R3.1:
           text: "-COLUMN or --columns=COLUMN must produce multi-column output. Columns are filled down by default. -a or --across fills across instead."
           weight: 4
-      - R2.2:
+
+  R4:
+    title: Formatting options
+    items:
+      - R4.1:
           text: "-n[CHAR[WIDTH]] or --number-lines[=CHAR[WIDTH]] must number output lines. CHAR is the separator (default tab), WIDTH is the number field width (default 5)."
           weight: 1
-      - R2.3:
+      - R4.2:
           text: "-o MARGIN or --indent=MARGIN must indent each line by MARGIN spaces. -w WIDTH or --width=WIDTH must set the page width (default 72)."
           weight: 1
-      - R2.4:
+      - R4.3:
           text: "-d or --double-space must double-space the output. -s CHAR or --separator=CHAR must use CHAR as the column separator (default tab)."
           weight: 1
 
-  R3:
+  R5:
     title: Exit codes and SIGPIPE
     items:
-      - R3.1:
+      - R5.1:
           text: Must exit 0 on success. Must exit 1 on any error.
           weight: 1
-      - R3.2:
+      - R5.2:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
           weight: 1
 
@@ -62,29 +70,29 @@ acceptance_criteria:
     criterion: "pr on a text file produces paginated output with header, matching gpr."
     traces:
       - R1.1
-      - R1.4
+      - R2.3
   - id: AC2
     criterion: "pr -2 produces two-column output, matching gpr -2."
     traces:
-      - R2.1
+      - R3.1
   - id: AC3
     criterion: "Differential test against gpr passes."
     traces:
       - R1.1
-      - R2.1
+      - R3.1
   - id: AC4
     criterion: "cmd/pr compiles with no warnings under golangci-lint."
     traces:
       - R1.1
-      - R1.2
-      - R1.3
-      - R1.4
       - R2.1
       - R2.2
       - R2.3
-      - R2.4
       - R3.1
-      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3
+      - R5.1
+      - R5.2
 
 package_contract:
   imports:
