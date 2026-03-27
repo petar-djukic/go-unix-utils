@@ -49,7 +49,6 @@ project:
         - "13.0"
         - "13.1"
         - "14.0"
-        - "99.0"
 generation:
     prefix: generation-
     cycles: 100
