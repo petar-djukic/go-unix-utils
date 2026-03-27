@@ -528,14 +528,14 @@ releases:
         - id: rel12.0-uc003-install
           status: spec_complete
     - version: "12.1"
-      name: "Batch 12.1 — miscellaneous utilities (tsort, pathchk, test, stty)"
+      name: "Batch 12.1 — miscellaneous utilities (tsort, pathchk, test)"
       status: spec_complete
       depends_on: ["00.0"]
       description: |
-        Implement four miscellaneous utilities. tsort performs topological sorting with
+        Implement three miscellaneous utilities. tsort performs topological sorting with
         cycle detection. pathchk validates pathnames against POSIX portability rules. test
         evaluates conditional expressions for file tests, string comparisons, and integer
-        arithmetic. stty prints and changes terminal line settings. All are verified by
+        arithmetic. All are verified by
         differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel12.1-uc001-tsort
@@ -543,8 +543,6 @@ releases:
         - id: rel12.1-uc002-pathchk
           status: spec_complete
         - id: rel12.1-uc003-test
-          status: spec_complete
-        - id: rel12.1-uc004-stty
           status: spec_complete
     - version: "13.0"
       name: "Batch 13.0 — directory listing and filesystem (df, dir, vdir, dircolors)"
@@ -566,20 +564,6 @@ releases:
           status: spec_complete
         - id: rel13.0-uc004-dircolors
           status: spec_complete
-    - version: "13.1"
-      name: "Batch 13.1 — text formatting (pr, ptx)"
-      status: spec_complete
-      depends_on: ["00.0"]
-      description: |
-        Implement two text formatting utilities. pr paginates text files for printing with
-        headers, page numbers, and multi-column layout. ptx produces a permuted
-        (keyword-in-context) index from text input. Both are verified by differential
-        testing against GNU coreutils reference binaries.
-      use_cases:
-        - id: rel13.1-uc001-pr
-          status: spec_complete
-        - id: rel13.1-uc002-ptx
-          status: spec_complete
     - version: "14.0"
       name: "Batch 14.0 — moreutils (chronic, pee, vidir)"
       status: spec_complete
@@ -596,4 +580,25 @@ releases:
         - id: rel14.0-uc002-pee
           status: spec_complete
         - id: rel14.0-uc003-vidir
+          status: spec_complete
+    - version: "15.0"
+      name: "Batch 15.0 — complex utilities (ts, stty, pr, ptx)"
+      status: spec_complete
+      depends_on: ["00.0"]
+      description: |
+        Implement four complex utilities that require extended stitch time due to
+        algorithmic complexity. ts timestamps stdin lines with multiple modes including
+        relative-time conversion. stty prints and changes terminal line settings via
+        termios. pr paginates text files with headers, page numbers, and multi-column
+        layout. ptx produces a permuted keyword-in-context index. All PRDs have been
+        restructured so each weight-4 requirement is in its own group. All are verified
+        by differential testing against reference binaries.
+      use_cases:
+        - id: rel05.5-uc001-ts
+          status: spec_complete
+        - id: rel12.1-uc004-stty
+          status: spec_complete
+        - id: rel13.1-uc001-pr
+          status: spec_complete
+        - id: rel13.1-uc002-ptx
           status: spec_complete
