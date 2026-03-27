@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/pee implements the moreutils pee command: tee stdin to pipe commands.
-// Implements prd113-pee R1.1, R1.2, R1.3.
+// Implements prd113-pee R1.1, R1.2, R1.3, R2.1, R2.2.
 package main
 
 import (
@@ -19,14 +19,15 @@ import (
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	if len(os.Args) < 2 {
-		os.Exit(0)
-	}
-
 	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pee: %v\n", err)
 		os.Exit(1)
+	}
+
+	// R2.2: with no command arguments, read stdin to completion and exit 0.
+	if len(os.Args) < 2 {
+		os.Exit(0)
 	}
 
 	commands := os.Args[1:]
@@ -34,10 +35,11 @@ func main() {
 }
 
 // runCommands executes each command via sh -c, piping input to each command's
-// stdin in parallel. Returns 0 if all commands succeed.
+// stdin in parallel. Returns 0 if all commands succeed, 1 if any fails.
 // R1.1: reads stdin and writes to each command in parallel via sh -c.
 // R1.2: waits for all commands to complete before returning.
 // R1.3: stdout of each command goes to os.Stdout (interleaved).
+// R2.1: exits 0 when all commands exit 0, 1 when any exits non-zero.
 func runCommands(input []byte, commands []string) int {
 	var wg sync.WaitGroup
 	errs := make(chan error, len(commands))
