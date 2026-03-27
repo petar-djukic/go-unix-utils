@@ -7,6 +7,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,13 @@ import (
 
 // editorFallback is the default editor when $EDITOR and $VISUAL are unset.
 const editorFallback = "vi"
+
+// exitEditorFailed is the exit code when the editor exits non-zero.
+// R2.1: matches the reference vidir behavior (exit 2 on editor failure).
+const exitEditorFailed = 2
+
+// errEditorFailed is a sentinel error for editor non-zero exit.
+var errEditorFailed = fmt.Errorf("editor failed")
 
 // entry represents a numbered file in the vidir listing.
 type entry struct {
@@ -45,10 +53,24 @@ func main() {
 	edited, err := editEntries(entries)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "vidir: %v\n", err)
+		os.Exit(exitCodeForError(err))
+	}
+
+	if err := checkDuplicatePaths(edited); err != nil {
+		fmt.Fprintf(os.Stderr, "vidir: %v\n", err)
 		os.Exit(1)
 	}
 
 	os.Exit(applyChanges(entries, edited, verbose))
+}
+
+// exitCodeForError returns exitEditorFailed if the error wraps errEditorFailed,
+// otherwise returns 1.
+func exitCodeForError(err error) int {
+	if errors.Is(err, errEditorFailed) {
+		return exitEditorFailed
+	}
+	return 1
 }
 
 // parseArgs extracts -v/--verbose and returns remaining positional args.
@@ -164,7 +186,7 @@ func launchEditor(path string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor exited with error: %w", err)
+		return fmt.Errorf("editor exited with error: %w", errEditorFailed)
 	}
 	return nil
 }
@@ -225,6 +247,19 @@ func parseLine(line string) (entry, error) {
 		return entry{}, fmt.Errorf("invalid number in line: %q", line)
 	}
 	return entry{num: num, path: path}, nil
+}
+
+// checkDuplicatePaths returns an error if two edited entries share the same path.
+// R2.1: duplicate targets are an error condition.
+func checkDuplicatePaths(entries []entry) error {
+	seen := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if seen[e.path] {
+			return fmt.Errorf("duplicate target path: %s", e.path)
+		}
+		seen[e.path] = true
+	}
+	return nil
 }
 
 // applyChanges compares original and edited entries, performs renames
