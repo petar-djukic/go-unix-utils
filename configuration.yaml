@@ -78,4 +78,4 @@ claude:
     silence_agent: true
     secrets_dir: .secrets
     default_token_file: claude.json
-    max_time_sec: 900
+    max_time_sec: 1500
