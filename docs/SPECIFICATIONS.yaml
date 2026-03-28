@@ -54,9 +54,9 @@ roadmap_summary:
     use_cases_total: 2
     status: spec_complete
   - version: rel05.5
-    name: "Batch 5.5 — ts timestamp stdin lines"
-    use_cases_done: 1
-    use_cases_total: 1
+    name: "Batch 5.5 — (ts moved to rel15.0)"
+    use_cases_done: 0
+    use_cases_total: 0
     status: spec_complete
   - version: rel06.0
     name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
@@ -216,12 +216,12 @@ use_case_index:
     status: spec_complete
     test_suite: test-rel04.0-ext
     path: docs/specs/use-cases/rel04.0-uc002-ls-extended.yaml
-  - id: rel05.5-uc001-ts
+  - id: rel15.0-uc001-ts
     title: "Timestamp stdin lines via ts"
-    release: rel05.5
+    release: rel15.0
     status: spec_complete
-    test_suite: test-rel05.5
-    path: docs/specs/use-cases/rel05.5-uc001-ts.yaml
+    test_suite: test-rel15.0
+    path: docs/specs/use-cases/rel15.0-uc001-ts.yaml
 
   - id: rel02.0-uc001-true
     title: "Exit successfully via true"
@@ -363,12 +363,15 @@ test_suite_index:
       - rel04.0-uc002-ls-extended
     test_case_count: 14
     path: docs/specs/test-suites/test-rel04.0-ext.yaml
-  - id: test-rel05.5
-    title: "Test Suite: rel05.5 — ts timestamp stdin lines"
+  - id: test-rel15.0
+    title: "Test Suite: rel15.0 — ts, stty, pr, ptx"
     traces:
-      - rel05.5-uc001-ts
-    test_case_count: 12
-    path: docs/specs/test-suites/test-rel05.5.yaml
+      - rel15.0-uc001-ts
+      - rel15.0-uc002-stty
+      - rel15.0-uc003-pr
+      - rel15.0-uc004-ptx
+    test_case_count: 17
+    path: docs/specs/test-suites/test-rel15.0.yaml
 
   - id: test-rel02.0
     title: "Test Suite: rel02.0 — trivial utilities (true, false, yes, basename, dirname)"
@@ -438,7 +441,7 @@ prd_to_use_case_mapping:
     prd: prd008-ls
     why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing from the combined prd008-ls.
     coverage: Full — all prd008-ls extended requirement items are traced from the test suite.
-  - use_case: rel05.5-uc001-ts
+  - use_case: rel15.0-uc001-ts
     prd: prd004-ts
     why_required: ts exercises timestamp prepending with multiple time modes and strftime formatting.
     coverage: Full — all prd004-ts requirement groups (R1-R8) are traced from the test suite.
@@ -521,7 +524,7 @@ coverage_gaps: |
   indirectly by rel00.0 use cases. prd059-version specifies the cmd/version binary
   extracted from the original prd011.
 
-  ts (prd004-ts) is in rel05.5 with full specification coverage.
+  ts (prd004-ts) is in rel15.0 with full specification coverage.
 
 traceability_diagram: |
   ```mermaid
@@ -540,7 +543,7 @@ traceability_diagram: |
     P42["prd042-whoami"] & P43["prd043-groups"]
     UC1["rel03.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
     UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.0-uc002-ls-extended"]
-    UC7["rel05.5-uc001-ts"]
+    UC7["rel15.0-uc001-ts"]
     UC8["rel02.0-uc001-true"] & UC9["rel02.0-uc002-false"] & UC10["rel02.0-uc003-yes"]
     UC11["rel02.0-uc004-basename"] & UC12["rel02.0-uc005-dirname"]
     UC13["rel02.1-uc001-tee"] & UC14["rel02.2-uc001-head"]
@@ -549,7 +552,7 @@ traceability_diagram: |
     UC20["rel06.1-uc001-env"] & UC21["rel06.1-uc002-printenv"] & UC22["rel06.1-uc003-id"]
     UC23["rel06.1-uc004-whoami"] & UC24["rel06.1-uc005-groups"]
     TS1["test-rel03.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
-    TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.0-ext"] & TS7["test-rel05.5"]
+    TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.0-ext"] & TS7["test-rel15.0"]
     TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
     TS11["test-rel06.0"] & TS12["test-rel06.1"]
     V --> A

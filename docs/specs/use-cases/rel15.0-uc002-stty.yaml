@@ -1,4 +1,4 @@
-id: rel12.1-uc004-stty
+id: rel15.0-uc002-stty
 title: "Change terminal settings via stty"
 
 summary: |
@@ -37,4 +37,4 @@ success_criteria:
 out_of_scope:
   - Platform-specific features not available on macOS.
 
-test_suite: test-rel-12.1
+test_suite: test-rel15.0
