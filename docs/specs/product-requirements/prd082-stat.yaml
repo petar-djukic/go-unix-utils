@@ -21,49 +21,61 @@ requirements:
       - R1.1:
           text: Must display file status for each named file argument using the default multi-line format matching GNU stat output (File, Size, Blocks, IO Block, file type, Device, Inode, Links, Access mode, Uid, Gid, Access time, Modify time, Change time, Birth time).
           weight: 4
-      - R1.2:
+
+  R2:
+    title: File listing options
+    items:
+      - R2.1:
           text: Must process multiple file arguments in order, printing status for each.
           weight: 1
-      - R1.3:
+      - R2.2:
           text: "-L or --dereference must follow symlinks and report the target file's status instead of the link itself."
           weight: 1
-      - R1.4:
+      - R2.3:
           text: Must exit 1 when any named file does not exist or cannot be accessed, printing an error to stderr, and continue processing remaining files.
           weight: 1
 
-  R2:
+  R3:
     title: Format strings
     items:
-      - R2.1:
-          text: "-c FORMAT or --format=FORMAT must use FORMAT as a printf-style format string. Must support directives: %a (access rights octal), %A (access rights human), %b (blocks allocated), %B (block size), %d (device number decimal), %D (device number hex), %f (raw mode hex), %F (file type), %g (group ID), %G (group name), %h (hard links), %i (inode), %m (mount point), %n (file name), %N (quoted file name with symlink target), %o (optimal I/O size), %s (total size bytes), %t (major device type hex), %T (minor device type hex), %u (user ID), %U (user name), %w (birth time human), %W (birth time epoch), %x (access time human), %X (access time epoch), %y (modify time human), %Y (modify time epoch), %z (change time human), %Z (change time epoch)."
-          weight: 4
-      - R2.2:
-          text: "--printf=FORMAT must work like --format but interpret backslash escapes (\\n, \\t, etc.) and not append a trailing newline."
-          weight: 1
-      - R2.3:
-          text: "-t or --terse must produce terse output (single line of space-separated fields) matching GNU stat --terse format."
-          weight: 1
-
-  R3:
-    title: Filesystem status mode
-    items:
       - R3.1:
-          text: "-f or --file-system must display filesystem status instead of file status. Output includes filesystem type, block size, total/free/available blocks and inodes."
-          weight: 4
-      - R3.2:
-          text: "Format directives in --file-system mode differ from file mode: %a (free blocks available to non-root), %b (total blocks), %c (total inodes), %d (free inodes), %f (free blocks), %i (filesystem ID hex), %l (max filename length), %n (file name), %s (block size optimal), %S (fundamental block size), %t (filesystem type hex), %T (filesystem type name)."
+          text: "-c FORMAT or --format=FORMAT must use FORMAT as a printf-style format string. Must support directives: %a (access rights octal), %A (access rights human), %b (blocks allocated), %B (block size), %d (device number decimal), %D (device number hex), %f (raw mode hex), %F (file type), %g (group ID), %G (group name), %h (hard links), %i (inode), %m (mount point), %n (file name), %N (quoted file name with symlink target), %o (optimal I/O size), %s (total size bytes), %t (major device type hex), %T (minor device type hex), %u (user ID), %U (user name), %w (birth time human), %W (birth time epoch), %x (access time human), %X (access time epoch), %y (modify time human), %Y (modify time epoch), %z (change time human), %Z (change time epoch)."
           weight: 4
 
   R4:
-    title: Exit codes and SIGPIPE
+    title: Printf and terse output
     items:
       - R4.1:
-          text: Must exit 0 when all files are processed successfully.
+          text: "--printf=FORMAT must work like --format but interpret backslash escapes (\\n, \\t, etc.) and not append a trailing newline."
           weight: 1
       - R4.2:
+          text: "-t or --terse must produce terse output (single line of space-separated fields) matching GNU stat --terse format."
+          weight: 1
+
+  R5:
+    title: Filesystem status
+    items:
+      - R5.1:
+          text: "-f or --file-system must display filesystem status instead of file status. Output includes filesystem type, block size, total/free/available blocks and inodes."
+          weight: 4
+
+  R6:
+    title: Filesystem format directives
+    items:
+      - R6.1:
+          text: "Format directives in --file-system mode differ from file mode: %a (free blocks available to non-root), %b (total blocks), %c (total inodes), %d (free inodes), %f (free blocks), %i (filesystem ID hex), %l (max filename length), %n (file name), %s (block size optimal), %S (fundamental block size), %t (filesystem type hex), %T (filesystem type name)."
+          weight: 4
+
+  R7:
+    title: Exit codes and SIGPIPE
+    items:
+      - R7.1:
+          text: Must exit 0 when all files are processed successfully.
+          weight: 1
+      - R7.2:
           text: Must exit 1 when any file cannot be accessed or an invalid format directive is used.
           weight: 1
-      - R4.3:
+      - R7.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
           weight: 1
 
@@ -75,35 +87,35 @@ acceptance_criteria:
     criterion: "stat on a regular file produces multi-line status output matching gstat."
     traces:
       - R1.1
-      - R1.2
-      - R1.4
+      - R2.1
+      - R2.3
   - id: AC2
     criterion: "stat -c '%s %n' file produces size and name, matching gstat -c '%s %n'."
     traces:
-      - R2.1
+      - R3.1
   - id: AC3
     criterion: "stat -f / produces filesystem status matching gstat -f /."
     traces:
-      - R3.1
-      - R3.2
+      - R5.1
+      - R6.1
   - id: AC4
     criterion: "Differential test against gstat passes for all required test cases."
     traces:
       - R1.1
-      - R2.1
       - R3.1
+      - R5.1
   - id: AC5
     criterion: "cmd/stat compiles with no warnings under golangci-lint."
     traces:
       - R1.1
-      - R1.2
-      - R1.3
-      - R1.4
       - R2.1
       - R2.2
       - R2.3
       - R3.1
-      - R3.2
       - R4.1
       - R4.2
-      - R4.3
+      - R5.1
+      - R6.1
+      - R7.1
+      - R7.2
+      - R7.3
