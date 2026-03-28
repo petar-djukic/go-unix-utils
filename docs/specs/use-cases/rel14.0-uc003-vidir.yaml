@@ -22,7 +22,7 @@ flow:
       vidir with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/vidir — vidir enables batch rename/delete (prd114-vidir)"
+  - T1: "cmd/vidir — vidir enables batch rename/delete (prd114-vidir R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

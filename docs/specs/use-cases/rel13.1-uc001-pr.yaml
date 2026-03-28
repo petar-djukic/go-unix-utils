@@ -22,7 +22,7 @@ flow:
       gpr with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/pr — pr paginates text with headers (prd110-pr)"
+  - T1: "cmd/pr — pr paginates text with headers (prd110-pr R1, R2, R3, R4, R5)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

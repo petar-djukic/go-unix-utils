@@ -22,7 +22,7 @@ flow:
       ginstall with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/install — install copies files with permissions (prd101-install)"
+  - T1: "cmd/install — install copies files with permissions (prd101-install R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 
