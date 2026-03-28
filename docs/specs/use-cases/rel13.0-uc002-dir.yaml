@@ -22,7 +22,7 @@ flow:
       gdir with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/dir — dir lists directory contents (prd107-dir)"
+  - T1: "cmd/dir — dir lists directory contents (prd107-dir R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

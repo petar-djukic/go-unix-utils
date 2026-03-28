@@ -22,7 +22,7 @@ flow:
       gpinky with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/pinky — pinky prints user info in short/long format (prd098-pinky)"
+  - T1: "cmd/pinky — pinky prints user info in short/long format (prd098-pinky R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

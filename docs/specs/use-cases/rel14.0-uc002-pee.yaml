@@ -22,7 +22,7 @@ flow:
       pee with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/pee — pee pipes stdin to multiple commands (prd113-pee)"
+  - T1: "cmd/pee — pee pipes stdin to multiple commands (prd113-pee R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

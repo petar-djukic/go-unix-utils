@@ -22,7 +22,7 @@ flow:
       gwho with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/who — who prints user, terminal, and time info (prd097-who)"
+  - T1: "cmd/who — who prints user, terminal, and time info (prd097-who R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

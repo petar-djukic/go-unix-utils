@@ -22,7 +22,7 @@ flow:
       gshred with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/shred — shred overwrites files with random data (prd099-shred)"
+  - T1: "cmd/shred — shred overwrites files with random data (prd099-shred R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 
