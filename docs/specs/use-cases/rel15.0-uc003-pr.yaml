@@ -1,4 +1,4 @@
-id: rel13.1-uc001-pr
+id: rel15.0-uc003-pr
 title: "Paginate files for printing via pr"
 
 summary: |
@@ -37,4 +37,4 @@ success_criteria:
 out_of_scope:
   - Platform-specific features not available on macOS.
 
-test_suite: test-rel-13.1
+test_suite: test-rel15.0

@@ -594,11 +594,11 @@ releases:
         restructured so each weight-4 requirement is in its own group. All are verified
         by differential testing against reference binaries.
       use_cases:
-        - id: rel05.5-uc001-ts
+        - id: rel15.0-uc001-ts
           status: spec_complete
-        - id: rel12.1-uc004-stty
+        - id: rel15.0-uc002-stty
           status: spec_complete
-        - id: rel13.1-uc001-pr
+        - id: rel15.0-uc003-pr
           status: spec_complete
-        - id: rel13.1-uc002-ptx
+        - id: rel15.0-uc004-ptx
           status: spec_complete

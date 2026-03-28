@@ -1,12 +1,11 @@
 id: test-rel12.1
-title: "Test Suite: rel12.1 — tsort, pathchk, test, stty"
+title: "Test Suite: rel12.1 — tsort, pathchk, test"
 release: rel12.1
 
 traces:
   - rel12.1-uc001-tsort
   - rel12.1-uc002-pathchk
   - rel12.1-uc003-test
-  - rel12.1-uc004-stty
   - prd102-tsort R1
   - prd102-tsort R2
   - prd103-pathchk R1
@@ -15,9 +14,6 @@ traces:
   - prd104-test R2
   - prd104-test R3
   - prd104-test R4
-  - prd105-stty R1
-  - prd105-stty R2
-  - prd105-stty R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -124,30 +120,3 @@ test_cases:
     traces:
       - prd104-test R3.1
 
-  - name: stty_default
-    description: "stty prints terminal settings summary"
-    inputs:
-      args: []
-      stdin: null
-      env: ["LC_ALL=C"]
-    normalization: none
-    expected:
-      exit_code: 0
-      stdout: ""
-      stderr: ""
-    traces:
-      - prd105-stty R1.1
-
-  - name: stty_all
-    description: "stty -a prints all settings"
-    inputs:
-      args: ["-a"]
-      stdin: null
-      env: ["LC_ALL=C"]
-    normalization: none
-    expected:
-      exit_code: 0
-      stdout: ""
-      stderr: ""
-    traces:
-      - prd105-stty R1.2

@@ -1,9 +1,9 @@
-id: test-rel05.5
-title: "Test Suite: rel05.5 — ts timestamp stdin lines"
-release: rel05.5
+id: test-rel15.0
+title: "Test Suite: rel15.0 — ts, stty, pr, ptx"
+release: rel15.0
 
 traces:
-  - rel05.5-uc001-ts
+  - rel15.0-uc001-ts
   - prd004-ts R1
   - prd004-ts R2
   - prd004-ts R3
@@ -12,11 +12,23 @@ traces:
   - prd004-ts R6
   - prd004-ts R7
   - prd004-ts R10
+  - rel15.0-uc002-stty
+  - prd105-stty R1
+  - prd105-stty R2
+  - prd105-stty R3
+  - rel15.0-uc003-pr
+  - prd110-pr R1
+  - prd110-pr R2
+  - prd110-pr R3
+  - rel15.0-uc004-ptx
+  - prd111-ptx R1
+  - prd111-ptx R2
+  - prd111-ptx R3
 
 preconditions:
-  - ./bin/ts exists (built via mage build).
-  - The reference binary ts is installed (brew install moreutils) and on PATH.
-  - Tests are run via go test ./cmd/ts/... which invokes RunDiffTests from pkg/testutils.
+  - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
+  - "Reference binaries installed via Homebrew: ts (moreutils), gstty, gpr, gptx (coreutils)"
+  - Tests are run via go test ./cmd/<name>/... which invokes RunDiffTests from pkg/testutils.
   - TimestampNormalizer is applied to all tests whose output contains wall-clock timestamps.
   - All tests use LC_ALL=C and TZ=America/New_York (or a fixed known zone) to ensure consistent strftime output between runs.
 
@@ -210,3 +222,81 @@ test_cases:
       stderr: ""
     traces:
       - prd004-ts R8.1
+
+  # --- uc002-stty: change terminal settings ---
+
+  - name: stty_default
+    description: "stty prints terminal settings summary"
+    inputs:
+      args: []
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd105-stty R1.1
+
+  - name: stty_all
+    description: "stty -a prints all settings"
+    inputs:
+      args: ["-a"]
+      stdin: null
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd105-stty R1.2
+
+  # --- uc003-pr: paginate files for printing ---
+
+  - name: pr_default
+    description: "pr paginates input with header"
+    inputs:
+      args: []
+      stdin: "line1\nline2\nline3\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd110-pr R1.1
+      - prd110-pr R1.4
+
+  - name: pr_two_columns
+    description: "pr -2 produces two-column output"
+    inputs:
+      args: ["-2"]
+      stdin: "a\nb\nc\nd\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd110-pr R2.1
+
+  # --- uc004-ptx: produce permuted index ---
+
+  - name: ptx_basic
+    description: "ptx produces permuted index"
+    inputs:
+      args: []
+      stdin: "hello world\n"
+      env: ["LC_ALL=C"]
+    normalization: none
+    expected:
+      exit_code: 0
+      stdout: ""
+      stderr: ""
+    traces:
+      - prd111-ptx R1.1
+      - prd111-ptx R1.4
