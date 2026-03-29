@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/expand converts tabs to spaces (prd024-expand R1, R2).
+// cmd/expand converts tabs to spaces (prd024-expand R1, R2, R3).
 package main
 
 import (
@@ -26,6 +26,7 @@ func main() {
 type config struct {
 	files   []string
 	tabSpec string // raw -t value; empty means default
+	initial bool   // R3.1: -i / --initial: only expand leading tabs
 }
 
 // tabStops holds parsed tab stop configuration.
@@ -47,21 +48,11 @@ func parseArgs(args []string) config {
 			cfg.files = append(cfg.files, a)
 			continue
 		}
-		// R2.3: last -t wins
-		if a == "-t" || a == "--tabs" {
-			if i+1 >= len(args) {
-				die("option requires an argument -- 't'")
-			}
-			i++
-			cfg.tabSpec = args[i]
+		if a == "-i" || a == "--initial" {
+			cfg.initial = true
 			continue
 		}
-		if strings.HasPrefix(a, "-t") {
-			cfg.tabSpec = a[2:]
-			continue
-		}
-		if strings.HasPrefix(a, "--tabs=") {
-			cfg.tabSpec = a[7:]
+		if err := parseTabArg(a, args, &i, &cfg); err == nil {
 			continue
 		}
 		die(fmt.Sprintf("invalid option -- '%s'", a[1:]))
@@ -70,6 +61,28 @@ func parseArgs(args []string) config {
 		cfg.files = []string{"-"}
 	}
 	return cfg
+}
+
+// parseTabArg handles -t / --tabs arguments. Returns nil if matched.
+func parseTabArg(a string, args []string, i *int, cfg *config) error {
+	// R2.3: last -t wins
+	if a == "-t" || a == "--tabs" {
+		if *i+1 >= len(args) {
+			die("option requires an argument -- 't'")
+		}
+		*i++
+		cfg.tabSpec = args[*i]
+		return nil
+	}
+	if strings.HasPrefix(a, "-t") {
+		cfg.tabSpec = a[2:]
+		return nil
+	}
+	if strings.HasPrefix(a, "--tabs=") {
+		cfg.tabSpec = a[7:]
+		return nil
+	}
+	return fmt.Errorf("not a tab arg")
 }
 
 // parseTabStops parses the -t value into a tabStops struct.
@@ -116,7 +129,7 @@ func run(cfg config) int {
 	out := bufio.NewWriter(os.Stdout)
 	exitCode := 0
 	for _, name := range cfg.files {
-		if err := processFile(name, out, ts); err != nil {
+		if err := processFile(name, out, ts, cfg.initial); err != nil {
 			fmt.Fprintf(os.Stderr, "expand: %v\n", err)
 			exitCode = 1
 		}
@@ -129,7 +142,7 @@ func run(cfg config) int {
 }
 
 // processFile opens one input and expands its tabs.
-func processFile(name string, out *bufio.Writer, ts tabStops) error {
+func processFile(name string, out *bufio.Writer, ts tabStops, initial bool) error {
 	r, err := openInput(name)
 	if err != nil {
 		if pe, ok := err.(*os.PathError); ok {
@@ -140,7 +153,7 @@ func processFile(name string, out *bufio.Writer, ts tabStops) error {
 	if r != os.Stdin {
 		defer r.Close()
 	}
-	return expandStream(bufio.NewReader(r), out, ts)
+	return expandStream(bufio.NewReader(r), out, ts, initial)
 }
 
 func openInput(name string) (*os.File, error) {
@@ -152,8 +165,10 @@ func openInput(name string) (*os.File, error) {
 
 // expandStream reads input byte by byte and replaces tabs with spaces.
 // R1.1-R1.4: default expansion. R2.1-R2.4: custom tab stops.
-func expandStream(r *bufio.Reader, out *bufio.Writer, ts tabStops) error {
+// R3.1: when initial is true, only leading tabs are expanded.
+func expandStream(r *bufio.Reader, out *bufio.Writer, ts tabStops, initial bool) error {
 	col := 0
+	leading := true
 	for {
 		c, err := r.ReadByte()
 		if err != nil {
@@ -162,21 +177,40 @@ func expandStream(r *bufio.Reader, out *bufio.Writer, ts tabStops) error {
 			}
 			return err
 		}
-		if werr := writeByte(out, c, &col, ts); werr != nil {
+		if werr := handleByte(out, c, &col, &leading, ts, initial); werr != nil {
 			return werr
 		}
 	}
 }
 
-// writeByte handles one input byte, expanding tabs to spaces.
-func writeByte(out *bufio.Writer, c byte, col *int, ts tabStops) error {
+// handleByte processes one input byte, expanding tabs when appropriate.
+// R3.1: in initial mode, tabs after non-whitespace pass through unchanged.
+// R3.2: backspace decrements column position to match GNU expand behavior.
+// R3.3: non-tab characters including NUL bytes are written unchanged.
+func handleByte(out *bufio.Writer, c byte, col *int, leading *bool, ts tabStops, initial bool) error {
 	switch c {
-	case '\t':
-		return expandTab(out, col, ts)
 	case '\n':
 		*col = 0
+		*leading = true
 		return out.WriteByte('\n')
+	case '\t':
+		if !initial || *leading {
+			return expandTab(out, col, ts)
+		}
+		*col++
+		return out.WriteByte('\t')
+	case '\b':
+		// R3.2: backspace decrements column (floor at 0)
+		if *col > 0 {
+			*col--
+		}
+		*leading = false
+		return out.WriteByte('\b')
 	default:
+		// R3.1: space preserves leading state; any other char ends it
+		if c != ' ' {
+			*leading = false
+		}
 		*col++
 		return out.WriteByte(c)
 	}

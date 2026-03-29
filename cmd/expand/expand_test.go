@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/expand against gexpand (GNU coreutils).
 //
-// Covers prd024-expand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd024-expand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -160,6 +161,77 @@ func TestDiff(t *testing.T) {
 			Name:  "long_tabs_option",
 			Args:  []string{"--tabs=4"},
 			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.1: -i only expands leading tabs, embedded tabs pass through
+		{
+			Name:  "initial_leading_and_embedded",
+			Args:  []string{"-i"},
+			Stdin: []byte("\thello\tworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --initial long form
+		{
+			Name:  "initial_long_form",
+			Args:  []string{"--initial"},
+			Stdin: []byte("\thello\tworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -i with only leading tabs (no embedded)
+		{
+			Name:  "initial_all_leading_tabs",
+			Args:  []string{"-i"},
+			Stdin: []byte("\t\thello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -i with no leading tabs (all embedded)
+		{
+			Name:  "initial_no_leading_tabs",
+			Args:  []string{"-i"},
+			Stdin: []byte("a\tb\tc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -i combined with custom tab stop
+		{
+			Name:  "initial_with_custom_tabstop",
+			Args:  []string{"-i", "-t", "4"},
+			Stdin: []byte("\thello\tworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -i multiline resets leading state per line
+		{
+			Name:  "initial_multiline_reset",
+			Args:  []string{"-i"},
+			Stdin: []byte("a\tb\n\tc\td\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -i with spaces before tabs (spaces preserve leading state)
+		{
+			Name:  "initial_space_before_tab",
+			Args:  []string{"-i"},
+			Stdin: []byte("  \thello\tworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: NUL bytes pass through unchanged
+		{
+			Name:  "nul_byte_passthrough",
+			Args:  []string{},
+			Stdin: []byte("a\x00b\tc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: multiple lines without tabs pass through unchanged
+		{
+			Name:  "multiple_lines_no_tabs",
+			Args:  []string{},
+			Stdin: []byte("line one\nline two\nline three\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: backspace treated as regular byte (non-goal: no column adjustment)
+		{
+			Name:  "backspace_as_regular_byte",
+			Args:  []string{},
+			Stdin: []byte("ab\b\tc\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
