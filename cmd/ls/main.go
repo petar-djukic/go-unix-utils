@@ -601,10 +601,67 @@ func printColumnRows(rows [][]string, colWidths []int) {
 }
 
 // formatAcrossColumns prints entries in horizontal multi-column layout.
-// R1.13: horizontal (across) fill.
+// R1.13: entries fill across rows first, then down to the next row.
+// R1.14: -x is mutually exclusive with -l, -1, -C; last flag wins.
 func formatAcrossColumns(cfg *lsConfig, entries []lsEntry) {
-	// TODO: R1.13 — across layout deferred to R1.13 task.
-	formatSingleColumn(cfg, entries)
+	names := entryNames(cfg, entries)
+	numCols := fitAcrossColumns(names, cfg.termWidth)
+	rows := chunkNames(names, numCols)
+	if len(rows) == 0 {
+		return
+	}
+	colWidths := computeGridWidths(rows)
+	printColumnRows(rows, colWidths)
+}
+
+// fitAcrossColumns returns the maximum number of columns that fit within
+// termWidth when entries are distributed row-major (across).
+// R1.13: column count for -x horizontal layout.
+func fitAcrossColumns(names []string, termWidth int) int {
+	for numCols := len(names); numCols > 1; numCols-- {
+		if acrossGridFits(names, numCols, termWidth) {
+			return numCols
+		}
+	}
+	return 1
+}
+
+// acrossGridFits checks whether names in numCols columns (row-major)
+// fit within the given terminal width.
+func acrossGridFits(names []string, numCols, termWidth int) bool {
+	colWidths := make([]int, numCols)
+	for i, name := range names {
+		col := i % numCols
+		w := utf8.RuneCountInString(name)
+		if w > colWidths[col] {
+			colWidths[col] = w
+		}
+	}
+	total := 0
+	for i, w := range colWidths {
+		total += w
+		if i < numCols-1 {
+			total += 2
+		}
+	}
+	return total <= termWidth
+}
+
+// chunkNames splits names into rows of at most numCols entries each.
+// R1.13: row-major distribution for horizontal fill.
+func chunkNames(names []string, numCols int) [][]string {
+	if len(names) == 0 {
+		return nil
+	}
+	rows := make([][]string, 0, (len(names)+numCols-1)/numCols)
+	for i := 0; i < len(names); i += numCols {
+		end := i + numCols
+		if end > len(names) {
+			end = len(names)
+		}
+		rows = append(rows, names[i:end])
+	}
+	return rows
 }
 
 // formatLongListing prints long-format output with aligned columns.
