@@ -8,6 +8,8 @@ package main
 
 import (
 	"os/exec"
+	"os/user"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -67,4 +69,29 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestEffectiveUsername verifies that the Go binary outputs the effective
+// username as reported by the system, independent of the reference binary.
+// R3.3: output must match the effective username returned by the system.
+func TestEffectiveUsername(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	u, err := user.Current()
+	if err != nil {
+		t.Fatalf("user.Current() failed: %v", err)
+	}
+
+	cmd := exec.Command(goBin)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running %s: %v", goBin, err)
+	}
+
+	got := strings.TrimSuffix(string(out), "\n")
+	if got != u.Username {
+		t.Errorf("output = %q, want effective username %q", got, u.Username)
+	}
 }
