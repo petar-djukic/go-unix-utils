@@ -4,7 +4,8 @@
 // cmd/paste implements GNU paste: merge lines of files.
 //
 // Implements prd027-paste R1.1 (parallel merge), R1.2 (unequal line counts),
-// R1.3 (stdin via dash), R1.4 (no-file passthrough and SIGPIPE).
+// R1.3 (stdin via dash), R1.4 (no-file passthrough and SIGPIPE),
+// R2.1 (delimiter flag), R2.2 (escape sequences), R2.3 (delimiter cycling).
 package main
 
 import (
@@ -27,8 +28,8 @@ var (
 
 // pasteOptions holds parsed flag state.
 type pasteOptions struct {
-	serial    bool
-	delimiter string
+	serial     bool
+	delimiters []string
 }
 
 func main() {
@@ -90,7 +91,7 @@ func printHelp(w io.Writer) {
 
 // parseArgs separates flags from file arguments.
 func parseArgs(args []string) (pasteOptions, []string, error) {
-	opts := pasteOptions{delimiter: "\t"}
+	opts := pasteOptions{delimiters: []string{"\t"}}
 	var files []string
 	flagsDone := false
 	for i := 0; i < len(args); i++ {
@@ -127,15 +128,51 @@ func parseFlag(opts *pasteOptions, args []string, i int) (int, error) {
 		if i >= len(args) {
 			return i, fmt.Errorf("option requires an argument -- 'd'")
 		}
-		opts.delimiter = args[i]
+		opts.delimiters = parseDelimiters(args[i])
 	case strings.HasPrefix(arg, "-d"):
-		opts.delimiter = arg[2:]
+		opts.delimiters = parseDelimiters(arg[2:])
 	case strings.HasPrefix(arg, "--delimiters="):
-		opts.delimiter = arg[len("--delimiters="):]
+		opts.delimiters = parseDelimiters(arg[len("--delimiters="):])
 	default:
 		return i, fmt.Errorf("invalid option -- '%s'", arg[1:])
 	}
 	return i, nil
+}
+
+// parseDelimiters expands escape sequences in the delimiter string and returns
+// a slice of delimiter strings for cycling.
+// R2.2: \n (newline), \t (tab), \\ (backslash), \0 (empty string).
+func parseDelimiters(s string) []string {
+	var delims []string
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			d := expandEscape(s[i+1])
+			delims = append(delims, d)
+			i++
+		} else {
+			delims = append(delims, string(s[i]))
+		}
+	}
+	if len(delims) == 0 {
+		delims = []string{"\t"}
+	}
+	return delims
+}
+
+// expandEscape returns the string for a backslash escape character.
+func expandEscape(c byte) string {
+	switch c {
+	case 'n':
+		return "\n"
+	case 't':
+		return "\t"
+	case '\\':
+		return "\\"
+	case '0':
+		return ""
+	default:
+		return "\\" + string(c)
+	}
 }
 
 // openInputs opens all files and returns scanners and closers.
@@ -201,7 +238,8 @@ func mergeParallel(scanners []*bufio.Scanner, w *bufio.Writer, opts pasteOptions
 	return 0
 }
 
-// buildParallelLine reads one line from each scanner and joins them.
+// buildParallelLine reads one line from each scanner and joins them
+// with cycling delimiters. R2.3: delimiter index resets per output line.
 func buildParallelLine(scanners []*bufio.Scanner, opts pasteOptions) (string, bool) {
 	parts := make([]string, len(scanners))
 	anyActive := false
@@ -214,11 +252,26 @@ func buildParallelLine(scanners []*bufio.Scanner, opts pasteOptions) (string, bo
 	if !anyActive {
 		return "", false
 	}
-	return strings.Join(parts, opts.delimiter), true
+	return joinWithCycling(parts, opts.delimiters), true
+}
+
+// joinWithCycling joins parts using cycling delimiters.
+// R2.1: delimiter[i % len(delimiters)] between part i and i+1.
+func joinWithCycling(parts []string, delimiters []string) string {
+	if len(parts) <= 1 {
+		return parts[0]
+	}
+	var b strings.Builder
+	for i, p := range parts {
+		if i > 0 {
+			b.WriteString(delimiters[(i-1)%len(delimiters)])
+		}
+		b.WriteString(p)
+	}
+	return b.String()
 }
 
 // serialPaste processes files one at a time, joining all lines per file.
-// R1.2 (task R2): each file's lines are joined into a single output line.
 func serialPaste(files []string, stdin io.Reader, w *bufio.Writer, stderr io.Writer, opts pasteOptions) int {
 	var stdinScanner *bufio.Scanner
 	for _, name := range files {
@@ -257,14 +310,17 @@ func openOneInput(name string, stdinScanner **bufio.Scanner, stdin io.Reader) (*
 	return bufio.NewScanner(f), f, nil
 }
 
-// writeSerialLines reads all lines from a scanner and writes them joined.
+// writeSerialLines reads all lines from a scanner and writes them joined
+// with cycling delimiters. R3.2: delimiter cycles within each file's line.
 func writeSerialLines(scanner *bufio.Scanner, w *bufio.Writer, opts pasteOptions) error {
+	delimIdx := 0
 	first := true
 	for scanner.Scan() {
 		if !first {
-			if _, err := w.WriteString(opts.delimiter); err != nil {
+			if _, err := w.WriteString(opts.delimiters[delimIdx%len(opts.delimiters)]); err != nil {
 				return err
 			}
+			delimIdx++
 		}
 		if _, err := w.WriteString(scanner.Text()); err != nil {
 			return err
