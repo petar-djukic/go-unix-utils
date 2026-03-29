@@ -3,7 +3,8 @@
 
 // cmd/cat implements GNU cat: concatenate files to stdout.
 //
-// Implements prd006-cat R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements prd006-cat R1.1, R1.2, R1.3, R1.4, R1.5,
+// R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -19,6 +20,14 @@ import (
 type catOptions struct {
 	numberAll      bool // -n: number all lines
 	numberNonBlank bool // -b: number non-blank lines (overrides -n)
+	squeeze        bool // -s: suppress repeated blank lines
+}
+
+// catState tracks mutable state across file boundaries.
+// R3.2: prevBlank persists across files for cross-boundary squeezing.
+type catState struct {
+	lineNum   int
+	prevBlank bool
 }
 
 func main() {
@@ -37,10 +46,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	}
 
 	exitCode := 0
-	lineNum := 1
+	state := catState{lineNum: 1}
 	for _, name := range files {
-		var err error
-		lineNum, err = catFile(name, stdin, stdout, opts, lineNum)
+		err := catFile(name, stdin, stdout, opts, &state)
 		if err != nil {
 			fmt.Fprintf(stderr, "cat: %s: %v\n", name, err)
 			exitCode = 1
@@ -53,6 +61,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 // R2.1: -n numbers all lines.
 // R2.2: -b numbers non-blank lines, implies -n.
 // R2.3: -b takes precedence over -n.
+// R3.1: -s suppresses repeated blank lines.
 func parseArgs(args []string) (catOptions, []string) {
 	var opts catOptions
 	var files []string
@@ -71,17 +80,26 @@ func parseArgs(args []string) (catOptions, []string) {
 			files = append(files, arg)
 			continue
 		}
-		for _, ch := range arg[1:] {
-			switch ch {
-			case 'n':
-				opts.numberAll = true
-			case 'b':
-				opts.numberNonBlank = true
-			}
-		}
+		parseFlags(&opts, arg[1:])
 	}
 
 	return opts, files
+}
+
+// parseFlags processes flag characters from a single argument.
+func parseFlags(opts *catOptions, chars string) {
+	for _, ch := range chars {
+		switch ch {
+		case 'n':
+			opts.numberAll = true
+		case 'b':
+			opts.numberNonBlank = true
+		case 's':
+			opts.squeeze = true
+		case 'u':
+			// R4.8: accepted, no effect
+		}
+	}
 }
 
 // isFlag returns true if the argument looks like a flag.
@@ -91,18 +109,17 @@ func isFlag(arg string) bool {
 
 // needsLineProcessing reports whether flags require line-by-line processing.
 func needsLineProcessing(opts catOptions) bool {
-	return opts.numberAll || opts.numberNonBlank
+	return opts.numberAll || opts.numberNonBlank || opts.squeeze
 }
 
 // catFile copies one file (or stdin if name is "-") to stdout.
-// Returns the next line number to use.
 func catFile(
 	name string, stdin io.Reader, stdout io.Writer,
-	opts catOptions, lineNum int,
-) (int, error) {
+	opts catOptions, state *catState,
+) error {
 	r, closer, err := openInput(name, stdin)
 	if err != nil {
-		return lineNum, err
+		return err
 	}
 	if closer != nil {
 		defer closer.Close()
@@ -111,10 +128,10 @@ func catFile(
 	if !needsLineProcessing(opts) {
 		// R1.4, R1.5: pass through without corruption or newline changes
 		_, cpErr := io.Copy(stdout, r)
-		return lineNum, cpErr
+		return cpErr
 	}
 
-	return catLines(r, stdout, opts, lineNum)
+	return catLines(r, stdout, opts, state)
 }
 
 // openInput returns a reader and optional closer for the given filename.
@@ -129,16 +146,14 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	return f, f, nil
 }
 
-// catLines processes input line by line, applying numbering.
+// catLines processes input line by line, applying squeezing and numbering.
 // R1.5: does not add or remove newlines.
-// R2.1: -n prepends line number to every line.
-// R2.2: -b skips numbering for blank lines.
-// R2.3: -b overrides -n.
-// R2.4: blank line = line containing only a newline.
+// R3.1: suppresses repeated blank lines.
+// R3.3: squeeze is applied before numbering.
 func catLines(
 	r io.Reader, w io.Writer,
-	opts catOptions, lineNum int,
-) (int, error) {
+	opts catOptions, state *catState,
+) error {
 	br := bufio.NewReaderSize(r, 64*1024)
 	bw := bufio.NewWriter(w)
 	atLineStart := true
@@ -146,56 +161,70 @@ func catLines(
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
-			lineNum, atLineStart = processLine(
-				bw, line, opts, lineNum, atLineStart,
-			)
+			atLineStart = processLine(bw, line, opts, state, atLineStart)
 		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return lineNum, err
+			return err
 		}
 	}
 
-	return lineNum, bw.Flush()
+	return bw.Flush()
 }
 
-// processLine writes a single chunk (ending with \n or EOF) with optional numbering.
-// Returns the next lineNum and whether the next chunk starts a new line.
+// isBlankLine reports whether a line is blank.
+// R2.4: blank = line containing only \n (zero non-newline bytes).
+func isBlankLine(line []byte) bool {
+	return len(line) == 1 && line[0] == '\n'
+}
+
+// processLine writes a single chunk with optional squeezing and numbering.
+// R3.1: suppress consecutive blank lines when squeeze is active.
+// R3.3: squeezing before numbering.
+// Returns whether the next chunk starts a new line.
 func processLine(
 	bw *bufio.Writer, line []byte,
-	opts catOptions, lineNum int, atLineStart bool,
-) (int, bool) {
+	opts catOptions, state *catState, atLineStart bool,
+) bool {
+	blank := isBlankLine(line)
+
+	// R3.1: suppress repeated blank lines
+	if opts.squeeze && blank && state.prevBlank {
+		return true // still at line start, line suppressed
+	}
+	state.prevBlank = blank
+
 	if atLineStart {
-		lineNum = writeLineNumber(bw, line, opts, lineNum)
+		state.lineNum = writeLineNumber(bw, opts, state.lineNum, blank)
 	}
 
 	bw.Write(line) //nolint:errcheck // error caught on flush
 
 	// If line ends with \n, next chunk starts a new line
-	endsWithNewline := line[len(line)-1] == '\n'
-	return lineNum, endsWithNewline
+	return line[len(line)-1] == '\n'
 }
 
 // writeLineNumber writes a line number prefix if appropriate.
 // R2.2, R2.3: -b skips numbering blank lines.
 // R2.4: blank = line containing only \n.
 func writeLineNumber(
-	bw *bufio.Writer, line []byte,
-	opts catOptions, lineNum int,
+	bw *bufio.Writer, opts catOptions,
+	lineNum int, blank bool,
 ) int {
-	isBlank := len(line) == 1 && line[0] == '\n'
-
 	if opts.numberNonBlank {
-		if isBlank {
+		if blank {
 			return lineNum
 		}
 		fmt.Fprintf(bw, "%6d\t", lineNum)
 		return lineNum + 1
 	}
 
-	// opts.numberAll must be true (caller checks needsLineProcessing)
-	fmt.Fprintf(bw, "%6d\t", lineNum)
-	return lineNum + 1
+	if opts.numberAll {
+		fmt.Fprintf(bw, "%6d\t", lineNum)
+		return lineNum + 1
+	}
+
+	return lineNum
 }
