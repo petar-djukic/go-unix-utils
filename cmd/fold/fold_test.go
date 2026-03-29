@@ -3,16 +3,23 @@
 
 // Differential tests for cmd/fold against gfold (GNU coreutils).
 //
-// Covers prd023-fold R1.1, R1.2, R1.3, R1.4, R4.1, R4.2, R4.3, R4.4.
+// Covers prd023-fold R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeFoldName replaces the gfold/fold binary name prefix in stderr
+// so that error messages from the reference and Go binaries can be compared.
+var normalizeFoldName testutils.NormalizeFunc = func(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gfold:"), []byte("fold:"))
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -93,6 +100,132 @@ func TestDiff(t *testing.T) {
 			Name:  "r1_4_multiline_last_no_newline",
 			Args:  []string{"-w", "5"},
 			Stdin: []byte("hello\nworldXXXXX"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R2.1: -w N sets max line width ---
+		{
+			Name:  "r2_1_w4_wraps_at_4",
+			Args:  []string{"-w", "4"},
+			Stdin: []byte("abcdefghij"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_1_w1_wraps_every_char",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("abcd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_1_w_large_no_wrap",
+			Args:  []string{"-w", "200"},
+			Stdin: []byte(strings.Repeat("x", 100) + "\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:      "r2_1_w0_error",
+			Args:      []string{"-w", "0"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeFoldName},
+		},
+		{
+			Name:      "r2_1_w_negative_error",
+			Args:      []string{"-w", "-1"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeFoldName},
+		},
+		{
+			Name:      "r2_1_w_nonnumeric_error",
+			Args:      []string{"-w", "abc"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeFoldName},
+		},
+
+		// --- R2.2: tab stop column counting (every 8 columns) ---
+		{
+			Name:  "r2_2_tab_expands_to_8",
+			Args:  []string{"-w", "8"},
+			Stdin: []byte("\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_tab_after_1_char",
+			Args:  []string{"-w", "9"},
+			Stdin: []byte("a\tbcde\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_tab_after_7_chars",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("1234567\t89\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_multiple_tabs",
+			Args:  []string{"-w", "16"},
+			Stdin: []byte("\t\t\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_tab_causes_wrap",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abc\tdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_control_char_one_col",
+			Args:  []string{"-w", "5"},
+			Stdin: append([]byte("abcd"), 0x01, 0x02, '\n'),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_backspace_decrements",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abcde\b\bfghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_2_cr_resets_col",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abcde\rfghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R2.3: -b counts bytes, tabs count as 1 byte ---
+		{
+			Name:  "r2_3_tab_counts_as_1_byte",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("\t\t\t\t\tX\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_3_byte_mode_simple",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("1234567890\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_3_byte_vs_column_tab",
+			Args:  []string{"-b", "-w", "3"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_3_backspace_counts_as_1_byte",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("abc\b\bdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r2_3_cr_counts_as_1_byte",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("abcd\refghij\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 

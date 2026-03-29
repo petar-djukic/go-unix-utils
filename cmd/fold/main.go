@@ -265,8 +265,12 @@ func parseFlags(flags string, args []string, idx int, cfg *config) int {
 				rest = args[idx]
 			}
 			w, err := strconv.Atoi(rest)
-			if err != nil || w <= 0 {
+			if err != nil || w < 0 {
 				die(fmt.Sprintf("invalid number of columns: '%s'", rest))
+			}
+			if w == 0 {
+				// R2.1: GNU fold reports "Result too large" for width 0.
+				die(fmt.Sprintf("invalid number of columns: '%s': Result too large", rest))
 			}
 			cfg.width = w
 			return idx
