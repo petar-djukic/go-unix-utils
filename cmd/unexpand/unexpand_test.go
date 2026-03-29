@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/unexpand against gunexpand (GNU coreutils).
 //
-// Covers prd025-unexpand R1.1, R1.2, R1.3, R1.4.
+// Covers prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -211,6 +211,89 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--help"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+
+		// ---- R2.1: -a converts all runs of spaces to tabs at tab stops ----
+		// R2.1: non-leading 8 spaces become tab with -a
+		{
+			Name:  "a_non_leading_8_spaces",
+			Args:  []string{"-a"},
+			Stdin: []byte("a        b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -a still converts leading spaces
+		{
+			Name:  "a_leading_spaces",
+			Args:  []string{"-a"},
+			Stdin: []byte("        text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -a with multiple runs of spaces on one line
+		{
+			Name:  "a_multiple_space_runs",
+			Args:  []string{"-a"},
+			Stdin: []byte("a        b        c\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --all long form
+		{
+			Name:  "all_long_form",
+			Args:  []string{"--all"},
+			Stdin: []byte("a        b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R2.2: single space kept with -a ----
+		// R2.2: single non-leading space not reaching tab stop
+		{
+			Name:  "a_single_space_kept",
+			Args:  []string{"-a"},
+			Stdin: []byte("ab cd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: 3 spaces that don't reach a tab stop
+		{
+			Name:  "a_partial_spaces_kept",
+			Args:  []string{"-a"},
+			Stdin: []byte("abcde   f\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R2.3: -a processes entire line, not just leading ----
+		// R2.3: text before and after spaces all converted
+		{
+			Name:  "a_entire_line_processed",
+			Args:  []string{"-a"},
+			Stdin: []byte("hello        world        end\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: tabs in non-leading position with -a
+		{
+			Name:  "a_non_leading_tab",
+			Args:  []string{"-a"},
+			Stdin: []byte("a\t        b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: multiline with -a
+		{
+			Name:  "a_multiline",
+			Args:  []string{"-a"},
+			Stdin: []byte("a        b\nc        d\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: empty input with -a
+		{
+			Name:  "a_empty_input",
+			Args:  []string{"-a"},
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: only spaces with -a (not reaching tab stop)
+		{
+			Name:  "a_only_spaces_no_tabstop",
+			Args:  []string{"-a"},
+			Stdin: []byte("abc   \n"),
+			Env:   []string{"LC_ALL=C"},
 		},
 	}
 

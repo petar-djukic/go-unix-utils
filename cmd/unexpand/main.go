@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/unexpand converts spaces to tabs (prd025-unexpand R1).
+// cmd/unexpand converts spaces to tabs (prd025-unexpand R1, R2).
 package main
 
 import (
@@ -34,13 +34,14 @@ func main() {
 
 type config struct {
 	files   []string
+	allMode bool
 	help    bool
 	version bool
 }
 
 func parseArgs(args []string) config {
 	var cfg config
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		a := args[i]
 		if a == "--" {
 			cfg.files = append(cfg.files, args[i+1:]...)
@@ -57,6 +58,8 @@ func parseArgs(args []string) config {
 		case "--version":
 			cfg.version = true
 			return cfg
+		case "-a", "--all":
+			cfg.allMode = true
 		default:
 			die(fmt.Sprintf("invalid option -- '%s'", a[1:]))
 		}
@@ -72,7 +75,7 @@ func run(cfg config) int {
 	out := bufio.NewWriter(os.Stdout)
 	exitCode := 0
 	for _, name := range cfg.files {
-		if err := processFile(name, out); err != nil {
+		if err := processFile(name, cfg.allMode, out); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
 			exitCode = 1
 		}
@@ -85,7 +88,7 @@ func run(cfg config) int {
 }
 
 // processFile opens one input and unexpands its spaces.
-func processFile(name string, out *bufio.Writer) error {
+func processFile(name string, allMode bool, out *bufio.Writer) error {
 	r, err := openInput(name)
 	if err != nil {
 		if pe, ok := err.(*os.PathError); ok {
@@ -96,7 +99,7 @@ func processFile(name string, out *bufio.Writer) error {
 	if r != os.Stdin {
 		defer r.Close()
 	}
-	return unexpandStream(bufio.NewReader(r), out)
+	return unexpandStream(bufio.NewReader(r), out, allMode)
 }
 
 func openInput(name string) (*os.File, error) {
@@ -106,9 +109,10 @@ func openInput(name string) (*os.File, error) {
 	return os.Open(name)
 }
 
-// unexpandStream reads input and converts leading spaces to tabs.
+// unexpandStream reads input and converts spaces to tabs.
 // R1.1-R1.4: default mode converts only leading whitespace.
-func unexpandStream(r *bufio.Reader, out *bufio.Writer) error {
+// R2.1-R2.3: -a mode converts all whitespace throughout the line.
+func unexpandStream(r *bufio.Reader, out *bufio.Writer, allMode bool) error {
 	col := 0
 	pending := 0
 	leading := true
@@ -121,7 +125,9 @@ func unexpandStream(r *bufio.Reader, out *bufio.Writer) error {
 			return err
 		}
 		var werr error
-		col, pending, leading, werr = processByte(out, c, col, pending, leading)
+		col, pending, leading, werr = processByte(
+			out, c, col, pending, leading, allMode,
+		)
 		if werr != nil {
 			return werr
 		}
@@ -129,18 +135,21 @@ func unexpandStream(r *bufio.Reader, out *bufio.Writer) error {
 }
 
 // processByte dispatches a single input byte to the appropriate handler.
-func processByte(out *bufio.Writer, c byte, col, pending int, leading bool) (int, int, bool, error) {
+func processByte(
+	out *bufio.Writer, c byte, col, pending int,
+	leading, allMode bool,
+) (int, int, bool, error) {
 	switch {
 	case c == '\n':
 		return handleNewline(out, pending)
-	case leading && c == ' ':
-		return handleLeadingSpace(out, col, pending)
-	case leading && c == '\t':
-		return handleLeadingTab(out, col)
+	case (leading || allMode) && c == ' ':
+		return handleSpace(out, col, pending, leading, allMode)
+	case (leading || allMode) && c == '\t':
+		return handleTab(out, col, leading, allMode)
 	case leading:
 		return handleEndLeading(out, c, col, pending)
 	default:
-		return handleNonLeading(out, c, col)
+		return handleNonLeading(out, c, col, pending)
 	}
 }
 
@@ -155,30 +164,38 @@ func handleNewline(out *bufio.Writer, pending int) (int, int, bool, error) {
 	return 0, 0, true, nil
 }
 
-// R1.1, R1.3: Leading space increments column; emit tab if tab stop reached.
-func handleLeadingSpace(out *bufio.Writer, col, pending int) (int, int, bool, error) {
+// R1.1, R1.3, R2.1, R2.2: Space increments column; emit tab if tab stop reached.
+func handleSpace(
+	out *bufio.Writer, col, pending int,
+	leading, _ bool,
+) (int, int, bool, error) {
 	col++
 	pending++
 	if col%defaultTabStop == 0 {
 		if err := out.WriteByte('\t'); err != nil {
-			return col, 0, true, err
+			return col, 0, leading, err
 		}
-		return col, 0, true, nil
+		return col, 0, leading, nil
 	}
-	return col, pending, true, nil
+	return col, pending, leading, nil
 }
 
-// R1.4: Leading tab advances to next tab stop; pending spaces absorbed.
-func handleLeadingTab(out *bufio.Writer, col int) (int, int, bool, error) {
+// R1.4: Tab advances to next tab stop; pending spaces absorbed.
+func handleTab(
+	out *bufio.Writer, col int,
+	leading, _ bool,
+) (int, int, bool, error) {
 	next := nextTabStop(col)
 	if err := out.WriteByte('\t'); err != nil {
-		return next, 0, true, err
+		return next, 0, leading, err
 	}
-	return next, 0, true, nil
+	return next, 0, leading, nil
 }
 
-// R1.2: Non-whitespace in leading position flushes pending spaces, exits leading mode.
-func handleEndLeading(out *bufio.Writer, c byte, col, pending int) (int, int, bool, error) {
+// R1.2: Non-whitespace in leading position flushes pending spaces, exits leading.
+func handleEndLeading(
+	out *bufio.Writer, c byte, col, pending int,
+) (int, int, bool, error) {
 	if err := flushSpaces(out, pending); err != nil {
 		return col, 0, false, err
 	}
@@ -188,8 +205,14 @@ func handleEndLeading(out *bufio.Writer, c byte, col, pending int) (int, int, bo
 	return col + 1, 0, false, nil
 }
 
-// R1.2: Non-leading characters pass through unchanged.
-func handleNonLeading(out *bufio.Writer, c byte, col int) (int, int, bool, error) {
+// R1.2, R2.3: Non-leading, non-space character passes through.
+// In -a mode, pending spaces are flushed before writing.
+func handleNonLeading(
+	out *bufio.Writer, c byte, col, pending int,
+) (int, int, bool, error) {
+	if err := flushSpaces(out, pending); err != nil {
+		return col, 0, false, err
+	}
 	if err := out.WriteByte(c); err != nil {
 		return col, 0, false, err
 	}
@@ -219,8 +242,9 @@ Convert blanks in each FILE to tabs, writing to standard output.
 
 With no FILE, or when FILE is -, read standard input.
 
-      --help        display this help and exit
-      --version     output version information and exit
+  -a, --all       convert all blanks, instead of just initial blanks
+      --help      display this help and exit
+      --version   output version information and exit
 `, programName)
 }
 
