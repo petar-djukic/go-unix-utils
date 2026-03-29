@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/fold against gfold (GNU coreutils).
 //
-// Covers prd023-fold R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R4.1, R4.2, R4.3, R4.4.
+// Covers prd023-fold R1.1-R1.4, R2.1-R2.3, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -226,6 +226,98 @@ func TestDiff(t *testing.T) {
 			Name:  "r2_3_cr_counts_as_1_byte",
 			Args:  []string{"-b", "-w", "5"},
 			Stdin: []byte("abcd\refghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.1: -s breaks at last space at or before wrap column ---
+		{
+			Name:  "r3_1_break_at_last_space",
+			Args:  []string{"-s", "-w", "11"},
+			Stdin: []byte("hello world foo bar\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_1_multiple_spaces_picks_last",
+			Args:  []string{"-s", "-w", "15"},
+			Stdin: []byte("one two three four five\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_1_space_exactly_at_width",
+			Args:  []string{"-s", "-w", "6"},
+			Stdin: []byte("abcde fghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_1_trailing_spaces",
+			Args:  []string{"-s", "-w", "8"},
+			Stdin: []byte("abc def  ghi\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.2: no space within width falls back to hard break ---
+		{
+			Name:  "r3_2_no_space_hard_break",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abcdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_2_no_space_long_word",
+			Args:  []string{"-s", "-w", "4"},
+			Stdin: []byte("abcdefghijklmnop\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_2_space_after_hard_break",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abcdefg hijk\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.3: space written as last char before newline, next line starts after space ---
+		{
+			Name:  "r3_3_space_is_last_char_before_newline",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("hello world goodbye now\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_3_consecutive_spaces",
+			Args:  []string{"-s", "-w", "8"},
+			Stdin: []byte("aa bb cc dd ee\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_3_space_at_start_of_segment",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abc  defgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.4: -s compatible with -b ---
+		{
+			Name:  "r3_4_bs_simple",
+			Args:  []string{"-b", "-s", "-w", "8"},
+			Stdin: []byte("hello world goodbye\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_4_bs_tab_not_expanded",
+			Args:  []string{"-b", "-s", "-w", "6"},
+			Stdin: []byte("ab\tcd efgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_4_bs_no_space_fallback",
+			Args:  []string{"-b", "-s", "-w", "5"},
+			Stdin: []byte("abcdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r3_4_bs_long_mixed",
+			Args:  []string{"-b", "-s", "-w", "10"},
+			Stdin: []byte("abcdefghijklmnop qrs tuv\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 
