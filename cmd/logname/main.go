@@ -3,7 +3,7 @@
 
 // cmd/logname implements GNU logname: print the login name of the current user.
 //
-// Implements prd053-logname R1.1, R1.2, R2.1, R2.2, R2.3.
+// Implements prd053-logname R1.1, R1.2, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
