@@ -3,18 +3,26 @@
 
 // cmd/rmdir implements GNU rmdir: remove empty directories.
 //
-// Implements prd035-rmdir R1.1, R1.2, R1.3, R1.4.
+// Implements prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
 package main
 
 import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 const progName = "rmdir"
+
+type options struct {
+	parents            bool
+	ignoreFailNonEmpty bool
+}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -22,10 +30,9 @@ func main() {
 }
 
 // run removes each directory specified as a positional argument.
-// R1.2: processes each directory independently.
-// R1.3, R1.4: reports errors per directory without aborting remaining.
+// R1.2, R2.3: processes each directory independently.
 func run(args []string, stderr *os.File) int {
-	dirs := parseArgs(args)
+	opts, dirs := parseArgs(args)
 	if len(dirs) == 0 {
 		fmt.Fprintln(stderr, "rmdir: missing operand")                   //nolint:errcheck
 		fmt.Fprintln(stderr, "Try 'rmdir --help' for more information.") //nolint:errcheck
@@ -34,24 +41,56 @@ func run(args []string, stderr *os.File) int {
 	exitCode := 0
 	for _, dir := range dirs {
 		if err := removeDir(dir); err != nil {
-			reportError(stderr, dir, err)
-			exitCode = 1
+			if !shouldSuppress(err, opts) {
+				reportError(stderr, dir, err)
+				exitCode = 1
+			}
+			continue
+		}
+		// R2.1: ascend through parent directories when -p is set.
+		if opts.parents {
+			if err := removeParents(dir, stderr, opts); err != nil {
+				exitCode = 1
+			}
 		}
 	}
 	return exitCode
 }
 
-// parseArgs extracts positional directory arguments, handling --.
-func parseArgs(args []string) []string {
+// parseArgs extracts flags and positional directory arguments.
+func parseArgs(args []string) (options, []string) {
+	var opts options
 	var dirs []string
+	endOfFlags := false
 	for i := range len(args) {
-		if args[i] == "--" {
-			dirs = append(dirs, args[i+1:]...)
-			return dirs
+		a := args[i]
+		if endOfFlags || !strings.HasPrefix(a, "-") || a == "-" {
+			dirs = append(dirs, a)
+			continue
 		}
-		dirs = append(dirs, args[i])
+		if a == "--" {
+			endOfFlags = true
+			continue
+		}
+		if a == "--parents" {
+			opts.parents = true
+			continue
+		}
+		if a == "--ignore-fail-on-non-empty" {
+			opts.ignoreFailNonEmpty = true
+			continue
+		}
+		if strings.HasPrefix(a, "--") {
+			continue
+		}
+		// Short flags: iterate characters after '-'.
+		for _, ch := range a[1:] {
+			if ch == 'p' {
+				opts.parents = true
+			}
+		}
 	}
-	return dirs
+	return opts, dirs
 }
 
 // removeDir removes a single empty directory.
@@ -69,11 +108,49 @@ func removeDir(dir string) error {
 	return os.Remove(dir)
 }
 
+// removeParents removes each successive empty parent component of dir.
+// R2.1: ascends through parent directories after removing the target.
+// R2.2: stops when a parent removal fails.
+func removeParents(dir string, stderr *os.File, opts options) error {
+	parent := filepath.Dir(filepath.Clean(dir))
+	for parent != "." && parent != "/" {
+		if err := os.Remove(parent); err != nil {
+			if !shouldSuppress(err, opts) {
+				reportParentError(stderr, parent, err)
+				return err
+			}
+			return nil
+		}
+		parent = filepath.Dir(parent)
+	}
+	return nil
+}
+
+// shouldSuppress returns true if the error should be silenced.
+// R3.1: --ignore-fail-on-non-empty suppresses non-empty errors.
+func shouldSuppress(err error, opts options) bool {
+	return opts.ignoreFailNonEmpty && isNonEmptyError(err)
+}
+
+// isNonEmptyError reports whether err indicates a non-empty directory.
+func isNonEmptyError(err error) bool {
+	return errors.Is(err, syscall.ENOTEMPTY)
+}
+
+// extractReason returns the inner error message from a PathError.
+func extractReason(err error) string {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
 // reportError writes an rmdir error to stderr in GNU format.
 func reportError(stderr *os.File, dir string, err error) {
-	reason := err.Error()
-	if pe, ok := errors.AsType[*os.PathError](err); ok {
-		reason = pe.Err.Error()
-	}
-	fmt.Fprintf(stderr, "%s: failed to remove '%s': %s\n", progName, dir, reason) //nolint:errcheck
+	fmt.Fprintf(stderr, "%s: failed to remove '%s': %s\n", progName, dir, extractReason(err)) //nolint:errcheck
+}
+
+// reportParentError writes a -p parent removal error in GNU format.
+func reportParentError(stderr *os.File, dir string, err error) {
+	fmt.Fprintf(stderr, "%s: failed to remove directory '%s': %s\n", progName, dir, extractReason(err)) //nolint:errcheck
 }

@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/rmdir against grmdir (GNU coreutils).
 //
-// Covers prd035-rmdir R1.1, R1.2, R1.3, R1.4.
+// Covers prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
 package main
 
 import (
@@ -23,7 +23,7 @@ func discardAll(data []byte) []byte {
 	return nil
 }
 
-// TestDiff runs differential tests for rmdir error cases where both
+// TestDiff runs differential tests for rmdir cases where both
 // binaries can share a WorkDir without conflict.
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -75,6 +75,13 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
+		// R3.1: --ignore-fail-on-non-empty on non-empty dir — exits 0
+		{
+			Name:     "ignore_fail_nonempty",
+			Args:     []string{"--ignore-fail-on-non-empty", "nonempty"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -118,6 +125,149 @@ func TestRmdirMultiple(t *testing.T) {
 	})
 }
 
+// TestRmdirParents verifies R2.1, R2.2, R2.3: -p flag behavior.
+func TestRmdirParents(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skip("reference binary grmdir not in PATH")
+	}
+
+	// R2.1: -p removes target and all empty ancestors.
+	t.Run("nested_empty", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "a", "b", "c"))
+		}
+		refStdout, _, refExit := execBin(t, refBin, []string{"-p", "a/b/c"}, refDir)
+		goStdout, _, goExit := execBin(t, goBin, []string{"-p", "a/b/c"}, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		for _, d := range []string{"a/b/c", "a/b", "a"} {
+			assertRemoved(t, goDir, d)
+		}
+	})
+
+	// R2.1: --parents long form.
+	t.Run("long_flag_parents", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "x", "y"))
+		}
+		_, _, refExit := execBin(t, refBin, []string{"--parents", "x/y"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"--parents", "x/y"}, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertRemoved(t, goDir, "x/y")
+		assertRemoved(t, goDir, "x")
+	})
+
+	// R2.2: -p stops when parent is not empty.
+	t.Run("stops_on_nonempty_parent", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "a", "b", "c"))
+			writeTestFile(t, filepath.Join(base, "a", "keep.txt"), "x")
+		}
+		_, _, refExit := execBin(t, refBin, []string{"-p", "a/b/c"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-p", "a/b/c"}, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertRemoved(t, goDir, "a/b/c")
+		assertRemoved(t, goDir, "a/b")
+		assertExists(t, goDir, "a")
+	})
+
+	// R2.3: -p with multiple arguments processed independently.
+	t.Run("multiple_args", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "x", "y"))
+			mkdirAll(t, filepath.Join(base, "m", "n"))
+		}
+		args := []string{"-p", "x/y", "m/n"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		for _, d := range []string{"x/y", "x", "m/n", "m"} {
+			assertRemoved(t, goDir, d)
+		}
+	})
+}
+
+// TestRmdirIgnoreNonEmpty verifies R3.1: --ignore-fail-on-non-empty.
+func TestRmdirIgnoreNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skip("reference binary grmdir not in PATH")
+	}
+
+	// R3.1: suppresses non-empty error, directory remains.
+	t.Run("suppresses_nonempty_error", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "nonempty"))
+			writeTestFile(t, filepath.Join(base, "nonempty", "file.txt"), "x")
+		}
+		args := []string{"--ignore-fail-on-non-empty", "nonempty"}
+		refStdout, refStderr, refExit := execBin(t, refBin, args, refDir)
+		goStdout, goStderr, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		if len(refStderr) == 0 && len(goStderr) != 0 {
+			t.Errorf("go stderr should be empty but got: %q", goStderr)
+		}
+		assertExists(t, goDir, "nonempty")
+	})
+
+	// R3.1 + R2.1: --ignore-fail-on-non-empty with -p stops silently.
+	t.Run("with_parents_stops_silently", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "a", "b", "c"))
+			writeTestFile(t, filepath.Join(base, "a", "keep.txt"), "x")
+		}
+		args := []string{"-p", "--ignore-fail-on-non-empty", "a/b/c"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertRemoved(t, goDir, "a/b/c")
+		assertRemoved(t, goDir, "a/b")
+		assertExists(t, goDir, "a")
+	})
+}
+
 // compareRmdir sets up identical empty directories in two temp dirs,
 // runs both binaries, and compares exit codes and stdout.
 func compareRmdir(t *testing.T, goBin, refBin string, dirs []string) {
@@ -148,9 +298,7 @@ func compareRmdir(t *testing.T, goBin, refBin string, dirs []string) {
 
 	// Verify directories were actually removed.
 	for _, d := range dirs {
-		if _, err := os.Stat(filepath.Join(goDir, d)); !os.IsNotExist(err) {
-			t.Errorf("directory %q still exists after rmdir", d)
-		}
+		assertRemoved(t, goDir, d)
 	}
 }
 
@@ -184,12 +332,8 @@ func compareRmdirMixed(t *testing.T, goBin, refBin string) {
 	}
 
 	// "ok" should be removed; "bad" should remain.
-	if _, err := os.Stat(filepath.Join(goDir, "ok")); !os.IsNotExist(err) {
-		t.Error("directory 'ok' still exists after rmdir")
-	}
-	if _, err := os.Stat(filepath.Join(goDir, "bad")); err != nil {
-		t.Error("directory 'bad' should still exist (non-empty)")
-	}
+	assertRemoved(t, goDir, "ok")
+	assertExists(t, goDir, "bad")
 }
 
 // execBin runs a binary and returns stdout, stderr, and exit code.
@@ -215,4 +359,32 @@ func execBin(t *testing.T, bin string, args []string, workDir string) ([]byte, [
 	}
 
 	return stdout.Bytes(), stderr.Bytes(), exitCode
+}
+
+func mkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertRemoved(t *testing.T, base, dir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(base, dir)); !os.IsNotExist(err) {
+		t.Errorf("directory %q should have been removed", dir)
+	}
+}
+
+func assertExists(t *testing.T, base, dir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(base, dir)); err != nil {
+		t.Errorf("directory %q should still exist: %v", dir, err)
+	}
 }
