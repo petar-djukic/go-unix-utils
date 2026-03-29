@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/expand against gexpand (GNU coreutils).
 //
-// Covers prd024-expand R1.1, R1.2, R1.3, R1.4.
+// Covers prd024-expand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -96,6 +96,70 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin_dash_arg",
 			Args:  []string{"-"},
 			Stdin: []byte("x\ty\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R2.1: -t N sets uniform tab stop interval
+		{
+			Name:  "tab_interval_4",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -t N with different interval
+		{
+			Name:  "tab_interval_2",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("a\tb\tc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -t LIST sets absolute column positions (comma-separated)
+		{
+			Name:  "tab_list_comma",
+			Args:  []string{"-t", "1,5,9"},
+			Stdin: []byte("\ta\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: tab past last explicit stop replaced by single space
+		{
+			Name:  "tab_past_last_stop",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("12345678\t9\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: explicit list with tab past all stops
+		{
+			Name:  "tab_past_explicit_stops",
+			Args:  []string{"-t", "3,6"},
+			Stdin: []byte("abcdef\tg\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: list with single value = uniform interval
+		{
+			Name:  "single_value_list_is_uniform",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("\t\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -tN attached form
+		{
+			Name:  "attached_t_value",
+			Args:  []string{"-t4"},
+			Stdin: []byte("a\tb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: multiple consecutive tabs with explicit stops
+		{
+			Name:  "consecutive_tabs_explicit_stops",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("\t\t\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --tabs=N long form
+		{
+			Name:  "long_tabs_option",
+			Args:  []string{"--tabs=4"},
+			Stdin: []byte("a\tb\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
