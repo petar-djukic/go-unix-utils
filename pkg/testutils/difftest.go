@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -46,6 +47,9 @@ type DiffTest struct {
 // R2.3: 10-second default timeout per binary.
 // R2.4: no output on passing tests.
 // R3.1, R3.2: applies normalizers before byte-for-byte comparison.
+// R3.3, R3.4: compares stderr and exit codes.
+// R3.6: expected exit code verification against DiffTest.ExitCode.
+// R5.1, R5.2: ExpectedFiles verification after execution.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
@@ -67,6 +71,8 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 			goErr = normalize(goErr)
 
 			reportDivergence(t, tc, refOut, goOut, refErr, goErr, refExit, goExit)
+			reportExitCodeMismatch(t, tc, refExit, goExit)
+			verifyExpectedFiles(t, tc, workDir)
 		})
 	}
 }
@@ -143,4 +149,51 @@ func reportDivergence(t *testing.T, tc DiffTest, refOut, goOut, refErr, goErr []
 		refOut, goOut,
 		refErr, goErr,
 		refExit, goExit)
+}
+
+// reportExitCodeMismatch checks both binaries' exit codes against the expected
+// DiffTest.ExitCode and reports if either differs.
+// R3.6: exit code comparison against expected value.
+func reportExitCodeMismatch(t *testing.T, tc DiffTest, refExit, goExit int) {
+	t.Helper()
+	if refExit != tc.ExitCode {
+		t.Errorf("ref binary exit code %d, expected %d (args=%v)",
+			refExit, tc.ExitCode, tc.Args)
+	}
+	if goExit != tc.ExitCode {
+		t.Errorf("go binary exit code %d, expected %d (args=%v)",
+			goExit, tc.ExitCode, tc.Args)
+	}
+}
+
+// verifyExpectedFiles checks that files listed in DiffTest.ExpectedFiles match
+// expected contents after both binaries have run.
+// R5.1, R5.2: file-state comparison for file-output utilities.
+func verifyExpectedFiles(t *testing.T, tc DiffTest, workDir string) {
+	t.Helper()
+	if len(tc.ExpectedFiles) == 0 {
+		return
+	}
+	for relPath, expected := range tc.ExpectedFiles {
+		absPath := resolvePath(relPath, workDir)
+		actual, err := os.ReadFile(absPath)
+		if err != nil {
+			t.Errorf("ExpectedFiles[%q]: %v (args=%v)", relPath, err, tc.Args)
+			continue
+		}
+		if !bytes.Equal(expected, actual) {
+			t.Errorf("ExpectedFiles[%q] mismatch (args=%v)\n"+
+				"  expected: %q\n"+
+				"  actual:   %q",
+				relPath, tc.Args, expected, actual)
+		}
+	}
+}
+
+// resolvePath resolves a file path, making relative paths relative to workDir.
+func resolvePath(path, workDir string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(workDir, path)
 }
