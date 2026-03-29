@@ -9,10 +9,7 @@
 // verification), R3 (file processing).
 package hashutil
 
-import (
-	"hash"
-	"io"
-)
+import "hash"
 
 // HashConfig parameterizes a hash utility with the algorithm name, hash
 // constructor, and expected digest length.
@@ -31,22 +28,4 @@ type CheckOptions struct {
 	Warn   bool // print warning for malformed lines
 	Quiet  bool // suppress OK lines
 	Status bool // suppress all output, report only via exit code
-}
-
-// ParseChecksumLine parses a single checksum line in GNU format
-// ("HASH [ *]FILENAME") or BSD tag format ("ALGORITHM (FILENAME) = HASH").
-// Returns the filename, expected digest, binary mode flag, and any parse error.
-//
-// R2.1: Checksum line parsing.
-func ParseChecksumLine(line string, cfg HashConfig) (filename, expectedDigest string, binary bool, err error) {
-	panic("not implemented")
-}
-
-// VerifyChecksums reads a checksum file, verifies each entry against the
-// actual file contents, prints results according to opts, and returns whether
-// all checks passed.
-//
-// R2.3: Checksum verification with CheckOptions.
-func VerifyChecksums(checksumFile string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) (bool, error) {
-	panic("not implemented")
 }
