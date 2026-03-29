@@ -11,6 +11,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -52,6 +53,12 @@ type cutOptions struct {
 	outputDelimSet bool   // whether --output-delimiter was explicitly set
 }
 
+// Sentinel errors for --version and --help.
+var (
+	errVersion = errors.New("version requested")
+	errHelp    = errors.New("help requested")
+)
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -62,14 +69,45 @@ func main() {
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
-		return 1
+		return handleParseError(err, stdout, stderr)
 	}
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	return processFiles(files, stdin, stdout, stderr, opts)
+}
+
+// handleParseError dispatches --version, --help, and real errors.
+func handleParseError(err error, stdout, stderr io.Writer) int {
+	if err == errVersion {
+		fmt.Fprintln(stdout, "cut (go-unix-utils)")
+		return 0
+	}
+	if err == errHelp {
+		printHelp(stdout)
+		return 0
+	}
+	fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
+	return 1
+}
+
+// printHelp writes usage information to the given writer.
+func printHelp(w io.Writer) {
+	fmt.Fprintf(w, "Usage: %s OPTION... [FILE]...\n", programName)
+	fmt.Fprintln(w, "Print selected parts of lines from each FILE to standard output.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "With no FILE, or when FILE is -, read standard input.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  -b, --bytes=LIST        select only these bytes")
+	fmt.Fprintln(w, "  -c, --characters=LIST   select only these characters")
+	fmt.Fprintln(w, "  -d, --delimiter=DELIM   use DELIM instead of TAB for field delimiter")
+	fmt.Fprintln(w, "  -f, --fields=LIST       select only these fields")
+	fmt.Fprintln(w, "  -s, --only-delimited    do not print lines not containing delimiters")
+	fmt.Fprintln(w, "      --complement        complement the set of selected bytes, characters or fields")
+	fmt.Fprintln(w, "      --output-delimiter=STRING  use STRING as the output delimiter")
+	fmt.Fprintln(w, "      --help              display this help and exit")
+	fmt.Fprintln(w, "      --version           output version information and exit")
 }
 
 // processFiles iterates over files and applies cut to each.
@@ -104,7 +142,7 @@ func cutFile(name string, stdin io.Reader, w *bufio.Writer, opts cutOptions) err
 }
 
 // openInput returns a reader and optional closer for the given filename.
-// "-" means stdin.
+// R4.1 (task): "-" means stdin.
 func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	if name == "-" {
 		return stdin, nil, nil
@@ -160,10 +198,10 @@ func selectBytes(line string, opts cutOptions) string {
 	if opts.complement {
 		positions = complementPositions(positions, len(line))
 	}
-	var b strings.Builder
 	if opts.outputDelimSet {
 		return joinBytePositions(line, positions, opts.outputDelim)
 	}
+	var b strings.Builder
 	for _, pos := range positions {
 		if pos >= 1 && pos <= len(line) {
 			b.WriteByte(line[pos-1])
@@ -173,7 +211,6 @@ func selectBytes(line string, opts cutOptions) string {
 }
 
 // joinBytePositions joins selected byte positions with an output delimiter.
-// D2: when --output-delimiter is set in byte/char mode, it separates ranges.
 func joinBytePositions(line string, positions []int, delim string) string {
 	var b strings.Builder
 	for i, pos := range positions {
@@ -321,6 +358,10 @@ func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr 
 	switch {
 	case arg == "--":
 		*flagsDone = true
+	case arg == "--version":
+		return i, listStr, errVersion
+	case arg == "--help":
+		return i, listStr, errHelp
 	case arg == "-b" || arg == "--bytes":
 		return setModeWithList(opts, modeBytes, args, i)
 	case strings.HasPrefix(arg, "-b") && len(arg) > 2:
@@ -361,8 +402,19 @@ func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr 
 	return i, listStr, nil
 }
 
+// checkModeConflict returns an error if a different mode is already set.
+func checkModeConflict(opts *cutOptions, mode selMode) error {
+	if opts.mode != modeNone && opts.mode != mode {
+		return fmt.Errorf("only one type of list may be specified")
+	}
+	return nil
+}
+
 // setModeWithList sets the selection mode and reads LIST from the next arg.
 func setModeWithList(opts *cutOptions, mode selMode, args []string, i int) (int, string, error) {
+	if err := checkModeConflict(opts, mode); err != nil {
+		return i, "", err
+	}
 	opts.mode = mode
 	i++
 	if i >= len(args) {
@@ -373,6 +425,9 @@ func setModeWithList(opts *cutOptions, mode selMode, args []string, i int) (int,
 
 // setModeInline sets the selection mode with an inline LIST value.
 func setModeInline(opts *cutOptions, mode selMode, list string, i int) (int, string, error) {
+	if err := checkModeConflict(opts, mode); err != nil {
+		return i, "", err
+	}
 	opts.mode = mode
 	return i, list, nil
 }
