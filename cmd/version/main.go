@@ -20,14 +20,19 @@ var Version = "dev"
 // run parses arguments and prints the version string.
 // Returns the exit code.
 func run(args []string) int {
-	switch {
-	case len(args) == 0:
+	if len(args) == 0 {
 		// R1.1: no arguments — print version and exit 0.
 		fmt.Println(Version)
 		return 0
-	case args[0] == "--version" || args[0] == "-v":
+	}
+	switch args[0] {
+	case "--version", "-v":
 		// R1.4: --version or -v prints the same version string.
 		fmt.Println(Version)
+		return 0
+	case "--help", "-h":
+		fmt.Println("Usage: version [--version | -v]")
+		fmt.Println("Print the build version string.")
 		return 0
 	default:
 		// R1.4: any other flag — usage to stderr, exit 2.
