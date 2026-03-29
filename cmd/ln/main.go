@@ -3,7 +3,7 @@
 
 // cmd/ln implements GNU ln: create links between files.
 //
-// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1, R3.5, R3.6.
+// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1, R3.4, R3.5, R3.6, R4.1-R4.2.
 package main
 
 import (
@@ -22,6 +22,7 @@ type lnOptions struct {
 	symbolic     bool
 	relative     bool
 	force        bool
+	verbose      bool
 	backup       bool
 	backupMethod string // "simple", "numbered", "existing", "none"
 	suffix       string
@@ -115,6 +116,8 @@ func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, error
 		opts.relative = true
 	case "--force":
 		opts.force = true
+	case "--verbose":
+		opts.verbose = true
 	case "--backup":
 		opts.backup = true
 		if hasValue {
@@ -140,7 +143,7 @@ func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, error
 	return 0, nil
 }
 
-// parseShortFlags handles -s, -r, -f, -b, -S and combined forms like -sfb.
+// parseShortFlags handles -s, -r, -f, -v, -b, -S and combined forms like -sfv.
 func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, error) {
 	consumed := 0
 	for i := 0; i < len(flags); i++ {
@@ -151,6 +154,8 @@ func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, er
 			opts.relative = true
 		case 'f':
 			opts.force = true
+		case 'v':
+			opts.verbose = true
 		case 'b':
 			opts.backup = true
 			opts.backupMethod = "existing"
@@ -219,14 +224,23 @@ func isLongFlag(arg string) bool {
 }
 
 // createLink creates a single link (hard or symbolic).
+// R3.4: prints verbose output to stdout on success.
 func createLink(target, linkName string, opts lnOptions, stderr *os.File) int {
 	if !handleExisting(linkName, opts, stderr) {
 		return 1
 	}
+	var effectiveTarget string
+	var exitCode int
 	if opts.symbolic {
-		return createSymlink(target, linkName, opts, stderr)
+		effectiveTarget, exitCode = createSymlink(target, linkName, opts, stderr)
+	} else {
+		effectiveTarget = target
+		exitCode = createHardLink(target, linkName, stderr)
 	}
-	return createHardLink(target, linkName, stderr)
+	if exitCode == 0 && opts.verbose {
+		printVerbose(linkName, effectiveTarget, opts.symbolic)
+	}
+	return exitCode
 }
 
 // handleExisting manages an existing destination: backup and/or removal.
@@ -292,6 +306,7 @@ func hasNumberedBackup(path string) bool {
 // R1.1: hard link creation.
 // R1.3: rejects directories.
 // R1.4: rejects existing destinations.
+// R4.1, R4.2: error messages for non-existent targets, permission denied, cross-device.
 func createHardLink(target, linkName string, stderr *os.File) int {
 	if err := validateHardLinkTarget(target); err != nil {
 		printError(stderr, fmt.Sprintf("hard link not allowed for directory '%s'", target))
@@ -304,26 +319,26 @@ func createHardLink(target, linkName string, stderr *os.File) int {
 	return 0
 }
 
-// createSymlink creates a symbolic link.
+// createSymlink creates a symbolic link, returning the effective target and exit code.
 // R2.1: -s creates symbolic links.
 // R2.2: allows symlinks to directories.
 // R2.3: stores target string as-is (unless -r).
 // R2.4: -r computes relative path from link location to target.
-func createSymlink(target, linkName string, opts lnOptions, stderr *os.File) int {
+func createSymlink(target, linkName string, opts lnOptions, stderr *os.File) (string, int) {
 	linkTarget := target
 	if opts.relative {
 		rel, err := computeRelativePath(target, linkName)
 		if err != nil {
 			printError(stderr, err.Error())
-			return 1
+			return "", 1
 		}
 		linkTarget = rel
 	}
 	if err := os.Symlink(linkTarget, linkName); err != nil {
 		printSymlinkError(stderr, linkName, err)
-		return 1
+		return "", 1
 	}
-	return 0
+	return linkTarget, 0
 }
 
 // computeRelativePath computes the relative path from linkName's directory to target.
@@ -377,6 +392,16 @@ func isDir(path string) bool {
 	return err == nil && info.IsDir()
 }
 
+// printVerbose prints the verbose link creation message to stdout.
+// R3.4: -v prints each link created.
+func printVerbose(linkName, target string, symbolic bool) {
+	arrow := "=>"
+	if symbolic {
+		arrow = "->"
+	}
+	fmt.Printf("'%s' %s '%s'\n", linkName, arrow, target)
+}
+
 // printError prints a formatted error to stderr.
 func printError(stderr *os.File, msg string) {
 	fmt.Fprintf(stderr, "%s: %s\n", progName, msg) //nolint:errcheck
@@ -388,7 +413,7 @@ func printTryHelp(stderr *os.File) {
 }
 
 // printLinkError prints a hard link failure error to stderr.
-// R1.4: reports existing destination errors.
+// R1.4, R4.1, R4.2: reports existing destination, non-existent target, and cross-device errors.
 func printLinkError(stderr *os.File, linkName string, err error) {
 	fmt.Fprintf(stderr, "%s: failed to create hard link '%s': %s\n", progName, linkName, err) //nolint:errcheck
 }
@@ -398,8 +423,8 @@ func printSymlinkError(stderr *os.File, linkName string, err error) {
 	fmt.Fprintf(stderr, "%s: failed to create symbolic link '%s': %s\n", progName, linkName, err) //nolint:errcheck
 }
 
-// TODO: Task R3 (-t/--target-directory) skipped per prd037-ln non_goals:
-// "cmd/ln does not implement -t DIRECTORY or -T (--no-target-directory) flags."
+// TODO: prd037-ln non_goals: -L (--logical) and -P (--physical) dereference modes
+// are explicitly excluded. Do not implement.
 
-// TODO: Task R4 (-T/--no-target-directory) skipped per prd037-ln non_goals:
-// "cmd/ln does not implement -t DIRECTORY or -T (--no-target-directory) flags."
+// TODO: prd037-ln non_goals: -t DIRECTORY and -T (--no-target-directory) flags
+// are explicitly excluded. Do not implement.
