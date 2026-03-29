@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/id against gid (GNU coreutils).
 //
-// Covers prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
+// Covers prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1.
 package main
 
 import (
@@ -114,6 +114,80 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "R3.1_n_without_selection",
 			Args:      []string{"-n"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: -r -u prints real UID
+		{
+			Name:     "R3.2_r_u_flag",
+			Args:     []string{"-r", "-u"},
+			ExitCode: 0,
+		},
+		// R3.2: -r -g prints real GID
+		{
+			Name:     "R3.2_r_g_flag",
+			Args:     []string{"-r", "-g"},
+			ExitCode: 0,
+		},
+		// R3.2: -r -u -n prints real user name
+		{
+			Name:     "R3.2_r_u_n_flag",
+			Args:     []string{"-r", "-u", "-n"},
+			ExitCode: 0,
+		},
+		// R3.2: -r -g -n prints real group name
+		{
+			Name:     "R3.2_r_g_n_flag",
+			Args:     []string{"-r", "-g", "-n"},
+			ExitCode: 0,
+		},
+		// R3.2: -r alone (no -u or -g) is an error
+		{
+			Name:      "R3.2_r_without_u_or_g",
+			Args:      []string{"-r"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: -r -G is accepted (r has no effect on -G)
+		{
+			Name:     "R3.2_r_G_accepted",
+			Args:     []string{"-r", "-G"},
+			ExitCode: 0,
+		},
+		// R3.3: named user lookup (root exists on all systems)
+		{
+			Name:     "R3.3_named_user_root",
+			Args:     []string{"root"},
+			ExitCode: 0,
+		},
+		// R3.3: named user with -u flag
+		{
+			Name:     "R3.3_named_user_u",
+			Args:     []string{"-u", "root"},
+			ExitCode: 0,
+		},
+		// R3.3: named user with -g flag
+		{
+			Name:     "R3.3_named_user_g",
+			Args:     []string{"-g", "root"},
+			ExitCode: 0,
+		},
+		// R3.3: named user with -G flag
+		{
+			Name:     "R3.3_named_user_G",
+			Args:     []string{"-G", "root"},
+			ExitCode: 0,
+		},
+		// R3.3: named user with -un flag
+		{
+			Name:     "R3.3_named_user_un",
+			Args:     []string{"-u", "-n", "root"},
+			ExitCode: 0,
+		},
+		// R3.3: nonexistent user -> error exit 1
+		{
+			Name:      "R3.3_nonexistent_user",
+			Args:      []string{"nonexistent_user_xyz_12345"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
