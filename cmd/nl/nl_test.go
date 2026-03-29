@@ -165,6 +165,121 @@ func TestDiffStyleFlags(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffFormatOptions runs differential tests for format and numbering
+// options. Covers prd022-nl R3.1 (-n FORMAT), R3.2 (-w N), R3.3 (-s SEP),
+// R3.4 (-v N, -i N).
+func TestDiffFormatOptions(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			// R3.1: -n ln produces left-justified numbers.
+			Name:  "format_ln",
+			Args:  []string{"-n", "ln"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.1: -n rn produces right-justified numbers (default).
+			Name:  "format_rn",
+			Args:  []string{"-n", "rn"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.1: -n rz produces right-justified numbers with leading zeros.
+			Name:  "format_rz",
+			Args:  []string{"-n", "rz"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.1, R3.2: -n ln -w 3 left-justified in 3-char field.
+			Name:  "format_ln_width_3",
+			Args:  []string{"-n", "ln", "-w", "3"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.1, R3.2, R3.3: combined format, width, separator.
+			Name:  "format_ln_width_3_separator",
+			Args:  []string{"-n", "ln", "-w", "3", "-s", ": "},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.2: -w 10 widens the number field.
+			Name:  "width_10",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.2: -w 1 uses minimal width.
+			Name:  "width_1",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("x\ny\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.3: -s uses custom separator string.
+			Name:  "separator_colon",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("line1\nline2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.3: -s with multi-character separator.
+			Name:  "separator_multi_char",
+			Args:  []string{"-s", " | "},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.4: -v sets starting line number.
+			Name:  "start_value",
+			Args:  []string{"-v", "10"},
+			Stdin: []byte("p\nq\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.4: -i sets increment.
+			Name:  "increment_5",
+			Args:  []string{"-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.4: -v and -i combined.
+			Name:  "start_and_increment",
+			Args:  []string{"-v", "10", "-i", "5"},
+			Stdin: []byte("p\nq\nr\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.1, R3.2, R3.3, R3.4: all format options combined.
+			Name:  "all_format_options",
+			Args:  []string{"-b", "a", "-n", "rz", "-w", "4", "-s", ":", "-v", "100", "-i", "10"},
+			Stdin: []byte("x\n\ny\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R3.1: -n rz with -w 3 for compact zero-padded output.
+			Name:  "format_rz_width_3",
+			Args:  []string{"-n", "rz", "-w", "3"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffFileInput runs differential tests for named file input and
 // continuous numbering across multiple files.
 // Covers prd022-nl R1.3 (named file reading), R1.4 (continuous numbering).
