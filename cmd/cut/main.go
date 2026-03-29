@@ -6,11 +6,13 @@
 // Implements prd026-cut R1.1, R1.2, R1.3, R1.4 (byte and character selection),
 // R2.1, R2.2 (field selection with delimiter), R2.3 (only-delimited),
 // R2.4 (output delimiter), R3.1, R3.2, R3.3 (complement mode),
-// R4.1, R4.2, R4.3, R4.4 (exit codes, SIGPIPE).
+// R4.1 (stdin/dash), R4.2 (multiple files), R4.3 (zero-terminated),
+// R4.4 (exit codes and SIGPIPE).
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -51,6 +53,7 @@ type cutOptions struct {
 	onlyDelimited  bool   // R2.3: suppress lines without delimiter
 	outputDelim    string // R2.4: output delimiter string
 	outputDelimSet bool   // whether --output-delimiter was explicitly set
+	zeroTerminated bool   // R4.3: use NUL instead of newline as line delimiter
 }
 
 // Sentinel errors for --version and --help.
@@ -65,7 +68,7 @@ func main() {
 }
 
 // run parses flags and processes input files.
-// R4.1: exit 0 on success. R4.2: exit 1 on error.
+// R4.4: exit 0 on success, 1 on error.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
@@ -104,6 +107,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  -d, --delimiter=DELIM   use DELIM instead of TAB for field delimiter")
 	fmt.Fprintln(w, "  -f, --fields=LIST       select only these fields")
 	fmt.Fprintln(w, "  -s, --only-delimited    do not print lines not containing delimiters")
+	fmt.Fprintln(w, "  -z, --zero-terminated   line delimiter is NUL, not newline")
 	fmt.Fprintln(w, "      --complement        complement the set of selected bytes, characters or fields")
 	fmt.Fprintln(w, "      --output-delimiter=STRING  use STRING as the output delimiter")
 	fmt.Fprintln(w, "      --help              display this help and exit")
@@ -111,8 +115,8 @@ func printHelp(w io.Writer) {
 }
 
 // processFiles iterates over files and applies cut to each.
-// R4.2: errors on individual files do not stop processing.
-// R4.3: write errors cause exit 1.
+// R4.2: multiple files are processed in order with concatenated output.
+// R4.4: errors on individual files do not stop processing; exit 1 if any fail.
 func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opts cutOptions) int {
 	exitCode := 0
 	bw := bufio.NewWriter(stdout)
@@ -142,7 +146,7 @@ func cutFile(name string, stdin io.Reader, w *bufio.Writer, opts cutOptions) err
 }
 
 // openInput returns a reader and optional closer for the given filename.
-// R4.1 (task): "-" means stdin.
+// "-" means stdin.
 func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	if name == "-" {
 		return stdin, nil, nil
@@ -154,10 +158,31 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	return f, f, nil
 }
 
+// nullSplitFunc is a bufio.SplitFunc that splits on NUL bytes instead of newlines.
+// R4.3: used when -z/--zero-terminated is active.
+func nullSplitFunc(data []byte, atEOF bool) (int, []byte, error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, 0); i >= 0 {
+		return i + 1, data[0:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
 // cutLines reads lines from r and writes selected portions to w.
+// R4.3: when zeroTerminated is set, uses NUL as line delimiter.
 func cutLines(r io.Reader, w *bufio.Writer, opts cutOptions) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	terminator := "\n"
+	if opts.zeroTerminated {
+		scanner.Split(nullSplitFunc)
+		terminator = "\x00"
+	}
 	for scanner.Scan() {
 		line := scanner.Text()
 		result, suppress := selectFromLine(line, opts)
@@ -167,7 +192,7 @@ func cutLines(r io.Reader, w *bufio.Writer, opts cutOptions) error {
 		if _, err := w.WriteString(result); err != nil {
 			return err
 		}
-		if _, err := w.WriteString("\n"); err != nil {
+		if _, err := w.WriteString(terminator); err != nil {
 			return err
 		}
 	}
@@ -233,11 +258,9 @@ func joinBytePositions(line string, positions []int, delim string) string {
 func selectFields(line string, opts cutOptions) (string, bool) {
 	delim := string(opts.delimiter)
 	if !strings.Contains(line, delim) {
-		// R2.3: -s suppresses lines without delimiter.
 		if opts.onlyDelimited {
 			return "", true
 		}
-		// Without -s, lines without delimiter are printed unchanged.
 		return line, false
 	}
 	fields := strings.Split(line, delim)
@@ -353,6 +376,7 @@ func finalizeParse(opts cutOptions, listStr string, files []string) (cutOptions,
 }
 
 // parseFlag handles a single flag argument starting at args[i].
+// Boolean flags are handled inline; value flags dispatch to parseValueFlag.
 func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr string) (int, string, error) {
 	arg := args[i]
 	switch {
@@ -362,6 +386,23 @@ func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr 
 		return i, listStr, errVersion
 	case arg == "--help":
 		return i, listStr, errHelp
+	case arg == "-s" || arg == "--only-delimited":
+		opts.onlyDelimited = true
+	case arg == "--complement":
+		opts.complement = true
+	case arg == "-z" || arg == "--zero-terminated":
+		// R4.3: use NUL instead of newline as line delimiter.
+		opts.zeroTerminated = true
+	default:
+		return parseValueFlag(opts, args, i, listStr)
+	}
+	return i, listStr, nil
+}
+
+// parseValueFlag handles flags that take a value argument (-b, -c, -f, -d, --output-delimiter).
+func parseValueFlag(opts *cutOptions, args []string, i int, listStr string) (int, string, error) {
+	arg := args[i]
+	switch {
 	case arg == "-b" || arg == "--bytes":
 		return setModeWithList(opts, modeBytes, args, i)
 	case strings.HasPrefix(arg, "-b") && len(arg) > 2:
@@ -386,12 +427,6 @@ func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr 
 		return parseDelimInline(opts, arg[2:], i, listStr)
 	case strings.HasPrefix(arg, "--delimiter="):
 		return parseDelimInline(opts, arg[12:], i, listStr)
-	case arg == "-s" || arg == "--only-delimited":
-		// R2.3: suppress lines without delimiter in field mode.
-		opts.onlyDelimited = true
-	case arg == "--complement":
-		// R3.1: invert the selection.
-		opts.complement = true
 	case arg == "--output-delimiter":
 		return parseOutputDelimNext(opts, args, i, listStr)
 	case strings.HasPrefix(arg, "--output-delimiter="):
@@ -399,7 +434,6 @@ func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr 
 	default:
 		return i, listStr, fmt.Errorf("invalid option -- '%s'", arg[1:])
 	}
-	return i, listStr, nil
 }
 
 // checkModeConflict returns an error if a different mode is already set.
