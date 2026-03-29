@@ -3,10 +3,12 @@
 
 // Differential tests for cmd/cat against gcat (GNU coreutils).
 //
-// Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8.
+// Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4,
+// R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,10 +215,49 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-un"},
 			Stdin: []byte("hello\nworld\n"),
 		},
+		// R4.9: full transformation order: squeeze → transform → end marker → number
+		{
+			Name:  "R4.9_all_flags_snvET",
+			Args:  []string{"-snvET"},
+			Stdin: []byte("a\t\n\n\n\x01b\n"),
+		},
+		// R4.9: squeeze + number-nonblank + all display
+		{
+			Name:  "R4.9_sbA_combined",
+			Args:  []string{"-sbA"},
+			Stdin: []byte("x\n\n\n\ty\x7f\n\nz\n"),
+		},
+		// R4.9: squeeze + show-ends + number
+		{
+			Name:  "R4.9_snE_combined",
+			Args:  []string{"-snE"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		// R4.9: all flags with high bytes
+		{
+			Name:  "R4.9_sbnA_high_bytes",
+			Args:  []string{"-sbnA"},
+			Stdin: []byte{0x80, 0x0A, 0x0A, 0x0A, 0xFF, 0x0A},
+		},
+		// R5.1: successful exit code 0
+		{
+			Name:     "R5.1_success_exit_zero",
+			Args:     []string{},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 0,
+		},
+		// R5.2: nonexistent file exits 1, continues processing remaining files
+		{
+			Name:      "R5.2_nonexistent_file_exit_1",
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCatErrors},
+		},
 	}
 
 	// R3.2: create temp files for cross-boundary squeeze test
 	setupCrossBoundaryTest(t, tests)
+	// R5.2: create temp files for nonexistent file test
+	setupNonexistentFileTest(t, tests)
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -236,6 +277,43 @@ func setupCrossBoundaryTest(t *testing.T, tests []testutils.DiffTest) {
 		tests[i].Args = []string{"-s", file1, file2}
 		tests[i].Stdin = nil
 	}
+}
+
+// setupNonexistentFileTest creates temp files for the R5.2 nonexistent file test.
+// R5.2: cat must continue processing remaining files after an open error.
+func setupNonexistentFileTest(t *testing.T, tests []testutils.DiffTest) {
+	t.Helper()
+	for i := range tests {
+		if tests[i].Name != "R5.2_nonexistent_file_exit_1" {
+			continue
+		}
+		dir := t.TempDir()
+		validFile := filepath.Join(dir, "valid.txt")
+		writeTestFile(t, validFile, "hello\n")
+		nonexistent := filepath.Join(dir, "nonexistent.txt")
+		tests[i].Args = []string{nonexistent, validFile}
+		tests[i].Stdin = nil
+	}
+}
+
+// normalizeCatErrors normalizes error messages between binaries.
+// R5.2: different binaries produce different program name prefixes
+// and potentially different error string capitalization.
+func normalizeCatErrors(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	for i, line := range lines {
+		colonIdx := bytes.Index(line, []byte(": "))
+		if colonIdx <= 0 {
+			continue
+		}
+		prefix := line[:colonIdx]
+		if bytes.ContainsAny(prefix, " \t") {
+			continue
+		}
+		rest := bytes.ToLower(line[colonIdx:])
+		lines[i] = append([]byte("cat"), rest...)
+	}
+	return bytes.Join(lines, []byte("\n"))
 }
 
 // writeTestFile writes content to a file, failing the test on error.
