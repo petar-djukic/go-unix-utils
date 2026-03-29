@@ -5,7 +5,9 @@
 //
 // Implements prd031-sha1sum: R1.1 (file digest computation), R1.2 (stdin),
 // R1.3 (binary/text mode flags), R1.4 (--tag BSD-style output),
-// R2.1 (--check), R2.2 (--warn), R2.3 (--quiet/--status), R3.1 (--help).
+// R2.1 (--check), R2.2 (--warn), R2.3 (--quiet/--status), R3.1 (--help),
+// R3.2 (--version), R4.1 (exit 0 on success), R4.2 (exit 1 on failure),
+// R4.3 (SIGPIPE handling).
 package main
 
 import (
