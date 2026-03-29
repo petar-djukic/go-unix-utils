@@ -3,7 +3,7 @@
 
 // cmd/env implements GNU env: run a command in a modified environment.
 //
-// Implements prd039-env R1.1, R1.2, R1.3, R2.1.
+// Implements prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2.
 package main
 
 import (
@@ -27,6 +27,8 @@ func main() {
 // envConfig holds parsed arguments for env.
 type envConfig struct {
 	ignoreEnv bool
+	nullDelim bool
+	unsetVars []string
 	setVars   []string
 	command   string
 	cmdArgs   []string
@@ -41,7 +43,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 	env := buildEnv(cfg)
 	if cfg.command == "" {
-		return printEnv(env, stdout)
+		return printEnv(env, cfg.nullDelim, stdout)
 	}
 	return execCommand(cfg.command, cfg.cmdArgs, env, stderr)
 }
@@ -63,16 +65,29 @@ func parseArgs(args []string) (envConfig, error) {
 
 // parseFlags processes option flags and returns the index of the first non-flag.
 // R2.1: -i / --ignore-environment sets ignoreEnv.
+// R2.2: -u NAME / --unset=NAME removes a variable.
+// R3.1: -0 / --null enables NUL-delimited output.
 func parseFlags(args []string, cfg *envConfig) (int, error) {
-	for i := range len(args) {
-		switch args[i] {
-		case "-i", "--ignore-environment":
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-i" || arg == "--ignore-environment":
 			cfg.ignoreEnv = true
-		case "--":
+		case arg == "-0" || arg == "--null":
+			cfg.nullDelim = true
+		case arg == "-u":
+			i++
+			if i >= len(args) {
+				return 0, fmt.Errorf("option requires an argument -- 'u'")
+			}
+			cfg.unsetVars = append(cfg.unsetVars, args[i])
+		case strings.HasPrefix(arg, "--unset="):
+			cfg.unsetVars = append(cfg.unsetVars, arg[len("--unset="):])
+		case arg == "--":
 			return i + 1, nil
 		default:
-			if len(args[i]) > 0 && args[i][0] == '-' {
-				return 0, fmt.Errorf("unrecognized option '%s'", args[i])
+			if len(arg) > 0 && arg[0] == '-' {
+				return 0, fmt.Errorf("unrecognized option '%s'", arg)
 			}
 			return i, nil
 		}
@@ -81,7 +96,7 @@ func parseFlags(args []string, cfg *envConfig) (int, error) {
 }
 
 // collectVars gathers NAME=VALUE pairs starting at index i.
-// The first argument without '=' marks the start of COMMAND.
+// R2.3: the first argument without '=' marks the start of COMMAND.
 func collectVars(args []string, i int, cfg *envConfig) int {
 	for i < len(args) {
 		if !strings.Contains(args[i], "=") {
@@ -95,19 +110,45 @@ func collectVars(args []string, i int, cfg *envConfig) int {
 
 // buildEnv constructs the environment for command execution or printing.
 // R2.1: when ignoreEnv is true, starts with an empty environment.
+// R2.2: removes variables listed in unsetVars.
 func buildEnv(cfg envConfig) []string {
 	var env []string
 	if !cfg.ignoreEnv {
 		env = os.Environ()
 	}
+	env = removeVars(env, cfg.unsetVars)
 	return append(env, cfg.setVars...)
 }
 
-// printEnv writes each environment variable on its own line.
-// R1.1: NAME=VALUE format, one per line, exit 0.
-func printEnv(env []string, stdout *os.File) int {
+// removeVars filters out environment entries matching the given names.
+func removeVars(env, names []string) []string {
+	if len(names) == 0 {
+		return env
+	}
+	unset := make(map[string]bool, len(names))
+	for _, n := range names {
+		unset[n] = true
+	}
+	result := env[:0]
 	for _, e := range env {
-		fmt.Fprintln(stdout, e) //nolint:errcheck // best-effort
+		k, _, _ := strings.Cut(e, "=")
+		if !unset[k] {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// printEnv writes each environment variable to stdout.
+// R1.1: NAME=VALUE format, one per line, exit 0.
+// R3.1: when nullDelim is true, terminates with NUL instead of newline.
+func printEnv(env []string, nullDelim bool, stdout *os.File) int {
+	delim := "\n"
+	if nullDelim {
+		delim = "\x00"
+	}
+	for _, e := range env {
+		fmt.Fprint(stdout, e+delim) //nolint:errcheck // best-effort
 	}
 	return 0
 }
@@ -115,6 +156,7 @@ func printEnv(env []string, stdout *os.File) int {
 // execCommand replaces the current process with the named command.
 // R1.2: execute COMMAND with the resulting environment.
 // R1.3: exit 127 if not found, 126 if not executable.
+// R3.2: exit code passthrough is automatic via syscall.Exec.
 func execCommand(name string, args, env []string, stderr *os.File) int {
 	path, err := exec.LookPath(name)
 	if err != nil {

@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/env against genv (GNU coreutils).
 //
-// Covers prd039-env R1.1, R1.2, R1.3, R2.1.
+// Covers prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2.
 package main
 
 import (
@@ -27,6 +27,17 @@ func sortLines(data []byte) []byte {
 	lines := strings.Split(s, "\n")
 	sort.Strings(lines)
 	return []byte(strings.Join(lines, "\n") + "\n")
+}
+
+// sortNulLines sorts NUL-delimited output for deterministic comparison.
+func sortNulLines(data []byte) []byte {
+	if len(data) == 0 {
+		return data
+	}
+	s := strings.TrimSuffix(string(data), "\x00")
+	lines := strings.Split(s, "\x00")
+	sort.Strings(lines)
+	return []byte(strings.Join(lines, "\x00") + "\x00")
 }
 
 // discardAll blanks output for exit-code-only comparison.
@@ -87,6 +98,70 @@ func TestDiff(t *testing.T) {
 			Name:     "R2.1_ignore_no_cmd",
 			Args:     []string{"-i"},
 			ExitCode: 0,
+		},
+		// R2.2: -u removes a variable from the environment
+		{
+			Name:     "R2.2_unset_short",
+			Args:     []string{"-u", "HOME", "printenv", "HOME"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.2: --unset=NAME long form
+		{
+			Name:     "R2.2_unset_long",
+			Args:     []string{"--unset=HOME", "printenv", "HOME"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.2: multiple -u flags unset from inherited environment
+		{
+			Name:      "R2.2_unset_multiple",
+			Args:      []string{"-u", "HOME", "-u", "USER", "env"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.3: NAME=VALUE pairs set variables, first non-= arg is COMMAND
+		{
+			Name:     "R2.3_set_vars",
+			Args:     []string{"FOO=bar", "BAZ=qux", "printenv", "FOO"},
+			ExitCode: 0,
+		},
+		// R2.3: NAME=VALUE with empty value
+		{
+			Name:     "R2.3_empty_value",
+			Args:     []string{"EMPTY_VAR=", "printenv", "EMPTY_VAR"},
+			ExitCode: 0,
+		},
+		// R2.3: NAME=VALUE with = in value
+		{
+			Name:     "R2.3_equals_in_value",
+			Args:     []string{"EQ_VAR=a=b=c", "printenv", "EQ_VAR"},
+			ExitCode: 0,
+		},
+		// R3.1: -0 uses NUL delimiters for environment dump
+		{
+			Name:      "R3.1_null_delim",
+			Args:      []string{"-i", "-0", "FOO=bar", "BAZ=qux"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+		// R3.1: --null long form
+		{
+			Name:      "R3.1_null_long",
+			Args:      []string{"-i", "--null", "X=1"},
+			ExitCode:  0,
+		},
+		// R3.2: exit code passthrough from command
+		{
+			Name:     "R3.2_exit_passthrough_success",
+			Args:     []string{"true"},
+			ExitCode: 0,
+		},
+		// R3.2: exit code passthrough for failing command
+		{
+			Name:     "R3.2_exit_passthrough_failure",
+			Args:     []string{"false"},
+			ExitCode: 1,
 		},
 	}
 
