@@ -3,7 +3,8 @@
 
 // cmd/mktemp implements GNU mktemp: create temporary files or directories.
 //
-// Implements prd036-mktemp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements prd036-mktemp R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
+// R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -24,23 +26,34 @@ const (
 	randChars       = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 )
 
+// options holds parsed command-line flags for mktemp.
+type options struct {
+	dirMode    bool
+	parentDir  string
+	hasParent  bool
+	suffix     string
+	positional []string
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // run executes mktemp logic.
-// R1.1: creates temp file in TMPDIR or /tmp by default.
-// R1.5: exits 0 on success, 1 on failure.
-// R2.1: -d/--directory creates a directory instead of a file.
+// R1.5: exits 0 on success, 1 on failure with error to stderr.
 func run(args []string, stdout, stderr *os.File) int {
-	dirMode, remaining := extractDirFlag(args)
-	tmpl, err := resolveTemplate(remaining)
+	opts, err := parseArgs(args)
 	if err != nil {
 		printErr(stderr, err)
 		return 1
 	}
-	path, err := createTemp(tmpl, dirMode)
+	tmpl, err := resolveTemplate(opts)
+	if err != nil {
+		printErr(stderr, err)
+		return 1
+	}
+	path, err := createTemp(tmpl, opts.suffix, opts.dirMode)
 	if err != nil {
 		printErr(stderr, err)
 		return 1
@@ -54,51 +67,94 @@ func printErr(w *os.File, err error) {
 	fmt.Fprintf(w, "%s: %s\n", progName, err) //nolint:errcheck
 }
 
-// extractDirFlag scans args for -d or --directory and returns
-// whether directory mode is enabled plus the remaining args.
-// R2.1: -d or --directory flag detection.
-func extractDirFlag(args []string) (bool, []string) {
-	dirMode := false
-	remaining := make([]string, 0, len(args))
-	for _, a := range args {
+// parseArgs extracts options and positional arguments from args.
+// R2.1: -d/--directory flag.
+// R3.1: -p DIR / --tmpdir=DIR flag.
+// R3.2: --tmpdir (no value) flag.
+// R3.3: --suffix=SUFF flag.
+func parseArgs(args []string) (options, error) {
+	var opts options
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if a == "--" {
-			remaining = append(remaining, args[len(remaining):]...)
+			opts.positional = append(opts.positional, args[i+1:]...)
 			break
 		}
-		if a == "-d" || a == "--directory" {
-			dirMode = true
-			continue
+		consumed, err := parseFlag(&opts, args, &i)
+		if err != nil {
+			return opts, err
 		}
-		remaining = append(remaining, a)
+		if !consumed {
+			opts.positional = append(opts.positional, a)
+		}
 	}
-	return dirMode, remaining
+	return opts, nil
 }
 
-// resolveTemplate determines the full template path from arguments.
+// parseFlag attempts to parse a single flag from args[*idx].
+// Returns true if the argument was consumed as a flag.
+func parseFlag(opts *options, args []string, idx *int) (bool, error) {
+	a := args[*idx]
+	switch {
+	case a == "-d" || a == "--directory":
+		opts.dirMode = true
+	case a == "-p":
+		*idx++
+		if *idx >= len(args) {
+			return false, fmt.Errorf("option '-p' requires an argument")
+		}
+		opts.parentDir = args[*idx]
+		opts.hasParent = true
+	case strings.HasPrefix(a, "--tmpdir="):
+		// R3.1: --tmpdir=DIR uses DIR as parent directory.
+		opts.parentDir = a[len("--tmpdir="):]
+		opts.hasParent = true
+	case a == "--tmpdir":
+		// R3.2: --tmpdir without value uses TMPDIR or /tmp.
+		opts.hasParent = true
+	case strings.HasPrefix(a, "--suffix="):
+		// R3.3: --suffix=SUFF appended after random characters.
+		opts.suffix = a[len("--suffix="):]
+	default:
+		return false, nil
+	}
+	return true, nil
+}
+
+// resolveTemplate determines the full template path from parsed options.
 // R1.1: default directory is TMPDIR or /tmp when no template given.
 // R1.2: default template is tmp.XXXXXXXXXX.
-// R1.3: uses user-provided template as-is.
-func resolveTemplate(args []string) (string, error) {
-	positional := extractPositional(args)
-	switch len(positional) {
-	case 0:
-		return filepath.Join(defaultDir(), defaultTemplate), nil
-	case 1:
-		return positional[0], nil
-	default:
+// R3.1: -p DIR overrides the parent directory.
+// R3.2: --tmpdir uses TMPDIR or /tmp as parent.
+func resolveTemplate(opts options) (string, error) {
+	if len(opts.positional) > 1 {
 		return "", fmt.Errorf("too many templates")
 	}
+	tmpl := defaultTemplate
+	if len(opts.positional) == 1 {
+		tmpl = opts.positional[0]
+	}
+	dir := resolveDir(opts, len(opts.positional) == 1)
+	if dir != "" {
+		tmpl = filepath.Join(dir, tmpl)
+	}
+	return tmpl, nil
 }
 
-// extractPositional returns args after a -- separator, or all args if
-// no separator is present.
-func extractPositional(args []string) []string {
-	for i, a := range args {
-		if a == "--" {
-			return args[i+1:]
+// resolveDir determines the parent directory based on options.
+// When -p or --tmpdir is set, uses the specified or default directory.
+// When no parent flag is set and no explicit template, uses defaultDir.
+func resolveDir(opts options, hasExplicitTemplate bool) string {
+	if opts.hasParent {
+		if opts.parentDir != "" {
+			return opts.parentDir
 		}
+		return defaultDir()
 	}
-	return args
+	if !hasExplicitTemplate {
+		return defaultDir()
+	}
+	return ""
 }
 
 // defaultDir returns TMPDIR if set, or /tmp as fallback.
@@ -112,25 +168,37 @@ func defaultDir() string {
 
 // createTemp creates a temporary file or directory from a template path.
 // R1.3: replaces trailing X characters with random alphanumeric characters.
-// R2.1: creates directory when dirMode is true.
-func createTemp(tmpl string, dirMode bool) (string, error) {
+// R3.3: appends suffix after random characters.
+func createTemp(tmpl, suffix string, dirMode bool) (string, error) {
+	if err := validateSuffix(suffix); err != nil {
+		return "", err
+	}
 	xCount := countTrailingX(filepath.Base(tmpl))
 	if xCount < minXCount {
-		return "", fmt.Errorf("too few X's in template '%s'", tmpl)
+		return "", fmt.Errorf("too few X's in template '%s'", filepath.Base(tmpl))
 	}
 	prefix := tmpl[:len(tmpl)-xCount]
-	return tryCreate(prefix, xCount, tmpl, dirMode)
+	return tryCreate(prefix, xCount, suffix, tmpl, dirMode)
+}
+
+// validateSuffix checks that the suffix does not contain a directory separator.
+// R3.3: slash after X sequence is not allowed with --suffix.
+func validateSuffix(suffix string) error {
+	if strings.Contains(suffix, "/") {
+		return fmt.Errorf("invalid suffix '%s', contains directory separator", suffix)
+	}
+	return nil
 }
 
 // tryCreate attempts to create a unique file or directory with random
 // characters, retrying on name collisions.
-func tryCreate(prefix string, xCount int, tmpl string, dirMode bool) (string, error) {
+func tryCreate(prefix string, xCount int, suffix, tmpl string, dirMode bool) (string, error) {
 	kind := "file"
 	if dirMode {
 		kind = "directory"
 	}
 	for range maxAttempts {
-		path, err := attemptCreate(prefix, xCount, dirMode)
+		path, err := attemptCreate(prefix, xCount, suffix, dirMode)
 		if err == nil {
 			return path, nil
 		}
@@ -145,12 +213,12 @@ func tryCreate(prefix string, xCount int, tmpl string, dirMode bool) (string, er
 // or directory atomically.
 // R1.4: file permission mode 0600.
 // R2.2: directory permission mode 0700.
-func attemptCreate(prefix string, xCount int, dirMode bool) (string, error) {
-	suffix, err := randomString(xCount)
+func attemptCreate(prefix string, xCount int, suffix string, dirMode bool) (string, error) {
+	rs, err := randomString(xCount)
 	if err != nil {
 		return "", err
 	}
-	path := prefix + suffix
+	path := prefix + rs + suffix
 	if dirMode {
 		return path, os.Mkdir(path, 0o700)
 	}

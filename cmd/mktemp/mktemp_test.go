@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
 //
-// Covers prd036-mktemp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Covers prd036-mktemp R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
+// R3.1, R3.2, R3.3.
 // Because mktemp generates random names, tests verify structural properties
 // (exit code, path prefix, name pattern, permissions) rather than exact output.
 package main
@@ -212,6 +213,233 @@ func TestMktempDirectory(t *testing.T) {
 		compareExitCodes(t, goExit, refExit)
 		verifyCreatedDir(t, "go", goPath, goDir, pattern, 0o700)
 		verifyCreatedDir(t, "ref", refPath, refDir, pattern, 0o700)
+	})
+}
+
+// TestMktempExitCodes verifies R1.5: exit 0 on success, exit 1 on failure.
+func TestMktempExitCodes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R1.5: success exits 0
+	t.Run("success_exit_0", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		env := []string{"TMPDIR=" + tmpDir}
+		_, goExit := runMktemp(t, goBin, nil, env, "")
+		_, refExit := runMktemp(t, refBin, nil, env, "")
+		compareExitCodes(t, goExit, refExit)
+		if goExit != 0 {
+			t.Errorf("expected exit 0 on success, got %d", goExit)
+		}
+	})
+
+	// R1.5: failure exits 1
+	t.Run("failure_exit_1", func(t *testing.T) {
+		t.Parallel()
+		_, goExit := runMktemp(t, goBin, []string{"noX"}, nil, "")
+		_, refExit := runMktemp(t, refBin, []string{"noX"}, nil, "")
+		compareExitCodes(t, goExit, refExit)
+		if goExit != 1 {
+			t.Errorf("expected exit 1 on failure, got %d", goExit)
+		}
+	})
+
+	// R1.5: failure prints error to stderr
+	t.Run("failure_stderr_not_empty", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "noX")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		_ = cmd.Run() // expected to fail
+		if stderr.Len() == 0 {
+			t.Error("expected error message on stderr for invalid template")
+		}
+	})
+}
+
+// TestMktempParentDir verifies R3.1: -p DIR and --tmpdir=DIR.
+func TestMktempParentDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R3.1: -p DIR uses DIR as parent
+	t.Run("p_flag_default_template", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-p", goDir}, nil, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-p", refDir}, nil, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goDir, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refDir, pattern, 0o600)
+	})
+
+	// R3.1: -p DIR with custom template
+	t.Run("p_flag_custom_template", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		pattern := regexp.MustCompile(`^myapp\.[A-Za-z0-9]{6}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-p", goDir, "myapp.XXXXXX"}, nil, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-p", refDir, "myapp.XXXXXX"}, nil, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goDir, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refDir, pattern, 0o600)
+	})
+
+	// R3.1: --tmpdir=DIR uses DIR as parent
+	t.Run("tmpdir_equals_dir", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--tmpdir=" + goDir}, nil, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"--tmpdir=" + refDir}, nil, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goDir, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refDir, pattern, 0o600)
+	})
+
+	// R3.1: -p DIR with -d (directory mode)
+	t.Run("p_flag_directory_mode", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-d", "-p", goDir}, nil, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-d", "-p", refDir}, nil, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedDir(t, "go", goPath, goDir, pattern, 0o700)
+		verifyCreatedDir(t, "ref", refPath, refDir, pattern, 0o700)
+	})
+}
+
+// TestMktempTmpdirNoValue verifies R3.2: --tmpdir without value.
+func TestMktempTmpdirNoValue(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R3.2: --tmpdir (no value) with custom template uses TMPDIR
+	t.Run("tmpdir_no_value_with_template", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^myapp\.[A-Za-z0-9]{6}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--tmpdir", "myapp.XXXXXX"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"--tmpdir", "myapp.XXXXXX"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goTmp, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refTmp, pattern, 0o600)
+	})
+
+	// R3.2: --tmpdir (no value) without template uses TMPDIR + default
+	t.Run("tmpdir_no_value_default_template", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--tmpdir"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"--tmpdir"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goTmp, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refTmp, pattern, 0o600)
+	})
+}
+
+// TestMktempSuffix verifies R3.3: --suffix=SUFF.
+func TestMktempSuffix(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R3.3: --suffix=.txt appends suffix after random characters
+	t.Run("suffix_txt", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}\.txt$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--suffix=.txt"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"--suffix=.txt"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goTmp, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refTmp, pattern, 0o600)
+	})
+
+	// R3.3: --suffix with custom template and -p
+	t.Run("suffix_with_template", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^myapp\.[A-Za-z0-9]{6}\.log$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--suffix=.log", "-p", goTmp, "myapp.XXXXXX"}, nil, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"--suffix=.log", "-p", refTmp, "myapp.XXXXXX"}, nil, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedFile(t, "go", goPath, goTmp, pattern, 0o600)
+		verifyCreatedFile(t, "ref", refPath, refTmp, pattern, 0o600)
+	})
+
+	// R3.3: suffix with slash is rejected
+	t.Run("suffix_with_slash_fails", func(t *testing.T) {
+		t.Parallel()
+		_, goExit := runMktemp(t, goBin, []string{"--suffix=/bad"}, nil, "")
+		_, refExit := runMktemp(t, refBin, []string{"--suffix=/bad"}, nil, "")
+		compareExitCodes(t, goExit, refExit)
+		if goExit != 1 {
+			t.Errorf("expected exit 1 for suffix with slash, got %d", goExit)
+		}
+	})
+
+	// R3.3: --suffix with -d (directory mode)
+	t.Run("suffix_directory_mode", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}\.dat$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-d", "--suffix=.dat"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-d", "--suffix=.dat"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedDir(t, "go", goPath, goTmp, pattern, 0o700)
+		verifyCreatedDir(t, "ref", refPath, refTmp, pattern, 0o700)
 	})
 }
 
