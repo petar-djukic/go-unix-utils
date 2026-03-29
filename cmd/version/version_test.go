@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Differential and unit tests for cmd/version per prd059 R1.1, R1.2, R1.4.
 package main
 
 import (
@@ -11,6 +12,40 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// TestDiff runs differential tests against a reference binary.
+// R5.1: version has no GNU reference binary; this test skips gracefully.
+func TestDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gversion")
+	if err != nil {
+		t.Skipf("reference binary gversion not in PATH: %v", err)
+	}
+	tests := []testutils.DiffTest{
+		{
+			Name:     "no_args",
+			Args:     []string{},
+			ExitCode: 0,
+		},
+		{
+			Name:     "version_flag",
+			Args:     []string{"--version"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "help_flag",
+			Args:     []string{"--help"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "unknown_flag",
+			Args:     []string{"--bogus"},
+			ExitCode: 2,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
 
 // TestVersionNoArgs verifies R1.1: no arguments prints version + newline, exits 0.
 func TestVersionNoArgs(t *testing.T) {
@@ -27,7 +62,7 @@ func TestVersionNoArgs(t *testing.T) {
 	}
 }
 
-// TestVersionFlag verifies R1.4: --version prints the same output.
+// TestVersionFlag verifies R1.4: --version and -v print the same output.
 func TestVersionFlag(t *testing.T) {
 	t.Parallel()
 	bin := testutils.BuildBinary(t, ".")
@@ -47,8 +82,28 @@ func TestVersionFlag(t *testing.T) {
 	}
 }
 
-// TestVersionUnknownFlag verifies R1.4: unknown flag prints usage to stderr, exits 2.
-func TestVersionUnknownFlag(t *testing.T) {
+// TestHelpFlag verifies --help prints usage and exits 0.
+func TestHelpFlag(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+
+	for _, flag := range []string{"--help", "-h"} {
+		t.Run(flag, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(bin, flag)
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("flag %s: unexpected error: %v", flag, err)
+			}
+			if len(out) == 0 {
+				t.Errorf("flag %s: expected help output, got empty", flag)
+			}
+		})
+	}
+}
+
+// TestUnknownFlag verifies R1.4: unknown flag prints usage to stderr, exits 2.
+func TestUnknownFlag(t *testing.T) {
 	t.Parallel()
 	bin := testutils.BuildBinary(t, ".")
 
@@ -75,7 +130,6 @@ func TestVersionLdflags(t *testing.T) {
 	tmpDir := t.TempDir()
 	binPath := tmpDir + "/version-ldflags"
 
-	// Build with ldflags to inject a version string.
 	buildCmd := exec.Command("go", "build",
 		"-ldflags", "-X main.Version=v1.20260328.1",
 		"-o", binPath, ".")
