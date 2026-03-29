@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/uname prints system information fields.
-// Implements prd044-uname R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8.
+// Implements prd044-uname R1.1–R1.9, R2.1, R2.2, R3.1.
 package main
 
 import (
@@ -17,15 +17,18 @@ import (
 // programName is the name used in error messages.
 const programName = "uname"
 
+// version is set at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	var flags unameFlags
 	anyFlag := false
 
-	if err := parseFlags(os.Args[1:], &flags, &anyFlag); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
-		os.Exit(1)
+	exit, done := parseFlags(os.Args[1:], &flags, &anyFlag)
+	if done {
+		os.Exit(exit)
 	}
 
 	// R1.1: no flags prints kernel name (equivalent to -s).
@@ -43,29 +46,57 @@ func main() {
 
 // unameFlags holds the state of each individual flag.
 type unameFlags struct {
-	s, n, r, v, m, p, i bool
+	s, n, r, v, m, p, i, o bool
 }
 
-// parseFlags processes argv for single-character flags.
-func parseFlags(args []string, flags *unameFlags, anyFlag *bool) error {
+// setAll sets every flag to true, used by -a (R2.1).
+func (f *unameFlags) setAll() {
+	f.s = true
+	f.n = true
+	f.r = true
+	f.v = true
+	f.m = true
+	f.p = true
+	f.i = true
+	f.o = true
+}
+
+// parseFlags processes argv for single-character flags and --version.
+// Returns (exitCode, true) when the program should exit immediately.
+func parseFlags(args []string, flags *unameFlags, anyFlag *bool) (int, bool) {
 	for _, arg := range args {
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			return fmt.Errorf("extra operand '%s'", arg)
+			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", programName, arg)
+			return 1, true
 		}
 		if strings.HasPrefix(arg, "--") {
-			return fmt.Errorf("unrecognized option '%s'", arg)
+			return handleLongOption(arg)
 		}
 		if err := parseFlagChars(arg[1:], flags, anyFlag); err != nil {
-			return err
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			return 1, true
 		}
 	}
-	return nil
+	return 0, false
+}
+
+// handleLongOption handles --version and rejects unknown long options.
+func handleLongOption(arg string) (int, bool) {
+	// R3.1: --version prints version information and exits 0.
+	if arg == "--version" {
+		fmt.Printf("%s (go-unix-utils) %s\n", programName, version)
+		return 0, true
+	}
+	fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", programName, arg)
+	return 1, true
 }
 
 // parseFlagChars processes each character in a flag group.
 func parseFlagChars(chars string, flags *unameFlags, anyFlag *bool) error {
 	for _, ch := range chars {
 		switch ch {
+		case 'a':
+			flags.setAll()
 		case 's':
 			flags.s = true
 		case 'n':
@@ -80,6 +111,8 @@ func parseFlagChars(chars string, flags *unameFlags, anyFlag *bool) error {
 			flags.p = true
 		case 'i':
 			flags.i = true
+		case 'o':
+			flags.o = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", ch)
 		}
@@ -89,6 +122,8 @@ func parseFlagChars(chars string, flags *unameFlags, anyFlag *bool) error {
 }
 
 // collectFields gathers the requested uname fields in canonical order.
+// R2.2: fields are always emitted in canonical order regardless of
+// the order flags were specified.
 func collectFields(f *unameFlags) ([]string, error) {
 	var fields []string
 	// R1.2: kernel name (e.g., Darwin, Linux).
@@ -139,7 +174,16 @@ func collectFields(f *unameFlags) ([]string, error) {
 	if f.i {
 		fields = append(fields, "unknown")
 	}
+	// R1.9: operating system name.
+	if f.o {
+		fields = append(fields, osName())
+	}
 	return fields, nil
+}
+
+// osName returns the operating system name matching guname -o on Darwin.
+func osName() string {
+	return "Darwin"
 }
 
 // sanitizeVersion removes trailing newlines and replaces internal
