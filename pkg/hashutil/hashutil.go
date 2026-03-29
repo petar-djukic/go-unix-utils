@@ -33,30 +33,6 @@ type CheckOptions struct {
 	Status bool // suppress all output, report only via exit code
 }
 
-// FormatGNU formats a digest line in GNU format: "HASH  FILENAME" for text
-// mode or "HASH *FILENAME" for binary mode.
-//
-// R1.2: GNU format output.
-func FormatGNU(digest, filename string, binary bool) string {
-	panic("not implemented")
-}
-
-// FormatBSDTag formats a digest line in BSD tag format:
-// "ALGORITHM (FILENAME) = HASH".
-//
-// R1.3: BSD tag format output.
-func FormatBSDTag(algorithm, filename, digest string) string {
-	panic("not implemented")
-}
-
-// ComputeDigest reads all bytes from r, computes the hash using cfg, and
-// returns the lowercase hex-encoded digest string.
-//
-// R1.4: Digest computation.
-func ComputeDigest(r io.Reader, cfg HashConfig) (string, error) {
-	panic("not implemented")
-}
-
 // ParseChecksumLine parses a single checksum line in GNU format
 // ("HASH [ *]FILENAME") or BSD tag format ("ALGORITHM (FILENAME) = HASH").
 // Returns the filename, expected digest, binary mode flag, and any parse error.
@@ -72,14 +48,5 @@ func ParseChecksumLine(line string, cfg HashConfig) (filename, expectedDigest st
 //
 // R2.3: Checksum verification with CheckOptions.
 func VerifyChecksums(checksumFile string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) (bool, error) {
-	panic("not implemented")
-}
-
-// DigestFiles computes and prints digests for each file (or stdin when files
-// is empty or contains "-"), returning the exit code (0 for success, 1 if any
-// file failed).
-//
-// R3.1, R3.2: File processing with error continuation.
-func DigestFiles(files []string, cfg HashConfig, binary, tag bool, stdout, stderr io.Writer) int {
 	panic("not implemented")
 }
