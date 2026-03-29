@@ -5,7 +5,7 @@
 //
 // Implements prd006-cat R1.1, R1.2, R1.3, R1.4, R1.5,
 // R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3,
-// R4.1, R4.2, R4.3, R4.4.
+// R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8.
 package main
 
 import (
@@ -104,6 +104,19 @@ func parseFlags(opts *catOptions, chars string) {
 		case 'E':
 			opts.showEnds = true
 		case 'T':
+			opts.showTabs = true
+		case 'A':
+			// R4.5: -A is equivalent to -v -E -T
+			opts.showNonPrint = true
+			opts.showEnds = true
+			opts.showTabs = true
+		case 'e':
+			// R4.6: -e is equivalent to -v -E
+			opts.showNonPrint = true
+			opts.showEnds = true
+		case 't':
+			// R4.7: -t is equivalent to -v -T
+			opts.showNonPrint = true
 			opts.showTabs = true
 		case 'u':
 			// R4.8: accepted, no effect

@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cat against gcat (GNU coreutils).
 //
-// Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
+// Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8.
 package main
 
 import (
@@ -164,6 +164,54 @@ func TestDiff(t *testing.T) {
 			Name:  "R4.1_v_printable_unchanged",
 			Args:  []string{"-v"},
 			Stdin: []byte("Hello, World! 123\n"),
+		},
+		// R4.5: -A is equivalent to -vET
+		{
+			Name:  "R4.5_A_equals_vET",
+			Args:  []string{"-A"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.5: -A with high bytes
+		{
+			Name:  "R4.5_A_high_bytes",
+			Args:  []string{"-A"},
+			Stdin: []byte{0x80, 0xA0, 0xFF, 0x0A},
+		},
+		// R4.6: -e is equivalent to -vE
+		{
+			Name:  "R4.6_e_equals_vE",
+			Args:  []string{"-e"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.6: -e preserves tabs (no -T)
+		{
+			Name:  "R4.6_e_preserves_tabs",
+			Args:  []string{"-e"},
+			Stdin: []byte("a\tb\n"),
+		},
+		// R4.7: -t is equivalent to -vT
+		{
+			Name:  "R4.7_t_equals_vT",
+			Args:  []string{"-t"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.7: -t does not show $ at EOL (no -E)
+		{
+			Name:  "R4.7_t_no_dollar",
+			Args:  []string{"-t"},
+			Stdin: []byte("hello\n"),
+		},
+		// R4.8: -u accepted, no effect
+		{
+			Name:  "R4.8_u_no_effect",
+			Args:  []string{"-u"},
+			Stdin: []byte("hello world\n"),
+		},
+		// R4.8: -u combined with other flags
+		{
+			Name:  "R4.8_u_with_n",
+			Args:  []string{"-un"},
+			Stdin: []byte("hello\nworld\n"),
 		},
 	}
 
