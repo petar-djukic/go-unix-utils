@@ -525,8 +525,92 @@ func compareBySize(a, b lsEntry) bool {
 // versionCompare implements strverscmp-style natural version sort.
 // R2.9: numeric runs compared as numbers.
 func versionCompare(a, b string) bool {
-	// TODO: R2.9 — full strverscmp implementation deferred to R2 task.
-	return a < b
+	return strverscmp(a, b) < 0
+}
+
+// strverscmp compares two strings with natural version ordering.
+// Returns negative if a < b, 0 if equal, positive if a > b.
+// R2.9: matches glibc strverscmp behavior.
+func strverscmp(a, b string) int {
+	ai, bi := 0, 0
+	for ai < len(a) && bi < len(b) {
+		ca, cb := a[ai], b[bi]
+		if isDigit(ca) && isDigit(cb) {
+			r := compareDigitSeq(a[ai:], b[bi:])
+			if r != 0 {
+				return r
+			}
+			ai += digitRunLen(a[ai:])
+			bi += digitRunLen(b[bi:])
+			continue
+		}
+		if ca != cb {
+			return int(ca) - int(cb)
+		}
+		ai++
+		bi++
+	}
+	return len(a) - len(b)
+}
+
+// isDigit returns true if b is an ASCII digit.
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+// compareDigitSeq compares two digit sequences using strverscmp rules.
+// Leading zeros trigger fractional comparison; otherwise integral.
+func compareDigitSeq(a, b string) int {
+	if a[0] == '0' || b[0] == '0' {
+		return compareFractional(a, b)
+	}
+	return compareIntegral(a, b)
+}
+
+// compareFractional compares digit sequences with leading zeros.
+// Shorter sequence wins when prefix matches (fractional semantics).
+func compareFractional(a, b string) int {
+	i := 0
+	for i < len(a) && i < len(b) && isDigit(a[i]) && isDigit(b[i]) {
+		if a[i] != b[i] {
+			return int(a[i]) - int(b[i])
+		}
+		i++
+	}
+	aMore := i < len(a) && isDigit(a[i])
+	bMore := i < len(b) && isDigit(b[i])
+	if aMore {
+		return 1
+	}
+	if bMore {
+		return -1
+	}
+	return 0
+}
+
+// compareIntegral compares digit sequences as integers.
+// Longer run wins; equal-length runs compared digit by digit.
+func compareIntegral(a, b string) int {
+	aLen := digitRunLen(a)
+	bLen := digitRunLen(b)
+	if aLen != bLen {
+		return aLen - bLen
+	}
+	for i := 0; i < aLen; i++ {
+		if a[i] != b[i] {
+			return int(a[i]) - int(b[i])
+		}
+	}
+	return 0
+}
+
+// digitRunLen returns the length of the leading digit run in s.
+func digitRunLen(s string) int {
+	i := 0
+	for i < len(s) && isDigit(s[i]) {
+		i++
+	}
+	return i
 }
 
 // formatOutput dispatches to the appropriate output formatter.
