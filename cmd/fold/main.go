@@ -132,12 +132,12 @@ func (s *foldState) handleFold(c byte) error {
 // R3.2: if no blank exists within width, fall back to hard break.
 // R3.4: compatible with -b; space detection uses byte positions when -b is active.
 func (s *foldState) handleSpaceFold(c byte) error {
+	if s.blank >= 0 {
+		return s.breakAtBlank(c)
+	}
 	if c == ' ' {
 		s.buf = append(s.buf, '\n')
 		return s.writeBuf()
-	}
-	if s.blank >= 0 {
-		return s.breakAtBlank(c)
 	}
 	return s.hardFold(c)
 }

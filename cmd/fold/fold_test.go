@@ -1,0 +1,231 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Differential tests for cmd/fold against gfold (GNU coreutils).
+//
+// Covers prd023-fold R4.1, R4.2, R4.3, R4.4.
+package main
+
+import (
+	"os/exec"
+	"strings"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gfold")
+	if err != nil {
+		t.Skip("reference binary gfold not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// --- R4.2: default folding (no flags) ---
+		{
+			Name:  "default_short_line",
+			Args:  []string{},
+			Stdin: []byte("short line\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "default_exactly_80",
+			Args:  []string{},
+			Stdin: []byte(strings.Repeat("x", 80) + "\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "default_over_80",
+			Args:  []string{},
+			Stdin: []byte(strings.Repeat("a", 100) + "\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "default_multiple_lines",
+			Args:  []string{},
+			Stdin: []byte("hello\nworld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.2: -w flag with various widths ---
+		{
+			Name:  "w4_wrap_10_chars",
+			Args:  []string{"-w", "4"},
+			Stdin: []byte("abcdefghij"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "w1_single_char_width",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("abc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "w20_short_input",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "w5_exact_multiple",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("1234512345\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.2: -s flag for space-break mode ---
+		{
+			Name:  "s_w11_break_at_space",
+			Args:  []string{"-w", "11", "-s"},
+			Stdin: []byte("hello world foo\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "s_w4_no_space_fallback",
+			Args:  []string{"-w", "4", "-s"},
+			Stdin: []byte("abcdefgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "s_w10_multiple_spaces",
+			Args:  []string{"-w", "10", "-s"},
+			Stdin: []byte("one two three four five\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "s_w6_space_at_boundary",
+			Args:  []string{"-w", "6", "-s"},
+			Stdin: []byte("abcde fghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.2: -b flag for byte-counting mode ---
+		{
+			Name:  "b_w4_simple",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("abcde"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "b_w4_with_tab",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("a\tbcde\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.3: flag combinations ---
+		{
+			Name:  "bs_w8_byte_space",
+			Args:  []string{"-b", "-s", "-w", "8"},
+			Stdin: []byte("hello world goodbye\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "bw5_byte_width",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("1234567890\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "sw8_space_width",
+			Args:  []string{"-s", "-w", "8"},
+			Stdin: []byte("aa bb cc dd ee ff\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "bsw6_all_flags",
+			Args:  []string{"-b", "-s", "-w", "6"},
+			Stdin: []byte("ab cd ef gh ij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "bsw10_long_word",
+			Args:  []string{"-b", "-s", "-w", "10"},
+			Stdin: []byte("abcdefghijklmnop qrs\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.4: edge cases ---
+		{
+			Name:  "edge_empty_input",
+			Args:  []string{},
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_single_char",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("x\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_lines_shorter_than_width",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("short\nlines\nhere\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_tabs_column_counting",
+			Args:  []string{"-w", "9"},
+			Stdin: []byte("a\tbcde\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_tab_at_col_boundary",
+			Args:  []string{"-w", "8"},
+			Stdin: []byte("\tabcdefgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_backspace",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abc\b\bdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_carriage_return",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abcde\rfghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_no_trailing_newline",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("abcdef"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_only_newlines",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("\n\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_single_char_no_newline",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("a"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_backspace_byte_mode",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("abc\b\bdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_cr_byte_mode",
+			Args:  []string{"-b", "-w", "5"},
+			Stdin: []byte("abc\rdefgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "edge_tabs_byte_mode",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("\t\tabcd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
