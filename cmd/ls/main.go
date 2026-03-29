@@ -4,7 +4,8 @@
 // cmd/ls implements prd008-ls: file listing with multi-column, single-column,
 // and long-format output modes, filtering, sorting, color, classification,
 // human-readable sizes, recursive listing, recursive format/filter/sort
-// propagation (R3.12-R3.15), and exit code/signal handling (R4.1-R4.4).
+// propagation (R3.12-R3.15), exit code/signal handling (R4.1-R4.4),
+// and recursive metadata/classify propagation (R4.9).
 package main
 
 import (
@@ -1116,6 +1117,7 @@ func entryDisplayName(cfg *lsConfig, e lsEntry) string {
 // R3.13: symlinks to directories are not followed.
 // R3.14: current filter flags apply to each subdirectory.
 // R3.15: subdirectories are visited in the current sort order.
+// R4.9: -i, -s, -F propagate to each subdirectory via shared cfg.
 func recurseSubdirs(cfg *lsConfig, entries []lsEntry) int {
 	exitCode := exitOK
 	for _, e := range entries {

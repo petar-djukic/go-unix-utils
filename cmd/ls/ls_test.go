@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15, R4.1-R4.8.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15, R4.1-R4.9.
 package main
 
 import (
@@ -482,6 +482,36 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "R4.8_recursive_long_total_deep",
 			Args: []string{"-l", "-R", timeRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -i combined with -R shows inode in each subdirectory
+		{
+			Name: "R4.9_recursive_inode",
+			Args: []string{"-1", "-R", "-i", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -s combined with -R shows block counts in each subdirectory
+		{
+			Name: "R4.9_recursive_blocks",
+			Args: []string{"-1", "-R", "-s", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -F combined with -R shows classify indicators in each subdirectory
+		{
+			Name: "R4.9_recursive_classify",
+			Args: []string{"-1", "-R", "-F", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -i -s -F all combined with -R
+		{
+			Name: "R4.9_recursive_inode_blocks_classify",
+			Args: []string{"-1", "-R", "-i", "-s", "-F", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -i -s with -R in long format
+		{
+			Name: "R4.9_recursive_inode_blocks_long",
+			Args: []string{"-l", "-R", "-i", "-s", recursiveDir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
