@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/du implements recursive directory disk usage reporting.
-// Implements prd009 R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.4, R2.5,
-// R2.6, R2.7, R2.8, R3.1, R3.2, R3.3, R4.1, R4.2, R5.1.
+// Implements prd009 R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1, R4.2, R5.1.
+//
+// TODO: prd009 R3.2 -H (--dereference-args) and -L (--dereference) are listed
+// in non_goals. Default no-follow-symlink behavior (Lstat) satisfies R1.4.
 package main
 
 import (
@@ -16,6 +18,8 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const progName = "du"
+
 // duOptions holds command-line flag values for du.
 type duOptions struct {
 	blockSize     int64
@@ -26,6 +30,7 @@ type duOptions struct {
 	total         bool
 	threshold     int64
 	thresholdSet  bool
+	oneFileSystem bool
 }
 
 func main() {
@@ -43,7 +48,7 @@ func main() {
 
 	// R1.5: process multiple arguments in order
 	for _, arg := range args {
-		argBytes, hasErr := duWalk(arg, 0, seen, opts)
+		argBytes, hasErr := duWalk(arg, 0, seen, opts, 0)
 		if hasErr {
 			exitCode = 1
 		}
@@ -64,43 +69,65 @@ func parseFlags() duOptions {
 	var kFlag, mFlag, summarize bool
 	var thresholdStr string
 
-	flag.BoolVar(&kFlag, "k", false, "display sizes in 1024-byte blocks")
-	flag.BoolVar(&mFlag, "m", false, "display sizes in 1048576-byte blocks")
+	registerSizeFlags(&opts, &kFlag, &mFlag)
+	registerDisplayFlags(&opts, &summarize)
+	registerFilterFlags(&opts, &thresholdStr)
+	flag.Parse()
+
+	applyFlagDefaults(&opts, mFlag, summarize, thresholdStr)
+	return opts
+}
+
+// registerSizeFlags registers size-related flags.
+func registerSizeFlags(opts *duOptions, kFlag, mFlag *bool) {
+	flag.BoolVar(kFlag, "k", false, "display sizes in 1024-byte blocks")
+	flag.BoolVar(mFlag, "m", false, "display sizes in 1048576-byte blocks")
 	flag.BoolVar(&opts.humanReadable, "h", false, "human-readable output")
 	flag.BoolVar(&opts.humanReadable, "human-readable", false, "human-readable output")
 	flag.BoolVar(&opts.apparentSize, "apparent-size", false, "print apparent sizes")
-	flag.BoolVar(&summarize, "s", false, "display only a total for each argument")
-	flag.BoolVar(&summarize, "summarize", false, "display only a total for each argument")
+}
+
+// registerDisplayFlags registers display-related flags.
+func registerDisplayFlags(opts *duOptions, summarize *bool) {
+	flag.BoolVar(summarize, "s", false, "display only a total for each argument")
+	flag.BoolVar(summarize, "summarize", false, "display only a total for each argument")
 	flag.BoolVar(&opts.total, "c", false, "produce a grand total")
 	flag.BoolVar(&opts.total, "total", false, "produce a grand total")
 	flag.IntVar(&opts.maxDepth, "d", -1, "max display depth")
 	flag.IntVar(&opts.maxDepth, "max-depth", -1, "max display depth")
-	flag.StringVar(&thresholdStr, "t", "", "size threshold")
-	flag.StringVar(&thresholdStr, "threshold", "", "size threshold")
-	flag.Parse()
+}
 
+// registerFilterFlags registers filtering-related flags.
+func registerFilterFlags(opts *duOptions, thresholdStr *string) {
+	flag.StringVar(thresholdStr, "t", "", "size threshold")
+	flag.StringVar(thresholdStr, "threshold", "", "size threshold")
+	flag.BoolVar(&opts.oneFileSystem, "x", false, "skip directories on different file systems")
+	flag.BoolVar(&opts.oneFileSystem, "one-file-system", false, "skip directories on different file systems")
+}
+
+// applyFlagDefaults resolves flag interactions after parsing.
+func applyFlagDefaults(opts *duOptions, mFlag, summarize bool, thresholdStr string) {
 	if mFlag {
 		opts.blockSize = 1048576
 	}
 	if opts.maxDepth >= 0 {
 		opts.maxDepthSet = true
 	}
-	// D1: -s is equivalent to --max-depth=0
+	// R2.2: -s is equivalent to --max-depth=0
 	if summarize {
 		opts.maxDepth = 0
 		opts.maxDepthSet = true
 	}
 	if thresholdStr != "" {
-		parseThreshold(&opts, thresholdStr)
+		parseThreshold(opts, thresholdStr)
 	}
-	return opts
 }
 
 // parseThreshold parses the -t/--threshold value and sets options.
 func parseThreshold(opts *duOptions, s string) {
 	val, err := sizeparse.ParseWithOptions(s, sizeparse.ParseOptions{AllowSign: true})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "du: invalid threshold '%s': %v\n", s, err)
+		fmt.Fprintf(os.Stderr, "%s: invalid threshold '%s': %v\n", progName, s, err)
 		os.Exit(1)
 	}
 	opts.threshold = val
@@ -136,7 +163,6 @@ func ceilDiv(a, b int64) int64 {
 
 // shouldPrint checks whether an entry should be printed based on depth and threshold.
 // R2.4: entries deeper than maxDepth are accumulated but not printed.
-// R2.7 (threshold): positive excludes smaller; negative excludes larger (D2).
 func shouldPrint(rawBytes int64, depth int, opts duOptions) bool {
 	if opts.maxDepthSet && depth > opts.maxDepth {
 		return false
@@ -148,7 +174,7 @@ func shouldPrint(rawBytes int64, depth int, opts duOptions) bool {
 }
 
 // passesThreshold checks if a size passes the threshold filter.
-// D2: positive threshold excludes entries smaller; negative excludes entries larger.
+// Positive threshold excludes entries smaller; negative excludes entries larger.
 func passesThreshold(rawBytes, threshold int64) bool {
 	if threshold >= 0 {
 		return rawBytes >= threshold
@@ -158,13 +184,25 @@ func passesThreshold(rawBytes, threshold int64) bool {
 
 // duWalk recursively computes disk usage for path at the given depth.
 // Returns total raw bytes and whether any error occurred.
-// R1.1: recurses into directories, prints accumulated size.
+// rootDev is the device ID of the starting argument for --one-file-system;
+// it is set automatically on the first call (depth 0).
 // R1.4: uses sys.Lstat to avoid following symbolic links.
-func duWalk(path string, depth int, seen map[uint64]map[uint64]bool, opts duOptions) (int64, bool) {
+func duWalk(path string, depth int, seen map[uint64]map[uint64]bool, opts duOptions, rootDev uint64) (int64, bool) {
 	fi, err := sys.Lstat(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "du: cannot access '%s': %v\n", path, err)
+		// R4.2: diagnostic to stderr, skip entry, continue processing
+		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, path, err)
 		return 0, true
+	}
+
+	// D1: capture root device from starting argument for -x
+	if depth == 0 {
+		rootDev = fi.Dev
+	}
+
+	// -x/--one-file-system: skip entries on different filesystems
+	if opts.oneFileSystem && fi.Dev != rootDev {
+		return 0, false
 	}
 
 	if isDuplicate(fi, seen) {
@@ -176,7 +214,7 @@ func duWalk(path string, depth int, seen map[uint64]map[uint64]bool, opts duOpti
 		return rawBytes, false
 	}
 
-	childBytes, hasErr := walkChildren(path, depth, seen, opts)
+	childBytes, hasErr := walkChildren(path, depth, seen, opts, rootDev)
 	rawBytes += childBytes
 
 	// R1.3: SIZE\tPATH\n, filtered by depth and threshold
@@ -206,10 +244,11 @@ func isDuplicate(fi *sys.FileInfo, seen map[uint64]map[uint64]bool) bool {
 }
 
 // walkChildren reads directory entries and accumulates their disk usage.
-func walkChildren(dir string, depth int, seen map[uint64]map[uint64]bool, opts duOptions) (int64, bool) {
+// R4.2: errors reading directory contents produce stderr diagnostics.
+func walkChildren(dir string, depth int, seen map[uint64]map[uint64]bool, opts duOptions, rootDev uint64) (int64, bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "du: cannot read directory '%s': %v\n", dir, err)
+		fmt.Fprintf(os.Stderr, "%s: cannot read directory '%s': %v\n", progName, dir, err)
 		return 0, true
 	}
 
@@ -217,7 +256,7 @@ func walkChildren(dir string, depth int, seen map[uint64]map[uint64]bool, opts d
 	hasErr := false
 	for _, e := range entries {
 		childPath := dir + "/" + e.Name()
-		childBytes, childErr := duWalk(childPath, depth+1, seen, opts)
+		childBytes, childErr := duWalk(childPath, depth+1, seen, opts, rootDev)
 		total += childBytes
 		if childErr {
 			hasErr = true
