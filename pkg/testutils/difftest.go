@@ -8,7 +8,6 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -39,12 +38,6 @@ type DiffTest struct {
 	ExpectedFiles map[string][]byte
 }
 
-// TimestampNormalizer replaces timestamps in output with a fixed placeholder
-// so time-dependent output can be compared deterministically.
-//
-// R4.2: stub — not yet implemented.
-var TimestampNormalizer NormalizeFunc
-
 // RunDiffTests executes each DiffTest against both the Go binary and the
 // reference binary, comparing stdout, stderr, and exit code.
 //
@@ -52,6 +45,7 @@ var TimestampNormalizer NormalizeFunc
 // R2.2: captures stdout, stderr, exit code from each binary.
 // R2.3: 10-second default timeout per binary.
 // R2.4: no output on passing tests.
+// R3.1, R3.2: applies normalizers before byte-for-byte comparison.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
@@ -127,7 +121,6 @@ func exitCodeFromErr(err error) int {
 
 // reportDivergence checks for differences and reports them via t.Errorf.
 // R3.2, R3.3, R3.4, R3.5: byte-for-byte comparison with detailed output.
-// D3: uses t.Errorf so all subtests run even when some fail.
 func reportDivergence(t *testing.T, tc DiffTest, refOut, goOut, refErr, goErr []byte, refExit, goExit int) {
 	t.Helper()
 	if bytes.Equal(refOut, goOut) && bytes.Equal(refErr, goErr) && refExit == goExit {
@@ -150,46 +143,4 @@ func reportDivergence(t *testing.T, tc DiffTest, refOut, goOut, refErr, goErr []
 		refOut, goOut,
 		refErr, goErr,
 		refExit, goExit)
-}
-
-// ComposeNormalizers chains multiple NormalizeFunc values into a single
-// NormalizeFunc that applies each in order.
-//
-// R4.3, R4.4: composition of normalizers.
-func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc {
-	return func(data []byte) []byte {
-		for _, fn := range fns {
-			if fn != nil {
-				data = fn(data)
-			}
-		}
-		return data
-	}
-}
-
-// BuildBinary compiles the Go package in dir and returns the path to the
-// resulting binary. It calls t.Fatal on build failure.
-//
-// D4: uses go build -o with t.TempDir() for output.
-func BuildBinary(t *testing.T, dir string) string {
-	t.Helper()
-	binName := filepath.Base(dir)
-	if binName == "." {
-		abs, err := filepath.Abs(dir)
-		if err != nil {
-			t.Fatalf("BuildBinary: resolve dir %q: %v", dir, err)
-		}
-		binName = filepath.Base(abs)
-	}
-
-	outPath := filepath.Join(t.TempDir(), binName)
-
-	var stderr bytes.Buffer
-	cmd := exec.Command("go", "build", "-o", outPath, dir)
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("BuildBinary: go build %s: %v\n%s", dir, err, stderr.String())
-	}
-
-	return outPath
 }
