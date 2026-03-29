@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15, R4.1-R4.4.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15, R4.1-R4.8.
 package main
 
 import (
@@ -415,6 +415,74 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{normalizeLsName},
+		},
+		// R4.5: SIGWINCH handler is installed (ls produces valid output
+		// with default format; the handler updates termWidth but cannot
+		// be exercised differentially without a real TTY resize signal).
+		{
+			Name: "R4.5_sigwinch_basic_output",
+			Args: []string{"-1", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.6: -n implies -l (long format with numeric UID/GID)
+		{
+			Name: "R4.6_n_implies_long",
+			Args: []string{"-n", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.6: -n without explicit -l still produces long format
+		{
+			Name: "R4.6_n_alone_is_long",
+			Args: []string{"-n", singleDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -l after -C overrides multi-column with long format
+		{
+			Name: "R4.7_C_then_l",
+			Args: []string{"-C", "-l", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -C after -l overrides long format with multi-column
+		{
+			Name: "R4.7_l_then_C",
+			Args: []string{"-l", "-C", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -1 after -C overrides multi-column with single-column
+		{
+			Name: "R4.7_C_then_1",
+			Args: []string{"-C", "-1", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -x after -l overrides long format with across layout
+		{
+			Name: "R4.7_l_then_x",
+			Args: []string{"-l", "-x", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -l after -x overrides across layout with long format
+		{
+			Name: "R4.7_x_then_l",
+			Args: []string{"-x", "-l", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -1 after -x overrides across with single-column
+		{
+			Name: "R4.7_x_then_1",
+			Args: []string{"-x", "-1", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.8: -R with -l produces "total N" block line per subdirectory
+		{
+			Name: "R4.8_recursive_long_total",
+			Args: []string{"-l", "-R", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.8: -R with -l on deeper nesting
+		{
+			Name: "R4.8_recursive_long_total_deep",
+			Args: []string{"-l", "-R", timeRecDir},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 
