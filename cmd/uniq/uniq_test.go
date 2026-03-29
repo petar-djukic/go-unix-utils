@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/uniq implementing prd028-uniq R1.1-R1.4, R2.1-R2.4.
+// Tests for cmd/uniq implementing prd028-uniq R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -195,6 +195,115 @@ func TestDiff(t *testing.T) {
 			Name:     "dup_count",
 			Args:     []string{"-d", "-c"},
 			Stdin:    []byte("a\na\nb\nc\nc\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R3.1: -i case-insensitive comparison.
+		{
+			Name:     "case_insensitive",
+			Args:     []string{"-i"},
+			Stdin:    []byte("A\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: -i with mixed-case runs.
+		{
+			Name:     "case_insensitive_multi",
+			Args:     []string{"-i"},
+			Stdin:    []byte("Hello\nhello\nHELLO\nworld\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: -i -c combination.
+		{
+			Name:     "case_insensitive_count",
+			Args:     []string{"-i", "-c"},
+			Stdin:    []byte("A\na\nB\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R3.2: -f 1 skip first field when comparing.
+		{
+			Name:     "skip_fields_1",
+			Args:     []string{"-f", "1"},
+			Stdin:    []byte("key1 val\nkey2 val\nkey3 other\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.2: -f 2 skip two fields.
+		{
+			Name:     "skip_fields_2",
+			Args:     []string{"-f", "2"},
+			Stdin:    []byte("a b same\nc d same\ne f diff\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.2: -f with more fields than exist — comparison on empty string.
+		{
+			Name:     "skip_fields_exceeds",
+			Args:     []string{"-f", "5"},
+			Stdin:    []byte("a b\nc d\ne\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R3.3: -s 2 skip first 2 characters.
+		{
+			Name:     "skip_chars_2",
+			Args:     []string{"-s", "2"},
+			Stdin:    []byte("xxhello\nyyhello\nzzworld\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: -s with more chars than line length.
+		{
+			Name:     "skip_chars_exceeds",
+			Args:     []string{"-s", "100"},
+			Stdin:    []byte("short\ntiny\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R3.4: -w 3 compare only first 3 characters.
+		{
+			Name:     "check_width_3",
+			Args:     []string{"-w", "3"},
+			Stdin:    []byte("abcX\nabcY\ndefZ\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.4: -w with value larger than line.
+		{
+			Name:     "check_width_large",
+			Args:     []string{"-w", "100"},
+			Stdin:    []byte("ab\nab\ncd\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R3.2 + R3.3: -f and -s combined.
+		{
+			Name:     "skip_fields_and_chars",
+			Args:     []string{"-f", "1", "-s", "2"},
+			Stdin:    []byte("k1 XXhello\nk2 YYhello\nk3 ZZworld\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.2 + R3.4: -f and -w combined.
+		{
+			Name:     "skip_fields_and_width",
+			Args:     []string{"-f", "1", "-w", "3"},
+			Stdin:    []byte("k1 abcXXX\nk2 abcYYY\nk3 defZZZ\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1 + R3.2: -i -f combined.
+		{
+			Name:     "case_insensitive_skip_fields",
+			Args:     []string{"-i", "-f", "1"},
+			Stdin:    []byte("k1 Hello\nk2 hello\nk3 World\n"),
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
