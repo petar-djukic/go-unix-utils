@@ -4,7 +4,7 @@
 // cmd/tac implements GNU tac: concatenate and print files in reverse.
 //
 // Implements prd021-tac: R1 (core reversal), R2 (separator options),
-// R3 (exit codes and SIGPIPE).
+// R3 (exit codes and SIGPIPE), R4 (differential testing).
 package main
 
 import (
