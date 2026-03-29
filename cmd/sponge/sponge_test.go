@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sponge against sponge (moreutils).
 //
-// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
+// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4.
 package main
 
 import (
@@ -214,7 +214,7 @@ func TestNewFileDefaultMode(t *testing.T) {
 	}
 }
 
-// TestTempFileCleanup verifies temp files are cleaned up on normal exit (R1.5).
+// TestTempFileCleanup verifies temp files are cleaned up on normal exit (R1.5, R5.4).
 func TestTempFileCleanup(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -230,7 +230,7 @@ func TestTempFileCleanup(t *testing.T) {
 		t.Fatalf("sponge: %v", err)
 	}
 
-	// Verify no temp files left behind.
+	// R5.4: verify no temp files left behind.
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
@@ -549,5 +549,147 @@ func TestLstatRegularFileCheck(t *testing.T) {
 	}
 	if string(got) != "via link\n" {
 		t.Errorf("content = %q, want %q", got, "via link\n")
+	}
+}
+
+// TestExitCodeSuccess verifies exit code 0 on successful write (R5.1).
+func TestExitCodeSuccess(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "success.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("ok\n"))
+	err := cmd.Run()
+	if err != nil {
+		t.Errorf("R5.1: expected exit code 0, got error: %v", err)
+	}
+}
+
+// TestExitCodeSuccessPassthrough verifies exit code 0 on successful passthrough (R5.1).
+func TestExitCodeSuccessPassthrough(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin)
+	cmd.Stdin = bytes.NewReader([]byte("passthrough ok\n"))
+	err := cmd.Run()
+	if err != nil {
+		t.Errorf("R5.1: expected exit code 0, got error: %v", err)
+	}
+}
+
+// TestExitCodeErrorBadOutputPath verifies exit code 1 when output path is invalid (R5.2).
+func TestExitCodeErrorBadOutputPath(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Use a path inside a non-existent directory to force an output error.
+	outPath := filepath.Join(t.TempDir(), "nonexistent", "subdir", "out.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("data\n"))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("R5.2: expected exit code 1 for bad output path, got 0")
+	}
+
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("R5.2: expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Errorf("R5.2: exit code = %d, want 1", exitErr.ExitCode())
+	}
+
+	// R5.2: must print descriptive error to stderr
+	if stderr.Len() == 0 {
+		t.Error("R5.2: expected error message on stderr, got empty")
+	}
+}
+
+// TestExitCodeErrorBadOutputPathDiff verifies error exit code matches reference (R5.2).
+func TestExitCodeErrorBadOutputPathDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skip("reference binary sponge not in PATH")
+	}
+
+	outPath := filepath.Join(t.TempDir(), "nonexistent", "deep", "out.txt")
+
+	runWithBadPath := func(bin string) int {
+		t.Helper()
+		cmd := exec.Command(bin, outPath)
+		cmd.Stdin = bytes.NewReader([]byte("data\n"))
+		err := cmd.Run()
+		if err == nil {
+			return 0
+		}
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		return -1
+	}
+
+	goCode := runWithBadPath(goBin)
+	refCode := runWithBadPath(refBin)
+
+	if goCode != refCode {
+		t.Errorf("R5.2: exit code mismatch: go=%d, ref=%d", goCode, refCode)
+	}
+}
+
+// TestTempFileCleanupOnError verifies temp files are cleaned up on error paths (R5.4).
+func TestTempFileCleanupOnError(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	// Output path in a non-existent directory will cause write error after temp file creation.
+	outPath := filepath.Join(t.TempDir(), "nonexistent", "out.txt")
+
+	// Use large input to force temp file creation, then fail on output.
+	input := bytes.Repeat([]byte("x"), 1024*1024+1)
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader(input)
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
+	_ = cmd.Run() // expected to fail
+
+	// R5.4: verify no temp files left behind after error.
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), tempPrefix) {
+			t.Errorf("R5.4: temp file %s not cleaned up after error", e.Name())
+		}
+	}
+}
+
+// TestErrorMessageOnStderr verifies stderr output on errors (R5.2).
+func TestErrorMessageOnStderr(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	outPath := filepath.Join(t.TempDir(), "no", "such", "dir", "file.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("data\n"))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	_ = cmd.Run()
+
+	// R5.2: must print "sponge:" prefixed error to stderr
+	output := stderr.String()
+	if !strings.HasPrefix(output, "sponge:") {
+		t.Errorf("R5.2: stderr = %q, want prefix \"sponge:\"", output)
 	}
 }
