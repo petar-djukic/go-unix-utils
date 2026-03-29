@@ -3,8 +3,8 @@
 
 // cmd/ls implements prd008-ls: file listing with multi-column, single-column,
 // and long-format output modes, filtering, sorting, color, classification,
-// human-readable sizes, recursive listing, and recursive format/filter/sort
-// propagation (R3.12, R3.13, R3.14, R3.15).
+// human-readable sizes, recursive listing, recursive format/filter/sort
+// propagation (R3.12-R3.15), and exit code/signal handling (R4.1-R4.4).
 package main
 
 import (
@@ -121,6 +121,8 @@ func run(args []string) int {
 	cfg, paths, err := parseFlags(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ls: %s\n", err)
+		// R4.3: match GNU ls help hint on invalid options.
+		fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
 		return exitSerious
 	}
 	applyColorConfig(cfg)
@@ -310,7 +312,8 @@ func listPaths(cfg *lsConfig, paths []string) int {
 		sortEntries(files, cfg)
 		formatOutput(cfg, files)
 	}
-	showHeader := len(dirs) > 1 || len(files) > 0 || cfg.recursive
+	// R4.2: show directory headers when multiple args given (even if some fail).
+	showHeader := len(paths) > 1 || cfg.recursive
 	code := listDirs(cfg, dirs, showHeader, len(files) > 0)
 	if code > exitCode {
 		exitCode = code
@@ -1199,11 +1202,24 @@ func entryNames(cfg *lsConfig, entries []lsEntry, pw entryPrefixWidths) []string
 	return names
 }
 
-// osErrMsg extracts the OS-level error message from a path error.
+// osErrMsg extracts the OS-level error message from a path error and
+// capitalizes the first letter to match GNU coreutils error format.
 func osErrMsg(err error) string {
 	var pe *os.PathError
 	if errors.As(err, &pe) {
-		return pe.Err.Error()
+		return capitalizeFirst(pe.Err.Error())
 	}
-	return err.Error()
+	return capitalizeFirst(err.Error())
+}
+
+// capitalizeFirst uppercases the first ASCII letter of s.
+// R4.2: matches GNU strerror capitalization (e.g., "No such file").
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	if s[0] >= 'a' && s[0] <= 'z' {
+		return string(s[0]-32) + s[1:]
+	}
+	return s
 }

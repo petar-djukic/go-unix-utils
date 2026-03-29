@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15, R4.1-R4.4.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,38 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeLsName normalizes the binary name in error messages so
+// gls and ls outputs can be compared. Handles both bare names and
+// full paths like /opt/homebrew/bin/gls.
+func normalizeLsName(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		lines[i] = normalizeLsLine(line)
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// normalizeLsLine normalizes a single line of output.
+func normalizeLsLine(line []byte) []byte {
+	// Normalize error prefix: "PROGPATH: msg" → "ls: msg"
+	if colonIdx := bytes.Index(line, []byte(": ")); colonIdx >= 0 {
+		prog := filepath.Base(string(line[:colonIdx]))
+		if prog == "ls" || prog == "gls" {
+			return append([]byte("ls"), line[colonIdx:]...)
+		}
+	}
+	// Normalize Try line: "Try 'PROGPATH --help'..." → "Try 'ls --help'..."
+	if bytes.HasPrefix(line, []byte("Try '")) {
+		if spIdx := bytes.Index(line[5:], []byte(" ")); spIdx >= 0 {
+			prog := filepath.Base(string(line[5 : 5+spIdx]))
+			if prog == "ls" || prog == "gls" {
+				return append([]byte("Try 'ls"), line[5+spIdx:]...)
+			}
+		}
+	}
+	return line
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -344,6 +377,44 @@ func TestDiff(t *testing.T) {
 			Name: "R3.15_recursive_size_sort",
 			Args: []string{"-1", "-R", "-S", timeRecDir},
 			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.1: successful listing exits 0
+		{
+			Name: "R4.1_exit_success",
+			Args: []string{"-1", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: nonexistent path produces stderr diagnostic
+		{
+			Name:      "R4.2_nonexistent_path",
+			Args:      []string{"-1", "/nonexistent_path_xyzzy_99"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeLsName},
+		},
+		// R4.2: nonexistent + valid path still lists valid entries
+		{
+			Name:      "R4.2_partial_access",
+			Args:      []string{"-1", "/nonexistent_path_xyzzy_99", sortDir},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeLsName},
+		},
+		// R4.3: invalid short option exits 2
+		{
+			Name:      "R4.3_invalid_short_option",
+			Args:      []string{"-z"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeLsName},
+		},
+		// R4.3: invalid long option exits 2
+		{
+			Name:      "R4.3_invalid_long_option",
+			Args:      []string{"--nonexistent-flag"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeLsName},
 		},
 	}
 
