@@ -34,6 +34,7 @@ type duOptions struct {
 }
 
 func main() {
+	// R5.1: SIGPIPE handler for piped output to head/grep -q
 	sys.InstallSIGPIPEHandler()
 
 	opts := parseFlags()
@@ -60,22 +61,63 @@ func main() {
 		fmt.Printf("%s\ttotal\n", formatSize(grandTotal, opts))
 	}
 
+	// R4.1, R4.2: exit 0 on success, exit 1 on any traversal error
 	os.Exit(exitCode)
 }
 
 // parseFlags parses du command-line flags and returns options.
 func parseFlags() duOptions {
 	opts := duOptions{blockSize: 1024, maxDepth: -1}
-	var kFlag, mFlag, summarize bool
+	var kFlag, mFlag, summarize, showVersion bool
 	var thresholdStr string
 
 	registerSizeFlags(&opts, &kFlag, &mFlag)
 	registerDisplayFlags(&opts, &summarize)
 	registerFilterFlags(&opts, &thresholdStr)
+	flag.BoolVar(&showVersion, "version", false, "")
+
+	// R4.2: --help prints usage to stdout and exits 0
+	flag.CommandLine.SetOutput(os.Stdout)
+	flag.Usage = func() {
+		printUsage()
+	}
+
 	flag.Parse()
+
+	// R4.2: --version prints version info to stdout and exits 0
+	if showVersion {
+		printVersion()
+		os.Exit(0)
+	}
 
 	applyFlagDefaults(&opts, mFlag, summarize, thresholdStr)
 	return opts
+}
+
+// printUsage writes the usage synopsis and flag descriptions to stdout.
+func printUsage() {
+	fmt.Fprintf(os.Stdout, "Usage: %s [OPTION]... [FILE]...\n", progName)
+	fmt.Fprintln(os.Stdout, "Summarize device usage of the set of FILEs, recursively for directories.")
+	fmt.Fprintln(os.Stdout)
+	fmt.Fprintln(os.Stdout, "  -a, --all             write counts for all files, not just directories")
+	fmt.Fprintln(os.Stdout, "      --apparent-size    print apparent sizes rather than device usage")
+	fmt.Fprintln(os.Stdout, "  -c, --total            produce a grand total")
+	fmt.Fprintln(os.Stdout, "  -d, --max-depth=N      print the total for a directory only if it is N or")
+	fmt.Fprintln(os.Stdout, "                           fewer levels below the command line argument")
+	fmt.Fprintln(os.Stdout, "  -h, --human-readable   print sizes in human readable format (e.g., 1K 234M 2G)")
+	fmt.Fprintln(os.Stdout, "  -k                     like --block-size=1K")
+	fmt.Fprintln(os.Stdout, "  -m                     like --block-size=1M")
+	fmt.Fprintln(os.Stdout, "  -s, --summarize        display only a total for each argument")
+	fmt.Fprintln(os.Stdout, "  -t, --threshold=SIZE   exclude entries smaller than SIZE if positive,")
+	fmt.Fprintln(os.Stdout, "                           or entries greater than SIZE if negative")
+	fmt.Fprintln(os.Stdout, "  -x, --one-file-system  skip directories on different file systems")
+	fmt.Fprintln(os.Stdout, "      --version          output version information and exit")
+	fmt.Fprintln(os.Stdout, "      --help             display this help and exit")
+}
+
+// printVersion writes version information to stdout.
+func printVersion() {
+	fmt.Fprintf(os.Stdout, "%s (go-unix-utils) 0.1\n", progName)
 }
 
 // registerSizeFlags registers size-related flags.
