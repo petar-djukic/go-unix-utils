@@ -8,7 +8,9 @@
 // R2.1 (-1 suppresses column 1), R2.2 (-2 suppresses column 2),
 // R2.3 (-3 suppresses column 3), R2.4 (indentation adjusts for suppressed columns),
 // R3.1 (default order check with warning), R3.2 (--check-order fatal),
-// R3.3 (--nocheck-order disables check), R3.4 (--output-delimiter).
+// R3.3 (--nocheck-order disables check), R3.4 (--output-delimiter),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on file open error),
+// R4.3 (exit 1 on write error), R4.4 (SIGPIPE handling).
 package main
 
 import (
@@ -73,7 +75,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	r1, c1, err := openFile(cfg.file1, stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", programName, err)
+		printFileError(stderr, err)
 		return 1
 	}
 	if c1 != nil {
@@ -81,7 +83,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	r2, c2, err := openFile(cfg.file2, stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", programName, err)
+		printFileError(stderr, err)
 		return 1
 	}
 	if c2 != nil {
@@ -200,6 +202,17 @@ func computePrefixes(cfg commConfig, delim string) columnPrefixes {
 	}
 	p.col3 = strings.Repeat(delim, col3Offset)
 	return p
+}
+
+// printFileError writes a GNU-compatible file error message to stderr.
+// R4.2: extracts path and underlying error from PathError for GNU-style formatting.
+func printFileError(stderr io.Writer, err error) {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		fmt.Fprintf(stderr, "%s: %s: %v\n", programName, pe.Path, pe.Err)
+		return
+	}
+	fmt.Fprintf(stderr, "%s: %v\n", programName, err)
 }
 
 // openFile opens a file for reading. "-" means stdin.
