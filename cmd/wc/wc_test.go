@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // wc_test.go implements differential tests for cmd/wc against the GNU
-// reference binary (gwc). Covers prd005-wc R1.1–R1.4, R2.1–R2.4,
-// R3.1–R3.3, R4.1–R4.4.
+// reference binary (gwc). Covers prd005-wc R1.1–R1.4, R2.1–R2.6,
+// R3.1–R3.2, R4.1–R4.4, R5.1–R5.2, R6.1–R6.3.
 
 package main
 
@@ -19,7 +19,7 @@ import (
 
 // programNameRe matches the program name prefix in error messages
 // (e.g., "gwc:" or "wc:") so both binaries produce identical stderr.
-var programNameRe = regexp.MustCompile(`^(?:g?wc):`)
+var programNameRe = regexp.MustCompile(`(?m)^(?:g?wc):`)
 
 // tryHelpRe matches the full Try '...' for more information line, which
 // may contain the full binary path (e.g., '/opt/homebrew/bin/gwc --help').
@@ -197,6 +197,7 @@ func TestDiffMultiFile(t *testing.T) {
 // TestDiffErrorHandling runs differential tests for error paths.
 // R4.1: print error to stderr and continue.
 // R4.2/R4.3: exit 1 on error, include filename in error message.
+// R4.4/D1: total line still appears when some files fail.
 func TestDiffErrorHandling(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -243,6 +244,21 @@ func TestDiffErrorHandling(t *testing.T) {
 		tests := []testutils.DiffTest{{
 			Name:      "error_with_lines_flag",
 			Args:      []string{"-l", "bad.txt", "good.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.4/D1: totals line appears even when all files fail.
+	t.Run("all_files_nonexistent_total", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+
+		tests := []testutils.DiffTest{{
+			Name:      "all_nonexistent_with_total",
+			Args:      []string{"no1.txt", "no2.txt"},
 			WorkDir:   dir,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeStderr},
@@ -324,6 +340,203 @@ func TestDiffFiles0From(t *testing.T) {
 	})
 }
 
+// TestDiffCharsFlag runs differential tests for -m (character count).
+// R5.1: LC_ALL=C eliminates locale divergence.
+// R5.2: under LC_ALL=C, -m and -c produce identical counts.
+func TestDiffCharsFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	input := []byte("hello world\ngoodbye\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:  "chars_only_stdin",
+			Args:  []string{"-m"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.3: -m takes precedence over -c when both given.
+			Name:  "chars_and_bytes_together",
+			Args:  []string{"-m", "-c"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "chars_combined_mc",
+			Args:  []string{"-mc"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "chars_with_lines",
+			Args:  []string{"-ml"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "chars_with_words",
+			Args:  []string{"-mw"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCharsFile runs -m differential tests with file arguments.
+func TestDiffCharsFile(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "data.txt", "hello\nworld\n")
+
+	tests := []testutils.DiffTest{{
+		Name:    "chars_single_file",
+		Args:    []string{"-m", "data.txt"},
+		WorkDir: dir,
+		Env:     []string{"LC_ALL=C"},
+	}}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffMaxLineLength runs differential tests for -L (max line length).
+// R2.5: max line length with tab expansion.
+func TestDiffMaxLineLength(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:  "max_line_length_simple",
+			Args:  []string{"-L"},
+			Stdin: []byte("short\na much longer line here\nmed\n"),
+		},
+		{
+			Name:  "max_line_length_with_tab",
+			Args:  []string{"-L"},
+			Stdin: []byte("a\tb\n"),
+		},
+		{
+			Name:  "max_line_length_combined_lL",
+			Args:  []string{"-lL"},
+			Stdin: []byte("one\ntwo three four\n"),
+		},
+		{
+			Name:  "max_line_length_empty",
+			Args:  []string{"-L"},
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "max_line_length_no_trailing_newline",
+			Args:  []string{"-L"},
+			Stdin: []byte("no newline at end"),
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffMaxLineLengthFile runs -L differential tests with files.
+func TestDiffMaxLineLengthFile(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "a.txt", "short\n")
+	writeFixture(t, dir, "b.txt", "a longer line here\n")
+
+	tests := []testutils.DiffTest{{
+		Name:    "max_line_length_multi_file",
+		Args:    []string{"-L", "a.txt", "b.txt"},
+		WorkDir: dir,
+	}}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColumnOrdering verifies that flag order does not affect output
+// column ordering. R2.6/R5.2: columns always appear in the fixed order
+// lines, words, chars, bytes, max-line-length.
+func TestDiffColumnOrdering(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "data.txt", "one two\nthree four five\n")
+
+	// AC2: -wl and -lw produce identical output.
+	tests := []testutils.DiffTest{
+		{
+			Name:    "order_wl",
+			Args:    []string{"-wl", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_lw",
+			Args:    []string{"-lw", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_cw",
+			Args:    []string{"-cw", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_wc",
+			Args:    []string{"-wc", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_Ll",
+			Args:    []string{"-Ll", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_lL",
+			Args:    []string{"-lL", "data.txt"},
+			WorkDir: dir,
+		},
+		// AC3: combined short flags like -lwc match gwc byte-for-byte.
+		{
+			Name:    "order_lwc",
+			Args:    []string{"-lwc", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_cwl",
+			Args:    []string{"-cwl", "data.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "order_wlc",
+			Args:    []string{"-wlc", "data.txt"},
+			WorkDir: dir,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // buildStdinTests returns DiffTest cases that use stdin input.
 func buildStdinTests() []testutils.DiffTest {
 	return []testutils.DiffTest{
@@ -362,6 +575,7 @@ func buildStdinTests() []testutils.DiffTest {
 
 // buildFlagSelectionTests returns DiffTest cases for selective column display.
 // R3.3: print only columns for explicitly requested flags.
+// R5.1/R5.2: -m included, tests run under LC_ALL=C by default.
 func buildFlagSelectionTests() []testutils.DiffTest {
 	input := []byte("hello world\ngoodbye\nfoo bar baz\n")
 	return []testutils.DiffTest{
@@ -378,6 +592,17 @@ func buildFlagSelectionTests() []testutils.DiffTest {
 		{
 			Name:  "bytes_only",
 			Args:  []string{"-c"},
+			Stdin: input,
+		},
+		{
+			Name:  "chars_only",
+			Args:  []string{"-m"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "max_line_length_only",
+			Args:  []string{"-L"},
 			Stdin: input,
 		},
 		{
@@ -406,6 +631,18 @@ func buildFlagSelectionTests() []testutils.DiffTest {
 			Stdin: input,
 		},
 		{
+			// R5.1/R5.2: -lwm under LC_ALL=C matches gwc.
+			Name:  "combined_lwm",
+			Args:  []string{"-lwm"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "combined_lL",
+			Args:  []string{"-lL"},
+			Stdin: input,
+		},
+		{
 			Name:  "long_lines",
 			Args:  []string{"--lines"},
 			Stdin: input,
@@ -418,6 +655,17 @@ func buildFlagSelectionTests() []testutils.DiffTest {
 		{
 			Name:  "long_bytes",
 			Args:  []string{"--bytes"},
+			Stdin: input,
+		},
+		{
+			Name:  "long_chars",
+			Args:  []string{"--chars"},
+			Stdin: input,
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "long_max_line_length",
+			Args:  []string{"--max-line-length"},
 			Stdin: input,
 		},
 		{

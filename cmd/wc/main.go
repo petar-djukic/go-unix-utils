@@ -3,7 +3,8 @@
 
 // cmd/wc implements GNU wc: count lines, words, and bytes.
 //
-// Implements prd005-wc R1.1–R1.4, R2.1–R2.4, R3.1, R3.2, R3.3, R4.1–R4.4.
+// Implements prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2, R4.1–R4.4,
+// R5.1–R5.2, R6.1–R6.3.
 package main
 
 import (
@@ -24,9 +25,11 @@ const programName = "wc"
 
 // wcCounts holds the counts for a single input.
 type wcCounts struct {
-	lines int64
-	words int64
-	bytes int64
+	lines      int64
+	words      int64
+	bytes      int64
+	chars      int64 // R2.4: character count (= bytes under LC_ALL=C per R5.2)
+	maxLineLen int64 // R2.5: max display width of any line
 }
 
 // wcResult pairs counts with a display name.
@@ -36,11 +39,13 @@ type wcResult struct {
 }
 
 // columnSelection tracks which count columns to display.
-// R3.3: print only the columns for explicitly requested flags.
+// R2.6: fixed output order is lines, words, chars, bytes, max-line-length.
 type columnSelection struct {
-	lines bool
-	words bool
-	bytes bool
+	lines      bool
+	words      bool
+	bytes      bool
+	chars      bool
+	maxLineLen bool
 }
 
 // defaultColumns returns the selection when no flags are given.
@@ -48,7 +53,7 @@ func defaultColumns() columnSelection {
 	return columnSelection{lines: true, words: true, bytes: true}
 }
 
-// count returns the number of selected columns.
+// count returns the number of display columns.
 func (c columnSelection) count() int {
 	n := 0
 	if c.lines {
@@ -57,12 +62,20 @@ func (c columnSelection) count() int {
 	if c.words {
 		n++
 	}
+	if c.chars {
+		n++
+	}
 	if c.bytes {
+		n++
+	}
+	if c.maxLineLen {
 		n++
 	}
 	return n
 }
 
+// R6.1: InstallSIGPIPEHandler is called first so wc exits cleanly when
+// piped to a consumer that closes stdin early.
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -216,6 +229,12 @@ func parseOneArg(
 	case arg == "--bytes":
 		p.columns.bytes = true
 		p.flagsSet = true
+	case arg == "--chars":
+		p.columns.chars = true
+		p.flagsSet = true
+	case arg == "--max-line-length":
+		p.columns.maxLineLen = true
+		p.flagsSet = true
 	case strings.HasPrefix(arg, "--files0-from="):
 		p.files0From = arg[len("--files0-from="):]
 	case arg == "--files0-from" && i+1 < len(args):
@@ -229,7 +248,8 @@ func parseOneArg(
 	return i
 }
 
-// parseShortFlags handles combined short flags like -lw.
+// parseShortFlags handles combined short flags like -lw, -lwm, -lL.
+// R5.1: combined flags like -lw produce output matching gwc.
 func parseShortFlags(arg string, p *parsedArgs) {
 	for _, ch := range arg[1:] {
 		switch ch {
@@ -241,6 +261,12 @@ func parseShortFlags(arg string, p *parsedArgs) {
 			p.flagsSet = true
 		case 'c':
 			p.columns.bytes = true
+			p.flagsSet = true
+		case 'm':
+			p.columns.chars = true
+			p.flagsSet = true
+		case 'L':
+			p.columns.maxLineLen = true
 			p.flagsSet = true
 		}
 	}
@@ -268,6 +294,7 @@ func processWithWidth(
 
 // addTotal appends a total line when more than one file is given.
 // R1.4, R3.2: total line with label "total".
+// D1: total still appears when some files fail; failed files contribute zero.
 func addTotal(files []string, results []wcResult) []wcResult {
 	if len(files) > 1 {
 		return append(results, wcResult{
@@ -289,7 +316,7 @@ func printAllResults(
 }
 
 // collectResults processes each file and returns results.
-// R4.1: errors print to stderr with filename. R4.2/R4.3: exit 1 on error.
+// Failed files contribute zero to the total but do not suppress it.
 func collectResults(
 	files []string, stdin io.Reader, stderr io.Writer,
 ) ([]wcResult, int) {
@@ -307,8 +334,6 @@ func collectResults(
 			exitCode = 1
 			continue
 		}
-		// R2.3: explicit "-" displays as "-".
-		// R2.4/R3.2: implicit stdin (empty name) displays no filename.
 		results = append(results, wcResult{
 			name: name, counts: counts,
 		})
@@ -342,39 +367,66 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	return f, f, nil
 }
 
-// count reads all input and returns line, word, and byte counts.
+// wcState tracks counting state across buffer chunks.
+type wcState struct {
+	counts    wcCounts
+	lineWidth int64 // display width of current line being accumulated
+	inWord    bool
+}
+
+// count reads all input and returns counts.
 // R1.1: lines = newline count, words = maximal non-whitespace sequences.
+// R5.2: under LC_ALL=C, chars == bytes.
 func count(r io.Reader) (wcCounts, error) {
 	buf := make([]byte, 64*1024)
-	var c wcCounts
-	inWord := false
+	var s wcState
 
 	for {
 		n, err := r.Read(buf)
-		c.bytes += int64(n)
-		countChunk(buf[:n], &c, &inWord)
+		s.counts.bytes += int64(n)
+		countChunk(buf[:n], &s)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return c, err
+			return s.counts, err
 		}
 	}
 
-	return c, nil
+	// R2.5: check final line (may have no trailing newline).
+	if s.lineWidth > s.counts.maxLineLen {
+		s.counts.maxLineLen = s.lineWidth
+	}
+
+	// R5.2: under LC_ALL=C, character count equals byte count.
+	s.counts.chars = s.counts.bytes
+
+	return s.counts, nil
 }
 
-// countChunk counts lines and words in a buffer chunk.
-func countChunk(buf []byte, c *wcCounts, inWord *bool) {
+// countChunk processes a buffer chunk, updating counting state.
+// R2.5: tab advances to next multiple of 8 for -L line width calculation.
+func countChunk(buf []byte, s *wcState) {
 	for _, b := range buf {
 		if b == '\n' {
-			c.lines++
+			s.counts.lines++
+			if s.lineWidth > s.counts.maxLineLen {
+				s.counts.maxLineLen = s.lineWidth
+			}
+			s.lineWidth = 0
+			s.inWord = false
+			continue
+		}
+		if b == '\t' {
+			s.lineWidth += int64(8 - int(s.lineWidth%8))
+		} else {
+			s.lineWidth++
 		}
 		if isSpace(b) {
-			*inWord = false
-		} else if !*inWord {
-			*inWord = true
-			c.words++
+			s.inWord = false
+		} else if !s.inWord {
+			s.inWord = true
+			s.counts.words++
 		}
 	}
 }
@@ -386,12 +438,17 @@ func isSpace(b byte) bool {
 }
 
 // sumCounts adds all result counts together.
+// R2.5: maxLineLen uses max across files, not sum.
 func sumCounts(results []wcResult) wcCounts {
 	var total wcCounts
 	for _, r := range results {
 		total.lines += r.counts.lines
 		total.words += r.counts.words
 		total.bytes += r.counts.bytes
+		total.chars += r.counts.chars
+		if r.counts.maxLineLen > total.maxLineLen {
+			total.maxLineLen = r.counts.maxLineLen
+		}
 	}
 	return total
 }
@@ -455,8 +512,8 @@ func digitCount(v int64) int {
 }
 
 // printResult writes one line of wc output with selected columns.
-// R1.3: counts followed by filename; R3.2: no filename for stdin-only.
-// R3.3: only print columns for explicitly requested flags.
+// R2.6/R5.2: fixed order is lines, words, chars, bytes, max-line-length.
+// R2.3: chars takes precedence over bytes when both are selected.
 func printResult(
 	w io.Writer, r wcResult, width int, cols columnSelection,
 ) error {
@@ -467,8 +524,14 @@ func printResult(
 	if cols.words {
 		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.words))
 	}
+	if cols.chars {
+		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.chars))
+	}
 	if cols.bytes {
 		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.bytes))
+	}
+	if cols.maxLineLen {
+		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.maxLineLen))
 	}
 
 	line := strings.Join(parts, " ")
