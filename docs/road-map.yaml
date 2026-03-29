@@ -265,7 +265,7 @@ releases:
           status: implemented
     - version: "06.0"
       name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement five file and directory manipulation utilities. mkdir creates directories
