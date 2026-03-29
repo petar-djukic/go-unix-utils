@@ -3,7 +3,7 @@
 
 // cmd/tee implements GNU tee: read stdin and write to stdout and files.
 //
-// Implements prd017-tee R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements prd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
 //
 // TODO: --output-error modes (warn, warn-nopipe, exit, exit-nopipe) are listed
 // in prd017 non_goals and must not be implemented per article E6.
@@ -29,6 +29,9 @@ Copy standard input to each FILE, and also to standard output.
 `
 
 const versionText = "tee (go-unix-utils) 0.1\n"
+
+// stdoutName is the display name for stdout in error diagnostics.
+const stdoutName = "standard output"
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -66,9 +69,9 @@ const (
 
 // options holds parsed command-line flags.
 type options struct {
-	appendMode      bool
+	appendMode       bool
 	ignoreInterrupts bool
-	files           []string
+	files            []string
 }
 
 // parseArgs parses GNU-style tee arguments.
@@ -103,7 +106,7 @@ func parseArgs(args []string) (*options, parseResult) {
 				continue
 			}
 		}
-		// Not a flag — this and all remaining args are file names.
+		// Not a flag -- this and all remaining args are file names.
 		opts.files = append(opts.files, args[i:]...)
 		return opts, parseOK
 	}
@@ -126,21 +129,25 @@ func parseShortFlags(arg string, opts *options) bool {
 	return true
 }
 
+// dest represents a single output destination with error tracking.
+type dest struct {
+	name    string   // display name for diagnostics
+	file    *os.File // underlying writer
+	errored bool     // true after first write error
+}
+
 // copyToFiles reads stdin and writes to stdout and all output files.
 // R1.5: writes output in the order received from stdin.
+// R3.3: continues writing to remaining destinations when one fails.
 func copyToFiles(opts *options, stdin io.Reader, stdout, stderr *os.File) int {
-	files, exitCode := openFiles(opts, stderr)
-	defer closeFiles(files)
-
-	writers := buildWriters(stdout, files)
-	w := io.MultiWriter(writers...)
+	dests, exitCode := openDests(opts, stdout, stderr)
+	defer closeDests(dests)
 
 	buf := make([]byte, 32*1024)
 	for {
 		n, readErr := stdin.Read(buf)
 		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				fmt.Fprintf(stderr, "tee: write error: %v\n", writeErr) //nolint:errcheck
+			if writeErr := writeAll(dests, buf[:n], stderr); writeErr {
 				exitCode = 1
 			}
 		}
@@ -152,8 +159,10 @@ func copyToFiles(opts *options, stdin io.Reader, stdout, stderr *os.File) int {
 	return exitCode
 }
 
-// openFiles opens all output files and returns them along with an exit code.
-func openFiles(opts *options, stderr *os.File) ([]*os.File, int) {
+// openDests opens all output files and builds the destination list.
+// Stdout is always the first destination.
+// R3.2: open failures print a diagnostic and skip the file.
+func openDests(opts *options, stdout, stderr *os.File) ([]dest, int) {
 	flag := os.O_WRONLY | os.O_CREATE
 	if opts.appendMode {
 		flag |= os.O_APPEND
@@ -162,33 +171,51 @@ func openFiles(opts *options, stderr *os.File) ([]*os.File, int) {
 	}
 
 	exitCode := 0
-	files := make([]*os.File, 0, len(opts.files))
+	dests := make([]dest, 0, 1+len(opts.files))
+	dests = append(dests, dest{name: stdoutName, file: stdout})
+
 	for _, name := range opts.files {
 		f, err := os.OpenFile(name, flag, 0o666)
 		if err != nil {
-			fmt.Fprintf(stderr, "tee: %s: %v\n", name, unwrapMsg(err)) //nolint:errcheck
+			// R3.1: GNU format 'tee: FILE: REASON'
+			printDiag(stderr, name, err)
 			exitCode = 1
 			continue
 		}
-		files = append(files, f)
+		dests = append(dests, dest{name: name, file: f})
 	}
-	return files, exitCode
+	return dests, exitCode
 }
 
-// buildWriters creates the list of io.Writers: stdout plus all open files.
-func buildWriters(stdout *os.File, files []*os.File) []io.Writer {
-	writers := make([]io.Writer, 0, 1+len(files))
-	writers = append(writers, stdout)
-	for _, f := range files {
-		writers = append(writers, f)
+// writeAll writes data to every non-errored destination.
+// Returns true if any write error occurred.
+func writeAll(dests []dest, data []byte, stderr *os.File) bool {
+	hadError := false
+	for i := range dests {
+		if dests[i].errored {
+			continue
+		}
+		if _, err := dests[i].file.Write(data); err != nil {
+			// R3.1: GNU format 'tee: FILE: REASON'
+			printDiag(stderr, dests[i].name, err)
+			dests[i].errored = true
+			hadError = true
+		}
 	}
-	return writers
+	return hadError
 }
 
-// closeFiles closes all open output files.
-func closeFiles(files []*os.File) {
-	for _, f := range files {
-		f.Close() // best-effort close
+// printDiag writes a GNU-compatible diagnostic to stderr.
+// R3.1: format is 'tee: NAME: REASON'.
+// R3.4: always writes to stderr regardless of other flags.
+func printDiag(stderr *os.File, name string, err error) {
+	fmt.Fprintf(stderr, "tee: %s: %s\n", name, unwrapMsg(err)) //nolint:errcheck
+}
+
+// closeDests closes all opened file destinations (skips stdout).
+func closeDests(dests []dest) {
+	for i := 1; i < len(dests); i++ {
+		dests[i].file.Close() // best-effort close
 	}
 }
 
