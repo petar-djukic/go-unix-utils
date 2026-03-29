@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/unlink against gunlink (GNU coreutils).
 //
-// Covers prd038-unlink R1.1, R1.2, R1.3, R2.1.
+// Covers prd038-unlink R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
 package main
 
 import (
@@ -42,7 +42,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
-		// Extra operand — error exit 1.
+		// R2.2: extra operand — error exit 1.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"a", "b"},
@@ -50,7 +50,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
-		// Non-existent file — error exit 1.
+		// R2.3: non-existent file — error exit 1.
 		{
 			Name:      "nonexistent_file",
 			Args:      []string{"nonexistent.txt"},
@@ -122,7 +122,7 @@ func TestUnlinkFile(t *testing.T) {
 	})
 }
 
-// TestUnlinkDirectory verifies that unlinking a directory fails.
+// TestUnlinkDirectory verifies R2.4: unlinking a directory fails.
 func TestUnlinkDirectory(t *testing.T) {
 	t.Parallel()
 
