@@ -6,6 +6,7 @@
 // Covers prd055-tail R1.1, R1.2, R1.3, R1.4: default 10 lines, explicit -n
 // count, --lines= form, +N offset, stdin input, stdin via "-" argument.
 // Covers prd055-tail R2.1, R2.2, R2.3: byte-count mode, byte offset, suffixes.
+// Covers prd055-tail R3.1, R3.2, R3.3, R3.4: multi-file headers, quiet, verbose.
 package main
 
 import (
@@ -131,7 +132,9 @@ func buildDiffTests(t *testing.T) []testutils.DiffTest {
 
 	lineTests := buildLineTests(input5, input12, input20, file1, file2, validFile, nonexistent, errNorm, errNormWithHeaders)
 	byteTests := buildByteTests(t)
-	return append(lineTests, byteTests...)
+	headerTests := buildHeaderTests(t)
+	tests := append(lineTests, byteTests...)
+	return append(tests, headerTests...)
 }
 
 // buildLineTests returns differential tests for R1.1-R1.4 (line mode).
@@ -256,6 +259,67 @@ func buildLineTests(input5, input12, input20 []byte, file1, file2, validFile, no
 			Args:      []string{nonexistent},
 			ExitCode:  1,
 			Normalize: errNorm,
+		},
+	}
+}
+
+// buildHeaderTests returns differential tests for R3.1-R3.4 (multi-file headers).
+func buildHeaderTests(t *testing.T) []testutils.DiffTest {
+	t.Helper()
+
+	hDir := t.TempDir()
+	hf1 := createTestFile(t, hDir, "a.txt", "alpha\nbeta\n")
+	hf2 := createTestFile(t, hDir, "b.txt", "gamma\ndelta\n")
+	hf3 := createTestFile(t, hDir, "c.txt", "epsilon\n")
+
+	return []testutils.DiffTest{
+		// R3.1: multiple files get headers
+		{
+			Name:     "R3.1_multi_file_headers",
+			Args:     []string{hf1, hf2},
+			ExitCode: 0,
+		},
+		// R3.1: three files get headers with blank line separators
+		{
+			Name:     "R3.1_three_file_headers",
+			Args:     []string{hf1, hf2, hf3},
+			ExitCode: 0,
+		},
+		// R3.2: single file no header
+		{
+			Name:     "R3.2_single_file_no_header",
+			Args:     []string{hf1},
+			ExitCode: 0,
+		},
+		// R3.3: -q suppresses headers for multiple files
+		{
+			Name:     "R3.3_quiet_multi_file",
+			Args:     []string{"-q", hf1, hf2},
+			ExitCode: 0,
+		},
+		// R3.3: --quiet suppresses headers
+		{
+			Name:     "R3.3_quiet_long_flag",
+			Args:     []string{"--quiet", hf1, hf2},
+			ExitCode: 0,
+		},
+		// R3.3: --silent suppresses headers
+		{
+			Name:     "R3.3_silent_flag",
+			Args:     []string{"--silent", hf1, hf2},
+			ExitCode: 0,
+		},
+		// R3.4: -v forces header for single file
+		{
+			Name:     "R3.4_verbose_single_file",
+			Args:     []string{"-v", hf1},
+			ExitCode: 0,
+		},
+		// R3.4: --verbose forces header for single file
+		{
+			Name:     "R3.4_verbose_long_flag",
+			Args:     []string{"--verbose", hf1},
+			ExitCode: 0,
 		},
 	}
 }
