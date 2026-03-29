@@ -140,7 +140,7 @@ releases:
           status: implemented
     - version: "04.0"
       name: "Batch 4 — ls specification and differential test"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Full ls implementation covering all flags: default, -1, -l, -a, -A, -d, --color, -h
