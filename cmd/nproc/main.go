@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/nproc prints the number of available processing units.
-// Implements prd046-nproc R1.1–R1.4.
+// Implements prd046-nproc R1.1–R1.4, R2.1–R2.3, R3.1.
 package main
 
 import (
@@ -17,6 +17,9 @@ import (
 
 // programName is the name used in error messages.
 const programName = "nproc"
+
+// version is set at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -49,6 +52,12 @@ func parseArgs(args []string) (bool, int, int, bool) {
 
 	for _, arg := range args {
 		switch {
+		case arg == "--version":
+			fmt.Printf("%s (go-unix-utils) %s\n", programName, version)
+			return false, 0, 0, true
+		case arg == "--help":
+			printHelp()
+			return false, 0, 0, true
 		case arg == "--all":
 			allFlag = true
 		case arg == "--ignore":
@@ -75,4 +84,15 @@ func parseArgs(args []string) (bool, int, int, bool) {
 		}
 	}
 	return allFlag, ignore, 0, false
+}
+
+// printHelp writes usage information to stdout.
+func printHelp() {
+	fmt.Printf("Usage: %s [OPTION]...\n", programName)
+	fmt.Println("Print the number of processing units available.")
+	fmt.Println()
+	fmt.Println("      --all       print the number of installed processors")
+	fmt.Println("      --ignore=N  if possible, exclude N processing units")
+	fmt.Println("      --help      display this help and exit")
+	fmt.Println("      --version   output version information and exit")
 }
