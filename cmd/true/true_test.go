@@ -75,6 +75,25 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"-x", "-y", "-z"},
 			ExitCode: 0,
 		},
+		// R4.3: --help as non-first arg is ignored — no output, exit 0
+		{
+			Name:     "R4.3_help_not_first",
+			Args:     []string{"foo", "--help"},
+			ExitCode: 0,
+		},
+		// R4.3: stdin provided but not read — exit 0, no output
+		{
+			Name:     "R4.3_stdin_ignored",
+			Args:     []string{},
+			Stdin:    []byte("input that should be ignored\n"),
+			ExitCode: 0,
+		},
+		// R4.1: single dash argument ignored — exit 0
+		{
+			Name:     "R4.1_single_dash",
+			Args:     []string{"-"},
+			ExitCode: 0,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
