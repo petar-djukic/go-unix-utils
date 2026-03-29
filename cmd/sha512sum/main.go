@@ -5,7 +5,9 @@
 //
 // Implements prd033-sha512sum: R1.1 (file digest computation),
 // R1.2 (GNU format output), R1.3 (stdin as '-'),
-// R1.4 (exit code and stderr diagnostics).
+// R1.4 (exit code and stderr diagnostics),
+// R2.1 (--check verification), R2.2 (OK/FAILED output),
+// R2.3 (--warn/--quiet/--status), R3.1 (binary mode indicator).
 package main
 
 import (
