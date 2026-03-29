@@ -4,7 +4,7 @@
 // Differential tests for cmd/realpath against grealpath (GNU coreutils).
 //
 // Covers prd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R4.1.
+// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
