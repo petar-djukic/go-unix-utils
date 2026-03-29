@@ -77,7 +77,7 @@ func TestVersionLdflags(t *testing.T) {
 
 	// Build with ldflags to inject a version string.
 	buildCmd := exec.Command("go", "build",
-		"-ldflags", "-X main.version=v1.20260328.1",
+		"-ldflags", "-X main.Version=v1.20260328.1",
 		"-o", binPath, ".")
 	buildCmd.Dir = "."
 	buildCmd.Env = append(os.Environ(), "GOFLAGS=")
