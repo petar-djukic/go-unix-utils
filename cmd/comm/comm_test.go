@@ -47,6 +47,7 @@ func TestDiff(t *testing.T) {
 	dirNoTrailingNL := writeTestFiles(t, "x", "x")
 
 	tests := []testutils.DiffTest{
+		// R1.x tests (existing)
 		{
 			Name:    "R1.1_R1.2_three_column_output",
 			Args:    []string{"file1.txt", "file2.txt"},
@@ -100,6 +101,74 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"file1.txt", "file2.txt"},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirNoTrailingNL,
+		},
+
+		// R2.1: -1 suppresses column 1 (lines unique to file1)
+		{
+			Name:    "R2.1_suppress_col1",
+			Args:    []string{"-1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R2.1_suppress_col1_no_common",
+			Args:    []string{"-1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirNoCommon,
+		},
+
+		// R2.2: -2 suppresses column 2 (lines unique to file2)
+		{
+			Name:    "R2.2_suppress_col2",
+			Args:    []string{"-2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R2.2_suppress_col2_identical",
+			Args:    []string{"-2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirIdentical,
+		},
+
+		// R2.3: -3 suppresses column 3 (common lines)
+		{
+			Name:    "R2.3_suppress_col3",
+			Args:    []string{"-3", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R2.3_suppress_all_columns",
+			Args:    []string{"-123", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+
+		// R2.4: indentation adjusts when columns are suppressed
+		{
+			Name:    "R2.4_suppress_12_common_only",
+			Args:    []string{"-12", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R2.4_suppress_13_file2_only",
+			Args:    []string{"-13", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R2.4_suppress_23_file1_only",
+			Args:    []string{"-23", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R2.4_suppress_col1_file1_exhausted",
+			Args:    []string{"-1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirFile1Short,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
