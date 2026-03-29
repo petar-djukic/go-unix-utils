@@ -208,7 +208,7 @@ releases:
         by differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel05.1-uc001-expand
-          status: spec_complete
+          status: implemented
         - id: rel05.1-uc002-unexpand
           status: spec_complete
     - version: "05.2"
