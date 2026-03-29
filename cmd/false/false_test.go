@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/false against gfalse (GNU coreutils).
 //
-// Covers prd014-false R1.1, R1.2, R1.3, R2.1, R4.1, R4.2, R4.3.
+// Covers prd014-false R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -54,6 +54,12 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"foo", "--help"},
 			ExitCode: 1,
 		},
+		// R4.3: --version as non-first arg is ignored — no output, exit 1
+		{
+			Name:     "R4.3_version_not_first",
+			Args:     []string{"foo", "--version"},
+			ExitCode: 1,
+		},
 		// R4.3: stdin provided but not read — exit 1, no output
 		{
 			Name:     "R4.3_stdin_ignored",
@@ -91,5 +97,27 @@ func TestHelp(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "false") {
 		t.Errorf("--help output missing 'false': %q", stdout)
+	}
+}
+
+// TestVersion verifies --version prints version info to stdout and exits 0 (R2.2).
+// Tested non-differentially because version strings differ between implementations.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+
+	stdout := string(out)
+	if !strings.Contains(stdout, "false") {
+		t.Errorf("--version output missing 'false': %q", stdout)
+	}
+	if !strings.Contains(stdout, "go-unix-utils") {
+		t.Errorf("--version output missing 'go-unix-utils': %q", stdout)
 	}
 }
