@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/id against gid (GNU coreutils).
 //
-// Covers prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1.
+// Covers prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -183,6 +183,25 @@ func TestDiff(t *testing.T) {
 			Name:     "R3.3_named_user_un",
 			Args:     []string{"-u", "-n", "root"},
 			ExitCode: 0,
+		},
+		// R4.2: named user with -gn
+		{
+			Name:     "R4.2_named_user_gn",
+			Args:     []string{"-g", "-n", "root"},
+			ExitCode: 0,
+		},
+		// R4.2: named user with -Gn
+		{
+			Name:     "R4.2_named_user_Gn",
+			Args:     []string{"-G", "-n", "root"},
+			ExitCode: 0,
+		},
+		// R4.3: all three selection flags conflict -> error exit 1
+		{
+			Name:      "R4.3_u_g_G_conflict",
+			Args:      []string{"-u", "-g", "-G"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
 		// R3.3: nonexistent user -> error exit 1
 		{
