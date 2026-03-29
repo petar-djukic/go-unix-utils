@@ -3,7 +3,7 @@
 
 // cmd/wc implements GNU wc: count lines, words, and bytes.
 //
-// Implements prd005-wc R1.1, R1.2, R1.3, R1.4.
+// Implements prd005-wc R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -58,7 +58,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	if len(files) == 0 {
-		files = []string{"-"}
+		// R2.4: no file operands — read from stdin with no filename display.
+		files = []string{""}
 	}
 
 	return processFiles(files, stdin, stdout, stderr)
@@ -96,13 +97,17 @@ func isFlag(arg string) bool {
 	return len(arg) >= 2 && arg[0] == '-'
 }
 
+// stdinDefaultWidth is the column width GNU wc uses when stdin size is unknown.
+const stdinDefaultWidth = 7
+
 // processFiles counts and prints results for all files.
 func processFiles(
 	files []string, stdin io.Reader, stdout, stderr io.Writer,
 ) int {
+	width := precomputeWidth(files)
 	results, exitCode := collectResults(files, stdin, stderr)
 
-	// R1.4: total line when more than one file is given.
+	// R2.2: total line when more than one file is given.
 	if len(files) > 1 {
 		results = append(results, wcResult{
 			name:   "total",
@@ -110,7 +115,6 @@ func processFiles(
 		})
 	}
 
-	width := fieldWidth(results)
 	for _, r := range results {
 		if err := printResult(stdout, r, width); err != nil {
 			return exitCode
@@ -138,10 +142,9 @@ func collectResults(
 			exitCode = 1
 			continue
 		}
+		// R2.3: explicit "-" displays as "-".
+		// R2.4: implicit stdin (empty name) displays no filename.
 		displayName := name
-		if name == "-" {
-			displayName = ""
-		}
 		results = append(results, wcResult{
 			name: displayName, counts: counts,
 		})
@@ -163,8 +166,9 @@ func countFile(name string, stdin io.Reader) (wcCounts, error) {
 }
 
 // openInput returns a reader and optional closer for the given filename.
+// R2.3: "-" means stdin. R2.4: "" means implicit stdin (no file operands).
 func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
-	if name == "-" {
+	if name == "-" || name == "" {
 		return stdin, nil, nil
 	}
 	f, err := os.Open(name)
@@ -228,19 +232,28 @@ func sumCounts(results []wcResult) wcCounts {
 	return total
 }
 
-// fieldWidth returns the column width for right-aligned formatting.
-func fieldWidth(results []wcResult) int {
-	var maxVal int64
-	for _, r := range results {
-		for _, v := range []int64{
-			r.counts.lines, r.counts.words, r.counts.bytes,
-		} {
-			if v > maxVal {
-				maxVal = v
+// precomputeWidth determines column width from file sizes before counting,
+// matching GNU wc behavior. For stdin (name "" or "-"), uses stdinDefaultWidth.
+// For regular files, uses digits(file_size). Returns the maximum across all.
+func precomputeWidth(files []string) int {
+	width := 1
+	for _, name := range files {
+		if name == "" || name == "-" {
+			if stdinDefaultWidth > width {
+				width = stdinDefaultWidth
 			}
+			continue
+		}
+		info, err := os.Stat(name)
+		if err != nil {
+			continue
+		}
+		w := digitCount(info.Size())
+		if w > width {
+			width = w
 		}
 	}
-	return digitCount(maxVal)
+	return width
 }
 
 // digitCount returns the number of decimal digits in v.
