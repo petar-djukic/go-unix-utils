@@ -240,7 +240,7 @@ releases:
         reference binaries.
       use_cases:
         - id: rel05.3-uc001-uniq
-          status: spec_complete
+          status: implemented
         - id: rel05.3-uc002-comm
           status: spec_complete
     - version: "05.4"
