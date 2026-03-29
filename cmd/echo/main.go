@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/echo implements GNU echo: display a line of text.
-// Implements prd020-echo.
+// Implements prd020-echo R1.1-R1.4.
 package main
 
 import (
@@ -16,13 +16,55 @@ import (
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	// TODO R1: Core output behavior (R1.1-R1.4)
-	// TODO R2: Escape sequence interpretation (R2.1-R2.4)
-	// TODO R3: Exit codes and SIGPIPE (R3.1-R3.2)
-
 	args := os.Args[1:]
-	_, err := fmt.Fprintln(os.Stdout, strings.Join(args, " "))
-	if err != nil {
-		os.Exit(1)
+	noNewline, args := parseFlags(args)
+
+	output := strings.Join(args, " ")
+	if noNewline {
+		_, err := fmt.Fprint(os.Stdout, output)
+		if err != nil {
+			os.Exit(1)
+		}
+	} else {
+		_, err := fmt.Fprintln(os.Stdout, output)
+		if err != nil {
+			os.Exit(1)
+		}
 	}
+}
+
+// parseFlags extracts recognized GNU echo flags from leading arguments.
+// R1.3: -n suppresses trailing newline.
+// R1.4: Only -n, -e, -E (and combinations) are recognized flags.
+// Unrecognized flags are treated as positional arguments.
+func parseFlags(args []string) (noNewline bool, remaining []string) {
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if !isEchoFlag(arg) {
+			break
+		}
+		for _, ch := range arg[1:] {
+			if ch == 'n' {
+				noNewline = true
+			}
+			// -e and -E are recognized but not acted on in R1 scope.
+		}
+		i++
+	}
+	return noNewline, args[i:]
+}
+
+// isEchoFlag returns true if arg is a recognized GNU echo flag string.
+// A valid flag starts with '-' followed by one or more of 'n', 'e', 'E'.
+func isEchoFlag(arg string) bool {
+	if len(arg) < 2 || arg[0] != '-' {
+		return false
+	}
+	for _, ch := range arg[1:] {
+		if ch != 'n' && ch != 'e' && ch != 'E' {
+			return false
+		}
+	}
+	return true
 }
