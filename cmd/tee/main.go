@@ -3,13 +3,18 @@
 
 // cmd/tee implements GNU tee: read stdin and write to stdout and files.
 //
-// Implements prd017-tee R1.1, R1.2, R1.3, R1.4.
+// Implements prd017-tee R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+//
+// TODO: --output-error modes (warn, warn-nopipe, exit, exit-nopipe) are listed
+// in prd017 non_goals and must not be implemented per article E6.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -42,6 +47,11 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 		return 0
 	}
 
+	// R2.2: ignore SIGINT when -i is set.
+	if opts.ignoreInterrupts {
+		signal.Ignore(syscall.SIGINT)
+	}
+
 	return copyToFiles(opts, stdin, stdout, stderr)
 }
 
@@ -56,8 +66,9 @@ const (
 
 // options holds parsed command-line flags.
 type options struct {
-	appendMode bool
-	files      []string
+	appendMode      bool
+	ignoreInterrupts bool
+	files           []string
 }
 
 // parseArgs parses GNU-style tee arguments.
@@ -82,7 +93,7 @@ func parseArgs(args []string) (*options, parseResult) {
 			continue
 		}
 		if arg == "--ignore-interrupts" {
-			// R2.2 placeholder: accepted but not implemented in this task scope.
+			opts.ignoreInterrupts = true
 			i++
 			continue
 		}
@@ -107,7 +118,7 @@ func parseShortFlags(arg string, opts *options) bool {
 		case 'a':
 			opts.appendMode = true
 		case 'i':
-			// R2.2 placeholder: accepted but not implemented in this task scope.
+			opts.ignoreInterrupts = true
 		default:
 			return false
 		}
@@ -116,6 +127,7 @@ func parseShortFlags(arg string, opts *options) bool {
 }
 
 // copyToFiles reads stdin and writes to stdout and all output files.
+// R1.5: writes output in the order received from stdin.
 func copyToFiles(opts *options, stdin io.Reader, stdout, stderr *os.File) int {
 	files, exitCode := openFiles(opts, stderr)
 	defer closeFiles(files)
