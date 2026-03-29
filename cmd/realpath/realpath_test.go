@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/realpath against grealpath (GNU coreutils).
 //
-// Covers prd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Covers prd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
+// R3.1, R3.2, R3.3, R4.1.
 package main
 
 import (
@@ -256,6 +257,72 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"-m", "--relative-to=/usr", "--relative-base=/usr", "/tmp"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
+		},
+
+		// R3.1: no operand prints usage error and exits 1
+		{
+			Name:      "R3.1_no_operand",
+			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.1: flags only, no operand
+		{
+			Name:      "R3.1_flags_only_no_operand",
+			Args:      []string{"-m", "-s"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+
+		// R3.2: unknown long flag
+		{
+			Name:      "R3.2_unknown_long_flag",
+			Args:      []string{"--bogus-flag"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: unknown short flag
+		{
+			Name:      "R3.2_unknown_short_flag",
+			Args:      []string{"-z"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+
+		// R3.3: multiple paths, first fails, second succeeds — exit 1
+		{
+			Name:      "R3.3_first_fails_second_succeeds",
+			Args:      []string{"/nonexistent_xyz_99999/child", "/tmp"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.3: multiple paths, some succeed some fail — exit 1
+		{
+			Name:      "R3.3_mixed_three_paths",
+			Args:      []string{"/tmp", "/nonexistent_xyz_99999/a/b", "/"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.3: all paths succeed — exit 0
+		{
+			Name:     "R3.3_all_succeed",
+			Args:     []string{"/tmp", "/", "/usr"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: -e with multiple paths, one missing — exit 1
+		{
+			Name:      "R3.3_strict_mixed",
+			Args:      []string{"-e", "/tmp", "/nonexistent_xyz_99999"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
 	}
 
