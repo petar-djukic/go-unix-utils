@@ -256,7 +256,7 @@ releases:
         gsha1sum, gsha256sum, and gsha512sum from Homebrew coreutils.
       use_cases:
         - id: rel05.4-uc001-md5sum
-          status: spec_complete
+          status: implemented
         - id: rel05.4-uc002-sha1sum
           status: spec_complete
         - id: rel05.4-uc003-sha256sum
