@@ -171,7 +171,7 @@ releases:
         - id: rel04.1-uc002-readlink
           status: implemented
         - id: rel04.1-uc003-pwd
-          status: spec_complete
+          status: implemented
         - id: rel04.1-uc004-tty
           status: spec_complete
         - id: rel04.1-uc005-logname
