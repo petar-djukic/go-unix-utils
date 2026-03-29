@@ -3,7 +3,7 @@
 
 // cmd/mkdir implements GNU mkdir: create directories.
 //
-// Implements prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.4.
+// Implements prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -21,6 +22,7 @@ const progName = "mkdir"
 type options struct {
 	parents bool
 	verbose bool
+	mode    string // octal mode string; empty means default (R3.2)
 	dirs    []string
 }
 
@@ -32,49 +34,79 @@ func main() {
 // parseArgs parses command-line arguments into options.
 func parseArgs(args []string) (options, error) {
 	var opts options
-	for i := range len(args) {
+	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			opts.dirs = append(opts.dirs, args[i+1:]...)
 			return opts, nil
 		}
-		if err := parseArg(arg, &opts); err != nil {
+		needsNext, err := parseArg(arg, &opts)
+		if err != nil {
 			return opts, err
+		}
+		if needsNext {
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("option requires an argument -- 'm'")
+			}
+			opts.mode = args[i]
 		}
 	}
 	return opts, nil
 }
 
-// parseArg processes a single argument, updating opts.
-func parseArg(arg string, opts *options) error {
+// parseArg processes a single argument. Returns true if the next
+// argument should be consumed as a mode value.
+func parseArg(arg string, opts *options) (bool, error) {
 	switch {
 	case arg == "--parents":
 		opts.parents = true
 	case arg == "--verbose":
 		opts.verbose = true
+	case arg == "--mode":
+		return true, nil
+	case strings.HasPrefix(arg, "--mode="):
+		opts.mode = arg[len("--mode="):]
 	case strings.HasPrefix(arg, "--"):
-		return fmt.Errorf("unrecognized option '%s'", arg)
+		return false, fmt.Errorf("unrecognized option '%s'", arg)
 	case strings.HasPrefix(arg, "-") && len(arg) > 1:
 		return parseShortFlags(arg[1:], opts)
 	default:
 		opts.dirs = append(opts.dirs, arg)
 	}
-	return nil
+	return false, nil
 }
 
-// parseShortFlags processes bundled short flags like -pv.
-func parseShortFlags(flags string, opts *options) error {
-	for _, ch := range flags {
+// parseShortFlags processes bundled short flags like -pv or -pm0755.
+// Returns true if the next argument should be consumed as a mode value.
+func parseShortFlags(flags string, opts *options) (bool, error) {
+	for i, ch := range flags {
 		switch ch {
 		case 'p':
 			opts.parents = true
 		case 'v':
 			opts.verbose = true
+		case 'm':
+			rest := flags[i+1:]
+			if rest != "" {
+				opts.mode = rest
+				return false, nil
+			}
+			return true, nil
 		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+			return false, fmt.Errorf("invalid option -- '%c'", ch)
 		}
 	}
-	return nil
+	return false, nil
+}
+
+// parseMode converts an octal mode string to os.FileMode.
+func parseMode(s string) (os.FileMode, error) {
+	val, err := strconv.ParseUint(s, 8, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid mode: %q", s)
+	}
+	return os.FileMode(val), nil
 }
 
 // run creates directories specified as positional arguments.
@@ -103,11 +135,21 @@ func run(args []string, stdout, stderr *os.File) int {
 }
 
 // createDir creates a single directory, optionally with parents.
+// R3.2: default permissions when -m not given.
+// R3.3: -m applies only to final directory when combined with -p.
 func createDir(dir string, opts options, stdout *os.File) error {
 	if opts.parents {
-		return mkdirParents(dir, opts.verbose, stdout)
+		return mkdirParents(dir, opts, stdout)
 	}
+	return mkdirSingle(dir, opts, stdout)
+}
+
+// mkdirSingle creates a single directory without parents.
+func mkdirSingle(dir string, opts options, stdout *os.File) error {
 	if err := os.Mkdir(dir, 0o777); err != nil {
+		return err
+	}
+	if err := applyMode(dir, opts.mode); err != nil {
 		return err
 	}
 	if opts.verbose {
@@ -116,37 +158,60 @@ func createDir(dir string, opts options, stdout *os.File) error {
 	return nil
 }
 
+// applyMode sets the mode on a directory if a mode string is specified.
+// R3.1: explicit -m mode overrides umask.
+// R3.2: when mode is empty, default permissions apply (no-op).
+func applyMode(dir, mode string) error {
+	if mode == "" {
+		return nil
+	}
+	parsed, err := parseMode(mode)
+	if err != nil {
+		return err
+	}
+	return os.Chmod(dir, parsed)
+}
+
 // mkdirParents creates dir and any missing parents.
 // R2.1: create intermediate directories as needed.
 // R2.2: no error if target already exists.
-// R2.3: intermediate directories use default permissions.
-func mkdirParents(dir string, verbose bool, stdout *os.File) error {
-	if !verbose {
+// R3.3: intermediate directories use default permissions; mode applies to final only.
+func mkdirParents(dir string, opts options, stdout *os.File) error {
+	if opts.mode == "" && !opts.verbose {
 		return os.MkdirAll(dir, 0o777)
 	}
-	return mkdirAllVerbose(dir, stdout)
+	created, err := mkdirAllVerbose(dir, opts.verbose, stdout)
+	if err != nil {
+		return err
+	}
+	if created {
+		return applyMode(dir, opts.mode)
+	}
+	return nil
 }
 
-// mkdirAllVerbose creates dir and parents, printing each created directory.
-// D3: prints a line for each intermediate directory created.
-func mkdirAllVerbose(path string, stdout *os.File) error {
+// mkdirAllVerbose creates dir and parents, optionally printing each.
+// Returns true if the final path was newly created.
+func mkdirAllVerbose(path string, verbose bool, stdout *os.File) (bool, error) {
 	if isDir(path) {
-		return nil
+		return false, nil
 	}
 	parent := filepath.Dir(path)
 	if parent != path {
-		if err := mkdirAllVerbose(parent, stdout); err != nil {
-			return err
+		if _, err := mkdirAllVerbose(parent, verbose, stdout); err != nil {
+			return false, err
 		}
 	}
 	if err := os.Mkdir(path, 0o777); err != nil {
 		if isDir(path) {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
-	printCreated(stdout, path)
-	return nil
+	if verbose {
+		printCreated(stdout, path)
+	}
+	return true, nil
 }
 
 // isDir reports whether path exists and is a directory.
@@ -156,7 +221,6 @@ func isDir(path string) bool {
 }
 
 // printCreated prints the GNU-format verbose message for a created directory.
-// D2: format is "mkdir: created directory 'NAME'".
 func printCreated(stdout *os.File, dir string) {
 	fmt.Fprintf(stdout, "%s: created directory '%s'\n", progName, dir) //nolint:errcheck
 }

@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/mkdir against gmkdir (GNU coreutils).
 //
-// Covers prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.4.
+// Covers prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -200,13 +200,13 @@ func TestMkdirVerbose(t *testing.T) {
 		compareMkdir(t, goBin, refBin, []string{"--verbose", "testdir"})
 	})
 
-	// D3: -pv prints for each intermediate directory
+	// R3.4: -pv prints for each intermediate directory
 	t.Run("parents_verbose", func(t *testing.T) {
 		t.Parallel()
 		compareMkdir(t, goBin, refBin, []string{"-pv", "a/b/c"})
 	})
 
-	// D3: -pv with partial existing path
+	// R3.4: -pv with partial existing path
 	t.Run("parents_verbose_partial", func(t *testing.T) {
 		t.Parallel()
 		goDir, refDir := setupDirs(t, "a")
@@ -226,6 +226,85 @@ func TestMkdirVerbose(t *testing.T) {
 	t.Run("verbose_multiple", func(t *testing.T) {
 		t.Parallel()
 		compareMkdir(t, goBin, refBin, []string{"-v", "d1", "d2"})
+	})
+}
+
+// TestMkdirMode verifies -m/--mode permission handling.
+func TestMkdirMode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skip("reference binary gmkdir not in PATH")
+	}
+
+	// R3.2: default permissions match gmkdir (no -m)
+	t.Run("default_perms", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"testdir"}, []string{"testdir"})
+	})
+
+	// R3.2: default permissions with -p
+	t.Run("default_perms_parents", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"-p", "a/b/c"}, []string{"a", "a/b", "a/b/c"})
+	})
+
+	// R3.1: -m with octal mode
+	t.Run("mode_octal_0755", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"-m", "0755", "testdir"}, []string{"testdir"})
+	})
+
+	// R3.1: -m with octal mode 0700
+	t.Run("mode_octal_0700", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"-m", "0700", "testdir"}, []string{"testdir"})
+	})
+
+	// R3.1: --mode=VALUE long form
+	t.Run("mode_long_form", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"--mode=0750", "testdir"}, []string{"testdir"})
+	})
+
+	// R3.3: -p + -m applies mode only to final directory
+	t.Run("parents_mode_final_only", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"-p", "-m", "0700", "a/b/c"},
+			[]string{"a", "a/b", "a/b/c"})
+	})
+
+	// R3.3: -p + -m with deeper chain
+	t.Run("parents_mode_deep", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"-p", "-m", "0750", "x/y/z"},
+			[]string{"x", "x/y", "x/y/z"})
+	})
+
+	// R3.3 + R3.4: -pvm combined flags
+	t.Run("parents_verbose_mode", func(t *testing.T) {
+		t.Parallel()
+		compareMkdirPerms(t, goBin, refBin,
+			[]string{"-pvm", "0700", "p/q/r"},
+			[]string{"p", "p/q", "p/q/r"})
+	})
+
+	// R3.3: -p + -m on existing target does not change perms
+	t.Run("parents_mode_existing", func(t *testing.T) {
+		t.Parallel()
+		goDir, refDir := setupDirs(t, "exists")
+		compareMkdirPermsInDirs(t, goBin, refBin,
+			[]string{"-p", "-m", "0700", "exists"},
+			[]string{"exists"}, goDir, refDir)
 	})
 }
 
@@ -301,6 +380,56 @@ func compareMkdirInDirs(t *testing.T, goBin, refBin string, args []string, goDir
 	goNorm := normalizeProgName(goStdout)
 	if !bytes.Equal(refNorm, goNorm) {
 		t.Errorf("stdout divergence:\nref: %q\ngo:  %q", string(refNorm), string(goNorm))
+	}
+}
+
+// compareMkdirPerms runs both binaries in separate temp dirs and compares
+// exit codes, stdout, and directory permissions.
+func compareMkdirPerms(t *testing.T, goBin, refBin string, args, checkDirs []string) {
+	t.Helper()
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+	compareMkdirPermsInDirs(t, goBin, refBin, args, checkDirs, goDir, refDir)
+}
+
+// compareMkdirPermsInDirs runs both binaries in given dirs and compares
+// exit codes, stdout, and permissions of specified directories.
+func compareMkdirPermsInDirs(
+	t *testing.T, goBin, refBin string,
+	args, checkDirs []string, goDir, refDir string,
+) {
+	t.Helper()
+
+	refStdout, _, refExit := execBin(t, refBin, args, refDir)
+	goStdout, _, goExit := execBin(t, goBin, args, goDir)
+
+	if refExit != goExit {
+		t.Errorf("exit code: ref=%d go=%d (args=%v)", refExit, goExit, args)
+	}
+	refNorm := normalizeProgName(refStdout)
+	goNorm := normalizeProgName(goStdout)
+	if !bytes.Equal(refNorm, goNorm) {
+		t.Errorf("stdout:\nref: %q\ngo:  %q", string(refNorm), string(goNorm))
+	}
+	for _, d := range checkDirs {
+		comparePermission(t, filepath.Join(refDir, d), filepath.Join(goDir, d), d)
+	}
+}
+
+// comparePermission checks that two directories have the same permission bits.
+func comparePermission(t *testing.T, refPath, goPath, name string) {
+	t.Helper()
+	refInfo, err := os.Stat(refPath)
+	if err != nil {
+		t.Fatalf("ref dir %s: %v", name, err)
+	}
+	goInfo, err := os.Stat(goPath)
+	if err != nil {
+		t.Fatalf("go dir %s: %v", name, err)
+	}
+	if refInfo.Mode().Perm() != goInfo.Mode().Perm() {
+		t.Errorf("perm %s: ref=%o go=%o",
+			name, refInfo.Mode().Perm(), goInfo.Mode().Perm())
 	}
 }
 
