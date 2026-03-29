@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/fold wraps long lines to a specified width (prd023-fold R1).
+// cmd/fold wraps long lines to a specified width (prd023-fold R1, R2).
 package main
 
 import (
@@ -21,6 +21,7 @@ const (
 
 type config struct {
 	width      int
+	byteMode   bool
 	spaceBreak bool
 	files      []string
 }
@@ -92,12 +93,15 @@ func foldStream(r *bufio.Reader, cfg config, out *bufio.Writer) error {
 // processByte handles one input byte, folding when the column exceeds width.
 // R1.2: lines within width pass through unchanged.
 // R1.3: lines exceeding width are split by inserting newlines.
+// R2.1: -b counts bytes instead of columns.
+// R2.2: tabs advance to next tab stop; backspace decrements column.
+// R2.3: carriage return resets column to zero.
 func (s *foldState) processByte(c byte) error {
 	if c == '\n' {
 		s.buf = append(s.buf, '\n')
 		return s.writeBuf()
 	}
-	newCol := columnAfter(s.col, c)
+	newCol := columnAfter(s.col, c, s.cfg.byteMode)
 	if newCol > s.cfg.width && len(s.buf) > 0 {
 		return s.handleFold(c)
 	}
@@ -141,7 +145,7 @@ func (s *foldState) breakAtBlank(c byte) error {
 	}
 	rest := append([]byte(nil), s.buf[breakIdx:]...)
 	s.buf = rest
-	s.col = recalcCol(rest)
+	s.col = recalcCol(rest, s.cfg.byteMode)
 	s.blank = lastSpaceIn(rest)
 	return s.processByte(c)
 }
@@ -175,18 +179,33 @@ func (s *foldState) flush() error {
 }
 
 // columnAfter returns the display column after outputting byte c at column col.
-// Tabs advance to the next tab stop (every 8 columns).
-func columnAfter(col int, c byte) int {
-	if c == '\t' {
-		return col + tabStop - col%tabStop
+// R2.1: in byte mode, every byte counts as 1.
+// R2.2: tabs advance to the next tab stop (every 8 columns); backspace
+// decrements the column by 1 (minimum 0).
+// R2.3: carriage return resets the column to zero.
+func columnAfter(col int, c byte, byteMode bool) int {
+	if byteMode {
+		return col + 1
 	}
-	return col + 1
+	switch c {
+	case '\t':
+		return col + tabStop - col%tabStop
+	case '\b':
+		if col > 0 {
+			return col - 1
+		}
+		return 0
+	case '\r':
+		return 0
+	default:
+		return col + 1
+	}
 }
 
-func recalcCol(data []byte) int {
+func recalcCol(data []byte, byteMode bool) int {
 	col := 0
 	for _, c := range data {
-		col = columnAfter(col, c)
+		col = columnAfter(col, c, byteMode)
 	}
 	return col
 }
@@ -223,6 +242,8 @@ func parseArgs(args []string) config {
 func parseFlags(flags string, args []string, idx int, cfg *config) int {
 	for j := 0; j < len(flags); j++ {
 		switch flags[j] {
+		case 'b':
+			cfg.byteMode = true
 		case 's':
 			cfg.spaceBreak = true
 		case 'w':
