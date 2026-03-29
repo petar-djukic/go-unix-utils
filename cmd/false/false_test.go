@@ -14,6 +14,13 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+// discardStdout blanks all stdout so that tests comparing --help or --version
+// check only exit code and stderr. GNU false's output includes full binary paths,
+// OSC hyperlinks, and boilerplate that cannot be reproduced exactly.
+func discardStdout(data []byte) []byte {
+	return nil
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -41,6 +48,28 @@ func TestDiff(t *testing.T) {
 			Name:     "R1.2_unrecognized_flag",
 			Args:     []string{"--unknown"},
 			ExitCode: 1,
+		},
+		// R2.1, R4.2: --help — tested differentially for exit code.
+		// GNU gfalse --help exits 1 (unlike gtrue), stdout discarded.
+		{
+			Name:      "R2.1_help",
+			Args:      []string{"--help"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+		// R2.2, R4.2: --version — tested differentially for exit code.
+		{
+			Name:      "R2.2_version",
+			Args:      []string{"--version"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+		// R1.2: --version followed by other args — exit 1
+		{
+			Name:      "R2.2_version_with_extra_args",
+			Args:      []string{"--version", "--extra"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStdout},
 		},
 		// R1.3: multiple flags ignored — exit 1
 		{
@@ -78,18 +107,15 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestHelp verifies --help prints usage to stdout and exits 0 (R2.1).
-// Tested non-differentially because GNU false --help exit code varies by version.
+// TestHelp verifies --help prints usage to stdout (R2.1).
+// GNU gfalse --help exits 1 (unlike gtrue), so we check output content only.
 func TestHelp(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
 
 	cmd := exec.Command(goBin, "--help")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("--help failed: %v", err)
-	}
+	out, _ := cmd.CombinedOutput() // exit code 1 is expected
 
 	stdout := string(out)
 	if !strings.Contains(stdout, "Usage:") {
@@ -100,18 +126,15 @@ func TestHelp(t *testing.T) {
 	}
 }
 
-// TestVersion verifies --version prints version info to stdout and exits 0 (R2.2).
-// Tested non-differentially because version strings differ between implementations.
+// TestVersion verifies --version prints version info to stdout (R2.2).
+// GNU gfalse --version exits 1, so we check output content only.
 func TestVersion(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
 
 	cmd := exec.Command(goBin, "--version")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("--version failed: %v", err)
-	}
+	out, _ := cmd.CombinedOutput() // exit code 1 is expected
 
 	stdout := string(out)
 	if !strings.Contains(stdout, "false") {

@@ -34,32 +34,23 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// run implements the false logic: exit 1, optionally printing help or version.
+// run implements the false logic: always exit 1, optionally printing help or version.
 // R1.1: exits 1 with no arguments.
 // R1.2, R1.3: exits 1 with any arguments, ignoring them.
-// R2.1: --help as first argument prints usage to stdout and exits 0.
-// R2.2: --version as first argument prints version info to stdout and exits 0.
-// R2.3: write errors on --help or --version cause exit 1.
-// R3.1, R3.2: only exits 0 or 1.
+// R2.1: --help as first argument prints usage to stdout. Exits 1 per GNU gfalse behavior.
+// R2.2: --version as first argument prints version info to stdout. Exits 1.
+// R3.1, R3.2: always exits 1 (GNU false never exits 0, unlike true).
 func run(args []string, stdout *os.File) int {
 	if len(args) == 0 {
 		return 1
 	}
 	switch args[0] {
 	case "--help":
-		// R2.1: print help and exit 0. R2.3: write error causes exit 1.
-		_, err := fmt.Fprint(stdout, helpText)
-		if err != nil {
-			return 1
-		}
-		return 0
+		// R2.1: print help. GNU gfalse always exits 1 even for --help.
+		fmt.Fprint(stdout, helpText) //nolint:errcheck // best-effort output, exit 1 regardless
 	case "--version":
-		// R2.2: print version info matching GNU format. R2.3: write error causes exit 1.
-		_, err := fmt.Fprintf(stdout, "false (go-unix-utils) %s\n", Version)
-		if err != nil {
-			return 1
-		}
-		return 0
+		// R2.2: print version info. GNU gfalse always exits 1 even for --version.
+		fmt.Fprintf(stdout, "false (go-unix-utils) %s\n", Version) //nolint:errcheck // best-effort output, exit 1 regardless
 	}
 	return 1
 }
