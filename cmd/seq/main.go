@@ -3,7 +3,8 @@
 
 // cmd/seq implements GNU seq: print a sequence of numbers.
 //
-// Implements prd019-seq R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements prd019-seq R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -27,8 +28,8 @@ func main() {
 
 // seqOptions holds parsed flag values for seq.
 type seqOptions struct {
-	format    string
-	separator string
+	format     string
+	separator  string
 	equalWidth bool
 }
 
@@ -54,7 +55,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
-	return printSequence(stdout, stderr, first, step, last, opts)
+	// R2.4: detect precision from input argument decimal places.
+	prec := inputPrecision(positional)
+	return printSequence(stdout, stderr, first, step, last, prec, opts)
 }
 
 // parseFlags extracts flags and returns options, positional args, and exit code.
@@ -141,6 +144,7 @@ func parsePositional(args []string) (first, step, last float64, err error) {
 }
 
 // parseNumber parses a string as a floating-point number.
+// R3.2: rejects non-numeric arguments with diagnostic.
 func parseNumber(s string) (float64, error) {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
@@ -150,6 +154,33 @@ func parseNumber(s string) (float64, error) {
 		return 0, fmt.Errorf("invalid floating point argument: '%s'", s)
 	}
 	return v, nil
+}
+
+// inputPrecision returns the maximum decimal places across all arguments.
+// R2.4: auto-detect precision from input string decimal places.
+func inputPrecision(args []string) int {
+	p := 0
+	for _, a := range args {
+		if d := decimalPlaces(a); d > p {
+			p = d
+		}
+	}
+	return p
+}
+
+// decimalPlaces counts digits after the decimal point in a number string.
+func decimalPlaces(s string) int {
+	if len(s) > 0 && (s[0] == '-' || s[0] == '+') {
+		s = s[1:]
+	}
+	if idx := strings.IndexAny(s, "eE"); idx >= 0 {
+		s = s[:idx]
+	}
+	dot := strings.IndexByte(s, '.')
+	if dot < 0 {
+		return 0
+	}
+	return len(s) - dot - 1
 }
 
 // sequenceLength computes how many values to print.
@@ -169,10 +200,10 @@ func sequenceLength(first, step, last float64) int {
 // R1.2: generates numbers from FIRST by STEP, stopping at LAST.
 // R2.1: default separator is newline. R2.2: custom separator via -s.
 // R2.3: trailing newline after last number.
-func printSequence(stdout, stderr io.Writer, first, step, last float64, opts seqOptions) int {
+func printSequence(stdout, stderr io.Writer, first, step, last float64, prec int, opts seqOptions) int {
 	bw := bufio.NewWriter(stdout)
 	n := sequenceLength(first, step, last)
-	fmtFunc := buildFormatter(opts, first, last)
+	fmtFunc := buildFormatter(opts, first, last, prec)
 	for i := range n {
 		v := first + float64(i)*step
 		if i > 0 {
@@ -192,26 +223,40 @@ func printSequence(stdout, stderr io.Writer, first, step, last float64, opts seq
 
 // buildFormatter returns a function that formats each number.
 // R3.4: -f takes precedence over -w.
-func buildFormatter(opts seqOptions, first, last float64) func(float64) string {
+// R2.4: when inputs have decimal places, use fixed-point with that precision.
+func buildFormatter(opts seqOptions, first, last float64, prec int) func(float64) string {
 	if opts.format != "" {
 		return func(v float64) string {
 			return fmt.Sprintf(opts.format, v)
 		}
 	}
 	if opts.equalWidth {
-		width := equalWidth(first, last)
+		width := equalWidth(first, last, prec)
 		return func(v float64) string {
-			return zeroPad(formatNumber(v), width)
+			return zeroPad(formatWithPrecision(v, prec), width)
+		}
+	}
+	if prec > 0 {
+		return func(v float64) string {
+			return formatWithPrecision(v, prec)
 		}
 	}
 	return formatNumber
 }
 
+// formatWithPrecision formats a number with the given decimal precision.
+func formatWithPrecision(v float64, prec int) string {
+	if prec <= 0 {
+		return formatNumber(v)
+	}
+	return fmt.Sprintf("%.*f", prec, v)
+}
+
 // equalWidth computes the display width for -w mode.
 // D1: width from widest of FIRST and LAST including sign and decimal.
-func equalWidth(first, last float64) int {
-	w1 := len(formatNumber(first))
-	w2 := len(formatNumber(last))
+func equalWidth(first, last float64, prec int) int {
+	w1 := len(formatWithPrecision(first, prec))
+	w2 := len(formatWithPrecision(last, prec))
 	if w1 > w2 {
 		return w1
 	}
@@ -232,7 +277,7 @@ func zeroPad(s string, width int) string {
 
 // validateFormat checks that a format string has exactly one valid
 // floating-point conversion specifier.
-// R3.1/R3.2: must contain exactly one %a, %e, %f, %g (or uppercase).
+// R3.3: must contain exactly one %a, %e, %f, %g (or uppercase).
 func validateFormat(format string) error {
 	count := 0
 	for i := 0; i < len(format); i++ {
@@ -246,21 +291,7 @@ func validateFormat(format string) error {
 		if format[i] == '%' {
 			continue
 		}
-		// Skip flags: -, +, space, #, 0
-		for i < len(format) && isFormatFlag(format[i]) {
-			i++
-		}
-		// Skip width
-		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
-			i++
-		}
-		// Skip precision
-		if i < len(format) && format[i] == '.' {
-			i++
-			for i < len(format) && format[i] >= '0' && format[i] <= '9' {
-				i++
-			}
-		}
+		i = skipFormatModifiers(format, i)
 		if i >= len(format) {
 			return fmtConversionError(format)
 		}
@@ -276,6 +307,23 @@ func validateFormat(format string) error {
 		return fmt.Errorf("format '%s' has too many %% directives", format)
 	}
 	return nil
+}
+
+// skipFormatModifiers advances past flags, width, and precision in a format specifier.
+func skipFormatModifiers(format string, i int) int {
+	for i < len(format) && isFormatFlag(format[i]) {
+		i++
+	}
+	for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+		i++
+	}
+	if i < len(format) && format[i] == '.' {
+		i++
+		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+			i++
+		}
+	}
+	return i
 }
 
 // isFormatFlag returns true if c is a printf flag character.
