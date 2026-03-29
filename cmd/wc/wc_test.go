@@ -8,10 +8,13 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -673,6 +676,81 @@ func buildFlagSelectionTests() []testutils.DiffTest {
 			Args:  []string{"-l"},
 			Stdin: []byte(""),
 		},
+	}
+}
+
+// TestDiffErrorR62 runs additional differential tests for R6.2:
+// exit 1 when a file cannot be opened, while still processing other files.
+func TestDiffErrorR62(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	t.Run("valid_then_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "good.txt", "hello world\n")
+
+		tests := []testutils.DiffTest{{
+			Name:      "nonexistent_after_valid",
+			Args:      []string{"good.txt", "missing.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("nonexistent_with_lines_words", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "ok.txt", "one two\nthree\n")
+
+		tests := []testutils.DiffTest{{
+			Name:      "error_with_lw_flags",
+			Args:      []string{"-lw", "missing.txt", "ok.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// failWriter is an io.Writer that always returns an error.
+type failWriter struct {
+	err error
+}
+
+func (f *failWriter) Write([]byte) (int, error) {
+	return 0, f.err
+}
+
+// TestWriteError verifies R6.3: stdout write errors cause exit 1.
+func TestWriteError(t *testing.T) {
+	t.Parallel()
+	w := &failWriter{err: fmt.Errorf("write failed")}
+	code := run([]string{}, strings.NewReader("hello\n"), w, io.Discard)
+	if code != 1 {
+		t.Errorf("R6.3: expected exit code 1 on write error, got %d", code)
+	}
+}
+
+// TestWriteErrorWithFiles verifies R6.3 with file arguments.
+func TestWriteErrorWithFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.txt")
+	if err := os.WriteFile(path, []byte("test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := &failWriter{err: fmt.Errorf("disk full")}
+	code := run([]string{path}, nil, w, io.Discard)
+	if code != 1 {
+		t.Errorf("R6.3: expected exit code 1 on write error, got %d", code)
 	}
 }
 

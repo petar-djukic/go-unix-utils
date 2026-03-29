@@ -288,7 +288,10 @@ func processWithWidth(
 ) int {
 	results, exitCode := collectResults(files, stdin, stderr)
 	results = addTotal(files, results)
-	printAllResults(stdout, results, width, cols)
+	// R6.3: stdout write error sets exit code 1.
+	if printAllResults(stdout, results, width, cols) {
+		exitCode = 1
+	}
 	return exitCode
 }
 
@@ -305,14 +308,16 @@ func addTotal(files []string, results []wcResult) []wcResult {
 }
 
 // printAllResults writes all result lines.
+// R6.3: returns true if a non-broken-pipe write error occurred.
 func printAllResults(
 	w io.Writer, results []wcResult, width int, cols columnSelection,
-) {
+) bool {
 	for _, r := range results {
 		if err := printResult(w, r, width, cols); err != nil {
-			return
+			return !isBrokenPipe(err)
 		}
 	}
+	return false
 }
 
 // collectResults processes each file and returns results.
