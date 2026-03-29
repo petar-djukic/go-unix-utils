@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/users prints the login names of currently logged-in users (prd096 R1.1–R2.1).
+// cmd/users prints the login names of currently logged-in users (prd096 R1.1–R2.3).
 package main
 
 /*
@@ -47,8 +47,11 @@ func run(args []string) error {
 	sort.Strings(names)
 
 	// R1.1: Print space-separated on a single line.
+	// R2.2: Write error causes exit 1 (propagated via run → main).
 	if len(names) > 0 {
-		fmt.Println(strings.Join(names, " "))
+		if _, err := fmt.Println(strings.Join(names, " ")); err != nil {
+			return fmt.Errorf("write error: %w", err)
+		}
 	}
 
 	// R2.1: Exit 0 on success.
@@ -79,7 +82,8 @@ func readUsers() []string {
 }
 
 // installSIGPIPEHandler sets up SIGPIPE handling to exit 0, matching GNU coreutils.
-// R2.3: Equivalent to sys.InstallSIGPIPEHandler() when pkg/sys is available.
+// R2.3: Must handle SIGPIPE gracefully (exit 0). Uses local implementation because
+// pkg/sys may not be on disk during generation runs.
 func installSIGPIPEHandler() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGPIPE)
