@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -20,6 +21,15 @@ func writeTestFile(t *testing.T, dir, name, content string) string {
 		t.Fatalf("writing test file %s: %v", name, err)
 	}
 	return p
+}
+
+// tacErrorNormalizer replaces tac error message lines with a fixed
+// placeholder so different error formats between GNU and Go do not
+// cause divergence. GNU uses "tac: cannot open 'F' for reading: MSG"
+// while Go uses "tac: open F: msg".
+var tacErrorNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	re := regexp.MustCompile(`(?m)^(g?tac|tac): .*$`)
+	return re.ReplaceAll(data, []byte("tac: <FILE_ERROR>"))
 }
 
 // TestDiff runs differential tests comparing the Go tac binary against
@@ -38,6 +48,9 @@ func TestDiff(t *testing.T) {
 	tmpDir := t.TempDir()
 	file1 := writeTestFile(t, tmpDir, "f1.txt", "alpha\nbeta\ngamma\n")
 	file2 := writeTestFile(t, tmpDir, "f2.txt", "one\ntwo\n")
+
+	// R3.2: path to a file that does not exist.
+	nonexistent := filepath.Join(tmpDir, "no_such_file.txt")
 
 	tests := []testutils.DiffTest{
 		{
@@ -131,6 +144,30 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-b", "-r", "-s", "[:|]"},
 			Stdin: []byte(":a|b:c"),
 			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: exit 0 on successful processing.
+		{
+			Name:     "tac_exit_zero_on_success",
+			Args:     []string{file1},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.2: exit 1 when a file cannot be opened.
+		{
+			Name:      "tac_nonexistent_file",
+			Args:      []string{nonexistent},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{tacErrorNormalizer},
+		},
+		// R3.2: exit 1 with mixed valid and invalid files; valid files
+		// are still processed and remaining files continue.
+		{
+			Name:      "tac_mixed_valid_invalid_files",
+			Args:      []string{file1, nonexistent, file2},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{tacErrorNormalizer},
 		},
 	}
 
