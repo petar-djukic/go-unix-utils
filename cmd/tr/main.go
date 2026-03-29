@@ -5,7 +5,8 @@
 //
 // Implements prd054-tr R1.1 (character translation), R1.2 (stdin/stdout I/O),
 // R1.3 (SET specifications: ranges, escapes, repetition),
-// R1.4 (POSIX character classes).
+// R1.4 (POSIX character classes), R2.1 (delete mode), R2.2 (squeeze mode),
+// R2.3 (delete+squeeze), R2.4 (complement mode).
 package main
 
 import (
@@ -27,6 +28,23 @@ var (
 	errHelp    = errors.New("help requested")
 )
 
+// config holds parsed command-line flags.
+// R2.1: delete, R2.2: squeeze, R2.4: complement.
+type config struct {
+	delete     bool
+	squeeze    bool
+	complement bool
+}
+
+// streamConfig holds the configuration for stream processing.
+type streamConfig struct {
+	doDelete   bool
+	doSqueeze  bool
+	table      [256]byte
+	deleteSet  [256]bool
+	squeezeSet [256]bool
+}
+
 // setToken is a parsed element from a SET specification.
 type setToken struct {
 	chars  []byte
@@ -39,27 +57,19 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-// run parses arguments and performs character translation.
-// R1.1: translate SET1 to SET2. R1.2: read stdin, write stdout.
+// run parses arguments and performs character translation/deletion/squeezing.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	set1Spec, set2Spec, err := parseArgs(args)
+	cfg, set1Spec, set2Spec, err := parseConfig(args)
 	if err != nil {
 		return handleParseError(err, stdout, stderr)
 	}
-	set1, err := expandSet(set1Spec, 0)
+	set1, set2, err := expandSets(cfg, set1Spec, set2Spec)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
 		return 1
 	}
-	set2, err := expandSet(set2Spec, len(set1))
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-		return 1
-	}
-	// R1.1: extend SET2 to match SET1 length.
-	set2 = extendSet(set2, len(set1))
-	table := buildTable(set1, set2)
-	if err := translateStream(stdin, stdout, table); err != nil {
+	sc := buildStreamConfig(cfg, set1, set2)
+	if err := processStream(stdin, stdout, &sc); err != nil {
 		fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
 		return 1
 	}
@@ -84,46 +94,231 @@ func handleParseError(err error, stdout, stderr io.Writer) int {
 // printUsage writes usage information.
 func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... SET1 [SET2]\n", programName)
-	fmt.Fprintln(w, "Translate characters from standard input, writing to standard output.")
+	fmt.Fprintln(w, "Translate, squeeze, and/or delete characters from standard input,")
+	fmt.Fprintln(w, "writing to standard output.")
 }
 
-// parseArgs extracts SET1 and SET2 from the command-line arguments.
-func parseArgs(args []string) (string, string, error) {
+// parseConfig extracts flags and SET specifications from arguments.
+func parseConfig(args []string) (config, string, string, error) {
+	cfg, positional, err := parseFlags(args)
+	if err != nil {
+		return cfg, "", "", err
+	}
+	set1, set2, err := validatePositional(cfg, positional)
+	return cfg, set1, set2, err
+}
+
+// parseFlags separates flags from positional arguments.
+func parseFlags(args []string) (config, []string, error) {
+	var cfg config
 	var positional []string
 	flagsDone := false
 	for _, arg := range args {
-		if flagsDone {
+		if flagsDone || (!strings.HasPrefix(arg, "-") || arg == "-") {
 			positional = append(positional, arg)
 			continue
 		}
-		switch arg {
-		case "--":
+		if arg == "--" {
 			flagsDone = true
-		case "--help":
-			return "", "", errHelp
-		case "--version":
-			return "", "", errVersion
-		default:
-			positional = append(positional, arg)
+			continue
+		}
+		if err := applyFlag(arg, &cfg); err != nil {
+			return cfg, nil, err
 		}
 	}
-	return validatePositional(positional)
+	return cfg, positional, nil
 }
 
-// validatePositional checks that two SET arguments are provided.
-func validatePositional(positional []string) (string, string, error) {
-	if len(positional) < 1 {
+// applyFlag applies a single flag argument to the config.
+func applyFlag(arg string, cfg *config) error {
+	switch arg {
+	case "--help":
+		return errHelp
+	case "--version":
+		return errVersion
+	case "--delete":
+		cfg.delete = true
+	case "--squeeze-repeats":
+		cfg.squeeze = true
+	case "--complement":
+		cfg.complement = true
+	default:
+		if strings.HasPrefix(arg, "--") {
+			return fmt.Errorf("unrecognized option '%s'", arg)
+		}
+		return parseShortFlags(arg[1:], cfg)
+	}
+	return nil
+}
+
+// parseShortFlags parses combined short flags like -ds, -cds.
+// R2.1: -d, R2.2: -s, R2.4: -c/-C.
+func parseShortFlags(flags string, cfg *config) error {
+	for _, ch := range flags {
+		switch ch {
+		case 'd':
+			cfg.delete = true
+		case 's':
+			cfg.squeeze = true
+		case 'c', 'C':
+			cfg.complement = true
+		default:
+			return fmt.Errorf("invalid option -- '%c'", ch)
+		}
+	}
+	return nil
+}
+
+// validatePositional checks positional argument count for the given mode.
+func validatePositional(cfg config, pos []string) (string, string, error) {
+	if len(pos) == 0 {
 		return "", "", fmt.Errorf("missing operand")
 	}
-	if len(positional) < 2 {
-		return "", "", fmt.Errorf("missing operand after '%s'", positional[0])
+	if cfg.delete && !cfg.squeeze {
+		return validateDeleteOnly(pos)
 	}
-	return positional[0], positional[1], nil
+	if cfg.squeeze && !cfg.delete && len(pos) == 1 {
+		return pos[0], "", nil
+	}
+	if len(pos) < 2 {
+		return "", "", fmt.Errorf("missing operand after '%s'", pos[0])
+	}
+	if len(pos) > 2 {
+		return "", "", fmt.Errorf("extra operand '%s'", pos[2])
+	}
+	return pos[0], pos[1], nil
 }
+
+// validateDeleteOnly validates positional args for -d without -s.
+// R2.1: SET2 is not used with -d alone.
+func validateDeleteOnly(pos []string) (string, string, error) {
+	if len(pos) > 1 {
+		return "", "", fmt.Errorf(
+			"extra operand '%s'\nOnly one string may be given when "+
+				"deleting without squeezing.", pos[1])
+	}
+	return pos[0], "", nil
+}
+
+// expandSets parses and expands SET1 and SET2 specifications.
+// R2.4: complements SET1 when -c is set.
+func expandSets(cfg config, set1Spec, set2Spec string) ([]byte, []byte, error) {
+	set1, err := expandSet(set1Spec, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	set2, err := expandSet(set2Spec, len(set1))
+	if err != nil {
+		return nil, nil, err
+	}
+	if !cfg.delete && len(set2) > 0 {
+		set2 = extendSet(set2, len(set1))
+	}
+	return set1, set2, nil
+}
+
+// complementSet returns all bytes 0-255 not in the given set.
+// R2.4: complement operation for SET1.
+func complementSet(set []byte) []byte {
+	var present [256]bool
+	for _, b := range set {
+		present[b] = true
+	}
+	var result []byte
+	for i := 0; i < 256; i++ {
+		if !present[byte(i)] {
+			result = append(result, byte(i))
+		}
+	}
+	return result
+}
+
+// buildStreamConfig creates processing configuration from parsed sets.
+// R2.1: delete mode, R2.2: squeeze mode, R2.3: combined delete+squeeze.
+func buildStreamConfig(cfg config, set1, set2 []byte) streamConfig {
+	var sc streamConfig
+	if cfg.delete {
+		sc.doDelete = true
+		sc.deleteSet = memberSet(set1)
+	} else {
+		sc.table = buildTable(set1, set2)
+	}
+	if cfg.squeeze {
+		sc.doSqueeze = true
+		if len(set2) > 0 {
+			sc.squeezeSet = memberSet(set2)
+		} else {
+			sc.squeezeSet = memberSet(set1)
+		}
+	}
+	return sc
+}
+
+// memberSet returns a 256-bool array marking membership.
+func memberSet(set []byte) [256]bool {
+	var m [256]bool
+	for _, b := range set {
+		m[b] = true
+	}
+	return m
+}
+
+// processStream reads from r, applies the stream config, writes to w.
+// R1.2: reads stdin and writes to stdout.
+func processStream(r io.Reader, w io.Writer, sc *streamConfig) error {
+	br := bufio.NewReader(r)
+	bw := bufio.NewWriter(w)
+	buf := make([]byte, 32*1024)
+	prev := -1
+	for {
+		n, err := br.Read(buf)
+		var werr error
+		prev, werr = processChunk(bw, buf[:n], sc, prev)
+		if werr != nil {
+			return werr
+		}
+		if err == io.EOF {
+			return bw.Flush()
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// processChunk processes a buffer chunk through the stream configuration.
+// Handles translate, delete, and squeeze in a single pass.
+func processChunk(w *bufio.Writer, buf []byte, sc *streamConfig, prev int) (int, error) {
+	for _, b := range buf {
+		if sc.doDelete && sc.deleteSet[b] {
+			continue
+		}
+		out := b
+		if !sc.doDelete {
+			out = sc.table[b]
+		}
+		if sc.doSqueeze && sc.squeezeSet[out] && int(out) == prev {
+			continue
+		}
+		if err := w.WriteByte(out); err != nil {
+			return prev, err
+		}
+		prev = int(out)
+	}
+	return prev, nil
+}
+
+// --- SET expansion ---
 
 // expandSet parses a SET specification and returns expanded bytes.
 // targetLen controls [c*] expansion; pass 0 for SET1.
 func expandSet(spec string, targetLen int) ([]byte, error) {
+	if spec == "" {
+		return nil, nil
+	}
 	tokens, err := parseSetTokens(spec)
 	if err != nil {
 		return nil, err
@@ -187,7 +382,6 @@ func parseSetTokens(spec string) ([]setToken, error) {
 }
 
 // tryParseRange checks if the current position forms a range (c-d).
-// Returns the token (single char or range) and extra bytes consumed.
 func tryParseRange(spec string, pos int, startCh byte) (setToken, int, error) {
 	if pos >= len(spec) || spec[pos] != '-' || pos+1 >= len(spec) {
 		return setToken{chars: []byte{startCh}}, 0, nil
@@ -394,6 +588,8 @@ func isAlphaNum(b byte) bool {
 	return (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
 }
 
+// --- Byte utilities ---
+
 // extendSet extends set to targetLen by repeating the last byte.
 // R1.1: if SET2 is shorter than SET1, the last character of SET2 is repeated.
 func extendSet(set []byte, targetLen int) []byte {
@@ -420,34 +616,6 @@ func buildTable(set1, set2 []byte) [256]byte {
 		}
 	}
 	return table
-}
-
-// translateStream reads from r, applies the translation table, writes to w.
-// R1.2: reads stdin and writes translated output to stdout.
-func translateStream(r io.Reader, w io.Writer, table [256]byte) error {
-	br := bufio.NewReader(r)
-	bw := bufio.NewWriter(w)
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := br.Read(buf)
-		translateBuf(buf[:n], table)
-		if _, werr := bw.Write(buf[:n]); werr != nil {
-			return werr
-		}
-		if err == io.EOF {
-			return bw.Flush()
-		}
-		if err != nil {
-			return err
-		}
-	}
-}
-
-// translateBuf applies the translation table to each byte in buf in-place.
-func translateBuf(buf []byte, table [256]byte) {
-	for i, b := range buf {
-		buf[i] = table[b]
-	}
 }
 
 // byteRange returns a slice of bytes from start to end inclusive.
