@@ -5,7 +5,8 @@
 //
 // Implements prd027-paste R1.1 (parallel merge), R1.2 (unequal line counts),
 // R1.3 (stdin via dash), R1.4 (no-file passthrough and SIGPIPE),
-// R2.1 (delimiter flag), R2.2 (escape sequences), R2.3 (delimiter cycling).
+// R2.1 (delimiter flag), R2.2 (escape sequences), R2.3 (delimiter cycling),
+// R3.1 (serial mode), R3.2 (serial delimiter cycling), R3.3 (serial overrides parallel).
 package main
 
 import (
@@ -177,10 +178,14 @@ func expandEscape(c byte) string {
 
 // openInputs opens all files and returns scanners and closers.
 // R1.3: "-" means stdin; multiple "-" share the same scanner.
-func openInputs(files []string, stdin io.Reader) ([]*bufio.Scanner, []io.Closer, error) {
+// R3.2: prints diagnostic to stderr for files that cannot be opened and
+// continues processing; returns hadError true if any file failed.
+// D3: failed files get a nil scanner (treated as immediately exhausted).
+func openInputs(files []string, stdin io.Reader, stderr io.Writer) ([]*bufio.Scanner, []io.Closer, bool) {
 	scanners := make([]*bufio.Scanner, len(files))
 	closers := make([]io.Closer, len(files))
 	var stdinScanner *bufio.Scanner
+	hadError := false
 	for i, name := range files {
 		if name == "-" {
 			if stdinScanner == nil {
@@ -191,13 +196,14 @@ func openInputs(files []string, stdin io.Reader) ([]*bufio.Scanner, []io.Closer,
 		}
 		f, err := os.Open(name)
 		if err != nil {
-			closeAll(closers)
-			return nil, nil, fmt.Errorf("%s: No such file or directory", name)
+			fmt.Fprintf(stderr, "%s: %s: No such file or directory\n", programName, name)
+			hadError = true
+			continue
 		}
 		scanners[i] = bufio.NewScanner(f)
 		closers[i] = f
 	}
-	return scanners, closers, nil
+	return scanners, closers, hadError
 }
 
 // closeAll closes all non-nil closers.
@@ -211,17 +217,21 @@ func closeAll(closers []io.Closer) {
 
 // parallelPaste opens all files and merges them line by line.
 // R1.1: join lines with delimiter. R1.2: empty fields for exhausted files.
+// R3.2: continue processing when a file cannot be opened.
 func parallelPaste(files []string, stdin io.Reader, w *bufio.Writer, stderr io.Writer, opts pasteOptions) int {
-	scanners, closers, err := openInputs(files, stdin)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+	scanners, closers, hadError := openInputs(files, stdin, stderr)
+	defer closeAll(closers)
+	if mergeParallel(scanners, w, opts) != 0 {
 		return 1
 	}
-	defer closeAll(closers)
-	return mergeParallel(scanners, w, opts)
+	if hadError {
+		return 1
+	}
+	return 0
 }
 
 // mergeParallel reads one line from each scanner per iteration.
+// Nil scanners (failed opens) are treated as immediately exhausted.
 func mergeParallel(scanners []*bufio.Scanner, w *bufio.Writer, opts pasteOptions) int {
 	for {
 		line, active := buildParallelLine(scanners, opts)
@@ -240,11 +250,12 @@ func mergeParallel(scanners []*bufio.Scanner, w *bufio.Writer, opts pasteOptions
 
 // buildParallelLine reads one line from each scanner and joins them
 // with cycling delimiters. R2.3: delimiter index resets per output line.
+// Nil scanners contribute empty strings (D3).
 func buildParallelLine(scanners []*bufio.Scanner, opts pasteOptions) (string, bool) {
 	parts := make([]string, len(scanners))
 	anyActive := false
 	for i, s := range scanners {
-		if s.Scan() {
+		if s != nil && s.Scan() {
 			parts[i] = s.Text()
 			anyActive = true
 		}
@@ -272,13 +283,18 @@ func joinWithCycling(parts []string, delimiters []string) string {
 }
 
 // serialPaste processes files one at a time, joining all lines per file.
+// R3.2: prints diagnostic and continues when a file cannot be opened.
 func serialPaste(files []string, stdin io.Reader, w *bufio.Writer, stderr io.Writer, opts pasteOptions) int {
 	var stdinScanner *bufio.Scanner
+	hadError := false
 	for _, name := range files {
 		if err := serialPasteOne(name, &stdinScanner, stdin, w, opts); err != nil {
 			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-			return 1
+			hadError = true
 		}
+	}
+	if hadError {
+		return 1
 	}
 	return 0
 }
