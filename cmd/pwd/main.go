@@ -3,7 +3,7 @@
 
 // cmd/pwd implements GNU pwd: print the current working directory.
 //
-// Implements prd051-pwd R1.1, R1.2, R1.3, R1.4, R2.1, R2.2.
+// Implements prd051-pwd R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2.
 package main
 
 import (
@@ -17,6 +17,9 @@ import (
 
 const progName = "pwd"
 
+// version is set at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 // pwdMode represents the logical vs physical path resolution mode.
 type pwdMode int
 
@@ -25,6 +28,15 @@ const (
 	modePhysical pwdMode = iota
 	// R1.2: logical mode — use PWD environment variable.
 	modeLogical
+)
+
+// parseResult describes the outcome of argument parsing.
+type parseResult int
+
+const (
+	resultContinue parseResult = iota
+	resultHelp
+	resultVersion
 )
 
 func main() {
@@ -36,53 +48,93 @@ func main() {
 
 // run parses arguments and prints the working directory. Returns exit code.
 func run(args []string, stdout, stderr *os.File) int {
-	m, err := parseArgs(args)
+	m, result, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err) //nolint:errcheck
+		printTryHelp(stderr)
 		return 1
 	}
+	// R3.1: --help prints usage information to stdout and exits 0.
+	if result == resultHelp {
+		printHelp(stdout)
+		return 0
+	}
+	// R3.2: --version prints version information to stdout and exits 0.
+	if result == resultVersion {
+		printVersion(stdout)
+		return 0
+	}
 	return printWorkingDir(m, stdout, stderr)
+}
+
+// printTryHelp writes the "Try --help" hint to stderr.
+func printTryHelp(stderr *os.File) {
+	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
+}
+
+// printHelp writes usage information to stdout (R3.1).
+func printHelp(stdout *os.File) {
+	fmt.Fprintf(stdout, "Usage: %s [OPTION]...\n", progName)            //nolint:errcheck
+	fmt.Fprintln(stdout, "Print the full filename of the current working directory.") //nolint:errcheck
+	fmt.Fprintln(stdout)                                                 //nolint:errcheck
+	fmt.Fprintln(stdout, "  -L, --logical   use PWD from environment, even if it contains symlinks") //nolint:errcheck
+	fmt.Fprintln(stdout, "  -P, --physical  avoid all symlinks")         //nolint:errcheck
+	fmt.Fprintln(stdout, "      --help      display this help and exit") //nolint:errcheck
+	fmt.Fprintln(stdout, "      --version   output version information and exit") //nolint:errcheck
+}
+
+// printVersion writes version information to stdout (R3.2).
+func printVersion(stdout *os.File) {
+	fmt.Fprintf(stdout, "%s (go-unix-utils) %s\n", progName, version) //nolint:errcheck
 }
 
 // parseArgs extracts the mode from command-line arguments.
 // R1.4: when both -L and -P are given, the last one wins.
 // R2.1: positional operands are rejected.
 // R2.2: unknown flags produce an error.
-func parseArgs(args []string) (pwdMode, error) {
+func parseArgs(args []string) (pwdMode, parseResult, error) {
 	m := modePhysical // R1.1: default is physical.
 	for _, arg := range args {
 		if arg == "--" {
 			break
 		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			return m, fmt.Errorf("extra operand '%s'", arg)
+			return m, resultContinue, fmt.Errorf("extra operand '%s'", arg)
 		}
-		parsed, err := parseFlag(arg, m)
+		parsed, result, err := parseFlag(arg, m)
 		if err != nil {
-			return m, err
+			return m, resultContinue, err
+		}
+		if result != resultContinue {
+			return parsed, result, nil
 		}
 		m = parsed
 	}
-	return m, nil
+	return m, resultContinue, nil
 }
 
 // parseFlag parses a single flag argument and returns the updated mode.
-func parseFlag(arg string, current pwdMode) (pwdMode, error) {
+func parseFlag(arg string, current pwdMode) (pwdMode, parseResult, error) {
 	if strings.HasPrefix(arg, "--") {
 		return parseLongFlag(arg, current)
 	}
-	return parseShortFlags(arg, current)
+	m, err := parseShortFlags(arg, current)
+	return m, resultContinue, err
 }
 
-// parseLongFlag handles --logical and --physical.
-func parseLongFlag(arg string, current pwdMode) (pwdMode, error) {
+// parseLongFlag handles --logical, --physical, --help, and --version.
+func parseLongFlag(arg string, current pwdMode) (pwdMode, parseResult, error) {
 	switch arg {
 	case "--logical":
-		return modeLogical, nil
+		return modeLogical, resultContinue, nil
 	case "--physical":
-		return modePhysical, nil
+		return modePhysical, resultContinue, nil
+	case "--help":
+		return current, resultHelp, nil
+	case "--version":
+		return current, resultVersion, nil
 	default:
-		return current, fmt.Errorf("unrecognized option '%s'", arg)
+		return current, resultContinue, fmt.Errorf("unrecognized option '%s'", arg)
 	}
 }
 
@@ -107,6 +159,7 @@ func parseShortFlags(arg string, current pwdMode) (pwdMode, error) {
 // R1.1: default physical mode prints resolved path.
 // R1.2: logical mode uses PWD env var if valid, else falls back to physical.
 // R1.3: physical mode resolves all symlinks.
+// R2.2: exit 0 on success, exit 1 on failure with diagnostic to stderr.
 func printWorkingDir(m pwdMode, stdout, stderr *os.File) int {
 	var dir string
 	var err error
@@ -126,8 +179,9 @@ func printWorkingDir(m pwdMode, stdout, stderr *os.File) int {
 
 // logicalDir returns the PWD environment variable if it is a valid
 // absolute path to the current directory with no . or .. components.
-// R1.2: returns "" if PWD is unset, not absolute, contains dot
-// components, or does not refer to the same directory as os.Getwd().
+// R1.2, R2.1: returns "" if PWD is unset, not absolute, contains dot-dot
+// components, or does not refer to the same directory as os.Getwd()
+// (compared by device and inode via os.SameFile).
 func logicalDir() string {
 	pwd := os.Getenv("PWD")
 	if pwd == "" || !filepath.IsAbs(pwd) {
@@ -152,7 +206,8 @@ func containsDotComponent(path string) bool {
 	return false
 }
 
-// sameDirectory reports whether path refers to the same directory as os.Getwd().
+// sameDirectory reports whether path refers to the same directory as os.Getwd()
+// by comparing device and inode numbers via os.SameFile.
 func sameDirectory(path string) bool {
 	pwdInfo, err := os.Stat(path)
 	if err != nil {
