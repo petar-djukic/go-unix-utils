@@ -3,7 +3,7 @@
 
 // cmd/id implements GNU id: print user and group information.
 //
-// Implements prd041-id R1.1, R1.2, R1.3, R2.1.
+// Implements prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
 package main
 
 import (
@@ -27,10 +27,13 @@ func main() {
 
 // options holds parsed command-line flags.
 type options struct {
-	showUser bool // -u / --user
-	help     bool
-	version  bool
-	userName string // positional USER operand
+	showUser   bool // -u / --user
+	showGroup  bool // -g / --group
+	showGroups bool // -G / --groups
+	showName   bool // -n / --name
+	help       bool
+	version    bool
+	userName   string // positional USER operand
 }
 
 // run parses arguments and prints identity information.
@@ -38,7 +41,7 @@ type options struct {
 func run(args []string, stdout, stderr *os.File) int {
 	opts, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err) //nolint:errcheck
+		fmt.Fprintf(stderr, "%s: %s\n", programName, err)           //nolint:errcheck
 		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName) //nolint:errcheck
 		return 1
 	}
@@ -52,36 +55,97 @@ func run(args []string, stdout, stderr *os.File) int {
 		return 0
 	}
 
-	if opts.showUser {
+	return dispatch(opts, stdout, stderr)
+}
+
+// dispatch routes to the appropriate print function based on flags.
+func dispatch(opts options, stdout, stderr *os.File) int {
+	switch {
+	case opts.showUser:
 		return printEffectiveUID(opts, stdout, stderr)
+	case opts.showGroup:
+		return printEffectiveGID(opts, stdout, stderr)
+	case opts.showGroups:
+		return printAllGroups(opts, stdout, stderr)
+	default:
+		return printDefaultID(opts, stdout, stderr)
 	}
-	return printDefaultID(opts, stdout, stderr)
 }
 
 // parseArgs parses command-line arguments into options.
 func parseArgs(args []string) (options, error) {
 	var opts options
 	for _, arg := range args {
-		switch arg {
-		case "-u", "--user":
-			opts.showUser = true
-		case "--help":
-			opts.help = true
+		if err := parseOneArg(arg, &opts); err != nil {
+			return opts, err
+		}
+		if opts.help || opts.version {
 			return opts, nil
-		case "--version":
-			opts.version = true
-			return opts, nil
-		default:
-			if len(arg) > 0 && arg[0] == '-' {
-				return opts, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
-			}
-			if opts.userName != "" {
-				return opts, fmt.Errorf("extra operand '%s'", arg)
-			}
-			opts.userName = arg
 		}
 	}
-	return opts, nil
+	return opts, validateOpts(opts)
+}
+
+// parseOneArg handles a single CLI argument.
+func parseOneArg(arg string, opts *options) error {
+	switch arg {
+	case "-u", "--user":
+		opts.showUser = true
+	case "-g", "--group":
+		opts.showGroup = true
+	case "-G", "--groups":
+		opts.showGroups = true
+	case "-n", "--name":
+		opts.showName = true
+	case "--help":
+		opts.help = true
+	case "--version":
+		opts.version = true
+	default:
+		return parseDefault(arg, opts)
+	}
+	return nil
+}
+
+// parseDefault handles non-flag arguments and unknown flags.
+func parseDefault(arg string, opts *options) error {
+	if len(arg) > 0 && arg[0] == '-' {
+		return fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
+	}
+	if opts.userName != "" {
+		return fmt.Errorf("extra operand '%s'", arg)
+	}
+	opts.userName = arg
+	return nil
+}
+
+// validateOpts checks for conflicting flag combinations.
+// R2.4: only one of -u, -g, -G allowed.
+// R3.1: -n requires a selection flag.
+func validateOpts(opts options) error {
+	selCount := countSelections(opts)
+	if selCount > 1 {
+		return fmt.Errorf("cannot print \"only\" of more than one choice")
+	}
+	if opts.showName && selCount == 0 {
+		return fmt.Errorf("cannot print only names or real IDs in default format")
+	}
+	return nil
+}
+
+// countSelections returns how many selection flags are set.
+func countSelections(opts options) int {
+	count := 0
+	if opts.showUser {
+		count++
+	}
+	if opts.showGroup {
+		count++
+	}
+	if opts.showGroups {
+		count++
+	}
+	return count
 }
 
 // lookupUser resolves the user either by name or returns the current user.
@@ -105,11 +169,7 @@ func printDefaultID(opts options, stdout, stderr *os.File) int {
 		return 1
 	}
 
-	uid := u.Uid
-	gid := u.Gid
-	username := u.Username
-
-	gname := lookupGroupName(gid)
+	gname := lookupGroupName(u.Gid)
 
 	groups, err := groupsForUser(u, opts.userName == "")
 	if err != nil {
@@ -120,19 +180,60 @@ func printDefaultID(opts options, stdout, stderr *os.File) int {
 	groupParts := formatGroupList(groups)
 
 	fmt.Fprintf(stdout, "uid=%s(%s) gid=%s(%s) groups=%s\n",
-		uid, username, gid, gname, groupParts) //nolint:errcheck
+		u.Uid, u.Username, u.Gid, gname, groupParts) //nolint:errcheck
 
 	return 0
 }
 
-// printEffectiveUID prints only the effective UID (numeric).
-// R2.1: -u prints effective UID.
+// printEffectiveUID prints only the effective UID.
+// R2.1: -u prints effective UID. R3.1: with -n, prints name.
 func printEffectiveUID(opts options, stdout, stderr *os.File) int {
 	u, err := lookupUser(opts.userName, stderr)
 	if err != nil {
 		return 1
 	}
-	fmt.Fprintln(stdout, u.Uid) //nolint:errcheck
+	if opts.showName {
+		fmt.Fprintln(stdout, u.Username) //nolint:errcheck
+	} else {
+		fmt.Fprintln(stdout, u.Uid) //nolint:errcheck
+	}
+	return 0
+}
+
+// printEffectiveGID prints only the effective GID.
+// R2.2: -g prints effective GID. R3.1: with -n, prints group name.
+func printEffectiveGID(opts options, stdout, stderr *os.File) int {
+	u, err := lookupUser(opts.userName, stderr)
+	if err != nil {
+		return 1
+	}
+	if opts.showName {
+		fmt.Fprintln(stdout, lookupGroupName(u.Gid)) //nolint:errcheck
+	} else {
+		fmt.Fprintln(stdout, u.Gid) //nolint:errcheck
+	}
+	return 0
+}
+
+// printAllGroups prints all group IDs space-separated.
+// R2.3: -G prints all group IDs. R3.1: with -n, prints names.
+func printAllGroups(opts options, stdout, stderr *os.File) int {
+	u, err := lookupUser(opts.userName, stderr)
+	if err != nil {
+		return 1
+	}
+
+	groups, err := groupsForUser(u, opts.userName == "")
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: failed to get group list: %v\n", programName, err) //nolint:errcheck
+		return 1
+	}
+
+	if opts.showName {
+		fmt.Fprintln(stdout, formatGroupNames(groups)) //nolint:errcheck
+	} else {
+		fmt.Fprintln(stdout, strings.Join(groups, " ")) //nolint:errcheck
+	}
 	return 0
 }
 
@@ -179,11 +280,23 @@ func formatGroupList(gids []string) string {
 	return strings.Join(parts, ",")
 }
 
+// formatGroupNames builds a space-separated string of group names.
+func formatGroupNames(gids []string) string {
+	names := make([]string, len(gids))
+	for i, gid := range gids {
+		names[i] = lookupGroupName(gid)
+	}
+	return strings.Join(names, " ")
+}
+
 const helpText = `Usage: id [OPTION]... [USER]
 Print user and group information for each specified USER,
 or (when USER omitted) for the current process.
 
   -u, --user     print only the effective user ID
+  -g, --group    print only the effective group ID
+  -G, --groups   print all group IDs
+  -n, --name     print a name instead of a number, for -ugG
       --help     display this help and exit
       --version  output version information and exit
 `
