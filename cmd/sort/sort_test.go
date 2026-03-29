@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sort against gsort (GNU coreutils).
 //
-// Covers prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7.
+// Covers prd053-sort R1.1-R1.7, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -159,6 +159,122 @@ func TestDiff(t *testing.T) {
 			Name:  "R1.7_stable_reverse",
 			Args:  []string{"-s", "-r"},
 			Stdin: []byte("banana\napple\ncherry\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R2.1: -n numeric sort ---
+		{
+			Name:  "R2.1_numeric_basic",
+			Args:  []string{"-n"},
+			Stdin: []byte("10\n2\n1\n20\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_numeric_with_sign",
+			Args:  []string{"-n"},
+			Stdin: []byte("-5\n3\n-1\n0\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_numeric_decimal",
+			Args:  []string{"-n"},
+			Stdin: []byte("1.5\n1.2\n1.9\n1.0\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_numeric_long_option",
+			Args:  []string{"--numeric-sort"},
+			Stdin: []byte("10\n2\n1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_numeric_reverse",
+			Args:  []string{"-n", "-r"},
+			Stdin: []byte("10\n2\n1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_numeric_leading_blanks",
+			Args:  []string{"-n"},
+			Stdin: []byte("  10\n 2\n1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R2.2: -h human-numeric sort ---
+		{
+			Name:  "R2.2_human_basic",
+			Args:  []string{"-h"},
+			Stdin: []byte("1K\n100\n1M\n500\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_human_suffixes",
+			Args:  []string{"-h"},
+			Stdin: []byte("5G\n5M\n5K\n5T\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_human_long_option",
+			Args:  []string{"--human-numeric-sort"},
+			Stdin: []byte("2K\n1K\n3K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_human_decimal",
+			Args:  []string{"-h"},
+			Stdin: []byte("1.5K\n1K\n2K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R2.3: -M month sort ---
+		{
+			Name:  "R2.3_month_basic",
+			Args:  []string{"-M"},
+			Stdin: []byte("MAR\nJAN\nFEB\nDEC\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_month_unknown_first",
+			Args:  []string{"-M"},
+			Stdin: []byte("XYZ\nJAN\nFEB\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_month_long_option",
+			Args:  []string{"--month-sort"},
+			Stdin: []byte("MAR\nJAN\nFEB\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_month_all_months",
+			Args:  []string{"-M"},
+			Stdin: []byte("DEC\nJUN\nMAR\nSEP\nJAN\nJUL\nAPR\nOCT\nFEB\nAUG\nMAY\nNOV\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R2.4: -V version sort ---
+		{
+			Name:  "R2.4_version_basic",
+			Args:  []string{"-V"},
+			Stdin: []byte("file10\nfile2\nfile1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.4_version_segments",
+			Args:  []string{"-V"},
+			Stdin: []byte("1.10\n1.2\n1.1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.4_version_long_option",
+			Args:  []string{"--version-sort"},
+			Stdin: []byte("file10\nfile2\nfile1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.4_version_mixed",
+			Args:  []string{"-V"},
+			Stdin: []byte("a2b\na10b\na1b\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}

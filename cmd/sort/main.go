@@ -3,7 +3,7 @@
 
 // cmd/sort implements GNU sort: sort lines of text files.
 //
-// Implements prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7.
+// Implements prd053-sort R1.1-R1.7, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -11,19 +11,47 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// sortMode selects the comparison algorithm.
+type sortMode int
+
+const (
+	modeLexicographic sortMode = iota
+	modeNumeric                // R2.1: -n
+	modeHumanNumeric           // R2.2: -h
+	modeMonth                  // R2.3: -M
+	modeVersion                // R2.4: -V
+)
+
+// monthRank maps three-letter uppercase month abbreviations to sort rank.
+// R2.3: unknown strings sort before JAN (rank 0).
+var monthRank = map[string]int{
+	"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
+	"MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
+	"SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+// humanSuffix maps SI suffix characters to their power-of-1024 exponent.
+var humanSuffix = map[byte]float64{
+	'K': 1, 'k': 1, 'M': 2, 'G': 3, 'T': 4,
+	'P': 5, 'E': 6, 'Z': 7, 'Y': 8,
+}
+
 // sortOptions holds parsed flag state.
 type sortOptions struct {
-	reverse    bool   // -r: reverse sort order
-	unique     bool   // R1.5: -u: output only first of equal run
-	stable     bool   // R1.7: -s: preserve input order of equal lines
-	outputFile string // R1.6: -o FILE: write output to file
+	reverse    bool     // -r: reverse sort order
+	unique     bool     // R1.5: -u: output only first of equal run
+	stable     bool     // R1.7: -s: preserve input order of equal lines
+	outputFile string   // R1.6: -o FILE: write output to file
+	mode       sortMode // R2.x: comparison mode
 }
 
 func main() {
@@ -44,7 +72,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	lines, exitCode := readAllLines(files, stdin, stderr)
 	sortLines(lines, opts)
 	if opts.unique {
-		lines = dedup(lines)
+		lines = dedup(lines, opts.mode)
 	}
 	if err := writeOutput(opts.outputFile, stdout, lines); err != nil {
 		fmt.Fprintf(stderr, "sort: %v\n", err)
@@ -58,7 +86,6 @@ func parseArgs(args []string) (sortOptions, []string, error) {
 	var opts sortOptions
 	var files []string
 	flagsDone := false
-
 	i := 0
 	for i < len(args) {
 		arg := args[i]
@@ -109,6 +136,14 @@ func parseLongFlag(opts *sortOptions, name string, rest []string) (int, error) {
 		}
 		opts.outputFile = rest[0]
 		return 1, nil
+	case "numeric-sort":
+		opts.mode = modeNumeric
+	case "human-numeric-sort":
+		opts.mode = modeHumanNumeric
+	case "month-sort":
+		opts.mode = modeMonth
+	case "version-sort":
+		opts.mode = modeVersion
 	default:
 		return 0, fmt.Errorf("unrecognized option '--%s'", name)
 	}
@@ -128,6 +163,14 @@ func parseShortFlags(opts *sortOptions, chars string, rest []string) (int, error
 			opts.stable = true
 		case 'o':
 			return consumeFlagArg(chars[idx+1:], rest, &opts.outputFile, 'o')
+		case 'n':
+			opts.mode = modeNumeric
+		case 'h':
+			opts.mode = modeHumanNumeric
+		case 'M':
+			opts.mode = modeMonth
+		case 'V':
+			opts.mode = modeVersion
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", ch)
 		}
@@ -207,39 +250,219 @@ func scanLines(r io.Reader) ([]string, error) {
 	return lines, scanner.Err()
 }
 
-// sortLines sorts lines lexicographically by byte value.
-// R1.1: default lexicographic sort under LC_ALL=C.
-// R1.4: reverse with -r.
-// R1.7: -s preserves input order of equal lines via stable sort.
+// compareLine compares two lines using the active sort mode.
+// Returns negative if a < b, 0 if equal, positive if a > b.
+func compareLine(a, b string, mode sortMode) int {
+	switch mode {
+	case modeNumeric:
+		return compareNumeric(a, b)
+	case modeHumanNumeric:
+		return compareHumanNumeric(a, b)
+	case modeMonth:
+		return compareMonth(a, b)
+	case modeVersion:
+		return compareVersion(a, b)
+	default:
+		return strings.Compare(a, b)
+	}
+}
+
+// sortLines sorts lines using the comparison determined by opts.
+// R1.1: default lexicographic. R1.4: -r reverses. R1.7: -s stable.
 func sortLines(lines []string, opts sortOptions) {
 	less := func(i, j int) bool {
-		if opts.reverse {
-			return lines[i] > lines[j]
+		cmp := compareLine(lines[i], lines[j], opts.mode)
+		if cmp == 0 && !opts.stable {
+			cmp = strings.Compare(lines[i], lines[j])
 		}
-		return lines[i] < lines[j]
+		if opts.reverse {
+			return cmp > 0
+		}
+		return cmp < 0
 	}
-	if opts.stable {
-		sort.SliceStable(lines, less)
-		return
-	}
-	// Without -s, use stable sort anyway since equal lines are identical
-	// strings under lexicographic comparison (no key fields yet).
 	sort.SliceStable(lines, less)
 }
 
-// dedup removes consecutive equal lines, keeping only the first of each run.
-// R1.5: equality is based on the active sort comparison (full line for now).
-func dedup(lines []string) []string {
+// dedup removes consecutive equal lines based on the active sort comparison.
+// R1.5: equality uses the primary comparison only (no last-resort).
+func dedup(lines []string, mode sortMode) []string {
 	if len(lines) == 0 {
 		return lines
 	}
 	result := lines[:1]
 	for _, line := range lines[1:] {
-		if line != result[len(result)-1] {
+		if compareLine(line, result[len(result)-1], mode) != 0 {
 			result = append(result, line)
 		}
 	}
 	return result
+}
+
+// --- R2.1: Numeric sort ---
+
+// compareNumeric compares two strings by their leading numeric value.
+// R2.1: parses leading whitespace and optional sign.
+func compareNumeric(a, b string) int {
+	va, _ := parseNumber(a)
+	vb, _ := parseNumber(b)
+	return compareFloat(va, vb)
+}
+
+// parseNumber extracts a leading numeric value from a string.
+// Returns the parsed value and the index after the number.
+// Skips leading blanks, parses optional sign, digits, and decimal.
+func parseNumber(s string) (float64, int) {
+	i := skipBlanks(s)
+	start := i
+	if i < len(s) && (s[i] == '-' || s[i] == '+') {
+		i++
+	}
+	digitStart := i
+	for i < len(s) && isDigit(s[i]) {
+		i++
+	}
+	if i < len(s) && s[i] == '.' {
+		i++
+		for i < len(s) && isDigit(s[i]) {
+			i++
+		}
+	}
+	if i == digitStart && (i == start || i == start+1) {
+		return 0, i
+	}
+	val, err := strconv.ParseFloat(s[start:i], 64)
+	if err != nil {
+		return 0, i
+	}
+	return val, i
+}
+
+// --- R2.2: Human-numeric sort ---
+
+// compareHumanNumeric compares two strings by numeric value with SI suffixes.
+func compareHumanNumeric(a, b string) int {
+	return compareFloat(parseHumanValue(a), parseHumanValue(b))
+}
+
+// parseHumanValue extracts a numeric value with optional SI suffix.
+// R2.2: K, M, G, T, P, E, Z, Y suffixes (base 1024).
+func parseHumanValue(s string) float64 {
+	val, i := parseNumber(s)
+	if i < len(s) {
+		if exp, ok := humanSuffix[s[i]]; ok {
+			val *= math.Pow(1024, exp)
+		}
+	}
+	return val
+}
+
+// --- R2.3: Month sort ---
+
+// compareMonth compares two strings by month name abbreviation.
+// R2.3: JAN < FEB < ... < DEC. Unknown strings sort before JAN.
+func compareMonth(a, b string) int {
+	return parseMonthRank(a) - parseMonthRank(b)
+}
+
+// parseMonthRank extracts the month rank from a string.
+// Skips leading blanks, takes first 3 chars uppercased, looks up rank.
+func parseMonthRank(s string) int {
+	i := skipBlanks(s)
+	if i+3 > len(s) {
+		return 0
+	}
+	abbrev := strings.ToUpper(s[i : i+3])
+	if rank, ok := monthRank[abbrev]; ok {
+		return rank
+	}
+	return 0
+}
+
+// --- R2.4: Version sort ---
+
+// compareVersion compares two strings using natural version-number sort.
+// R2.4: digit sequences are compared numerically, non-digits lexicographically.
+func compareVersion(a, b string) int {
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if isDigit(a[i]) && isDigit(b[j]) {
+			cmp := cmpDigitRuns(a, b, i, j)
+			if cmp != 0 {
+				return cmp
+			}
+			i = advanceDigits(a, i)
+			j = advanceDigits(b, j)
+			continue
+		}
+		if a[i] != b[j] {
+			return int(a[i]) - int(b[j])
+		}
+		i++
+		j++
+	}
+	return (len(a) - i) - (len(b) - j)
+}
+
+// cmpDigitRuns compares digit sequences at positions ai and bj numerically.
+func cmpDigitRuns(a, b string, ai, bj int) int {
+	ae := advanceDigits(a, ai)
+	be := advanceDigits(b, bj)
+	a0, b0 := ai, bj
+	for a0 < ae && a[a0] == '0' {
+		a0++
+	}
+	for b0 < be && b[b0] == '0' {
+		b0++
+	}
+	sigA, sigB := ae-a0, be-b0
+	if sigA != sigB {
+		if sigA < sigB {
+			return -1
+		}
+		return 1
+	}
+	for k := 0; k < sigA; k++ {
+		if a[a0+k] != b[b0+k] {
+			return int(a[a0+k]) - int(b[b0+k])
+		}
+	}
+	return 0
+}
+
+// --- Helpers ---
+
+// skipBlanks returns the index of the first non-blank character.
+func skipBlanks(s string) int {
+	i := 0
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	return i
+}
+
+// advanceDigits returns the index after the digit run starting at from.
+func advanceDigits(s string, from int) int {
+	i := from
+	for i < len(s) && isDigit(s[i]) {
+		i++
+	}
+	return i
+}
+
+// isDigit reports whether b is an ASCII digit.
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+// compareFloat returns -1, 0, or 1 for float comparison.
+func compareFloat(a, b float64) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // writeOutput writes lines to the output file or stdout.
