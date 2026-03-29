@@ -6,7 +6,7 @@
 // Implements prd006-cat R1.1, R1.2, R1.3, R1.4, R1.5,
 // R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3,
 // R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9,
-// R5.1, R5.2, R5.3.
+// R5.1, R5.2, R5.3, R5.4.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -56,6 +57,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	for _, name := range files {
 		err := catFile(name, stdin, stdout, opts, &state)
 		if err != nil {
+			// R5.4: broken pipe (EPIPE) means downstream closed; exit 0.
+			if isBrokenPipe(err) {
+				return 0
+			}
 			fmt.Fprintf(stderr, "cat: %s: %v\n", name, unwrapErr(err))
 			exitCode = 1
 		}
@@ -139,6 +144,12 @@ func unwrapErr(err error) error {
 		return pe.Err
 	}
 	return err
+}
+
+// isBrokenPipe reports whether an error is caused by writing to a broken pipe.
+// R5.4: EPIPE from stdout means downstream consumer closed; exit 0.
+func isBrokenPipe(err error) bool {
+	return errors.Is(err, syscall.EPIPE)
 }
 
 // needsLineProcessing reports whether flags require line-by-line processing.

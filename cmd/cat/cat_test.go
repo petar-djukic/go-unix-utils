@@ -4,11 +4,12 @@
 // Differential tests for cmd/cat against gcat (GNU coreutils).
 //
 // Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4,
-// R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3.
+// R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4.
 package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -314,6 +315,45 @@ func normalizeCatErrors(data []byte) []byte {
 		lines[i] = append([]byte("cat"), rest...)
 	}
 	return bytes.Join(lines, []byte("\n"))
+}
+
+// TestSIGPIPE verifies R5.4: cat exits 0 when stdout is closed by a
+// downstream consumer (SIGPIPE), not non-zero.
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Create a large input so cat will still be writing when we close the pipe.
+	largeInput := bytes.Repeat([]byte("sigpipe test line\n"), 100000)
+
+	cmd := exec.Command(goBin)
+	cmd.Stdin = bytes.NewReader(largeInput)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Read a small amount then close stdout to trigger SIGPIPE.
+	buf := make([]byte, 64)
+	_, _ = stdout.Read(buf) // best-effort read, may partially fill
+	stdout.Close()
+
+	waitErr := cmd.Wait()
+	if waitErr == nil {
+		return // exit code 0, R5.4 satisfied
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		if exitErr.ExitCode() != 0 {
+			t.Errorf("R5.4: expected exit 0 on SIGPIPE, got %d", exitErr.ExitCode())
+		}
+	}
 }
 
 // writeTestFile writes content to a file, failing the test on error.
