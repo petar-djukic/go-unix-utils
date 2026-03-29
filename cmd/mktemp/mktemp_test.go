@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
 //
-// Covers prd036-mktemp R1.1, R1.2, R1.3, R1.4.
+// Covers prd036-mktemp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 // Because mktemp generates random names, tests verify structural properties
 // (exit code, path prefix, name pattern, permissions) rather than exact output.
 package main
@@ -153,6 +153,68 @@ func TestMktempCustomTemplate(t *testing.T) {
 	})
 }
 
+// TestMktempDirectory verifies -d/--directory creates directories.
+// R2.1: -d creates a directory instead of a file.
+// R2.2: directory has mode 0700.
+// R2.3: prints absolute path of the created directory.
+func TestMktempDirectory(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R2.1, R2.2, R2.3: -d creates directory with mode 0700
+	t.Run("dir_short_flag", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		env := []string{"TMPDIR=" + tmpDir}
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-d"}, env, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-d"}, env, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedDir(t, "go", goPath, tmpDir, pattern, 0o700)
+		verifyCreatedDir(t, "ref", refPath, tmpDir, pattern, 0o700)
+	})
+
+	// R2.1: --directory long flag
+	t.Run("dir_long_flag", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		env := []string{"TMPDIR=" + tmpDir}
+		pattern := regexp.MustCompile(`^tmp\.[A-Za-z0-9]{10}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--directory"}, env, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"--directory"}, env, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedDir(t, "go", goPath, tmpDir, pattern, 0o700)
+		verifyCreatedDir(t, "ref", refPath, tmpDir, pattern, 0o700)
+	})
+
+	// R2.1: -d with custom template
+	t.Run("dir_custom_template", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		pattern := regexp.MustCompile(`^mydir\.[A-Za-z0-9]{6}$`)
+
+		goTmpl := filepath.Join(goDir, "mydir.XXXXXX")
+		refTmpl := filepath.Join(refDir, "mydir.XXXXXX")
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-d", goTmpl}, nil, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-d", refTmpl}, nil, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyCreatedDir(t, "go", goPath, goDir, pattern, 0o700)
+		verifyCreatedDir(t, "ref", refPath, refDir, pattern, 0o700)
+	})
+}
+
 // runMktemp executes a mktemp binary and returns the output path and exit code.
 func runMktemp(t *testing.T, bin string, args, extraEnv []string, workDir string) (string, int) {
 	t.Helper()
@@ -189,7 +251,7 @@ func compareExitCodes(t *testing.T, goExit, refExit int) {
 	}
 }
 
-// verifyCreatedFile checks structural properties of mktemp output.
+// verifyCreatedFile checks structural properties of mktemp file output.
 // R4.2: path in expected dir, name matches pattern, file exists, mode correct.
 func verifyCreatedFile(
 	t *testing.T, label, output, expectedDir string,
@@ -205,7 +267,27 @@ func verifyCreatedFile(
 	absPath := resolvePath(t, output, expectedDir)
 	verifyBaseName(t, label, output, pattern)
 	verifyFileExists(t, label, absPath, expectedMode)
-	verifyDirectory(t, label, absPath, expectedDir)
+	verifyParentDir(t, label, absPath, expectedDir)
+}
+
+// verifyCreatedDir checks structural properties of mktemp directory output.
+// R2.2: directory exists with mode 0700.
+// R2.3: output is the absolute path of the created directory.
+func verifyCreatedDir(
+	t *testing.T, label, output, expectedDir string,
+	pattern *regexp.Regexp, expectedMode os.FileMode,
+) {
+	t.Helper()
+
+	if output == "" {
+		t.Errorf("[%s] empty output", label)
+		return
+	}
+
+	absPath := resolvePath(t, output, expectedDir)
+	verifyBaseName(t, label, output, pattern)
+	verifyDirExists(t, label, absPath, expectedMode)
+	verifyParentDir(t, label, absPath, expectedDir)
 }
 
 // resolvePath converts a potentially relative path to absolute.
@@ -235,13 +317,35 @@ func verifyFileExists(t *testing.T, label, absPath string, expectedMode os.FileM
 		t.Errorf("[%s] file not found: %v", label, err)
 		return
 	}
+	if info.IsDir() {
+		t.Errorf("[%s] expected file but got directory: %s", label, absPath)
+		return
+	}
 	if info.Mode().Perm() != expectedMode {
 		t.Errorf("[%s] mode: got %o want %o", label, info.Mode().Perm(), expectedMode)
 	}
 }
 
-// verifyDirectory checks the file was created in the expected directory.
-func verifyDirectory(t *testing.T, label, absPath, expectedDir string) {
+// verifyDirExists checks the directory exists with the expected permissions.
+// R2.2: mode 0700.
+func verifyDirExists(t *testing.T, label, absPath string, expectedMode os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(absPath)
+	if err != nil {
+		t.Errorf("[%s] directory not found: %v", label, err)
+		return
+	}
+	if !info.IsDir() {
+		t.Errorf("[%s] expected directory but got file: %s", label, absPath)
+		return
+	}
+	if info.Mode().Perm() != expectedMode {
+		t.Errorf("[%s] mode: got %o want %o", label, info.Mode().Perm(), expectedMode)
+	}
+}
+
+// verifyParentDir checks the file/directory was created in the expected directory.
+func verifyParentDir(t *testing.T, label, absPath, expectedDir string) {
 	t.Helper()
 	dir := filepath.Dir(absPath)
 	if dir != expectedDir {

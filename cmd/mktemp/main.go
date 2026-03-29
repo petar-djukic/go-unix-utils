@@ -3,7 +3,7 @@
 
 // cmd/mktemp implements GNU mktemp: create temporary files or directories.
 //
-// Implements prd036-mktemp R1.1, R1.2, R1.3, R1.4.
+// Implements prd036-mktemp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -32,13 +32,15 @@ func main() {
 // run executes mktemp logic.
 // R1.1: creates temp file in TMPDIR or /tmp by default.
 // R1.5: exits 0 on success, 1 on failure.
+// R2.1: -d/--directory creates a directory instead of a file.
 func run(args []string, stdout, stderr *os.File) int {
-	tmpl, err := resolveTemplate(args)
+	dirMode, remaining := extractDirFlag(args)
+	tmpl, err := resolveTemplate(remaining)
 	if err != nil {
 		printErr(stderr, err)
 		return 1
 	}
-	path, err := createTempFile(tmpl)
+	path, err := createTemp(tmpl, dirMode)
 	if err != nil {
 		printErr(stderr, err)
 		return 1
@@ -50,6 +52,26 @@ func run(args []string, stdout, stderr *os.File) int {
 // printErr writes a formatted error message to stderr.
 func printErr(w *os.File, err error) {
 	fmt.Fprintf(w, "%s: %s\n", progName, err) //nolint:errcheck
+}
+
+// extractDirFlag scans args for -d or --directory and returns
+// whether directory mode is enabled plus the remaining args.
+// R2.1: -d or --directory flag detection.
+func extractDirFlag(args []string) (bool, []string) {
+	dirMode := false
+	remaining := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--" {
+			remaining = append(remaining, args[len(remaining):]...)
+			break
+		}
+		if a == "-d" || a == "--directory" {
+			dirMode = true
+			continue
+		}
+		remaining = append(remaining, a)
+	}
+	return dirMode, remaining
 }
 
 // resolveTemplate determines the full template path from arguments.
@@ -88,42 +110,50 @@ func defaultDir() string {
 	return "/tmp"
 }
 
-// createTempFile creates a temporary file from a template path.
+// createTemp creates a temporary file or directory from a template path.
 // R1.3: replaces trailing X characters with random alphanumeric characters.
-// R1.4: creates with permission mode 0600.
-func createTempFile(tmpl string) (string, error) {
+// R2.1: creates directory when dirMode is true.
+func createTemp(tmpl string, dirMode bool) (string, error) {
 	xCount := countTrailingX(filepath.Base(tmpl))
 	if xCount < minXCount {
 		return "", fmt.Errorf("too few X's in template '%s'", tmpl)
 	}
 	prefix := tmpl[:len(tmpl)-xCount]
-	return tryCreate(prefix, xCount, tmpl)
+	return tryCreate(prefix, xCount, tmpl, dirMode)
 }
 
-// tryCreate attempts to create a unique file with random characters,
-// retrying on name collisions.
-func tryCreate(prefix string, xCount int, tmpl string) (string, error) {
+// tryCreate attempts to create a unique file or directory with random
+// characters, retrying on name collisions.
+func tryCreate(prefix string, xCount int, tmpl string, dirMode bool) (string, error) {
+	kind := "file"
+	if dirMode {
+		kind = "directory"
+	}
 	for range maxAttempts {
-		path, err := attemptCreate(prefix, xCount)
+		path, err := attemptCreate(prefix, xCount, dirMode)
 		if err == nil {
 			return path, nil
 		}
 		if !os.IsExist(err) {
-			return "", fmt.Errorf("failed to create file via template '%s': %v", tmpl, err)
+			return "", fmt.Errorf("failed to create %s via template '%s': %v", kind, tmpl, err)
 		}
 	}
-	return "", fmt.Errorf("failed to create file via template '%s': too many collisions", tmpl)
+	return "", fmt.Errorf("failed to create %s via template '%s': too many collisions", kind, tmpl)
 }
 
 // attemptCreate generates a random name and tries to create the file
-// with mode 0600 using O_EXCL for atomicity.
-// R1.4: permission mode 0600.
-func attemptCreate(prefix string, xCount int) (string, error) {
+// or directory atomically.
+// R1.4: file permission mode 0600.
+// R2.2: directory permission mode 0700.
+func attemptCreate(prefix string, xCount int, dirMode bool) (string, error) {
 	suffix, err := randomString(xCount)
 	if err != nil {
 		return "", err
 	}
 	path := prefix + suffix
+	if dirMode {
+		return path, os.Mkdir(path, 0o700)
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", err
