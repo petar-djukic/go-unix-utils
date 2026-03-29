@@ -3,16 +3,9 @@
 
 package format
 
-// PadRight pads s with trailing spaces to the given width.
-//
-// R3.1 (prd003): right-pads for left-aligned column output.
-func PadRight(s string, width int) string {
-	return ""
-}
-
 // PadLeft pads s with leading spaces to the given width.
 //
-// R3.2 (prd003): left-pads for right-aligned column output.
+// R1.2 (prd003): left-pads for right-aligned column output.
 func PadLeft(s string, width int) string {
 	return ""
 }
