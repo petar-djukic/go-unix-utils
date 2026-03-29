@@ -262,7 +262,7 @@ releases:
         - id: rel05.4-uc003-sha256sum
           status: implemented
         - id: rel05.4-uc004-sha512sum
-          status: spec_complete
+          status: implemented
     - version: "06.0"
       name: "Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
       status: spec_complete
