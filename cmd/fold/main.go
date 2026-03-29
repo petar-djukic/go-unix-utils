@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/fold wraps long lines to a specified width (prd023-fold R1, R2, R3).
+// cmd/fold wraps long lines to a specified width (prd023-fold R1.1-R1.4, R2, R3, R4).
 package main
 
 import (

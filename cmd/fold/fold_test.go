@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/fold against gfold (GNU coreutils).
 //
-// Covers prd023-fold R4.1, R4.2, R4.3, R4.4.
+// Covers prd023-fold R1.1, R1.2, R1.3, R1.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -22,6 +22,80 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// --- R1.1: read stdin when no files given, wrap to default 80 ---
+		{
+			Name:  "r1_1_stdin_default_width",
+			Args:  []string{},
+			Stdin: []byte(strings.Repeat("A", 90) + "\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_1_stdin_explicit_width",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte(strings.Repeat("z", 25) + "\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R1.2: lines within width pass through unchanged ---
+		{
+			Name:  "r1_2_short_line_unchanged",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_2_exact_width_unchanged",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abcde\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_2_empty_line_unchanged",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R1.3: lines exceeding width are split repeatedly ---
+		{
+			Name:  "r1_3_split_once",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abcdefgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_3_split_multiple",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("abcdefghijkl\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_3_split_exact_multiple",
+			Args:  []string{"-w", "4"},
+			Stdin: []byte("abcdefgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R1.4: final segment preserves trailing newline presence ---
+		{
+			Name:  "r1_4_with_trailing_newline",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("abcde\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_4_without_trailing_newline",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("abcde"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r1_4_multiline_last_no_newline",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("hello\nworldXXXXX"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
 		// --- R4.2: default folding (no flags) ---
 		{
 			Name:  "default_short_line",
