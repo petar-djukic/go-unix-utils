@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/expand converts tabs to spaces (prd024-expand R1, R2, R3).
+// cmd/expand converts tabs to spaces (prd024-expand R1, R2, R3, R4).
 package main
 
 import (
@@ -15,18 +15,31 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const defaultTabStop = 8
+const (
+	defaultTabStop = 8
+	programName    = "expand"
+)
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 	cfg := parseArgs(os.Args[1:])
+	if cfg.help {
+		printHelp(os.Stdout)
+		os.Exit(0)
+	}
+	if cfg.version {
+		printVersion(os.Stdout)
+		os.Exit(0)
+	}
 	os.Exit(run(cfg))
 }
 
 type config struct {
 	files   []string
 	tabSpec string // raw -t value; empty means default
-	initial bool   // R3.1: -i / --initial: only expand leading tabs
+	initial bool   // -i / --initial: only expand leading tabs
+	help    bool
+	version bool
 }
 
 // tabStops holds parsed tab stop configuration.
@@ -47,6 +60,14 @@ func parseArgs(args []string) config {
 		if a == "-" || len(a) == 0 || a[0] != '-' {
 			cfg.files = append(cfg.files, a)
 			continue
+		}
+		if a == "--help" {
+			cfg.help = true
+			return cfg
+		}
+		if a == "--version" {
+			cfg.version = true
+			return cfg
 		}
 		if a == "-i" || a == "--initial" {
 			cfg.initial = true
@@ -116,9 +137,16 @@ func splitTabSpec(spec string) []string {
 }
 
 func parsePositiveInt(s string) int {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil || n <= 0 {
-		die(fmt.Sprintf("tab size contains invalid character(s): '%s'", s))
+	trimmed := strings.TrimSpace(s)
+	n, err := strconv.Atoi(trimmed)
+	if err != nil {
+		die(fmt.Sprintf("tab size contains invalid character(s): '%s'", trimmed))
+	}
+	if n == 0 {
+		die("tab size cannot be 0")
+	}
+	if n < 0 {
+		die(fmt.Sprintf("tab size contains invalid character(s): '%s'", trimmed))
 	}
 	return n
 }
@@ -184,9 +212,6 @@ func expandStream(r *bufio.Reader, out *bufio.Writer, ts tabStops, initial bool)
 }
 
 // handleByte processes one input byte, expanding tabs when appropriate.
-// R3.1: in initial mode, tabs after non-whitespace pass through unchanged.
-// R3.2: backspace decrements column position to match GNU expand behavior.
-// R3.3: non-tab characters including NUL bytes are written unchanged.
 func handleByte(out *bufio.Writer, c byte, col *int, leading *bool, ts tabStops, initial bool) error {
 	switch c {
 	case '\n':
@@ -200,14 +225,12 @@ func handleByte(out *bufio.Writer, c byte, col *int, leading *bool, ts tabStops,
 		*col++
 		return out.WriteByte('\t')
 	case '\b':
-		// R3.2: backspace decrements column (floor at 0)
 		if *col > 0 {
 			*col--
 		}
 		*leading = false
 		return out.WriteByte('\b')
 	default:
-		// R3.1: space preserves leading state; any other char ends it
 		if c != ' ' {
 			*leading = false
 		}
@@ -242,6 +265,28 @@ func computeSpaces(col int, ts tabStops) int {
 		}
 	}
 	return 1
+}
+
+// printHelp prints usage information to w.
+// R4.2: --help flag prints usage and exits 0.
+func printHelp(w io.Writer) {
+	fmt.Fprintf(w, `Usage: %s [OPTION]... [FILE]...
+Convert tabs in each FILE to spaces, writing to standard output.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -i, --initial       do not convert tabs after non blanks
+  -t, --tabs=N        have tabs N characters apart, not 8
+  -t, --tabs=LIST     use comma separated list of tab positions
+      --help        display this help and exit
+      --version     output version information and exit
+`, programName)
+}
+
+// printVersion prints version information to w.
+// R4.1: --version flag prints version and exits 0.
+func printVersion(w io.Writer) {
+	fmt.Fprintf(w, "%s (go-unix-utils)\n", programName)
 }
 
 func die(msg string) {

@@ -4,15 +4,48 @@
 // Differential tests for cmd/expand against gexpand (GNU coreutils).
 //
 // Covers prd024-expand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
 package main
 
 import (
+	"bytes"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// discardAll blanks all output so tests check only exit code.
+func discardAll(data []byte) []byte {
+	return nil
+}
+
+// normalizeExpandErrors replaces program name prefixes so "gexpand:" and
+// "expand:" compare identically.
+func normalizeExpandErrors(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	var result [][]byte
+	for _, line := range lines {
+		if bytes.Contains(line, []byte("--help")) &&
+			bytes.Contains(line, []byte("Try")) {
+			continue
+		}
+		colonIdx := bytes.Index(line, []byte(": "))
+		if colonIdx <= 0 {
+			result = append(result, line)
+			continue
+		}
+		prefix := line[:colonIdx]
+		if bytes.ContainsAny(prefix, " \t") {
+			result = append(result, line)
+			continue
+		}
+		rest := bytes.ToLower(line[colonIdx:])
+		result = append(result, append([]byte("expand"), rest...))
+	}
+	return bytes.Join(result, []byte("\n"))
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -20,6 +53,12 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary gexpand not in PATH")
 	}
+
+	// Create temp file for unreadable file test
+	errDir := t.TempDir()
+	nonexistent := filepath.Join(errDir, "nonexistent.txt")
+
+	errNorm := []testutils.NormalizeFunc{normalizeExpandErrors}
 
 	tests := []testutils.DiffTest{
 		// R1.1: default tab expansion at every 8th column
@@ -233,6 +272,44 @@ func TestDiff(t *testing.T) {
 			Args:  []string{},
 			Stdin: []byte("ab\b\tc\n"),
 			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R4.1: --version exits 0
+		{
+			Name:      "version",
+			Args:      []string{"--version"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.2: --help exits 0
+		{
+			Name:      "help",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.3: invalid tab stop value exits 1
+		{
+			Name:      "invalid_tab_stop",
+			Args:      []string{"-t", "abc"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.3: zero tab stop value exits 1
+		{
+			Name:      "zero_tab_stop",
+			Args:      []string{"-t", "0"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.3: nonexistent file exits 1
+		{
+			Name:      "nonexistent_file",
+			Args:      []string{nonexistent},
+			ExitCode:  1,
+			Normalize: errNorm,
 		},
 	}
 
