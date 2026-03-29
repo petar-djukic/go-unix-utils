@@ -6,7 +6,9 @@
 // Implements prd028-uniq R1.1-R1.4 (adjacent-line deduplication, I/O, SIGPIPE),
 // R2.1 (-d duplicate-only), R2.2 (-D all-duplicates), R2.3 (-u unique-only),
 // R2.4 (-c count prefix), R3.1 (-i case-insensitive), R3.2 (-f skip fields),
-// R3.3 (-s skip chars), R3.4 (-w compare width).
+// R3.3 (-s skip chars), R3.4 (-w compare width), R4.1 (exit 0 on success),
+// R4.2 (exit 1 on input open failure), R4.3 (exit 1 on write error),
+// R4.4 (SIGPIPE handling via sys.InstallSIGPIPEHandler).
 package main
 
 import (
