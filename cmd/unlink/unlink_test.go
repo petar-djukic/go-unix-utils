@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/unlink against gunlink (GNU coreutils).
 //
-// Covers prd038-unlink R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
+// Covers prd038-unlink R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -24,6 +24,8 @@ func discardAll(data []byte) []byte {
 }
 
 // TestDiff runs differential tests using the testutils harness.
+// R3.2: covers zero-argument error, multi-argument error, non-existent file error,
+// and directory argument error via RunDiffTests.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -35,14 +37,19 @@ func TestDiff(t *testing.T) {
 
 	workDir := t.TempDir()
 
+	// R3.2: directory argument error — create a directory in workDir.
+	if err := os.Mkdir(filepath.Join(workDir, "somedir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []testutils.DiffTest{
-		// R2.1: no arguments — error exit 1.
+		// R3.2: zero-argument error — exit 1.
 		{
 			Name:      "no_arguments",
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
-		// R2.2: extra operand — error exit 1.
+		// R3.2: multi-argument error — exit 1.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"a", "b"},
@@ -50,10 +57,18 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
-		// R2.3: non-existent file — error exit 1.
+		// R3.2: non-existent file error — exit 1.
 		{
 			Name:      "nonexistent_file",
 			Args:      []string{"nonexistent.txt"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: directory argument error — exit 1.
+		{
+			Name:      "directory_argument",
+			Args:      []string{"somedir"},
 			WorkDir:   workDir,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
@@ -63,7 +78,8 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestUnlinkFile verifies R1.1, R1.2, R1.3: successful removal of a regular file.
+// TestUnlinkFile verifies R3.2 (regular file and symbolic link removal) and
+// R3.3 (file no longer exists after successful invocation).
 func TestUnlinkFile(t *testing.T) {
 	t.Parallel()
 
@@ -73,6 +89,7 @@ func TestUnlinkFile(t *testing.T) {
 		t.Skip("reference binary gunlink not in PATH")
 	}
 
+	// R3.2: successful removal of a regular file.
 	t.Run("regular_file", func(t *testing.T) {
 		t.Parallel()
 		goDir := t.TempDir()
@@ -91,10 +108,12 @@ func TestUnlinkFile(t *testing.T) {
 		if !bytes.Equal(refStdout, goStdout) {
 			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
 		}
-		// R1.1: file must no longer exist.
+		// R3.3: file must no longer exist after successful invocation.
 		assertRemoved(t, goDir, "target.txt")
+		assertRemoved(t, refDir, "target.txt")
 	})
 
+	// R3.2: successful removal of a symbolic link.
 	t.Run("symbolic_link", func(t *testing.T) {
 		t.Parallel()
 		goDir := t.TempDir()
@@ -116,13 +135,16 @@ func TestUnlinkFile(t *testing.T) {
 		if !bytes.Equal(refStdout, goStdout) {
 			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
 		}
-		// Symlink removed, target remains.
+		// R3.3: symlink must no longer exist after successful invocation.
 		assertRemoved(t, goDir, "link.txt")
+		assertRemoved(t, refDir, "link.txt")
+		// Symlink target must still exist.
 		assertExists(t, goDir, "real.txt")
+		assertExists(t, refDir, "real.txt")
 	})
 }
 
-// TestUnlinkDirectory verifies R2.4: unlinking a directory fails.
+// TestUnlinkDirectory verifies R2.4 and R3.2: unlinking a directory fails.
 func TestUnlinkDirectory(t *testing.T) {
 	t.Parallel()
 
