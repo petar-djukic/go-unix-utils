@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.3.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.7.
 package main
 
 import (
@@ -24,6 +24,7 @@ func TestDiff(t *testing.T) {
 	sortDir := setupSortDir(t)
 	versionDir := setupVersionDir(t)
 	singleDir := setupSingleFileDir(t)
+	humanDir := setupHumanDir(t)
 
 	tests := []testutils.DiffTest{
 		// R2.7: -r reverses default (name) sort
@@ -188,6 +189,60 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-l", "--color=always", sortDir},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.4: --color=never with -l produces no ANSI sequences
+		{
+			Name: "R3.4_color_never_long",
+			Args: []string{"-l", "--color=never", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --color=auto in pipe produces no ANSI sequences
+		{
+			Name: "R3.4_color_auto_pipe_long",
+			Args: []string{"-l", "--color=auto", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.5: -h with -l shows human-readable sizes
+		{
+			Name: "R3.5_human_long",
+			Args: []string{"-l", "-h", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.5: -h without -l has no visible effect
+		{
+			Name: "R3.5_human_no_long",
+			Args: []string{"-1", "-h", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.5+R3.6: -h -l with large files shows human-readable
+		{
+			Name: "R3.5_R3.6_human_long_large",
+			Args: []string{"-l", "-h", humanDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.6: -h applies to total line in long format
+		{
+			Name: "R3.6_human_total",
+			Args: []string{"-l", "-h", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.7: -h with -s shows human-readable block counts
+		{
+			Name: "R3.7_human_blocks_single",
+			Args: []string{"-1", "-s", "-h", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.7: -h with -s and -l shows human-readable blocks in long format
+		{
+			Name: "R3.7_human_blocks_long",
+			Args: []string{"-l", "-s", "-h", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.7: -h with -s and -l for larger files
+		{
+			Name: "R3.7_human_blocks_long_large",
+			Args: []string{"-l", "-s", "-h", humanDir},
+			Env:  []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -242,6 +297,17 @@ func writeSizedFile(t *testing.T, path string, size int) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+// setupHumanDir creates a directory with files large enough for
+// human-readable size formatting to produce suffixed output.
+func setupHumanDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeSizedFile(t, filepath.Join(dir, "small"), 512)
+	writeSizedFile(t, filepath.Join(dir, "medium"), 10240)
+	writeSizedFile(t, filepath.Join(dir, "large"), 1048576)
+	return dir
 }
 
 // setMtime sets the modification time of a file.

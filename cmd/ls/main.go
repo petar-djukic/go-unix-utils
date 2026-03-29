@@ -9,6 +9,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/user"
 	"sort"
@@ -632,6 +633,7 @@ type entryPrefixWidths struct {
 // computePrefixWidths computes max widths for inode and block count
 // prefixes across all entries.
 // R2.11, R2.12: column width for prefix alignment.
+// R3.7: block width accounts for human-readable format.
 func computePrefixWidths(cfg *lsConfig, entries []lsEntry) entryPrefixWidths {
 	var pw entryPrefixWidths
 	if !cfg.showInode && !cfg.showBlocks {
@@ -645,7 +647,8 @@ func computePrefixWidths(cfg *lsConfig, entries []lsEntry) entryPrefixWidths {
 			updateMaxInt(&pw.inode, uintWidth(e.info.Ino))
 		}
 		if cfg.showBlocks {
-			updateMaxInt(&pw.blocks, intWidth(e.info.Blocks/2))
+			s := formatBlockCount(e.info.Blocks, cfg.humanSize)
+			updateMaxInt(&pw.blocks, len(s))
 		}
 	}
 	return pw
@@ -654,6 +657,7 @@ func computePrefixWidths(cfg *lsConfig, entries []lsEntry) entryPrefixWidths {
 // formatEntryPrefix builds the inode and/or blocks prefix string for
 // non-long output formats.
 // R2.11: inode prefix. R2.12: block count prefix. R2.15: order.
+// R3.7: human-readable blocks when -h is active.
 func formatEntryPrefix(cfg *lsConfig, e lsEntry, pw entryPrefixWidths) string {
 	if !cfg.showInode && !cfg.showBlocks {
 		return ""
@@ -663,7 +667,8 @@ func formatEntryPrefix(cfg *lsConfig, e lsEntry, pw entryPrefixWidths) string {
 		fmt.Fprintf(&sb, "%*d ", pw.inode, e.info.Ino)
 	}
 	if cfg.showBlocks && e.info != nil {
-		fmt.Fprintf(&sb, "%*d ", pw.blocks, e.info.Blocks/2)
+		bStr := formatBlockCount(e.info.Blocks, cfg.humanSize)
+		fmt.Fprintf(&sb, "%*s ", pw.blocks, bStr)
 	}
 	return sb.String()
 }
@@ -839,13 +844,15 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 	if e.link != "" {
 		name += " -> " + e.link
 	}
-	fmt.Printf("%s%s %*d %-*s %-*s %*d %s %s\n",
+	// R3.5: use human-readable size when -h is active with -l.
+	sizeStr := formatSize(fi.Size, cfg.humanSize)
+	fmt.Printf("%s%s %*d %-*s %-*s %*s %s %s\n",
 		prefix,
 		perm,
 		cw.nlink, fi.Nlink,
 		cw.owner, owner,
 		cw.group, group,
-		cw.size, fi.Size,
+		cw.size, sizeStr,
 		mtime,
 		name,
 	)
@@ -853,6 +860,7 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 
 // longEntryPrefix builds the inode and/or blocks prefix for long format.
 // R2.11: inode right-aligned. R2.12: blocks right-aligned.
+// R3.7: human-readable blocks when -h is active.
 func longEntryPrefix(cfg *lsConfig, fi *sys.FileInfo, cw columnWidths) string {
 	if !cfg.showInode && !cfg.showBlocks {
 		return ""
@@ -862,7 +870,8 @@ func longEntryPrefix(cfg *lsConfig, fi *sys.FileInfo, cw columnWidths) string {
 		fmt.Fprintf(&sb, "%*d ", cw.inode, fi.Ino)
 	}
 	if cfg.showBlocks {
-		fmt.Fprintf(&sb, "%*d ", cw.blocks, fi.Blocks/2)
+		bStr := formatBlockCount(fi.Blocks, cfg.humanSize)
+		fmt.Fprintf(&sb, "%*s ", cw.blocks, bStr)
 	}
 	return sb.String()
 }
@@ -870,6 +879,7 @@ func longEntryPrefix(cfg *lsConfig, fi *sys.FileInfo, cw columnWidths) string {
 // printTotalLine prints the "total N" block count line for long format.
 // R1.10: total blocks in 1K-block units (st_blocks/2).
 // R2.13: total line also shown when -s is active.
+// R3.6: human-readable total when -h is active.
 func printTotalLine(cfg *lsConfig, entries []lsEntry) {
 	var totalBlocks int64
 	for _, e := range entries {
@@ -877,7 +887,12 @@ func printTotalLine(cfg *lsConfig, entries []lsEntry) {
 			totalBlocks += e.info.Blocks
 		}
 	}
-	fmt.Printf("total %d\n", totalBlocks/2)
+	kb := totalBlocks / 2
+	if cfg.humanSize {
+		fmt.Printf("total %s\n", gnuHumanSize(kb*1024))
+	} else {
+		fmt.Printf("total %d\n", kb)
+	}
 }
 
 // permissionString builds the 10-character permission string.
@@ -984,10 +999,10 @@ func formatTime(t time.Time) string {
 }
 
 // formatSize formats a file size, optionally human-readable.
-// R3.5: dispatches to format.HumanSize when cfg.humanSize is true.
+// R3.5: dispatches to gnuHumanSize when cfg.humanSize is true.
 func formatSize(size int64, human bool) string {
 	if human {
-		return format.HumanSize(size, format.HumanSizeOpts{Binary: true})
+		return gnuHumanSize(size)
 	}
 	return strconv.FormatInt(size, 10)
 }
@@ -998,9 +1013,39 @@ func formatSize(size int64, human bool) string {
 func formatBlockCount(blocks int64, human bool) string {
 	kb := blocks / 2
 	if human {
-		return format.HumanSize(kb*1024, format.HumanSizeOpts{Binary: true})
+		return gnuHumanSize(kb * 1024)
 	}
 	return strconv.FormatInt(kb, 10)
+}
+
+// gnuHumanSuffixes are 1024-base unit suffixes matching GNU ls -h.
+// GNU ls uses K/M/G (not Ki/Mi/Gi) with 1024-base and ceiling rounding.
+var gnuHumanSuffixes = []string{"K", "M", "G", "T", "P", "E"}
+
+// gnuHumanSize formats bytes matching GNU ls -h conventions.
+// R3.5, R3.6, R3.7: 1024-base, ceiling rounding, K/M/G suffixes.
+func gnuHumanSize(bytes int64) string {
+	if bytes < 1024 {
+		return strconv.FormatInt(bytes, 10)
+	}
+	val := float64(bytes)
+	for i, suffix := range gnuHumanSuffixes {
+		val /= 1024.0
+		if i == len(gnuHumanSuffixes)-1 || val < 1024.0 {
+			return formatGNUValue(val, suffix)
+		}
+	}
+	return strconv.FormatInt(bytes, 10)
+}
+
+// formatGNUValue renders a scaled value with GNU-style precision.
+// Values >= 10 are integer (ceiling); values < 10 use one decimal.
+func formatGNUValue(val float64, suffix string) string {
+	if val >= 10 {
+		return fmt.Sprintf("%d%s", int64(math.Ceil(val)), suffix)
+	}
+	rounded := math.Ceil(val*10) / 10
+	return fmt.Sprintf("%.1f%s", rounded, suffix)
 }
 
 // classifyIndicator returns the -F indicator character for a file mode.
@@ -1047,6 +1092,8 @@ type columnWidths struct {
 // computeColumnWidths calculates alignment widths for long format fields.
 // R1.6, R1.7: nlink, owner, group, size widths.
 // R2.11: inode column width. R2.12: blocks column width.
+// R3.5: size width accounts for human-readable format.
+// R3.7: blocks width accounts for human-readable format.
 func computeColumnWidths(cfg *lsConfig, entries []lsEntry) columnWidths {
 	var cw columnWidths
 	for _, e := range entries {
@@ -1056,12 +1103,13 @@ func computeColumnWidths(cfg *lsConfig, entries []lsEntry) columnWidths {
 		updateMaxInt(&cw.nlink, uintWidth(e.info.Nlink))
 		updateMaxInt(&cw.owner, len(resolveOwner(e.info.Uid, cfg.numericIDs)))
 		updateMaxInt(&cw.group, len(resolveGroup(e.info.Gid, cfg.numericIDs)))
-		updateMaxInt(&cw.size, intWidth(e.info.Size))
+		updateMaxInt(&cw.size, len(formatSize(e.info.Size, cfg.humanSize)))
 		if cfg.showInode {
 			updateMaxInt(&cw.inode, uintWidth(e.info.Ino))
 		}
 		if cfg.showBlocks {
-			updateMaxInt(&cw.blocks, intWidth(e.info.Blocks/2))
+			s := formatBlockCount(e.info.Blocks, cfg.humanSize)
+			updateMaxInt(&cw.blocks, len(s))
 		}
 	}
 	return cw
