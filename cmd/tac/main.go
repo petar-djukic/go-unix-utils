@@ -10,7 +10,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -58,28 +60,54 @@ func processFiles(files []string) int {
 // R1.1: reads entire input, splits on separator, writes reversed.
 // R1.3: reads stdin when filename is "-".
 func processFile(name string) error {
-	_, _ = readInput(name)
-	// TODO: implement record splitting and reversal (R1.1, R1.2, R2.1-R2.4)
-	return nil
+	data, err := readInput(name)
+	if err != nil {
+		return err
+	}
+	reversed := reverseRecords(data)
+	return writeOutput(reversed)
 }
 
 // readInput opens the named file or stdin and reads all bytes.
 func readInput(name string) ([]byte, error) {
 	if name == "-" {
-		return os.ReadFile("/dev/stdin")
+		return io.ReadAll(os.Stdin)
 	}
 	return os.ReadFile(name)
 }
 
-// reverseRecords splits data into records and returns them reversed.
+// reverseRecords splits data into records on the separator and
+// returns them in reverse order.
 // R1.1: splits on separator, reverses order.
 // R1.2: trailing separator terminates the last record.
 func reverseRecords(data []byte) []byte {
-	_ = *separator
-	_ = *before
-	_ = *regex
-	// TODO: implement splitting and reversal logic
-	return data
+	if len(data) == 0 {
+		return data
+	}
+	_ = *before // TODO: implement -b flag (R2.2)
+	_ = *regex  // TODO: implement -r flag (R2.3)
+
+	sep := *separator
+	s := string(data)
+
+	// SplitAfter keeps the separator attached to each record.
+	parts := strings.SplitAfter(s, sep)
+
+	// R1.2: trailing separator terminates last record, not empty record.
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+
+	reverseSlice(parts)
+
+	return []byte(strings.Join(parts, ""))
+}
+
+// reverseSlice reverses a string slice in place.
+func reverseSlice(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
 
 // writeOutput writes reversed records to stdout.
