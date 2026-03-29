@@ -3,7 +3,7 @@
 
 // cmd/basename implements GNU basename: strip directory and suffix from filenames.
 //
-// Implements prd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1.
+// Implements prd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -79,7 +79,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		fmt.Fprint(stdout, versionText) //nolint:errcheck // best-effort
 		return 0
 	case parseErr:
-		fmt.Fprintln(stderr, opts.errMsg) //nolint:errcheck // best-effort
+		fmt.Fprintln(stderr, opts.errMsg)                          //nolint:errcheck // best-effort
+		fmt.Fprintln(stderr, "Try 'basename --help' for more information.") //nolint:errcheck // best-effort
 		return 1
 	}
 
