@@ -7,9 +7,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
+	"syscall"
+	"unsafe"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -69,9 +73,42 @@ func printTTY(silent bool, stdout *os.File) int {
 }
 
 // ttyName returns the terminal device path for stdin.
+// R1.1: resolves the actual device path using platform-specific mechanisms.
 func ttyName() string {
-	// TODO: R1.1 — implementation task will resolve the actual device path.
-	return "/dev/tty"
+	if runtime.GOOS == "linux" {
+		return ttyNameFromProc()
+	}
+	return ttyNameFromFcntl()
+}
+
+// ttyNameFromFcntl uses fcntl(F_GETPATH) to resolve the device path (macOS).
+func ttyNameFromFcntl() string {
+	const fGetPath = 50 // F_GETPATH on macOS
+	const maxPathLen = 1024
+	buf := make([]byte, maxPathLen)
+	_, _, errno := syscall.Syscall(
+		syscall.SYS_FCNTL,
+		os.Stdin.Fd(),
+		fGetPath,
+		uintptr(unsafe.Pointer(&buf[0])),
+	)
+	if errno != 0 {
+		return "/dev/tty"
+	}
+	n := bytes.IndexByte(buf, 0)
+	if n < 0 {
+		n = len(buf)
+	}
+	return string(buf[:n])
+}
+
+// ttyNameFromProc reads /proc/self/fd/0 to resolve the device path (Linux).
+func ttyNameFromProc() string {
+	name, err := os.Readlink("/proc/self/fd/0")
+	if err != nil {
+		return "/dev/tty"
+	}
+	return name
 }
 
 // parseResult describes the outcome of argument parsing.
