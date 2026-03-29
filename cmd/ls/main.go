@@ -352,6 +352,7 @@ func classifyArg(
 
 // listDir reads and lists the contents of a single directory.
 // R1.1, R1.4: directory enumeration with filtering.
+// R2.12, R2.13: total line printed when -s or -l is active.
 func listDir(cfg *lsConfig, dirPath string, showHeader bool) int {
 	if showHeader {
 		fmt.Printf("%s:\n", dirPath)
@@ -362,7 +363,7 @@ func listDir(cfg *lsConfig, dirPath string, showHeader bool) int {
 	}
 	entries = filterEntries(entries, cfg.filter)
 	sortEntries(entries, cfg)
-	if cfg.format == formatLong {
+	if cfg.format == formatLong || cfg.showBlocks {
 		printTotalLine(cfg, entries)
 	}
 	formatOutput(cfg, entries)
@@ -613,36 +614,89 @@ func digitRunLen(s string) int {
 	return i
 }
 
+// entryPrefixWidths holds max widths for inode and block count prefixes
+// used by non-long output formats.
+// R2.11, R2.12: right-aligned prefix columns.
+type entryPrefixWidths struct {
+	inode  int
+	blocks int
+}
+
+// computePrefixWidths computes max widths for inode and block count
+// prefixes across all entries.
+// R2.11, R2.12: column width for prefix alignment.
+func computePrefixWidths(cfg *lsConfig, entries []lsEntry) entryPrefixWidths {
+	var pw entryPrefixWidths
+	if !cfg.showInode && !cfg.showBlocks {
+		return pw
+	}
+	for _, e := range entries {
+		if e.info == nil {
+			continue
+		}
+		if cfg.showInode {
+			updateMaxInt(&pw.inode, uintWidth(e.info.Ino))
+		}
+		if cfg.showBlocks {
+			updateMaxInt(&pw.blocks, intWidth(e.info.Blocks/2))
+		}
+	}
+	return pw
+}
+
+// formatEntryPrefix builds the inode and/or blocks prefix string for
+// non-long output formats.
+// R2.11: inode prefix. R2.12: block count prefix. R2.15: order.
+func formatEntryPrefix(cfg *lsConfig, e lsEntry, pw entryPrefixWidths) string {
+	if !cfg.showInode && !cfg.showBlocks {
+		return ""
+	}
+	var sb strings.Builder
+	if cfg.showInode && e.info != nil {
+		fmt.Fprintf(&sb, "%*d ", pw.inode, e.info.Ino)
+	}
+	if cfg.showBlocks && e.info != nil {
+		fmt.Fprintf(&sb, "%*d ", pw.blocks, e.info.Blocks/2)
+	}
+	return sb.String()
+}
+
 // formatOutput dispatches to the appropriate output formatter.
 // R1.1, R1.5, R1.6, R1.11, R1.13: format selection.
+// R2.11, R2.12: computes prefix widths for -i/-s.
 func formatOutput(cfg *lsConfig, entries []lsEntry) {
 	if len(entries) == 0 {
 		return
 	}
+	pw := computePrefixWidths(cfg, entries)
 	switch cfg.format {
 	case formatSingle:
-		formatSingleColumn(cfg, entries)
+		formatSingleColumn(cfg, entries, pw)
 	case formatLong:
 		formatLongListing(cfg, entries)
 	case formatColumns:
-		formatMultiColumn(cfg, entries)
+		formatMultiColumn(cfg, entries, pw)
 	case formatAcross:
-		formatAcrossColumns(cfg, entries)
+		formatAcrossColumns(cfg, entries, pw)
 	}
 }
 
 // formatSingleColumn prints one entry per line.
 // R1.2, R1.5: single-column output.
-func formatSingleColumn(cfg *lsConfig, entries []lsEntry) {
+// R2.11, R2.12: optional inode/blocks prefix.
+func formatSingleColumn(cfg *lsConfig, entries []lsEntry, pw entryPrefixWidths) {
 	for _, e := range entries {
-		fmt.Println(entryDisplayName(cfg, e))
+		fmt.Printf("%s%s\n",
+			formatEntryPrefix(cfg, e, pw),
+			entryDisplayName(cfg, e))
 	}
 }
 
 // formatMultiColumn prints entries in vertical multi-column layout.
 // R1.1, R1.11, R1.12: vertical column fill.
-func formatMultiColumn(cfg *lsConfig, entries []lsEntry) {
-	names := entryNames(cfg, entries)
+// R2.11, R2.12: optional inode/blocks prefix in names.
+func formatMultiColumn(cfg *lsConfig, entries []lsEntry, pw entryPrefixWidths) {
+	names := entryNames(cfg, entries, pw)
 	rows := format.Columns(names, cfg.termWidth)
 	if len(rows) == 0 {
 		return
@@ -687,8 +741,9 @@ func printColumnRows(rows [][]string, colWidths []int) {
 // formatAcrossColumns prints entries in horizontal multi-column layout.
 // R1.13: entries fill across rows first, then down to the next row.
 // R1.14: -x is mutually exclusive with -l, -1, -C; last flag wins.
-func formatAcrossColumns(cfg *lsConfig, entries []lsEntry) {
-	names := entryNames(cfg, entries)
+// R2.11, R2.12: optional inode/blocks prefix in names.
+func formatAcrossColumns(cfg *lsConfig, entries []lsEntry, pw entryPrefixWidths) {
+	names := entryNames(cfg, entries, pw)
 	numCols := fitAcrossColumns(names, cfg.termWidth)
 	rows := chunkNames(names, numCols)
 	if len(rows) == 0 {
@@ -759,12 +814,15 @@ func formatLongListing(cfg *lsConfig, entries []lsEntry) {
 
 // printLongEntry prints a single entry in long format.
 // R1.6: permissions nlink owner group size mtime name.
+// R2.11: inode prefix when -i. R2.12: blocks prefix when -s.
+// R2.14: numeric UID/GID when -n.
 func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 	if e.info == nil {
 		fmt.Println(e.name)
 		return
 	}
 	fi := e.info
+	prefix := longEntryPrefix(cfg, fi, cw)
 	perm := permissionString(fi.Mode)
 	owner := resolveOwner(fi.Uid, cfg.numericIDs)
 	group := resolveGroup(fi.Gid, cfg.numericIDs)
@@ -774,7 +832,8 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 	if e.link != "" {
 		name += " -> " + e.link
 	}
-	fmt.Printf("%s %*d %-*s %-*s %*d %s %s\n",
+	fmt.Printf("%s%s %*d %-*s %-*s %*d %s %s\n",
+		prefix,
 		perm,
 		cw.nlink, fi.Nlink,
 		cw.owner, owner,
@@ -785,8 +844,25 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 	)
 }
 
+// longEntryPrefix builds the inode and/or blocks prefix for long format.
+// R2.11: inode right-aligned. R2.12: blocks right-aligned.
+func longEntryPrefix(cfg *lsConfig, fi *sys.FileInfo, cw columnWidths) string {
+	if !cfg.showInode && !cfg.showBlocks {
+		return ""
+	}
+	var sb strings.Builder
+	if cfg.showInode {
+		fmt.Fprintf(&sb, "%*d ", cw.inode, fi.Ino)
+	}
+	if cfg.showBlocks {
+		fmt.Fprintf(&sb, "%*d ", cw.blocks, fi.Blocks/2)
+	}
+	return sb.String()
+}
+
 // printTotalLine prints the "total N" block count line for long format.
 // R1.10: total blocks in 1K-block units (st_blocks/2).
+// R2.13: total line also shown when -s is active.
 func printTotalLine(cfg *lsConfig, entries []lsEntry) {
 	var totalBlocks int64
 	for _, e := range entries {
@@ -865,6 +941,7 @@ func execSpecialChar(exec, special bool, lower, upper byte) byte {
 
 // resolveOwner looks up the username for a UID.
 // R1.8: os/user.LookupId with numeric fallback.
+// R2.14: returns numeric string when numeric is true.
 func resolveOwner(uid uint32, numeric bool) string {
 	if numeric {
 		return strconv.FormatUint(uint64(uid), 10)
@@ -878,6 +955,7 @@ func resolveOwner(uid uint32, numeric bool) string {
 
 // resolveGroup looks up the group name for a GID.
 // R1.8: os/user.LookupGroupId with numeric fallback.
+// R2.14: returns numeric string when numeric is true.
 func resolveGroup(gid uint32, numeric bool) string {
 	if numeric {
 		return strconv.FormatUint(uint64(gid), 10)
@@ -907,12 +985,15 @@ func formatSize(size int64, human bool) string {
 	return strconv.FormatInt(size, 10)
 }
 
-// formatBlockCount formats an entry's block count.
-// R2.12, R3.7: block count with optional human-readable format.
+// formatBlockCount formats an entry's block count in 1K-block units.
+// R2.12: fi.Blocks/2 converts 512-byte to 1024-byte blocks.
+// R3.7: optional human-readable format.
 func formatBlockCount(blocks int64, human bool) string {
-	_ = blocks
-	_ = human
-	return ""
+	kb := blocks / 2
+	if human {
+		return format.HumanSize(kb*1024, format.HumanSizeOpts{Binary: true})
+	}
+	return strconv.FormatInt(kb, 10)
 }
 
 // classifyIndicator returns the -F indicator character for a file mode.
@@ -957,7 +1038,8 @@ type columnWidths struct {
 }
 
 // computeColumnWidths calculates alignment widths for long format fields.
-// R1.6, R1.7, R2.11, R2.12: column width computation.
+// R1.6, R1.7: nlink, owner, group, size widths.
+// R2.11: inode column width. R2.12: blocks column width.
 func computeColumnWidths(cfg *lsConfig, entries []lsEntry) columnWidths {
 	var cw columnWidths
 	for _, e := range entries {
@@ -968,6 +1050,12 @@ func computeColumnWidths(cfg *lsConfig, entries []lsEntry) columnWidths {
 		updateMaxInt(&cw.owner, len(resolveOwner(e.info.Uid, cfg.numericIDs)))
 		updateMaxInt(&cw.group, len(resolveGroup(e.info.Gid, cfg.numericIDs)))
 		updateMaxInt(&cw.size, intWidth(e.info.Size))
+		if cfg.showInode {
+			updateMaxInt(&cw.inode, uintWidth(e.info.Ino))
+		}
+		if cfg.showBlocks {
+			updateMaxInt(&cw.blocks, intWidth(e.info.Blocks/2))
+		}
 	}
 	return cw
 }
@@ -989,11 +1077,12 @@ func intWidth(n int64) int {
 	return len(strconv.FormatInt(n, 10))
 }
 
-// entryNames extracts display names from entries.
-func entryNames(cfg *lsConfig, entries []lsEntry) []string {
+// entryNames extracts display names from entries with optional prefix.
+// R2.11, R2.12: inode/blocks prefix included when flags are active.
+func entryNames(cfg *lsConfig, entries []lsEntry, pw entryPrefixWidths) []string {
 	names := make([]string, len(entries))
 	for i, e := range entries {
-		names[i] = entryDisplayName(cfg, e)
+		names[i] = formatEntryPrefix(cfg, e, pw) + entryDisplayName(cfg, e)
 	}
 	return names
 }

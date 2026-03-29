@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7, R2.8, R2.9, R2.10.
+// cmd/ls differential tests for prd008 R2.7-R2.14.
 package main
 
 import (
@@ -84,6 +84,66 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "R2.10_vt_time_wins",
 			Args: []string{"-1", "-v", "-t", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11: -i shows inode numbers in single-column mode
+		{
+			Name: "R2.11_inode_single",
+			Args: []string{"-1", "-i", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11: -i with -l shows inode before permissions
+		{
+			Name: "R2.11_inode_long",
+			Args: []string{"-l", "-i", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.12: -s shows block counts in single-column mode
+		{
+			Name: "R2.12_blocks_single",
+			Args: []string{"-1", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.12: -s with -l shows block counts before permissions
+		{
+			Name: "R2.12_blocks_long",
+			Args: []string{"-l", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.13: -s with -l shows total line
+		{
+			Name: "R2.13_blocks_total_long",
+			Args: []string{"-l", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.13: -s without -l also shows total line
+		{
+			Name: "R2.13_blocks_total_single",
+			Args: []string{"-1", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.14: -n shows numeric UID/GID in long format
+		{
+			Name: "R2.14_numeric_ids",
+			Args: []string{"-n", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.14: -n implies -l
+		{
+			Name: "R2.14_numeric_implies_long",
+			Args: []string{"-n", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11+R2.12: -i and -s combined, inode first then blocks
+		{
+			Name: "R2.11_R2.12_inode_blocks_combined",
+			Args: []string{"-1", "-i", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11+R2.12+R2.14: -i -s -n combined in long format
+		{
+			Name: "R2.11_R2.12_R2.14_combined_long",
+			Args: []string{"-n", "-i", "-s", sortDir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
