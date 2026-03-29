@@ -50,10 +50,12 @@ type headOptions struct {
 }
 
 // run parses flags and processes input files.
+// R3.1, R3.2: argument errors print diagnostic and "Try --help" hint.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
 		return 1
 	}
 	if opts.help {
@@ -84,6 +86,7 @@ func showHeaders(fileCount int, opts headOptions) bool {
 
 // processFiles iterates over files and prints head output for each.
 // R3.1: multi-file headers with blank line between files.
+// R3.3, R3.4: file errors do not abort; processing continues.
 func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opts headOptions) int {
 	exitCode := 0
 	headers := showHeaders(len(files), opts)
@@ -102,14 +105,19 @@ func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opt
 // printHeader prints the '==> FILENAME <==' header line.
 // R3.1: blank line before header when not the first file.
 func printHeader(w io.Writer, name string, preceded bool) {
-	displayName := name
-	if name == "-" {
-		displayName = "standard input"
-	}
 	if preceded {
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintf(w, "==> %s <==\n", displayName)
+	fmt.Fprintf(w, "==> %s <==\n", fileDisplayName(name))
+}
+
+// fileDisplayName returns the display name for a file argument.
+// R1.4: "-" is displayed as "standard input".
+func fileDisplayName(name string) string {
+	if name == "-" {
+		return "standard input"
+	}
+	return name
 }
 
 // parseArgs separates flags from file arguments.
@@ -164,6 +172,7 @@ func parseFlag(opts *headOptions, flagsDone *bool, args []string, i int) (int, e
 	case isLegacyNumArg(arg):
 		return i, parseLegacyNum(opts, arg)
 	default:
+		// R3.1: invalid option diagnostic with single-char display.
 		return i, fmt.Errorf("invalid option -- '%s'", arg[1:])
 	}
 	return i, nil
@@ -189,7 +198,9 @@ func parseNextArgBytes(opts *headOptions, args []string, i int, flag string) (in
 
 // parseLinesValue parses a line count value, which may be negative.
 // R1.2: positive integer sets line count. R1.3: negative means exclude last N.
+// R3.2: invalid values produce a diagnostic with the original input.
 func parseLinesValue(opts *headOptions, s string) error {
+	raw := s
 	negative := false
 	if strings.HasPrefix(s, "-") {
 		negative = true
@@ -197,7 +208,7 @@ func parseLinesValue(opts *headOptions, s string) error {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
-		return fmt.Errorf("invalid number of lines: '%s'", s)
+		return fmt.Errorf("invalid number of lines: '%s'", raw)
 	}
 	opts.count = int64(n)
 	opts.negative = negative
@@ -207,6 +218,7 @@ func parseLinesValue(opts *headOptions, s string) error {
 
 // parseBytesValue parses a byte count value with optional suffix.
 // R2.1: -c NUM sets byte count. R2.2: negative prefix. R2.3: multiplier suffixes.
+// R3.2: invalid values produce a diagnostic with the original input.
 func parseBytesValue(opts *headOptions, s string) error {
 	negative := false
 	raw := s
@@ -245,6 +257,8 @@ func parseLegacyNum(opts *headOptions, arg string) error {
 }
 
 // headFile processes a single input file or stdin.
+// R3.3: open errors use "cannot open" format from openInput.
+// R3.4: read errors are wrapped with "error reading" format.
 func headFile(name string, stdin io.Reader, stdout io.Writer, opts headOptions) error {
 	r, closer, err := openInput(name, stdin)
 	if err != nil {
@@ -253,13 +267,21 @@ func headFile(name string, stdin io.Reader, stdout io.Writer, opts headOptions) 
 	if closer != nil {
 		defer closer.Close() // best-effort close
 	}
+	if readErr := dispatchHead(r, stdout, opts); readErr != nil {
+		return fmt.Errorf("error reading '%s': %v", fileDisplayName(name), readErr)
+	}
+	return nil
+}
+
+// dispatchHead selects and runs the appropriate head mode.
+func dispatchHead(r io.Reader, w io.Writer, opts headOptions) error {
 	if opts.mode == modeBytes {
-		return headBytes(r, stdout, opts.count, opts.negative)
+		return headBytes(r, w, opts.count, opts.negative)
 	}
 	if opts.negative {
-		return headNegativeLines(r, stdout, int(opts.count))
+		return headNegativeLines(r, w, int(opts.count))
 	}
-	return headPositiveLines(r, stdout, int(opts.count))
+	return headPositiveLines(r, w, int(opts.count))
 }
 
 // headBytes dispatches to positive or negative byte mode.
@@ -272,6 +294,7 @@ func headBytes(r io.Reader, w io.Writer, n int64, negative bool) error {
 
 // openInput returns a reader and optional closer for the given filename.
 // R1.4: "-" means stdin.
+// R3.3: open failures use GNU format "cannot open 'FILE' for reading: REASON".
 func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	if name == "-" {
 		return stdin, nil, nil
@@ -288,6 +311,7 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 
 // headPositiveLines prints the first n lines from r.
 // R1.1: default 10 lines. R1.2: configurable via -n.
+// R3.4: non-EOF read errors are returned for diagnostic formatting.
 func headPositiveLines(r io.Reader, w io.Writer, n int) error {
 	if n <= 0 {
 		return nil
@@ -303,8 +327,12 @@ func headPositiveLines(r io.Reader, w io.Writer, n int) error {
 			}
 			count++
 		}
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			_ = bw.Flush() // best-effort flush before returning read error
+			return err
 		}
 	}
 	return bw.Flush()
