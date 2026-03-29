@@ -18,7 +18,7 @@ releases:
         - id: rel00.0-uc003-sys
           status: implemented
         - id: rel00.0-uc004-testutils
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc005-hashutil
           status: spec_complete
         - id: rel00.0-uc006-sizeparse
