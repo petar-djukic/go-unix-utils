@@ -3,7 +3,7 @@
 
 // cmd/printenv implements GNU printenv: print environment variables.
 //
-// Implements prd040-printenv R1.1, R1.2, R1.3, R2.1.
+// Implements prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
 package main
 
 import (
