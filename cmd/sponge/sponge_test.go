@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sponge against sponge (moreutils).
 //
-// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2.
+// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -48,6 +48,18 @@ func TestDiff(t *testing.T) {
 			Name:  "R3.2_append_passthrough",
 			Args:  []string{"-a"},
 			Stdin: []byte("passthrough with -a\n"),
+		},
+		// R4.1: passthrough with binary data
+		{
+			Name:  "R4.1_passthrough_binary",
+			Args:  []string{},
+			Stdin: []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0x0A},
+		},
+		// R4.3: passthrough small buffer written directly to stdout
+		{
+			Name:  "R4.3_passthrough_small_buffer",
+			Args:  []string{},
+			Stdin: []byte("small\n"),
 		},
 	}
 
@@ -380,6 +392,131 @@ func TestAppendPermissionPreservation(t *testing.T) {
 	}
 	if string(got) != "old\nnew\n" {
 		t.Errorf("content = %q, want %q", got, "old\nnew\n")
+	}
+}
+
+// TestAppendPrependsOriginalContent verifies -a copies original file content first,
+// then appends stdin content in the output (R3.3).
+func TestAppendPrependsOriginalContent(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "prepend.txt")
+	original := []byte("AAA\nBBB\n")
+	if err := os.WriteFile(outPath, original, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	stdinData := []byte("CCC\nDDD\n")
+	cmd := exec.Command(goBin, "-a", outPath)
+	cmd.Stdin = bytes.NewReader(stdinData)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge -a: %v", err)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := []byte("AAA\nBBB\nCCC\nDDD\n")
+	if !bytes.Equal(got, want) {
+		t.Errorf("R3.3 prepend content = %q, want %q", got, want)
+	}
+}
+
+// TestAppendLargeInput verifies -a works with large input that may spill to temp (R3.3).
+func TestAppendLargeInput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "append_large.txt")
+	original := bytes.Repeat([]byte("orig\n"), 100)
+	if err := os.WriteFile(outPath, original, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	stdinData := bytes.Repeat([]byte("new\n"), 200)
+	cmd := exec.Command(goBin, "-a", outPath)
+	cmd.Stdin = bytes.NewReader(stdinData)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge -a: %v", err)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := append(original, stdinData...)
+	if !bytes.Equal(got, want) {
+		t.Errorf("R3.3 large append: got %d bytes, want %d bytes", len(got), len(want))
+	}
+}
+
+// TestPassthroughLargeInput verifies passthrough mode with larger input (R4.1, R4.2).
+func TestPassthroughLargeInput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Use input large enough to exercise buffering but not necessarily spill.
+	input := bytes.Repeat([]byte("passthrough-line\n"), 1000)
+
+	cmd := exec.Command(goBin)
+	cmd.Stdin = bytes.NewReader(input)
+	got, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("sponge passthrough: %v", err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Errorf("passthrough: got %d bytes, want %d bytes", len(got), len(input))
+	}
+}
+
+// TestPassthroughSmallDirect verifies small passthrough writes buffer directly (R4.3).
+func TestPassthroughSmallDirect(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	input := []byte("direct write\n")
+	cmd := exec.Command(goBin)
+	cmd.Stdin = bytes.NewReader(input)
+	got, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("sponge passthrough: %v", err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Errorf("content = %q, want %q", got, input)
+	}
+}
+
+// TestPassthroughDiff verifies passthrough matches reference binary (R4.1, R4.2, R4.3).
+func TestPassthroughDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skip("reference binary sponge not in PATH")
+	}
+
+	input := bytes.Repeat([]byte("diff-line\n"), 500)
+
+	runPassthrough := func(bin string) []byte {
+		t.Helper()
+		cmd := exec.Command(bin)
+		cmd.Stdin = bytes.NewReader(input)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%s passthrough: %v", bin, err)
+		}
+		return out
+	}
+
+	goResult := runPassthrough(goBin)
+	refResult := runPassthrough(refBin)
+
+	if !bytes.Equal(goResult, refResult) {
+		t.Errorf("passthrough diff: go=%d bytes, ref=%d bytes", len(goResult), len(refResult))
 	}
 }
 
