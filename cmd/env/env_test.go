@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/env against genv (GNU coreutils).
 //
-// Covers prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2.
+// Covers prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3,
+// R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -162,6 +163,27 @@ func TestDiff(t *testing.T) {
 			Name:     "R3.2_exit_passthrough_failure",
 			Args:     []string{"false"},
 			ExitCode: 1,
+		},
+		// R3.3: invalid long option exits 125
+		{
+			Name:      "R3.3_invalid_long_option",
+			Args:      []string{"--foobar"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.3: invalid short option exits 125
+		{
+			Name:      "R3.3_invalid_short_option",
+			Args:      []string{"-z"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.3: -u missing argument exits 125
+		{
+			Name:      "R4.3_u_missing_arg",
+			Args:      []string{"-u"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
 	}
 
