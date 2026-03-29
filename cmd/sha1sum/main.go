@@ -4,7 +4,8 @@
 // cmd/sha1sum computes SHA-1 message digests for files or stdin.
 //
 // Implements prd031-sha1sum: R1.1 (file digest computation), R1.2 (stdin),
-// R1.3 (binary/text mode flags), R1.4 (--tag BSD-style output).
+// R1.3 (binary/text mode flags), R1.4 (--tag BSD-style output),
+// R2.1 (--check), R2.2 (--warn), R2.3 (--quiet/--status), R3.1 (--help).
 package main
 
 import (
