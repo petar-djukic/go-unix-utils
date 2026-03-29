@@ -21,6 +21,19 @@ var normalizeFoldName testutils.NormalizeFunc = func(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gfold:"), []byte("fold:"))
 }
 
+// normalizeFoldErrors normalizes binary name and OS error message capitalization
+// differences between GNU (C strerror) and Go (syscall.Errno.Error).
+var normalizeFoldErrors = testutils.ComposeNormalizers(
+	normalizeFoldName,
+	func(data []byte) []byte {
+		// Go returns lowercase "no such file or directory"; GNU returns capitalized.
+		data = bytes.ReplaceAll(data, []byte("No such file or directory"), []byte("no such file or directory"))
+		data = bytes.ReplaceAll(data, []byte("Permission denied"), []byte("permission denied"))
+		data = bytes.ReplaceAll(data, []byte("Is a directory"), []byte("is a directory"))
+		return data
+	},
+)
+
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gfold")
@@ -321,7 +334,47 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
-		// --- R4.2: default folding (no flags) ---
+		// --- R4.1: exit 0 on success ---
+		{
+			Name:  "r4_1_exit_0_success_stdin",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "r4_1_exit_0_empty_input",
+			Args:  []string{},
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.2: exit 1 on file open error, continue processing ---
+		{
+			Name:      "r4_2_nonexistent_file",
+			Args:      []string{"/nonexistent/path/to/fold_test_file"},
+			Stdin:     nil,
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeFoldErrors},
+		},
+		{
+			Name:      "r4_2_mixed_stdin_and_bad_file",
+			Args:      []string{"-", "/nonexistent/fold_r4_2_test"},
+			Stdin:     []byte("good input\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeFoldErrors},
+		},
+		{
+			Name:      "r4_2_bad_file_then_stdin",
+			Args:      []string{"/nonexistent/fold_r4_2_first", "-"},
+			Stdin:     []byte("still works\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeFoldErrors},
+		},
+
+		// --- default folding (no flags) ---
 		{
 			Name:  "default_short_line",
 			Args:  []string{},
