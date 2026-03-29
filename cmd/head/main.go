@@ -4,7 +4,7 @@
 // cmd/head implements GNU head: print the first lines or bytes of files.
 //
 // Implements prd018-head R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R3.4, R3.5, R4.1, R4.2.
+// R3.1, R3.2, R3.3, R3.4, R3.5, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -49,6 +49,25 @@ type headOptions struct {
 	version  bool
 }
 
+// errWriter wraps a writer and captures the first write error.
+// R3.5: enables detection of stdout write failures.
+type errWriter struct {
+	w   io.Writer
+	err error
+}
+
+// Write delegates to the underlying writer, stopping on first error.
+func (e *errWriter) Write(p []byte) (int, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	n, err := e.w.Write(p)
+	if err != nil {
+		e.err = err
+	}
+	return n, err
+}
+
 // run parses flags and processes input files.
 // R3.1, R3.2: argument errors print diagnostic and "Try --help" hint.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -85,21 +104,36 @@ func showHeaders(fileCount int, opts headOptions) bool {
 }
 
 // processFiles iterates over files and prints head output for each.
-// R3.1: multi-file headers with blank line between files.
-// R3.3, R3.4: file errors do not abort; processing continues.
+// R3.5: write errors stop output and exit 1.
+// R4.1: exit 0 when all files succeed. R4.2, R4.3: exit 1 on any error.
 func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opts headOptions) int {
 	exitCode := 0
 	headers := showHeaders(len(files), opts)
+	ew := &errWriter{w: stdout}
 	for i, name := range files {
 		if headers {
-			printHeader(stdout, name, i > 0)
+			printHeader(ew, name, i > 0)
 		}
-		if err := headFile(name, stdin, stdout, opts); err != nil {
+		if ew.err != nil {
+			reportWriteError(stderr, ew.err)
+			return 1
+		}
+		if err := headFile(name, stdin, ew, opts); err != nil {
+			if ew.err != nil {
+				reportWriteError(stderr, ew.err)
+				return 1
+			}
 			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
 			exitCode = 1
 		}
 	}
 	return exitCode
+}
+
+// reportWriteError prints a write-error diagnostic to stderr.
+// R3.5: format is "head: error writing 'standard output': REASON".
+func reportWriteError(stderr io.Writer, err error) {
+	fmt.Fprintf(stderr, "%s: error writing 'standard output': %s\n", programName, err)
 }
 
 // printHeader prints the '==> FILENAME <==' header line.
