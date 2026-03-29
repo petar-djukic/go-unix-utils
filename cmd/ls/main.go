@@ -3,7 +3,8 @@
 
 // cmd/ls implements prd008-ls: file listing with multi-column, single-column,
 // and long-format output modes, filtering, sorting, color, classification,
-// human-readable sizes, and recursive listing.
+// human-readable sizes, recursive listing, and recursive format/filter/sort
+// propagation (R3.12, R3.13, R3.14, R3.15).
 package main
 
 import (

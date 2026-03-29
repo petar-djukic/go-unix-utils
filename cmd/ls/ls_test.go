@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.11.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.15.
 package main
 
 import (
@@ -28,6 +28,9 @@ func TestDiff(t *testing.T) {
 	humanDir := setupHumanDir(t)
 	classifyDir := setupClassifyDir(t)
 	recursiveDir := setupRecursiveDir(t)
+	symlinkRecDir := setupSymlinkRecursiveDir(t)
+	dotRecDir := setupDotRecursiveDir(t)
+	timeRecDir := setupTimeRecursiveDir(t)
 
 	tests := []testutils.DiffTest{
 		// R2.7: -r reverses default (name) sort
@@ -282,6 +285,66 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-1", "-R", "-F", recursiveDir},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.12: -R with -l produces long format in each subdirectory
+		{
+			Name: "R3.12_recursive_long_format",
+			Args: []string{"-l", "-R", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.12: -R with default (non-TTY) produces single-column
+		{
+			Name: "R3.12_recursive_default",
+			Args: []string{"-R", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.13: -R does not follow symlinks to directories
+		{
+			Name: "R3.13_recursive_no_symlink_follow",
+			Args: []string{"-1", "-R", symlinkRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.13: -R with -l does not follow symlinks to dirs
+		{
+			Name: "R3.13_recursive_no_symlink_long",
+			Args: []string{"-l", "-R", symlinkRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -R without -a hides dotfiles in subdirectories
+		{
+			Name: "R3.14_recursive_no_dotfiles",
+			Args: []string{"-1", "-R", dotRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -R with -a shows dotfiles in subdirectories
+		{
+			Name: "R3.14_recursive_with_a",
+			Args: []string{"-1", "-R", "-a", dotRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -R with -A shows dotfiles except . and ..
+		{
+			Name: "R3.14_recursive_with_A",
+			Args: []string{"-1", "-R", "-A", dotRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -R with -t visits subdirectories in time order
+		{
+			Name: "R3.15_recursive_time_sort",
+			Args: []string{"-1", "-R", "-t", timeRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -R with -t -r visits subdirectories in reverse time order
+		{
+			Name: "R3.15_recursive_time_reverse",
+			Args: []string{"-1", "-R", "-t", "-r", timeRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -R with -S visits subdirectories in size order
+		{
+			Name: "R3.15_recursive_size_sort",
+			Args: []string{"-1", "-R", "-S", timeRecDir},
+			Env:  []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -401,5 +464,68 @@ func setupRecursiveDir(t *testing.T) string {
 		t.Fatalf("mkdir beta: %v", err)
 	}
 	writeSizedFile(t, filepath.Join(deep, "deep.txt"), 30)
+	return dir
+}
+
+// setupSymlinkRecursiveDir creates a directory with a real subdirectory
+// and a symlink that points to a directory.
+// R3.13: symlinks to directories must not be followed by -R.
+func setupSymlinkRecursiveDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeSizedFile(t, filepath.Join(dir, "file.txt"), 10)
+	realSub := filepath.Join(dir, "realdir")
+	if err := os.Mkdir(realSub, 0o755); err != nil {
+		t.Fatalf("mkdir realdir: %v", err)
+	}
+	writeSizedFile(t, filepath.Join(realSub, "inside.txt"), 20)
+	// Symlink pointing to realdir — must not be recursed into
+	if err := os.Symlink("realdir", filepath.Join(dir, "linkdir")); err != nil {
+		t.Fatalf("symlink linkdir: %v", err)
+	}
+	return dir
+}
+
+// setupDotRecursiveDir creates a directory with dotfiles in a
+// subdirectory for testing -R with filter flags.
+// R3.14: dotfiles shown only when -a or -A is given.
+func setupDotRecursiveDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeSizedFile(t, filepath.Join(dir, "visible"), 10)
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	writeSizedFile(t, filepath.Join(sub, "normal"), 20)
+	writeSizedFile(t, filepath.Join(sub, ".hidden"), 30)
+	return dir
+}
+
+// setupTimeRecursiveDir creates a directory with subdirectories that
+// have different modification times and file sizes for testing
+// -R with -t and -S sort ordering.
+// R3.15: subdirectories recursed in current sort order.
+func setupTimeRecursiveDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeSizedFile(t, filepath.Join(dir, "root.txt"), 10)
+	// Create subdirs with different mtimes and sizes
+	for _, s := range []struct {
+		name string
+		size int
+		age  time.Duration
+	}{
+		{"zzz", 100, 1 * time.Hour},
+		{"aaa", 300, 3 * time.Hour},
+		{"mmm", 200, 2 * time.Hour},
+	} {
+		sub := filepath.Join(dir, s.name)
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", s.name, err)
+		}
+		writeSizedFile(t, filepath.Join(sub, "child.txt"), s.size)
+		setMtime(t, sub, time.Now().Add(-s.age))
+	}
 	return dir
 }
