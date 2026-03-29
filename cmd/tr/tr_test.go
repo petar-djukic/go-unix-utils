@@ -4,14 +4,21 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// TestDiff verifies prd054-tr R1.1-R1.4, R2.1-R2.4 via differential testing
-// against gtr.
+// binNameNormalizer replaces "gtr" with "tr" in output so that error messages
+// from the reference binary match our program name.
+var binNameNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gtr"), []byte("tr"))
+}
+
+// TestDiff verifies prd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3 via
+// differential testing against gtr.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -260,6 +267,55 @@ func TestDiff(t *testing.T) {
 			Name:  "complement-squeeze",
 			Args:  []string{"-cs", "a-z", "\\n"},
 			Stdin: []byte("hello 123 world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.1: [:lower:] to [:upper:] case conversion
+		{
+			Name:  "r3.1-lower-to-upper",
+			Args:  []string{"[:lower:]", "[:upper:]"},
+			Stdin: []byte("abc xyz 123\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: [:upper:] to [:lower:] case conversion
+		{
+			Name:  "r3.1-upper-to-lower",
+			Args:  []string{"[:upper:]", "[:lower:]"},
+			Stdin: []byte("ABC XYZ 123\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: mixed case content through lower-to-upper
+		{
+			Name:  "r3.1-mixed-case-lower-upper",
+			Args:  []string{"[:lower:]", "[:upper:]"},
+			Stdin: []byte("Hello World 2026\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.2: error when SET2 is empty during translation
+		{
+			Name:      "r3.2-empty-set2-error",
+			Args:      []string{"abc", ""},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binNameNormalizer},
+		},
+
+		// R3.3: equivalence class [=c=] in SET2 is rejected when translating
+		{
+			Name:      "r3.3-equiv-class-in-set2-error",
+			Args:      []string{"a", "[=x=]"},
+			Stdin:     []byte("abcabc\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binNameNormalizer},
+		},
+		// R3.3: equivalence class [=c=] in SET1
+		{
+			Name:  "r3.3-equiv-class-in-set1",
+			Args:  []string{"[=a=]", "x"},
+			Stdin: []byte("abcabc\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}

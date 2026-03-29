@@ -6,7 +6,8 @@
 // Implements prd054-tr R1.1 (character translation), R1.2 (stdin/stdout I/O),
 // R1.3 (SET specifications: ranges, escapes, repetition),
 // R1.4 (POSIX character classes), R2.1 (delete mode), R2.2 (squeeze mode),
-// R2.3 (delete+squeeze), R2.4 (complement mode).
+// R2.3 (delete+squeeze), R2.4 (complement mode), R3.1 (class case conversion),
+// R3.2 (empty SET2 validation), R3.3 (equivalence classes).
 package main
 
 import (
@@ -27,6 +28,14 @@ var (
 	errVersion = errors.New("version requested")
 	errHelp    = errors.New("help requested")
 )
+
+// noTryError is a semantic validation error that should not trigger
+// the "Try --help" message, matching GNU tr behavior.
+type noTryError struct {
+	msg string
+}
+
+func (e *noTryError) Error() string { return e.msg }
 
 // config holds parsed command-line flags.
 // R2.1: delete, R2.2: squeeze, R2.4: complement.
@@ -87,7 +96,10 @@ func handleParseError(err error, stdout, stderr io.Writer) int {
 		return 0
 	}
 	fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
+	var nte *noTryError
+	if !errors.As(err, &nte) {
+		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
+	}
 	return 1
 }
 
@@ -185,6 +197,16 @@ func validatePositional(cfg config, pos []string) (string, string, error) {
 	}
 	if len(pos) > 2 {
 		return "", "", fmt.Errorf("extra operand '%s'", pos[2])
+	}
+	// R3.2: when translating (not deleting), SET2 must not be empty.
+	if !cfg.delete && pos[1] == "" {
+		return "", "", &noTryError{
+			msg: "when not truncating set1, string2 must be non-empty"}
+	}
+	// R3.3: equivalence classes may not appear in SET2 when translating.
+	if !cfg.delete && containsEquivClass(pos[1]) {
+		return "", "", &noTryError{
+			msg: "[=c=] expressions may not appear in string2 when translating"}
 	}
 	return pos[0], pos[1], nil
 }
@@ -586,6 +608,18 @@ func punctBytes() []byte {
 // isAlphaNum returns true if b is alphanumeric in the C locale.
 func isAlphaNum(b byte) bool {
 	return (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
+}
+
+// containsEquivClass returns true if spec contains a [=c=] equivalence class.
+// R3.3: used to reject equivalence classes in SET2 when translating.
+func containsEquivClass(spec string) bool {
+	for i := range spec {
+		if i+4 < len(spec) && spec[i] == '[' && spec[i+1] == '=' &&
+			spec[i+3] == '=' && spec[i+4] == ']' {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Byte utilities ---
