@@ -225,8 +225,13 @@ func parseLongFlag(cfg *lsConfig, name string) error {
 }
 
 // parseColorFlag parses --color[=VALUE].
+// R3.1: --color without a value defaults to "always".
 func parseColorFlag(cfg *lsConfig, name string) error {
-	if name == "color" || name == "color=auto" {
+	if name == "color" {
+		cfg.colorOpt = colorAlways
+		return nil
+	}
+	if name == "color=auto" {
 		cfg.colorOpt = colorAuto
 		return nil
 	}
@@ -267,13 +272,15 @@ func resolveFormat(cfg *lsConfig) {
 }
 
 // applyColorConfig sets the process-global color state based on cfg.
-// R3.2, R3.3: maps colorMode to format.SetColorEnabled.
+// R3.1, R3.2, R3.3: maps colorMode to format.SetColorEnabled.
 func applyColorConfig(cfg *lsConfig) {
 	switch cfg.colorOpt {
 	case colorAlways:
 		format.SetColorEnabled(true)
 	case colorNever:
 		format.SetColorEnabled(false)
+	case colorAuto:
+		format.SetColorEnabled(sys.IsTerminal(os.Stdout.Fd()))
 	}
 }
 

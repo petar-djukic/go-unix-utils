@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.14.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.3.
 package main
 
 import (
@@ -144,6 +144,48 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "R2.11_R2.12_R2.14_combined_long",
 			Args: []string{"-n", "-i", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -i and -s combined in single-column (inode first, then blocks)
+		{
+			Name: "R2.15_inode_blocks_combined_single",
+			Args: []string{"-1", "-i", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -i and -s combined in long format
+		{
+			Name: "R2.15_inode_blocks_combined_long",
+			Args: []string{"-l", "-i", "-s", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: --color=always forces color even in a pipe
+		{
+			Name: "R3.1_color_always",
+			Args: []string{"-1", "--color=always", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: --color=never suppresses color
+		{
+			Name: "R3.1_color_never",
+			Args: []string{"-1", "--color=never", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: --color without value defaults to always
+		{
+			Name: "R3.1_color_bare",
+			Args: []string{"-1", "--color", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: --color=auto in pipe produces no ANSI sequences
+		{
+			Name: "R3.2_color_auto_pipe",
+			Args: []string{"-1", "--color=auto", sortDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: --color=always with -l includes color in long format
+		{
+			Name: "R3.3_color_always_long",
+			Args: []string{"-l", "--color=always", sortDir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
