@@ -3,7 +3,7 @@
 
 // cmd/sponge implements moreutils sponge: soak stdin before writing output.
 //
-// Implements prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2.
 package main
 
 import (
@@ -33,10 +33,7 @@ func main() {
 
 // run implements the sponge logic: read all stdin, then write output.
 func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
-	outFile := ""
-	if len(args) > 0 {
-		outFile = args[len(args)-1]
-	}
+	appendMode, outFile := parseArgs(args)
 
 	buf, tmpPath, err := soakStdin(stdin)
 	if tmpPath != "" {
@@ -53,7 +50,21 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	if outFile == "" {
 		return writeToStdout(buf, tmpPath, stdout, stderr)
 	}
-	return writeToFile(buf, tmpPath, outFile, stderr)
+	return writeToFile(buf, tmpPath, outFile, appendMode, stderr)
+}
+
+// parseArgs extracts the -a flag and output filename from arguments.
+func parseArgs(args []string) (bool, string) {
+	appendMode := false
+	outFile := ""
+	for _, arg := range args {
+		if arg == "-a" {
+			appendMode = true
+		} else {
+			outFile = arg
+		}
+	}
+	return appendMode, outFile
 }
 
 // setupSignalCleanup registers a handler to delete tmpPath on termination signals (R1.5).
@@ -116,18 +127,25 @@ func memoryThreshold() uint64 {
 	return avail / 2
 }
 
-// spillToTempFile writes the current buffer and remaining stdin to a temp file (R1.3, R1.4).
-func spillToTempFile(buf []byte, remaining io.Reader) ([]byte, string, error) {
+// createTempFile creates a temp file in TMPDIR or /tmp (R1.4).
+func createTempFile() (*os.File, string, error) {
 	tmpDir := os.Getenv("TMPDIR") // platform context: temp directory
 	if tmpDir == "" {
 		tmpDir = "/tmp"
 	}
-
 	f, err := os.CreateTemp(tmpDir, tempPrefix)
 	if err != nil {
 		return nil, "", fmt.Errorf("create temp file: %w", err)
 	}
-	tmpPath := f.Name()
+	return f, f.Name(), nil
+}
+
+// spillToTempFile writes the current buffer and remaining stdin to a temp file (R1.3, R1.4).
+func spillToTempFile(buf []byte, remaining io.Reader) ([]byte, string, error) {
+	f, tmpPath, err := createTempFile()
+	if err != nil {
+		return nil, "", err
+	}
 
 	if _, err := f.Write(buf); err != nil {
 		f.Close() // best-effort close before cleanup
@@ -162,10 +180,29 @@ func writeToStdout(buf []byte, tmpPath string, stdout io.Writer, stderr io.Write
 	return 0
 }
 
-// writeToFile writes the buffered content to the named output file (R2.1, R2.2, R2.3).
-func writeToFile(buf []byte, tmpPath string, outFile string, stderr io.Writer) int {
-	// R2.3: read existing permissions before writing
-	mode := getExistingMode(outFile)
+// writeToFile writes the buffered content to the named output file (R2.1-R2.5, R3.1, R3.2).
+func writeToFile(buf []byte, tmpPath string, outFile string, appendMode bool, stderr io.Writer) int {
+	// R2.4: use lstat to check file existence and type
+	mode, isReg := fileStatus(outFile)
+
+	// R3.1, R3.2: prepend original content in append mode for existing regular files
+	if appendMode && isReg {
+		var err error
+		buf, tmpPath, err = prependOriginal(buf, tmpPath, outFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "sponge: %v\n", err)
+			return 1
+		}
+		if tmpPath != "" {
+			defer os.Remove(tmpPath) // best-effort cleanup of append temp
+		}
+	}
+
+	return finishWrite(buf, tmpPath, outFile, mode, stderr)
+}
+
+// finishWrite completes the write to outFile via rename or direct write (R2.1, R2.2, R2.5).
+func finishWrite(buf []byte, tmpPath string, outFile string, mode os.FileMode, stderr io.Writer) int {
 	if tmpPath != "" {
 		// R2.1: attempt atomic rename; R2.2: fall back to copy on failure
 		if err := renameOrCopy(tmpPath, outFile); err != nil {
@@ -186,17 +223,58 @@ func writeToFile(buf []byte, tmpPath string, outFile string, stderr io.Writer) i
 	return 0
 }
 
-// getExistingMode returns the file permissions of path via lstat (R2.3).
-// Returns 0o666 when the file does not exist.
-func getExistingMode(path string) os.FileMode {
+// fileStatus returns file permissions and whether path is a regular file via lstat (R2.3, R2.4).
+// Returns 0o666 and false when the file does not exist.
+func fileStatus(path string) (os.FileMode, bool) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return 0o666
+		return 0o666, false
 	}
-	return info.Mode().Perm()
+	return info.Mode().Perm(), info.Mode().IsRegular()
 }
 
-// renameOrCopy attempts an atomic rename; falls back to copy on failure (R2.1, R2.2).
+// prependOriginal prepends the original file content to the stdin content (R3.1, R3.3).
+func prependOriginal(buf []byte, tmpPath string, outFile string) ([]byte, string, error) {
+	origData, err := os.ReadFile(outFile)
+	if err != nil {
+		return nil, tmpPath, fmt.Errorf("read original file: %w", err)
+	}
+
+	if tmpPath == "" {
+		// In-memory: combine original + stdin buffer
+		combined := make([]byte, len(origData)+len(buf))
+		copy(combined, origData)
+		copy(combined[len(origData):], buf)
+		return combined, "", nil
+	}
+
+	return prependToTempFile(origData, tmpPath)
+}
+
+// prependToTempFile creates a new temp file with original data followed by stdin temp content (R3.3).
+func prependToTempFile(origData []byte, stdinTmpPath string) ([]byte, string, error) {
+	f, newPath, err := createTempFile()
+	if err != nil {
+		return nil, "", err
+	}
+
+	if _, err := f.Write(origData); err != nil {
+		f.Close() // best-effort close
+		return nil, newPath, fmt.Errorf("write original to temp: %w", err)
+	}
+
+	if err := copyFileToWriter(stdinTmpPath, f); err != nil {
+		f.Close() // best-effort close
+		return nil, newPath, err
+	}
+
+	if err := f.Close(); err != nil {
+		return nil, newPath, fmt.Errorf("close temp file: %w", err)
+	}
+	return nil, newPath, nil
+}
+
+// renameOrCopy attempts an atomic rename; falls back to copy on failure (R2.1, R2.2, R2.5).
 func renameOrCopy(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil

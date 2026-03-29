@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sponge against sponge (moreutils).
 //
-// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2.
 package main
 
 import (
@@ -42,6 +42,12 @@ func TestDiff(t *testing.T) {
 			Name:  "R1.2_passthrough_multiline",
 			Args:  []string{},
 			Stdin: []byte("line1\nline2\nline3\n"),
+		},
+		// R3.2: -a in passthrough mode (no file) — same as without -a
+		{
+			Name:  "R3.2_append_passthrough",
+			Args:  []string{"-a"},
+			Stdin: []byte("passthrough with -a\n"),
 		},
 	}
 
@@ -250,5 +256,161 @@ func TestRenameOrCopyFallback(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Errorf("content = %q, want %q", got, input)
+	}
+}
+
+// TestAppendMode verifies -a prepends original file content before stdin (R3.1).
+func TestAppendMode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "append.txt")
+	original := []byte("original\n")
+	if err := os.WriteFile(outPath, original, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	cmd := exec.Command(goBin, "-a", outPath)
+	cmd.Stdin = bytes.NewReader([]byte("appended\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge -a: %v", err)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := []byte("original\nappended\n")
+	if !bytes.Equal(got, want) {
+		t.Errorf("content = %q, want %q", got, want)
+	}
+}
+
+// TestAppendNonExistent verifies -a creates new file when output doesn't exist (R3.2).
+func TestAppendNonExistent(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "new.txt")
+	input := []byte("new content\n")
+
+	cmd := exec.Command(goBin, "-a", outPath)
+	cmd.Stdin = bytes.NewReader(input)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge -a: %v", err)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Errorf("content = %q, want %q", got, input)
+	}
+}
+
+// TestAppendDiff verifies -a behavior matches reference binary (R3.1, R6.1).
+func TestAppendDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skip("reference binary sponge not in PATH")
+	}
+
+	original := []byte("original\n")
+	input := []byte("appended\n")
+
+	runAppend := func(bin, outPath string) []byte {
+		t.Helper()
+		if err := os.WriteFile(outPath, original, 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+		cmd := exec.Command(bin, "-a", outPath)
+		cmd.Stdin = bytes.NewReader(input)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%s -a: %v\n%s", bin, err, out)
+		}
+		got, err := os.ReadFile(outPath)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		return got
+	}
+
+	dir := t.TempDir()
+	goResult := runAppend(goBin, filepath.Join(dir, "go.txt"))
+	refResult := runAppend(refBin, filepath.Join(dir, "ref.txt"))
+
+	if !bytes.Equal(goResult, refResult) {
+		t.Errorf("append diff:\ngo:  %q\nref: %q", goResult, refResult)
+	}
+}
+
+// TestAppendPermissionPreservation verifies -a preserves file permissions (R2.3, R3.1).
+func TestAppendPermissionPreservation(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "append_perms.txt")
+	if err := os.WriteFile(outPath, []byte("old\n"), 0o755); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	cmd := exec.Command(goBin, "-a", outPath)
+	cmd.Stdin = bytes.NewReader([]byte("new\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge -a: %v", err)
+	}
+
+	info, err := os.Lstat(outPath)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o755 {
+		t.Errorf("permissions = %04o, want %04o", perm, 0o755)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(got) != "old\nnew\n" {
+		t.Errorf("content = %q, want %q", got, "old\nnew\n")
+	}
+}
+
+// TestLstatRegularFileCheck verifies lstat is used to detect regular files (R2.4).
+func TestLstatRegularFileCheck(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "target.txt")
+	linkPath := filepath.Join(dir, "link.txt")
+
+	if err := os.WriteFile(targetPath, []byte("target\n"), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	// Write via symlink — sponge should write through the symlink path.
+	cmd := exec.Command(goBin, linkPath)
+	cmd.Stdin = bytes.NewReader([]byte("via link\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge via symlink: %v", err)
+	}
+
+	got, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if string(got) != "via link\n" {
+		t.Errorf("content = %q, want %q", got, "via link\n")
 	}
 }
