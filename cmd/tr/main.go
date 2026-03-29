@@ -7,7 +7,8 @@
 // R1.3 (SET specifications: ranges, escapes, repetition),
 // R1.4 (POSIX character classes), R2.1 (delete mode), R2.2 (squeeze mode),
 // R2.3 (delete+squeeze), R2.4 (complement mode), R3.1 (class case conversion),
-// R3.2 (empty SET2 validation), R3.3 (equivalence classes).
+// R3.2 (empty SET2 validation), R3.3 (equivalence classes),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on usage errors).
 package main
 
 import (
@@ -193,7 +194,8 @@ func validatePositional(cfg config, pos []string) (string, string, error) {
 		return pos[0], "", nil
 	}
 	if len(pos) < 2 {
-		return "", "", fmt.Errorf("missing operand after '%s'", pos[0])
+		return "", "", fmt.Errorf("missing operand after '%s'\n"+
+			"Two strings must be given when translating.", pos[0])
 	}
 	if len(pos) > 2 {
 		return "", "", fmt.Errorf("extra operand '%s'", pos[2])
@@ -217,7 +219,7 @@ func validateDeleteOnly(pos []string) (string, string, error) {
 	if len(pos) > 1 {
 		return "", "", fmt.Errorf(
 			"extra operand '%s'\nOnly one string may be given when "+
-				"deleting without squeezing.", pos[1])
+				"deleting without squeezing repeats.", pos[1])
 	}
 	return pos[0], "", nil
 }

@@ -6,10 +6,19 @@ package main
 import (
 	"bytes"
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// binPathNormalizer replaces any absolute path ending in /gtr (from the
+// reference binary) with "tr" so error messages match.
+var binPathNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	re := regexp.MustCompile(`/[^\s'"]*/gtr`)
+	data = re.ReplaceAll(data, []byte("tr"))
+	return bytes.ReplaceAll(data, []byte("gtr"), []byte("tr"))
+}
 
 // binNameNormalizer replaces "gtr" with "tr" in output so that error messages
 // from the reference binary match our program name.
@@ -17,7 +26,7 @@ var binNameNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("gtr"), []byte("tr"))
 }
 
-// TestDiff verifies prd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3 via
+// TestDiff verifies prd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.3 via
 // differential testing against gtr.
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -317,6 +326,77 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"[=a=]", "x"},
 			Stdin: []byte("abcabc\n"),
 			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R4.1: exit 0 on successful translation
+		{
+			Name:     "r4.1-exit-0-translate",
+			Args:     []string{"a", "b"},
+			Stdin:    []byte("abc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 on successful deletion
+		{
+			Name:     "r4.1-exit-0-delete",
+			Args:     []string{"-d", "a"},
+			Stdin:    []byte("abc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 on successful squeeze
+		{
+			Name:     "r4.1-exit-0-squeeze",
+			Args:     []string{"-s", "a"},
+			Stdin:    []byte("aaabbb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R4.2: exit 1 on missing operand
+		{
+			Name:      "r4.2-missing-operand",
+			Args:      []string{},
+			Stdin:     []byte(""),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binPathNormalizer},
+		},
+		// R4.2: exit 1 on missing second operand for translation
+		{
+			Name:      "r4.2-missing-set2",
+			Args:      []string{"abc"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binPathNormalizer},
+		},
+		// R4.2: exit 1 on invalid character class
+		{
+			Name:      "r4.2-invalid-class",
+			Args:      []string{"-d", "[:bogus:]"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binPathNormalizer},
+		},
+		// R4.2: exit 1 on extra operand with -d (no -s)
+		{
+			Name:      "r4.2-extra-operand-delete",
+			Args:      []string{"-d", "a", "b"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binPathNormalizer},
+		},
+		// R4.2: exit 1 on invalid option
+		{
+			Name:      "r4.2-invalid-option",
+			Args:      []string{"-z", "a", "b"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{binPathNormalizer},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
