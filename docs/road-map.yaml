@@ -175,7 +175,7 @@ releases:
         - id: rel04.1-uc004-tty
           status: implemented
         - id: rel04.1-uc005-logname
-          status: spec_complete
+          status: implemented
     - version: "05.0"
       name: "Batch 5 — text stream transforms (echo, tac, nl, fold)"
       status: spec_complete
