@@ -3,7 +3,7 @@
 
 // cmd/tail implements GNU tail: print the last lines or bytes of files.
 //
-// Implements prd055-tail R1.1, R1.2, R1.3, R1.4.
+// Implements prd055-tail R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -32,6 +33,7 @@ func main() {
 type tailOptions struct {
 	count     int64
 	fromStart bool // true when +N prefix is used
+	byteMode  bool // R2.1: true when -c is used
 	quiet     bool
 	verbose   bool
 }
@@ -137,9 +139,16 @@ func parseFlag(opts *tailOptions, flagsDone *bool, args []string, i int) (int, e
 	case strings.HasPrefix(arg, "--lines="):
 		return i, parseLinesValue(opts, arg[len("--lines="):])
 	case arg == "--lines", arg == "-n":
-		return parseNextArgLines(opts, args, i, arg)
+		return parseNextArg(opts, args, i, arg, parseLinesValue)
 	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
 		return i, parseLinesValue(opts, arg[2:])
+	// R2.1: byte-count mode flags
+	case strings.HasPrefix(arg, "--bytes="):
+		return i, parseBytesValue(opts, arg[len("--bytes="):])
+	case arg == "--bytes", arg == "-c":
+		return parseNextArg(opts, args, i, arg, parseBytesValue)
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'c':
+		return i, parseBytesValue(opts, arg[2:])
 	case isLegacyNumArg(arg):
 		return i, parseLegacyNum(opts, arg)
 	default:
@@ -148,18 +157,19 @@ func parseFlag(opts *tailOptions, flagsDone *bool, args []string, i int) (int, e
 	return i, nil
 }
 
-// parseNextArgLines reads the next argument as the value for -n/--lines.
-func parseNextArgLines(opts *tailOptions, args []string, i int, flag string) (int, error) {
+// parseNextArg reads the next argument as the value for a flag.
+func parseNextArg(opts *tailOptions, args []string, i int, flag string, parse func(*tailOptions, string) error) (int, error) {
 	i++
 	if i >= len(args) {
 		return i, fmt.Errorf("option '%s' requires an argument", flag)
 	}
-	return i, parseLinesValue(opts, args[i])
+	return i, parse(opts, args[i])
 }
 
 // parseLinesValue parses a line count value which may have a + prefix.
 // R1.2: positive integer sets line count.
 // R1.3: + prefix means start from that line number.
+// R2.1: -n sets byteMode to false (last flag wins).
 func parseLinesValue(opts *tailOptions, s string) error {
 	raw := s
 	fromStart := false
@@ -173,6 +183,27 @@ func parseLinesValue(opts *tailOptions, s string) error {
 	}
 	opts.count = n
 	opts.fromStart = fromStart
+	opts.byteMode = false
+	return nil
+}
+
+// parseBytesValue parses a byte count value with optional + prefix and suffixes.
+// R2.1: sets byte mode. R2.2: + prefix for offset from start.
+// R2.3: supports multiplier suffixes via sizeparse.
+func parseBytesValue(opts *tailOptions, s string) error {
+	raw := s
+	fromStart := false
+	if strings.HasPrefix(s, "+") {
+		fromStart = true
+		s = s[1:]
+	}
+	n, err := sizeparse.Parse(s)
+	if err != nil || n < 0 {
+		return fmt.Errorf("invalid number of bytes: '%s'", raw)
+	}
+	opts.count = n
+	opts.fromStart = fromStart
+	opts.byteMode = true
 	return nil
 }
 
@@ -202,10 +233,27 @@ func tailFile(name string, stdin io.Reader, stdout io.Writer, opts tailOptions) 
 	if closer != nil {
 		defer closer.Close() // best-effort close
 	}
-	if opts.fromStart {
-		return tailFromOffset(r, stdout, opts.count)
+	if opts.byteMode {
+		return tailBytes(r, stdout, opts)
 	}
-	return tailLastLines(r, stdout, int(opts.count))
+	return tailLines(r, stdout, opts)
+}
+
+// tailLines dispatches line-mode output.
+func tailLines(r io.Reader, w io.Writer, opts tailOptions) error {
+	if opts.fromStart {
+		return tailFromLineOffset(r, w, opts.count)
+	}
+	return tailLastLines(r, w, int(opts.count))
+}
+
+// tailBytes dispatches byte-mode output.
+// R2.1: last N bytes. R2.2: from byte offset.
+func tailBytes(r io.Reader, w io.Writer, opts tailOptions) error {
+	if opts.fromStart {
+		return tailFromByteOffset(r, w, opts.count)
+	}
+	return tailLastBytes(r, w, opts.count)
 }
 
 // openInput returns a reader and optional closer for the given filename.
@@ -239,9 +287,9 @@ func tailLastLines(r io.Reader, w io.Writer, n int) error {
 	return writeLines(w, lines[start:])
 }
 
-// tailFromOffset prints from line number offset to end of input.
+// tailFromLineOffset prints from line number offset to end of input.
 // R1.3: line numbering starts at 1.
-func tailFromOffset(r io.Reader, w io.Writer, offset int64) error {
+func tailFromLineOffset(r io.Reader, w io.Writer, offset int64) error {
 	br := bufio.NewReaderSize(r, 64*1024)
 	bw := bufio.NewWriter(w)
 	var lineNum int64
@@ -264,6 +312,37 @@ func tailFromOffset(r io.Reader, w io.Writer, offset int64) error {
 		}
 	}
 	return bw.Flush()
+}
+
+// tailLastBytes prints the last n bytes from r.
+// R2.1: byte-count mode.
+func tailLastBytes(r io.Reader, w io.Writer, n int64) error {
+	if n <= 0 {
+		return nil
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	start := max(int64(len(data))-n, 0)
+	_, wErr := w.Write(data[start:])
+	return wErr
+}
+
+// tailFromByteOffset prints from byte offset to end of input.
+// R2.2: byte numbering starts at 1.
+func tailFromByteOffset(r io.Reader, w io.Writer, offset int64) error {
+	if offset > 1 {
+		discarded, err := io.CopyN(io.Discard, r, offset-1)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if discarded < offset-1 {
+			return nil // offset beyond input
+		}
+	}
+	_, err := io.Copy(w, r)
+	return err
 }
 
 // readAllLines reads all lines from r, preserving line endings.

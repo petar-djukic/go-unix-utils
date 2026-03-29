@@ -5,6 +5,7 @@
 //
 // Covers prd055-tail R1.1, R1.2, R1.3, R1.4: default 10 lines, explicit -n
 // count, --lines= form, +N offset, stdin input, stdin via "-" argument.
+// Covers prd055-tail R2.1, R2.2, R2.3: byte-count mode, byte offset, suffixes.
 package main
 
 import (
@@ -106,7 +107,7 @@ func createTestFile(t *testing.T, dir, name, content string) string {
 	return path
 }
 
-// buildDiffTests returns all differential test cases for tail R1.1-R1.4.
+// buildDiffTests returns all differential test cases for tail.
 func buildDiffTests(t *testing.T) []testutils.DiffTest {
 	t.Helper()
 
@@ -128,6 +129,13 @@ func buildDiffTests(t *testing.T) []testutils.DiffTest {
 		stripEmptyHeaders, normalizeTailErrors,
 	}
 
+	lineTests := buildLineTests(input5, input12, input20, file1, file2, validFile, nonexistent, errNorm, errNormWithHeaders)
+	byteTests := buildByteTests(t)
+	return append(lineTests, byteTests...)
+}
+
+// buildLineTests returns differential tests for R1.1-R1.4 (line mode).
+func buildLineTests(input5, input12, input20 []byte, file1, file2, validFile, nonexistent string, errNorm, errNormWithHeaders []testutils.NormalizeFunc) []testutils.DiffTest {
 	return []testutils.DiffTest{
 		// R1.1: default 10 lines from stdin
 		{
@@ -248,6 +256,111 @@ func buildDiffTests(t *testing.T) []testutils.DiffTest {
 			Args:      []string{nonexistent},
 			ExitCode:  1,
 			Normalize: errNorm,
+		},
+	}
+}
+
+// buildByteTests returns differential tests for R2.1, R2.2, R2.3 (byte mode).
+func buildByteTests(t *testing.T) []testutils.DiffTest {
+	t.Helper()
+
+	// Fixed byte input for predictable byte offsets.
+	alphaBytes := []byte("abcdefghijklmnopqrstuvwxyz")
+	input20 := generateLines(20)
+
+	byteDir := t.TempDir()
+	byteFile := createTestFile(t, byteDir, "alpha.txt", string(alphaBytes))
+
+	return []testutils.DiffTest{
+		// R2.1: -c 5 last 5 bytes from stdin
+		{
+			Name:     "c_5_bytes",
+			Args:     []string{"-c", "5"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.1: --bytes=5
+		{
+			Name:     "bytes_eq_5",
+			Args:     []string{"--bytes=5"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.1: -c5 no space
+		{
+			Name:     "c5_no_space",
+			Args:     []string{"-c5"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.1: -c 0 prints nothing
+		{
+			Name:     "c_0_bytes",
+			Args:     []string{"-c", "0"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.1: -c more than input length prints all
+		{
+			Name:     "c_more_than_input",
+			Args:     []string{"-c", "100"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.1: -c and -n mutual exclusivity, last wins (R2.1)
+		{
+			Name:     "c_after_n_last_wins",
+			Args:     []string{"-n", "3", "-c", "5"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.1: -n after -c, last wins
+		{
+			Name:     "n_after_c_last_wins",
+			Args:     []string{"-c", "5", "-n", "3"},
+			Stdin:    input20,
+			ExitCode: 0,
+		},
+		// R2.1: -c on file argument
+		{
+			Name:     "c_on_file",
+			Args:     []string{"-c", "10", byteFile},
+			ExitCode: 0,
+		},
+		// R2.2: -c +5 from byte offset
+		{
+			Name:     "c_plus_5_offset",
+			Args:     []string{"-c", "+5"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.2: -c +1 prints entire input
+		{
+			Name:     "c_plus_1_all",
+			Args:     []string{"-c", "+1"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.2: -c +N beyond input length
+		{
+			Name:     "c_plus_beyond_input",
+			Args:     []string{"-c", "+100"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.3: -c with b suffix (512-byte blocks)
+		{
+			Name:     "c_suffix_b",
+			Args:     []string{"-c", "1b"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
+		},
+		// R2.3: -c with K suffix (1024 bytes)
+		{
+			Name:     "c_suffix_K",
+			Args:     []string{"-c", "1K"},
+			Stdin:    alphaBytes,
+			ExitCode: 0,
 		},
 	}
 }
