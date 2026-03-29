@@ -3,7 +3,7 @@
 
 // cmd/rmdir implements GNU rmdir: remove empty directories.
 //
-// Implements prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1.
+// Implements prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -126,6 +126,8 @@ func removeDir(dir string) error {
 func removeParents(dir string, stdout, stderr *os.File, opts options) error {
 	parent := filepath.Dir(filepath.Clean(dir))
 	for parent != "." && parent != "/" {
+		// R3.3: GNU rmdir prints verbose before attempting removal.
+		printVerbose(stdout, parent, opts)
 		if err := os.Remove(parent); err != nil {
 			if !shouldSuppress(err, opts) {
 				reportParentError(stderr, parent, err)
@@ -133,8 +135,6 @@ func removeParents(dir string, stdout, stderr *os.File, opts options) error {
 			}
 			return nil
 		}
-		// R3.3: print verbose message for each removed parent.
-		printVerbose(stdout, parent, opts)
 		parent = filepath.Dir(parent)
 	}
 	return nil

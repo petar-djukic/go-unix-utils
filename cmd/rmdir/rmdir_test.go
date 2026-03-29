@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/rmdir against grmdir (GNU coreutils).
 //
-// Covers prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1.
+// Covers prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -401,6 +401,91 @@ func TestRmdirVerbose(t *testing.T) {
 		if !bytes.Equal(normProgName(refStdout), normProgName(goStdout)) {
 			t.Errorf("stdout:\nref: %q\ngo:  %q", refStdout, goStdout)
 		}
+	})
+}
+
+// TestRmdirParentStopsCorrectly verifies R4.3: -p stops ascending
+// at the correct level when a parent is not empty, matching grmdir.
+func TestRmdirParentStopsCorrectly(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skip("reference binary grmdir not in PATH")
+	}
+
+	// R4.3: deep nesting — stops at grandparent that contains a file.
+	t.Run("stops_at_grandparent", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "a", "b", "c", "d"))
+			writeTestFile(t, filepath.Join(base, "a", "b", "keep.txt"), "x")
+		}
+		args := []string{"-p", "a/b/c/d"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		assertRemoved(t, goDir, "a/b/c/d")
+		assertRemoved(t, goDir, "a/b/c")
+		assertExists(t, goDir, "a/b")
+		assertExists(t, goDir, "a")
+	})
+
+	// R4.3: -p with --ignore-fail-on-non-empty stops silently at blocker.
+	t.Run("parents_ignore_stops_silently", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "x", "y", "z"))
+			writeTestFile(t, filepath.Join(base, "x", "blocker.txt"), "x")
+		}
+		args := []string{"-p", "--ignore-fail-on-non-empty", "x/y/z"}
+		refStdout, refStderr, refExit := execBin(t, refBin, args, refDir)
+		goStdout, goStderr, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		if len(refStderr) == 0 && len(goStderr) != 0 {
+			t.Errorf("go stderr should be empty but got: %q", goStderr)
+		}
+		assertRemoved(t, goDir, "x/y/z")
+		assertRemoved(t, goDir, "x/y")
+		assertExists(t, goDir, "x")
+	})
+
+	// R4.3: -pv stops and verbose shows only removed dirs.
+	t.Run("parents_verbose_stops", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "m", "n", "o"))
+			writeTestFile(t, filepath.Join(base, "m", "file.txt"), "x")
+		}
+		args := []string{"-pv", "m/n/o"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(normProgName(refStdout), normProgName(goStdout)) {
+			t.Errorf("stdout:\nref: %q\ngo:  %q", refStdout, goStdout)
+		}
+		assertRemoved(t, goDir, "m/n/o")
+		assertRemoved(t, goDir, "m/n")
+		assertExists(t, goDir, "m")
 	})
 }
 
