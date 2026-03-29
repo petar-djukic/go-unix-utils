@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/ln against gln (GNU coreutils).
 //
-// Covers prd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1, R3.5, R3.6.
 package main
 
 import (
@@ -462,6 +462,191 @@ func TestSymlinkIntoDirectory(t *testing.T) {
 	assertSymlinkTarget(t, filepath.Join(refDir, "dest", "b.txt"), "b.txt")
 }
 
+// TestForceOverwrite verifies R3.1: -f removes existing before creating.
+func TestForceOverwrite(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	t.Run("force_hard_link", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "new")
+			writeFile(t, filepath.Join(base, "existing.txt"), "old")
+		}
+
+		_, _, refExit := execBin(t, refBin, []string{"-f", "target.txt", "existing.txt"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-f", "target.txt", "existing.txt"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertHardLink(t, goDir, "target.txt", "existing.txt")
+	})
+
+	t.Run("force_symlink", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "content")
+			writeFile(t, filepath.Join(base, "existing.txt"), "old")
+		}
+
+		_, _, refExit := execBin(t, refBin, []string{"-sf", "target.txt", "existing.txt"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-sf", "target.txt", "existing.txt"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertSymlinkTarget(t, filepath.Join(goDir, "existing.txt"), "target.txt")
+	})
+}
+
+// TestBackupSimple verifies R3.5: -b creates a backup with ~ suffix.
+func TestBackupSimple(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	t.Run("backup_default_suffix", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "new")
+			writeFile(t, filepath.Join(base, "dest.txt"), "old")
+		}
+
+		_, _, refExit := execBin(t, refBin, []string{"-fb", "target.txt", "dest.txt"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-fb", "target.txt", "dest.txt"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		// Backup should exist with ~ suffix.
+		assertFileExists(t, filepath.Join(goDir, "dest.txt~"))
+		assertFileExists(t, filepath.Join(refDir, "dest.txt~"))
+		assertHardLink(t, goDir, "target.txt", "dest.txt")
+	})
+
+	t.Run("backup_symlink", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "data")
+			writeFile(t, filepath.Join(base, "link.txt"), "existing")
+		}
+
+		_, _, refExit := execBin(t, refBin, []string{"-sfb", "target.txt", "link.txt"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-sfb", "target.txt", "link.txt"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertFileExists(t, filepath.Join(goDir, "link.txt~"))
+		assertSymlinkTarget(t, filepath.Join(goDir, "link.txt"), "target.txt")
+	})
+}
+
+// TestBackupCustomSuffix verifies R3.6: -S changes the backup suffix.
+func TestBackupCustomSuffix(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	t.Run("custom_suffix_short", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "new")
+			writeFile(t, filepath.Join(base, "dest.txt"), "old")
+		}
+
+		args := []string{"-fb", "-S", ".bak", "target.txt", "dest.txt"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertFileExists(t, filepath.Join(goDir, "dest.txt.bak"))
+		assertFileExists(t, filepath.Join(refDir, "dest.txt.bak"))
+		assertHardLink(t, goDir, "target.txt", "dest.txt")
+	})
+
+	t.Run("custom_suffix_long", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "new")
+			writeFile(t, filepath.Join(base, "dest.txt"), "old")
+		}
+
+		args := []string{"-fb", "--suffix=.orig", "target.txt", "dest.txt"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertFileExists(t, filepath.Join(goDir, "dest.txt.orig"))
+		assertFileExists(t, filepath.Join(refDir, "dest.txt.orig"))
+	})
+}
+
+// TestBackupNumbered verifies --backup=numbered creates .~N~ backups.
+func TestBackupNumbered(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, base := range []string{goDir, refDir} {
+		writeFile(t, filepath.Join(base, "target.txt"), "new")
+		writeFile(t, filepath.Join(base, "dest.txt"), "old")
+	}
+
+	args := []string{"-f", "--backup=numbered", "target.txt", "dest.txt"}
+	_, _, refExit := execBin(t, refBin, args, refDir)
+	_, _, goExit := execBin(t, goBin, args, goDir)
+
+	if refExit != goExit {
+		t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+	}
+	assertFileExists(t, filepath.Join(goDir, "dest.txt.~1~"))
+	assertFileExists(t, filepath.Join(refDir, "dest.txt.~1~"))
+}
+
 // execBin runs a binary and returns stdout, stderr, and exit code.
 func execBin(t *testing.T, bin string, args []string, workDir string) ([]byte, []byte, int) {
 	t.Helper()
@@ -526,6 +711,14 @@ func assertSymlinkTarget(t *testing.T, path, expected string) {
 	}
 	if target != expected {
 		t.Errorf("symlink %s: got target %q, want %q", path, target, expected)
+	}
+}
+
+// assertFileExists checks that a file exists at the given path.
+func assertFileExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Lstat(path); err != nil {
+		t.Errorf("expected file to exist: %s: %v", path, err)
 	}
 }
 

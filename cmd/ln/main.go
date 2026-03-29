@@ -3,13 +3,14 @@
 
 // cmd/ln implements GNU ln: create links between files.
 //
-// Implements prd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1, R3.5, R3.6.
 package main
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -18,8 +19,12 @@ const progName = "ln"
 
 // lnOptions holds parsed command-line flags.
 type lnOptions struct {
-	symbolic bool
-	relative bool
+	symbolic     bool
+	relative     bool
+	force        bool
+	backup       bool
+	backupMethod string // "simple", "numbered", "existing", "none"
+	suffix       string
 }
 
 func main() {
@@ -68,11 +73,12 @@ func dispatchLink(operands []string, opts lnOptions, stderr *os.File) int {
 
 // parseArgs separates flags from operands.
 func parseArgs(args []string) (lnOptions, []string, error) {
-	var opts lnOptions
+	opts := lnOptions{suffix: "~"}
 	var operands []string
 	endOfFlags := false
 
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if endOfFlags || arg == "-" || !isFlag(arg) {
 			operands = append(operands, arg)
 			continue
@@ -82,45 +88,124 @@ func parseArgs(args []string) (lnOptions, []string, error) {
 			continue
 		}
 		if isLongFlag(arg) {
-			if err := parseLongFlag(arg, &opts); err != nil {
+			consumed, err := parseLongFlag(arg, args[i+1:], &opts)
+			if err != nil {
 				return opts, nil, err
 			}
+			i += consumed
 			continue
 		}
-		if err := parseShortFlags(arg[1:], &opts); err != nil {
+		consumed, err := parseShortFlags(arg[1:], args[i+1:], &opts)
+		if err != nil {
 			return opts, nil, err
 		}
+		i += consumed
 	}
 
 	return opts, operands, nil
 }
 
-// parseLongFlag handles --symbolic and --relative.
-func parseLongFlag(flag string, opts *lnOptions) error {
-	switch flag {
+// parseLongFlag handles long-form flags including --backup[=METHOD] and --suffix=SUFFIX.
+func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, error) {
+	name, value, hasValue := splitLongFlag(flag)
+	switch name {
 	case "--symbolic":
 		opts.symbolic = true
 	case "--relative":
 		opts.relative = true
+	case "--force":
+		opts.force = true
+	case "--backup":
+		opts.backup = true
+		if hasValue {
+			if err := validateBackupMethod(value); err != nil {
+				return 0, err
+			}
+			opts.backupMethod = normalizeBackupMethod(value)
+		} else {
+			opts.backupMethod = "existing"
+		}
+	case "--suffix":
+		if hasValue {
+			opts.suffix = value
+		} else if len(remaining) > 0 {
+			opts.suffix = remaining[0]
+			return 1, nil
+		} else {
+			return 0, fmt.Errorf("option '--suffix' requires an argument")
+		}
 	default:
-		return fmt.Errorf("unrecognized option '%s'", flag)
+		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
-	return nil
+	return 0, nil
 }
 
-// parseShortFlags handles -s, -r, and combined forms like -sr.
-func parseShortFlags(flags string, opts *lnOptions) error {
-	for _, ch := range flags {
-		switch ch {
+// parseShortFlags handles -s, -r, -f, -b, -S and combined forms like -sfb.
+func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, error) {
+	consumed := 0
+	for i := 0; i < len(flags); i++ {
+		switch flags[i] {
 		case 's':
 			opts.symbolic = true
 		case 'r':
 			opts.relative = true
+		case 'f':
+			opts.force = true
+		case 'b':
+			opts.backup = true
+			opts.backupMethod = "existing"
+		case 'S':
+			rest := flags[i+1:]
+			if rest != "" {
+				opts.suffix = rest
+			} else if len(remaining) > consumed {
+				opts.suffix = remaining[consumed]
+				consumed++
+			} else {
+				return consumed, fmt.Errorf("option requires an argument -- 'S'")
+			}
+			return consumed, nil
 		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+			return consumed, fmt.Errorf("invalid option -- '%c'", flags[i])
 		}
 	}
-	return nil
+	return consumed, nil
+}
+
+// splitLongFlag splits --name=value into components.
+func splitLongFlag(flag string) (string, string, bool) {
+	name, value, ok := strings.Cut(flag, "=")
+	if ok {
+		return name, value, true
+	}
+	return flag, "", false
+}
+
+// validateBackupMethod checks if method is a valid backup control value.
+func validateBackupMethod(method string) error {
+	switch method {
+	case "none", "off", "numbered", "t",
+		"existing", "nil", "simple", "never":
+		return nil
+	default:
+		return fmt.Errorf("invalid backup type '%s'", method)
+	}
+}
+
+// normalizeBackupMethod maps aliases to canonical names.
+func normalizeBackupMethod(method string) string {
+	switch method {
+	case "t":
+		return "numbered"
+	case "nil":
+		return "existing"
+	case "never":
+		return "simple"
+	case "off":
+		return "none"
+	default:
+		return method
+	}
 }
 
 // isFlag returns true if arg starts with '-' and has content after it.
@@ -135,10 +220,72 @@ func isLongFlag(arg string) bool {
 
 // createLink creates a single link (hard or symbolic).
 func createLink(target, linkName string, opts lnOptions, stderr *os.File) int {
+	if !handleExisting(linkName, opts, stderr) {
+		return 1
+	}
 	if opts.symbolic {
 		return createSymlink(target, linkName, opts, stderr)
 	}
 	return createHardLink(target, linkName, stderr)
+}
+
+// handleExisting manages an existing destination: backup and/or removal.
+// R3.1: -f removes existing destination.
+// R3.5: -b creates backup before removal.
+func handleExisting(dest string, opts lnOptions, stderr *os.File) bool {
+	if _, err := os.Lstat(dest); err != nil {
+		return true // doesn't exist; let link creation proceed
+	}
+
+	if !opts.force {
+		return true // let link creation fail with EEXIST
+	}
+
+	if opts.backup && opts.backupMethod != "none" {
+		if err := makeBackup(dest, opts); err != nil {
+			printError(stderr, fmt.Sprintf("cannot backup '%s': %s", dest, err))
+			return false
+		}
+		return true // backup renames dest, so it's already gone
+	}
+
+	if err := os.Remove(dest); err != nil {
+		printError(stderr, fmt.Sprintf("cannot remove '%s': %s", dest, err))
+		return false
+	}
+	return true
+}
+
+// makeBackup creates a backup of path according to the backup method.
+// R3.5: backup creation with method selection.
+func makeBackup(path string, opts lnOptions) error {
+	switch opts.backupMethod {
+	case "numbered":
+		return createNumberedBackup(path)
+	case "existing":
+		if hasNumberedBackup(path) {
+			return createNumberedBackup(path)
+		}
+		return os.Rename(path, path+opts.suffix)
+	default: // "simple" or fallback
+		return os.Rename(path, path+opts.suffix)
+	}
+}
+
+// createNumberedBackup renames path to path.~N~ with the next available N.
+func createNumberedBackup(path string) error {
+	for n := 1; ; n++ {
+		backup := fmt.Sprintf("%s.~%d~", path, n)
+		if _, err := os.Lstat(backup); os.IsNotExist(err) {
+			return os.Rename(path, backup)
+		}
+	}
+}
+
+// hasNumberedBackup checks if any numbered backup (path.~N~) exists.
+func hasNumberedBackup(path string) bool {
+	matches, _ := filepath.Glob(path + ".~[0-9]*~")
+	return len(matches) > 0
 }
 
 // createHardLink creates a hard link.
@@ -250,3 +397,9 @@ func printLinkError(stderr *os.File, linkName string, err error) {
 func printSymlinkError(stderr *os.File, linkName string, err error) {
 	fmt.Fprintf(stderr, "%s: failed to create symbolic link '%s': %s\n", progName, linkName, err) //nolint:errcheck
 }
+
+// TODO: Task R3 (-t/--target-directory) skipped per prd037-ln non_goals:
+// "cmd/ln does not implement -t DIRECTORY or -T (--no-target-directory) flags."
+
+// TODO: Task R4 (-T/--no-target-directory) skipped per prd037-ln non_goals:
+// "cmd/ln does not implement -t DIRECTORY or -T (--no-target-directory) flags."
