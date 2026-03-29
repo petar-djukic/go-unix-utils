@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/fold wraps long lines to a specified width (prd023-fold R1, R2).
+// cmd/fold wraps long lines to a specified width (prd023-fold R1, R2, R3).
 package main
 
 import (
@@ -56,9 +56,16 @@ func run(cfg config) int {
 	return exitCode
 }
 
+// processFile opens and folds one input file.
+// R3.1: multiple files are processed in order by the caller.
+// R3.3: empty input produces no output (foldStream returns nil on immediate EOF).
 func processFile(name string, cfg config, out *bufio.Writer) error {
 	r, err := openInput(name)
 	if err != nil {
+		// R3.2: format matches GNU fold: "fold: <name>: <reason>"
+		if pe, ok := err.(*os.PathError); ok {
+			return fmt.Errorf("%s: %s", name, pe.Err)
+		}
 		return err
 	}
 	if r != os.Stdin {
@@ -121,7 +128,9 @@ func (s *foldState) handleFold(c byte) error {
 }
 
 // handleSpaceFold implements -s: prefer breaking at the last space.
-// R1.3 (task R3): break at last blank within width.
+// R3.1: break at last blank within width.
+// R3.2: if no blank exists within width, fall back to hard break.
+// R3.4: compatible with -b; space detection uses byte positions when -b is active.
 func (s *foldState) handleSpaceFold(c byte) error {
 	if c == ' ' {
 		s.buf = append(s.buf, '\n')
