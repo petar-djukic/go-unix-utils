@@ -4,7 +4,8 @@
 // cmd/cat implements GNU cat: concatenate files to stdout.
 //
 // Implements prd006-cat R1.1, R1.2, R1.3, R1.4, R1.5,
-// R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
+// R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3,
+// R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -21,6 +22,9 @@ type catOptions struct {
 	numberAll      bool // -n: number all lines
 	numberNonBlank bool // -b: number non-blank lines (overrides -n)
 	squeeze        bool // -s: suppress repeated blank lines
+	showNonPrint   bool // -v: show non-printing characters
+	showEnds       bool // -E: show $ at end of each line
+	showTabs       bool // -T: show tabs as ^I
 }
 
 // catState tracks mutable state across file boundaries.
@@ -58,10 +62,6 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 }
 
 // parseArgs separates flags from file arguments.
-// R2.1: -n numbers all lines.
-// R2.2: -b numbers non-blank lines, implies -n.
-// R2.3: -b takes precedence over -n.
-// R3.1: -s suppresses repeated blank lines.
 func parseArgs(args []string) (catOptions, []string) {
 	var opts catOptions
 	var files []string
@@ -87,6 +87,9 @@ func parseArgs(args []string) (catOptions, []string) {
 }
 
 // parseFlags processes flag characters from a single argument.
+// R4.1: -v shows non-printing characters.
+// R4.3: -E shows $ at end of lines.
+// R4.4: -T shows tabs as ^I.
 func parseFlags(opts *catOptions, chars string) {
 	for _, ch := range chars {
 		switch ch {
@@ -96,6 +99,12 @@ func parseFlags(opts *catOptions, chars string) {
 			opts.numberNonBlank = true
 		case 's':
 			opts.squeeze = true
+		case 'v':
+			opts.showNonPrint = true
+		case 'E':
+			opts.showEnds = true
+		case 'T':
+			opts.showTabs = true
 		case 'u':
 			// R4.8: accepted, no effect
 		}
@@ -109,7 +118,8 @@ func isFlag(arg string) bool {
 
 // needsLineProcessing reports whether flags require line-by-line processing.
 func needsLineProcessing(opts catOptions) bool {
-	return opts.numberAll || opts.numberNonBlank || opts.squeeze
+	return opts.numberAll || opts.numberNonBlank || opts.squeeze ||
+		opts.showNonPrint || opts.showEnds || opts.showTabs
 }
 
 // catFile copies one file (or stdin if name is "-") to stdout.
@@ -183,6 +193,7 @@ func isBlankLine(line []byte) bool {
 // processLine writes a single chunk with optional squeezing and numbering.
 // R3.1: suppress consecutive blank lines when squeeze is active.
 // R3.3: squeezing before numbering.
+// R4.9: order is squeeze → transform (-v/-T) → end marker (-E) → number.
 // Returns whether the next chunk starts a new line.
 func processLine(
 	bw *bufio.Writer, line []byte,
@@ -200,7 +211,7 @@ func processLine(
 		state.lineNum = writeLineNumber(bw, opts, state.lineNum, blank)
 	}
 
-	bw.Write(line) //nolint:errcheck // error caught on flush
+	writeLine(bw, line, opts)
 
 	// If line ends with \n, next chunk starts a new line
 	return line[len(line)-1] == '\n'
@@ -208,7 +219,6 @@ func processLine(
 
 // writeLineNumber writes a line number prefix if appropriate.
 // R2.2, R2.3: -b skips numbering blank lines.
-// R2.4: blank = line containing only \n.
 func writeLineNumber(
 	bw *bufio.Writer, opts catOptions,
 	lineNum int, blank bool,
@@ -227,4 +237,87 @@ func writeLineNumber(
 	}
 
 	return lineNum
+}
+
+// writeLine writes a line with optional -v, -T, -E transformations.
+// R4.1: non-printing chars shown as ^X / M-^X / M-X.
+// R4.2: -v exempts tab and newline.
+// R4.3: -E appends $ before newline.
+// R4.4: -T shows tab as ^I.
+func writeLine(bw *bufio.Writer, line []byte, opts catOptions) {
+	needsTransform := opts.showNonPrint || opts.showEnds || opts.showTabs
+	if !needsTransform {
+		bw.Write(line) //nolint:errcheck // error caught on flush
+		return
+	}
+
+	for _, b := range line {
+		writeTransformedByte(bw, b, opts)
+	}
+}
+
+// writeTransformedByte writes a single byte with -v/-E/-T transformations.
+// R4.1: caret and M- notation for non-printing characters.
+// R4.2: tab and newline exempt from -v.
+// R4.3: $ before newline when -E active.
+// R4.4: tab shown as ^I when -T active.
+func writeTransformedByte(bw *bufio.Writer, b byte, opts catOptions) {
+	if b == '\n' {
+		if opts.showEnds {
+			bw.WriteByte('$') //nolint:errcheck
+		}
+		bw.WriteByte('\n') //nolint:errcheck
+		return
+	}
+
+	if b == '\t' {
+		if opts.showTabs {
+			bw.WriteString("^I") //nolint:errcheck
+		} else {
+			bw.WriteByte('\t') //nolint:errcheck
+		}
+		return
+	}
+
+	if !opts.showNonPrint {
+		bw.WriteByte(b) //nolint:errcheck
+		return
+	}
+
+	writeNonPrintByte(bw, b)
+}
+
+// writeNonPrintByte writes a byte using caret/M- notation per R4.1.
+// 0x00-0x1F (except tab/newline handled above): ^X
+// 0x7F: ^?
+// 0x80-0x9F: M-^X
+// 0xA0-0xFE: M-X
+// 0xFF: M-^?
+func writeNonPrintByte(bw *bufio.Writer, b byte) {
+	if b < 0x20 {
+		bw.WriteByte('^')          //nolint:errcheck
+		bw.WriteByte(b + '@')     //nolint:errcheck
+		return
+	}
+	if b == 0x7F {
+		bw.WriteString("^?") //nolint:errcheck
+		return
+	}
+	if b >= 0x80 {
+		bw.WriteString("M-") //nolint:errcheck
+		if b < 0xA0 {
+			// 0x80-0x9F: M-^X
+			bw.WriteByte('^')              //nolint:errcheck
+			bw.WriteByte(b - 0x80 + '@')  //nolint:errcheck
+		} else if b == 0xFF {
+			// 0xFF: M-^?
+			bw.WriteString("^?") //nolint:errcheck
+		} else {
+			// 0xA0-0xFE: M-X
+			bw.WriteByte(b - 0x80) //nolint:errcheck
+		}
+		return
+	}
+	// Printable ASCII 0x20-0x7E
+	bw.WriteByte(b) //nolint:errcheck
 }

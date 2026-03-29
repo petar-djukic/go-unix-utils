@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cat against gcat (GNU coreutils).
 //
-// Covers prd006-cat R2.4, R3.1, R3.2, R3.3.
+// Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -80,6 +80,90 @@ func TestDiff(t *testing.T) {
 			Name:  "R3.3_squeeze_with_bn",
 			Args:  []string{"-sbn"},
 			Stdin: []byte("x\n\n\n\ny\n"),
+		},
+		// R4.1: -v shows control characters as ^X
+		{
+			Name:  "R4.1_v_control_chars",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x01, 0x02, 0x1B, 0x0A},
+		},
+		// R4.1: -v shows DEL as ^?
+		{
+			Name:  "R4.1_v_del_char",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x7F, 0x0A},
+		},
+		// R4.1: -v shows high bytes with M- prefix
+		{
+			Name:  "R4.1_v_high_bytes",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x80, 0x9F, 0xA0, 0xFE, 0xFF, 0x0A},
+		},
+		// R4.1: -v with full range of control chars
+		{
+			Name:  "R4.1_v_all_low_controls",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x00, 0x03, 0x07, 0x08, 0x0E, 0x1F, 0x0A},
+		},
+		// R4.2: -v does not alter tab or newline
+		{
+			Name:  "R4.2_v_preserves_tab_newline",
+			Args:  []string{"-v"},
+			Stdin: []byte("hello\tworld\n"),
+		},
+		// R4.3: -E shows $ at end of line
+		{
+			Name:  "R4.3_E_dollar_at_eol",
+			Args:  []string{"-E"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		// R4.3: -E with blank lines
+		{
+			Name:  "R4.3_E_blank_lines",
+			Args:  []string{"-E"},
+			Stdin: []byte("a\n\n\nb\n"),
+		},
+		// R4.4: -T shows tabs as ^I
+		{
+			Name:  "R4.4_T_tab_as_caret_I",
+			Args:  []string{"-T"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		// R4.4: -T with multiple tabs
+		{
+			Name:  "R4.4_T_multiple_tabs",
+			Args:  []string{"-T"},
+			Stdin: []byte("\t\thello\t\n"),
+		},
+		// R4.1+R4.3: -v -E combined
+		{
+			Name:  "R4.1_R4.3_v_E_combined",
+			Args:  []string{"-vE"},
+			Stdin: []byte{0x01, 'h', 'i', 0x0A},
+		},
+		// R4.1+R4.4: -v -T combined
+		{
+			Name:  "R4.1_R4.4_v_T_combined",
+			Args:  []string{"-vT"},
+			Stdin: []byte{0x01, 0x09, 'a', 0x0A},
+		},
+		// R4.3+R4.4: -E -T combined
+		{
+			Name:  "R4.3_R4.4_E_T_combined",
+			Args:  []string{"-ET"},
+			Stdin: []byte("a\tb\n"),
+		},
+		// R4.1+R4.3+R4.4: all three combined
+		{
+			Name:  "R4.1_R4.3_R4.4_all_combined",
+			Args:  []string{"-vET"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.1: -v with printable ASCII is unchanged
+		{
+			Name:  "R4.1_v_printable_unchanged",
+			Args:  []string{"-v"},
+			Stdin: []byte("Hello, World! 123\n"),
 		},
 	}
 
