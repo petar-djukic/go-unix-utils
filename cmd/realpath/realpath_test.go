@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/realpath against grealpath (GNU coreutils).
 //
-// Covers prd049-realpath R1.1, R1.2, R1.3, R1.4.
+// Covers prd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -153,6 +153,109 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+
+		// R1.5: -s does not resolve symlinks, only cleans path
+		{
+			Name:     "R1.5_strip_absolute",
+			Args:     []string{"-s", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R1.5: -s cleans .. components with -m (no existence check)
+		{
+			Name:     "R1.5_strip_dotdot",
+			Args:     []string{"-s", "-m", "/tmp/foo/.."},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R1.5: --strip long form
+		{
+			Name:     "R1.5_strip_long",
+			Args:     []string{"--strip", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R1.5: --no-symlinks long form
+		{
+			Name:     "R1.5_no_symlinks_long",
+			Args:     []string{"--no-symlinks", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R1.5: -s with -m allows nonexistent paths
+		{
+			Name:     "R1.5_strip_missing",
+			Args:     []string{"-s", "-m", "/nonexistent_xyz_99999/foo/bar"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R1.5: -s with -e requires existence
+		{
+			Name:      "R1.5_strip_strict_nonexistent",
+			Args:      []string{"-s", "-e", "/nonexistent_xyz_99999"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R1.5: -s with -e on existing path
+		{
+			Name:     "R1.5_strip_strict_existing",
+			Args:     []string{"-s", "-e", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R2.1: --relative-to prints path relative to DIR
+		{
+			Name:     "R2.1_relative_to",
+			Args:     []string{"--relative-to=/", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: --relative-to with same directory
+		{
+			Name:     "R2.1_relative_to_same",
+			Args:     []string{"--relative-to=/tmp", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: --relative-to with sibling
+		{
+			Name:     "R2.1_relative_to_sibling",
+			Args:     []string{"-m", "--relative-to=/usr/local", "/usr/bin"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R2.2: --relative-base prints relative when path starts with base
+		{
+			Name:     "R2.2_relative_base_inside",
+			Args:     []string{"-m", "--relative-base=/usr", "/usr/local/bin"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.2: --relative-base prints absolute when path does not start with base
+		{
+			Name:     "R2.2_relative_base_outside",
+			Args:     []string{"-m", "--relative-base=/usr", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// R2.3: both --relative-to and --relative-base
+		{
+			Name:     "R2.3_both_inside_base",
+			Args:     []string{"-m", "--relative-to=/usr", "--relative-base=/usr", "/usr/local/bin"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.3: both flags, path outside base — absolute output
+		{
+			Name:     "R2.3_both_outside_base",
+			Args:     []string{"-m", "--relative-to=/usr", "--relative-base=/usr", "/tmp"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
 		},
 	}
 
