@@ -4,7 +4,9 @@
 // cmd/cut implements GNU cut: remove sections from each line of files.
 //
 // Implements prd026-cut R1.1, R1.2, R1.3, R1.4 (byte and character selection),
-// R2.1, R2.2 (field selection with delimiter), R4.1, R4.2, R4.3, R4.4 (exit codes, SIGPIPE).
+// R2.1, R2.2 (field selection with delimiter), R2.3 (only-delimited),
+// R2.4 (output delimiter), R3.1, R3.2, R3.3 (complement mode),
+// R4.1, R4.2, R4.3, R4.4 (exit codes, SIGPIPE).
 package main
 
 import (
@@ -41,9 +43,13 @@ type cutRange struct {
 
 // cutOptions holds parsed flag state.
 type cutOptions struct {
-	mode      selMode
-	ranges    []cutRange
-	delimiter byte
+	mode           selMode
+	ranges         []cutRange
+	delimiter      byte
+	complement     bool   // R3.1: invert selection
+	onlyDelimited  bool   // R2.3: suppress lines without delimiter
+	outputDelim    string // R2.4: output delimiter string
+	outputDelimSet bool   // whether --output-delimiter was explicitly set
 }
 
 func main() {
@@ -116,7 +122,10 @@ func cutLines(r io.Reader, w *bufio.Writer, opts cutOptions) error {
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
-		result := selectFromLine(line, opts)
+		result, suppress := selectFromLine(line, opts)
+		if suppress {
+			continue
+		}
 		if _, err := w.WriteString(result); err != nil {
 			return err
 		}
@@ -128,15 +137,16 @@ func cutLines(r io.Reader, w *bufio.Writer, opts cutOptions) error {
 }
 
 // selectFromLine applies the selection mode to a single line.
-func selectFromLine(line string, opts cutOptions) string {
+// Returns the result string and whether the line should be suppressed.
+func selectFromLine(line string, opts cutOptions) (string, bool) {
 	switch opts.mode {
 	case modeBytes, modeChars:
 		// R1.2: under LC_ALL=C, -c and -b are equivalent.
-		return selectBytes(line, opts.ranges)
+		return selectBytes(line, opts), false
 	case modeFields:
 		return selectFields(line, opts)
 	default:
-		return line
+		return line, false
 	}
 }
 
@@ -144,10 +154,32 @@ func selectFromLine(line string, opts cutOptions) string {
 // R1.1: byte positions are 1-indexed.
 // R1.3: newlines are not counted; passed through by caller.
 // R1.4: out-of-range positions produce no output.
-func selectBytes(line string, ranges []cutRange) string {
-	positions := expandRanges(ranges, len(line))
+// R3.1: --complement inverts the selection.
+func selectBytes(line string, opts cutOptions) string {
+	positions := expandRanges(opts.ranges, len(line))
+	if opts.complement {
+		positions = complementPositions(positions, len(line))
+	}
 	var b strings.Builder
+	if opts.outputDelimSet {
+		return joinBytePositions(line, positions, opts.outputDelim)
+	}
 	for _, pos := range positions {
+		if pos >= 1 && pos <= len(line) {
+			b.WriteByte(line[pos-1])
+		}
+	}
+	return b.String()
+}
+
+// joinBytePositions joins selected byte positions with an output delimiter.
+// D2: when --output-delimiter is set in byte/char mode, it separates ranges.
+func joinBytePositions(line string, positions []int, delim string) string {
+	var b strings.Builder
+	for i, pos := range positions {
+		if i > 0 {
+			b.WriteString(delim)
+		}
 		if pos >= 1 && pos <= len(line) {
 			b.WriteByte(line[pos-1])
 		}
@@ -158,21 +190,51 @@ func selectBytes(line string, ranges []cutRange) string {
 // selectFields extracts selected fields from a line.
 // R2.1: fields are delimited by the delimiter character.
 // R2.2: default delimiter is tab; output delimiter matches input.
-func selectFields(line string, opts cutOptions) string {
+// R2.3: -s suppresses lines without delimiter.
+// R2.4: --output-delimiter replaces delimiter in output.
+// R3.3: --complement outputs non-selected fields.
+func selectFields(line string, opts cutOptions) (string, bool) {
 	delim := string(opts.delimiter)
 	if !strings.Contains(line, delim) {
-		// Lines without delimiter are printed unchanged.
-		return line
+		// R2.3: -s suppresses lines without delimiter.
+		if opts.onlyDelimited {
+			return "", true
+		}
+		// Without -s, lines without delimiter are printed unchanged.
+		return line, false
 	}
 	fields := strings.Split(line, delim)
 	positions := expandRanges(opts.ranges, len(fields))
+	if opts.complement {
+		positions = complementPositions(positions, len(fields))
+	}
 	selected := make([]string, 0, len(positions))
 	for _, pos := range positions {
 		if pos >= 1 && pos <= len(fields) {
 			selected = append(selected, fields[pos-1])
 		}
 	}
-	return strings.Join(selected, delim)
+	outDelim := delim
+	if opts.outputDelimSet {
+		outDelim = opts.outputDelim
+	}
+	return strings.Join(selected, outDelim), false
+}
+
+// complementPositions returns positions from 1..maxLen not in the given set.
+// R3.1: inverts the selection for bytes, characters, or fields.
+func complementPositions(positions []int, maxLen int) []int {
+	selected := make(map[int]bool, len(positions))
+	for _, p := range positions {
+		selected[p] = true
+	}
+	result := make([]int, 0, maxLen)
+	for i := 1; i <= maxLen; i++ {
+		if !selected[i] {
+			result = append(result, i)
+		}
+	}
+	return result
 }
 
 // expandRanges converts a list of cutRange into a sorted, deduplicated
@@ -222,10 +284,6 @@ func parseArgs(args []string) (cutOptions, []string, error) {
 			files = append(files, arg)
 			continue
 		}
-		if arg == "-" && opts.mode == modeNone {
-			files = append(files, arg)
-			continue
-		}
 		if arg == "-" {
 			files = append(files, arg)
 			continue
@@ -266,27 +324,37 @@ func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr 
 	case arg == "-b" || arg == "--bytes":
 		return setModeWithList(opts, modeBytes, args, i)
 	case strings.HasPrefix(arg, "-b") && len(arg) > 2:
-		return setModeInline(opts, modeBytes, arg[2:], i, listStr)
+		return setModeInline(opts, modeBytes, arg[2:], i)
 	case strings.HasPrefix(arg, "--bytes="):
-		return setModeInline(opts, modeBytes, arg[8:], i, listStr)
+		return setModeInline(opts, modeBytes, arg[8:], i)
 	case arg == "-c" || arg == "--characters":
 		return setModeWithList(opts, modeChars, args, i)
 	case strings.HasPrefix(arg, "-c") && len(arg) > 2:
-		return setModeInline(opts, modeChars, arg[2:], i, listStr)
+		return setModeInline(opts, modeChars, arg[2:], i)
 	case strings.HasPrefix(arg, "--characters="):
-		return setModeInline(opts, modeChars, arg[13:], i, listStr)
+		return setModeInline(opts, modeChars, arg[13:], i)
 	case arg == "-f" || arg == "--fields":
 		return setModeWithList(opts, modeFields, args, i)
 	case strings.HasPrefix(arg, "-f") && len(arg) > 2:
-		return setModeInline(opts, modeFields, arg[2:], i, listStr)
+		return setModeInline(opts, modeFields, arg[2:], i)
 	case strings.HasPrefix(arg, "--fields="):
-		return setModeInline(opts, modeFields, arg[9:], i, listStr)
+		return setModeInline(opts, modeFields, arg[9:], i)
 	case arg == "-d":
 		return parseDelimNext(opts, args, i, listStr)
 	case strings.HasPrefix(arg, "-d") && len(arg) > 2:
 		return parseDelimInline(opts, arg[2:], i, listStr)
 	case strings.HasPrefix(arg, "--delimiter="):
 		return parseDelimInline(opts, arg[12:], i, listStr)
+	case arg == "-s" || arg == "--only-delimited":
+		// R2.3: suppress lines without delimiter in field mode.
+		opts.onlyDelimited = true
+	case arg == "--complement":
+		// R3.1: invert the selection.
+		opts.complement = true
+	case arg == "--output-delimiter":
+		return parseOutputDelimNext(opts, args, i, listStr)
+	case strings.HasPrefix(arg, "--output-delimiter="):
+		return parseOutputDelimInline(opts, arg, i, listStr)
 	default:
 		return i, listStr, fmt.Errorf("invalid option -- '%s'", arg[1:])
 	}
@@ -304,7 +372,7 @@ func setModeWithList(opts *cutOptions, mode selMode, args []string, i int) (int,
 }
 
 // setModeInline sets the selection mode with an inline LIST value.
-func setModeInline(opts *cutOptions, mode selMode, list string, i int, _ string) (int, string, error) {
+func setModeInline(opts *cutOptions, mode selMode, list string, i int) (int, string, error) {
 	opts.mode = mode
 	return i, list, nil
 }
@@ -330,6 +398,27 @@ func parseDelimValue(opts *cutOptions, val string, i int, listStr string) (int, 
 			"the delimiter must be a single character")
 	}
 	opts.delimiter = val[0]
+	return i, listStr, nil
+}
+
+// parseOutputDelimNext reads the output delimiter from the next argument.
+// R2.4: --output-delimiter STRING.
+func parseOutputDelimNext(opts *cutOptions, args []string, i int, listStr string) (int, string, error) {
+	i++
+	if i >= len(args) {
+		return i, listStr, fmt.Errorf("option requires an argument -- 'output-delimiter'")
+	}
+	opts.outputDelim = args[i]
+	opts.outputDelimSet = true
+	return i, listStr, nil
+}
+
+// parseOutputDelimInline reads the output delimiter from --output-delimiter=VAL.
+// R2.4: --output-delimiter STRING.
+func parseOutputDelimInline(opts *cutOptions, arg string, i int, listStr string) (int, string, error) {
+	val := arg[len("--output-delimiter="):]
+	opts.outputDelim = val
+	opts.outputDelimSet = true
 	return i, listStr, nil
 }
 
