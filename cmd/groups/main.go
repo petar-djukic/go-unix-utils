@@ -3,7 +3,7 @@
 
 // cmd/groups implements GNU groups: print group memberships.
 //
-// Implements prd043-groups R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
+// Implements prd043-groups R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
