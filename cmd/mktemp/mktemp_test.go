@@ -4,7 +4,7 @@
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
 //
 // Covers prd036-mktemp R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3.
+// R3.1, R3.2, R3.3, R3.4, R3.5, R3.6.
 // Because mktemp generates random names, tests verify structural properties
 // (exit code, path prefix, name pattern, permissions) rather than exact output.
 package main
@@ -443,6 +443,224 @@ func TestMktempSuffix(t *testing.T) {
 	})
 }
 
+// TestMktempTMode verifies R3.4: -t legacy BSD compatibility mode.
+func TestMktempTMode(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R3.4: -t treats template as filename in TMPDIR
+	t.Run("t_flag_default_tmpdir", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^foo\.[A-Za-z0-9]{6}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-t", "foo.XXXXXX"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-t", "foo.XXXXXX"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyPathInDir(t, "go", goPath, goTmp)
+		verifyPathInDir(t, "ref", refPath, refTmp)
+		verifyBaseName(t, "go", goPath, pattern)
+		verifyBaseName(t, "ref", refPath, pattern)
+	})
+
+	// R3.4: -t with -d creates directory in TMPDIR
+	t.Run("t_flag_directory_mode", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+		pattern := regexp.MustCompile(`^bar\.[A-Za-z0-9]{6}$`)
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-t", "-d", "bar.XXXXXX"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-t", "-d", "bar.XXXXXX"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyPathInDir(t, "go", goPath, goTmp)
+		verifyPathInDir(t, "ref", refPath, refTmp)
+		verifyBaseName(t, "go", goPath, pattern)
+		verifyBaseName(t, "ref", refPath, pattern)
+	})
+
+	// R3.4: -t with no template uses default
+	t.Run("t_flag_no_template", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-t"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-t"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		verifyPathInDir(t, "go", goPath, goTmp)
+		verifyPathInDir(t, "ref", refPath, refTmp)
+	})
+}
+
+// TestMktempDryRun verifies R3.5: -u/--dry-run mode.
+func TestMktempDryRun(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R3.5: -u prints a path but does not create the file
+	t.Run("dry_run_no_file", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-u"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-u"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		if goExit != 0 {
+			t.Errorf("expected exit 0 for dry-run, got %d", goExit)
+		}
+		// File should NOT exist
+		if goPath != "" {
+			if _, err := os.Stat(goPath); err == nil {
+				t.Errorf("[go] file %q should not exist in dry-run mode", goPath)
+			}
+		}
+		if refPath != "" {
+			if _, err := os.Stat(refPath); err == nil {
+				t.Errorf("[ref] file %q should not exist in dry-run mode", refPath)
+			}
+		}
+	})
+
+	// R3.5: --dry-run long flag
+	t.Run("dry_run_long_flag", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+
+		goPath, goExit := runMktemp(t, goBin, []string{"--dry-run"}, []string{"TMPDIR=" + goTmp}, "")
+		if goExit != 0 {
+			t.Errorf("expected exit 0 for --dry-run, got %d", goExit)
+		}
+		if goPath == "" {
+			t.Error("expected path output for --dry-run")
+		}
+		// File should NOT exist
+		if goPath != "" {
+			if _, err := os.Stat(goPath); err == nil {
+				t.Errorf("file %q should not exist in dry-run mode", goPath)
+			}
+		}
+	})
+
+	// R3.5: -u prints warning to stderr
+	t.Run("dry_run_warning", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+
+		cmd := exec.Command(goBin, "-u")
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		cmd.Env = append(os.Environ(), "LC_ALL=C", "TMPDIR="+goTmp)
+		_ = cmd.Run()
+
+		if stderr.Len() == 0 {
+			t.Error("expected warning on stderr for -u/--dry-run")
+		}
+	})
+
+	// R3.5: -u with -d (directory mode) does not create directory
+	t.Run("dry_run_directory", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		refTmp := t.TempDir()
+
+		goPath, goExit := runMktemp(t, goBin, []string{"-u", "-d"}, []string{"TMPDIR=" + goTmp}, "")
+		refPath, refExit := runMktemp(t, refBin, []string{"-u", "-d"}, []string{"TMPDIR=" + refTmp}, "")
+
+		compareExitCodes(t, goExit, refExit)
+		if goPath != "" {
+			if _, err := os.Stat(goPath); err == nil {
+				t.Errorf("[go] directory %q should not exist in dry-run mode", goPath)
+			}
+		}
+		if refPath != "" {
+			if _, err := os.Stat(refPath); err == nil {
+				t.Errorf("[ref] directory %q should not exist in dry-run mode", refPath)
+			}
+		}
+	})
+}
+
+// TestMktempQuiet verifies R3.6: -q/--quiet suppresses errors.
+func TestMktempQuiet(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmktemp")
+	if err != nil {
+		t.Skip("reference binary gmktemp not in PATH")
+	}
+
+	// R3.6: -q suppresses error output on failure
+	t.Run("quiet_suppresses_stderr", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "-q", "noX")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		_ = cmd.Run()
+
+		if stderr.Len() != 0 {
+			t.Errorf("expected empty stderr with -q, got %q", stderr.String())
+		}
+	})
+
+	// R3.6: --quiet long flag also suppresses stderr
+	t.Run("quiet_long_flag", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--quiet", "noX")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		_ = cmd.Run()
+
+		if stderr.Len() != 0 {
+			t.Errorf("expected empty stderr with --quiet, got %q", stderr.String())
+		}
+	})
+
+	// R3.6: -q still exits 1 on failure
+	t.Run("quiet_still_fails", func(t *testing.T) {
+		t.Parallel()
+		_, goExit := runMktemp(t, goBin, []string{"-q", "noX"}, nil, "")
+		_, refExit := runMktemp(t, refBin, []string{"-q", "noX"}, nil, "")
+		compareExitCodes(t, goExit, refExit)
+		if goExit != 1 {
+			t.Errorf("expected exit 1 with -q on failure, got %d", goExit)
+		}
+	})
+
+	// R3.6: -q does not suppress stdout on success
+	t.Run("quiet_success_has_output", func(t *testing.T) {
+		t.Parallel()
+		goTmp := t.TempDir()
+		goPath, goExit := runMktemp(t, goBin, []string{"-q"}, []string{"TMPDIR=" + goTmp}, "")
+		if goExit != 0 {
+			t.Errorf("expected exit 0 with -q on success, got %d", goExit)
+		}
+		if goPath == "" {
+			t.Error("expected path output on success with -q")
+		}
+	})
+}
+
 // runMktemp executes a mktemp binary and returns the output path and exit code.
 func runMktemp(t *testing.T, bin string, args, extraEnv []string, workDir string) (string, int) {
 	t.Helper()
@@ -578,5 +796,14 @@ func verifyParentDir(t *testing.T, label, absPath, expectedDir string) {
 	dir := filepath.Dir(absPath)
 	if dir != expectedDir {
 		t.Errorf("[%s] directory: got %q want %q", label, dir, expectedDir)
+	}
+}
+
+// verifyPathInDir checks that the output path is in the expected directory.
+func verifyPathInDir(t *testing.T, label, path, expectedDir string) {
+	t.Helper()
+	dir := filepath.Dir(path)
+	if dir != expectedDir {
+		t.Errorf("[%s] expected path in %q, got dir %q", label, expectedDir, dir)
 	}
 }

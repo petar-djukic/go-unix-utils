@@ -4,7 +4,7 @@
 // cmd/mktemp implements GNU mktemp: create temporary files or directories.
 //
 // Implements prd036-mktemp R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3.
+// R3.1, R3.2, R3.3, R3.4, R3.5, R3.6.
 package main
 
 import (
@@ -32,6 +32,9 @@ type options struct {
 	parentDir  string
 	hasParent  bool
 	suffix     string
+	tMode      bool // R3.4: -t legacy BSD compatibility mode
+	dryRun     bool // R3.5: -u/--dry-run mode
+	quiet      bool // R3.6: -q/--quiet suppress errors
 	positional []string
 }
 
@@ -42,21 +45,26 @@ func main() {
 
 // run executes mktemp logic.
 // R1.5: exits 0 on success, 1 on failure with error to stderr.
+// R3.6: -q suppresses error messages on failure.
 func run(args []string, stdout, stderr *os.File) int {
 	opts, err := parseArgs(args)
 	if err != nil {
-		printErr(stderr, err)
+		printErrQuiet(stderr, err, opts.quiet)
 		return 1
 	}
 	tmpl, err := resolveTemplate(opts)
 	if err != nil {
-		printErr(stderr, err)
+		printErrQuiet(stderr, err, opts.quiet)
 		return 1
 	}
-	path, err := createTemp(tmpl, opts.suffix, opts.dirMode)
+	path, err := createTemp(tmpl, opts.suffix, opts.dirMode, opts.dryRun)
 	if err != nil {
-		printErr(stderr, err)
+		printErrQuiet(stderr, err, opts.quiet)
 		return 1
+	}
+	// R3.5: print dry-run warning to stderr
+	if opts.dryRun {
+		fmt.Fprintf(stderr, "%s: warning: remember to create the file/directory\n", progName) //nolint:errcheck
 	}
 	fmt.Fprintln(stdout, path) //nolint:errcheck
 	return 0
@@ -67,11 +75,22 @@ func printErr(w *os.File, err error) {
 	fmt.Fprintf(w, "%s: %s\n", progName, err) //nolint:errcheck
 }
 
+// printErrQuiet writes a formatted error message unless quiet mode is active.
+// R3.6: -q/--quiet suppresses error messages on failure.
+func printErrQuiet(w *os.File, err error, quiet bool) {
+	if !quiet {
+		printErr(w, err)
+	}
+}
+
 // parseArgs extracts options and positional arguments from args.
 // R2.1: -d/--directory flag.
 // R3.1: -p DIR / --tmpdir=DIR flag.
 // R3.2: --tmpdir (no value) flag.
 // R3.3: --suffix=SUFF flag.
+// R3.4: -t legacy mode flag.
+// R3.5: -u/--dry-run flag.
+// R3.6: -q/--quiet flag.
 func parseArgs(args []string) (options, error) {
 	var opts options
 	for i := 0; i < len(args); i++ {
@@ -115,6 +134,15 @@ func parseFlag(opts *options, args []string, idx *int) (bool, error) {
 	case strings.HasPrefix(a, "--suffix="):
 		// R3.3: --suffix=SUFF appended after random characters.
 		opts.suffix = a[len("--suffix="):]
+	case a == "-t":
+		// R3.4: legacy BSD compatibility mode.
+		opts.tMode = true
+	case a == "-u" || a == "--dry-run":
+		// R3.5: dry-run mode.
+		opts.dryRun = true
+	case a == "-q" || a == "--quiet":
+		// R3.6: suppress error messages.
+		opts.quiet = true
 	default:
 		return false, nil
 	}
@@ -126,6 +154,7 @@ func parseFlag(opts *options, args []string, idx *int) (bool, error) {
 // R1.2: default template is tmp.XXXXXXXXXX.
 // R3.1: -p DIR overrides the parent directory.
 // R3.2: --tmpdir uses TMPDIR or /tmp as parent.
+// R3.4: -t treats template as filename in TMPDIR.
 func resolveTemplate(opts options) (string, error) {
 	if len(opts.positional) > 1 {
 		return "", fmt.Errorf("too many templates")
@@ -134,11 +163,24 @@ func resolveTemplate(opts options) (string, error) {
 	if len(opts.positional) == 1 {
 		tmpl = opts.positional[0]
 	}
+	// R3.4: -t forces template into TMPDIR directory.
+	if opts.tMode {
+		return resolveTMode(tmpl)
+	}
 	dir := resolveDir(opts, len(opts.positional) == 1)
 	if dir != "" {
 		tmpl = filepath.Join(dir, tmpl)
 	}
 	return tmpl, nil
+}
+
+// resolveTMode handles -t flag: treats template as a filename in TMPDIR.
+// R3.4: the template must not contain directory separators.
+func resolveTMode(tmpl string) (string, error) {
+	if strings.Contains(tmpl, "/") {
+		return "", fmt.Errorf("invalid template, %q, contains directory separator", tmpl)
+	}
+	return filepath.Join(defaultDir(), tmpl), nil
 }
 
 // resolveDir determines the parent directory based on options.
@@ -169,7 +211,8 @@ func defaultDir() string {
 // createTemp creates a temporary file or directory from a template path.
 // R1.3: replaces trailing X characters with random alphanumeric characters.
 // R3.3: appends suffix after random characters.
-func createTemp(tmpl, suffix string, dirMode bool) (string, error) {
+// R3.5: in dry-run mode, generates a name without creating.
+func createTemp(tmpl, suffix string, dirMode, dryRun bool) (string, error) {
 	if err := validateSuffix(suffix); err != nil {
 		return "", err
 	}
@@ -178,7 +221,20 @@ func createTemp(tmpl, suffix string, dirMode bool) (string, error) {
 		return "", fmt.Errorf("too few X's in template '%s'", filepath.Base(tmpl))
 	}
 	prefix := tmpl[:len(tmpl)-xCount]
+	if dryRun {
+		return generateName(prefix, xCount, suffix)
+	}
 	return tryCreate(prefix, xCount, suffix, tmpl, dirMode)
+}
+
+// generateName produces a random name without creating anything.
+// R3.5: -u/--dry-run returns the generated path.
+func generateName(prefix string, xCount int, suffix string) (string, error) {
+	rs, err := randomString(xCount)
+	if err != nil {
+		return "", err
+	}
+	return prefix + rs + suffix, nil
 }
 
 // validateSuffix checks that the suffix does not contain a directory separator.
