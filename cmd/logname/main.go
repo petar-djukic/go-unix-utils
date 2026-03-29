@@ -84,12 +84,14 @@ const (
 // R2.1: extra operands produce an error.
 // R2.2: unknown flags produce an error.
 func parseArgs(args []string) (parseResult, error) {
+	seenDash := false
 	for _, arg := range args {
-		if arg == "--" {
-			break
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
+		if seenDash || !strings.HasPrefix(arg, "-") || arg == "-" {
 			return resultContinue, fmt.Errorf("extra operand '%s'", arg)
+		}
+		if arg == "--" {
+			seenDash = true
+			continue
 		}
 		result, err := parseFlag(arg)
 		if err != nil {
