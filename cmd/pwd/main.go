@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -103,8 +104,73 @@ func parseShortFlags(arg string, current pwdMode) (pwdMode, error) {
 }
 
 // printWorkingDir prints the current working directory according to mode.
-// TODO(prd051): implement R1.1, R1.2, R1.3 — full pwd logic.
-func printWorkingDir(_ pwdMode, _ *os.File, stderr *os.File) int {
-	fmt.Fprintln(stderr, progName+": not yet implemented") //nolint:errcheck
-	return 1
+// R1.1: default physical mode prints resolved path.
+// R1.2: logical mode uses PWD env var if valid, else falls back to physical.
+// R1.3: physical mode resolves all symlinks.
+func printWorkingDir(m pwdMode, stdout, stderr *os.File) int {
+	var dir string
+	var err error
+	if m == modeLogical {
+		dir = logicalDir()
+	}
+	if dir == "" {
+		dir, err = physicalDir()
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %s\n", progName, err) //nolint:errcheck
+			return 1
+		}
+	}
+	fmt.Fprintln(stdout, dir) //nolint:errcheck
+	return 0
+}
+
+// logicalDir returns the PWD environment variable if it is a valid
+// absolute path to the current directory with no . or .. components.
+// R1.2: returns "" if PWD is unset, not absolute, contains dot
+// components, or does not refer to the same directory as os.Getwd().
+func logicalDir() string {
+	pwd := os.Getenv("PWD")
+	if pwd == "" || !filepath.IsAbs(pwd) {
+		return ""
+	}
+	if containsDotComponent(pwd) {
+		return ""
+	}
+	if !sameDirectory(pwd) {
+		return ""
+	}
+	return pwd
+}
+
+// containsDotComponent reports whether path contains a "." or ".." component.
+func containsDotComponent(path string) bool {
+	for _, part := range strings.Split(path, string(filepath.Separator)) {
+		if part == "." || part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// sameDirectory reports whether path refers to the same directory as os.Getwd().
+func sameDirectory(path string) bool {
+	pwdInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	physical, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	physInfo, err := os.Stat(physical)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(pwdInfo, physInfo)
+}
+
+// physicalDir returns the physical working directory with symlinks resolved.
+// R1.3: uses os.Getwd() which returns the resolved path.
+func physicalDir() (string, error) {
+	return os.Getwd()
 }
