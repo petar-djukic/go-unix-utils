@@ -137,7 +137,7 @@ releases:
         - id: rel03.1-uc004-hostname
           status: spec_complete
         - id: rel03.1-uc005-hostid
-          status: spec_complete
+          status: implemented
     - version: "04.0"
       name: "Batch 4 — ls specification and differential test"
       status: spec_complete
