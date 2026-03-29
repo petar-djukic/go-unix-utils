@@ -4,9 +4,12 @@
 // Differential tests for cmd/mktemp against gmktemp (GNU coreutils).
 //
 // Covers prd036-mktemp R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R3.4, R3.5, R3.6.
-// Because mktemp generates random names, tests verify structural properties
-// (exit code, path prefix, name pattern, permissions) rather than exact output.
+// R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R4.4.
+//
+// R4.1: Tests compare exit codes and structural properties between Go and gmktemp.
+// R4.2: Tests verify path validity, file/dir existence, name pattern, and permissions.
+// R4.3: Tests cover default, -d, custom template, --suffix, -p, -t, -u, and errors.
+// R4.4: Tests never compare exact filenames; they use pattern matching on random parts.
 package main
 
 import (
@@ -28,6 +31,8 @@ func discardAll(data []byte) []byte {
 
 // TestDiff runs differential tests for error cases where exit code
 // comparison is sufficient (stdout/stderr text differs due to binary name).
+// R4.1: uses pkg/testutils.RunDiffTests for exit code comparison.
+// R4.3: covers error cases for invalid templates.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -68,6 +73,10 @@ func TestDiff(t *testing.T) {
 // R1.1: file created in TMPDIR.
 // R1.2: name matches tmp.XXXXXXXXXX pattern (10 random alphanumeric chars).
 // R1.4: file has mode 0600.
+// R4.1: compares exit codes between Go and gmktemp.
+// R4.2: verifies path, existence, name pattern, and permissions.
+// R4.3: covers default file creation scenario.
+// R4.4: uses pattern matching, not exact filename comparison.
 func TestMktempDefault(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +105,7 @@ func TestMktempDefault(t *testing.T) {
 // TestMktempCustomTemplate verifies custom template handling.
 // R1.3: trailing X's replaced with random characters.
 // R1.4: file has mode 0600.
+// R4.3: covers custom template scenario.
 func TestMktempCustomTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -158,6 +168,7 @@ func TestMktempCustomTemplate(t *testing.T) {
 // R2.1: -d creates a directory instead of a file.
 // R2.2: directory has mode 0700.
 // R2.3: prints absolute path of the created directory.
+// R4.3: covers -d directory creation scenario.
 func TestMktempDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -265,6 +276,7 @@ func TestMktempExitCodes(t *testing.T) {
 }
 
 // TestMktempParentDir verifies R3.1: -p DIR and --tmpdir=DIR.
+// R4.3: covers -p with explicit directory scenario.
 func TestMktempParentDir(t *testing.T) {
 	t.Parallel()
 
@@ -377,6 +389,7 @@ func TestMktempTmpdirNoValue(t *testing.T) {
 }
 
 // TestMktempSuffix verifies R3.3: --suffix=SUFF.
+// R4.3: covers --suffix scenario.
 func TestMktempSuffix(t *testing.T) {
 	t.Parallel()
 
@@ -444,6 +457,7 @@ func TestMktempSuffix(t *testing.T) {
 }
 
 // TestMktempTMode verifies R3.4: -t legacy BSD compatibility mode.
+// R4.3: covers -t legacy mode scenario.
 func TestMktempTMode(t *testing.T) {
 	t.Parallel()
 
@@ -503,6 +517,7 @@ func TestMktempTMode(t *testing.T) {
 }
 
 // TestMktempDryRun verifies R3.5: -u/--dry-run mode.
+// R4.3: covers -u dry-run scenario.
 func TestMktempDryRun(t *testing.T) {
 	t.Parallel()
 
@@ -690,6 +705,7 @@ func runMktemp(t *testing.T, bin string, args, extraEnv []string, workDir string
 }
 
 // compareExitCodes verifies both binaries returned the same exit code.
+// R4.1: exit code comparison between Go and gmktemp.
 func compareExitCodes(t *testing.T, goExit, refExit int) {
 	t.Helper()
 	if goExit != refExit {
