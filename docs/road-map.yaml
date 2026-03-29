@@ -169,7 +169,7 @@ releases:
         - id: rel04.1-uc001-realpath
           status: implemented
         - id: rel04.1-uc002-readlink
-          status: spec_complete
+          status: implemented
         - id: rel04.1-uc003-pwd
           status: spec_complete
         - id: rel04.1-uc004-tty
