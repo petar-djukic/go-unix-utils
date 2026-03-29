@@ -4,7 +4,7 @@
 // cmd/seq implements GNU seq: print a sequence of numbers.
 //
 // Implements prd019-seq R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -200,6 +200,7 @@ func sequenceLength(first, step, last float64) int {
 // R1.2: generates numbers from FIRST by STEP, stopping at LAST.
 // R2.1: default separator is newline. R2.2: custom separator via -s.
 // R2.3: trailing newline after last number.
+// R3.4: detects write errors and exits immediately.
 func printSequence(stdout, stderr io.Writer, first, step, last float64, prec int, opts seqOptions) int {
 	bw := bufio.NewWriter(stdout)
 	n := sequenceLength(first, step, last)
@@ -207,18 +208,32 @@ func printSequence(stdout, stderr io.Writer, first, step, last float64, prec int
 	for i := range n {
 		v := first + float64(i)*step
 		if i > 0 {
-			fmt.Fprint(bw, opts.separator)
+			if _, err := fmt.Fprint(bw, opts.separator); err != nil {
+				reportWriteError(stderr, err)
+				return 1
+			}
 		}
-		fmt.Fprint(bw, fmtFunc(v))
+		if _, err := fmt.Fprint(bw, fmtFunc(v)); err != nil {
+			reportWriteError(stderr, err)
+			return 1
+		}
 	}
 	if n > 0 {
-		fmt.Fprint(bw, "\n")
+		if _, err := fmt.Fprint(bw, "\n"); err != nil {
+			reportWriteError(stderr, err)
+			return 1
+		}
 	}
 	if err := bw.Flush(); err != nil {
-		fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
+		reportWriteError(stderr, err)
 		return 1
 	}
 	return 0
+}
+
+// reportWriteError prints a write-error diagnostic to stderr.
+func reportWriteError(stderr io.Writer, err error) {
+	fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
 }
 
 // buildFormatter returns a function that formats each number.
