@@ -8,10 +8,7 @@
 // configuration), R3 (encode operation), R4 (decode and input operations).
 package encutil
 
-import (
-	"io"
-	"os"
-)
+import "io"
 
 // EncoderConfig parameterizes an encoding operation with the encoding
 // function and line-wrap column width.
@@ -31,26 +28,9 @@ type DecoderConfig struct {
 	IgnoreGarbage bool                         // skip non-alphabet characters
 }
 
-// Encode reads from r, encodes using cfg, and writes the result to w.
-//
-// R3.1: Encode function stub.
-func Encode(r io.Reader, w io.Writer, cfg EncoderConfig) error {
-	return nil
-}
-
 // Decode reads from r, decodes using cfg, and writes the result to w.
 //
 // R4.1: Decode function stub.
 func Decode(r io.Reader, w io.Writer, cfg DecoderConfig) error {
 	return nil
-}
-
-// OpenInput opens a file for reading, or returns os.Stdin if filename is "-".
-//
-// R4.2: OpenInput function stub.
-func OpenInput(filename string) (io.ReadCloser, error) {
-	if filename == "-" {
-		return os.Stdin, nil
-	}
-	return os.Open(filename)
 }
