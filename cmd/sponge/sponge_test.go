@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sponge against sponge (moreutils).
 //
-// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4.
+// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R6.1, R6.2.
 package main
 
 import (
@@ -692,4 +692,166 @@ func TestErrorMessageOnStderr(t *testing.T) {
 	if !strings.HasPrefix(output, "sponge:") {
 		t.Errorf("R5.2: stderr = %q, want prefix \"sponge:\"", output)
 	}
+}
+
+// runSpongeToFile runs a sponge binary with given args/stdin and returns the exit code.
+// R6.1: helper for file-content differential comparison.
+func runSpongeToFile(t *testing.T, bin string, args []string, stdin []byte, env []string) int {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	if env != nil {
+		cmd.Env = env
+	}
+	err := cmd.Run()
+	if err == nil {
+		return 0
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
+
+// diffFileContent compares file content between Go and reference output files (R6.1).
+func diffFileContent(t *testing.T, goPath, refPath string) {
+	t.Helper()
+	goContent, err := os.ReadFile(goPath)
+	if err != nil {
+		t.Fatalf("read go output: %v", err)
+	}
+	refContent, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("read ref output: %v", err)
+	}
+	if !bytes.Equal(goContent, refContent) {
+		t.Errorf("file content mismatch: go=%d bytes, ref=%d bytes", len(goContent), len(refContent))
+	}
+}
+
+// TestFileOutputDiff verifies file output matches reference binary (R6.1, R6.2).
+func TestFileOutputDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("sponge")
+	if err != nil {
+		t.Skip("reference binary sponge not in PATH")
+	}
+
+	// R6.2: small stdin, output file does not exist
+	t.Run("R6.2_small_stdin_new_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		input := []byte("small input\n")
+		goPath := filepath.Join(dir, "go_out.txt")
+		refPath := filepath.Join(dir, "ref_out.txt")
+
+		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, nil)
+		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, nil)
+		if goCode != refCode {
+			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		}
+		diffFileContent(t, goPath, refPath)
+	})
+
+	// R6.2: large stdin (>1 MB, forces temp file spill)
+	t.Run("R6.2_large_stdin_1MB", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		input := bytes.Repeat([]byte("large-line-data\n"), 70000) // ~1.1 MB
+		goPath := filepath.Join(dir, "go_out.txt")
+		refPath := filepath.Join(dir, "ref_out.txt")
+
+		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, nil)
+		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, nil)
+		if goCode != refCode {
+			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		}
+		diffFileContent(t, goPath, refPath)
+	})
+
+	// R6.2: output file already exists (overwrite, mode preservation)
+	t.Run("R6.2_existing_file_overwrite", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		input := []byte("overwrite content\n")
+		goPath := filepath.Join(dir, "go_out.txt")
+		refPath := filepath.Join(dir, "ref_out.txt")
+		os.WriteFile(goPath, []byte("old go content\n"), 0o644)
+		os.WriteFile(refPath, []byte("old ref content\n"), 0o644)
+
+		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, nil)
+		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, nil)
+		if goCode != refCode {
+			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		}
+		diffFileContent(t, goPath, refPath)
+	})
+
+	// R6.2: append mode with existing file
+	t.Run("R6.2_append_existing", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		original := []byte("original line\n")
+		input := []byte("appended line\n")
+		goPath := filepath.Join(dir, "go_out.txt")
+		refPath := filepath.Join(dir, "ref_out.txt")
+		os.WriteFile(goPath, original, 0o644)
+		os.WriteFile(refPath, original, 0o644)
+
+		goCode := runSpongeToFile(t, goBin, []string{"-a", goPath}, input, nil)
+		refCode := runSpongeToFile(t, refBin, []string{"-a", refPath}, input, nil)
+		if goCode != refCode {
+			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		}
+		diffFileContent(t, goPath, refPath)
+	})
+
+	// R6.2: append mode with non-existent file
+	t.Run("R6.2_append_new_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		input := []byte("append to new\n")
+		goPath := filepath.Join(dir, "go_out.txt")
+		refPath := filepath.Join(dir, "ref_out.txt")
+
+		goCode := runSpongeToFile(t, goBin, []string{"-a", goPath}, input, nil)
+		refCode := runSpongeToFile(t, refBin, []string{"-a", refPath}, input, nil)
+		if goCode != refCode {
+			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		}
+		diffFileContent(t, goPath, refPath)
+	})
+
+	// R6.2: cross-device rename fallback (different TMPDIR from output)
+	t.Run("R6.2_cross_device_tmpdir", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		tmpDir := t.TempDir()
+		input := []byte("cross device content\n")
+		goPath := filepath.Join(dir, "go_out.txt")
+		refPath := filepath.Join(dir, "ref_out.txt")
+		env := append(os.Environ(), "TMPDIR="+tmpDir)
+
+		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, env)
+		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, env)
+		if goCode != refCode {
+			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		}
+		diffFileContent(t, goPath, refPath)
+	})
+
+	// R6.2: passthrough mode (no filename) differential via RunDiffTests
+	t.Run("R6.2_passthrough_large", func(t *testing.T) {
+		t.Parallel()
+		input := bytes.Repeat([]byte("pass-line\n"), 50000) // ~500 KB
+		tests := []testutils.DiffTest{
+			{
+				Name:  "R6.2_passthrough_large_stdin",
+				Args:  []string{},
+				Stdin: input,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
 }
