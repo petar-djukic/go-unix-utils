@@ -90,7 +90,7 @@ releases:
           status: implemented
     - version: "02.2"
       name: "Batch 2.2 — head and seq specification and differential test"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement head for printing the first N lines or bytes of files, and seq for
