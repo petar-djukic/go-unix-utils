@@ -4,7 +4,9 @@
 // cmd/sha256sum computes SHA-256 message digests for files or stdin.
 //
 // Implements prd032-sha256sum: R1.1 (file digest computation), R1.2 (stdin),
-// R1.3 (--tag BSD-style output), R1.4 (exit 1 on read error).
+// R1.3 (--tag BSD-style output), R1.4 (exit 1 on read error),
+// R2.1 (--check verification), R2.2 (OK/FAILED output), R2.3 (--warn/--quiet/--status),
+// R3.1 (binary mode indicator).
 package main
 
 import (
