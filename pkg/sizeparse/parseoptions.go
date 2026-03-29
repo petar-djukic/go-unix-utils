@@ -22,7 +22,7 @@ type ParseOptions struct {
 //
 // R1.1 (prd087): parses integer with optional unit suffix.
 func Parse(s string) (int64, error) {
-	return 0, nil
+	return parseSizeString(s, ParseOptions{})
 }
 
 // ParseWithOptions parses a size string with configurable behavior controlled
@@ -30,5 +30,5 @@ func Parse(s string) (int64, error) {
 //
 // R2.1 (prd087): supports AllowSign and DefaultUnit options.
 func ParseWithOptions(s string, opts ParseOptions) (int64, error) {
-	return 0, nil
+	return parseSizeString(s, opts)
 }
