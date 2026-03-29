@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/basename against gbasename (GNU coreutils).
 //
-// Covers prd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R4.3.
+// Covers prd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -167,6 +167,20 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "no_args_error",
 			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.2: invalid option exits 1
+		{
+			Name:      "invalid_option_error",
+			Args:      []string{"--invalid"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.2: invalid short option exits 1
+		{
+			Name:      "invalid_short_option_error",
+			Args:      []string{"-x"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
