@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/sha512sum implementing prd033-sha512sum R2.1-R2.3, R3.1.
+// Tests for cmd/sha512sum implementing prd033-sha512sum R2.1-R2.3, R3.1,
+// R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -112,6 +113,8 @@ func TestDiff(t *testing.T) {
 //
 // R2.1: -c reads checksum file and verifies entries.
 // R2.2: prints OK/FAILED for each entry.
+// R3.2: --quiet suppresses OK lines.
+// R4.1: --status suppresses all output.
 func TestDiffCheck(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsha512sum")
@@ -134,14 +137,14 @@ func TestDiffCheck(t *testing.T) {
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R2.3: --quiet suppresses OK lines.
+		// R3.2: --quiet suppresses OK lines.
 		{
 			Name:     "check_quiet",
 			Args:     []string{"-c", "--quiet", checksumFile},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R2.3: --status suppresses all output.
+		// R4.1: --status suppresses all output.
 		{
 			Name:     "check_status",
 			Args:     []string{"-c", "--status", checksumFile},
@@ -156,6 +159,7 @@ func TestDiffCheck(t *testing.T) {
 // TestDiffCheckFailed tests --check mode with a mismatched checksum.
 //
 // R2.2: prints FAILED and exits 1.
+// R4.3: exit code 1 when any checksum fails.
 func TestDiffCheckFailed(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsha512sum")
@@ -172,7 +176,7 @@ func TestDiffCheckFailed(t *testing.T) {
 	writeTestFile(t, dataFile, "modified\n")
 
 	tests := []testutils.DiffTest{
-		// R2.2: -c with mismatch prints FAILED and exits 1.
+		// R2.2, R4.3: -c with mismatch prints FAILED and exits 1.
 		{
 			Name:      "check_failed",
 			Args:      []string{"-c", checksumFile},
@@ -180,12 +184,20 @@ func TestDiffCheckFailed(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr()},
 		},
-		// R2.3: --status with mismatch exits 1, no output.
+		// R4.1, R4.3: --status with mismatch exits 1, no output.
 		{
 			Name:     "check_status_failed",
 			Args:     []string{"-c", "--status", checksumFile},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 1,
+		},
+		// R3.2, R4.3: --quiet with mismatch shows only FAILED, exits 1.
+		{
+			Name:      "check_quiet_failed",
+			Args:      []string{"-c", "--quiet", checksumFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
 		},
 	}
 
@@ -243,6 +255,38 @@ func TestDiffCheckWarn(t *testing.T) {
 			Args:      []string{"-c", "-w", checksumFile},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCheckStrict tests --strict flag with malformed checksum lines.
+//
+// R4.2: --strict exits non-zero on improperly formatted checksum lines.
+func TestDiffCheckStrict(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsha512sum")
+	if err != nil {
+		t.Skip("reference binary gsha512sum not in PATH")
+	}
+
+	dir := t.TempDir()
+	dataFile := filepath.Join(dir, "data.txt")
+	writeTestFile(t, dataFile, "test\n")
+
+	checksumFile := filepath.Join(dir, "checksums.txt")
+	createChecksumFile(t, refBin, dataFile, checksumFile)
+	appendToFile(t, checksumFile, "this is not a valid checksum line\n")
+
+	tests := []testutils.DiffTest{
+		// R4.2: --strict with malformed line exits non-zero.
+		{
+			Name:      "check_strict_malformed",
+			Args:      []string{"-c", "--strict", checksumFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr()},
 		},
 	}

@@ -7,7 +7,9 @@
 // R1.2 (GNU format output), R1.3 (stdin as '-'),
 // R1.4 (exit code and stderr diagnostics),
 // R2.1 (--check verification), R2.2 (OK/FAILED output),
-// R2.3 (--warn/--quiet/--status), R3.1 (binary mode indicator).
+// R2.3 (--warn/--quiet/--status), R3.1 (binary mode indicator),
+// R3.2 (--quiet suppresses OK lines), R4.1 (--status exit code only),
+// R4.2 (--strict malformed line failure), R4.3 (exit code 1 on mismatch).
 package main
 
 import (
@@ -36,6 +38,7 @@ type options struct {
 	quiet  bool
 	status bool
 	warn   bool
+	strict bool
 	files  []string
 }
 
@@ -45,22 +48,22 @@ func main() {
 
 	opts := parseArgs(os.Args[1:])
 
-	if err := validateCheckFlags(opts); err != nil {
+	if err := validateFlags(opts); err != nil {
 		fmt.Fprintf(os.Stderr, "sha512sum: %s\n", err)
 		os.Exit(1)
 	}
 
 	if opts.check {
-		exitCode := runCheckMode(opts)
-		os.Exit(exitCode)
+		os.Exit(runCheckMode(opts))
 	}
 
-	exitCode := hashutil.DigestFiles(opts.files, sha512Config, opts.binary, opts.tag, os.Stdout, os.Stderr)
-	os.Exit(exitCode)
+	os.Exit(hashutil.DigestFiles(opts.files, sha512Config, opts.binary, opts.tag, os.Stdout, os.Stderr))
 }
 
-// validateCheckFlags returns an error if check-only flags are used without -c.
-func validateCheckFlags(opts options) error {
+// validateFlags returns an error if flags are used in invalid combinations.
+//
+// R4.2: --strict requires --check.
+func validateFlags(opts options) error {
 	if opts.check {
 		return nil
 	}
@@ -73,17 +76,23 @@ func validateCheckFlags(opts options) error {
 	if opts.warn {
 		return fmt.Errorf("the --warn option is meaningful only when verifying checksums")
 	}
+	if opts.strict {
+		return fmt.Errorf("the --strict option is meaningful only when verifying checksums")
+	}
 	return nil
 }
 
 // runCheckMode verifies checksums from files and returns the exit code.
 //
 // R2.1: -c reads checksum file and verifies entries via hashutil.VerifyChecksums.
+// R4.2: --strict causes non-zero exit on malformed lines.
+// R4.3: exit code 1 when any checksum fails or file cannot be read.
 func runCheckMode(opts options) int {
 	checkOpts := hashutil.CheckOptions{
 		Quiet:  opts.quiet,
 		Status: opts.status,
 		Warn:   opts.warn,
+		Strict: opts.strict,
 	}
 	files := opts.files
 	if len(files) == 0 {
@@ -126,6 +135,8 @@ func parseArgs(args []string) options {
 			opts.status = true
 		case "-w", "--warn":
 			opts.warn = true
+		case "--strict":
+			opts.strict = true
 		case "--":
 			continue
 		case "--help":
@@ -153,4 +164,5 @@ func printUsage() {
 	fmt.Fprintln(os.Stdout, "      --quiet   don't print OK for each successfully verified file")
 	fmt.Fprintln(os.Stdout, "      --status  don't output anything, status code shows success")
 	fmt.Fprintln(os.Stdout, "  -w, --warn    warn about improperly formatted checksum lines")
+	fmt.Fprintln(os.Stdout, "      --strict  exit non-zero for improperly formatted checksum lines")
 }
