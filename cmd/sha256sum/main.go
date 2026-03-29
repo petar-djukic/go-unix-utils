@@ -6,7 +6,9 @@
 // Implements prd032-sha256sum: R1.1 (file digest computation), R1.2 (stdin),
 // R1.3 (--tag BSD-style output), R1.4 (exit 1 on read error),
 // R2.1 (--check verification), R2.2 (OK/FAILED output), R2.3 (--warn/--quiet/--status),
-// R3.1 (binary mode indicator).
+// R3.1 (binary mode indicator), R3.2 (--tag overrides -b/-t),
+// R4.1 (--strict malformed line failure), R4.2 (--version/--help),
+// R4.3 (SIGPIPE handling).
 package main
 
 import (
@@ -35,33 +37,38 @@ type options struct {
 	quiet  bool
 	status bool
 	warn   bool
+	strict bool
 	files  []string
 }
 
 func main() {
-	// R1.4 / R4.3: SIGPIPE handling.
+	// R4.3: SIGPIPE handling.
 	sys.InstallSIGPIPEHandler()
 
 	opts := parseArgs(os.Args[1:])
 
-	if err := validateCheckFlags(opts); err != nil {
+	if err := validateFlags(opts); err != nil {
 		fmt.Fprintf(os.Stderr, "sha256sum: %s\n", err)
 		os.Exit(1)
 	}
 
 	if opts.check {
-		exitCode := runCheckMode(opts)
-		os.Exit(exitCode)
+		os.Exit(runCheckMode(opts))
 	}
 
-	// R1.1, R1.2: Compute digests for files or stdin.
-	exitCode := hashutil.DigestFiles(opts.files, sha256Config, opts.binary, opts.tag, os.Stdout, os.Stderr)
-	os.Exit(exitCode)
+	// R1.1, R1.2, R3.2: Compute digests for files or stdin.
+	os.Exit(hashutil.DigestFiles(opts.files, sha256Config, opts.binary, opts.tag, os.Stdout, os.Stderr))
 }
 
-// validateCheckFlags returns an error if check-only flags are used without -c.
-func validateCheckFlags(opts options) error {
+// validateFlags returns an error if flags are used in invalid combinations.
+//
+// R4.1: --strict requires --check.
+// R4.3: --tag with --check is meaningless.
+func validateFlags(opts options) error {
 	if opts.check {
+		if opts.tag {
+			return fmt.Errorf("the --tag option is meaningless when verifying checksums")
+		}
 		return nil
 	}
 	if opts.quiet {
@@ -73,15 +80,22 @@ func validateCheckFlags(opts options) error {
 	if opts.warn {
 		return fmt.Errorf("the --warn option is meaningful only when verifying checksums")
 	}
+	if opts.strict {
+		return fmt.Errorf("the --strict option is meaningful only when verifying checksums")
+	}
 	return nil
 }
 
 // runCheckMode verifies checksums from files and returns the exit code.
+//
+// R2.1: -c reads checksum file and verifies entries via hashutil.VerifyChecksums.
+// R4.1: --strict causes non-zero exit on malformed lines.
 func runCheckMode(opts options) int {
 	checkOpts := hashutil.CheckOptions{
 		Quiet:  opts.quiet,
 		Status: opts.status,
 		Warn:   opts.warn,
+		Strict: opts.strict,
 	}
 	files := opts.files
 	if len(files) == 0 {
@@ -104,7 +118,8 @@ func runCheckMode(opts options) int {
 
 // parseArgs parses GNU-compatible flags from args and returns the parsed options.
 //
-// R1.3: --tag enables BSD-style output.
+// R3.2: --tag enables BSD-style output regardless of -b/-t.
+// R4.2: --help and --version print info and exit 0.
 func parseArgs(args []string) options {
 	var opts options
 	for _, arg := range args {
@@ -123,6 +138,8 @@ func parseArgs(args []string) options {
 			opts.status = true
 		case "-w", "--warn":
 			opts.warn = true
+		case "--strict":
+			opts.strict = true
 		case "--":
 			continue
 		case "--help":
@@ -139,6 +156,8 @@ func parseArgs(args []string) options {
 }
 
 // printUsage prints the usage message to stdout.
+//
+// R4.2: --help output.
 func printUsage() {
 	fmt.Fprintln(os.Stdout, "Usage: sha256sum [OPTION]... [FILE]...")
 	fmt.Fprintln(os.Stdout, "Print or check SHA256 checksums.")
@@ -150,4 +169,5 @@ func printUsage() {
 	fmt.Fprintln(os.Stdout, "      --quiet   don't print OK for each successfully verified file")
 	fmt.Fprintln(os.Stdout, "      --status  don't output anything, status code shows success")
 	fmt.Fprintln(os.Stdout, "  -w, --warn    warn about improperly formatted checksum lines")
+	fmt.Fprintln(os.Stdout, "      --strict  exit non-zero for improperly formatted checksum lines")
 }

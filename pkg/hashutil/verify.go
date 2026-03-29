@@ -112,7 +112,7 @@ func verifyOneLine(line string, cfg HashConfig, opts CheckOptions, stdout, stder
 		if opts.Warn && !opts.Status {
 			fmt.Fprintf(stderr, "%s: no properly formatted checksum lines found\n", line)
 		}
-		return true, true
+		return !opts.Strict, true
 	}
 	return verifyFile(filename, expected, cfg, opts, stdout, stderr), false
 }

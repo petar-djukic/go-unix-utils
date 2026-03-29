@@ -28,4 +28,5 @@ type CheckOptions struct {
 	Warn   bool // print warning for malformed lines
 	Quiet  bool // suppress OK lines
 	Status bool // suppress all output, report only via exit code
+	Strict bool // exit non-zero for malformed checksum lines
 }
