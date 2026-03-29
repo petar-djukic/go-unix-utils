@@ -249,10 +249,16 @@ func handleDelimiter(line, delimHeader, delimBody, delimFooter string,
 	case delimBody:
 		*section = sectionBody
 		*blankRun = 0
+		if !*noReset {
+			*lineNum = *startingLineNumber
+		}
 		return true
 	case delimFooter:
 		*section = sectionFooter
 		*blankRun = 0
+		if !*noReset {
+			*lineNum = *startingLineNumber
+		}
 		return true
 	}
 	return false
