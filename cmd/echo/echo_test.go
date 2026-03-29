@@ -10,8 +10,40 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+// TestSIGPIPE verifies that cmd/echo handles a closed stdout gracefully (R3.2, R3.3).
+// When stdout is closed, the binary may receive SIGPIPE (exit 0 via handler) or
+// detect a write error (exit 1 per R3.2). Both are correct; the key invariant is
+// that the process does not crash or hang.
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "hello")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Close the read end immediately to trigger SIGPIPE or write error.
+	stdout.Close()
+
+	err = cmd.Wait()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code := exitErr.ExitCode()
+			// R3.2: exit 1 on write error; R3.3: exit 0 on SIGPIPE.
+			if code != 0 && code != 1 {
+				t.Errorf("expected exit 0 or 1 on closed stdout, got %d", code)
+			}
+		}
+	}
+}
+
 // TestDiff verifies cmd/echo against the GNU reference binary gecho.
-// Implements prd020-echo R4.1-R4.3.
+// Implements prd020-echo R3.1-R3.3, R4.1-R4.3.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -222,6 +254,23 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "n_and_e_combined",
 			Args: []string{"-ne", `a\tb`},
+		},
+
+		// R3.1: Exit 0 on successful output.
+		{
+			Name:     "exit_zero_on_success",
+			Args:     []string{"hello"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "exit_zero_no_args",
+			Args:     []string{},
+			ExitCode: 0,
+		},
+		{
+			Name:     "exit_zero_with_escapes",
+			Args:     []string{"-e", `a\tb`},
+			ExitCode: 0,
 		},
 	}
 

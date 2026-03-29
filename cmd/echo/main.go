@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/echo implements GNU echo: display a line of text.
-// Implements prd020-echo R1.1-R1.4, R2.1-R2.4.
+// Implements prd020-echo R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
