@@ -83,6 +83,55 @@ func TestDiff(t *testing.T) {
 			Args: []string{file1, file2},
 			Env:  []string{"LC_ALL=C"},
 		},
+		{
+			// R2.1: custom single-character separator.
+			Name:  "tac_custom_sep",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c:"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.1: custom multi-character separator.
+			Name:  "tac_multichar_sep",
+			Args:  []string{"-s", "::"},
+			Stdin: []byte("a::b::c::"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.1: custom separator with no trailing separator.
+			Name:  "tac_custom_sep_no_trailing",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.2: -b places separator before records.
+			Name:  "tac_before_sep",
+			Args:  []string{"-b", "-s", ":"},
+			Stdin: []byte(":a:b:c"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.2: -b with trailing separator.
+			Name:  "tac_before_sep_trailing",
+			Args:  []string{"-b", "-s", ":"},
+			Stdin: []byte(":a:b:c:"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.3, R2.4: -r interprets separator as regex.
+			Name:  "tac_regex_sep",
+			Args:  []string{"-r", "-s", "[:|]"},
+			Stdin: []byte("a:b|c:"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R2.2, R2.3, R2.4: -b -r combined.
+			Name:  "tac_before_regex_sep",
+			Args:  []string{"-b", "-r", "-s", "[:|]"},
+			Stdin: []byte(":a|b:c"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -64,7 +65,10 @@ func processFile(name string) error {
 	if err != nil {
 		return err
 	}
-	reversed := reverseRecords(data)
+	reversed, err := reverseRecords(data)
+	if err != nil {
+		return err
+	}
 	return writeOutput(reversed)
 }
 
@@ -80,27 +84,120 @@ func readInput(name string) ([]byte, error) {
 // returns them in reverse order.
 // R1.1: splits on separator, reverses order.
 // R1.2: trailing separator terminates the last record.
-func reverseRecords(data []byte) []byte {
+// R2.1-R2.4: supports custom separator, before mode, and regex mode.
+func reverseRecords(data []byte) ([]byte, error) {
 	if len(data) == 0 {
-		return data
+		return data, nil
 	}
-	_ = *before // TODO: implement -b flag (R2.2)
-	_ = *regex  // TODO: implement -r flag (R2.3)
-
-	sep := *separator
 	s := string(data)
 
-	// SplitAfter keeps the separator attached to each record.
-	parts := strings.SplitAfter(s, sep)
+	parts, err := splitRecords(s)
+	if err != nil {
+		return nil, err
+	}
 
-	// R1.2: trailing separator terminates last record, not empty record.
+	// R1.2: trailing separator terminates last record.
 	if len(parts) > 0 && parts[len(parts)-1] == "" {
 		parts = parts[:len(parts)-1]
 	}
 
 	reverseSlice(parts)
+	return []byte(strings.Join(parts, "")), nil
+}
 
-	return []byte(strings.Join(parts, ""))
+// splitRecords dispatches to the appropriate split strategy based on
+// the -r and -b flags.
+func splitRecords(s string) ([]string, error) {
+	sep := *separator
+	if *regex {
+		return splitByRegex(s, sep, *before)
+	}
+	if *before {
+		return splitBeforeStr(s, sep), nil
+	}
+	return strings.SplitAfter(s, sep), nil
+}
+
+// splitByRegex splits s using a regex separator pattern.
+// R2.3, R2.4: regex separator with optional before mode.
+func splitByRegex(s, pattern string, beforeMode bool) ([]string, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid separator pattern %q: %w", pattern, err)
+	}
+	locs := re.FindAllStringIndex(s, -1)
+	if len(locs) == 0 {
+		return []string{s}, nil
+	}
+	return splitAtBoundaries(s, locs, beforeMode), nil
+}
+
+// splitBeforeStr splits s with the string separator attached before
+// each record instead of after it.
+// R2.2: before mode for string separators.
+func splitBeforeStr(s, sep string) []string {
+	locs := findAllString(s, sep)
+	if len(locs) == 0 {
+		return []string{s}
+	}
+	return splitAtBoundaries(s, locs, true)
+}
+
+// findAllString returns [start, end] pairs for all non-overlapping
+// occurrences of sep in s.
+func findAllString(s, sep string) [][]int {
+	var result [][]int
+	start := 0
+	for {
+		idx := strings.Index(s[start:], sep)
+		if idx < 0 {
+			break
+		}
+		pos := start + idx
+		result = append(result, []int{pos, pos + len(sep)})
+		start = pos + len(sep)
+	}
+	return result
+}
+
+// splitAtBoundaries splits s at the given match boundaries.
+// In before mode, each separator is attached to the following record.
+// In after mode, each separator is attached to the preceding record.
+func splitAtBoundaries(s string, locs [][]int, beforeMode bool) []string {
+	if beforeMode {
+		return splitBefore(s, locs)
+	}
+	return splitAfterLocs(s, locs)
+}
+
+// splitBefore splits s with separators attached before each record.
+func splitBefore(s string, locs [][]int) []string {
+	var parts []string
+	if locs[0][0] > 0 {
+		parts = append(parts, s[:locs[0][0]])
+	}
+	for i, loc := range locs {
+		end := len(s)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		parts = append(parts, s[loc[0]:end])
+	}
+	return parts
+}
+
+// splitAfterLocs splits s with separators attached after each record.
+func splitAfterLocs(s string, locs [][]int) []string {
+	var parts []string
+	prev := 0
+	for _, loc := range locs {
+		parts = append(parts, s[prev:loc[1]])
+		prev = loc[1]
+	}
+	if prev < len(s) {
+		parts = append(parts, s[prev:])
+	}
+	return parts
 }
 
 // reverseSlice reverses a string slice in place.
