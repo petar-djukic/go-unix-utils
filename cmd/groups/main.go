@@ -3,7 +3,7 @@
 
 // cmd/groups implements GNU groups: print group memberships.
 //
-// Implements prd043-groups R1.1, R1.2, R1.3.
+// Implements prd043-groups R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -38,7 +38,8 @@ func run(args []string, stdout, stderr *os.File) int {
 
 // printCurrentUserGroups prints group names for the current user.
 // R1.1: space-separated group names, no prefix, single line, exit 0.
-// Uses getgroups(2) to match GNU groups behavior exactly.
+// R2.1: no prefix when no USER argument is given.
+// R2.3: group names in system group database order via getgroups(2).
 func printCurrentUserGroups(stdout, stderr *os.File) int {
 	gids, err := syscall.Getgroups()
 	if err != nil {
@@ -68,6 +69,8 @@ func gidSliceToNames(gids []int) []string {
 // printNamedUserGroups prints group memberships for each named user.
 // R1.2: one line per user with "user : group1 group2" format.
 // R1.3: nonexistent users produce stderr errors; exit 1 if any failed.
+// R2.2: each line formatted as "user : group1 group2 ...".
+// R2.3: group names in system group database order via GroupIds().
 func printNamedUserGroups(users []string, stdout, stderr *os.File) int {
 	exitCode := 0
 	for _, username := range users {
