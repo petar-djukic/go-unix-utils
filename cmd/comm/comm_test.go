@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeProgramName replaces "gcomm:" with "comm:" so stderr messages
+// from the reference binary match our binary's program name.
+func normalizeProgramName(b []byte) []byte {
+	return bytes.ReplaceAll(b, []byte("gcomm:"), []byte("comm:"))
+}
 
 // writeTestFiles creates file1.txt and file2.txt in a temp directory.
 func writeTestFiles(t *testing.T, content1, content2 string) string {
@@ -45,6 +52,14 @@ func TestDiff(t *testing.T) {
 	dirFile2Empty := writeTestFiles(t, "a\nb\n", "")
 	dirBothEmpty := writeTestFiles(t, "", "")
 	dirNoTrailingNL := writeTestFiles(t, "x", "x")
+
+	// R3.1/R3.2: unsorted inputs for order checking tests.
+	dirUnsorted1 := writeTestFiles(t, "b\na\nc\n", "a\nb\nc\n")
+	dirUnsorted2 := writeTestFiles(t, "a\nb\nc\n", "c\na\nb\n")
+	dirUnsortedBoth := writeTestFiles(t, "b\na\n", "c\na\n")
+
+	// Normalizer for tests that produce stderr with the program name.
+	nameNorm := []testutils.NormalizeFunc{normalizeProgramName}
 
 	tests := []testutils.DiffTest{
 		// R1.x tests (existing)
@@ -169,6 +184,82 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-1", "file1.txt", "file2.txt"},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirFile1Short,
+		},
+
+		// R3.1: default order checking warns on stderr and exits 1
+		{
+			Name:      "R3.1_unsorted_file1_default_warning",
+			Args:      []string{"file1.txt", "file2.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirUnsorted1,
+			ExitCode:  1,
+			Normalize: nameNorm,
+		},
+		{
+			Name:      "R3.1_unsorted_file2_default_warning",
+			Args:      []string{"file1.txt", "file2.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirUnsorted2,
+			ExitCode:  1,
+			Normalize: nameNorm,
+		},
+
+		// R3.2: --check-order makes unsorted input fatal
+		{
+			Name:      "R3.2_check_order_unsorted_file1",
+			Args:      []string{"--check-order", "file1.txt", "file2.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirUnsorted1,
+			ExitCode:  1,
+			Normalize: nameNorm,
+		},
+		{
+			Name:      "R3.2_check_order_unsorted_file2",
+			Args:      []string{"--check-order", "file1.txt", "file2.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirUnsorted2,
+			ExitCode:  1,
+			Normalize: nameNorm,
+		},
+		{
+			Name:    "R3.2_check_order_sorted_input",
+			Args:    []string{"--check-order", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+
+		// R3.3: --nocheck-order disables sorting check
+		{
+			Name:    "R3.3_nocheck_order_unsorted_file1",
+			Args:    []string{"--nocheck-order", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirUnsorted1,
+		},
+		{
+			Name:    "R3.3_nocheck_order_unsorted_both",
+			Args:    []string{"--nocheck-order", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirUnsortedBoth,
+		},
+
+		// R3.4: --output-delimiter=STRING replaces tab
+		{
+			Name:    "R3.4_output_delimiter_pipe",
+			Args:    []string{"--output-delimiter=|", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R3.4_output_delimiter_with_suppress",
+			Args:    []string{"--output-delimiter=,", "-1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
+		},
+		{
+			Name:    "R3.4_output_delimiter_multi_char",
+			Args:    []string{"--output-delimiter=::", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirBasic,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
