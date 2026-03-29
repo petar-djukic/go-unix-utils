@@ -107,6 +107,122 @@ func TestDiff(t *testing.T) {
 			Name: "multiple_empty_arguments",
 			Args: []string{"", ""},
 		},
+
+		// R2.1: -e escape sequences.
+		{
+			Name: "escape_backslash",
+			Args: []string{"-e", `a\\b`},
+		},
+		{
+			Name: "escape_alert",
+			Args: []string{"-e", `\a`},
+		},
+		{
+			Name: "escape_backspace",
+			Args: []string{"-e", `\b`},
+		},
+		{
+			Name: "escape_escape_char",
+			Args: []string{"-e", `\e`},
+		},
+		{
+			Name: "escape_form_feed",
+			Args: []string{"-e", `\f`},
+		},
+		{
+			Name: "escape_newline",
+			Args: []string{"-e", `a\nb`},
+		},
+		{
+			Name: "escape_carriage_return",
+			Args: []string{"-e", `a\rb`},
+		},
+		{
+			Name: "escape_tab",
+			Args: []string{"-e", `a\tb`},
+		},
+		{
+			Name: "escape_vertical_tab",
+			Args: []string{"-e", `\v`},
+		},
+		{
+			Name: "escape_octal_zero",
+			Args: []string{"-e", `\0101`},
+		},
+		{
+			Name: "escape_octal_one_digit",
+			Args: []string{"-e", `\01`},
+		},
+		{
+			Name: "escape_octal_no_digits",
+			Args: []string{"-e", `\0`},
+		},
+		{
+			Name: "escape_hex",
+			Args: []string{"-e", `\x41`},
+		},
+		{
+			Name: "escape_hex_single_digit",
+			Args: []string{"-e", `\x9`},
+		},
+		{
+			Name: "escape_hex_lowercase",
+			Args: []string{"-e", `\x6a`},
+		},
+		{
+			Name: "escape_multiple_sequences",
+			Args: []string{"-e", `\t\n\t`},
+		},
+		{
+			Name: "escape_unknown_backslash",
+			Args: []string{"-e", `\z`},
+		},
+
+		// R2.2: \c terminates output.
+		{
+			Name: "escape_c_suppresses_rest",
+			Args: []string{"-e", `before\cafter`},
+		},
+		{
+			Name: "escape_c_suppresses_further_args",
+			Args: []string{"-e", `hello\c`, "world"},
+		},
+		{
+			Name: "escape_c_alone",
+			Args: []string{"-e", `\c`},
+		},
+
+		// R2.3: -E disables escape interpretation (default).
+		{
+			Name: "flag_E_no_escape",
+			Args: []string{"-E", `hello\tworld`},
+		},
+		{
+			Name: "default_no_escape",
+			Args: []string{`hello\tworld`},
+		},
+
+		// R2.4: Last of -e / -E wins.
+		{
+			Name: "e_then_E_disables",
+			Args: []string{"-e", "-E", `hello\tworld`},
+		},
+		{
+			Name: "E_then_e_enables",
+			Args: []string{"-E", "-e", `hello\tworld`},
+		},
+		{
+			Name: "combined_eE_last_E_wins",
+			Args: []string{"-eE", `hello\tworld`},
+		},
+		{
+			Name: "combined_Ee_last_e_wins",
+			Args: []string{"-Ee", `hello\tworld`},
+		},
+		{
+			Name: "n_and_e_combined",
+			Args: []string{"-ne", `a\tb`},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
