@@ -173,7 +173,7 @@ releases:
         - id: rel04.1-uc003-pwd
           status: implemented
         - id: rel04.1-uc004-tty
-          status: spec_complete
+          status: implemented
         - id: rel04.1-uc005-logname
           status: spec_complete
     - version: "05.0"
