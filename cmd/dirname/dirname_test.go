@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/dirname against gdirname (GNU coreutils).
 //
-// Covers prd016-dirname R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R4.1, R4.2, R4.3.
+// Covers prd016-dirname R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -111,6 +111,24 @@ func TestDiff(t *testing.T) {
 		{
 			Name:     "R1.2_empty_string",
 			Args:     []string{""},
+			ExitCode: 0,
+		},
+		// R4.3: /a/b/ — trailing slash stripped, returns /a
+		{
+			Name:     "R4.3_trailing_slash_ab",
+			Args:     []string{"/a/b/"},
+			ExitCode: 0,
+		},
+		// R4.3: ///a///b/// — multiple embedded and trailing slashes
+		{
+			Name:     "R4.3_multi_slashes",
+			Args:     []string{"///a///b///"},
+			ExitCode: 0,
+		},
+		// R4.3: bare filename — returns "."
+		{
+			Name:     "R4.3_bare_filename",
+			Args:     []string{"filename"},
 			ExitCode: 0,
 		},
 		// R2.1: -z NUL-delimited output
