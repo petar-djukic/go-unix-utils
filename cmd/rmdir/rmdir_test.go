@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/rmdir against grmdir (GNU coreutils).
 //
-// Covers prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
+// Covers prd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -21,6 +22,14 @@ import (
 // between grmdir and the Go binary.
 func discardAll(data []byte) []byte {
 	return nil
+}
+
+// normProgName replaces the binary name prefix (e.g. "/opt/homebrew/bin/grmdir")
+// with "rmdir" so verbose output can be compared across binaries.
+var progNameRe = regexp.MustCompile(`(?m)^[^\s:]+`)
+
+func normProgName(data []byte) []byte {
+	return progNameRe.ReplaceAll(data, []byte("rmdir"))
 }
 
 // TestDiff runs differential tests for rmdir cases where both
@@ -81,6 +90,22 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"--ignore-fail-on-non-empty", "nonempty"},
 			WorkDir:  workDir,
 			ExitCode: 0,
+		},
+		// R3.2: --ignore-fail-on-non-empty does NOT suppress non-existent target.
+		{
+			Name:      "ignore_fail_nonexistent",
+			Args:      []string{"--ignore-fail-on-non-empty", "doesnotexist"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: --ignore-fail-on-non-empty does NOT suppress file target error.
+		{
+			Name:      "ignore_fail_file_target",
+			Args:      []string{"--ignore-fail-on-non-empty", filepath.Join("nonempty", "file.txt")},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
 	}
 
@@ -265,6 +290,189 @@ func TestRmdirIgnoreNonEmpty(t *testing.T) {
 		assertRemoved(t, goDir, "a/b/c")
 		assertRemoved(t, goDir, "a/b")
 		assertExists(t, goDir, "a")
+	})
+
+	// R3.2: --ignore-fail-on-non-empty does NOT suppress non-existent error.
+	t.Run("does_not_suppress_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		args := []string{"--ignore-fail-on-non-empty", "nosuchdir"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, goStderr, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if goExit != 1 {
+			t.Errorf("expected exit 1 for non-existent dir, got %d", goExit)
+		}
+		if len(goStderr) == 0 {
+			t.Error("expected stderr output for non-existent dir")
+		}
+	})
+}
+
+// TestRmdirVerbose verifies R3.3: -v/--verbose prints removal messages.
+func TestRmdirVerbose(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skip("reference binary grmdir not in PATH")
+	}
+
+	// R3.3: -v prints a message for each removed directory.
+	t.Run("verbose_single", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "emptydir"))
+		}
+		args := []string{"-v", "emptydir"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(normProgName(refStdout), normProgName(goStdout)) {
+			t.Errorf("stdout:\nref: %q\ngo:  %q", refStdout, goStdout)
+		}
+		assertRemoved(t, goDir, "emptydir")
+	})
+
+	// R3.3: --verbose long form.
+	t.Run("verbose_long_flag", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "d1"))
+		}
+		args := []string{"--verbose", "d1"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(normProgName(refStdout), normProgName(goStdout)) {
+			t.Errorf("stdout:\nref: %q\ngo:  %q", refStdout, goStdout)
+		}
+	})
+
+	// R3.3: -v with -p prints message for each removed directory.
+	t.Run("verbose_with_parents", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "a", "b", "c"))
+		}
+		args := []string{"-pv", "a/b/c"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(normProgName(refStdout), normProgName(goStdout)) {
+			t.Errorf("stdout:\nref: %q\ngo:  %q", refStdout, goStdout)
+		}
+		for _, d := range []string{"a/b/c", "a/b", "a"} {
+			assertRemoved(t, goDir, d)
+		}
+	})
+
+	// R3.3: -v with multiple dirs.
+	t.Run("verbose_multiple", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "x"))
+			mkdirAll(t, filepath.Join(base, "y"))
+		}
+		args := []string{"-v", "x", "y"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(normProgName(refStdout), normProgName(goStdout)) {
+			t.Errorf("stdout:\nref: %q\ngo:  %q", refStdout, goStdout)
+		}
+	})
+}
+
+// TestRmdirExitCodes verifies R3.4: exit code behavior.
+func TestRmdirExitCodes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grmdir")
+	if err != nil {
+		t.Skip("reference binary grmdir not in PATH")
+	}
+
+	// R3.4: exit 0 when all directories successfully removed.
+	t.Run("all_success_exit_0", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "a"))
+			mkdirAll(t, filepath.Join(base, "b"))
+		}
+		args := []string{"a", "b"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if goExit != 0 {
+			t.Errorf("expected exit 0, got %d", goExit)
+		}
+	})
+
+	// R3.4: exit non-zero when any removal fails.
+	t.Run("partial_failure_exit_nonzero", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "ok"))
+			mkdirAll(t, filepath.Join(base, "bad"))
+			writeTestFile(t, filepath.Join(base, "bad", "f"), "x")
+		}
+		args := []string{"ok", "bad"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if goExit != 1 {
+			t.Errorf("expected exit 1, got %d", goExit)
+		}
+	})
+
+	// R3.4 + R3.1: suppressed failure yields exit 0.
+	t.Run("suppressed_failure_exit_0", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		for _, base := range []string{goDir, refDir} {
+			mkdirAll(t, filepath.Join(base, "bad"))
+			writeTestFile(t, filepath.Join(base, "bad", "f"), "x")
+		}
+		args := []string{"--ignore-fail-on-non-empty", "bad"}
+		_, _, refExit := execBin(t, refBin, args, refDir)
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if goExit != 0 {
+			t.Errorf("expected exit 0, got %d", goExit)
+		}
 	})
 }
 
