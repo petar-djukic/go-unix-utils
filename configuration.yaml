@@ -35,7 +35,7 @@ project:
         - "15.0"
 generation:
     prefix: generation-
-    cycles: 100
+    cycles: 500
 cobbler:
     dir: .cobbler/
     max_stitch_issues_per_cycle: 1
