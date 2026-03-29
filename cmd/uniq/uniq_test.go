@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/uniq implementing prd028-uniq R1.1-R1.4.
+// Tests for cmd/uniq implementing prd028-uniq R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -91,6 +91,110 @@ func TestDiff(t *testing.T) {
 			Name:     "no_trailing_newline",
 			Args:     []string{},
 			Stdin:    []byte("a\na\nb"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: -d outputs only lines with run length > 1 (one copy per run).
+		{
+			Name:     "duplicates_only",
+			Args:     []string{"-d"},
+			Stdin:    []byte("a\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: -d with no duplicates produces no output.
+		{
+			Name:     "duplicates_only_none",
+			Args:     []string{"-d"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1: -d with multiple duplicate runs.
+		{
+			Name:     "duplicates_only_multi",
+			Args:     []string{"-d"},
+			Stdin:    []byte("a\na\nb\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.2: -D outputs every line of duplicate runs.
+		{
+			Name:     "all_duplicates",
+			Args:     []string{"-D"},
+			Stdin:    []byte("a\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.2: -D with no duplicates produces no output.
+		{
+			Name:     "all_duplicates_none",
+			Args:     []string{"-D"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.2: -D with multiple duplicate runs.
+		{
+			Name:     "all_duplicates_multi",
+			Args:     []string{"-D"},
+			Stdin:    []byte("a\na\na\nb\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.3: -u outputs only lines that appear exactly once.
+		{
+			Name:     "unique_only",
+			Args:     []string{"-u"},
+			Stdin:    []byte("a\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.3: -u with all unique lines outputs everything.
+		{
+			Name:     "unique_only_all",
+			Args:     []string{"-u"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.3: -u with all duplicates produces no output.
+		{
+			Name:     "unique_only_none",
+			Args:     []string{"-u"},
+			Stdin:    []byte("a\na\nb\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.4: -c prefixes each line with its run count.
+		{
+			Name:     "count",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.4: -c with single occurrences.
+		{
+			Name:     "count_all_unique",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.4: -c with large run.
+		{
+			Name:     "count_large_run",
+			Args:     []string{"-c"},
+			Stdin:    []byte("x\nx\nx\nx\nx\ny\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R2.1 + R2.4: -d -c combination.
+		{
+			Name:     "dup_count",
+			Args:     []string{"-d", "-c"},
+			Stdin:    []byte("a\na\nb\nc\nc\nc\n"),
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
