@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/ln against gln (GNU coreutils).
 //
-// Covers prd037-ln R1.1, R1.2, R1.3, R1.4.
+// Covers prd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -194,6 +194,274 @@ func TestNonExistentTarget(t *testing.T) {
 	}
 }
 
+// TestSymlinkCreation verifies R2.1: -s creates a symbolic link.
+func TestSymlinkCreation(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	t.Run("basic_symlink", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "hello")
+		}
+
+		refStdout, _, refExit := execBin(t, refBin, []string{"-s", "target.txt", "link.txt"}, refDir)
+		goStdout, _, goExit := execBin(t, goBin, []string{"-s", "target.txt", "link.txt"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		// R2.3: target stored as-is.
+		assertSymlinkTarget(t, filepath.Join(goDir, "link.txt"), "target.txt")
+		assertSymlinkTarget(t, filepath.Join(refDir, "link.txt"), "target.txt")
+	})
+
+	t.Run("symlink_long_flag", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "file.txt"), "content")
+		}
+
+		refStdout, _, refExit := execBin(t, refBin, []string{"--symbolic", "file.txt", "slink"}, refDir)
+		goStdout, _, goExit := execBin(t, goBin, []string{"--symbolic", "file.txt", "slink"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		assertSymlinkTarget(t, filepath.Join(goDir, "slink"), "file.txt")
+	})
+}
+
+// TestSymlinkToDirectory verifies R2.2: symlinks to directories are allowed.
+func TestSymlinkToDirectory(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, base := range []string{goDir, refDir} {
+		if err := os.Mkdir(filepath.Join(base, "mydir"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	refStdout, _, refExit := execBin(t, refBin, []string{"-s", "mydir", "dirlink"}, refDir)
+	goStdout, _, goExit := execBin(t, goBin, []string{"-s", "mydir", "dirlink"}, goDir)
+
+	if refExit != goExit {
+		t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+	}
+	if !bytes.Equal(refStdout, goStdout) {
+		t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+	}
+	// R2.2: symlink to directory succeeds.
+	assertSymlinkTarget(t, filepath.Join(goDir, "dirlink"), "mydir")
+	assertSymlinkTarget(t, filepath.Join(refDir, "dirlink"), "mydir")
+}
+
+// TestSymlinkStoresTargetAsIs verifies R2.3: target string stored verbatim.
+func TestSymlinkStoresTargetAsIs(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	t.Run("absolute_target", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		absTarget := "/usr/bin/env"
+
+		_, _, refExit := execBin(t, refBin, []string{"-s", absTarget, "envlink"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-s", absTarget, "envlink"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		assertSymlinkTarget(t, filepath.Join(goDir, "envlink"), absTarget)
+		assertSymlinkTarget(t, filepath.Join(refDir, "envlink"), absTarget)
+	})
+
+	t.Run("relative_target_with_dots", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			if err := os.Mkdir(filepath.Join(base, "sub"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(base, "file.txt"), "data")
+		}
+
+		_, _, refExit := execBin(t, refBin, []string{"-s", "../file.txt", "sub/link"}, refDir)
+		_, _, goExit := execBin(t, goBin, []string{"-s", "../file.txt", "sub/link"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		// R2.3: stores "../file.txt" as-is.
+		assertSymlinkTarget(t, filepath.Join(goDir, "sub", "link"), "../file.txt")
+		assertSymlinkTarget(t, filepath.Join(refDir, "sub", "link"), "../file.txt")
+	})
+}
+
+// TestRelativeSymlink verifies R2.4: -r creates relative symlinks.
+func TestRelativeSymlink(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	t.Run("relative_same_dir", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "target.txt"), "hello")
+		}
+
+		refStdout, _, refExit := execBin(t, refBin, []string{"-sr", "target.txt", "rlink"}, refDir)
+		goStdout, _, goExit := execBin(t, goBin, []string{"-sr", "target.txt", "rlink"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		// Both should store "target.txt" as relative from same dir.
+		goTarget := readSymlink(t, filepath.Join(goDir, "rlink"))
+		refTarget := readSymlink(t, filepath.Join(refDir, "rlink"))
+		if goTarget != refTarget {
+			t.Errorf("symlink target: ref=%q go=%q", refTarget, goTarget)
+		}
+	})
+
+	t.Run("relative_cross_dir", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "source.txt"), "data")
+			if err := os.Mkdir(filepath.Join(base, "subdir"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Create relative symlink from subdir/rlink -> ../source.txt.
+		refStdout, _, refExit := execBin(t, refBin, []string{"-s", "-r", "source.txt", "subdir/rlink"}, refDir)
+		goStdout, _, goExit := execBin(t, goBin, []string{"-s", "-r", "source.txt", "subdir/rlink"}, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		goTarget := readSymlink(t, filepath.Join(goDir, "subdir", "rlink"))
+		refTarget := readSymlink(t, filepath.Join(refDir, "subdir", "rlink"))
+		if goTarget != refTarget {
+			t.Errorf("symlink target: ref=%q go=%q", refTarget, goTarget)
+		}
+	})
+
+	t.Run("relative_long_flags", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, base := range []string{goDir, refDir} {
+			writeFile(t, filepath.Join(base, "file.txt"), "x")
+		}
+
+		args := []string{"--symbolic", "--relative", "file.txt", "rlink2"}
+		refStdout, _, refExit := execBin(t, refBin, args, refDir)
+		goStdout, _, goExit := execBin(t, goBin, args, goDir)
+
+		if refExit != goExit {
+			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+		}
+		if !bytes.Equal(refStdout, goStdout) {
+			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+		}
+		goTarget := readSymlink(t, filepath.Join(goDir, "rlink2"))
+		refTarget := readSymlink(t, filepath.Join(refDir, "rlink2"))
+		if goTarget != refTarget {
+			t.Errorf("symlink target: ref=%q go=%q", refTarget, goTarget)
+		}
+	})
+}
+
+// TestSymlinkIntoDirectory verifies -s with multiple targets into a directory.
+func TestSymlinkIntoDirectory(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gln")
+	if err != nil {
+		t.Skip("reference binary gln not in PATH")
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, base := range []string{goDir, refDir} {
+		writeFile(t, filepath.Join(base, "a.txt"), "aaa")
+		writeFile(t, filepath.Join(base, "b.txt"), "bbb")
+		if err := os.Mkdir(filepath.Join(base, "dest"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	args := []string{"-s", "a.txt", "b.txt", "dest"}
+	refStdout, _, refExit := execBin(t, refBin, args, refDir)
+	goStdout, _, goExit := execBin(t, goBin, args, goDir)
+
+	if refExit != goExit {
+		t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
+	}
+	if !bytes.Equal(refStdout, goStdout) {
+		t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
+	}
+	assertSymlinkTarget(t, filepath.Join(goDir, "dest", "a.txt"), "a.txt")
+	assertSymlinkTarget(t, filepath.Join(goDir, "dest", "b.txt"), "b.txt")
+	assertSymlinkTarget(t, filepath.Join(refDir, "dest", "a.txt"), "a.txt")
+	assertSymlinkTarget(t, filepath.Join(refDir, "dest", "b.txt"), "b.txt")
+}
+
 // execBin runs a binary and returns stdout, stderr, and exit code.
 func execBin(t *testing.T, bin string, args []string, workDir string) ([]byte, []byte, int) {
 	t.Helper()
@@ -240,4 +508,33 @@ func assertHardLink(t *testing.T, base, file1, file2 string) {
 	if !os.SameFile(info1, info2) {
 		t.Errorf("%s and %s are not hard links (different inodes)", file1, file2)
 	}
+}
+
+// assertSymlinkTarget checks that path is a symlink pointing to expected.
+func assertSymlinkTarget(t *testing.T, path, expected string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is not a symbolic link", path)
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		t.Fatalf("readlink %s: %v", path, err)
+	}
+	if target != expected {
+		t.Errorf("symlink %s: got target %q, want %q", path, target, expected)
+	}
+}
+
+// readSymlink returns the target of a symlink.
+func readSymlink(t *testing.T, path string) string {
+	t.Helper()
+	target, err := os.Readlink(path)
+	if err != nil {
+		t.Fatalf("readlink %s: %v", path, err)
+	}
+	return target
 }
