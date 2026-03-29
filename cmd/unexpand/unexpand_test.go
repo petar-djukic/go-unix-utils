@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/unexpand against gunexpand (GNU coreutils).
 //
-// Covers prd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Covers prd025-unexpand R1.1-R1.4, R2.1-R2.3, R3.1-R3.3.
 package main
 
 import (
@@ -293,6 +293,120 @@ func TestDiff(t *testing.T) {
 			Name:  "a_only_spaces_no_tabstop",
 			Args:  []string{"-a"},
 			Stdin: []byte("abc   \n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R3.1: -t N sets uniform tab interval ----
+		// R3.1: -t 4 converts 4 leading spaces to one tab
+		{
+			Name:  "t4_leading_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -t 4 with 8 leading spaces = two tabs
+		{
+			Name:  "t4_8_leading_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("        text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -t 2 with 6 leading spaces = three tabs
+		{
+			Name:  "t2_6_leading_spaces",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("      text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -t 4 with partial (3 spaces, not reaching tab stop)
+		{
+			Name:  "t4_partial_leading",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("   text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -t shorthand -t4
+		{
+			Name:  "t4_shorthand",
+			Args:  []string{"-t4"},
+			Stdin: []byte("    text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --tabs=4 long form
+		{
+			Name:  "tabs_eq_4",
+			Args:  []string{"--tabs=4"},
+			Stdin: []byte("    text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R3.1: -t LIST sets explicit tab positions ----
+		// R3.1: -t 4,8,12 with spaces reaching each stop
+		{
+			Name:  "t_list_leading",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("    text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -t 4,8 with 8 spaces = two tabs
+		{
+			Name:  "t_list_two_stops",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("        text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R3.2: Past last explicit stop, spaces kept as-is ----
+		// R3.2: -t 4 (list of one = uniform), spaces after col 4 still converted
+		// R3.2: -t 4,8 with spaces past col 8 kept as spaces
+		{
+			Name:  "t_list_past_last_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("            text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -t 3,6 with spaces well past last stop
+		{
+			Name:  "t_list_past_last_stop_2",
+			Args:  []string{"-t", "3,6"},
+			Stdin: []byte("            text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R3.3: -t implies -a ----
+		// R3.3: -t 4 converts non-leading spaces too (implies -a)
+		{
+			Name:  "t_implies_a_nonleading",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: -t 8 non-leading 8 spaces become tab
+		{
+			Name:  "t8_implies_a",
+			Args:  []string{"-t", "8"},
+			Stdin: []byte("a        b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: -t with list implies -a on non-leading spaces
+		{
+			Name:  "t_list_implies_a",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a   b       c\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -t 1 edge case: every space becomes a tab
+		{
+			Name:  "t1_every_space_tab",
+			Args:  []string{"-t", "1"},
+			Stdin: []byte("   text\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: -t 4 multiline, implies -a on all lines
+		{
+			Name:  "t4_multiline_implies_a",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    a   b\n    c   d\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
