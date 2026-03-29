@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/yes against gyes (GNU coreutils).
 //
-// Covers prd012-yes R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2.
+// Covers prd012-yes R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3,
+// R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -56,8 +57,9 @@ func TestDiff(t *testing.T) {
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 
-	// Output tests pipe through head to capture finite output.
-	outputTests := []struct {
+	// Differential output tests pipe through head to capture finite output.
+	// These cases match GNU yes behavior byte-for-byte.
+	diffOutputTests := []struct {
 		name  string
 		args  []string
 		lines int
@@ -84,9 +86,37 @@ func TestDiff(t *testing.T) {
 			lines: 3,
 			want:  "hello world\nhello world\nhello world\n",
 		},
+		// R4.2: empty string argument outputs empty lines
+		{
+			name:  "R4.2_empty_string",
+			args:  []string{""},
+			lines: 3,
+			want:  "\n\n\n",
+		},
+		// R4.2: multiple arguments with empty strings preserving positions
+		{
+			name:  "R4.2_multi_with_empty",
+			args:  []string{"", "hello", ""},
+			lines: 3,
+			want:  " hello \n hello \n hello \n",
+		},
+		// R4.3: argument containing tab character
+		{
+			name:  "R4.3_tab_char",
+			args:  []string{"hello\tworld"},
+			lines: 3,
+			want:  "hello\tworld\nhello\tworld\nhello\tworld\n",
+		},
+		// R4.3: argument containing quotes
+		{
+			name:  "R4.3_quotes",
+			args:  []string{`he said "hi"`},
+			lines: 3,
+			want:  "he said \"hi\"\nhe said \"hi\"\nhe said \"hi\"\n",
+		},
 	}
 
-	for _, tc := range outputTests {
+	for _, tc := range diffOutputTests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			goOut := runPipedHead(t, goBin, tc.args, tc.lines)
@@ -98,6 +128,52 @@ func TestDiff(t *testing.T) {
 			if string(goOut) != tc.want {
 				t.Errorf("unexpected output args=%v\n  want: %q\n  got:  %q",
 					tc.args, tc.want, goOut)
+			}
+		})
+	}
+}
+
+// TestUnrecognizedFlags verifies that unrecognized options are output as
+// literal strings rather than causing an error (prd012 R3.3, D1).
+// GNU yes uses getopt and rejects unknown flags, but our implementation
+// intentionally treats all non --help/--version arguments as output strings.
+func TestUnrecognizedFlags(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	flagTests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		// R3.3: long unrecognized option treated as literal string
+		{
+			name: "R3.3_unrecognized_long_flag",
+			args: []string{"--foo"},
+			want: "--foo\n--foo\n--foo\n",
+		},
+		// R3.3: short unrecognized option treated as literal string
+		{
+			name: "R3.3_unrecognized_short_flag",
+			args: []string{"-x"},
+			want: "-x\n-x\n-x\n",
+		},
+		// R3.3: multiple unrecognized options joined with spaces
+		{
+			name: "R3.3_multi_flags",
+			args: []string{"-a", "-b"},
+			want: "-a -b\n-a -b\n-a -b\n",
+		},
+	}
+
+	for _, tc := range flagTests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := runPipedHead(t, goBin, tc.args, 3)
+			if string(got) != tc.want {
+				t.Errorf("unexpected output args=%v\n  want: %q\n  got:  %q",
+					tc.args, tc.want, got)
 			}
 		})
 	}
@@ -126,7 +202,7 @@ func TestVersionFormat(t *testing.T) {
 }
 
 // TestSIGPIPEExitZero verifies that yes exits 0 when SIGPIPE is received.
-// R3.1: exit code is 0 on normal termination (SIGPIPE).
+// R3.1, R4.3: exit code is 0 on normal termination (SIGPIPE).
 func TestSIGPIPEExitZero(t *testing.T) {
 	t.Parallel()
 
@@ -148,7 +224,7 @@ func TestSIGPIPEExitZero(t *testing.T) {
 	var out bytes.Buffer
 	headCmd.Stdout = &out
 
-	// Capture yes's stderr to verify it writes nothing (R3.2).
+	// Capture yes's stderr to verify it writes nothing (R3.2, R3.3).
 	var yesStderr bytes.Buffer
 	yesCmd.Stderr = &yesStderr
 
@@ -171,7 +247,7 @@ func TestSIGPIPEExitZero(t *testing.T) {
 		t.Errorf("yes should exit 0 on SIGPIPE, got: %v", err)
 	}
 
-	// R3.2: yes must not write to stderr on write failure.
+	// R3.2, R3.3: yes must not write to stderr on write failure.
 	if yesStderr.Len() > 0 {
 		t.Errorf("yes wrote to stderr on SIGPIPE: %q", yesStderr.String())
 	}
