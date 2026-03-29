@@ -48,7 +48,7 @@ func main() {
 
 // run parses arguments and prints the working directory. Returns exit code.
 func run(args []string, stdout, stderr *os.File) int {
-	m, result, err := parseArgs(args)
+	m, result, hasNonOpt, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", progName, err) //nolint:errcheck
 		printTryHelp(stderr)
@@ -63,6 +63,10 @@ func run(args []string, stdout, stderr *os.File) int {
 	if result == resultVersion {
 		printVersion(stdout)
 		return 0
+	}
+	// R2.1: warn about non-option arguments but continue (matches gpwd).
+	if hasNonOpt {
+		fmt.Fprintf(stderr, "%s: ignoring non-option arguments\n", progName) //nolint:errcheck
 	}
 	return printWorkingDir(m, stdout, stderr)
 }
@@ -90,27 +94,29 @@ func printVersion(stdout *os.File) {
 
 // parseArgs extracts the mode from command-line arguments.
 // R1.4: when both -L and -P are given, the last one wins.
-// R2.1: positional operands are rejected.
+// R2.1: non-option arguments are warned about but ignored (matches gpwd).
 // R2.2: unknown flags produce an error.
-func parseArgs(args []string) (pwdMode, parseResult, error) {
+func parseArgs(args []string) (pwdMode, parseResult, bool, error) {
 	m := modePhysical // R1.1: default is physical.
+	hasNonOpt := false
 	for _, arg := range args {
 		if arg == "--" {
 			break
 		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			return m, resultContinue, fmt.Errorf("extra operand '%s'", arg)
+			hasNonOpt = true
+			continue
 		}
 		parsed, result, err := parseFlag(arg, m)
 		if err != nil {
-			return m, resultContinue, err
+			return m, resultContinue, hasNonOpt, err
 		}
 		if result != resultContinue {
-			return parsed, result, nil
+			return parsed, result, hasNonOpt, nil
 		}
 		m = parsed
 	}
-	return m, resultContinue, nil
+	return m, resultContinue, hasNonOpt, nil
 }
 
 // parseFlag parses a single flag argument and returns the updated mode.
