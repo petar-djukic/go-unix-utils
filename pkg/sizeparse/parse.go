@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// parse.go implements prd087 R1.1, R1.2, R1.3, R1.4:
-// core size string parsing with SI and IEC unit suffix support.
+// parse.go implements prd087 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2:
+// core size string parsing with SI and IEC unit suffix support,
+// configurable sign handling, default unit, and error reporting.
 
 package sizeparse
 
@@ -69,7 +70,10 @@ func parseSizeString(s string, opts ParseOptions) (int64, error) {
 func splitNumSuffix(s string, allowSign bool) (int64, string, error) {
 	start := 0
 	sign := int64(1)
-	if allowSign && len(s) > 0 && (s[0] == '+' || s[0] == '-') {
+	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
+		if !allowSign {
+			return 0, "", fmt.Errorf("invalid size %q: sign not allowed", s)
+		}
 		if s[0] == '-' {
 			sign = -1
 		}
