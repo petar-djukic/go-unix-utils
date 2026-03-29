@@ -58,9 +58,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 
-	// R2.2: warn and ignore -n with multiple operands.
+	// R2.2: silently ignore -n with multiple operands.
 	if cfg.noNewline && len(paths) > 1 {
-		fmt.Fprintf(stderr, "%s: ignoring --no-newline with multiple arguments\n", progName) //nolint:errcheck
 		cfg.noNewline = false
 	}
 
