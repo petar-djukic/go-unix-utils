@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/mkdir against gmkdir (GNU coreutils).
 //
-// Covers prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
+// Covers prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4,
+// R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -364,12 +365,13 @@ func compareMkdir(t *testing.T, goBin, refBin string, args []string) {
 }
 
 // compareMkdirInDirs runs both binaries in given dirs and compares
-// exit codes and normalized stdout.
+// exit codes, normalized stdout, and normalized stderr.
+// R4.1: compare stdout, stderr, and exit codes.
 func compareMkdirInDirs(t *testing.T, goBin, refBin string, args []string, goDir, refDir string) {
 	t.Helper()
 
-	refStdout, _, refExit := execBin(t, refBin, args, refDir)
-	goStdout, _, goExit := execBin(t, goBin, args, goDir)
+	refStdout, refStderr, refExit := execBin(t, refBin, args, refDir)
+	goStdout, goStderr, goExit := execBin(t, goBin, args, goDir)
 
 	if refExit != goExit {
 		t.Errorf("exit code divergence: ref=%d go=%d (args=%v)",
@@ -380,6 +382,12 @@ func compareMkdirInDirs(t *testing.T, goBin, refBin string, args []string, goDir
 	goNorm := normalizeProgName(goStdout)
 	if !bytes.Equal(refNorm, goNorm) {
 		t.Errorf("stdout divergence:\nref: %q\ngo:  %q", string(refNorm), string(goNorm))
+	}
+
+	refErrNorm := normalizeProgName(refStderr)
+	goErrNorm := normalizeProgName(goStderr)
+	if !bytes.Equal(refErrNorm, goErrNorm) {
+		t.Errorf("stderr divergence:\nref: %q\ngo:  %q", string(refErrNorm), string(goErrNorm))
 	}
 }
 
@@ -393,15 +401,17 @@ func compareMkdirPerms(t *testing.T, goBin, refBin string, args, checkDirs []str
 }
 
 // compareMkdirPermsInDirs runs both binaries in given dirs and compares
-// exit codes, stdout, and permissions of specified directories.
+// exit codes, stdout, stderr, and permissions of specified directories.
+// R4.1: compare stdout, stderr, and exit codes.
+// R4.3: verify permission bits match for all directories.
 func compareMkdirPermsInDirs(
 	t *testing.T, goBin, refBin string,
 	args, checkDirs []string, goDir, refDir string,
 ) {
 	t.Helper()
 
-	refStdout, _, refExit := execBin(t, refBin, args, refDir)
-	goStdout, _, goExit := execBin(t, goBin, args, goDir)
+	refStdout, refStderr, refExit := execBin(t, refBin, args, refDir)
+	goStdout, goStderr, goExit := execBin(t, goBin, args, goDir)
 
 	if refExit != goExit {
 		t.Errorf("exit code: ref=%d go=%d (args=%v)", refExit, goExit, args)
@@ -410,6 +420,11 @@ func compareMkdirPermsInDirs(
 	goNorm := normalizeProgName(goStdout)
 	if !bytes.Equal(refNorm, goNorm) {
 		t.Errorf("stdout:\nref: %q\ngo:  %q", string(refNorm), string(goNorm))
+	}
+	refErrNorm := normalizeProgName(refStderr)
+	goErrNorm := normalizeProgName(goStderr)
+	if !bytes.Equal(refErrNorm, goErrNorm) {
+		t.Errorf("stderr:\nref: %q\ngo:  %q", string(refErrNorm), string(goErrNorm))
 	}
 	for _, d := range checkDirs {
 		comparePermission(t, filepath.Join(refDir, d), filepath.Join(goDir, d), d)
