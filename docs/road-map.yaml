@@ -79,7 +79,7 @@ releases:
           status: implemented
     - version: "02.1"
       name: "Batch 2.1 — tee specification and differential test"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement tee for copying stdin to stdout and one or more output files simultaneously.
