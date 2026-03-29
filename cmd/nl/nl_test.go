@@ -280,6 +280,101 @@ func TestDiffFormatOptions(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffSectionDelimiters runs differential tests for section delimiters
+// and page reset. Covers prd022-nl R4.1 (delimiter lines consumed),
+// R4.2 (header resets counter), R4.3 (-p suppresses reset),
+// R4.4 (-l N consecutive blank lines).
+func TestDiffSectionDelimiters(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skipf("reference binary gnl not in PATH: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			// R4.1: section delimiter lines are consumed and replaced.
+			Name:  "section_delimiters_consumed",
+			Args:  []string{"-h", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nhdr\n\\:\\:\nbdy\n\\:\nftr\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.2: header delimiter resets counter to -v value.
+			Name:  "header_resets_counter",
+			Args:  []string{"-h", "a"},
+			Stdin: []byte("first\n\\:\\:\\:\nhdr\n\\:\\:\nbody\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.2: all section delimiters reset the counter.
+			Name:  "all_delimiters_reset",
+			Args:  []string{"-h", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\nh2\n\\:\\:\nb1\nb2\n\\:\nf1\nf2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.2: two logical pages; second header resets counter.
+			Name:  "two_logical_pages_reset",
+			Args:  []string{"-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nhdr1\n\\:\\:\nbody1\n\\:\\:\\:\nhdr2\n\\:\\:\nbody2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.2: header resets to custom -v value.
+			Name:  "header_resets_to_custom_v",
+			Args:  []string{"-v", "100"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\n\\:\\:\nc\nd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: -p suppresses counter reset at new logical page.
+			Name:  "p_flag_no_reset",
+			Args:  []string{"-p"},
+			Stdin: []byte("a\nb\n\\:\\:\\:\n\\:\\:\nc\nd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.3: -p with -h a; counter continues across pages.
+			Name:  "p_flag_with_header_numbering",
+			Args:  []string{"-p", "-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\n\\:\\:\\:\nh2\n\\:\\:\nb2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.4: -l 2 treats 2 consecutive blanks as one for numbering.
+			Name:  "join_blank_lines_l2",
+			Args:  []string{"-b", "a", "-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.4: default -l 1; each blank line counted individually.
+			Name:  "join_blank_lines_default",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.4: -l 3 with fewer than 3 consecutive blanks.
+			Name:  "join_blank_lines_l3_fewer",
+			Args:  []string{"-b", "t", "-l", "3"},
+			Stdin: []byte("a\n\n\nb\n\n\n\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R4.1: custom -d delimiter.
+			Name:  "custom_delimiter",
+			Args:  []string{"-d", "%%"},
+			Stdin: []byte("%%%%%%\nheader\n%%%%\nbody\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffFileInput runs differential tests for named file input and
 // continuous numbering across multiple files.
 // Covers prd022-nl R1.3 (named file reading), R1.4 (continuous numbering).

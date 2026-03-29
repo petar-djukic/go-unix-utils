@@ -242,6 +242,7 @@ func handleDelimiter(line, delimHeader, delimBody, delimFooter string,
 	case delimHeader:
 		*section = sectionHeader
 		*blankRun = 0
+		// R4.2: header delimiter resets the counter (unless -p).
 		if !*noReset {
 			*lineNum = *startingLineNumber
 		}
@@ -249,6 +250,7 @@ func handleDelimiter(line, delimHeader, delimBody, delimFooter string,
 	case delimBody:
 		*section = sectionBody
 		*blankRun = 0
+		// R4.2: GNU nl resets counter on all section delimiters.
 		if !*noReset {
 			*lineNum = *startingLineNumber
 		}
@@ -256,6 +258,7 @@ func handleDelimiter(line, delimHeader, delimBody, delimFooter string,
 	case delimFooter:
 		*section = sectionFooter
 		*blankRun = 0
+		// R4.2: GNU nl resets counter on all section delimiters.
 		if !*noReset {
 			*lineNum = *startingLineNumber
 		}
@@ -286,16 +289,16 @@ func writeLine(w *bufio.Writer, line string,
 }
 
 // shouldNumberLine determines if the current line should be numbered.
+// R4.4: -l N groups consecutive blank lines; only every Nth blank
+// in a run is eligible for numbering, then the style decides.
 func shouldNumberLine(style numberingStyle, line string,
 	isEmpty bool, blankRun int) bool {
 
 	if style.mode == 'n' {
 		return false
 	}
-	if style.mode == 't' && isEmpty {
-		// R4.4: -l N treats N consecutive blank lines as one.
-		return blankRun > 0 && *joinBlankLines > 1 &&
-			blankRun%*joinBlankLines == 0
+	if isEmpty && *joinBlankLines > 1 && blankRun%*joinBlankLines != 0 {
+		return false
 	}
 	return style.shouldNumber(line)
 }
