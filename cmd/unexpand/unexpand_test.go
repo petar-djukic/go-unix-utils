@@ -3,11 +3,12 @@
 
 // Differential tests for cmd/unexpand against gunexpand (GNU coreutils).
 //
-// Covers prd025-unexpand R1.1-R1.4, R2.1-R2.3, R3.1-R3.3.
+// Covers prd025-unexpand R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.4.
 package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -56,6 +57,12 @@ func TestDiff(t *testing.T) {
 	errDir := t.TempDir()
 	nonexistent := filepath.Join(errDir, "nonexistent.txt")
 	errNorm := []testutils.NormalizeFunc{normalizeUnexpandErrors}
+
+	// R4.2: Create a valid file for mixed valid+invalid file tests
+	validFile := filepath.Join(errDir, "valid.txt")
+	if err := os.WriteFile(validFile, []byte("        hello\n"), 0o644); err != nil {
+		t.Fatalf("creating test file: %v", err)
+	}
 
 	tests := []testutils.DiffTest{
 		// R1.1: 8 leading spaces become one tab
@@ -408,6 +415,58 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-t", "4"},
 			Stdin: []byte("    a   b\n    c   d\n"),
 			Env:   []string{"LC_ALL=C"},
+		},
+
+		// ---- R4.1: Exit 0 on successful processing ----
+		// R4.1: simple successful input exits 0
+		{
+			Name:     "r4_success_exit_0",
+			Args:     []string{},
+			Stdin:    []byte("        text\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.1: successful file processing exits 0
+		{
+			Name:     "r4_valid_file_exit_0",
+			Args:     []string{validFile},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// ---- R4.2: Exit 1 on file open error, continue processing ----
+		// R4.2: nonexistent file exits 1 (already tested above, explicit R4.2 trace)
+		{
+			Name:      "r4_nonexistent_exits_1",
+			Args:      []string{nonexistent},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: errNorm,
+		},
+		// R4.2: nonexistent file mixed with valid file — exits 1 but processes valid
+		{
+			Name:      "r4_nonexistent_then_valid",
+			Args:      []string{nonexistent, validFile},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: errNorm,
+		},
+		// R4.2: valid file then nonexistent — exits 1 but processes valid
+		{
+			Name:      "r4_valid_then_nonexistent",
+			Args:      []string{validFile, nonexistent},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: errNorm,
+		},
+		// R4.2: nonexistent mixed with stdin — exits 1 but processes stdin
+		{
+			Name:      "r4_nonexistent_then_stdin",
+			Args:      []string{nonexistent, "-"},
+			Stdin:     []byte("        world\n"),
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: errNorm,
 		},
 	}
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/unexpand converts spaces to tabs (prd025-unexpand R1, R2, R3).
+// cmd/unexpand converts spaces to tabs (prd025-unexpand R1, R2, R3, R4).
 package main
 
 import (
