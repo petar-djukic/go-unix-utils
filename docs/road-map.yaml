@@ -192,7 +192,7 @@ releases:
         - id: rel05.0-uc002-tac
           status: implemented
         - id: rel05.0-uc003-nl
-          status: spec_complete
+          status: implemented
         - id: rel05.0-uc004-fold
           status: spec_complete
     - version: "05.1"
