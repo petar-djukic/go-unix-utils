@@ -5,7 +5,8 @@
 //
 // Implements prd030-md5sum: R1.1 (file digest computation), R1.2 (stdin),
 // R1.3 (binary/text mode flags), R1.4 (SIGPIPE handling),
-// R2.1 (--check), R2.2 (--quiet), R2.3 (--status), R2.4 (--warn).
+// R2.1 (--check), R2.2 (--quiet), R2.3 (--status), R2.4 (--warn),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on failure), R4.3 (SIGPIPE).
 package main
 
 import (
