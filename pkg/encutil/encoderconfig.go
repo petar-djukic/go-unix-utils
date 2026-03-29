@@ -5,10 +5,8 @@
 // that perform base32, base64, and other encoding operations.
 //
 // Implements prd088-encutil: R1 (encoder configuration), R2 (decoder
-// configuration), R3 (encode operation), R4 (decode and input operations).
+// configuration and decoding pipeline), R3 (file handling and input).
 package encutil
-
-import "io"
 
 // EncoderConfig parameterizes an encoding operation with the encoding
 // function and line-wrap column width.
@@ -26,11 +24,4 @@ type EncoderConfig struct {
 type DecoderConfig struct {
 	Decode        func(string) ([]byte, error) // decoding function
 	IgnoreGarbage bool                         // skip non-alphabet characters
-}
-
-// Decode reads from r, decodes using cfg, and writes the result to w.
-//
-// R4.1: Decode function stub.
-func Decode(r io.Reader, w io.Writer, cfg DecoderConfig) error {
-	return nil
 }
