@@ -3,15 +3,17 @@
 
 // cmd/sponge implements moreutils sponge: soak stdin before writing output.
 //
-// Implements prd007-sponge R1.1, R1.2, R1.3, R1.4.
+// Implements prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -39,6 +41,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	buf, tmpPath, err := soakStdin(stdin)
 	if tmpPath != "" {
 		defer os.Remove(tmpPath) // best-effort cleanup (R1.4)
+		// R1.5: register signal handler to clean up temp file on termination
+		stopCleanup := setupSignalCleanup(tmpPath)
+		defer stopCleanup()
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "sponge: %v\n", err)
@@ -49,6 +54,25 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 		return writeToStdout(buf, tmpPath, stdout, stderr)
 	}
 	return writeToFile(buf, tmpPath, outFile, stderr)
+}
+
+// setupSignalCleanup registers a handler to delete tmpPath on termination signals (R1.5).
+func setupSignalCleanup(tmpPath string) func() {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-sigCh:
+			os.Remove(tmpPath) // best-effort cleanup before exit
+			os.Exit(1)
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(sigCh)
+		close(done)
+	}
 }
 
 // soakStdin reads all of stdin into memory or spills to a temp file (R1.1, R1.2, R1.3).
@@ -138,20 +162,38 @@ func writeToStdout(buf []byte, tmpPath string, stdout io.Writer, stderr io.Write
 	return 0
 }
 
-// writeToFile writes the buffered content to the named output file (R1.1, R2.1).
+// writeToFile writes the buffered content to the named output file (R2.1, R2.2, R2.3).
 func writeToFile(buf []byte, tmpPath string, outFile string, stderr io.Writer) int {
+	// R2.3: read existing permissions before writing
+	mode := getExistingMode(outFile)
 	if tmpPath != "" {
+		// R2.1: attempt atomic rename; R2.2: fall back to copy on failure
 		if err := renameOrCopy(tmpPath, outFile); err != nil {
 			fmt.Fprintf(stderr, "sponge: %v\n", err)
 			return 1
 		}
-		return 0
+	} else {
+		if err := os.WriteFile(outFile, buf, mode); err != nil {
+			fmt.Fprintf(stderr, "sponge: %v\n", err)
+			return 1
+		}
 	}
-	if err := os.WriteFile(outFile, buf, 0o666); err != nil {
+	// R2.3: apply preserved permissions (or default 0666 for new files)
+	if err := os.Chmod(outFile, mode); err != nil {
 		fmt.Fprintf(stderr, "sponge: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// getExistingMode returns the file permissions of path via lstat (R2.3).
+// Returns 0o666 when the file does not exist.
+func getExistingMode(path string) os.FileMode {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0o666
+	}
+	return info.Mode().Perm()
 }
 
 // renameOrCopy attempts an atomic rename; falls back to copy on failure (R2.1, R2.2).

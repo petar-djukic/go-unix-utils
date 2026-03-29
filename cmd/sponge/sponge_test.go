@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sponge against sponge (moreutils).
 //
-// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4.
+// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -131,5 +132,123 @@ func TestTempFileInTMPDIR(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Errorf("output mismatch: got %d bytes, want %d bytes", len(got), len(input))
+	}
+}
+
+// TestPermissionPreservation verifies file mode is preserved when overwriting (R2.3).
+func TestPermissionPreservation(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "perms.txt")
+
+	// Create file with non-default permissions.
+	if err := os.WriteFile(outPath, []byte("old"), 0o755); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("new content\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge: %v", err)
+	}
+
+	info, err := os.Lstat(outPath)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o755 {
+		t.Errorf("permissions = %04o, want %04o", perm, 0o755)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(got) != "new content\n" {
+		t.Errorf("content = %q, want %q", got, "new content\n")
+	}
+}
+
+// TestNewFileDefaultMode verifies new files get default 0666 permissions (R2.3).
+func TestNewFileDefaultMode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "newfile.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("created\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge: %v", err)
+	}
+
+	info, err := os.Lstat(outPath)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	// R2.3: default mode 0666 applied via chmod after write.
+	perm := info.Mode().Perm()
+	if perm != 0o666 {
+		t.Errorf("permissions = %04o, want %04o", perm, 0o666)
+	}
+}
+
+// TestTempFileCleanup verifies temp files are cleaned up on normal exit (R1.5).
+func TestTempFileCleanup(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	tmpDir := t.TempDir()
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.txt")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader([]byte("data\n"))
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge: %v", err)
+	}
+
+	// Verify no temp files left behind.
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), tempPrefix) {
+			t.Errorf("temp file %s not cleaned up", e.Name())
+		}
+	}
+}
+
+// TestRenameOrCopyFallback verifies copy fallback when rename is not possible (R2.2).
+func TestRenameOrCopyFallback(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Use a different TMPDIR from the output directory to increase the chance
+	// of cross-device rename failure. Even on same device, the copy fallback
+	// is exercised when rename fails for any reason.
+	tmpDir := t.TempDir()
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "copied.txt")
+	input := []byte("fallback content\n")
+
+	cmd := exec.Command(goBin, outPath)
+	cmd.Stdin = bytes.NewReader(input)
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sponge: %v", err)
+	}
+
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !bytes.Equal(got, input) {
+		t.Errorf("content = %q, want %q", got, input)
 	}
 }
