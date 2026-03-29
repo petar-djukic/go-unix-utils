@@ -309,7 +309,7 @@ func listPaths(cfg *lsConfig, paths []string) int {
 		sortEntries(files, cfg)
 		formatOutput(cfg, files)
 	}
-	showHeader := len(dirs) > 1 || len(files) > 0
+	showHeader := len(dirs) > 1 || len(files) > 0 || cfg.recursive
 	code := listDirs(cfg, dirs, showHeader, len(files) > 0)
 	if code > exitCode {
 		exitCode = code
@@ -375,6 +375,13 @@ func listDir(cfg *lsConfig, dirPath string, showHeader bool) int {
 		printTotalLine(cfg, entries)
 	}
 	formatOutput(cfg, entries)
+	// R3.11: recurse into subdirectories when -R is active
+	if cfg.recursive {
+		code := recurseSubdirs(cfg, entries)
+		if code > exitCode {
+			exitCode = code
+		}
+	}
 	return exitCode
 }
 
@@ -840,8 +847,11 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 	group := resolveGroup(fi.Gid, cfg.numericIDs)
 	mtime := formatTime(fi.ModTime)
 	name := entryDisplayName(cfg, e)
-	// R1.10: append symlink target when entry is a symlink
+	// R1.10: append symlink target when entry is a symlink.
+	// In long format, GNU ls omits the -F "@" indicator for symlinks
+	// because the " -> target" already identifies the type.
 	if e.link != "" {
+		name = coloredName(e)
 		name += " -> " + e.link
 	}
 	// R3.5: use human-readable size when -h is active with -l.
@@ -1049,10 +1059,36 @@ func formatGNUValue(val float64, suffix string) string {
 }
 
 // classifyIndicator returns the -F indicator character for a file mode.
-// R3.8, R3.9: type indicator after entry name.
+// R3.8: "/" dir, "*" executable, "@" symlink, "|" FIFO, "=" socket.
+// R3.9: executable = any execute bit set (owner, group, or other).
 func classifyIndicator(mode os.FileMode) string {
-	_ = mode
-	return ""
+	switch {
+	case mode&os.ModeDir != 0:
+		return "/"
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.IsRegular() && mode&0o111 != 0:
+		return "*"
+	default:
+		return ""
+	}
+}
+
+// coloredName returns the entry name with optional ANSI color wrapping
+// but without the -F classify indicator.
+func coloredName(e lsEntry) string {
+	name := e.name
+	if e.info != nil {
+		c := format.FileTypeColor(e.info.Mode)
+		if c != "" {
+			name = c + name + format.Reset()
+		}
+	}
+	return name
 }
 
 // entryDisplayName builds the display name with optional color and indicator.
@@ -1071,12 +1107,32 @@ func entryDisplayName(cfg *lsConfig, e lsEntry) string {
 	return name
 }
 
-// recurseSubdirs recursively lists subdirectories.
-// R3.11, R3.12, R3.13, R3.14, R3.15: recursive traversal.
+// recurseSubdirs recursively lists subdirectories encountered in entries.
+// R3.11: each subdir printed with "PATH:" header and blank-line separators.
+// R3.13: symlinks to directories are not followed.
+// R3.14: current filter flags apply to each subdirectory.
+// R3.15: subdirectories are visited in the current sort order.
 func recurseSubdirs(cfg *lsConfig, entries []lsEntry) int {
-	_ = cfg
-	_ = entries
-	return exitOK
+	exitCode := exitOK
+	for _, e := range entries {
+		if !e.isDir {
+			continue
+		}
+		// R3.13: skip symlinks to directories
+		if e.info != nil && e.info.Mode&os.ModeSymlink != 0 {
+			continue
+		}
+		// Skip . and .. to avoid infinite recursion
+		if e.name == "." || e.name == ".." {
+			continue
+		}
+		fmt.Println()
+		code := listDir(cfg, e.path, true)
+		if code > exitCode {
+			exitCode = code
+		}
+	}
+	return exitCode
 }
 
 // columnWidths holds the computed widths for aligned long-format columns.

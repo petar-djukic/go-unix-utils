@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.7.
+// cmd/ls differential tests for prd008 R2.7-R2.15, R3.1-R3.11.
 package main
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,6 +26,8 @@ func TestDiff(t *testing.T) {
 	versionDir := setupVersionDir(t)
 	singleDir := setupSingleFileDir(t)
 	humanDir := setupHumanDir(t)
+	classifyDir := setupClassifyDir(t)
+	recursiveDir := setupRecursiveDir(t)
 
 	tests := []testutils.DiffTest{
 		// R2.7: -r reverses default (name) sort
@@ -243,6 +246,42 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-l", "-s", "-h", humanDir},
 			Env:  []string{"LC_ALL=C"},
 		},
+		// R3.8: -F appends type indicators in single-column mode
+		{
+			Name: "R3.8_classify_single",
+			Args: []string{"-1", "-F", classifyDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.8+R3.10: -F with -l in long format
+		{
+			Name: "R3.8_R3.10_classify_long",
+			Args: []string{"-l", "-F", classifyDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.10: -F with --color=never
+		{
+			Name: "R3.10_classify_no_color",
+			Args: []string{"-1", "-F", "--color=never", classifyDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.11: -R recursive listing in single-column mode
+		{
+			Name: "R3.11_recursive_single",
+			Args: []string{"-1", "-R", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.11: -R recursive listing in long format
+		{
+			Name: "R3.11_recursive_long",
+			Args: []string{"-l", "-R", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.11+R3.8: -R with -F shows indicators in recursive listing
+		{
+			Name: "R3.11_R3.8_recursive_classify",
+			Args: []string{"-1", "-R", "-F", recursiveDir},
+			Env:  []string{"LC_ALL=C"},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -316,4 +355,51 @@ func setMtime(t *testing.T, path string, mtime time.Time) {
 	if err := os.Chtimes(path, mtime, mtime); err != nil {
 		t.Fatalf("chtimes %s: %v", path, err)
 	}
+}
+
+// setupClassifyDir creates a directory with entries of different types
+// for testing -F classification indicators.
+// R3.8: directory, executable, symlink, FIFO, regular file.
+func setupClassifyDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	// Regular file (no indicator)
+	writeSizedFile(t, filepath.Join(dir, "plain"), 0)
+	// Directory (/)
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	// Executable file (*)
+	if err := os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write run.sh: %v", err)
+	}
+	// Symlink (@)
+	if err := os.Symlink("plain", filepath.Join(dir, "link")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	// Named pipe / FIFO (|)
+	if err := syscall.Mkfifo(filepath.Join(dir, "fifo"), 0o644); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+	return dir
+}
+
+// setupRecursiveDir creates a directory with nested subdirectories
+// for testing -R recursive listing.
+// R3.11: nested structure with files at each level.
+func setupRecursiveDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeSizedFile(t, filepath.Join(dir, "top.txt"), 10)
+	sub := filepath.Join(dir, "alpha")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir alpha: %v", err)
+	}
+	writeSizedFile(t, filepath.Join(sub, "mid.txt"), 20)
+	deep := filepath.Join(sub, "beta")
+	if err := os.Mkdir(deep, 0o755); err != nil {
+		t.Fatalf("mkdir beta: %v", err)
+	}
+	writeSizedFile(t, filepath.Join(deep, "deep.txt"), 30)
+	return dir
 }
