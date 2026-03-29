@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/ln against gln (GNU coreutils).
 //
-// Covers prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1, R3.4, R3.5, R3.6, R4.1-R4.2.
+// Covers prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1-R3.6, R4.1-R4.3.
 package main
 
 import (
@@ -97,6 +97,20 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"perm_target.txt", filepath.Join("readonly", "link")},
 			WorkDir:   workDir,
 			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.3: --help prints usage and exits 0.
+		{
+			Name:      "help",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.3: --version prints version info and exits 0.
+		{
+			Name:      "version",
+			Args:      []string{"--version"},
+			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
 	}

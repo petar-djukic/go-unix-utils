@@ -3,7 +3,7 @@
 
 // cmd/ln implements GNU ln: create links between files.
 //
-// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1, R3.4, R3.5, R3.6, R4.1-R4.2.
+// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1-R3.6, R4.1-R4.3.
 package main
 
 import (
@@ -17,25 +17,76 @@ import (
 
 const progName = "ln"
 
+// helpText is the usage message printed when --help is passed.
+// R4.3: --help prints usage information to stdout and exits 0.
+const helpText = `Usage: ln [OPTION]... [-T] TARGET LINK_NAME
+  or:  ln [OPTION]... TARGET
+  or:  ln [OPTION]... TARGET... DIRECTORY
+In the 1st form, create a link to TARGET with the name LINK_NAME.
+In the 2nd form, create a link to TARGET in the current directory.
+In the 3rd form, create links to each TARGET in DIRECTORY.
+Create hard links by default, symbolic links with --symbolic.
+By default, each destination (name of new link) should not already exist.
+When creating hard links, each TARGET must exist.
+
+Mandatory arguments to long options are mandatory for short options too.
+  -b                         like --backup but does not accept an argument
+      --backup[=CONTROL]     make a backup of each existing destination file
+  -f, --force                remove existing destination files
+  -n, --no-dereference       treat LINK_NAME as a normal file if
+                               it is a symbolic link to a directory
+  -i, --interactive          prompt whether to remove destinations
+  -r, --relative             with -s, create relative symbolic links
+  -s, --symbolic             make symbolic links instead of hard links
+  -S, --suffix=SUFFIX        override the usual backup suffix
+  -v, --verbose              print name of each linked file
+      --help        display this help and exit
+      --version     output version information and exit
+`
+
+// versionText is printed when --version is passed.
+// R4.3: --version prints version information to stdout and exits 0.
+const versionText = "ln (go-unix-utils) 0.1\n"
+
+// parseResult signals how argument parsing concluded.
+type parseResult int
+
+const (
+	parseOK   parseResult = iota
+	parseHelp             // --help requested
+	parseVer              // --version requested
+)
+
 // lnOptions holds parsed command-line flags.
 type lnOptions struct {
-	symbolic     bool
-	relative     bool
-	force        bool
-	verbose      bool
-	backup       bool
-	backupMethod string // "simple", "numbered", "existing", "none"
-	suffix       string
+	symbolic      bool
+	relative      bool
+	force         bool
+	interactive   bool
+	noDereference bool
+	verbose       bool
+	backup        bool
+	backupMethod  string // "simple", "numbered", "existing", "none"
+	suffix        string
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // run executes the ln logic and returns the exit code.
-func run(args []string, stderr *os.File) int {
-	opts, operands, err := parseArgs(args)
+func run(args []string, stdout, stderr *os.File) int {
+	opts, operands, result, err := parseArgs(args)
+	switch result {
+	case parseHelp:
+		fmt.Fprint(stdout, helpText) //nolint:errcheck
+		return 0
+	case parseVer:
+		fmt.Fprint(stdout, versionText) //nolint:errcheck
+		return 0
+	}
+
 	if err != nil {
 		printError(stderr, err.Error())
 		printTryHelp(stderr)
@@ -60,7 +111,7 @@ func dispatchLink(operands []string, opts lnOptions, stderr *os.File) int {
 	dest := operands[len(operands)-1]
 	targets := operands[:len(operands)-1]
 
-	if isDir(dest) {
+	if shouldLinkIntoDir(dest, opts) {
 		return linkIntoDir(targets, dest, opts, stderr)
 	}
 
@@ -72,8 +123,20 @@ func dispatchLink(operands []string, opts lnOptions, stderr *os.File) int {
 	return createLink(targets[0], dest, opts, stderr)
 }
 
+// shouldLinkIntoDir checks if dest is a directory, respecting -n.
+func shouldLinkIntoDir(dest string, opts lnOptions) bool {
+	if opts.noDereference {
+		info, err := os.Lstat(dest)
+		if err != nil {
+			return false
+		}
+		return info.IsDir()
+	}
+	return isDir(dest)
+}
+
 // parseArgs separates flags from operands.
-func parseArgs(args []string) (lnOptions, []string, error) {
+func parseArgs(args []string) (lnOptions, []string, parseResult, error) {
 	opts := lnOptions{suffix: "~"}
 	var operands []string
 	endOfFlags := false
@@ -89,40 +152,53 @@ func parseArgs(args []string) (lnOptions, []string, error) {
 			continue
 		}
 		if isLongFlag(arg) {
-			consumed, err := parseLongFlag(arg, args[i+1:], &opts)
+			consumed, result, err := parseLongFlag(arg, args[i+1:], &opts)
+			if result != parseOK {
+				return opts, nil, result, nil
+			}
 			if err != nil {
-				return opts, nil, err
+				return opts, nil, parseOK, err
 			}
 			i += consumed
 			continue
 		}
 		consumed, err := parseShortFlags(arg[1:], args[i+1:], &opts)
 		if err != nil {
-			return opts, nil, err
+			return opts, nil, parseOK, err
 		}
 		i += consumed
 	}
 
-	return opts, operands, nil
+	return opts, operands, parseOK, nil
 }
 
 // parseLongFlag handles long-form flags including --backup[=METHOD] and --suffix=SUFFIX.
-func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, error) {
+func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, parseResult, error) {
 	name, value, hasValue := splitLongFlag(flag)
 	switch name {
+	case "--help":
+		return 0, parseHelp, nil
+	case "--version":
+		return 0, parseVer, nil
 	case "--symbolic":
 		opts.symbolic = true
 	case "--relative":
 		opts.relative = true
 	case "--force":
 		opts.force = true
+		opts.interactive = false
+	case "--interactive":
+		opts.interactive = true
+		opts.force = false
+	case "--no-dereference":
+		opts.noDereference = true
 	case "--verbose":
 		opts.verbose = true
 	case "--backup":
 		opts.backup = true
 		if hasValue {
 			if err := validateBackupMethod(value); err != nil {
-				return 0, err
+				return 0, parseOK, err
 			}
 			opts.backupMethod = normalizeBackupMethod(value)
 		} else {
@@ -133,17 +209,17 @@ func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, error
 			opts.suffix = value
 		} else if len(remaining) > 0 {
 			opts.suffix = remaining[0]
-			return 1, nil
+			return 1, parseOK, nil
 		} else {
-			return 0, fmt.Errorf("option '--suffix' requires an argument")
+			return 0, parseOK, fmt.Errorf("option '--suffix' requires an argument")
 		}
 	default:
-		return 0, fmt.Errorf("unrecognized option '%s'", flag)
+		return 0, parseOK, fmt.Errorf("unrecognized option '%s'", flag)
 	}
-	return 0, nil
+	return 0, parseOK, nil
 }
 
-// parseShortFlags handles -s, -r, -f, -v, -b, -S and combined forms like -sfv.
+// parseShortFlags handles -s, -r, -f, -v, -b, -n, -i, -S and combined forms.
 func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, error) {
 	consumed := 0
 	for i := 0; i < len(flags); i++ {
@@ -154,6 +230,12 @@ func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, er
 			opts.relative = true
 		case 'f':
 			opts.force = true
+			opts.interactive = false
+		case 'i':
+			opts.interactive = true
+			opts.force = false
+		case 'n':
+			opts.noDereference = true
 		case 'v':
 			opts.verbose = true
 		case 'b':
@@ -306,7 +388,6 @@ func hasNumberedBackup(path string) bool {
 // R1.1: hard link creation.
 // R1.3: rejects directories.
 // R1.4: rejects existing destinations.
-// R4.1, R4.2: error messages for non-existent targets, permission denied, cross-device.
 func createHardLink(target, linkName string, stderr *os.File) int {
 	if err := validateHardLinkTarget(target); err != nil {
 		printError(stderr, fmt.Sprintf("hard link not allowed for directory '%s'", target))
@@ -413,7 +494,6 @@ func printTryHelp(stderr *os.File) {
 }
 
 // printLinkError prints a hard link failure error to stderr.
-// R1.4, R4.1, R4.2: reports existing destination, non-existent target, and cross-device errors.
 func printLinkError(stderr *os.File, linkName string, err error) {
 	fmt.Fprintf(stderr, "%s: failed to create hard link '%s': %s\n", progName, linkName, err) //nolint:errcheck
 }
