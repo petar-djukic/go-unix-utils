@@ -3,7 +3,7 @@
 
 // wc_test.go implements differential tests for cmd/wc against the GNU
 // reference binary (gwc). Covers prd005-wc R1.1–R1.4, R2.1–R2.4,
-// R3.1, R3.2, R4.4.
+// R3.1–R3.3, R4.1–R4.4.
 
 package main
 
@@ -48,6 +48,83 @@ func TestDiff(t *testing.T) {
 
 	stdinTests := buildStdinTests()
 	testutils.RunDiffTests(t, goBin, refBin, stdinTests)
+}
+
+// TestDiffFlagSelection runs differential tests for selective column display.
+// R3.3: print only the columns for the flags that were explicitly requested.
+func TestDiffFlagSelection(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	tests := buildFlagSelectionTests()
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFlagSelectionFiles runs flag selection tests with file arguments.
+func TestDiffFlagSelectionFiles(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	t.Run("lines_only_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "data.txt", "one\ntwo\nthree\n")
+
+		tests := []testutils.DiffTest{{
+			Name:    "lines_only_single_file",
+			Args:    []string{"-l", "data.txt"},
+			WorkDir: dir,
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("words_only_multi_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "a.txt", "hello world\n")
+		writeFixture(t, dir, "b.txt", "foo bar baz\n")
+
+		tests := []testutils.DiffTest{{
+			Name:    "words_only_two_files",
+			Args:    []string{"-w", "a.txt", "b.txt"},
+			WorkDir: dir,
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("bytes_only_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "data.txt", "abcdef\n")
+
+		tests := []testutils.DiffTest{{
+			Name:    "bytes_only_single_file",
+			Args:    []string{"-c", "data.txt"},
+			WorkDir: dir,
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("lines_words_combined_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "data.txt", "one two\nthree\n")
+
+		tests := []testutils.DiffTest{{
+			Name:    "lines_words_combined_file",
+			Args:    []string{"-lw", "data.txt"},
+			WorkDir: dir,
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
 }
 
 // TestDiffMultiFile runs differential tests that require fixture files.
@@ -112,6 +189,63 @@ func TestDiffMultiFile(t *testing.T) {
 			Name:    "three_files_with_total",
 			Args:    []string{"a.txt", "b.txt", "c.txt"},
 			WorkDir: dir,
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestDiffErrorHandling runs differential tests for error paths.
+// R4.1: print error to stderr and continue.
+// R4.2/R4.3: exit 1 on error, include filename in error message.
+func TestDiffErrorHandling(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skipf("reference binary gwc not in PATH: %v", err)
+	}
+
+	t.Run("only_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+
+		tests := []testutils.DiffTest{{
+			Name:      "single_nonexistent_file",
+			Args:      []string{"nosuchfile.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("nonexistent_between_valid", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "first.txt", "aaa\n")
+		writeFixture(t, dir, "last.txt", "bbb ccc\n")
+
+		tests := []testutils.DiffTest{{
+			Name:      "error_between_valid_files",
+			Args:      []string{"first.txt", "missing.txt", "last.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		}}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	t.Run("nonexistent_with_flag", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFixture(t, dir, "good.txt", "hello\n")
+
+		tests := []testutils.DiffTest{{
+			Name:      "error_with_lines_flag",
+			Args:      []string{"-l", "bad.txt", "good.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		}}
 		testutils.RunDiffTests(t, goBin, refBin, tests)
 	})
@@ -222,6 +356,74 @@ func buildStdinTests() []testutils.DiffTest {
 			Name:  "wc_binary_input",
 			Args:  []string{},
 			Stdin: []byte{0x00, 0xFF, 0x0A, 0x41, 0x20, 0x42, 0x0A},
+		},
+	}
+}
+
+// buildFlagSelectionTests returns DiffTest cases for selective column display.
+// R3.3: print only columns for explicitly requested flags.
+func buildFlagSelectionTests() []testutils.DiffTest {
+	input := []byte("hello world\ngoodbye\nfoo bar baz\n")
+	return []testutils.DiffTest{
+		{
+			Name:  "lines_only",
+			Args:  []string{"-l"},
+			Stdin: input,
+		},
+		{
+			Name:  "words_only",
+			Args:  []string{"-w"},
+			Stdin: input,
+		},
+		{
+			Name:  "bytes_only",
+			Args:  []string{"-c"},
+			Stdin: input,
+		},
+		{
+			Name:  "lines_and_words",
+			Args:  []string{"-l", "-w"},
+			Stdin: input,
+		},
+		{
+			Name:  "lines_and_bytes",
+			Args:  []string{"-l", "-c"},
+			Stdin: input,
+		},
+		{
+			Name:  "words_and_bytes",
+			Args:  []string{"-w", "-c"},
+			Stdin: input,
+		},
+		{
+			Name:  "combined_lw",
+			Args:  []string{"-lw"},
+			Stdin: input,
+		},
+		{
+			Name:  "combined_lwc",
+			Args:  []string{"-lwc"},
+			Stdin: input,
+		},
+		{
+			Name:  "long_lines",
+			Args:  []string{"--lines"},
+			Stdin: input,
+		},
+		{
+			Name:  "long_words",
+			Args:  []string{"--words"},
+			Stdin: input,
+		},
+		{
+			Name:  "long_bytes",
+			Args:  []string{"--bytes"},
+			Stdin: input,
+		},
+		{
+			Name:  "empty_input_lines_only",
+			Args:  []string{"-l"},
+			Stdin: []byte(""),
 		},
 	}
 }

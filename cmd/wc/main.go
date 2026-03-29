@@ -3,7 +3,7 @@
 
 // cmd/wc implements GNU wc: count lines, words, and bytes.
 //
-// Implements prd005-wc R1.1–R1.4, R2.1–R2.4, R3.1, R3.2, R4.4.
+// Implements prd005-wc R1.1–R1.4, R2.1–R2.4, R3.1, R3.2, R3.3, R4.1–R4.4.
 package main
 
 import (
@@ -35,6 +35,34 @@ type wcResult struct {
 	counts wcCounts
 }
 
+// columnSelection tracks which count columns to display.
+// R3.3: print only the columns for explicitly requested flags.
+type columnSelection struct {
+	lines bool
+	words bool
+	bytes bool
+}
+
+// defaultColumns returns the selection when no flags are given.
+func defaultColumns() columnSelection {
+	return columnSelection{lines: true, words: true, bytes: true}
+}
+
+// count returns the number of selected columns.
+func (c columnSelection) count() int {
+	n := 0
+	if c.lines {
+		n++
+	}
+	if c.words {
+		n++
+	}
+	if c.bytes {
+		n++
+	}
+	return n
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -53,6 +81,17 @@ type parsedArgs struct {
 	files      []string
 	files0From string // --files0-from=FILE, empty if not set
 	action     runAction
+	columns    columnSelection
+	flagsSet   bool // true if any counting flag was explicitly set
+}
+
+// resolveColumns returns the effective column selection.
+// D1: when no flags are given, show lines, words, and bytes.
+func (p parsedArgs) resolveColumns() columnSelection {
+	if !p.flagsSet {
+		return defaultColumns()
+	}
+	return p.columns
 }
 
 // run parses arguments and counts lines, words, and bytes.
@@ -68,8 +107,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	cols := parsed.resolveColumns()
+
 	if parsed.files0From != "" {
-		return runFiles0From(parsed, stdin, stdout, stderr)
+		return runFiles0From(parsed, cols, stdin, stdout, stderr)
 	}
 
 	files := parsed.files
@@ -78,13 +119,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		files = []string{""}
 	}
 
-	return processWithWidth(files, precomputeWidth(files),
-		stdin, stdout, stderr)
+	return processWithWidth(files, precomputeWidth(files, cols.count()),
+		cols, stdin, stdout, stderr)
 }
 
 // runFiles0From handles the --files0-from flag logic.
 func runFiles0From(
-	parsed parsedArgs, stdin io.Reader, stdout, stderr io.Writer,
+	parsed parsedArgs, cols columnSelection,
+	stdin io.Reader, stdout, stderr io.Writer,
 ) int {
 	// R2.6 (task): error if file operands combined with --files0-from.
 	if len(parsed.files) > 0 {
@@ -117,10 +159,10 @@ func runFiles0From(
 	// stdin because it processes filenames in streaming fashion.
 	width := 1
 	if parsed.files0From != "-" {
-		width = precomputeWidth(files)
+		width = precomputeWidth(files, cols.count())
 	}
 
-	return processWithWidth(files, width, stdin, stdout, stderr)
+	return processWithWidth(files, width, cols, stdin, stdout, stderr)
 }
 
 // validateFiles0Names checks for invalid filenames from --files0-from.
@@ -165,6 +207,15 @@ func parseOneArg(
 		p.action = actionHelp
 	case arg == "--version":
 		p.action = actionVersion
+	case arg == "--lines":
+		p.columns.lines = true
+		p.flagsSet = true
+	case arg == "--words":
+		p.columns.words = true
+		p.flagsSet = true
+	case arg == "--bytes":
+		p.columns.bytes = true
+		p.flagsSet = true
 	case strings.HasPrefix(arg, "--files0-from="):
 		p.files0From = arg[len("--files0-from="):]
 	case arg == "--files0-from" && i+1 < len(args):
@@ -173,9 +224,26 @@ func parseOneArg(
 	case arg == "-" || !isFlag(arg):
 		p.files = append(p.files, arg)
 	default:
-		// Unrecognized flags ignored; future tasks add -l, -w, -c, -m, -L
+		parseShortFlags(arg, p)
 	}
 	return i
+}
+
+// parseShortFlags handles combined short flags like -lw.
+func parseShortFlags(arg string, p *parsedArgs) {
+	for _, ch := range arg[1:] {
+		switch ch {
+		case 'l':
+			p.columns.lines = true
+			p.flagsSet = true
+		case 'w':
+			p.columns.words = true
+			p.flagsSet = true
+		case 'c':
+			p.columns.bytes = true
+			p.flagsSet = true
+		}
+	}
 }
 
 // isFlag reports whether arg looks like a flag.
@@ -189,12 +257,12 @@ const stdinDefaultWidth = 7
 // processWithWidth counts and prints results for all files with given width.
 // R3.1: right-aligned columns. R1.4/R3.2: total line for multi-file.
 func processWithWidth(
-	files []string, width int,
+	files []string, width int, cols columnSelection,
 	stdin io.Reader, stdout, stderr io.Writer,
 ) int {
 	results, exitCode := collectResults(files, stdin, stderr)
 	results = addTotal(files, results)
-	printAllResults(stdout, results, width)
+	printAllResults(stdout, results, width, cols)
 	return exitCode
 }
 
@@ -210,15 +278,18 @@ func addTotal(files []string, results []wcResult) []wcResult {
 }
 
 // printAllResults writes all result lines.
-func printAllResults(w io.Writer, results []wcResult, width int) {
+func printAllResults(
+	w io.Writer, results []wcResult, width int, cols columnSelection,
+) {
 	for _, r := range results {
-		if err := printResult(w, r, width); err != nil {
+		if err := printResult(w, r, width, cols); err != nil {
 			return
 		}
 	}
 }
 
 // collectResults processes each file and returns results.
+// R4.1: errors print to stderr with filename. R4.2/R4.3: exit 1 on error.
 func collectResults(
 	files []string, stdin io.Reader, stderr io.Writer,
 ) ([]wcResult, int) {
@@ -326,11 +397,20 @@ func sumCounts(results []wcResult) wcCounts {
 }
 
 // precomputeWidth determines column width from file sizes before counting,
-// matching GNU wc behavior. For stdin (name "" or "-"), uses stdinDefaultWidth.
-// For regular files, uses digits(file_size). Returns the maximum across all.
+// matching GNU wc behavior. For a single file with a single column, uses
+// width 1. For stdin, uses stdinDefaultWidth when multiple columns are
+// displayed. For multiple files, considers the sum of all file sizes
+// (for the total line). Returns the maximum across all.
 // R3.1: right-aligned columns with consistent field width.
-func precomputeWidth(files []string) int {
+func precomputeWidth(files []string, numCols int) int {
+	// Single file, single column: no alignment needed.
+	if numCols == 1 && len(files) == 1 {
+		return 1
+	}
+
 	width := 1
+	var totalSize int64
+
 	for _, name := range files {
 		if name == "" || name == "-" {
 			if stdinDefaultWidth > width {
@@ -342,11 +422,22 @@ func precomputeWidth(files []string) int {
 		if err != nil {
 			continue
 		}
-		w := digitCount(info.Size())
+		size := info.Size()
+		totalSize += size
+		w := digitCount(size)
 		if w > width {
 			width = w
 		}
 	}
+
+	// For multi-file, the total line may need more digits than any
+	// single file, so consider the sum of all file sizes.
+	if len(files) > 1 {
+		if w := digitCount(totalSize); w > width {
+			width = w
+		}
+	}
+
 	return width
 }
 
@@ -363,21 +454,28 @@ func digitCount(v int64) int {
 	return n
 }
 
-// printResult writes one line of wc output.
+// printResult writes one line of wc output with selected columns.
 // R1.3: counts followed by filename; R3.2: no filename for stdin-only.
-func printResult(w io.Writer, r wcResult, width int) error {
-	if r.name == "" {
-		_, err := fmt.Fprintf(w, "%*d %*d %*d\n",
-			width, r.counts.lines,
-			width, r.counts.words,
-			width, r.counts.bytes)
-		return err
+// R3.3: only print columns for explicitly requested flags.
+func printResult(
+	w io.Writer, r wcResult, width int, cols columnSelection,
+) error {
+	var parts []string
+	if cols.lines {
+		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.lines))
 	}
-	_, err := fmt.Fprintf(w, "%*d %*d %*d %s\n",
-		width, r.counts.lines,
-		width, r.counts.words,
-		width, r.counts.bytes,
-		r.name)
+	if cols.words {
+		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.words))
+	}
+	if cols.bytes {
+		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.bytes))
+	}
+
+	line := strings.Join(parts, " ")
+	if r.name != "" {
+		line += " " + r.name
+	}
+	_, err := fmt.Fprintln(w, line)
 	return err
 }
 
