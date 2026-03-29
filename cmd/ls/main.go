@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -595,10 +597,36 @@ func formatAcrossColumns(cfg *lsConfig, entries []lsEntry) {
 }
 
 // formatLongListing prints long-format output with aligned columns.
-// R1.6, R1.7, R1.8, R1.9, R1.10: long format fields.
+// R1.6, R1.7, R1.8: long format fields.
 func formatLongListing(cfg *lsConfig, entries []lsEntry) {
-	// TODO: R1.6–R1.10 — long format deferred to R1.6 task.
-	formatSingleColumn(cfg, entries)
+	cw := computeColumnWidths(cfg, entries)
+	for _, e := range entries {
+		printLongEntry(cfg, e, cw)
+	}
+}
+
+// printLongEntry prints a single entry in long format.
+// R1.6: permissions nlink owner group size mtime name.
+func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
+	if e.info == nil {
+		fmt.Println(e.name)
+		return
+	}
+	fi := e.info
+	perm := permissionString(fi.Mode)
+	owner := resolveOwner(fi.Uid, cfg.numericIDs)
+	group := resolveGroup(fi.Gid, cfg.numericIDs)
+	mtime := formatTime(fi.ModTime)
+	name := entryDisplayName(cfg, e)
+	fmt.Printf("%s %*d %-*s %-*s %*d %s %s\n",
+		perm,
+		cw.nlink, fi.Nlink,
+		cw.owner, owner,
+		cw.group, group,
+		cw.size, fi.Size,
+		mtime,
+		name,
+	)
 }
 
 // printTotalLine prints the "total N" block count line for long format.
@@ -611,46 +639,111 @@ func printTotalLine(cfg *lsConfig, entries []lsEntry) {
 // permissionString builds the 10-character permission string.
 // R1.6: file type + rwx with setuid/setgid/sticky.
 func permissionString(mode os.FileMode) string {
-	_ = mode
-	return ""
+	var buf [10]byte
+	buf[0] = fileTypeChar(mode)
+	perm := mode.Perm()
+	// R1.6: owner rwx with setuid
+	buf[1] = permChar(perm&0o400 != 0, 'r')
+	buf[2] = permChar(perm&0o200 != 0, 'w')
+	buf[3] = execSpecialChar(perm&0o100 != 0, mode&os.ModeSetuid != 0, 's', 'S')
+	// R1.6: group rwx with setgid
+	buf[4] = permChar(perm&0o040 != 0, 'r')
+	buf[5] = permChar(perm&0o020 != 0, 'w')
+	buf[6] = execSpecialChar(perm&0o010 != 0, mode&os.ModeSetgid != 0, 's', 'S')
+	// R1.6: other rwx with sticky
+	buf[7] = permChar(perm&0o004 != 0, 'r')
+	buf[8] = permChar(perm&0o002 != 0, 'w')
+	buf[9] = execSpecialChar(perm&0o001 != 0, mode&os.ModeSticky != 0, 't', 'T')
+	return string(buf[:])
 }
 
 // fileTypeChar returns the leading character for the permission string.
 // R1.6: d, l, c, b, p, s, or -.
 func fileTypeChar(mode os.FileMode) byte {
-	_ = mode
+	switch {
+	case mode&os.ModeDir != 0:
+		return 'd'
+	case mode&os.ModeSymlink != 0:
+		return 'l'
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
+		return 'c'
+	case mode&os.ModeDevice != 0:
+		return 'b'
+	case mode&os.ModeNamedPipe != 0:
+		return 'p'
+	case mode&os.ModeSocket != 0:
+		return 's'
+	default:
+		return '-'
+	}
+}
+
+// permChar returns ch if the permission bit is set, '-' otherwise.
+func permChar(set bool, ch byte) byte {
+	if set {
+		return ch
+	}
+	return '-'
+}
+
+// execSpecialChar returns the execute position character accounting for
+// setuid/setgid/sticky special bits.
+// R1.6: 's'/'S' for setuid/setgid, 't'/'T' for sticky.
+func execSpecialChar(exec, special bool, lower, upper byte) byte {
+	if special {
+		if exec {
+			return lower
+		}
+		return upper
+	}
+	if exec {
+		return 'x'
+	}
 	return '-'
 }
 
 // resolveOwner looks up the username for a UID.
 // R1.8: os/user.LookupId with numeric fallback.
 func resolveOwner(uid uint32, numeric bool) string {
-	_ = uid
-	_ = numeric
-	return ""
+	if numeric {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	u, err := user.LookupId(strconv.Itoa(int(uid)))
+	if err != nil {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return u.Username
 }
 
 // resolveGroup looks up the group name for a GID.
 // R1.8: os/user.LookupGroupId with numeric fallback.
 func resolveGroup(gid uint32, numeric bool) string {
-	_ = gid
-	_ = numeric
-	return ""
+	if numeric {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	g, err := user.LookupGroupId(strconv.Itoa(int(gid)))
+	if err != nil {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	return g.Name
 }
 
 // formatTime formats the modification time for long format.
 // R1.9: recent vs old time display.
 func formatTime(t time.Time) string {
-	_ = t
-	return ""
+	if time.Since(t) < sixMonths {
+		return t.Format("Jan _2 15:04")
+	}
+	return t.Format("Jan _2  2006")
 }
 
 // formatSize formats a file size, optionally human-readable.
 // R3.5: dispatches to format.HumanSize when cfg.humanSize is true.
 func formatSize(size int64, human bool) string {
-	_ = size
-	_ = human
-	return ""
+	if human {
+		return format.HumanSize(size, format.HumanSizeOpts{Binary: true})
+	}
+	return strconv.FormatInt(size, 10)
 }
 
 // formatBlockCount formats an entry's block count.
@@ -692,14 +785,6 @@ func recurseSubdirs(cfg *lsConfig, entries []lsEntry) int {
 	return exitOK
 }
 
-// computeColumnWidths calculates alignment widths for long format fields.
-// R1.6, R1.7, R2.11, R2.12: column width computation.
-func computeColumnWidths(cfg *lsConfig, entries []lsEntry) columnWidths {
-	_ = cfg
-	_ = entries
-	return columnWidths{}
-}
-
 // columnWidths holds the computed widths for aligned long-format columns.
 type columnWidths struct {
 	nlink  int
@@ -708,6 +793,39 @@ type columnWidths struct {
 	size   int
 	inode  int
 	blocks int
+}
+
+// computeColumnWidths calculates alignment widths for long format fields.
+// R1.6, R1.7, R2.11, R2.12: column width computation.
+func computeColumnWidths(cfg *lsConfig, entries []lsEntry) columnWidths {
+	var cw columnWidths
+	for _, e := range entries {
+		if e.info == nil {
+			continue
+		}
+		updateMaxInt(&cw.nlink, uintWidth(e.info.Nlink))
+		updateMaxInt(&cw.owner, len(resolveOwner(e.info.Uid, cfg.numericIDs)))
+		updateMaxInt(&cw.group, len(resolveGroup(e.info.Gid, cfg.numericIDs)))
+		updateMaxInt(&cw.size, intWidth(e.info.Size))
+	}
+	return cw
+}
+
+// updateMaxInt sets *cur to v if v is larger.
+func updateMaxInt(cur *int, v int) {
+	if v > *cur {
+		*cur = v
+	}
+}
+
+// uintWidth returns the decimal digit count of a uint64.
+func uintWidth(n uint64) int {
+	return len(strconv.FormatUint(n, 10))
+}
+
+// intWidth returns the decimal digit count of an int64.
+func intWidth(n int64) int {
+	return len(strconv.FormatInt(n, 10))
 }
 
 // entryNames extracts display names from entries.
