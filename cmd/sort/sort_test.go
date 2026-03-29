@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sort against gsort (GNU coreutils).
 //
-// Covers prd053-sort R1.1, R1.2, R1.3, R1.4.
+// Covers prd053-sort R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7.
 package main
 
 import (
@@ -110,10 +110,112 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("b\na\nb\na\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R1.5: -u unique removes duplicate lines
+		{
+			Name:  "R1.5_unique",
+			Args:  []string{"-u"},
+			Stdin: []byte("b\na\nb\na\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.5: --unique long option
+		{
+			Name:  "R1.5_unique_long",
+			Args:  []string{"--unique"},
+			Stdin: []byte("b\na\nb\na\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.5: -u combined with -r
+		{
+			Name:  "R1.5_unique_reverse",
+			Args:  []string{"-u", "-r"},
+			Stdin: []byte("b\na\nb\na\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.5: -u with all unique lines (no change)
+		{
+			Name:  "R1.5_unique_all_distinct",
+			Args:  []string{"-u"},
+			Stdin: []byte("c\na\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.6: tested in TestOutputFile and TestOutputFileSameAsInput
+		// (cannot use differential framework for file output comparison)
+		// R1.7: -s stable sort
+		{
+			Name:  "R1.7_stable",
+			Args:  []string{"-s"},
+			Stdin: []byte("banana\napple\ncherry\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.7: --stable long option
+		{
+			Name:  "R1.7_stable_long",
+			Args:  []string{"--stable"},
+			Stdin: []byte("banana\napple\ncherry\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.7: -s with -r
+		{
+			Name:  "R1.7_stable_reverse",
+			Args:  []string{"-s", "-r"},
+			Stdin: []byte("banana\napple\ncherry\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 
 	setupMultiFileTest(t, tests)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestOutputFile verifies -o writes to a file.
+// R1.6: -o FILE must write output to FILE.
+func TestOutputFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	inputFile := filepath.Join(dir, "input.txt")
+	outputFile := filepath.Join(dir, "output.txt")
+	writeTestFile(t, inputFile, "banana\napple\ncherry\n")
+
+	cmd := exec.Command(goBin, "-o", outputFile, inputFile)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sort -o failed: %v\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+	want := "apple\nbanana\ncherry\n"
+	if string(got) != want {
+		t.Errorf("output file:\ngot:  %q\nwant: %q", string(got), want)
+	}
+}
+
+// TestOutputFileSameAsInput verifies -o FILE works when FILE is also an input.
+// R1.6: FILE may be the same as an input file.
+func TestOutputFileSameAsInput(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	file := filepath.Join(dir, "data.txt")
+	writeTestFile(t, file, "banana\napple\ncherry\n")
+
+	cmd := exec.Command(goBin, "-o", file, file)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sort -o same-file failed: %v\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+	want := "apple\nbanana\ncherry\n"
+	if string(got) != want {
+		t.Errorf("in-place sort:\ngot:  %q\nwant: %q", string(got), want)
+	}
 }
 
 // setupMultiFileTest creates temp files for the R1.3 multi-file test.
