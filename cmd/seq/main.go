@@ -3,7 +3,7 @@
 
 // cmd/seq implements GNU seq: print a sequence of numbers.
 //
-// Implements prd019-seq R1.1, R1.2, R1.3, R1.4.
+// Implements prd019-seq R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -24,9 +25,16 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// seqOptions holds parsed flag values for seq.
+type seqOptions struct {
+	format    string
+	separator string
+	equalWidth bool
+}
+
 // run parses arguments and generates the sequence.
 func run(args []string, stdout, stderr io.Writer) int {
-	positional, code := parseFlags(args, stdout)
+	opts, positional, code := parseFlags(args, stdout)
 	if code >= 0 {
 		return code
 	}
@@ -40,38 +48,68 @@ func run(args []string, stdout, stderr io.Writer) int {
 			programName, positional[1])
 		return 1
 	}
-	return printSequence(stdout, stderr, first, step, last)
+	if opts.format != "" {
+		if err := validateFormat(opts.format); err != nil {
+			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+			return 1
+		}
+	}
+	return printSequence(stdout, stderr, first, step, last, opts)
 }
 
-// parseFlags extracts --help/--version and returns positional args.
-// Returns (positional, -1) on normal flow, or (nil, exitCode) for early exit.
-func parseFlags(args []string, stdout io.Writer) ([]string, int) {
+// parseFlags extracts flags and returns options, positional args, and exit code.
+// Returns (opts, positional, -1) on normal flow, or (opts, nil, exitCode) for early exit.
+func parseFlags(args []string, stdout io.Writer) (seqOptions, []string, int) {
+	var opts seqOptions
+	opts.separator = "\n"
 	var positional []string
 	flagsDone := false
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if flagsDone {
 			positional = append(positional, a)
 			continue
 		}
-		switch a {
-		case "--help":
+		switch {
+		case a == "--help":
 			printHelp(stdout)
-			return nil, 0
-		case "--version":
+			return opts, nil, 0
+		case a == "--version":
 			printVersion(stdout)
-			return nil, 0
-		case "--":
+			return opts, nil, 0
+		case a == "--":
 			flagsDone = true
+		case strings.HasPrefix(a, "--format="):
+			opts.format = a[len("--format="):]
+		case a == "--format" || a == "-f":
+			i, opts.format = consumeNextArg(args, i)
+		case strings.HasPrefix(a, "-f"):
+			opts.format = a[2:]
+		case strings.HasPrefix(a, "--separator="):
+			opts.separator = a[len("--separator="):]
+		case a == "--separator" || a == "-s":
+			i, opts.separator = consumeNextArg(args, i)
+		case strings.HasPrefix(a, "-s"):
+			opts.separator = a[2:]
+		case a == "--equal-width" || a == "-w":
+			opts.equalWidth = true
 		default:
 			positional = append(positional, a)
 		}
 	}
-	return positional, -1
+	return opts, positional, -1
+}
+
+// consumeNextArg advances the index and returns the next argument value.
+func consumeNextArg(args []string, i int) (int, string) {
+	if i+1 < len(args) {
+		return i + 1, args[i+1]
+	}
+	return i, ""
 }
 
 // parsePositional interprets 1, 2, or 3 positional arguments.
 // R1.1: seq LAST, seq FIRST LAST, seq FIRST INCREMENT LAST.
-// R1.4: defaults FIRST=1 and INCREMENT=1 when omitted.
 func parsePositional(args []string) (first, step, last float64, err error) {
 	switch len(args) {
 	case 0:
@@ -129,18 +167,131 @@ func sequenceLength(first, step, last float64) int {
 
 // printSequence writes the number sequence to stdout.
 // R1.2: generates numbers from FIRST by STEP, stopping at LAST.
-func printSequence(stdout, stderr io.Writer, first, step, last float64) int {
+// R2.1: default separator is newline. R2.2: custom separator via -s.
+// R2.3: trailing newline after last number.
+func printSequence(stdout, stderr io.Writer, first, step, last float64, opts seqOptions) int {
 	bw := bufio.NewWriter(stdout)
 	n := sequenceLength(first, step, last)
+	fmtFunc := buildFormatter(opts, first, last)
 	for i := range n {
 		v := first + float64(i)*step
-		fmt.Fprintln(bw, formatNumber(v))
+		if i > 0 {
+			fmt.Fprint(bw, opts.separator)
+		}
+		fmt.Fprint(bw, fmtFunc(v))
+	}
+	if n > 0 {
+		fmt.Fprint(bw, "\n")
 	}
 	if err := bw.Flush(); err != nil {
 		fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
 		return 1
 	}
 	return 0
+}
+
+// buildFormatter returns a function that formats each number.
+// R3.4: -f takes precedence over -w.
+func buildFormatter(opts seqOptions, first, last float64) func(float64) string {
+	if opts.format != "" {
+		return func(v float64) string {
+			return fmt.Sprintf(opts.format, v)
+		}
+	}
+	if opts.equalWidth {
+		width := equalWidth(first, last)
+		return func(v float64) string {
+			return zeroPad(formatNumber(v), width)
+		}
+	}
+	return formatNumber
+}
+
+// equalWidth computes the display width for -w mode.
+// D1: width from widest of FIRST and LAST including sign and decimal.
+func equalWidth(first, last float64) int {
+	w1 := len(formatNumber(first))
+	w2 := len(formatNumber(last))
+	if w1 > w2 {
+		return w1
+	}
+	return w2
+}
+
+// zeroPad pads a formatted number string to width with leading zeros.
+// Handles negative numbers by inserting zeros after the minus sign.
+func zeroPad(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	if s[0] == '-' {
+		return "-" + strings.Repeat("0", width-len(s)) + s[1:]
+	}
+	return strings.Repeat("0", width-len(s)) + s
+}
+
+// validateFormat checks that a format string has exactly one valid
+// floating-point conversion specifier.
+// R3.1/R3.2: must contain exactly one %a, %e, %f, %g (or uppercase).
+func validateFormat(format string) error {
+	count := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(format) {
+			return fmt.Errorf("format '%%' missing conversion specifier")
+		}
+		if format[i] == '%' {
+			continue
+		}
+		// Skip flags: -, +, space, #, 0
+		for i < len(format) && isFormatFlag(format[i]) {
+			i++
+		}
+		// Skip width
+		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+			i++
+		}
+		// Skip precision
+		if i < len(format) && format[i] == '.' {
+			i++
+			for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+				i++
+			}
+		}
+		if i >= len(format) {
+			return fmtConversionError(format)
+		}
+		if !isFloatConversion(format[i]) {
+			return fmtConversionError(format)
+		}
+		count++
+	}
+	if count == 0 {
+		return fmt.Errorf("format '%s' has no %% directive", format)
+	}
+	if count > 1 {
+		return fmt.Errorf("format '%s' has too many %% directives", format)
+	}
+	return nil
+}
+
+// isFormatFlag returns true if c is a printf flag character.
+func isFormatFlag(c byte) bool {
+	return c == '-' || c == '+' || c == ' ' || c == '#' || c == '0'
+}
+
+// isFloatConversion returns true if c is a valid float conversion specifier.
+func isFloatConversion(c byte) bool {
+	return c == 'a' || c == 'e' || c == 'f' || c == 'g' ||
+		c == 'A' || c == 'E' || c == 'F' || c == 'G'
+}
+
+// fmtConversionError returns a format conversion error.
+func fmtConversionError(format string) error {
+	return fmt.Errorf("format '%s' has unknown %%%% directive", format)
 }
 
 // formatNumber formats a number for output, omitting decimal for integers.
