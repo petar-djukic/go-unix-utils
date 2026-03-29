@@ -3,7 +3,7 @@
 
 // cmd/sort implements GNU sort: sort lines of text files.
 //
-// Implements prd053-sort R1.1-R1.7, R2.1, R2.2, R2.3, R2.4.
+// Implements prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -47,11 +47,14 @@ var humanSuffix = map[byte]float64{
 
 // sortOptions holds parsed flag state.
 type sortOptions struct {
-	reverse    bool     // -r: reverse sort order
-	unique     bool     // R1.5: -u: output only first of equal run
-	stable     bool     // R1.7: -s: preserve input order of equal lines
-	outputFile string   // R1.6: -o FILE: write output to file
-	mode       sortMode // R2.x: comparison mode
+	reverse      bool      // R1.4: -r: reverse sort order
+	unique       bool      // R1.5: -u: output only first of equal run
+	stable       bool      // R1.7: -s: preserve input order of equal lines
+	outputFile   string    // R1.6: -o FILE: write output to file
+	mode         sortMode  // R2.x: comparison mode
+	fieldSep     string    // R3.1: -t CHAR: field delimiter
+	keys         []keySpec // R3.2, R3.3: -k KEYDEF
+	ignoreBlanks bool      // R3.4: -b: ignore leading blanks
 }
 
 func main() {
@@ -72,7 +75,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	lines, exitCode := readAllLines(files, stdin, stderr)
 	sortLines(lines, opts)
 	if opts.unique {
-		lines = dedup(lines, opts.mode)
+		lines = dedup(lines, opts)
 	}
 	if err := writeOutput(opts.outputFile, stdout, lines); err != nil {
 		fmt.Fprintf(stderr, "sort: %v\n", err)
@@ -117,12 +120,34 @@ func parseArgs(args []string) (sortOptions, []string, error) {
 }
 
 // parseLongFlag handles a single --name or --name=value long option.
-// Returns the number of extra args consumed from rest.
 func parseLongFlag(opts *sortOptions, name string, rest []string) (int, error) {
-	if strings.HasPrefix(name, "output=") {
-		opts.outputFile = name[len("output="):]
-		return 0, nil
+	if idx := strings.IndexByte(name, '='); idx >= 0 {
+		return parseLongWithValue(opts, name[:idx], name[idx+1:])
 	}
+	return parseLongNoValue(opts, name, rest)
+}
+
+// parseLongWithValue handles --key=value flags.
+func parseLongWithValue(opts *sortOptions, key, val string) (int, error) {
+	switch key {
+	case "output":
+		opts.outputFile = val
+	case "field-separator":
+		opts.fieldSep = val
+	case "key":
+		k, err := parseKeyDef(val)
+		if err != nil {
+			return 0, err
+		}
+		opts.keys = append(opts.keys, k)
+	default:
+		return 0, fmt.Errorf("unrecognized option '--%s'", key)
+	}
+	return 0, nil
+}
+
+// parseLongNoValue handles long flags without = value.
+func parseLongNoValue(opts *sortOptions, name string, rest []string) (int, error) {
 	switch name {
 	case "reverse":
 		opts.reverse = true
@@ -130,12 +155,6 @@ func parseLongFlag(opts *sortOptions, name string, rest []string) (int, error) {
 		opts.unique = true
 	case "stable":
 		opts.stable = true
-	case "output":
-		if len(rest) == 0 {
-			return 0, fmt.Errorf("option '--output' requires an argument")
-		}
-		opts.outputFile = rest[0]
-		return 1, nil
 	case "numeric-sort":
 		opts.mode = modeNumeric
 	case "human-numeric-sort":
@@ -144,10 +163,34 @@ func parseLongFlag(opts *sortOptions, name string, rest []string) (int, error) {
 		opts.mode = modeMonth
 	case "version-sort":
 		opts.mode = modeVersion
+	case "ignore-leading-blanks":
+		opts.ignoreBlanks = true
+	case "output", "field-separator", "key":
+		return parseLongArgFlag(opts, name, rest)
 	default:
 		return 0, fmt.Errorf("unrecognized option '--%s'", name)
 	}
 	return 0, nil
+}
+
+// parseLongArgFlag handles long flags that require a separate argument.
+func parseLongArgFlag(opts *sortOptions, name string, rest []string) (int, error) {
+	if len(rest) == 0 {
+		return 0, fmt.Errorf("option '--%s' requires an argument", name)
+	}
+	switch name {
+	case "output":
+		opts.outputFile = rest[0]
+	case "field-separator":
+		opts.fieldSep = rest[0]
+	case "key":
+		k, err := parseKeyDef(rest[0])
+		if err != nil {
+			return 0, err
+		}
+		opts.keys = append(opts.keys, k)
+	}
+	return 1, nil
 }
 
 // parseShortFlags processes flag characters from a single -xyz argument.
@@ -161,8 +204,14 @@ func parseShortFlags(opts *sortOptions, chars string, rest []string) (int, error
 			opts.unique = true
 		case 's':
 			opts.stable = true
+		case 'b':
+			opts.ignoreBlanks = true
 		case 'o':
 			return consumeFlagArg(chars[idx+1:], rest, &opts.outputFile, 'o')
+		case 't':
+			return consumeFlagArg(chars[idx+1:], rest, &opts.fieldSep, 't')
+		case 'k':
+			return consumeKeyFlag(chars[idx+1:], rest, opts)
 		case 'n':
 			opts.mode = modeNumeric
 		case 'h':
@@ -192,6 +241,23 @@ func consumeFlagArg(
 	}
 	*dest = rest[0]
 	return 1, nil
+}
+
+// consumeKeyFlag extracts and parses a -k KEYDEF argument.
+func consumeKeyFlag(
+	remaining string, rest []string, opts *sortOptions,
+) (int, error) {
+	var keyStr string
+	consumed, err := consumeFlagArg(remaining, rest, &keyStr, 'k')
+	if err != nil {
+		return 0, err
+	}
+	k, err := parseKeyDef(keyStr)
+	if err != nil {
+		return 0, err
+	}
+	opts.keys = append(opts.keys, k)
+	return consumed, nil
 }
 
 // readAllLines reads lines from all files, combining into a single slice.
@@ -250,6 +316,19 @@ func scanLines(r io.Reader) ([]string, error) {
 	return lines, scanner.Err()
 }
 
+// compareLines compares two lines using keys if specified, else global mode.
+// R3.3: key-based comparison; falls back to mode-based for no keys.
+func compareLines(a, b string, opts sortOptions) int {
+	if len(opts.keys) > 0 {
+		return compareByKeys(a, b, opts)
+	}
+	if opts.ignoreBlanks {
+		a = strings.TrimLeft(a, " \t")
+		b = strings.TrimLeft(b, " \t")
+	}
+	return compareLine(a, b, opts.mode)
+}
+
 // compareLine compares two lines using the active sort mode.
 // Returns negative if a < b, 0 if equal, positive if a > b.
 func compareLine(a, b string, mode sortMode) int {
@@ -271,8 +350,8 @@ func compareLine(a, b string, mode sortMode) int {
 // R1.1: default lexicographic. R1.4: -r reverses. R1.7: -s stable.
 func sortLines(lines []string, opts sortOptions) {
 	less := func(i, j int) bool {
-		cmp := compareLine(lines[i], lines[j], opts.mode)
-		if cmp == 0 && !opts.stable {
+		cmp := compareLines(lines[i], lines[j], opts)
+		if cmp == 0 && !opts.stable && !opts.unique {
 			cmp = strings.Compare(lines[i], lines[j])
 		}
 		if opts.reverse {
@@ -285,13 +364,13 @@ func sortLines(lines []string, opts sortOptions) {
 
 // dedup removes consecutive equal lines based on the active sort comparison.
 // R1.5: equality uses the primary comparison only (no last-resort).
-func dedup(lines []string, mode sortMode) []string {
+func dedup(lines []string, opts sortOptions) []string {
 	if len(lines) == 0 {
 		return lines
 	}
 	result := lines[:1]
 	for _, line := range lines[1:] {
-		if compareLine(line, result[len(result)-1], mode) != 0 {
+		if compareLines(line, result[len(result)-1], opts) != 0 {
 			result = append(result, line)
 		}
 	}
@@ -479,7 +558,7 @@ func writeOutput(path string, stdout io.Writer, lines []string) error {
 	return writeLines(f, lines)
 }
 
-// writeLines writes all sorted lines to the writer, each followed by a newline.
+// writeLines writes all sorted lines to the writer, each followed by newline.
 func writeLines(w io.Writer, lines []string) error {
 	bw := bufio.NewWriter(w)
 	for _, line := range lines {

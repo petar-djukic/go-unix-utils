@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/sort against gsort (GNU coreutils).
 //
-// Covers prd053-sort R1.1-R1.7, R2.1, R2.2, R2.3, R2.4.
+// Covers prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -275,6 +275,128 @@ func TestDiff(t *testing.T) {
 			Name:  "R2.4_version_mixed",
 			Args:  []string{"-V"},
 			Stdin: []byte("a2b\na10b\na1b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.1: -t field separator ---
+		{
+			Name:  "R3.1_field_separator_colon",
+			Args:  []string{"-t:", "-k2,2"},
+			Stdin: []byte("b:2\na:3\nc:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_field_separator_long",
+			Args:  []string{"--field-separator=:", "-k2,2"},
+			Stdin: []byte("b:2\na:3\nc:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_field_separator_comma",
+			Args:  []string{"-t,", "-k2,2"},
+			Stdin: []byte("b,2\na,3\nc,1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_field_separator_space",
+			Args:  []string{"-t ", "-k2,2"},
+			Stdin: []byte("b 2\na 3\nc 1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.2: -k key field ---
+		{
+			Name:  "R3.2_key_second_field",
+			Args:  []string{"-k2,2", "-t:"},
+			Stdin: []byte("b:2\na:1\nc:3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_key_numeric_modifier",
+			Args:  []string{"-k2,2n", "-t:"},
+			Stdin: []byte("a:10\nb:2\nc:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_key_reverse_modifier",
+			Args:  []string{"-k2,2r", "-t:"},
+			Stdin: []byte("a:1\nb:3\nc:2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_key_long_option",
+			Args:  []string{"--key=2,2", "-t:"},
+			Stdin: []byte("b:2\na:1\nc:3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_key_default_separator",
+			Args:  []string{"-k2,2"},
+			Stdin: []byte("c 2\na 3\nb 1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_key_numeric_field",
+			Args:  []string{"-k2,2n"},
+			Stdin: []byte("a 10\nb 2\nc 1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_key_to_end_of_line",
+			Args:  []string{"-k2"},
+			Stdin: []byte("a z\nb x\nc y\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_unique_by_key",
+			Args:  []string{"-u", "-k1,1", "-t:"},
+			Stdin: []byte("a:2\na:1\nb:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.3: multiple -k options ---
+		{
+			Name:  "R3.3_multi_key_tiebreak",
+			Args:  []string{"-k1,1", "-k2,2", "-t:"},
+			Stdin: []byte("a:2\na:1\nb:1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_multi_key_first_wins",
+			Args:  []string{"-k1,1", "-k2,2n", "-t:"},
+			Stdin: []byte("b:1\na:10\na:2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_multi_key_three_fields",
+			Args:  []string{"-k1,1", "-k2,2", "-k3,3", "-t:"},
+			Stdin: []byte("a:b:2\na:b:1\na:a:3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R3.4: -b ignore leading blanks ---
+		{
+			Name:  "R3.4_ignore_blanks",
+			Args:  []string{"-b"},
+			Stdin: []byte("  b\na\n  c\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_ignore_blanks_long",
+			Args:  []string{"--ignore-leading-blanks"},
+			Stdin: []byte("  b\na\n  c\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_ignore_blanks_with_key",
+			Args:  []string{"-b", "-k2,2", "-t:"},
+			Stdin: []byte("a:  z\nb:  a\nc:  m\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_blanks_key_modifier",
+			Args:  []string{"-k2b,2", "-t:"},
+			Stdin: []byte("a:  z\nb:  a\nc:  m\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
