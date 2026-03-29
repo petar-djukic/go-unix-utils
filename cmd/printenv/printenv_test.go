@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/printenv against gprintenv (GNU coreutils).
 //
-// Covers prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1.
+// Covers prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -134,6 +134,63 @@ func TestDiff(t *testing.T) {
 		{
 			Name:     "R3.1_null_mixed_existing_missing",
 			Args:     []string{"-0", "HOME", "PRINTENV_NONEXISTENT_VAR_99"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		// R3.2: explicit coverage of all listed scenarios
+		{
+			Name:      "R3.2_full_dump",
+			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:     "R3.2_single_existing",
+			Args:     []string{"PATH"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R3.2_multiple_existing",
+			Args:     []string{"HOME", "PATH"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R3.2_missing_exit_1",
+			Args:     []string{"PRINTENV_R32_NONEXISTENT"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R3.2_mix_existing_missing",
+			Args:     []string{"HOME", "PRINTENV_R32_NONEXISTENT"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R3.2_null_delimited",
+			Args:     []string{"-0", "HOME", "PATH"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: verify no stderr for missing variables
+		{
+			Name:     "R3.3_no_stderr_single_missing",
+			Args:     []string{"PRINTENV_R33_NONEXISTENT"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R3.3_no_stderr_multiple_missing",
+			Args:     []string{"PRINTENV_R33_MISS_A", "PRINTENV_R33_MISS_B"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R3.3_no_stderr_mixed",
+			Args:     []string{"HOME", "PRINTENV_R33_MISS_C"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 1,
 		},
