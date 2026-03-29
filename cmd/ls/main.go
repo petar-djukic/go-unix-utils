@@ -339,10 +339,14 @@ func classifyArg(
 		*dirs = append(*dirs, path)
 		return exitOK
 	}
-	*files = append(*files, lsEntry{
+	entry := lsEntry{
 		name: path, path: path, info: fi,
 		isDir: fi.Mode.IsDir(),
-	})
+	}
+	if fi.Mode&os.ModeSymlink != 0 {
+		entry.link, _ = os.Readlink(path) // best-effort symlink target
+	}
+	*files = append(*files, entry)
 	return exitOK
 }
 
@@ -358,6 +362,9 @@ func listDir(cfg *lsConfig, dirPath string, showHeader bool) int {
 	}
 	entries = filterEntries(entries, cfg.filter)
 	sortEntries(entries, cfg)
+	if cfg.format == formatLong {
+		printTotalLine(cfg, entries)
+	}
 	formatOutput(cfg, entries)
 	return exitCode
 }
@@ -388,10 +395,14 @@ func statDirEntries(des []os.DirEntry, dirPath string) ([]lsEntry, int) {
 			exitCode = exitMinor
 			continue
 		}
-		entries = append(entries, lsEntry{
+		entry := lsEntry{
 			name: name, path: path, info: fi,
 			isDir: fi.Mode.IsDir(),
-		})
+		}
+		if fi.Mode&os.ModeSymlink != 0 {
+			entry.link, _ = os.Readlink(path) // best-effort symlink target
+		}
+		entries = append(entries, entry)
 	}
 	return entries, exitCode
 }
@@ -618,6 +629,10 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 	group := resolveGroup(fi.Gid, cfg.numericIDs)
 	mtime := formatTime(fi.ModTime)
 	name := entryDisplayName(cfg, e)
+	// R1.10: append symlink target when entry is a symlink
+	if e.link != "" {
+		name += " -> " + e.link
+	}
 	fmt.Printf("%s %*d %-*s %-*s %*d %s %s\n",
 		perm,
 		cw.nlink, fi.Nlink,
@@ -630,10 +645,15 @@ func printLongEntry(cfg *lsConfig, e lsEntry, cw columnWidths) {
 }
 
 // printTotalLine prints the "total N" block count line for long format.
-// R1.10, R3.6: total blocks line with optional human-readable format.
+// R1.10: total blocks in 1K-block units (st_blocks/2).
 func printTotalLine(cfg *lsConfig, entries []lsEntry) {
-	_ = cfg
-	_ = entries
+	var totalBlocks int64
+	for _, e := range entries {
+		if e.info != nil {
+			totalBlocks += e.info.Blocks
+		}
+	}
+	fmt.Printf("total %d\n", totalBlocks/2)
 }
 
 // permissionString builds the 10-character permission string.
