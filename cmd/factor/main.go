@@ -4,7 +4,7 @@
 // cmd/factor implements GNU factor: print prime factorizations of integers.
 //
 // Implements prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2.
 package main
 
 import (
@@ -33,7 +33,8 @@ func main() {
 }
 
 // run processes arguments or stdin and prints factorizations.
-// Returns 0 on success, 1 if any input was invalid.
+// R4.1: returns 0 when all inputs are valid.
+// R4.2: returns 1 when any input is invalid.
 // R3.1: --help prints usage to stdout, exits 0.
 // R3.2: --version prints version info to stdout, exits 0.
 func run(args []string, stdin *os.File, stdout, stderr *os.File) int {

@@ -4,7 +4,7 @@
 // Differential tests for cmd/factor against gfactor (GNU coreutils).
 //
 // Covers prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -184,7 +184,53 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
+		// R4.1: exit 0 when all inputs are valid (single)
+		{
+			Name:     "R4.1_exit_0_single",
+			Args:     []string{"7"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 when all inputs are valid (multiple)
+		{
+			Name:     "R4.1_exit_0_multiple",
+			Args:     []string{"2", "3", "4", "5"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 for stdin with all valid inputs
+		{
+			Name:     "R4.1_exit_0_stdin",
+			Stdin:    []byte("6\n10\n"),
+			ExitCode: 0,
+		},
+		// R4.2: exit 1 when any input is invalid (non-integer arg)
+		{
+			Name:      "R4.2_exit_1_non_integer_arg",
+			Args:      []string{"xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R4.2: exit 1 when any input is invalid (negative via stdin)
+		{
+			Name:      "R4.2_exit_1_negative_stdin",
+			Stdin:     []byte("-3\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R4.2: exit 1 when mixed valid and invalid args
+		{
+			Name:      "R4.2_exit_1_mixed_args",
+			Args:      []string{"10", "abc", "20"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R4.4: large number factorization
+		{
+			Name:     "R4.4_large_composite",
+			Args:     []string{"9223372036854775783"},
+			ExitCode: 0,
+		},
 	}
 
+	// R4.3: differential tests compare stdout and exit codes via pkg/testutils.
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
