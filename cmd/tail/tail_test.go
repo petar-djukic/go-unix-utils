@@ -7,6 +7,7 @@
 // count, --lines= form, +N offset, stdin input, stdin via "-" argument.
 // Covers prd055-tail R2.1, R2.2, R2.3: byte-count mode, byte offset, suffixes.
 // Covers prd055-tail R3.1, R3.2, R3.3, R3.4: multi-file headers, quiet, verbose.
+// Covers prd055-tail R4.1, R4.2, R4.3, R4.4: exit codes, error handling, differential testing.
 package main
 
 import (
@@ -133,8 +134,10 @@ func buildDiffTests(t *testing.T) []testutils.DiffTest {
 	lineTests := buildLineTests(input5, input12, input20, file1, file2, validFile, nonexistent, errNorm, errNormWithHeaders)
 	byteTests := buildByteTests(t)
 	headerTests := buildHeaderTests(t)
+	exitTests := buildExitCodeTests(t)
 	tests := append(lineTests, byteTests...)
-	return append(tests, headerTests...)
+	tests = append(tests, headerTests...)
+	return append(tests, exitTests...)
 }
 
 // buildLineTests returns differential tests for R1.1-R1.4 (line mode).
@@ -320,6 +323,70 @@ func buildHeaderTests(t *testing.T) []testutils.DiffTest {
 			Name:     "R3.4_verbose_long_flag",
 			Args:     []string{"--verbose", hf1},
 			ExitCode: 0,
+		},
+	}
+}
+
+// buildExitCodeTests returns differential tests for R4.1-R4.4 (exit codes and errors).
+func buildExitCodeTests(t *testing.T) []testutils.DiffTest {
+	t.Helper()
+
+	eDir := t.TempDir()
+	ef1 := createTestFile(t, eDir, "ok1.txt", "line1\nline2\nline3\n")
+	ef2 := createTestFile(t, eDir, "ok2.txt", "alpha\nbeta\n")
+	missing := filepath.Join(eDir, "no_such_file.txt")
+
+	errNorm := []testutils.NormalizeFunc{normalizeTailErrors}
+	errNormH := []testutils.NormalizeFunc{
+		stripEmptyHeaders, normalizeTailErrors,
+	}
+
+	return []testutils.DiffTest{
+		// R4.1: exit 0 when single file succeeds
+		{
+			Name:     "R4.1_exit_0_single_file",
+			Args:     []string{ef1},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 when multiple files succeed
+		{
+			Name:     "R4.1_exit_0_multi_file",
+			Args:     []string{ef1, ef2},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 with stdin
+		{
+			Name:     "R4.1_exit_0_stdin",
+			Stdin:    []byte("hello\nworld\n"),
+			ExitCode: 0,
+		},
+		// R4.2: exit 1 when file cannot be opened
+		{
+			Name:      "R4.2_exit_1_missing_file",
+			Args:      []string{missing},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.2, R4.4: exit 1 but still output valid files
+		{
+			Name:      "R4.2_exit_1_mixed_valid_invalid",
+			Args:      []string{ef1, missing, ef2},
+			ExitCode:  1,
+			Normalize: errNormH,
+		},
+		// R4.4: error before valid file, valid file still printed
+		{
+			Name:      "R4.4_error_then_valid",
+			Args:      []string{missing, ef1},
+			ExitCode:  1,
+			Normalize: errNormH,
+		},
+		// R4.4: valid file before error, valid file still printed
+		{
+			Name:      "R4.4_valid_then_error",
+			Args:      []string{ef1, missing},
+			ExitCode:  1,
+			Normalize: errNormH,
 		},
 	}
 }
