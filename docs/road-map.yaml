@@ -505,7 +505,7 @@ releases:
         coreutils reference binaries.
       use_cases:
         - id: rel11.1-uc001-users
-          status: spec_complete
+          status: implemented
         - id: rel11.1-uc002-who
           status: spec_complete
         - id: rel11.1-uc003-pinky
