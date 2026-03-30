@@ -3,7 +3,7 @@
 
 // cmd/stty implements GNU stty: change and print terminal line settings.
 //
-// Implements prd105-stty R1.1, R2.1, R3.1, R3.2.
+// Implements prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2.
 package main
 
 import (
@@ -68,6 +68,7 @@ type ccEntry struct {
 type config struct {
 	mode   displayMode
 	device string
+	ops    []settingOp
 }
 
 // Control flags in GNU stty display order (macOS).
@@ -178,6 +179,9 @@ func run(args []string, stdout, stderr *os.File) int {
 		printVersion(stdout)
 		return 0
 	}
+	if len(cfg.ops) > 0 {
+		return applySettings(cfg, stderr)
+	}
 	return runDisplay(cfg, stdout, stderr)
 }
 
@@ -236,8 +240,15 @@ func parseArgs(args []string) (*config, error) {
 		case arg == "--version":
 			cfg.mode = modeVersion
 		default:
-			return nil, fmt.Errorf("invalid argument '%s'", arg)
+			consumed, err := parseSetting(cfg, args[i:])
+			if err != nil {
+				return nil, err
+			}
+			i += consumed - 1
 		}
+	}
+	if len(cfg.ops) > 0 && (cfg.mode == modeAll || cfg.mode == modeSave) {
+		return nil, fmt.Errorf("when specifying an output style, modes may not be set")
 	}
 	return cfg, nil
 }

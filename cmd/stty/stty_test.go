@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/stty against gstty (GNU coreutils).
 //
-// Tests prd105-stty R1.1, R2.1, R3.1, R3.2.
+// Tests prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -22,6 +23,14 @@ var progNameNorm = func(data []byte) []byte {
 	re := regexp.MustCompile(`(?m)^g?stty: `)
 	return re.ReplaceAll(data, []byte("stty: "))
 }
+
+// errMsgNorm normalizes both error prefix and "Try" line for usage errors.
+var errMsgNorm = testutils.ComposeNormalizers(
+	progNameNorm,
+	func(data []byte) []byte {
+		return regexp.MustCompile(`Try 'g?stty`).ReplaceAll(data, []byte("Try 'stty"))
+	},
+)
 
 // TestDiff runs differential tests comparing the Go binary against gstty.
 // Tests use -F /dev/tty to ensure both binaries read the same terminal device.
@@ -61,7 +70,7 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--save", "--file=/dev/tty"},
 		},
 		{
-			Name: "error_no_tty",
+			Name:      "error_no_tty",
 			Args:      []string{},
 			Stdin:     []byte{},
 			ExitCode:  1,
@@ -72,6 +81,27 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-F", "/dev/nonexistent_stty_test_device"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{progNameNorm},
+		},
+		// R4.1: invalid setting name produces matching error.
+		{
+			Name:      "error_invalid_setting",
+			Args:      []string{"-F", "/dev/tty", "zzz_invalid_xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{errMsgNorm},
+		},
+		// R5.1: missing special character argument produces matching error.
+		{
+			Name:      "error_missing_cc_arg",
+			Args:      []string{"-F", "/dev/tty", "intr"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{errMsgNorm},
+		},
+		// R6.2: missing speed argument produces matching error.
+		{
+			Name:      "error_missing_speed_arg",
+			Args:      []string{"-F", "/dev/tty", "ispeed"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{errMsgNorm},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -140,4 +170,103 @@ func TestSttyExitCodes(t *testing.T) {
 			t.Error("--version output missing go-unix-utils identifier")
 		}
 	})
+}
+
+// TestSettingApplication tests setting changes on a real terminal.
+// Tests prd105-stty R4.1, R5.1, R6.1, R6.2.
+func TestSettingApplication(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		t.Skipf("/dev/tty not accessible: %v", err)
+	}
+	f.Close()
+
+	// Save initial terminal state for restore on cleanup.
+	saved := captureStty(t, bin, "-g", "-F", "/dev/tty")
+	t.Cleanup(func() {
+		exec.Command(bin, saved, "-F", "/dev/tty").Run() //nolint:errcheck // best-effort restore
+	})
+
+	// R4.1: enable and disable a flag.
+	t.Run("R4.1_disable_enable_flag", func(t *testing.T) {
+		runStty(t, bin, "-echo", "-F", "/dev/tty")
+		out := captureStty(t, bin, "-a", "-F", "/dev/tty")
+		if !strings.Contains(out, "-echo") {
+			t.Error("expected -echo after disabling echo")
+		}
+		runStty(t, bin, "echo", "-F", "/dev/tty")
+	})
+
+	// R5.1: set a special character.
+	t.Run("R5.1_set_special_char", func(t *testing.T) {
+		runStty(t, bin, "intr", "^A", "-F", "/dev/tty")
+		out := captureStty(t, bin, "-a", "-F", "/dev/tty")
+		if !strings.Contains(out, "intr = ^A") {
+			t.Errorf("expected 'intr = ^A' in output, got:\n%s", out)
+		}
+		// Restore to default
+		runStty(t, bin, "intr", "^C", "-F", "/dev/tty")
+	})
+
+	// R6.1: sane combination resets to defaults.
+	t.Run("R6.1_sane", func(t *testing.T) {
+		runStty(t, bin, "sane", "-F", "/dev/tty")
+	})
+
+	// R6.1: raw and cooked (reverse of raw).
+	t.Run("R6.1_raw_cooked", func(t *testing.T) {
+		runStty(t, bin, "raw", "-F", "/dev/tty")
+		runStty(t, bin, "cooked", "-F", "/dev/tty")
+	})
+
+	// R6.1: evenp/oddp parity settings.
+	t.Run("R6.1_evenp_oddp", func(t *testing.T) {
+		runStty(t, bin, "evenp", "-F", "/dev/tty")
+		runStty(t, bin, "-evenp", "-F", "/dev/tty")
+		runStty(t, bin, "oddp", "-F", "/dev/tty")
+		runStty(t, bin, "-oddp", "-F", "/dev/tty")
+	})
+
+	// R6.2: set ispeed and ospeed.
+	t.Run("R6.2_speed", func(t *testing.T) {
+		runStty(t, bin, "ispeed", "9600", "-F", "/dev/tty")
+		runStty(t, bin, "ospeed", "9600", "-F", "/dev/tty")
+	})
+
+	// Save/restore round trip verifies -g output can be used to restore state.
+	t.Run("save_restore_round_trip", func(t *testing.T) {
+		runStty(t, bin, "sane", "-F", "/dev/tty")
+		initial := captureStty(t, bin, "-g", "-F", "/dev/tty")
+		runStty(t, bin, "-echo", "-F", "/dev/tty")
+		modified := captureStty(t, bin, "-g", "-F", "/dev/tty")
+		if initial == modified {
+			t.Error("expected settings to change after -echo")
+		}
+		runStty(t, bin, initial, "-F", "/dev/tty")
+		restored := captureStty(t, bin, "-g", "-F", "/dev/tty")
+		if initial != restored {
+			t.Error("save/restore round trip failed")
+		}
+	})
+}
+
+// captureStty runs stty and returns trimmed stdout.
+func captureStty(t *testing.T, bin string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("stty %v failed: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// runStty runs stty and fails the test on error.
+func runStty(t *testing.T, bin string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("stty %v failed: %v\n%s", args, err, out)
+	}
 }
