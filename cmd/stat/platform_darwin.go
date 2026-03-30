@@ -11,6 +11,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -79,6 +80,48 @@ func getStatfs(path string) (*statfsInfo, error) {
 		files:         buf.Files,
 		filesFree:     buf.Ffree,
 	}, nil
+}
+
+// getMountPoint finds the mount point by walking up parent directories
+// until the device number changes, matching GNU stat %m behavior.
+func getMountPoint(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "?"
+	}
+	dev, ok := deviceOf(abs)
+	if !ok {
+		return "?"
+	}
+	return walkToMountRoot(abs, dev)
+}
+
+// deviceOf returns the device number for a path.
+func deviceOf(path string) (int32, bool) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return 0, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Dev, true
+}
+
+// walkToMountRoot walks up from path until the device number changes.
+func walkToMountRoot(current string, dev int32) string {
+	for {
+		parent := filepath.Dir(current)
+		if parent == current {
+			return current
+		}
+		pdev, ok := deviceOf(parent)
+		if !ok || pdev != dev {
+			return current
+		}
+		current = parent
+	}
 }
 
 // int8ToString converts a null-terminated int8 slice to a Go string.

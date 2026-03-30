@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/stat against gstat reference binary.
-// Implements prd082-stat AC3, AC4, AC5, AC6.
+// Implements prd082-stat AC1-AC5.
 package main
 
 import (
@@ -51,6 +51,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// Default output tests (R1.1, R2.1, R2.2, R2.3)
 		{
 			Name: "regular file default",
 			Args: []string{regFile},
@@ -106,6 +107,136 @@ func TestDiff(t *testing.T) {
 			Args:      []string{filepath.Join(dir, "nonexistent"), regFile},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normProgramName},
+		},
+
+		// Format string tests (R3.1)
+		{
+			Name: "format name and size",
+			Args: []string{"-c", "%n %s", regFile},
+		},
+		{
+			Name: "format permissions octal and human",
+			Args: []string{"-c", "%a %A", regFile},
+		},
+		{
+			Name: "format user and group names",
+			Args: []string{"-c", "%U %G", regFile},
+		},
+		{
+			Name: "format user and group ids",
+			Args: []string{"-c", "%u %g", regFile},
+		},
+		{
+			Name: "format inode and links",
+			Args: []string{"-c", "%i %h", regFile},
+		},
+		{
+			Name: "format file type",
+			Args: []string{"-c", "%F", regFile},
+		},
+		{
+			Name: "format directory type",
+			Args: []string{"-c", "%F", subDir},
+		},
+		{
+			Name: "format raw mode hex",
+			Args: []string{"-c", "%f", regFile},
+		},
+		{
+			Name: "format device decimal and hex",
+			Args: []string{"-c", "%d %D", regFile},
+		},
+		{
+			Name: "format blocks and block size",
+			Args: []string{"-c", "%b %B %o", regFile},
+		},
+		{
+			Name: "format symlink quoted name",
+			Args: []string{"-c", "%N", symLink},
+		},
+		{
+			Name: "format regular quoted name",
+			Args: []string{"-c", "%N", regFile},
+		},
+		{
+			Name: "format timestamps human",
+			Args: []string{"-c", "%x|%y|%z", regFile},
+		},
+		{
+			Name: "format timestamps epoch",
+			Args: []string{"-c", "%X %Y %Z", regFile},
+		},
+		{
+			Name: "format birth time",
+			Args: []string{"-c", "%w %W", regFile},
+		},
+		{
+			Name: "format device type major minor",
+			Args: []string{"-c", "%t %T", regFile},
+		},
+		{
+			Name: "format mount point",
+			Args: []string{"-c", "%m", regFile},
+		},
+		{
+			Name: "format percent literal",
+			Args: []string{"-c", "%%", regFile},
+		},
+		{
+			Name: "format long flag syntax",
+			Args: []string{"--format=%n %s", regFile},
+		},
+		{
+			Name: "format multiple files",
+			Args: []string{"-c", "%n %s", regFile, subDir},
+		},
+
+		// Printf tests (R4.1, R4.2)
+		{
+			Name: "printf no trailing newline",
+			Args: []string{"--printf=%n", regFile},
+		},
+		{
+			Name: "printf with newline escape",
+			Args: []string{"--printf=%n\\n", regFile},
+		},
+		{
+			Name: "printf with tab escape",
+			Args: []string{"--printf=%n\\t%s\\n", regFile},
+		},
+		{
+			Name: "printf backslash literal",
+			Args: []string{"--printf=%n\\\\%s\\n", regFile},
+		},
+
+		// Filesystem format tests (R5.1, R6.1)
+		{
+			Name: "fs format total blocks",
+			Args: []string{"-f", "-c", "%b", dir},
+		},
+		{
+			Name: "fs format total inodes",
+			Args: []string{"-f", "-c", "%c", dir},
+		},
+		{
+			Name: "fs format type name",
+			Args: []string{"-f", "-c", "%T", dir},
+		},
+		{
+			Name: "fs format name",
+			Args: []string{"-f", "-c", "%n", dir},
+		},
+		{
+			Name: "fs format block sizes",
+			Args: []string{"-f", "-c", "%s %S", dir},
+		},
+		{
+			Name: "fs format fsid",
+			Args: []string{"-f", "-c", "%i", dir},
+		},
+		{
+			Name: "fs format type hex",
+			Args: []string{"-f", "-c", "%t", dir},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

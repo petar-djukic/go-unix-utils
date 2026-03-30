@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/stat displays file and filesystem status information.
-// Implements prd082-stat R1.1, R2.1, R2.2, R2.3, R4.2, R5.1, R7.1, R7.2, R7.3.
+// Implements prd082-stat R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R5.1, R7.1, R7.2, R7.3.
 package main
 
 import (
@@ -22,6 +22,8 @@ type options struct {
 	dereference bool
 	fileSystem  bool
 	terse       bool
+	format      string
+	printfFmt   string
 	files       []string
 }
 
@@ -52,8 +54,26 @@ func parseArgs(args []string) (options, error) {
 			opts.fileSystem = true
 		case a == "--terse":
 			opts.terse = true
+		case strings.HasPrefix(a, "--format="):
+			opts.format = a[len("--format="):]
+		case a == "--format":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("option '--format' requires an argument")
+			}
+			opts.format = args[i]
+		case strings.HasPrefix(a, "--printf="):
+			opts.printfFmt = a[len("--printf="):]
+		case a == "--printf":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("option '--printf' requires an argument")
+			}
+			opts.printfFmt = args[i]
 		case len(a) > 1 && a[0] == '-' && a[1] != '-':
-			if err := parseShortFlags(a[1:], &opts); err != nil {
+			var err error
+			i, err = parseShortGroup(args, i, &opts)
+			if err != nil {
 				return opts, err
 			}
 		case strings.HasPrefix(a, "--"):
@@ -68,31 +88,58 @@ func parseArgs(args []string) (options, error) {
 	return opts, nil
 }
 
-// parseShortFlags handles combined short flags like -Lt.
-func parseShortFlags(flags string, opts *options) error {
-	for _, c := range flags {
-		switch c {
+// parseShortGroup handles combined short flags like -Lt or -c FORMAT.
+func parseShortGroup(args []string, idx int, opts *options) (int, error) {
+	flags := args[idx][1:]
+	for j := 0; j < len(flags); j++ {
+		switch flags[j] {
 		case 'L':
 			opts.dereference = true
 		case 'f':
 			opts.fileSystem = true
 		case 't':
 			opts.terse = true
+		case 'c':
+			if j+1 < len(flags) {
+				opts.format = flags[j+1:]
+			} else {
+				idx++
+				if idx >= len(args) {
+					return idx, fmt.Errorf("option requires an argument -- 'c'")
+				}
+				opts.format = args[idx]
+			}
+			return idx, nil
 		default:
-			return fmt.Errorf("invalid option -- '%c'", c)
+			return idx, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
 	}
-	return nil
+	return idx, nil
+}
+
+// activeFormat returns the active format string and whether it's printf mode.
+func activeFormat(opts options) (string, bool) {
+	if opts.printfFmt != "" {
+		return opts.printfFmt, true
+	}
+	if opts.format != "" {
+		return opts.format, false
+	}
+	return "", false
 }
 
 // R2.1: process multiple files; R2.3, R7.1, R7.2: exit code handling.
 func run(opts options) int {
 	exitCode := 0
+	fmtStr, isPrintf := activeFormat(opts)
 	for _, path := range opts.files {
 		var err error
-		if opts.fileSystem {
+		switch {
+		case fmtStr != "":
+			err = printFormatted(path, fmtStr, isPrintf, opts)
+		case opts.fileSystem:
 			err = printFileSystem(path, opts.terse)
-		} else {
+		default:
 			err = printFileStat(path, opts.dereference, opts.terse)
 		}
 		if err != nil {
@@ -101,6 +148,45 @@ func run(opts options) int {
 		}
 	}
 	return exitCode
+}
+
+// printFormatted dispatches to file or filesystem format expansion.
+func printFormatted(path, fmtStr string, isPrintf bool, opts options) error {
+	if opts.fileSystem {
+		return printFSFormatted(path, fmtStr, isPrintf)
+	}
+	return printFileFormatted(path, fmtStr, isPrintf, opts.dereference)
+}
+
+// printFileFormatted outputs file status using a format string.
+// R3.1: --format appends newline; R4.1: --printf does not.
+func printFileFormatted(path, fmtStr string, isPrintf, deref bool) error {
+	fi, err := statPath(path, deref)
+	if err != nil {
+		return fmt.Errorf("stat: cannot stat '%s': %s", path, formatOSError(err))
+	}
+	output := expandFileFormat(fmtStr, path, fi, isPrintf)
+	if !isPrintf {
+		output += "\n"
+	}
+	fmt.Print(output)
+	return nil
+}
+
+// printFSFormatted outputs filesystem status using a format string.
+// R5.1: filesystem format with --format or --printf.
+func printFSFormatted(path, fmtStr string, isPrintf bool) error {
+	fsi, err := getStatfs(path)
+	if err != nil {
+		return fmt.Errorf("stat: cannot read file system information for '%s': %s",
+			path, capitalizeFirst(err.Error()))
+	}
+	output := expandFSFormat(fmtStr, path, fsi, isPrintf)
+	if !isPrintf {
+		output += "\n"
+	}
+	fmt.Print(output)
+	return nil
 }
 
 // printFileStat displays file status for a single path.
@@ -158,7 +244,6 @@ func printDefaultFile(path string, fi *sys.FileInfo) {
 }
 
 // printDeviceLine outputs the Device/Inode/Links line.
-// On Darwin, gstat formats the device as major,minor decimal.
 func printDeviceLine(fi *sys.FileInfo) {
 	maj, min := deviceMajor(fi.Dev), deviceMinor(fi.Dev)
 	if fi.Mode&os.ModeDevice != 0 {
