@@ -3,7 +3,7 @@
 
 // cmd/mv implements GNU mv: move or rename files and directories.
 //
-// Implements prd057-mv R1.1-R1.4, R2.1-R2.4.
+// Implements prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1.
 package main
 
 import (

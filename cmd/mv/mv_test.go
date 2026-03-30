@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/mv against gmv (GNU coreutils).
 //
-// Covers prd057-mv R1.1-R1.4, R2.1-R2.4.
+// Covers prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1.
 package main
 
 import (
@@ -379,6 +379,265 @@ func TestDiffPermissionDenied(t *testing.T) {
 	}
 
 	runMvDiffTest(t, goBin, refBin, tc)
+}
+
+// TestDiffVerbose verifies -v/--verbose output.
+// R3.1: verbose prints 'renamed SOURCE -> DEST'.
+func TestDiffVerbose(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skip("reference binary gmv not in PATH")
+	}
+
+	cases := []mvTestCase{
+		{
+			name: "verbose_short",
+			args: []string{"-v", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "hello\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "hello\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		{
+			name: "verbose_long",
+			args: []string{"--verbose", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "hello\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "hello\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		{
+			name: "verbose_overwrite",
+			args: []string{"-v", "-f", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "new\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runMvDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffTargetDir verifies -t/--target-directory.
+// R3.2: -t DIRECTORY moves all SOURCEs into DIRECTORY.
+func TestDiffTargetDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skip("reference binary gmv not in PATH")
+	}
+
+	cases := []mvTestCase{
+		{
+			name: "target_dir_short",
+			args: []string{"-t", "dest", "a.txt", "b.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "a.txt"), "aaa\n")
+				writeFile(t, filepath.Join(dir, "b.txt"), "bbb\n")
+				mkdirAll(t, filepath.Join(dir, "dest"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dest/a.txt", "aaa\n")
+				assertFileContent(t, dir, "dest/b.txt", "bbb\n")
+				assertFileAbsent(t, dir, "a.txt")
+				assertFileAbsent(t, dir, "b.txt")
+			},
+		},
+		{
+			name: "target_dir_long_eq",
+			args: []string{"--target-directory=dest", "f.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "f.txt"), "data\n")
+				mkdirAll(t, filepath.Join(dir, "dest"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dest/f.txt", "data\n")
+				assertFileAbsent(t, dir, "f.txt")
+			},
+		},
+		{
+			name: "target_dir_long_sep",
+			args: []string{"--target-directory", "dest", "f.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "f.txt"), "data\n")
+				mkdirAll(t, filepath.Join(dir, "dest"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dest/f.txt", "data\n")
+				assertFileAbsent(t, dir, "f.txt")
+			},
+		},
+		{
+			name:     "target_dir_not_a_dir",
+			args:     []string{"-t", "notadir", "src.txt"},
+			exitCode: 1,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+				writeFile(t, filepath.Join(dir, "notadir"), "file\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "src.txt", "data\n")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runMvDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffNoTargetDir verifies -T/--no-target-directory.
+// R3.3: -T treats DEST as a normal file, not a directory.
+func TestDiffNoTargetDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skip("reference binary gmv not in PATH")
+	}
+
+	cases := []mvTestCase{
+		{
+			name: "no_target_dir_into_existing_dir",
+			args: []string{"-T", "src.txt", "dstdir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+				mkdirAll(t, filepath.Join(dir, "dstdir"))
+			},
+			exitCode: 1,
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				// -T prevents moving into dstdir; rename file over dir fails.
+				assertFileContent(t, dir, "src.txt", "data\n")
+			},
+		},
+		{
+			name: "no_target_dir_file_rename",
+			args: []string{"-T", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "data\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runMvDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffExitZeroSuccess verifies exit code 0 on successful moves.
+// R4.1: exit 0 when all files are moved successfully.
+func TestDiffExitZeroSuccess(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skip("reference binary gmv not in PATH")
+	}
+
+	cases := []mvTestCase{
+		{
+			name:     "single_rename_exit_0",
+			args:     []string{"src.txt", "dst.txt"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "hello\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "hello\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		{
+			name:     "multi_move_exit_0",
+			args:     []string{"a.txt", "b.txt", "dest"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "a.txt"), "aaa\n")
+				writeFile(t, filepath.Join(dir, "b.txt"), "bbb\n")
+				mkdirAll(t, filepath.Join(dir, "dest"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dest/a.txt", "aaa\n")
+				assertFileContent(t, dir, "dest/b.txt", "bbb\n")
+			},
+		},
+		{
+			name:     "verbose_move_exit_0",
+			args:     []string{"-v", "src.txt", "dst.txt"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "data\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runMvDiffTest(t, goBin, refBin, tc)
+		})
+	}
 }
 
 // runMvDiffTest runs a mv test case against both binaries in separate dirs,
