@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/vdir differential tests for prd108-vdir R1.1-R2.2.
+// cmd/vdir differential tests for prd108-vdir R1.1-R2.4.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -53,6 +54,9 @@ func TestDiff(t *testing.T) {
 
 	basicDir := setupBasicDir(t)
 	escapeDir := setupEscapeDir(t)
+	timeSortDir := setupTimeSortDir(t)
+	sizeSortDir := setupSizeSortDir(t)
+	extSortDir := setupExtSortDir(t)
 	norm := testutils.ComposeNormalizers(normalizeVdirName)
 
 	tests := []testutils.DiffTest{
@@ -194,6 +198,79 @@ func TestDiff(t *testing.T) {
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{norm},
 		},
+		// R2.3: sorting flags with long listing output.
+		{
+			// R2.3: -t sorts by modification time in long listing.
+			Name:      "R2.3_sort_by_time",
+			Args:      []string{"-t"},
+			WorkDir:   timeSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: -t -r reverses time sort order.
+			Name:      "R2.3_sort_by_time_reversed",
+			Args:      []string{"-t", "-r"},
+			WorkDir:   timeSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: -S sorts by file size, largest first.
+			Name:      "R2.3_sort_by_size",
+			Args:      []string{"-S"},
+			WorkDir:   sizeSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: -S -r reverses size sort order.
+			Name:      "R2.3_sort_by_size_reversed",
+			Args:      []string{"-S", "-r"},
+			WorkDir:   sizeSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: -X sorts by extension.
+			Name:      "R2.3_sort_by_extension",
+			Args:      []string{"-X"},
+			WorkDir:   extSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: --sort=time equivalent to -t.
+			Name:      "R2.3_long_sort_time",
+			Args:      []string{"--sort=time"},
+			WorkDir:   timeSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: --sort=size equivalent to -S.
+			Name:      "R2.3_long_sort_size",
+			Args:      []string{"--sort=size"},
+			WorkDir:   sizeSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: --sort=extension equivalent to -X.
+			Name:      "R2.3_long_sort_extension",
+			Args:      []string{"--sort=extension"},
+			WorkDir:   extSortDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.3: --reverse equivalent to -r.
+			Name:      "R2.3_long_reverse",
+			Args:      []string{"--reverse"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -208,7 +285,7 @@ func TestSIGPIPE(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		name := fmt.Sprintf("file_%03d", i)
 		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
 			t.Fatalf("create fixture: %v", err)
@@ -263,6 +340,74 @@ func setupEscapeDir(t *testing.T) string {
 		err := os.WriteFile(filepath.Join(dir, name), nil, 0o644)
 		if err != nil {
 			t.Fatalf("create escape fixture %q: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// setupTimeSortDir creates files with distinct modification times.
+func setupTimeSortDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	files := []struct {
+		name   string
+		offset time.Duration
+	}{
+		{"oldest", 0},
+		{"middle", 1 * time.Hour},
+		{"newest", 2 * time.Hour},
+	}
+	for _, f := range files {
+		path := filepath.Join(dir, f.name)
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatalf("create time fixture %s: %v", f.name, err)
+		}
+		mtime := base.Add(f.offset)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatalf("chtimes %s: %v", f.name, err)
+		}
+	}
+	return dir
+}
+
+// setupSizeSortDir creates files with different sizes.
+func setupSizeSortDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	files := []struct {
+		name string
+		size int
+	}{
+		{"small", 10},
+		{"medium", 1000},
+		{"large", 10000},
+	}
+	for _, f := range files {
+		data := make([]byte, f.size)
+		path := filepath.Join(dir, f.name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatalf("create size fixture %s: %v", f.name, err)
+		}
+	}
+	return dir
+}
+
+// setupExtSortDir creates files with different extensions.
+func setupExtSortDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	names := []string{
+		"readme",
+		"main.go",
+		"style.css",
+		"data.txt",
+		"app.go",
+	}
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatalf("create ext fixture %s: %v", name, err)
 		}
 	}
 	return dir

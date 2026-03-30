@@ -70,11 +70,30 @@ func sortLessFunc(entries []vdirEntry, sm sortMode) func(int, int) bool {
 		return func(i, j int) bool {
 			return strverscmp(entries[i].name, entries[j].name) < 0
 		}
+	case sortExtension:
+		return func(i, j int) bool {
+			extI := fileExtension(entries[i].name)
+			extJ := fileExtension(entries[j].name)
+			if extI != extJ {
+				return extI < extJ
+			}
+			return entries[i].name < entries[j].name
+		}
 	default:
 		return func(i, j int) bool {
 			return entries[i].name < entries[j].name
 		}
 	}
+}
+
+// fileExtension returns the extension (part after the last dot) of a filename.
+// Dotfiles with no further dot (e.g. ".hidden") have no extension.
+func fileExtension(name string) string {
+	dot := strings.LastIndex(name, ".")
+	if dot <= 0 {
+		return ""
+	}
+	return name[dot+1:]
 }
 
 // reverseEntries reverses the slice in place.

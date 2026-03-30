@@ -41,11 +41,12 @@ const (
 type sortMode int
 
 const (
-	sortName    sortMode = iota // default: C locale name sort
-	sortTime                    // -t: newest first
-	sortSize                    // -S: largest first
-	sortNone                    // -U: directory order
-	sortVersion                 // -v: version sort
+	sortName      sortMode = iota // default: C locale name sort
+	sortTime                      // -t: newest first
+	sortSize                      // -S: largest first
+	sortNone                      // -U: directory order
+	sortVersion                   // -v: version sort
+	sortExtension                 // -X: extension sort
 )
 
 // colorMode selects color output behavior.
@@ -191,6 +192,8 @@ func applyShortFlag(cfg *vdirConfig, ch rune) error {
 		cfg.sortBy = sortNone
 	case 'v':
 		cfg.sortBy = sortVersion
+	case 'X':
+		cfg.sortBy = sortExtension
 	case 'h':
 		cfg.humanSize = true
 	case 'F':
@@ -217,7 +220,33 @@ func parseLongFlag(cfg *vdirConfig, name string) error {
 	if name == "color" || strings.HasPrefix(name, "color=") {
 		return parseColorFlag(cfg, name)
 	}
+	if name == "reverse" {
+		cfg.reverse = true
+		return nil
+	}
+	if strings.HasPrefix(name, "sort=") {
+		return parseSortFlag(cfg, name[5:])
+	}
 	return fmt.Errorf("unrecognized option '--%s'", name)
+}
+
+// parseSortFlag parses the value of --sort=WORD.
+func parseSortFlag(cfg *vdirConfig, val string) error {
+	switch val {
+	case "none":
+		cfg.sortBy = sortNone
+	case "time":
+		cfg.sortBy = sortTime
+	case "size":
+		cfg.sortBy = sortSize
+	case "version":
+		cfg.sortBy = sortVersion
+	case "extension":
+		cfg.sortBy = sortExtension
+	default:
+		return fmt.Errorf("invalid argument '%s' for '--sort'", val)
+	}
+	return nil
 }
 
 // parseColorFlag parses --color[=VALUE].
