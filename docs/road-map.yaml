@@ -529,7 +529,7 @@ releases:
           status: implemented
     - version: "12.1"
       name: "Batch 12.1 — miscellaneous utilities (tsort, pathchk, test)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three miscellaneous utilities. tsort performs topological sorting with
