@@ -1,0 +1,122 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// cmd/factor implements GNU factor: print prime factorizations of integers.
+//
+// Implements prd065-factor R1.1, R1.2, R1.3, R1.4.
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"math"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+const programName = "factor"
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	exitCode := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	os.Exit(exitCode)
+}
+
+// run processes arguments or stdin and prints factorizations.
+// Returns 0 on success, 1 if any input was invalid.
+func run(args []string, stdin *os.File, stdout, stderr *os.File) int {
+	if len(args) > 0 {
+		return factorArgs(args, stdout, stderr)
+	}
+	return factorStdin(stdin, stdout, stderr)
+}
+
+// factorArgs factorizes each argument. R1.4: multiple args in order.
+func factorArgs(args []string, stdout, stderr *os.File) int {
+	w := bufio.NewWriter(stdout)
+	defer w.Flush() // best-effort flush
+	hadError := false
+	for _, arg := range args {
+		if err := processInput(arg, w, stderr); err != nil {
+			hadError = true
+		}
+	}
+	if hadError {
+		return 1
+	}
+	return 0
+}
+
+// factorStdin reads integers from stdin, one per line.
+func factorStdin(stdin *os.File, stdout, stderr *os.File) int {
+	scanner := bufio.NewScanner(stdin)
+	w := bufio.NewWriter(stdout)
+	defer w.Flush() // best-effort flush
+	hadError := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if err := processInput(line, w, stderr); err != nil {
+			hadError = true
+		}
+	}
+	if hadError {
+		return 1
+	}
+	return 0
+}
+
+// processInput parses a single input string and writes its factorization.
+func processInput(input string, w *bufio.Writer, stderr *os.File) error {
+	n, err := strconv.ParseInt(input, 10, 64)
+	if err != nil || n < 0 {
+		fmt.Fprintf(stderr, "%s: '%s' is not a valid positive integer\n", programName, input)
+		return fmt.Errorf("invalid input")
+	}
+	printFactors(w, n)
+	return nil
+}
+
+// printFactors writes "N: f1 f2 ..." for the given number.
+// R1.1: ascending order with multiplicity.
+// R1.2: for 1, prints "1:" with no factors.
+// R1.3: primes appear as their own sole factor.
+func printFactors(w *bufio.Writer, n int64) {
+	fmt.Fprintf(w, "%d:", n)
+	factors := trialDivision(n)
+	for _, f := range factors {
+		fmt.Fprintf(w, " %d", f)
+	}
+	fmt.Fprintln(w)
+}
+
+// trialDivision returns the prime factors of n in ascending order.
+// For n <= 1, returns an empty slice.
+func trialDivision(n int64) []int64 {
+	if n <= 1 {
+		return nil
+	}
+	var factors []int64
+	for n%2 == 0 {
+		factors = append(factors, 2)
+		n /= 2
+	}
+	limit := int64(math.Sqrt(float64(n)))
+	for d := int64(3); d <= limit; d += 2 {
+		for n%d == 0 {
+			factors = append(factors, d)
+			n /= d
+		}
+		limit = int64(math.Sqrt(float64(n)))
+	}
+	if n > 1 {
+		factors = append(factors, n)
+	}
+	return factors
+}
