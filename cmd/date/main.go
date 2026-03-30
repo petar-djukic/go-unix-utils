@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/date implements GNU date: display and format date and time.
-// Implements prd060-date R1.1-R1.4.
+// Implements prd060-date R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -111,13 +111,15 @@ var dateLayouts = []string{
 }
 
 // parseDate parses a date string from -d/--date.
+// R2.1: displays the date described by STRING instead of now.
 // R2.2: supports @EPOCH prefix. R2.3: supports ISO 8601 formats.
+// R2.4: returns error for unrecognized formats.
 func parseDate(s string) (time.Time, error) {
 	if strings.HasPrefix(s, "@") {
 		return parseEpoch(s[1:])
 	}
 	for _, layout := range dateLayouts {
-		if t, err := time.Parse(layout, s); err == nil {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
 			return t, nil
 		}
 	}

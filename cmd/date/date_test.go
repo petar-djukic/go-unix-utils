@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/date — differential tests against gdate.
-// Covers prd060-date R1.1-R1.4.
+// Covers prd060-date R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -132,7 +132,70 @@ func TestDiff(t *testing.T) {
 			Env:      []string{"LC_ALL=C", "TZ=UTC"},
 			ExitCode: 0,
 		},
+		// R2.1: --date=STRING long form displays specified date
+		{
+			Name:     "date_long_form",
+			Args:     []string{"--date=@86400", "+%Y-%m-%d"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R2.2: @EPOCH with negative epoch
+		{
+			Name:     "epoch_negative",
+			Args:     []string{"-d", "@-86400", "+%Y-%m-%d"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R2.2: @EPOCH with fractional seconds
+		{
+			Name:     "epoch_fractional",
+			Args:     []string{"-d", "@1234567890.123", "+%s.%N"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R2.3: ISO 8601 date-time string
+		{
+			Name:     "iso_datetime",
+			Args:     []string{"-d", "2024-01-15 10:30:00", "+%Y-%m-%d %H:%M:%S"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R2.3: ISO 8601 date-only string
+		{
+			Name:     "iso_date_only",
+			Args:     []string{"-d", "2024-06-01", "+%Y-%m-%d"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R2.3: ISO 8601 with T separator
+		{
+			Name:     "iso_t_separator",
+			Args:     []string{"-d", "2024-01-15T10:30:00", "+%Y-%m-%dT%H:%M:%S"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R2.4: invalid date string exits 1 (discard stderr, binary names differ)
+		{
+			Name:      "invalid_date_error",
+			Args:      []string{"-d", "invalid"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.4: non-date text exits 1
+		{
+			Name:      "garbage_date_error",
+			Args:      []string{"-d", "not-a-date-at-all"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// discardAll blanks all output so tests check only exit code.
+func discardAll(data []byte) []byte {
+	return nil
 }
