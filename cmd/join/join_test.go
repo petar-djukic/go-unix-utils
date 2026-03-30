@@ -77,6 +77,9 @@ func TestDiff(t *testing.T) {
 	dirHeader := writeTestFiles(t, "NAME VAL\na 1\nb 2\n", "NAME CODE\na X\nb Y\n")
 	dirHeaderUnsorted := writeTestFiles(t, "ZZZ VAL\na 1\nb 2\n", "ZZZ CODE\na X\nb Y\n")
 
+	// R4.4: --check-order test data (file1 has unsorted keys: a, c, b).
+	dirCheckOrder := writeTestFiles(t, "a 1\nc 3\nb 2\n", "a X\nb Y\nc Z\n")
+
 	errNorm := []testutils.NormalizeFunc{normalizeProgramName, normalizeFileError}
 
 	tests := []testutils.DiffTest{
@@ -286,7 +289,25 @@ func TestDiff(t *testing.T) {
 			WorkDir: dirHeaderUnsorted,
 		},
 
-		// Error: missing file exits 1.
+		// R4.4: --check-order with sorted input succeeds normally.
+		{
+			Name:    "R4.4_check_order_sorted_ok",
+			Args:    []string{"--check-order", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirAllMatch,
+		},
+
+		// R4.4: --check-order detects unsorted file1 and exits 1.
+		{
+			Name:      "R4.4_check_order_unsorted",
+			Args:      []string{"--check-order", "file1.txt", "file2.txt"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   dirCheckOrder,
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+
+		// Error: missing file exits 1. R4.2.
 		{
 			Name:      "error_missing_file",
 			Args:      []string{"nonexistent.txt", "file2.txt"},

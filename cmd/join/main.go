@@ -14,7 +14,11 @@
 // R3.1 (-a unpairable lines),
 // R3.2 (-v unpairable only),
 // R3.3 (-e empty field replacement),
-// R3.4 (--header).
+// R3.4 (--header),
+// R4.1 (exit 0 on success),
+// R4.2 (exit 1 on error),
+// R4.3 (differential testing),
+// R4.4 (--check-order, test coverage).
 package main
 
 import (
@@ -30,6 +34,13 @@ import (
 )
 
 const programName = "join"
+
+// sortError indicates unsorted input detected with --check-order. R4.2.
+type sortError struct {
+	msg string
+}
+
+func (e *sortError) Error() string { return e.msg }
 
 // outputSpec represents a single output field specifier.
 type outputSpec struct {
@@ -54,17 +65,21 @@ type joinConfig struct {
 	empty      string       // R3.3: replacement for missing fields
 	hasEmpty   bool         // R3.3: true when -e was specified
 	header     bool         // R3.4: treat first line as header
+	checkOrder bool         // R4.4: verify input is sorted
 }
 
 // lineReader wraps a bufio.Scanner with field splitting for join operations.
 type lineReader struct {
-	scanner *bufio.Scanner
-	fields  []string
-	rawLine string
-	hasLine bool
-	joinIdx int    // 0-based index of join field
-	sep     string // field separator
-	hasSep  bool   // true when using explicit separator
+	scanner  *bufio.Scanner
+	fields   []string
+	rawLine  string
+	hasLine  bool
+	joinIdx  int    // 0-based index of join field
+	sep      string // field separator
+	hasSep   bool   // true when using explicit separator
+	filename string // filename for diagnostics
+	lineNum  int    // 1-based line number
+	sortErr  string // non-empty if unsorted input detected
 }
 
 func main() {
@@ -82,7 +97,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return executeJoin(cfg, stdin, stdout, stderr)
 }
 
-// executeJoin opens files and runs the join operation.
+// executeJoin opens files and runs the join operation. R4.1, R4.2.
 func executeJoin(cfg joinConfig, stdin io.Reader, stdout, stderr io.Writer) int {
 	r1, c1, err := openFile(cfg.file1, stdin)
 	if err != nil {
@@ -101,7 +116,12 @@ func executeJoin(cfg joinConfig, stdin io.Reader, stdout, stderr io.Writer) int 
 		defer c2.Close() // best-effort close
 	}
 	if err := joinFiles(r1, r2, stdout, cfg); err != nil {
-		fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
+		var se *sortError
+		if errors.As(err, &se) {
+			fmt.Fprintf(stderr, "%s: %s\n", programName, se.msg)
+		} else {
+			fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
+		}
 		return 1
 	}
 	return 0
@@ -170,6 +190,10 @@ func parseFlag(args []string, i int, cfg *joinConfig) (int, error) {
 		return parseFlagEmpty(args, i, cfg)
 	case arg == "--header":
 		cfg.header = true
+		return i, nil
+	case arg == "--check-order":
+		// R4.4: enable sort-order verification.
+		cfg.checkOrder = true
 		return i, nil
 	default:
 		return i, fmt.Errorf("unrecognized option '%s'", arg)
@@ -310,23 +334,34 @@ func printFileError(stderr io.Writer, err error) {
 }
 
 // newLineReader creates a lineReader and reads the first line.
-func newLineReader(r io.Reader, joinIdx int, sep string, hasSep bool) *lineReader {
+func newLineReader(r io.Reader, joinIdx int, sep string, hasSep bool, filename string) *lineReader {
 	lr := &lineReader{
-		scanner: bufio.NewScanner(r),
-		joinIdx: joinIdx,
-		sep:     sep,
-		hasSep:  hasSep,
+		scanner:  bufio.NewScanner(r),
+		joinIdx:  joinIdx,
+		sep:      sep,
+		hasSep:   hasSep,
+		filename: filename,
 	}
 	lr.advance()
 	return lr
 }
 
 // advance reads the next line and splits it into fields.
+// R4.4: tracks previous key and detects unsorted input.
 func (lr *lineReader) advance() {
+	prevK := ""
+	if lr.hasLine {
+		prevK = lr.key()
+	}
 	lr.hasLine = lr.scanner.Scan()
 	if lr.hasLine {
+		lr.lineNum++
 		lr.rawLine = lr.scanner.Text()
 		lr.splitFields()
+		if prevK != "" && lr.sortErr == "" && lr.key() < prevK {
+			lr.sortErr = fmt.Sprintf("%s:%d: is not sorted: %s",
+				lr.filename, lr.lineNum, lr.rawLine)
+		}
 	}
 }
 
@@ -347,11 +382,26 @@ func (lr *lineReader) key() string {
 	return lr.fields[lr.joinIdx]
 }
 
+// checkSortErrors returns a sortError if either reader detected unsorted input.
+// R4.4: only active when --check-order is set.
+func checkSortErrors(lr1, lr2 *lineReader, cfg joinConfig) error {
+	if !cfg.checkOrder {
+		return nil
+	}
+	if lr1.sortErr != "" {
+		return &sortError{msg: lr1.sortErr}
+	}
+	if lr2.sortErr != "" {
+		return &sortError{msg: lr2.sortErr}
+	}
+	return nil
+}
+
 // joinFiles reads two sorted inputs and writes joined output.
-// R1.1, R1.2, R1.3, R2.1-R2.4, R3.1-R3.4.
+// R1.1, R1.2, R1.3, R2.1-R2.4, R3.1-R3.4, R4.4.
 func joinFiles(r1, r2 io.Reader, w io.Writer, cfg joinConfig) error {
-	lr1 := newLineReader(r1, cfg.field1-1, cfg.sep, cfg.hasSep)
-	lr2 := newLineReader(r2, cfg.field2-1, cfg.sep, cfg.hasSep)
+	lr1 := newLineReader(r1, cfg.field1-1, cfg.sep, cfg.hasSep, cfg.file1)
+	lr2 := newLineReader(r2, cfg.field2-1, cfg.sep, cfg.hasSep, cfg.file2)
 	bw := bufio.NewWriter(w)
 	// R3.4: handle header lines before main join loop.
 	if cfg.header {
@@ -365,9 +415,17 @@ func joinFiles(r1, r2 io.Reader, w io.Writer, cfg joinConfig) error {
 			bw.Flush() // best-effort flush
 			return err
 		}
+		if err := checkSortErrors(lr1, lr2, cfg); err != nil {
+			bw.Flush() // best-effort flush
+			return err
+		}
 	}
 	// R3.1/R3.2: drain remaining lines from either file.
 	if err := drainRemaining(lr1, lr2, bw, cfg); err != nil {
+		bw.Flush() // best-effort flush
+		return err
+	}
+	if err := checkSortErrors(lr1, lr2, cfg); err != nil {
 		bw.Flush() // best-effort flush
 		return err
 	}
@@ -396,6 +454,9 @@ func writeHeader(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
 		}
 		lr2.advance()
 	}
+	// R3.4: header is not sorted data; clear any sort error from header comparison.
+	lr1.sortErr = ""
+	lr2.sortErr = ""
 	return writePair(bw, key, f1, f2, cfg)
 }
 
@@ -426,20 +487,30 @@ func joinStep(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
 	return processMatch(lr1, lr2, bw, cfg)
 }
 
-// processMatch handles matching keys by collecting file2 group and pairing.
+// processMatch handles matching keys by collecting both groups and pairing.
+// R4.4: collects groups before output so sort errors are detected early.
 func processMatch(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
 	key := lr1.key()
+	group1 := collectGroup(lr1, key)
 	group2 := collectGroup(lr2, key)
-	for lr1.hasLine && lr1.key() == key {
-		// R3.2: suppress paired lines when -v is used.
-		if !cfg.onlyUnpair {
-			for _, f2 := range group2 {
-				if err := writePair(bw, key, lr1.fields, f2, cfg); err != nil {
-					return err
-				}
+	// R4.4: check sort errors detected during group collection before output.
+	if err := checkSortErrors(lr1, lr2, cfg); err != nil {
+		return err
+	}
+	if cfg.onlyUnpair {
+		return nil
+	}
+	return writeGroupPairs(bw, key, group1, group2, cfg)
+}
+
+// writeGroupPairs outputs the cross product of two matching groups.
+func writeGroupPairs(bw *bufio.Writer, key string, group1, group2 [][]string, cfg joinConfig) error {
+	for _, f1 := range group1 {
+		for _, f2 := range group2 {
+			if err := writePair(bw, key, f1, f2, cfg); err != nil {
+				return err
 			}
 		}
-		lr1.advance()
 	}
 	return nil
 }
