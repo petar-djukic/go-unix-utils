@@ -4,7 +4,9 @@
 // Differential tests for cmd/base64 against gbase64 (Homebrew coreutils).
 //
 // Covers prd080-base64: R1.1 (encode stdin/file), R1.2 (default wrap),
-// R1.3 (-w COLS wrap control), R1.4 (exit 1 on missing file).
+// R1.3 (-w COLS wrap control), R1.4 (exit 1 on missing file),
+// R2.1 (-d decode), R2.2 (ignore whitespace), R2.3 (-i ignore garbage),
+// R2.4 (exit 1 on invalid input).
 package main
 
 import (
@@ -53,6 +55,11 @@ func TestDiff(t *testing.T) {
 	inputFile := filepath.Join(tmpDir, "input.txt")
 	if err := os.WriteFile(inputFile, []byte("file content\n"), 0o644); err != nil {
 		t.Fatalf("writing test file: %v", err)
+	}
+	// R2.1: encoded file for decode-from-file test
+	encodedFile := filepath.Join(tmpDir, "encoded.txt")
+	if err := os.WriteFile(encodedFile, []byte("ZmlsZSBjb250ZW50Cg==\n"), 0o644); err != nil {
+		t.Fatalf("writing encoded file: %v", err)
 	}
 
 	// R1.1: long input that produces multi-line output at default wrap
@@ -141,6 +148,70 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{normalizeAllStdout, normalizeAllStderr},
+		},
+		// R2.1: decode with -d flag
+		{
+			Name:  "decode_short_flag",
+			Args:  []string{"-d"},
+			Stdin: []byte("aGVsbG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: decode with --decode flag
+		{
+			Name:  "decode_long_flag",
+			Args:  []string{"--decode"},
+			Stdin: []byte("aGVsbG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: decode binary data
+		{
+			Name:  "decode_binary",
+			Args:  []string{"-d"},
+			Stdin: []byte("AAEC//4=\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: decode empty input
+		{
+			Name:  "decode_empty",
+			Args:  []string{"-d"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: decode from file
+		{
+			Name: "decode_from_file",
+			Args: []string{"-d", encodedFile},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.2: whitespace in encoded input is silently ignored
+		{
+			Name:  "decode_multiline_whitespace",
+			Args:  []string{"-d"},
+			Stdin: []byte("aGVs\nbG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: --ignore-garbage skips non-alphabet characters
+		{
+			Name:  "decode_ignore_garbage_short",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("aGVs!!!bG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: --ignore-garbage long form
+		{
+			Name:  "decode_ignore_garbage_long",
+			Args:  []string{"-d", "--ignore-garbage"},
+			Stdin: []byte("aGVs@#$bG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: invalid base64 without --ignore-garbage exits 1
+		{
+			Name:      "decode_invalid_input",
+			Args:      []string{"-d"},
+			Stdin:     []byte("!!!invalid!!!\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 	}
 

@@ -141,11 +141,16 @@ func encodeNoWrap(r io.Reader) error {
 
 // runDecode decodes Base64 input with optional garbage skipping.
 // R2.1: decode mode. R2.2: whitespace ignored. R2.3: -i ignores garbage.
+// R2.4: returns "invalid input" on decode error to match GNU format.
 func runDecode(r io.Reader, c config) error {
-	return encutil.Decode(r, os.Stdout, encutil.DecoderConfig{
+	err := encutil.Decode(r, os.Stdout, encutil.DecoderConfig{
 		Decode:        base64.StdEncoding.DecodeString,
 		IgnoreGarbage: c.ignoreGarbage,
 	})
+	if err != nil {
+		return fmt.Errorf("invalid input")
+	}
+	return nil
 }
 
 func nextArg(args []string, i *int) (string, error) {
