@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/printf implements GNU printf: format and print data.
-// Implements prd073-printf R1.1-R1.4.
+// Implements prd073-printf R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -84,6 +84,8 @@ func sliceFrom(args []string, idx int) []string {
 
 // handleDirective processes one %-directive, writes output to w.
 // Returns format chars consumed, args consumed, and any error.
+// R2.3: resolves '*' width/precision from arguments before formatting.
+// R2.4: '%%' produces a literal percent character.
 func handleDirective(w io.Writer, format string, args []string) (int, int, error) {
 	if len(format) < 2 {
 		writeByte(w, '%')
@@ -97,29 +99,39 @@ func handleDirective(w io.Writer, format string, args []string) (int, int, error
 	if verb == 0 {
 		return 1 + consumed, 0, fmt.Errorf("'%s': missing format character", format[:1+consumed])
 	}
+	resolved, starUsed := resolveStars(spec, args)
 	arg := ""
-	if len(args) > 0 {
-		arg = args[0]
+	if starUsed < len(args) {
+		arg = args[starUsed]
 	}
-	result, err := formatVerb(spec, verb, arg)
+	result, err := formatVerb(resolved, verb, arg)
 	_, _ = fmt.Fprint(w, result) // stdout write; SIGPIPE handler manages broken pipe
-	return 1 + consumed, 1, err
+	return 1 + consumed, starUsed + 1, err
 }
 
 // parseDirective parses flags, width, precision, and verb after '%'.
+// R2.1: width and precision as digits. R2.2: flag characters. R2.3: '*' for width/precision.
 // Returns the spec string (flags+width+precision), verb byte, and chars consumed.
 func parseDirective(s string) (string, byte, int) {
 	i := 0
 	for i < len(s) && isFlag(s[i]) {
 		i++
 	}
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+	if i < len(s) && s[i] == '*' {
 		i++
+	} else {
+		for i < len(s) && isDigit(s[i]) {
+			i++
+		}
 	}
 	if i < len(s) && s[i] == '.' {
 		i++
-		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		if i < len(s) && s[i] == '*' {
 			i++
+		} else {
+			for i < len(s) && isDigit(s[i]) {
+				i++
+			}
 		}
 	}
 	if i >= len(s) {
@@ -130,6 +142,77 @@ func parseDirective(s string) (string, byte, int) {
 
 func isFlag(c byte) bool {
 	return c == '-' || c == '+' || c == ' ' || c == '0' || c == '#'
+}
+
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
+// resolveStars replaces '*' width/precision in spec with int values from args.
+// R2.3: '*' takes the value from the next argument.
+func resolveStars(spec string, args []string) (string, int) {
+	if !strings.ContainsRune(spec, '*') {
+		return spec, 0
+	}
+	i := 0
+	argIdx := 0
+	for i < len(spec) && isFlag(spec[i]) {
+		i++
+	}
+	flags := spec[:i]
+	addDash := false
+	var width string
+	if i < len(spec) && spec[i] == '*' {
+		val := nextStarInt(args, &argIdx)
+		if val < 0 {
+			addDash = true
+			val = -val
+		}
+		width = strconv.Itoa(val)
+		i++
+	} else {
+		j := i
+		for i < len(spec) && isDigit(spec[i]) {
+			i++
+		}
+		width = spec[j:i]
+	}
+	precPart := resolveStarPrecision(spec, i, args, &argIdx)
+	if addDash && !strings.ContainsRune(flags, '-') {
+		flags += "-"
+	}
+	return flags + width + precPart, argIdx
+}
+
+// resolveStarPrecision resolves the precision part of a directive spec.
+func resolveStarPrecision(spec string, i int, args []string, argIdx *int) string {
+	if i >= len(spec) || spec[i] != '.' {
+		return ""
+	}
+	i++
+	if i < len(spec) && spec[i] == '*' {
+		val := nextStarInt(args, argIdx)
+		if val < 0 {
+			return ""
+		}
+		return "." + strconv.Itoa(val)
+	}
+	j := i
+	for i < len(spec) && isDigit(spec[i]) {
+		i++
+	}
+	return "." + spec[j:i]
+}
+
+// nextStarInt consumes the next argument as an integer for '*' resolution.
+func nextStarInt(args []string, idx *int) int {
+	if *idx >= len(args) {
+		return 0
+	}
+	s := args[*idx]
+	*idx++
+	val, _ := strconv.Atoi(s)
+	return val
 }
 
 // formatVerb formats an argument according to the conversion verb.
