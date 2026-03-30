@@ -4,7 +4,7 @@
 // Differential tests for cmd/touch against gtouch (GNU coreutils).
 //
 // Covers prd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -638,6 +638,167 @@ func verifyFilesCreated(t *testing.T, goBin string, names []string) {
 		if info.Size() != 0 {
 			t.Errorf("%q should be empty, got size %d", name, info.Size())
 		}
+	}
+}
+
+// TestTouchExitCodes verifies exit code behavior.
+// R4.1: exit 0 on success.
+// R4.2: exit 1 on error, continue processing remaining files.
+func TestTouchExitCodes(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skip("reference binary gtouch not in PATH")
+	}
+
+	// R4.1: successful touch of existing file exits 0
+	t.Run("exit_0_success", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		existing := filepath.Join(dir, "ok")
+		writeEmpty(t, existing)
+		tests := []testutils.DiffTest{
+			{
+				Name:     "success_exit_0",
+				Args:     []string{existing},
+				ExitCode: 0,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.2: continue processing after error — permission denied dir
+	t.Run("continue_after_error", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		// Create a read-only directory so touch cannot create a file in it
+		for _, dir := range []string{goDir, refDir} {
+			noWrite := filepath.Join(dir, "noperm")
+			if err := os.Mkdir(noWrite, 0o555); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		badFile := filepath.Join("noperm", "blocked")
+		goodFile := "goodfile"
+		args := []string{badFile, goodFile}
+
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		_, _, refExit := execBin(t, refBin, args, refDir)
+
+		if goExit != refExit {
+			t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+		if goExit != 1 {
+			t.Errorf("expected exit 1, got %d", goExit)
+		}
+
+		// R4.2: goodfile must still be created despite earlier error
+		verifyFileExists(t, filepath.Join(goDir, goodFile))
+		verifyFileExists(t, filepath.Join(refDir, goodFile))
+	})
+
+	// R4.2: invalid timestamp exits 1
+	t.Run("invalid_stamp_exit_1", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "invalid_stamp",
+				Args:      []string{"-t", "9999", "file"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{discardAll},
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R4.2: missing reference file exits 1
+	t.Run("missing_ref_exit_1", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "missing_ref",
+				Args:      []string{"-r", "/no/such/ref", "file"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{discardAll},
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
+// TestTouchComprehensive covers the full scenario list required by R4.4.
+// R4.4: create new, update existing, -c, -a, -m, -t, -d, -r, multiple, errors.
+func TestTouchComprehensive(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skip("reference binary gtouch not in PATH")
+	}
+
+	// R4.4: multiple files with -t sets timestamps on all
+	t.Run("multiple_with_stamp", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		args := []string{"-t", "202401151030.00", "f1", "f2", "f3"}
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		_, _, refExit := execBin(t, refBin, args, refDir)
+
+		if goExit != refExit {
+			t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+		for _, name := range []string{"f1", "f2", "f3"} {
+			compareFileTimestamps(t, goDir, refDir, name)
+		}
+	})
+
+	// R4.4: update existing file timestamps match reference
+	t.Run("update_existing_timestamps", func(t *testing.T) {
+		t.Parallel()
+		past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.Local)
+		setup := &fileSetup{name: "file", atime: past, mtime: past}
+		compareTouchTimestamps(t, goBin, refBin, setup,
+			[]string{"-t", "202401151030.00", "file"}, "file")
+	})
+
+	// R4.4: -d with ISO date on new file
+	t.Run("date_iso_new_file", func(t *testing.T) {
+		t.Parallel()
+		compareTouchTimestamps(t, goBin, refBin, nil,
+			[]string{"-d", "2024-01-15", "file"}, "file")
+	})
+
+	// R4.4: -m with -d on existing file
+	t.Run("mod_only_date", func(t *testing.T) {
+		t.Parallel()
+		past := time.Date(2020, 6, 15, 12, 0, 0, 0, time.Local)
+		setup := &fileSetup{name: "file", atime: past, mtime: past}
+		compareTouchTimestamps(t, goBin, refBin, setup,
+			[]string{"-m", "-d", "@1705312200", "file"}, "file")
+	})
+}
+
+// writeEmpty creates an empty file at the given path.
+func writeEmpty(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// verifyFileExists asserts a file exists at path.
+func verifyFileExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("expected file %q to exist: %v", path, err)
 	}
 }
 
