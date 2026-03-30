@@ -1,0 +1,78 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+// TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4 via differential testing.
+func TestDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("god")
+	if err != nil {
+		t.Skip("reference binary god not in PATH")
+	}
+
+	tmpDir := t.TempDir()
+	file1 := filepath.Join(tmpDir, "file1.bin")
+	file2 := filepath.Join(tmpDir, "file2.bin")
+	writeTestFile(t, file1, []byte("hello"))
+	writeTestFile(t, file2, []byte(" world"))
+
+	tests := buildTestCases(file1, file2)
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func writeTestFile(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+}
+
+func buildTestCases(file1, file2 string) []testutils.DiffTest {
+	env := []string{"LC_ALL=C"}
+	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	text := []byte("hello world\n")
+	// Exact float values for deterministic formatting.
+	// float32 1.0 = 0x3F800000 LE, float32 2.0 = 0x40000000 LE.
+	f4in := []byte{0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x00, 0x40}
+	// float64 1.0 = 0x3FF0000000000000 LE.
+	f8in := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f}
+
+	return []testutils.DiffTest{
+		// R1.1: default octal 2-byte format
+		{Name: "default_octal", Stdin: bin, Env: env},
+		// R1.2: type specifiers
+		{Name: "type_o1", Args: []string{"-t", "o1"}, Stdin: bin, Env: env},
+		{Name: "type_o2", Args: []string{"-t", "o2"}, Stdin: bin, Env: env},
+		{Name: "type_x1", Args: []string{"-t", "x1"}, Stdin: bin, Env: env},
+		{Name: "type_x2", Args: []string{"-t", "x2"}, Stdin: bin, Env: env},
+		{Name: "type_x4", Args: []string{"-t", "x4"}, Stdin: bin, Env: env},
+		{Name: "type_d2", Args: []string{"-t", "d2"}, Stdin: bin, Env: env},
+		{Name: "type_u2", Args: []string{"-t", "u2"}, Stdin: bin, Env: env},
+		{Name: "type_d1", Args: []string{"-t", "d1"}, Stdin: bin, Env: env},
+		{Name: "type_u1", Args: []string{"-t", "u1"}, Stdin: bin, Env: env},
+		{Name: "type_a", Args: []string{"-t", "a"}, Stdin: text, Env: env},
+		{Name: "type_c", Args: []string{"-t", "c"}, Stdin: text, Env: env},
+		{Name: "type_f4", Args: []string{"-t", "f4"}, Stdin: f4in, Env: env},
+		{Name: "type_f8", Args: []string{"-t", "f8"}, Stdin: f8in, Env: env},
+		{Name: "format_long", Args: []string{"--format=x1"}, Stdin: bin, Env: env},
+		{Name: "combined_flag", Args: []string{"-tx1"}, Stdin: bin, Env: env},
+		// R1.3: multiple -t options
+		{Name: "multi_type", Args: []string{"-t", "x1", "-t", "c"}, Stdin: text, Env: env},
+		// R1.4: file input
+		{Name: "file_input", Args: []string{file1}, Env: env},
+		{Name: "multi_file", Args: []string{file1, file2}, Env: env},
+		{Name: "stdin_dash", Args: []string{"-t", "x1", "-"}, Stdin: bin, Env: env},
+		{Name: "empty_input", Stdin: []byte{}, Env: env},
+	}
+}
