@@ -543,7 +543,7 @@ releases:
         - id: rel12.1-uc002-pathchk
           status: implemented
         - id: rel12.1-uc003-test
-          status: spec_complete
+          status: implemented
     - version: "13.0"
       name: "Batch 13.0 — directory listing and filesystem (df, dir, vdir, dircolors)"
       status: spec_complete
