@@ -4,7 +4,7 @@
 // cmd/timeout implements GNU timeout: run a command with a time limit.
 //
 // Implements prd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -282,10 +282,20 @@ func handleTimeout(cmd *exec.Cmd, cfg *timeoutConfig, done chan error) int {
 }
 
 // reraiseSignal sends the specified signal to the current process.
-// For uncatchable signals (SIGKILL), the process terminates immediately.
+// For catchable signals, a temporary handler absorbs the signal so the
+// process can continue and return exit code 124. For uncatchable signals
+// (SIGKILL, SIGSTOP), the process terminates immediately.
 func reraiseSignal(sig syscall.Signal) {
+	if sig == syscall.SIGKILL || sig == syscall.SIGSTOP {
+		syscall.Kill(os.Getpid(), sig)
+		time.Sleep(time.Second) // unreachable; kernel terminates us
+		return
+	}
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, sig)
 	syscall.Kill(os.Getpid(), sig)
-	time.Sleep(time.Millisecond)
+	<-ch // drain the caught signal
+	signal.Stop(ch)
 }
 
 // signalProcess sends a signal to the command process or its process group.
