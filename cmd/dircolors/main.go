@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // dircolors outputs shell commands to set the LS_COLORS environment variable.
-// Implements prd109-dircolors R1.1-R1.4, R2.1-R2.4.
+// Implements prd109-dircolors R1.1-R1.4, R2.1-R2.5, R3.1-R3.3.
 package main
 
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -111,7 +112,7 @@ func parseArgs(args []string) (int, bool, string) {
 		case "-p", "--print-database":
 			printDB = true
 		default:
-			if !strings.HasPrefix(arg, "-") {
+			if !strings.HasPrefix(arg, "-") || arg == "-" {
 				filename = arg
 			}
 		}
@@ -130,17 +131,24 @@ func printShellOutput(mode int, value string) {
 	}
 }
 
-// R2.4: loadAndParse reads the database from a file or the built-in defaults
-// and parses it into an LS_COLORS string.
+// R2.4, R2.5: loadAndParse reads the database from a file, stdin ("-"),
+// or the built-in defaults and parses it into an LS_COLORS string.
 func loadAndParse(filename string) (string, error) {
 	var content string
-	if filename != "" {
+	switch {
+	case filename == "-":
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("dircolors: %v", err)
+		}
+		content = string(data)
+	case filename != "":
 		data, err := os.ReadFile(filename)
 		if err != nil {
 			return "", fmt.Errorf("dircolors: %v", err)
 		}
 		content = string(data)
-	} else {
+	default:
 		content = defaultDatabase
 	}
 	return parseDatabase(content, filename)

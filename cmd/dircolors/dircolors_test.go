@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,22 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeDircolorsErr normalizes error output by stripping "Try ..." help
+// lines and replacing the reference binary name prefix with "dircolors".
+func normalizeDircolorsErr(b []byte) []byte {
+	var out [][]byte
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("Try ")) {
+			continue
+		}
+		if bytes.HasPrefix(line, []byte("gdircolors:")) {
+			line = append([]byte("dircolors:"), line[len("gdircolors:"):]...)
+		}
+		out = append(out, line)
+	}
+	return bytes.Join(out, []byte("\n"))
+}
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
@@ -175,6 +192,43 @@ func TestDiff(t *testing.T) {
 			Name: "file argument csh",
 			Args: []string{"--csh", customDB},
 			Env:  []string{"SHELL=/bin/bash", "TERM=xterm"},
+		},
+
+		// --- R2.5: read database from stdin with "-" ---
+		{
+			Name:  "stdin database with dash bourne",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("TERM *\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n"),
+			Env:   []string{"SHELL=/bin/bash", "TERM=xterm"},
+		},
+		{
+			Name:  "stdin database with dash csh",
+			Args:  []string{"--csh", "-"},
+			Stdin: []byte("TERM *\nDIR 01;34\n"),
+			Env:   []string{"SHELL=/bin/bash", "TERM=xterm"},
+		},
+
+		// --- R3.1: print-database output ---
+		{
+			Name: "print-database long flag",
+			Args: []string{"--print-database"},
+			Env:  []string{"SHELL=/bin/bash"},
+		},
+
+		// --- R3.2: -p incompatible with filename ---
+		{
+			Name:      "p with filename errors",
+			Args:      []string{"-p", customDB},
+			Env:       []string{"SHELL=/bin/bash"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeDircolorsErr},
+		},
+
+		// --- R3.3: exit 0 on success ---
+		{
+			Name: "exit 0 on success default",
+			Args: []string{"--sh"},
+			Env:  []string{"SHELL=/bin/bash"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
