@@ -492,7 +492,7 @@ releases:
         - id: rel11.0-uc003-nice
           status: implemented
         - id: rel11.0-uc004-nohup
-          status: spec_complete
+          status: implemented
     - version: "11.1"
       name: "Batch 11.1 — user and session information (users, who, pinky)"
       status: spec_complete
