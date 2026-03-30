@@ -3,7 +3,7 @@
 
 // cmd/chgrp implements GNU chgrp: change group ownership of files.
 //
-// Implements prd090-chgrp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
+// Implements prd090-chgrp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -147,7 +147,7 @@ func chgrpSingle(path string, gid int, opts options, stdout *os.File) error {
 	}
 	changed := oldGid != uint32(gid)
 	if err := doChgrp(path, gid, opts.noDerefer); err != nil {
-		return fmt.Errorf("cannot access '%s': %s", path, sysErrorMsg(err))
+		return fmt.Errorf("changing group of '%s': %s", path, sysErrorMsg(err))
 	}
 	printDiag(stdout, opts, path, gid, oldGid, changed)
 	return nil
@@ -188,7 +188,7 @@ func walkPostOrder(
 	entries, err := os.ReadDir(realPath)
 	if err != nil {
 		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
+			printError(stderr, fmt.Sprintf("cannot read directory '%s': %s", dispPath, sysErrorMsg(err)))
 		}
 		*exitCode = 1
 	}
@@ -287,7 +287,7 @@ func applyChange(
 	chownErr := os.Lchown(realPath, -1, gid)
 	if chownErr != nil {
 		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(chownErr)))
+			printError(stderr, fmt.Sprintf("changing group of '%s': %s", dispPath, sysErrorMsg(chownErr)))
 		}
 		*exitCode = 1
 		return
@@ -373,9 +373,10 @@ func resolveGroup(group string) (int, error) {
 	return strconv.Atoi(grp.Gid)
 }
 
-// getFileGID returns the group ID of the given file.
+// getFileGID returns the group ID of the given file, following symlinks.
+// R1.2: --reference uses the dereferenced file's group.
 func getFileGID(path string) (int, error) {
-	fi, err := sys.Lstat(path)
+	fi, err := sys.Stat(path)
 	if err != nil {
 		return 0, err
 	}

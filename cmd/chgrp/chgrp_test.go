@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/chgrp against gchgrp (GNU coreutils).
 //
-// Traces: prd090-chgrp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
+// Traces: prd090-chgrp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -12,11 +12,19 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normProgName normalizes the program name prefix in stderr output so
+// "chgrp:" and "gchgrp:" compare as equal.
+func normProgName(b []byte) []byte {
+	s := strings.ReplaceAll(string(b), "gchgrp:", "chgrp:")
+	return []byte(s)
+}
 
 // currentGroup returns the current user's primary group name.
 func currentGroup(t *testing.T) string {
@@ -98,6 +106,41 @@ func makeSymlinkDir(t *testing.T) string {
 	if err := os.Symlink("target", filepath.Join(dir, "link")); err != nil {
 		t.Fatalf("setup: symlink: %v", err)
 	}
+	return dir
+}
+
+// makeRefSymlinkDir creates a temp dir with a testfile and a symlink reflink
+// pointing to a real reffile, for testing --reference with symlinks.
+func makeRefSymlinkDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	setupFile(t, dir, "testfile", 0o644)
+	setupFile(t, dir, "reffile", 0o644)
+	if err := os.Symlink("reffile", filepath.Join(dir, "reflink")); err != nil {
+		t.Fatalf("setup: symlink reflink: %v", err)
+	}
+	return dir
+}
+
+// makePermDeniedDir creates a recursive dir with a no-read subdirectory.
+// R3.3: tests that permission denied does not abort traversal.
+func makePermDeniedDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	setupFile(t, dir, "topfile", 0o644)
+	sub := filepath.Join(dir, "noread")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("setup: mkdir noread: %v", err)
+	}
+	setupFile(t, sub, "inner", 0o644)
+	// Remove read permission so ReadDir fails
+	if err := os.Chmod(sub, 0o000); err != nil {
+		t.Fatalf("setup: chmod noread: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore permissions so TempDir cleanup can remove it
+		os.Chmod(sub, 0o755) //nolint:errcheck
+	})
 	return dir
 }
 
@@ -189,6 +232,47 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-Rv", group, "."},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: makeRecursiveDir(t),
+		},
+		// R3.2: --reference with symlink follows symlink to get group
+		{
+			Name:    "reference_symlink",
+			Args:    []string{"--reference=reflink", "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeRefSymlinkDir(t),
+		},
+		// R3.2: exit 0 on success
+		{
+			Name:    "exit_zero_success",
+			Args:    []string{group, "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t),
+		},
+		// R3.2: exit 1 on nonexistent file
+		{
+			Name:      "exit_one_nonexistent",
+			Args:      []string{group, "noexist"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   t.TempDir(),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		// R3.2: exit 1 on invalid group
+		{
+			Name:      "exit_one_invalid_group",
+			Args:      []string{"nonexistent_group_xyz_999", "testfile"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   makeWorkDir(t),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		// R3.3: recursive with permission denied continues traversal
+		{
+			Name:      "recursive_perm_denied",
+			Args:      []string{"-R", group, "."},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   makePermDeniedDir(t),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
 		},
 	}
 
