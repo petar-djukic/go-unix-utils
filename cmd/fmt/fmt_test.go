@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/fmt.
-// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1.
+// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1, R9.1, R10.1, R11.1, R12.1.
 package main
 
 import (
@@ -198,6 +198,83 @@ func TestDiff(t *testing.T) {
 			Name:  "reformat_single_space",
 			Args:  []string{"-w", "30"},
 			Stdin: []byte("End of sentence. Start of another sentence. And more text here.\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R9.1: split-only mode
+		{
+			Name:  "split_only_short_unchanged",
+			Args:  []string{"-s"},
+			Stdin: []byte("short line\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "split_only_long_split",
+			Args:  []string{"-s", "-w", "20"},
+			Stdin: []byte("this is a line that is definitely longer than twenty characters\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "split_only_no_join",
+			Args:  []string{"-s"},
+			Stdin: []byte("short\nlines\nare\nnot\njoined\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "split_only_blank_lines",
+			Args:  []string{"-s"},
+			Stdin: []byte("line one\n\nline two\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R10.1: uniform spacing
+		{
+			Name:  "uniform_spacing_normalize",
+			Args:  []string{"-u", "-w", "60"},
+			Stdin: []byte("word   word    word    word word word word word word word word word word word word\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "uniform_spacing_sentence_end",
+			Args:  []string{"-u"},
+			Stdin: []byte("End of sentence. Start of next. More text here to make this line long enough to need reformatting by the formatter.\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "uniform_spacing_short_line",
+			Args:  []string{"-u"},
+			Stdin: []byte("word    word     word\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R11.1: prefix mode
+		{
+			Name:  "prefix_short_passthrough",
+			Args:  []string{"-p", "> "},
+			Stdin: []byte("> short line\nnot prefixed\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "prefix_long_wrap",
+			Args:  []string{"-p", "> ", "-w", "30"},
+			Stdin: []byte("> This line is long enough that it must be wrapped at thirty characters.\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "prefix_long_flag",
+			Args:  []string{"--prefix=> "},
+			Stdin: []byte("> hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R12.1: tagged-paragraph mode
+		{
+			// First line forced separate (next word exceeds width).
+			Name:  "tagged_paragraph_mode",
+			Args:  []string{"-t", "-w", "40"},
+			Stdin: []byte("  First line fills up the line here.\n    Body text is long enough to require\n    wrapping around.\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "tagged_paragraph_long_flag",
+			Args:  []string{"--tagged-paragraph", "-w", "40"},
+			Stdin: []byte("Header line for paragraph.\n  Body text with indent that should be preserved and wrapped if needed.\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
