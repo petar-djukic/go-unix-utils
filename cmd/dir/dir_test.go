@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/dir differential tests for prd107-dir R1.1-R1.4.
+// cmd/dir differential tests for prd107-dir R1.1-R1.5, R2.1-R2.3.
 package main
 
 import (
@@ -100,6 +100,58 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-1"},
 			WorkDir:   basicDir,
 			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		// R1.5: ls-compatible flag tests
+		{
+			// R1.5: long format listing with -l.
+			Name:      "R1.5_long_format",
+			Args:      []string{"-l"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R1.5: classify indicator with -F.
+			Name:      "R1.5_classify_indicator",
+			Args:      []string{"-1F"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R1.5: reverse sort with -r.
+			Name:      "R1.5_reverse_sort",
+			Args:      []string{"-1r"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R1.5: across column layout with -x.
+			Name:      "R1.5_across_columns",
+			Args:      []string{"-x"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		// R2.1: successful listing exits 0 (implicit in all passing tests).
+		// R2.2: nonexistent path exits with error.
+		{
+			// R2.2/R2.3: nonexistent path produces error and nonzero exit.
+			Name:      "R2.2_nonexistent_path",
+			Args:      []string{"/nonexistent_path_for_dir_test"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		// R2.3: invalid option exits 2.
+		{
+			// R2.3: invalid option produces exit code 2.
+			Name:      "R2.3_invalid_option",
+			Args:      []string{"--invalid-flag-xyz"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{norm},
 		},
 	}

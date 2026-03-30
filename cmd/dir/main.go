@@ -1,18 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/dir implements prd107-dir R1.1-R1.4: list directory contents in
-// multi-column format with C-style escaping of non-printable characters.
-// dir is equivalent to ls -C -b.
+// cmd/dir implements prd107-dir: list directory contents in multi-column
+// format with C-style escaping of non-printable characters.
+// dir is equivalent to ls -C -b. Accepts all ls flags (R1.5).
+// Exit codes: 0 success (R2.1), 1 minor (R2.2), 2 serious (R2.3).
 package main
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -48,6 +47,15 @@ const (
 	sortVersion                 // -v: version sort
 )
 
+// colorMode selects color output behavior.
+type colorMode int
+
+const (
+	colorNever  colorMode = iota // default for dir
+	colorAlways                  // --color=always
+	colorAuto                    // --color=auto
+)
+
 const (
 	exitOK           = 0
 	exitMinor        = 1
@@ -60,6 +68,7 @@ type dirConfig struct {
 	format     outputFormat
 	filter     filterMode
 	sortBy     sortMode
+	colorOpt   colorMode
 	reverse    bool // -r
 	dirOnly    bool // -d
 	classify   bool // -F
@@ -77,6 +86,7 @@ type dirEntry struct {
 	name  string
 	path  string
 	info  *sys.FileInfo
+	link  string // symlink target for -l
 	isDir bool
 }
 
@@ -93,6 +103,8 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "Try 'dir --help' for more information.")
 		return exitSerious
 	}
+	applyColorConfig(cfg)
+	installResizeHandler(cfg)
 	return listPaths(cfg, paths)
 }
 
@@ -113,7 +125,7 @@ func parseFlags(args []string) (*dirConfig, []string, error) {
 			continue
 		}
 		if strings.HasPrefix(arg, "--") {
-			if err := parseLongFlag(arg[2:]); err != nil {
+			if err := parseLongFlag(cfg, arg[2:]); err != nil {
 				return nil, nil, err
 			}
 			continue
@@ -140,6 +152,7 @@ func parseShortFlags(cfg *dirConfig, flags string) error {
 }
 
 // applyShortFlag applies a single short flag character to the config.
+// R1.5: accepts all flags that ls accepts.
 func applyShortFlag(cfg *dirConfig, ch rune) error {
 	switch ch {
 	case '1':
@@ -193,25 +206,33 @@ func applyShortFlag(cfg *dirConfig, ch rune) error {
 }
 
 // parseLongFlag handles a single --flag argument (without the -- prefix).
-func parseLongFlag(name string) error {
+// R1.5: accepts all long flags that ls accepts.
+func parseLongFlag(cfg *dirConfig, name string) error {
 	if name == "color" || strings.HasPrefix(name, "color=") {
-		return parseColorFlag(name)
+		return parseColorFlag(cfg, name)
 	}
 	return fmt.Errorf("unrecognized option '--%s'", name)
 }
 
-// parseColorFlag validates --color[=VALUE] without error.
-func parseColorFlag(name string) error {
+// parseColorFlag parses --color[=VALUE].
+// R1.5: --color without a value defaults to "always".
+func parseColorFlag(cfg *dirConfig, name string) error {
 	if name == "color" {
+		cfg.colorOpt = colorAlways
 		return nil
 	}
-	val := name[6:]
+	val := name[6:] // after "color="
 	switch val {
-	case "always", "yes", "force", "never", "no", "none", "auto":
-		return nil
+	case "always", "yes", "force":
+		cfg.colorOpt = colorAlways
+	case "never", "no", "none":
+		cfg.colorOpt = colorNever
+	case "auto":
+		cfg.colorOpt = colorAuto
 	default:
 		return fmt.Errorf("invalid argument '%s' for '--color'", val)
 	}
+	return nil
 }
 
 // resolveFormat determines terminal width and default format.
@@ -232,7 +253,28 @@ func resolveFormat(cfg *dirConfig) {
 	}
 }
 
+// applyColorConfig sets the process-global color state based on cfg.
+// R1.5: color behavior inherited from ls.
+func applyColorConfig(cfg *dirConfig) {
+	switch cfg.colorOpt {
+	case colorAlways:
+		format.SetColorEnabled(true)
+	case colorNever:
+		format.SetColorEnabled(false)
+	case colorAuto:
+		format.SetColorEnabled(sys.IsTerminal(os.Stdout.Fd()))
+	}
+}
+
+// installResizeHandler registers a SIGWINCH callback.
+func installResizeHandler(cfg *dirConfig) {
+	sys.OnTerminalResize(func(width int) {
+		cfg.termWidth = width
+	})
+}
+
 // listPaths lists each path argument and returns the exit code.
+// R2.1: exit 0 on success. R2.2: accumulates exit status.
 func listPaths(cfg *dirConfig, paths []string) int {
 	exitCode := exitOK
 	var files []dirEntry
@@ -271,6 +313,7 @@ func listDirs(cfg *dirConfig, dirs []string, hdr, blank bool) int {
 }
 
 // classifyArg stats a path and classifies it as a file or directory.
+// R2.2: stat failure for command-line args is serious (exit 2).
 func classifyArg(
 	cfg *dirConfig, path string,
 	files *[]dirEntry, dirs *[]string,
@@ -285,9 +328,13 @@ func classifyArg(
 		*dirs = append(*dirs, path)
 		return exitOK
 	}
-	*files = append(*files, dirEntry{
+	entry := dirEntry{
 		name: path, path: path, info: fi, isDir: fi.Mode.IsDir(),
-	})
+	}
+	if fi.Mode&os.ModeSymlink != 0 {
+		entry.link, _ = os.Readlink(path) // best-effort
+	}
+	*files = append(*files, entry)
 	return exitOK
 }
 
@@ -302,6 +349,9 @@ func listDir(cfg *dirConfig, dirPath string, showHeader bool) int {
 	}
 	entries = filterEntries(entries, cfg.filter)
 	sortEntries(entries, cfg)
+	if cfg.format == formatLong || cfg.showBlocks {
+		printTotalLine(cfg, entries)
+	}
 	formatOutput(cfg, entries)
 	if cfg.recursive {
 		code := recurseSubdirs(cfg, entries)
@@ -324,6 +374,7 @@ func readEntries(dirPath string) ([]dirEntry, int) {
 }
 
 // statDirEntries stats each directory entry and builds dirEntry values.
+// R2.2: per-entry stat failure is minor (exit 1).
 func statDirEntries(des []os.DirEntry, dir string) ([]dirEntry, int) {
 	exitCode := exitOK
 	entries := make([]dirEntry, 0, len(des))
@@ -337,9 +388,13 @@ func statDirEntries(des []os.DirEntry, dir string) ([]dirEntry, int) {
 			exitCode = exitMinor
 			continue
 		}
-		entries = append(entries, dirEntry{
+		entry := dirEntry{
 			name: name, path: path, info: fi, isDir: fi.Mode.IsDir(),
-		})
+		}
+		if fi.Mode&os.ModeSymlink != 0 {
+			entry.link, _ = os.Readlink(path) // best-effort
+		}
+		entries = append(entries, entry)
 	}
 	return entries, exitCode
 }
@@ -379,198 +434,6 @@ func filterEntries(entries []dirEntry, fm filterMode) []dirEntry {
 		result = append(result, e)
 	}
 	return result
-}
-
-// sortEntries sorts entries according to the configured sort mode.
-// R1.3: C locale sort by default.
-func sortEntries(entries []dirEntry, cfg *dirConfig) {
-	if cfg.sortBy == sortNone {
-		if cfg.reverse {
-			reverseEntries(entries)
-		}
-		return
-	}
-	less := sortLessFunc(entries, cfg.sortBy)
-	if cfg.reverse {
-		orig := less
-		less = func(i, j int) bool { return orig(j, i) }
-	}
-	sort.SliceStable(entries, less)
-}
-
-// sortLessFunc returns the comparison function for the given sort mode.
-func sortLessFunc(entries []dirEntry, sm sortMode) func(int, int) bool {
-	switch sm {
-	case sortTime:
-		return func(i, j int) bool {
-			a, b := entries[i], entries[j]
-			if a.info != nil && b.info != nil {
-				if !a.info.ModTime.Equal(b.info.ModTime) {
-					return a.info.ModTime.After(b.info.ModTime)
-				}
-			}
-			return a.name < b.name
-		}
-	case sortSize:
-		return func(i, j int) bool {
-			a, b := entries[i], entries[j]
-			if a.info != nil && b.info != nil {
-				if a.info.Size != b.info.Size {
-					return a.info.Size > b.info.Size
-				}
-			}
-			return a.name < b.name
-		}
-	default:
-		return func(i, j int) bool {
-			return entries[i].name < entries[j].name
-		}
-	}
-}
-
-// reverseEntries reverses the slice in place.
-func reverseEntries(entries []dirEntry) {
-	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
-		entries[i], entries[j] = entries[j], entries[i]
-	}
-}
-
-// formatOutput dispatches to the appropriate output formatter.
-func formatOutput(cfg *dirConfig, entries []dirEntry) {
-	if len(entries) == 0 {
-		return
-	}
-	switch cfg.format {
-	case formatColumns, formatAcross:
-		formatMultiColumn(cfg, entries)
-	default:
-		formatSingleColumn(entries)
-	}
-}
-
-// formatSingleColumn prints one entry per line with C-style escaping.
-func formatSingleColumn(entries []dirEntry) {
-	for _, e := range entries {
-		fmt.Println(escapeName(e.name))
-	}
-}
-
-// formatMultiColumn prints entries in vertical multi-column layout.
-// R1.1: multi-column format. R1.2: C-style escaping.
-func formatMultiColumn(cfg *dirConfig, entries []dirEntry) {
-	names := make([]string, len(entries))
-	for i, e := range entries {
-		names[i] = escapeName(e.name)
-	}
-	rows := format.Columns(names, cfg.termWidth)
-	if len(rows) == 0 {
-		return
-	}
-	colWidths := computeGridWidths(rows)
-	printColumnRows(rows, colWidths)
-}
-
-// computeGridWidths returns the maximum display width per column.
-func computeGridWidths(rows [][]string) []int {
-	numCols := len(rows[0])
-	widths := make([]int, numCols)
-	for _, row := range rows {
-		for c, cell := range row {
-			w := utf8.RuneCountInString(cell)
-			if w > widths[c] {
-				widths[c] = w
-			}
-		}
-	}
-	return widths
-}
-
-// printColumnRows prints rows with column-aligned entries using
-// tab-based indentation matching GNU coreutils output.
-func printColumnRows(rows [][]string, colWidths []int) {
-	colStarts := computeColStarts(colWidths)
-	for _, row := range rows {
-		var sb strings.Builder
-		curPos := 0
-		for c, cell := range row {
-			sb.WriteString(cell)
-			curPos += utf8.RuneCountInString(cell)
-			if c < len(row)-1 {
-				target := colStarts[c+1]
-				curPos = indentTo(&sb, curPos, target)
-			}
-		}
-		fmt.Println(sb.String())
-	}
-}
-
-// computeColStarts returns the display-column start position for each column.
-func computeColStarts(colWidths []int) []int {
-	starts := make([]int, len(colWidths))
-	pos := 0
-	for c, w := range colWidths {
-		starts[c] = pos
-		pos += w + 2 // 2-character gap between columns
-	}
-	return starts
-}
-
-// indentTo advances output from position 'from' to position 'to' using
-// a mix of tab characters and spaces, matching GNU coreutils indent().
-func indentTo(sb *strings.Builder, from, to int) int {
-	const tabSize = 8
-	for from < to {
-		if to/tabSize > (from+1)/tabSize {
-			sb.WriteByte('\t')
-			from += tabSize - from%tabSize
-		} else {
-			sb.WriteByte(' ')
-			from++
-		}
-	}
-	return from
-}
-
-// escapeName applies C-style backslash escaping to a filename.
-// R1.2: escape non-printable characters and backslashes.
-func escapeName(name string) string {
-	var sb strings.Builder
-	sb.Grow(len(name))
-	for i := 0; i < len(name); i++ {
-		b := name[i]
-		if esc, ok := escapeChar(b); ok {
-			sb.WriteString(esc)
-		} else if b < 0x20 || b >= 0x7f {
-			fmt.Fprintf(&sb, "\\%03o", b)
-		} else {
-			sb.WriteByte(b)
-		}
-	}
-	return sb.String()
-}
-
-// escapeChar returns the C-style escape for named control characters.
-func escapeChar(b byte) (string, bool) {
-	switch b {
-	case '\\':
-		return "\\\\", true
-	case '\a':
-		return "\\a", true
-	case '\b':
-		return "\\b", true
-	case '\f':
-		return "\\f", true
-	case '\n':
-		return "\\n", true
-	case '\r':
-		return "\\r", true
-	case '\t':
-		return "\\t", true
-	case '\v':
-		return "\\v", true
-	default:
-		return "", false
-	}
 }
 
 // recurseSubdirs recursively lists subdirectories.
