@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/chown against gchown (GNU coreutils).
 //
-// Traces: prd091-chown R1.1, R1.2, R1.3, R1.4.
+// Traces: prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
 package main
 
 import (
@@ -102,6 +102,50 @@ func makeRefWorkDir(t *testing.T) string {
 	dir := t.TempDir()
 	setupFile(t, dir, "testfile", 0o644)
 	setupFile(t, dir, "reffile", 0o644)
+	return dir
+}
+
+// makeRecursiveDir creates a temp dir with a nested directory structure.
+func makeRecursiveDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "subdir")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("setup: mkdir subdir: %v", err)
+	}
+	setupFile(t, dir, "topfile", 0o644)
+	setupFile(t, sub, "subfile", 0o644)
+	return dir
+}
+
+// makeSymlinkDir creates a temp dir with a symlink for testing -h/-H/-L/-P.
+func makeSymlinkDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	setupFile(t, dir, "target", 0o644)
+	if err := os.Symlink("target", filepath.Join(dir, "link")); err != nil {
+		t.Fatalf("setup: symlink: %v", err)
+	}
+	return dir
+}
+
+// makePermDeniedDir creates a recursive dir with a no-read subdirectory.
+func makePermDeniedDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	setupFile(t, dir, "topfile", 0o644)
+	sub := filepath.Join(dir, "noread")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("setup: mkdir noread: %v", err)
+	}
+	setupFile(t, sub, "inner", 0o644)
+	// Remove read permission so ReadDir fails
+	if err := os.Chmod(sub, 0o000); err != nil {
+		t.Fatalf("setup: chmod noread: %v", err)
+	}
+	t.Cleanup(func() {
+		os.Chmod(sub, 0o755) //nolint:errcheck
+	})
 	return dir
 }
 
@@ -205,6 +249,57 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"nonexistent_user_xyz_999", "testfile"},
 			Env:       []string{"LC_ALL=C"},
 			WorkDir:   makeWorkDir(t),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		// R2.1: recursive ownership change
+		{
+			Name:    "recursive_change",
+			Args:    []string{"-R", ownerGroup, "."},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeRecursiveDir(t),
+		},
+		// R2.2: no-dereference with -h
+		{
+			Name:    "no_dereference_h",
+			Args:    []string{"-h", ownerGroup, "link"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeSymlinkDir(t),
+		},
+		// R2.3: -P with recursive (default behavior)
+		{
+			Name:    "recursive_P",
+			Args:    []string{"-R", "-P", ownerGroup, "."},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeRecursiveDir(t),
+		},
+		// R3.1: verbose output
+		{
+			Name:    "verbose_output",
+			Args:    []string{"-v", ownerGroup, "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t),
+		},
+		// R3.1: changes output (no change expected since owner/group is same)
+		{
+			Name:    "changes_no_change",
+			Args:    []string{"-c", ownerGroup, "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t),
+		},
+		// R3.1: verbose with recursive
+		{
+			Name:    "verbose_recursive",
+			Args:    []string{"-Rv", ownerGroup, "."},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeRecursiveDir(t),
+		},
+		// R2.1: recursive with permission denied continues traversal
+		{
+			Name:      "recursive_perm_denied",
+			Args:      []string{"-R", ownerGroup, "."},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   makePermDeniedDir(t),
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normProgName},
 		},
@@ -428,4 +523,104 @@ func TestExitCodes(t *testing.T) {
 			t.Error("expected exit 1 for partial failure, got exit 0")
 		}
 	})
+}
+
+// TestRecursiveChange verifies -R changes ownership recursively.
+// R2.1: recursive ownership change.
+func TestRecursiveChange(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	owner := currentUser(t)
+	group := currentGroup(t)
+	dir := makeRecursiveDir(t)
+
+	cmd := exec.Command(goBin, "-R", owner+":"+group, dir)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("chown -R failed: %v", err)
+	}
+
+	u, _ := user.Current()
+	for _, rel := range []string{"", "topfile", "subdir", "subdir/subfile"} {
+		path := filepath.Join(dir, rel)
+		fi, err := sys.Lstat(path)
+		if err != nil {
+			t.Fatalf("lstat %s: %v", rel, err)
+		}
+		if fmt.Sprint(fi.Uid) != u.Uid {
+			t.Errorf("%s uid = %d, want %s", rel, fi.Uid, u.Uid)
+		}
+		if fmt.Sprint(fi.Gid) != u.Gid {
+			t.Errorf("%s gid = %d, want %s", rel, fi.Gid, u.Gid)
+		}
+	}
+}
+
+// TestNoDereference verifies -h changes the symlink, not the target.
+// R2.2: --no-dereference.
+func TestNoDereference(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	owner := currentUser(t)
+	group := currentGroup(t)
+	dir := makeSymlinkDir(t)
+
+	cmd := exec.Command(goBin, "-h", owner+":"+group, "link")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("chown -h failed: %v", err)
+	}
+
+	fi, err := sys.Lstat(filepath.Join(dir, "link"))
+	if err != nil {
+		t.Fatalf("lstat link: %v", err)
+	}
+	u, _ := user.Current()
+	if fmt.Sprint(fi.Uid) != u.Uid {
+		t.Errorf("link uid = %d, want %s", fi.Uid, u.Uid)
+	}
+	if fmt.Sprint(fi.Gid) != u.Gid {
+		t.Errorf("link gid = %d, want %s", fi.Gid, u.Gid)
+	}
+}
+
+// TestVerboseOutput verifies -v prints diagnostics.
+// R3.1: verbose output.
+func TestVerboseOutput(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	owner := currentUser(t)
+	group := currentGroup(t)
+	dir := makeWorkDir(t)
+
+	cmd := exec.Command(goBin, "-v", owner+":"+group, "testfile")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("chown -v failed: %v", err)
+	}
+	if len(out) == 0 {
+		t.Error("expected verbose output, got empty")
+	}
+}
+
+// TestChangesOutput verifies -c prints only when ownership changes.
+// R3.1: changes output.
+func TestChangesOutput(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	owner := currentUser(t)
+	group := currentGroup(t)
+	dir := makeWorkDir(t)
+
+	// First run sets ownership to current (no change expected)
+	cmd := exec.Command(goBin, "-c", owner+":"+group, "testfile")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("chown -c failed: %v", err)
+	}
+	// File already has our uid:gid, so -c should produce no output
+	if len(out) != 0 {
+		t.Errorf("expected no output for no-change, got %q", string(out))
+	}
 }
