@@ -459,7 +459,7 @@ releases:
           status: implemented
     - version: "10.1"
       name: "Batch 10.1 — permission and ownership (chmod, chgrp, chown)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three permission and ownership utilities. chmod changes file mode bits
