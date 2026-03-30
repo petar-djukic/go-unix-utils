@@ -3,10 +3,11 @@
 
 // cmd/chmod implements GNU chmod: change file mode bits.
 //
-// Implements prd089-chmod R1.1, R1.2, R1.3, R1.4.
+// Implements prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,14 @@ Change the mode of each FILE to MODE.
 
 const versionText = "chmod (go-unix-utils) 0.1\n"
 
+// options holds the parsed command-line options.
+type options struct {
+	recursive bool
+	verbose   bool
+	changes   bool
+	silent    bool
+}
+
 // modeChange represents a parsed mode specification (octal or symbolic).
 type modeChange struct {
 	octal   bool
@@ -48,40 +57,43 @@ type clause struct {
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // run executes the chmod logic and returns the exit code.
 // R1.3: processes multiple FILE arguments.
 // R1.4: exits 1 on any error, continues processing remaining files.
-func run(args []string, stderr *os.File) int {
-	recursive, operands, err := parseArgs(args)
+func run(args []string, stdout, stderr *os.File) int {
+	opts, operands, err := parseArgs(args)
 	if err != nil {
-		printError(stderr, err.Error())
+		printError(stderr, opts.silent, err.Error())
 		return 1
 	}
 	if len(operands) == 0 {
-		printError(stderr, "missing operand")
+		printError(stderr, false, "missing operand")
+		printTryHelp(stderr)
 		return 1
 	}
 	if len(operands) == 1 {
-		printError(stderr, fmt.Sprintf("missing operand after '%s'", operands[0]))
+		msg := fmt.Sprintf("missing operand after '%s'", operands[0])
+		printError(stderr, false, msg)
+		printTryHelp(stderr)
 		return 1
 	}
 	mc, err := parseMode(operands[0])
 	if err != nil {
-		printError(stderr, err.Error())
+		printError(stderr, opts.silent, err.Error())
 		return 1
 	}
-	return applyToFiles(operands[1:], mc, recursive, stderr)
+	return applyToFiles(operands[1:], mc, opts, stdout, stderr)
 }
 
 // applyToFiles applies the mode change to each file and returns the exit code.
-func applyToFiles(files []string, mc *modeChange, recursive bool, stderr *os.File) int {
+func applyToFiles(files []string, mc *modeChange, opts options, stdout, stderr *os.File) int {
 	exitCode := 0
 	for _, file := range files {
-		if err := chmodPath(file, mc, recursive); err != nil {
-			printError(stderr, err.Error())
+		if err := chmodPath(file, mc, opts, stdout, stderr); err != nil {
+			printError(stderr, opts.silent, err.Error())
 			exitCode = 1
 		}
 	}
@@ -89,8 +101,8 @@ func applyToFiles(files []string, mc *modeChange, recursive bool, stderr *os.Fil
 }
 
 // parseArgs separates flags from operands.
-func parseArgs(args []string) (bool, []string, error) {
-	recursive := false
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
 	var operands []string
 	endOfFlags := false
 	for _, arg := range args {
@@ -103,19 +115,31 @@ func parseArgs(args []string) (bool, []string, error) {
 			continue
 		}
 		var err error
-		recursive, err = handleFlag(arg, recursive)
+		opts, err = handleFlag(arg, opts)
 		if err != nil {
-			return false, nil, err
+			return opts, nil, err
 		}
 	}
-	return recursive, operands, nil
+	return opts, operands, nil
 }
 
 // handleFlag processes a single flag argument.
-func handleFlag(arg string, recursive bool) (bool, error) {
+func handleFlag(arg string, opts options) (options, error) {
 	switch arg {
 	case "--recursive":
-		return true, nil
+		opts.recursive = true
+		return opts, nil
+	case "--verbose":
+		opts.verbose = true
+		opts.changes = false
+		return opts, nil
+	case "--changes":
+		opts.changes = true
+		opts.verbose = false
+		return opts, nil
+	case "--silent", "--quiet":
+		opts.silent = true
+		return opts, nil
 	case "--help":
 		fmt.Fprint(os.Stdout, helpText) //nolint:errcheck
 		os.Exit(0)
@@ -124,64 +148,196 @@ func handleFlag(arg string, recursive bool) (bool, error) {
 		os.Exit(0)
 	default:
 		if len(arg) > 1 && arg[0] == '-' && arg[1] != '-' {
-			return parseShortFlags(arg[1:], recursive)
+			return parseShortFlags(arg[1:], opts)
 		}
-		return recursive, fmt.Errorf("unrecognized option '%s'", arg)
+		return opts, fmt.Errorf("unrecognized option '%s'", arg)
 	}
-	return recursive, nil
+	return opts, nil
 }
 
-// parseShortFlags processes combined short flags like -R.
-func parseShortFlags(flags string, recursive bool) (bool, error) {
+// parseShortFlags processes combined short flags like -Rv.
+func parseShortFlags(flags string, opts options) (options, error) {
 	for _, c := range flags {
 		switch c {
 		case 'R':
-			recursive = true
+			opts.recursive = true
+		case 'v':
+			// R2.2: -v enables verbose, overrides -c
+			opts.verbose = true
+			opts.changes = false
+		case 'c':
+			// R2.3: -c enables changes-only, overrides -v
+			opts.changes = true
+			opts.verbose = false
+		case 'f':
+			// R2.4: -f enables silent mode
+			opts.silent = true
 		default:
-			return recursive, fmt.Errorf("invalid option -- '%c'", c)
+			return opts, fmt.Errorf("invalid option -- '%c'", c)
 		}
 	}
-	return recursive, nil
+	return opts, nil
 }
 
 // chmodPath applies the mode change to path, optionally recursing.
 // R2.1: -R changes modes recursively for directories and their contents.
-func chmodPath(path string, mc *modeChange, recursive bool) error {
-	if !recursive {
-		return chmodFile(path, mc)
+func chmodPath(path string, mc *modeChange, opts options, stdout, stderr *os.File) error {
+	if !opts.recursive {
+		return chmodFile(path, mc, opts, stdout)
 	}
-	return filepath.WalkDir(path, func(p string, _ os.DirEntry, err error) error {
+	var walkErr error
+	err := filepath.WalkDir(path, func(p string, _ os.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("cannot access '%s': %w", p, err)
+			msg := fmt.Sprintf("cannot access '%s': %s", p, sysErrorMsg(err))
+			printError(stderr, opts.silent, msg)
+			walkErr = fmt.Errorf("walk error")
+			return nil // continue walking
 		}
-		return chmodFile(p, mc)
+		if chErr := chmodFile(p, mc, opts, stdout); chErr != nil {
+			printError(stderr, opts.silent, chErr.Error())
+			walkErr = fmt.Errorf("walk error")
+		}
+		return nil
 	})
-}
-
-// chmodFile applies the mode change to a single file.
-func chmodFile(path string, mc *modeChange) error {
-	newMode, err := resolveMode(path, mc)
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(path, newMode); err != nil {
-		return fmt.Errorf("changing permissions of '%s': %w", path, err)
+	if walkErr != nil {
+		return walkErr
 	}
 	return nil
+}
+
+// chmodFile applies the mode change to a single file.
+// R2.2: verbose prints a diagnostic for every file.
+// R2.3: changes prints a diagnostic only when mode changed.
+func chmodFile(path string, mc *modeChange, opts options, stdout *os.File) error {
+	oldMode, err := getFileMode(path)
+	if err != nil {
+		return fmt.Errorf("cannot access '%s': %s", path, sysErrorMsg(err))
+	}
+	newMode := resolveMode(mc, oldMode)
+	if err := os.Chmod(path, newMode); err != nil {
+		return fmt.Errorf("changing permissions of '%s': %s", path, sysErrorMsg(err))
+	}
+	printDiagnostic(stdout, opts, path, oldMode, newMode)
+	return nil
+}
+
+// getFileMode returns the current permission and special bits of a file.
+func getFileMode(path string) (os.FileMode, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, err
+	}
+	m := info.Mode()
+	return m.Perm() | m&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky), nil
+}
+
+// sysErrorMsg extracts the underlying system error message from a Go error.
+func sysErrorMsg(err error) string {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return capitalizeFirst(pathErr.Err.Error())
+	}
+	return err.Error()
+}
+
+// capitalizeFirst capitalizes the first letter of a string.
+func capitalizeFirst(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// printDiagnostic prints verbose or changes-only output.
+func printDiagnostic(stdout *os.File, opts options, path string, oldMode, newMode os.FileMode) {
+	if !opts.verbose && !opts.changes {
+		return
+	}
+	if opts.changes && oldMode == newMode {
+		return
+	}
+	msg := formatDiagnostic(path, oldMode, newMode)
+	fmt.Fprintln(stdout, msg) //nolint:errcheck
+}
+
+// formatDiagnostic formats a diagnostic message for a mode change.
+func formatDiagnostic(path string, oldMode, newMode os.FileMode) string {
+	if oldMode == newMode {
+		return fmt.Sprintf("mode of '%s' retained as %04o (%s)",
+			path, fileModeToUnix(oldMode), symbolicPerms(oldMode))
+	}
+	return fmt.Sprintf("mode of '%s' changed from %04o (%s) to %04o (%s)",
+		path, fileModeToUnix(oldMode), symbolicPerms(oldMode),
+		fileModeToUnix(newMode), symbolicPerms(newMode))
+}
+
+// fileModeToUnix converts os.FileMode to Unix mode_t for display.
+func fileModeToUnix(m os.FileMode) uint32 {
+	mode := uint32(m.Perm())
+	if m&os.ModeSetuid != 0 {
+		mode |= 0o4000
+	}
+	if m&os.ModeSetgid != 0 {
+		mode |= 0o2000
+	}
+	if m&os.ModeSticky != 0 {
+		mode |= 0o1000
+	}
+	return mode
+}
+
+// symbolicPerms returns the symbolic permission string (e.g., "rwxr-xr-x").
+func symbolicPerms(m os.FileMode) string {
+	var buf [9]byte
+	const rwx = "rwx"
+	perm := m.Perm()
+	for i := range 9 {
+		if perm&(1<<uint(8-i)) != 0 {
+			buf[i] = rwx[i%3]
+		} else {
+			buf[i] = '-'
+		}
+	}
+	applySpecialBits(m, &buf)
+	return string(buf[:])
+}
+
+// applySpecialBits modifies the permission string for setuid/setgid/sticky.
+func applySpecialBits(m os.FileMode, buf *[9]byte) {
+	if m&os.ModeSetuid != 0 {
+		if buf[2] == 'x' {
+			buf[2] = 's'
+		} else {
+			buf[2] = 'S'
+		}
+	}
+	if m&os.ModeSetgid != 0 {
+		if buf[5] == 'x' {
+			buf[5] = 's'
+		} else {
+			buf[5] = 'S'
+		}
+	}
+	if m&os.ModeSticky != 0 {
+		if buf[8] == 'x' {
+			buf[8] = 't'
+		} else {
+			buf[8] = 'T'
+		}
+	}
 }
 
 // resolveMode computes the new mode for a file.
 // R1.1: octal modes apply directly.
 // R1.2: symbolic modes apply relative to the current file mode.
-func resolveMode(path string, mc *modeChange) (os.FileMode, error) {
+func resolveMode(mc *modeChange, currentMode os.FileMode) os.FileMode {
 	if mc.octal {
-		return mc.mode, nil
+		return mc.mode
 	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return 0, fmt.Errorf("cannot access '%s': %w", path, err)
-	}
-	return applySymbolicClauses(mc.clauses, info.Mode()), nil
+	return applySymbolicClauses(mc.clauses, currentMode)
 }
 
 // applySymbolicClauses applies all symbolic clauses to the current mode.
@@ -379,7 +535,16 @@ func isFlag(arg string) bool {
 	return len(arg) > 1 && arg[0] == '-'
 }
 
-// printError prints a formatted error to stderr.
-func printError(stderr *os.File, msg string) {
+// printError prints a formatted error to stderr, unless silent mode suppresses it.
+// R2.4: -f/--silent/--quiet suppresses most error messages.
+func printError(stderr *os.File, silent bool, msg string) {
+	if silent {
+		return
+	}
 	fmt.Fprintf(stderr, "%s: %s\n", progName, msg) //nolint:errcheck
+}
+
+// printTryHelp prints the "Try ... --help" hint to stderr.
+func printTryHelp(stderr *os.File) {
+	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
 }
