@@ -2,17 +2,29 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/csplit.
-// Covers prd068-csplit R1.1, R1.2, R1.3, R1.4.
+// Covers prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrBinaryRe matches the binary name prefix in stderr error messages.
+var stderrBinaryRe = regexp.MustCompile(`\S*g?csplit: `)
+
+// binaryNameNormalizer normalizes binary path prefixes in stderr messages
+// so that /opt/homebrew/bin/gcsplit and csplit compare equal.
+func binaryNameNormalizer() testutils.NormalizeFunc {
+	return func(data []byte) []byte {
+		return stderrBinaryRe.ReplaceAll(data, []byte("csplit: "))
+	}
+}
 
 // generateSeq produces numbered lines from start to end (inclusive).
 func generateSeq(start, end int) []byte {
@@ -29,7 +41,7 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary gcsplit not in PATH")
 	}
-	tests := buildR1Tests()
+	tests := append(buildR1Tests(), buildR2Tests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -41,6 +53,18 @@ func buildR1Tests() []testutils.DiffTest {
 		skipPatternTest(),
 		mixedPatternsTest(),
 		skipOnlyTest(),
+	}
+}
+
+// buildR2Tests returns differential test cases for R2.1-R2.4.
+func buildR2Tests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		repeatCountNTest(),
+		repeatStarTest(),
+		offsetPlusTest(),
+		offsetMinusTest(),
+		noMatchErrorTest(),
+		repeatNOverflowTest(),
 	}
 }
 
@@ -112,5 +136,86 @@ func skipOnlyTest() testutils.DiffTest {
 		ExpectedFiles: map[string][]byte{
 			"xx00": []byte("c\nd\n"),
 		},
+	}
+}
+
+// repeatCountNTest verifies R2.1: {N} repeats the pattern N additional times.
+func repeatCountNTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "repeat_count_n",
+		Args:     []string{"-", "/---/", "{2}"},
+		Stdin:    []byte("a\n---\nb\n---\nc\n---\nd\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": []byte("a\n"),
+			"xx01": []byte("---\nb\n"),
+			"xx02": []byte("---\nc\n"),
+			"xx03": []byte("---\nd\n"),
+		},
+	}
+}
+
+// repeatStarTest verifies R2.2: {*} repeats the pattern until end of input.
+func repeatStarTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "repeat_star",
+		Args:     []string{"-", "/---/", "{*}"},
+		Stdin:    []byte("a\n---\nb\n---\nc\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": []byte("a\n"),
+			"xx01": []byte("---\nb\n"),
+			"xx02": []byte("---\nc\n"),
+		},
+	}
+}
+
+// offsetPlusTest verifies R2.3: /REGEXP/+N splits N lines after the match.
+func offsetPlusTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "offset_plus",
+		Args:     []string{"-", "/c/+1"},
+		Stdin:    []byte("a\nb\nc\nd\ne\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": []byte("a\nb\nc\n"),
+			"xx01": []byte("d\ne\n"),
+		},
+	}
+}
+
+// offsetMinusTest verifies R2.3: /REGEXP/-N splits N lines before the match.
+func offsetMinusTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "offset_minus",
+		Args:     []string{"-", "/c/-1"},
+		Stdin:    []byte("a\nb\nc\nd\ne\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": []byte("a\n"),
+			"xx01": []byte("b\nc\nd\ne\n"),
+		},
+	}
+}
+
+// noMatchErrorTest verifies R2.4: error on stderr when pattern does not match.
+func noMatchErrorTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "no_match_error",
+		Args:      []string{"-", "/nomatch/"},
+		Stdin:     []byte("a\nb\nc\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{binaryNameNormalizer()},
+	}
+}
+
+// repeatNOverflowTest verifies R2.1+R2.4: {N} fails when not enough matches.
+func repeatNOverflowTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "repeat_n_overflow",
+		Args:      []string{"-", "/---/", "{3}"},
+		Stdin:     []byte("a\n---\nb\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{binaryNameNormalizer()},
 	}
 }

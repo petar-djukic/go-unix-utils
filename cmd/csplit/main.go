@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements the csplit utility.
-// Implements prd068-csplit R1.1, R1.2, R1.3, R1.4.
+// Implements prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -31,11 +31,29 @@ const (
 	patternLineNum                    // INTEGER
 )
 
+// noMatchError indicates a pattern failed to find a match.
+// R2.4: used to distinguish expected exhaustion ({*}) from real errors.
+type noMatchError struct {
+	msg string
+}
+
+func (e *noMatchError) Error() string {
+	return e.msg
+}
+
+// isNoMatch reports whether err is a no-match error.
+func isNoMatch(err error) bool {
+	_, ok := err.(*noMatchError)
+	return ok
+}
+
 // pattern holds a parsed csplit pattern.
 type pattern struct {
 	kind    patternKind
 	regex   *regexp.Regexp
 	lineNum int
+	offset  int // R2.3: +N or -N offset for regex/skip patterns
+	repeat  int // R2.1/R2.2: -1 for {*}, 0 for no repeat, N for {N}
 	raw     string
 }
 
@@ -56,6 +74,7 @@ type splitState struct {
 	pos          int
 	fileIndex    int
 	createdFiles []string
+	lastMatch    int // R2.1/R2.2: last regex/skip match index for repeat search
 }
 
 func main() {
@@ -228,11 +247,20 @@ func parseLongDigits(cfg *config, val string, hasVal bool, args []string, i int)
 
 // parsePatternList parses a slice of pattern strings into the config.
 // R1.1: accepts one or more pattern arguments applied in order.
+// R2.1/R2.2: handles {N} and {*} repeat counts as separate arguments.
 func parsePatternList(cfg *config, args []string) error {
-	for _, s := range args {
-		pat, err := parsePattern(s)
+	for i := 0; i < len(args); i++ {
+		pat, err := parsePattern(args[i])
 		if err != nil {
 			return err
+		}
+		if i+1 < len(args) && isRepeatArg(args[i+1]) {
+			rep, rerr := parseRepeat(args[i+1])
+			if rerr != nil {
+				return rerr
+			}
+			pat.repeat = rep
+			i++
 		}
 		cfg.patterns = append(cfg.patterns, pat)
 	}
@@ -240,7 +268,7 @@ func parsePatternList(cfg *config, args []string) error {
 }
 
 // parsePattern parses a single pattern string into a pattern struct.
-// R1.1: supports /REGEXP/, %REGEXP%, and INTEGER forms.
+// R1.1: supports /REGEXP/[OFFSET], %REGEXP%[OFFSET], and INTEGER forms.
 func parsePattern(s string) (pattern, error) {
 	if len(s) > 1 && s[0] == '/' {
 		return parseDelimitedPattern(s, '/', patternRegex)
@@ -251,8 +279,8 @@ func parsePattern(s string) (pattern, error) {
 	return parseLineNumPattern(s)
 }
 
-// parseDelimitedPattern parses /REGEXP/ or %REGEXP% patterns.
-// R1.2: regex split. R1.3: skip pattern.
+// parseDelimitedPattern parses /REGEXP/[OFFSET] or %REGEXP%[OFFSET] patterns.
+// R1.2: regex split. R1.3: skip pattern. R2.3: optional +N/-N offset.
 func parseDelimitedPattern(s string, delim byte, kind patternKind) (pattern, error) {
 	idx := strings.LastIndexByte(s, delim)
 	if idx <= 0 {
@@ -263,7 +291,43 @@ func parseDelimitedPattern(s string, delim byte, kind patternKind) (pattern, err
 	if err != nil {
 		return pattern{}, fmt.Errorf("invalid regexp '%s': %v", expr, err)
 	}
-	return pattern{kind: kind, regex: re, raw: s}, nil
+	offset, oerr := parseOffset(s[idx+1:])
+	if oerr != nil {
+		return pattern{}, oerr
+	}
+	return pattern{kind: kind, regex: re, offset: offset, raw: s}, nil
+}
+
+// parseOffset parses an optional +N or -N offset suffix.
+// R2.3: offset from the matching line.
+func parseOffset(s string) (int, error) {
+	if s == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid offset: '%s'", s)
+	}
+	return n, nil
+}
+
+// isRepeatArg reports whether s is a {N} or {*} repeat argument.
+func isRepeatArg(s string) bool {
+	return len(s) >= 3 && s[0] == '{' && s[len(s)-1] == '}'
+}
+
+// parseRepeat parses a {N} or {*} repeat argument.
+// R2.1: {N} returns N. R2.2: {*} returns -1.
+func parseRepeat(s string) (int, error) {
+	inner := s[1 : len(s)-1]
+	if inner == "*" {
+		return -1, nil
+	}
+	n, err := strconv.Atoi(inner)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid repeat count: '%s'", s)
+	}
+	return n, nil
 }
 
 // parseLineNumPattern parses an INTEGER pattern.
@@ -321,7 +385,7 @@ func readLines(r io.Reader) ([][]byte, error) {
 
 // splitByPatterns applies patterns in order to split input lines into files.
 func splitByPatterns(lines [][]byte, cfg config) error {
-	s := &splitState{cfg: cfg, lines: lines}
+	s := &splitState{cfg: cfg, lines: lines, lastMatch: -1}
 	if err := applyAllPatterns(s); err != nil {
 		cleanupFiles(s.createdFiles)
 		return err
@@ -332,20 +396,89 @@ func splitByPatterns(lines [][]byte, cfg config) error {
 // applyAllPatterns processes each pattern then writes remaining content.
 func applyAllPatterns(s *splitState) error {
 	for _, pat := range s.cfg.patterns {
-		if err := processPattern(s, pat); err != nil {
+		if err := applyPatternWithRepeat(s, pat); err != nil {
 			return err
 		}
 	}
 	return writeRemaining(s)
 }
 
-// processPattern dispatches to the handler for the pattern kind.
-func processPattern(s *splitState, pat pattern) error {
+// applyPatternWithRepeat applies a pattern once, then repeats per R2.1/R2.2.
+func applyPatternWithRepeat(s *splitState, pat pattern) error {
+	if err := applyPattern(s, pat, s.pos); err != nil {
+		return err
+	}
+	if pat.repeat == 0 {
+		return nil
+	}
+	if pat.repeat < 0 {
+		return repeatUntilDone(s, pat)
+	}
+	return repeatN(s, pat)
+}
+
+// repeatUntilDone applies the pattern until no match is found.
+// R2.2: {*} repeats until end of input; final no-match is not an error.
+func repeatUntilDone(s *splitState, pat pattern) error {
+	for {
+		sf := repeatSearchFrom(s, pat)
+		if sf >= len(s.lines) {
+			return nil
+		}
+		err := applyPattern(s, pat, sf)
+		if err == nil {
+			continue
+		}
+		if isNoMatch(err) {
+			return nil
+		}
+		return err
+	}
+}
+
+// repeatN applies the pattern N additional times.
+// R2.1: {N} repeats N additional times (total N+1 applications).
+// R2.4: error messages include the repetition number.
+func repeatN(s *splitState, pat pattern) error {
+	for i := 0; i < pat.repeat; i++ {
+		sf := repeatSearchFrom(s, pat)
+		if err := applyPattern(s, pat, sf); err != nil {
+			return annotateRepeat(err, i+1)
+		}
+	}
+	return nil
+}
+
+// annotateRepeat adds "on repetition N" to no-match errors.
+func annotateRepeat(err error, n int) error {
+	nme, ok := err.(*noMatchError)
+	if !ok {
+		return err
+	}
+	return &noMatchError{
+		msg: fmt.Sprintf("%s on repetition %d", nme.msg, n),
+	}
+}
+
+// repeatSearchFrom computes the search start for a repeat application.
+// For regex/skip, starts past the last match to avoid re-matching.
+func repeatSearchFrom(s *splitState, pat pattern) int {
+	if pat.kind == patternLineNum {
+		return s.pos
+	}
+	if s.lastMatch >= s.pos {
+		return s.lastMatch + 1
+	}
+	return s.pos
+}
+
+// applyPattern dispatches to the handler for the pattern kind.
+func applyPattern(s *splitState, pat pattern, searchFrom int) error {
 	switch pat.kind {
 	case patternRegex:
-		return processRegex(s, pat)
+		return processRegex(s, pat, searchFrom)
 	case patternSkip:
-		return processSkip(s, pat)
+		return processSkip(s, pat, searchFrom)
 	case patternLineNum:
 		return processLineNum(s, pat)
 	default:
@@ -355,22 +488,36 @@ func processPattern(s *splitState, pat pattern) error {
 
 // processRegex finds the next matching line and writes preceding lines as output.
 // R1.2: the matching line becomes the first line of the next piece.
-func processRegex(s *splitState, pat pattern) error {
-	idx := findMatch(s.lines, s.pos, pat.regex)
+// R2.3: offset shifts the split point relative to the match.
+// R2.4: writes remaining content before reporting no-match error.
+func processRegex(s *splitState, pat pattern, searchFrom int) error {
+	idx := findMatch(s.lines, searchFrom, pat.regex)
 	if idx < 0 {
-		return fmt.Errorf("'%s': match not found", pat.raw)
+		writeOnError(s)
+		return &noMatchError{msg: fmt.Sprintf("'%s': match not found", pat.raw)}
 	}
-	return writePiece(s, s.pos, idx)
+	s.lastMatch = idx
+	splitAt := idx + pat.offset
+	if splitAt < s.pos || splitAt > len(s.lines) {
+		return fmt.Errorf("'%s': line number out of range", pat.raw)
+	}
+	return writePiece(s, s.pos, splitAt)
 }
 
 // processSkip advances past the next matching line without writing output.
 // R1.3: skip to matching line without creating an output file.
-func processSkip(s *splitState, pat pattern) error {
-	idx := findMatch(s.lines, s.pos, pat.regex)
+// R2.3: offset shifts the skip point relative to the match.
+func processSkip(s *splitState, pat pattern, searchFrom int) error {
+	idx := findMatch(s.lines, searchFrom, pat.regex)
 	if idx < 0 {
-		return fmt.Errorf("'%s': match not found", pat.raw)
+		return &noMatchError{msg: fmt.Sprintf("'%s': match not found", pat.raw)}
 	}
-	s.pos = idx
+	s.lastMatch = idx
+	skipTo := idx + pat.offset
+	if skipTo < s.pos || skipTo > len(s.lines) {
+		return fmt.Errorf("'%s': line number out of range", pat.raw)
+	}
+	s.pos = skipTo
 	return nil
 }
 
@@ -379,7 +526,10 @@ func processSkip(s *splitState, pat pattern) error {
 func processLineNum(s *splitState, pat pattern) error {
 	idx := pat.lineNum - 1
 	if idx < s.pos || idx >= len(s.lines) {
-		return fmt.Errorf("'%d': line number out of range", pat.lineNum)
+		writeOnError(s)
+		return &noMatchError{
+			msg: fmt.Sprintf("'%d': line number out of range", pat.lineNum),
+		}
 	}
 	return writePiece(s, s.pos, idx)
 }
@@ -402,6 +552,15 @@ func writePiece(s *splitState, from, to int) error {
 	s.fileIndex++
 	s.pos = to
 	return nil
+}
+
+// writeOnError writes remaining content before reporting an error.
+// R2.4: GNU csplit outputs byte count for remaining content on failure.
+func writeOnError(s *splitState) {
+	if s.pos >= len(s.lines) {
+		return
+	}
+	_ = writePiece(s, s.pos, len(s.lines)) // best-effort, error ignored
 }
 
 // writeRemaining writes any lines after the last pattern as the final piece.
