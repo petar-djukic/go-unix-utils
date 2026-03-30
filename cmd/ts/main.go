@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/ts implements moreutils ts: prepend timestamps to stdin lines.
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.2.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
 package main
 
 import (
@@ -19,9 +19,9 @@ import (
 // R1.2: "%b %d %H:%M:%S" (e.g., "Mar 30 14:05:32").
 const defaultFormat = "%b %d %H:%M:%S"
 
-// defaultIncrFormat is the default format for -i mode.
-// R3.2: "%H:%M:%S" with TZ=GMT.
-const defaultIncrFormat = "%H:%M:%S"
+// defaultElapsedFormat is the default format for -i and -s modes.
+// R3.2, R4.2: "%H:%M:%S" with TZ=GMT.
+const defaultElapsedFormat = "%H:%M:%S"
 
 // tsMode represents the timestamp source mode.
 type tsMode int
@@ -29,6 +29,7 @@ type tsMode int
 const (
 	modeDefault     tsMode = iota
 	modeIncremental        // -i: elapsed since previous line
+	modeElapsed            // -s: elapsed since start
 )
 
 // simpleDirectives maps strftime single-character directives to Go time layouts.
@@ -74,32 +75,45 @@ func main() {
 	switch cfg.mode {
 	case modeIncremental:
 		runIncremental(cfg.format)
+	case modeElapsed:
+		runElapsed(cfg.format)
 	default:
 		runDefault(cfg.format)
 	}
 }
 
 // parseArgs parses ts flags and an optional positional format string.
+// R3.4: -i and -s; last flag wins (matches reference binary behavior).
 func parseArgs(args []string) tsConfig {
 	cfg := tsConfig{format: defaultFormat}
 	var remaining []string
 	for _, arg := range args {
-		if arg == "-i" {
+		switch arg {
+		case "-i":
 			cfg.mode = modeIncremental
-		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			fmt.Fprintf(os.Stderr, "usage: ts [-i] [-s] [-m] [-r] [format]\n")
-			os.Exit(1)
-		} else {
+		case "-s":
+			cfg.mode = modeElapsed
+		default:
+			if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+				printUsageAndExit()
+			}
 			remaining = append(remaining, arg)
 		}
 	}
 	if len(remaining) > 0 {
+		// R3.3, R4.3: custom format overrides mode default.
 		cfg.format = remaining[0]
-	} else if cfg.mode == modeIncremental {
-		// R3.2: default format for -i is "%H:%M:%S".
-		cfg.format = defaultIncrFormat
+	} else if cfg.mode == modeIncremental || cfg.mode == modeElapsed {
+		// R3.2, R4.2: default format for -i/-s is "%H:%M:%S".
+		cfg.format = defaultElapsedFormat
 	}
 	return cfg
+}
+
+// printUsageAndExit prints a usage error to stderr and exits non-zero.
+func printUsageAndExit() {
+	fmt.Fprintf(os.Stderr, "usage: ts [-i] [-s] [-m] [-r] [format]\n")
+	os.Exit(1)
 }
 
 // runDefault reads stdin and prepends wall-clock timestamps.
@@ -111,12 +125,25 @@ func runDefault(format string) {
 // timestamps formatted in UTC.
 // R3.1: elapsed since previous line; first line since start.
 // R3.2: TZ=GMT via UTC epoch offset formatting.
+// R3.3: custom format still uses TZ=GMT behavior.
 func runIncremental(format string) {
 	lastTime := time.Now()
 	processLines(format, func() time.Time {
 		now := time.Now()
 		elapsed := now.Sub(lastTime)
 		lastTime = now
+		return time.Unix(0, 0).UTC().Add(elapsed)
+	})
+}
+
+// runElapsed reads stdin and prepends elapsed-since-start timestamps
+// formatted in UTC.
+// R4.1: elapsed since ts started, monotonically increasing.
+// R4.2: default format "%H:%M:%S" with TZ=GMT.
+func runElapsed(format string) {
+	startTime := time.Now()
+	processLines(format, func() time.Time {
+		elapsed := time.Since(startTime)
 		return time.Unix(0, 0).UTC().Add(elapsed)
 	})
 }

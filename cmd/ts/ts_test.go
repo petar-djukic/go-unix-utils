@@ -23,8 +23,8 @@ var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 // Implements prd004-ts R9.1-R9.2.
 // R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
 // R9.2: covers default format, custom format, subsecond extensions (R2.3, R2.4),
-// -i incremental mode (R3.1, R3.2), empty stdin, partial last line,
-// additional strftime specifiers (R2.2).
+// -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.2),
+// empty stdin, partial last line, additional strftime specifiers (R2.2).
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -148,7 +148,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R3.1: incremental mode with custom format overrides default.
+		// R3.3: incremental mode with custom format overrides default.
 		{
 			Name:      "incremental_mode_custom_format",
 			Args:      []string{"-i", "%M:%S"},
@@ -156,6 +156,50 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.4: -i and -s together — last flag wins (matches reference).
+		{
+			Name:      "incremental_and_elapsed_last_wins",
+			Args:      []string{"-i", "-s"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1, R4.2: elapsed-since-start mode with default format.
+		{
+			Name:      "elapsed_mode",
+			Args:      []string{"-s"},
+			Stdin:     []byte("first\nsecond\nthird\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1: elapsed-since-start mode with custom format.
+		{
+			Name:      "elapsed_mode_custom_format",
+			Args:      []string{"-s", "%M:%S"},
+			Stdin:     []byte("alpha\nbeta\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.4: -s and -i together (reverse order) — last flag wins.
+		{
+			Name:      "elapsed_and_incremental_last_wins",
+			Args:      []string{"-s", "-i"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1, R4.2: elapsed mode with empty stdin.
+		{
+			Name:     "elapsed_mode_empty_stdin",
+			Args:     []string{"-s"},
+			Stdin:    []byte(""),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
 		},
 	}
 
