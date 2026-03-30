@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/sum implementing prd078-sum R1.1-R1.4, R2.1, R2.2, R3.1, R3.2.
+// Tests for cmd/sum implementing prd078-sum R1.1-R1.4, R2.1, R2.2, R3.1, R3.2, R3.3.
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -242,6 +243,34 @@ func TestDiffSysVNonexistent(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestSIGPIPE verifies R3.3: sum exits 0 when stdout is closed early (SIGPIPE).
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	fileA := filepath.Join(dir, "a.txt")
+	writeTestFile(t, fileA, "aaa\n")
+	fileB := filepath.Join(dir, "b.txt")
+	writeTestFile(t, fileB, "bbb\n")
+
+	// Pipe sum (multiple files) through head -1 to trigger SIGPIPE
+	// on the second write. Expect exit code 0.
+	headBin, err := exec.LookPath("head")
+	if err != nil {
+		t.Skip("head not in PATH")
+	}
+
+	cmd := exec.Command("sh", "-c",
+		fmt.Sprintf("%q %q %q | %q -1", goBin, fileA, fileB, headBin))
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("R3.3: expected exit 0 on SIGPIPE, got error: %v\noutput: %s", err, out)
+	}
 }
 
 // writeTestFile creates a file with the given content.
