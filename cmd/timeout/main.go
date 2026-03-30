@@ -3,7 +3,8 @@
 
 // cmd/timeout implements GNU timeout: run a command with a time limit.
 //
-// Implements prd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -259,7 +260,7 @@ func waitWithTimeout(cmd *exec.Cmd, cfg *timeoutConfig) int {
 	case <-timer.C:
 		return handleTimeout(cmd, cfg, done)
 	case err := <-done:
-		return exitCodeFromErr(err)
+		return handleCommandDone(err)
 	}
 }
 
@@ -340,8 +341,48 @@ func exitCodeFromErr(err error) int {
 }
 
 // waitForExit waits for the command to complete and returns its exit code.
+// R3.3: re-raises signal if the child was killed by one.
 func waitForExit(cmd *exec.Cmd) int {
-	return exitCodeFromErr(cmd.Wait())
+	return handleCommandDone(cmd.Wait())
+}
+
+// handleCommandDone processes a command's exit result, re-raising any signal
+// the child was killed by to propagate signal death to the parent process.
+// R3.3: when the command is killed by a signal not sent by timeout, must
+// match GNU timeout behavior of re-raising the signal on self.
+func handleCommandDone(err error) int {
+	code := exitCodeFromErr(err)
+	if sig := childSignal(err); sig != 0 {
+		reraiseChildSignal(sig)
+	}
+	return code
+}
+
+// childSignal extracts the signal that killed the child process, if any.
+func childSignal(err error) syscall.Signal {
+	if err == nil {
+		return 0
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		return 0
+	}
+	ws, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok {
+		return 0
+	}
+	if ws.Signaled() {
+		return ws.Signal()
+	}
+	return 0
+}
+
+// reraiseChildSignal resets Go signal handling to default and re-raises
+// the signal, matching GNU timeout's signal propagation behavior.
+func reraiseChildSignal(sig syscall.Signal) {
+	signal.Reset(sig)
+	syscall.Kill(os.Getpid(), sig)
+	time.Sleep(time.Millisecond)
 }
 
 // parseDuration parses a duration string with optional suffix.

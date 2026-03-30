@@ -202,6 +202,65 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
+
+		// R3.1: command exits with specific non-zero status before timeout.
+		{
+			Name:      "r3_1_exit_status_2",
+			Args:      []string{"10", "sh", "-c", "exit 2"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.1: command exits with status 42 before timeout.
+		{
+			Name:      "r3_1_exit_status_42",
+			Args:      []string{"10", "sh", "-c", "exit 42"},
+			ExitCode:  42,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: timeout exits 124 when command killed by timeout.
+		{
+			Name:      "r3_2_timeout_exit_124",
+			Args:      []string{"-k", "0.5", "0.01", "sleep", "10"},
+			ExitCode:  124,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: --preserve-status on timeout exits 128+signum instead of 124.
+		{
+			Name:      "r3_2_preserve_status_timeout",
+			Args:      []string{"--preserve-status", "0.01", "sleep", "10"},
+			ExitCode:  143, // 128 + 15 (SIGTERM)
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.3: command killed by signal not sent by timeout (self-kill with SIGHUP).
+		// Both binaries re-raise the child's signal on themselves and die from it;
+		// Go's exec reports exit code -1 for signal-killed processes.
+		{
+			Name:      "r3_3_command_self_signal_hup",
+			Args:      []string{"10", "sh", "-c", "kill -HUP $$"},
+			ExitCode:  -1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.4: internal error — invalid duration, exit 125.
+		{
+			Name:      "r3_4_invalid_duration",
+			Args:      []string{"xyz", "true"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.4: command not found, exit 127.
+		{
+			Name:      "r3_4_command_not_found",
+			Args:      []string{"10", "nonexistent_cmd_9876"},
+			ExitCode:  127,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.4: command cannot execute (not executable file), exit 126.
+		{
+			Name:      "r3_4_cannot_execute",
+			Args:      []string{"10", "/dev/null"},
+			ExitCode:  126,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
