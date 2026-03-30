@@ -3,7 +3,7 @@
 
 // cmd/pee implements moreutils pee: tee standard input to pipes.
 //
-// Implements prd113-pee R1.1, R1.2, R1.3.
+// Implements prd113-pee R1.1, R1.2, R1.3, R2.1, R2.2.
 package main
 
 import (

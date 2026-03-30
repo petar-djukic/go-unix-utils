@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// pee_test.go implements differential tests for prd113-pee R1.1, R1.2, R1.3.
+// pee_test.go implements differential tests for prd113-pee R1.1, R1.2, R1.3, R2.1, R2.2.
 package main
 
 import (
@@ -49,6 +49,26 @@ func TestDiff(t *testing.T) {
 			Name:  "three_commands",
 			Args:  []string{"cat", "cat", "cat"},
 			Stdin: []byte("abc\n"),
+		},
+		{
+			// R2.1: all commands exit 0 → pee exits 0.
+			Name:  "all_exit_zero",
+			Args:  []string{"true", "true"},
+			Stdin: []byte("hello\n"),
+		},
+		{
+			// R2.1: one command exits non-zero → pee exits 1.
+			Name:  "one_command_fails",
+			Args:     []string{"false"},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 1,
+		},
+		{
+			// R2.1: mixed exit codes → pee exits 1.
+			Name:     "mixed_exit_codes",
+			Args:     []string{"true", "false"},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 1,
 		},
 	}
 
