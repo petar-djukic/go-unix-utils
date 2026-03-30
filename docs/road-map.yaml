@@ -559,7 +559,7 @@ releases:
         - id: rel13.0-uc001-df
           status: implemented
         - id: rel13.0-uc002-dir
-          status: spec_complete
+          status: implemented
         - id: rel13.0-uc003-vdir
           status: spec_complete
         - id: rel13.0-uc004-dircolors
