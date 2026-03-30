@@ -3,7 +3,7 @@
 
 // cmd/cp implements GNU cp: copy files and directories.
 //
-// Implements prd056-cp R1.1-R1.4, R2.1-R2.4.
+// Implements prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -24,12 +24,16 @@ const helpText = `Usage: cp [OPTION]... [-T] SOURCE... DEST
 Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY.
 
 Mandatory arguments to long options are mandatory for short options too.
+  -a, --archive                same as -dR --preserve=all
+  -d                           same as --no-dereference --preserve=links
   -f, --force                  if an existing destination file cannot be
                                  opened, remove it and try again
   -i, --interactive            prompt before overwrite
   -L, --dereference            always follow symbolic links in SOURCE
   -n, --no-clobber             do not overwrite an existing file
+  -p                           same as --preserve=mode,ownership,timestamps
   -P, --no-dereference         never follow symbolic links in SOURCE
+      --preserve[=ATTR_LIST]   preserve the specified attributes
   -r, -R, --recursive          copy directories recursively
   -t, --target-directory=DIRECTORY  copy all SOURCE arguments into DIRECTORY
   -v, --verbose                explain what is being done
@@ -50,6 +54,7 @@ const (
 // cpOptions holds parsed command-line flags.
 // R1.1-R1.4: force, interactive, noClobber, verbose, targetDir.
 // R2.1-R2.4: recursive, dereference, noDereference.
+// R3.1-R3.3: preserve, inodeMap.
 type cpOptions struct {
 	force         bool
 	interactive   bool
@@ -59,6 +64,8 @@ type cpOptions struct {
 	recursive     bool
 	dereference   bool
 	noDereference bool
+	preserve      preserveSet
+	inodeMap      map[inodeKey]string
 }
 
 func main() {
@@ -87,6 +94,9 @@ func run(args []string, stdin *os.File, stdout, stderr *os.File) int {
 
 // dispatch routes based on operand count and target-directory mode.
 func dispatch(operands []string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
+	if opts.preserve.links {
+		opts.inodeMap = make(map[inodeKey]string)
+	}
 	if opts.targetDir != "" {
 		return copyIntoDir(operands, opts.targetDir, opts, stdin, stdout, stderr)
 	}
@@ -170,13 +180,15 @@ func copySingle(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr
 
 // copySymlinkEntry copies a symbolic link, preserving it as a symlink.
 // R2.4: -P no-dereference.
+// R3.1: preserve ownership on symlinks when requested.
 func copySymlinkEntry(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
 	if !handleDestConflict(dest, opts, stdin, stderr) {
 		return 0
 	}
 	target, err := os.Readlink(src)
 	if err != nil {
-		printError(stderr, fmt.Sprintf("cannot read symlink '%s': %s", src, err))
+		printError(stderr, fmt.Sprintf(
+			"cannot read symlink '%s': %s", src, err))
 		return 1
 	}
 	// Remove existing dest; os.Symlink cannot overwrite.
@@ -186,14 +198,21 @@ func copySymlinkEntry(src, dest string, opts cpOptions, stdin *os.File, stdout, 
 			"cannot create symlink '%s': %s", dest, err))
 		return 1
 	}
+	exitCode := 0
+	if opts.preserve.ownership {
+		if !preserveSymlinkOwner(src, dest, stderr) {
+			exitCode = 1
+		}
+	}
 	if opts.verbose {
 		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
 	}
-	return 0
+	return exitCode
 }
 
 // copyDir recursively copies a directory tree from src to dest.
 // R2.1: -r recursive directory copy.
+// R3.1: preserve directory attributes after entries are copied.
 func copyDir(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
@@ -202,14 +221,19 @@ func copyDir(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *o
 		return 1
 	}
 	if err := os.MkdirAll(dest, srcInfo.Mode().Perm()); err != nil {
-		printError(stderr, fmt.Sprintf("cannot create directory '%s': %s",
-			dest, err))
+		printError(stderr, fmt.Sprintf(
+			"cannot create directory '%s': %s", dest, err))
 		return 1
 	}
 	if opts.verbose {
 		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
 	}
-	return copyDirEntries(src, dest, opts, stdin, stdout, stderr)
+	exitCode := copyDirEntries(src, dest, opts, stdin, stdout, stderr)
+	// R3.1: preserve dir attributes after entries (timestamps reset by writes).
+	if !preserveDirAttrs(src, dest, opts.preserve, stderr) {
+		exitCode = 1
+	}
+	return exitCode
 }
 
 // copyDirEntries reads and copies all entries from src directory into dest.
@@ -232,19 +256,33 @@ func copyDirEntries(src, dest string, opts cpOptions, stdin *os.File, stdout, st
 }
 
 // copyRegularFile copies a regular file from src to dest.
+// R3.1-R3.3: preserves attributes when requested.
 func copyRegularFile(src, dest string, mode os.FileMode, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
 	if !handleDestConflict(dest, opts, stdin, stderr) {
 		return 0
+	}
+	if opts.preserve.links && opts.inodeMap != nil {
+		if tryHardLink(src, dest, opts.inodeMap) {
+			if opts.verbose {
+				fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
+			}
+			return 0
+		}
 	}
 	if err := copyFile(src, dest, mode, opts); err != nil {
 		printError(stderr, fmt.Sprintf(
 			"cannot copy '%s' to '%s': %s", src, dest, err))
 		return 1
 	}
+	recordInode(src, dest, opts.inodeMap)
+	exitCode := 0
+	if !preserveFileAttrs(src, dest, opts.preserve, stderr) {
+		exitCode = 1
+	}
 	if opts.verbose {
 		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
 	}
-	return 0
+	return exitCode
 }
 
 // shouldDereference returns true when symlinks should be followed.
@@ -386,18 +424,43 @@ func parseLongFlag(flag string, remaining []string, opts *cpOptions) (int, parse
 	case "--no-dereference":
 		opts.noDereference = true
 		opts.dereference = false
+	case "--archive":
+		setArchiveMode(opts)
+	case "--preserve":
+		return parseLongPreserve(value, hasValue, opts)
 	case "--target-directory":
-		if hasValue {
-			opts.targetDir = value
-		} else if len(remaining) > 0 {
-			opts.targetDir = remaining[0]
-			return 1, parseOK, nil
-		} else {
-			return 0, parseOK, fmt.Errorf(
-				"option '--target-directory' requires an argument")
-		}
+		return parseLongTargetDir(value, hasValue, remaining, opts)
 	default:
 		return 0, parseOK, fmt.Errorf("unrecognized option '%s'", flag)
+	}
+	return 0, parseOK, nil
+}
+
+// parseLongPreserve handles --preserve and --preserve=ATTR_LIST.
+// R3.3: comma-separated attribute list.
+func parseLongPreserve(value string, hasValue bool, opts *cpOptions) (int, parseResult, error) {
+	if hasValue {
+		p, err := parsePreserveList(value)
+		if err != nil {
+			return 0, parseOK, err
+		}
+		opts.preserve = p
+	} else {
+		opts.preserve = defaultPreserve()
+	}
+	return 0, parseOK, nil
+}
+
+// parseLongTargetDir handles --target-directory=DIR and --target-directory DIR.
+func parseLongTargetDir(value string, hasValue bool, remaining []string, opts *cpOptions) (int, parseResult, error) {
+	if hasValue {
+		opts.targetDir = value
+	} else if len(remaining) > 0 {
+		opts.targetDir = remaining[0]
+		return 1, parseOK, nil
+	} else {
+		return 0, parseOK, fmt.Errorf(
+			"option '--target-directory' requires an argument")
 	}
 	return 0, parseOK, nil
 }
@@ -407,12 +470,20 @@ func parseShortFlags(flags string, remaining []string, opts *cpOptions) (int, er
 	consumed := 0
 	for i := 0; i < len(flags); i++ {
 		switch flags[i] {
+		case 'a':
+			setArchiveMode(opts)
+		case 'd':
+			opts.noDereference = true
+			opts.dereference = false
+			opts.preserve.links = true
 		case 'f':
 			opts.force = true
 		case 'i':
 			opts.interactive = true
 		case 'n':
 			opts.noClobber = true
+		case 'p':
+			opts.preserve = defaultPreserve()
 		case 'v':
 			opts.verbose = true
 		case 'r', 'R':
@@ -424,22 +495,27 @@ func parseShortFlags(flags string, remaining []string, opts *cpOptions) (int, er
 			opts.noDereference = true
 			opts.dereference = false
 		case 't':
-			rest := flags[i+1:]
-			if rest != "" {
-				opts.targetDir = rest
-			} else if len(remaining) > consumed {
-				opts.targetDir = remaining[consumed]
-				consumed++
-			} else {
-				return consumed, fmt.Errorf(
-					"option requires an argument -- 't'")
-			}
-			return consumed, nil
+			return parseShortTargetDir(
+				flags[i+1:], remaining, consumed, opts)
 		default:
-			return consumed, fmt.Errorf("invalid option -- '%c'", flags[i])
+			return consumed, fmt.Errorf(
+				"invalid option -- '%c'", flags[i])
 		}
 	}
 	return consumed, nil
+}
+
+// parseShortTargetDir handles the -t flag value.
+func parseShortTargetDir(rest string, remaining []string, consumed int, opts *cpOptions) (int, error) {
+	if rest != "" {
+		opts.targetDir = rest
+		return consumed, nil
+	}
+	if len(remaining) > consumed {
+		opts.targetDir = remaining[consumed]
+		return consumed + 1, nil
+	}
+	return consumed, fmt.Errorf("option requires an argument -- 't'")
 }
 
 // splitLongFlag splits --name=value into components.

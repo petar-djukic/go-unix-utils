@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cp against gcp (GNU coreutils).
 //
-// Covers prd056-cp R1.1-R1.4, R2.1-R2.4.
+// Covers prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -30,6 +30,10 @@ func discardAll(data []byte) []byte {
 // R2.2: directory without -r error.
 // R2.3: -L dereference symlinks.
 // R2.4: -P no-dereference preserves symlinks.
+// R3.1: -p preserve mode, ownership, timestamps.
+// R3.2: -a archive mode.
+// R3.3: --preserve=ATTR_LIST.
+// R3.4: -v verbose (covered in verbose_output).
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -92,6 +96,26 @@ func TestDiff(t *testing.T) {
 	t.Run("no_deref_symlink", func(t *testing.T) {
 		t.Parallel()
 		runNoDerefTest(t, goBin, refBin)
+	})
+
+	t.Run("preserve_mode_timestamps", func(t *testing.T) {
+		t.Parallel()
+		runPreserveModeTimestampsTest(t, goBin, refBin)
+	})
+
+	t.Run("preserve_mode_only", func(t *testing.T) {
+		t.Parallel()
+		runPreserveModeOnlyTest(t, goBin, refBin)
+	})
+
+	t.Run("preserve_p_flag", func(t *testing.T) {
+		t.Parallel()
+		runPreservePTest(t, goBin, refBin)
+	})
+
+	t.Run("archive_copy", func(t *testing.T) {
+		t.Parallel()
+		runArchiveCopyTest(t, goBin, refBin)
 	})
 }
 
@@ -215,7 +239,7 @@ func runForceTest(t *testing.T, goBin, refBin string) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// runVerboseTest verifies verbose output matches between binaries.
+// runVerboseTest verifies R3.4: verbose output matches between binaries.
 func runVerboseTest(t *testing.T, goBin, refBin string) {
 	t.Helper()
 
@@ -381,6 +405,105 @@ func runNoDerefTest(t *testing.T, goBin, refBin string) {
 			ExitCode: 0,
 			ExpectedFiles: map[string][]byte{
 				"link_copy.txt": []byte("target\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runPreserveModeTimestampsTest verifies R3.3: --preserve=mode,timestamps.
+func runPreserveModeTimestampsTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	srcPath := filepath.Join(workDir, "src.txt")
+	writeFile(t, srcPath, "preserve me\n")
+	os.Chmod(srcPath, 0o755) //nolint:errcheck
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "preserve_mode_timestamps",
+			Args:     []string{"--preserve=mode,timestamps", "src.txt", "dst.txt"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"dst.txt": []byte("preserve me\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runPreserveModeOnlyTest verifies R3.3: --preserve=mode.
+func runPreserveModeOnlyTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	srcPath := filepath.Join(workDir, "src.txt")
+	writeFile(t, srcPath, "mode only\n")
+	os.Chmod(srcPath, 0o755) //nolint:errcheck
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "preserve_mode_only",
+			Args:     []string{"--preserve=mode", "src.txt", "dst.txt"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"dst.txt": []byte("mode only\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runPreservePTest verifies R3.1: -p preserves mode, ownership, timestamps.
+// Ownership preservation fails as non-root; stderr is normalized.
+func runPreservePTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "src.txt"), "p flag\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "preserve_p",
+			Args:      []string{"-p", "src.txt", "dst.txt"},
+			WorkDir:   workDir,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+			ExpectedFiles: map[string][]byte{
+				"dst.txt": []byte("p flag\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runArchiveCopyTest verifies R3.2: -a archive mode (recursive + preserve).
+func runArchiveCopyTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	mkdirAll(t, filepath.Join(workDir, "srcdir", "sub"))
+	writeFile(t, filepath.Join(workDir, "srcdir", "file.txt"), "archive\n")
+	writeFile(t, filepath.Join(workDir, "srcdir", "sub", "deep.txt"),
+		"deep archive\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "archive_recursive",
+			Args:      []string{"-a", "srcdir", "destdir"},
+			WorkDir:   workDir,
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+			ExpectedFiles: map[string][]byte{
+				"destdir/file.txt":     []byte("archive\n"),
+				"destdir/sub/deep.txt": []byte("deep archive\n"),
 			},
 		},
 	}
