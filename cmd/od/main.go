@@ -3,7 +3,7 @@
 
 // cmd/od implements GNU od: octal and other format dump.
 //
-// Implements prd072-od R1.1, R1.2, R1.3, R1.4.
+// Implements prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -15,18 +15,25 @@ import (
 	"os"
 	"strings"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const (
-	defaultWidth = 16
-	addrDigits   = 7
-)
+const defaultWidth = 16
 
 // typeSpec describes one output format: a format letter and byte size.
 type typeSpec struct {
 	letter byte
 	size   int
+}
+
+// odConfig holds parsed command-line options.
+type odConfig struct {
+	specs     []typeSpec
+	files     []string
+	addrRadix byte  // R2.1: 'o', 'd', 'x', 'n'
+	skipBytes int64 // R2.2: bytes to skip before formatting
+	readBytes int64 // R2.3: max bytes to format (-1 = unlimited)
 }
 
 func main() {
@@ -36,36 +43,48 @@ func main() {
 
 // run parses flags, opens input, and performs the dump.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	specs, files, err := parseArgs(args)
+	cfg, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "od: %s\n", err)
 		return 1
 	}
-	if len(specs) == 0 {
+	if len(cfg.specs) == 0 {
 		// R1.1: default is octal 2-byte words.
-		specs = []typeSpec{{'o', 2}}
+		cfg.specs = []typeSpec{{'o', 2}}
 	}
-	if len(files) == 0 {
+	if len(cfg.files) == 0 {
 		// R1.4: read stdin when no file given.
-		files = []string{"-"}
+		cfg.files = []string{"-"}
 	}
-	widths := resolveWidths(specs)
-	reader, code := openInputs(files, stdin, stderr)
-	if dumpErr := dump(reader, stdout, specs, widths); dumpErr != nil {
+	widths := resolveWidths(cfg.specs)
+	reader, code := openInputs(cfg.files, stdin, stderr)
+	r, startOff := applySkipAndLimit(reader, cfg)
+	if dumpErr := dump(r, stdout, cfg.specs, widths, cfg.addrRadix, startOff); dumpErr != nil {
 		return 1
 	}
 	return code
 }
 
-// parseArgs separates -t/--format type specs from file arguments.
-func parseArgs(args []string) ([]typeSpec, []string, error) {
-	var specs []typeSpec
-	var files []string
+// applySkipAndLimit skips input bytes and applies a read limit.
+// R2.2: skip bytes. R2.3: limit bytes.
+func applySkipAndLimit(r io.Reader, cfg odConfig) (io.Reader, int) {
+	if cfg.skipBytes > 0 {
+		io.CopyN(io.Discard, r, cfg.skipBytes) //nolint:errcheck // short input is not an error
+	}
+	if cfg.readBytes >= 0 {
+		r = io.LimitReader(r, cfg.readBytes)
+	}
+	return r, int(cfg.skipBytes)
+}
+
+// parseArgs separates flags from file arguments and returns configuration.
+func parseArgs(args []string) (odConfig, error) {
+	cfg := odConfig{addrRadix: 'o', readBytes: -1}
 	done := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if done || len(a) == 0 || (a != "-" && a[0] != '-') {
-			files = append(files, a)
+			cfg.files = append(cfg.files, a)
 			continue
 		}
 		if a == "--" {
@@ -73,17 +92,103 @@ func parseArgs(args []string) ([]typeSpec, []string, error) {
 			continue
 		}
 		if a == "-" {
-			files = append(files, a)
+			cfg.files = append(cfg.files, a)
 			continue
 		}
-		s, advance, err := extractTypeArg(a, args, i)
+		adv, err := parseFlag(&cfg, a, args, i)
 		if err != nil {
-			return nil, nil, err
+			return odConfig{}, err
 		}
-		specs = append(specs, s...)
-		i += advance
+		i += adv
 	}
-	return specs, files, nil
+	return cfg, nil
+}
+
+// parseFlag dispatches a single flag argument to the appropriate handler.
+func parseFlag(cfg *odConfig, arg string, args []string, idx int) (int, error) {
+	// R2.1: -A / --address-radix
+	if matchFlag(arg, 'A', "--address-radix") {
+		val, adv, err := extractFlagValue(arg, args, idx, 'A', "--address-radix")
+		if err != nil {
+			return 0, err
+		}
+		return adv, setAddrRadix(cfg, val)
+	}
+	// R2.2: -j / --skip-bytes
+	if matchFlag(arg, 'j', "--skip-bytes") {
+		return parseBytesFlag(arg, args, idx, 'j', "--skip-bytes", &cfg.skipBytes)
+	}
+	// R2.3: -N / --read-bytes
+	if matchFlag(arg, 'N', "--read-bytes") {
+		return parseBytesFlag(arg, args, idx, 'N', "--read-bytes", &cfg.readBytes)
+	}
+	// R1.2: -t / --format (type specifiers)
+	s, advance, err := extractTypeArg(arg, args, idx)
+	if err != nil {
+		return 0, err
+	}
+	cfg.specs = append(cfg.specs, s...)
+	return advance, nil
+}
+
+// parseBytesFlag extracts and parses a byte-count flag value via sizeparse.
+func parseBytesFlag(
+	arg string, args []string, idx int, short byte, long string, dest *int64,
+) (int, error) {
+	val, adv, err := extractFlagValue(arg, args, idx, short, long)
+	if err != nil {
+		return 0, err
+	}
+	n, perr := sizeparse.Parse(val)
+	if perr != nil {
+		return 0, fmt.Errorf("invalid %s value: %q", long, val)
+	}
+	*dest = n
+	return adv, nil
+}
+
+// matchFlag reports whether arg matches short flag -X or long flag --name[=].
+func matchFlag(arg string, short byte, long string) bool {
+	if arg == long || strings.HasPrefix(arg, long+"=") {
+		return true
+	}
+	return len(arg) >= 2 && arg[0] == '-' && arg[1] == short
+}
+
+// extractFlagValue extracts the value for a short (-X) or long (--name) flag.
+func extractFlagValue(
+	arg string, args []string, idx int, short byte, long string,
+) (string, int, error) {
+	if strings.HasPrefix(arg, long+"=") {
+		return arg[len(long)+1:], 0, nil
+	}
+	if arg == long {
+		if idx+1 >= len(args) {
+			return "", 0, fmt.Errorf("option '%s' requires an argument", long)
+		}
+		return args[idx+1], 1, nil
+	}
+	// Short form: -Xval or -X val
+	if len(arg) > 2 {
+		return arg[2:], 0, nil
+	}
+	if idx+1 >= len(args) {
+		return "", 0, fmt.Errorf("option requires an argument -- '%c'", short)
+	}
+	return args[idx+1], 1, nil
+}
+
+// setAddrRadix validates and sets the address radix.
+// R2.1: valid radix values are d, o, x, n.
+func setAddrRadix(cfg *odConfig, val string) error {
+	switch val {
+	case "d", "o", "x", "n":
+		cfg.addrRadix = val[0]
+		return nil
+	}
+	return fmt.Errorf(
+		"invalid output address radix '%s'; it must be one character from [doxn]", val,
+	)
 }
 
 // extractTypeArg handles -t, -tTYPE, --format=TYPE arguments.
@@ -232,15 +337,47 @@ func openInputs(files []string, stdin io.Reader, stderr io.Writer) (io.Reader, i
 	return io.MultiReader(readers...), code
 }
 
+// addrWidth returns the character width of the address column for a radix.
+// R2.1: different radixes have different display widths.
+func addrWidth(radix byte) int {
+	switch radix {
+	case 'o':
+		return 7
+	case 'd':
+		return 7
+	case 'x':
+		return 6
+	}
+	return 0 // 'n': no address column
+}
+
+// formatAddr formats an offset as an address string in the given radix.
+// R2.1: supports octal, decimal, hex, and none.
+func formatAddr(offset int, radix byte) string {
+	switch radix {
+	case 'o':
+		return fmt.Sprintf("%07o", offset)
+	case 'd':
+		return fmt.Sprintf("%07d", offset)
+	case 'x':
+		return fmt.Sprintf("%06x", offset)
+	}
+	return ""
+}
+
 // dump reads input and writes formatted output.
-func dump(r io.Reader, w io.Writer, specs []typeSpec, widths []int) error {
+func dump(
+	r io.Reader, w io.Writer, specs []typeSpec, widths []int,
+	radix byte, startOffset int,
+) error {
 	bw := bufio.NewWriter(w)
+	aw := addrWidth(radix)
 	buf := make([]byte, defaultWidth)
-	offset := 0
+	offset := startOffset
 	for {
 		n, err := io.ReadFull(r, buf)
 		if n > 0 {
-			if wErr := writeBlock(bw, buf[:n], specs, widths, offset); wErr != nil {
+			if wErr := writeBlock(bw, buf[:n], specs, widths, offset, radix, aw); wErr != nil {
 				return wErr
 			}
 			offset += n
@@ -252,20 +389,24 @@ func dump(r io.Reader, w io.Writer, specs []typeSpec, widths []int) error {
 			return err
 		}
 	}
-	fmt.Fprintf(bw, "%0*o\n", addrDigits, offset)
+	// R2.4: final line with address of byte past the last byte read.
+	if radix != 'n' {
+		fmt.Fprintf(bw, "%s\n", formatAddr(offset, radix))
+	}
 	return bw.Flush()
 }
 
 // writeBlock writes all type spec lines for one input block.
 // R1.3: each -t option produces an additional output line per block.
 func writeBlock(
-	bw *bufio.Writer, block []byte, specs []typeSpec, widths []int, offset int,
+	bw *bufio.Writer, block []byte, specs []typeSpec, widths []int,
+	offset int, radix byte, aw int,
 ) error {
 	for i, spec := range specs {
-		if i == 0 {
-			fmt.Fprintf(bw, "%0*o", addrDigits, offset)
-		} else {
-			writeSpaces(bw, addrDigits)
+		if i == 0 && radix != 'n' {
+			fmt.Fprintf(bw, "%s", formatAddr(offset, radix))
+		} else if i > 0 {
+			writeSpaces(bw, aw)
 		}
 		writeTypeLine(bw, block, spec, widths[i])
 		bw.WriteByte('\n') //nolint:errcheck

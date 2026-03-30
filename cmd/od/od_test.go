@@ -12,7 +12,8 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4 via differential testing.
+// TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
+// via differential testing.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -27,7 +28,8 @@ func TestDiff(t *testing.T) {
 	writeTestFile(t, file1, []byte("hello"))
 	writeTestFile(t, file2, []byte(" world"))
 
-	tests := buildTestCases(file1, file2)
+	tests := buildR1TestCases(file1, file2)
+	tests = append(tests, buildR2TestCases(file1)...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -38,7 +40,7 @@ func writeTestFile(t *testing.T, path string, content []byte) {
 	}
 }
 
-func buildTestCases(file1, file2 string) []testutils.DiffTest {
+func buildR1TestCases(file1, file2 string) []testutils.DiffTest {
 	env := []string{"LC_ALL=C"}
 	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
 	text := []byte("hello world\n")
@@ -74,5 +76,37 @@ func buildTestCases(file1, file2 string) []testutils.DiffTest {
 		{Name: "multi_file", Args: []string{file1, file2}, Env: env},
 		{Name: "stdin_dash", Args: []string{"-t", "x1", "-"}, Stdin: bin, Env: env},
 		{Name: "empty_input", Stdin: []byte{}, Env: env},
+	}
+}
+
+func buildR2TestCases(file1 string) []testutils.DiffTest {
+	env := []string{"LC_ALL=C"}
+	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	text := []byte("hello world\n")
+
+	return []testutils.DiffTest{
+		// R2.1: address radix
+		{Name: "addr_decimal", Args: []string{"-A", "d"}, Stdin: bin, Env: env},
+		{Name: "addr_hex", Args: []string{"-A", "x"}, Stdin: bin, Env: env},
+		{Name: "addr_none", Args: []string{"-A", "n"}, Stdin: bin, Env: env},
+		{Name: "addr_octal_explicit", Args: []string{"-A", "o"}, Stdin: bin, Env: env},
+		{Name: "addr_radix_long", Args: []string{"--address-radix=x"}, Stdin: bin, Env: env},
+		{Name: "addr_radix_combined", Args: []string{"-Ax"}, Stdin: bin, Env: env},
+		{Name: "addr_hex_with_type", Args: []string{"-A", "x", "-t", "x1"}, Stdin: bin, Env: env},
+		// R2.2: skip bytes
+		{Name: "skip_3", Args: []string{"-j", "3"}, Stdin: text, Env: env},
+		{Name: "skip_long", Args: []string{"--skip-bytes=5"}, Stdin: text, Env: env},
+		{Name: "skip_combined", Args: []string{"-j5"}, Stdin: text, Env: env},
+		{Name: "skip_file", Args: []string{"-j", "2", file1}, Env: env},
+		// R2.3: read bytes
+		{Name: "read_4", Args: []string{"-N", "4"}, Stdin: text, Env: env},
+		{Name: "read_long", Args: []string{"--read-bytes=5"}, Stdin: text, Env: env},
+		{Name: "read_combined", Args: []string{"-N5"}, Stdin: text, Env: env},
+		{Name: "read_file", Args: []string{"-N", "3", file1}, Env: env},
+		// R2.2 + R2.3 combined
+		{Name: "skip_and_read", Args: []string{"-j", "3", "-N", "4"}, Stdin: text, Env: env},
+		// R2.4: final address line with different radixes
+		{Name: "final_addr_decimal", Args: []string{"-A", "d", "-t", "x1"}, Stdin: bin, Env: env},
+		{Name: "final_addr_none", Args: []string{"-A", "n", "-t", "x1"}, Stdin: bin, Env: env},
 	}
 }
