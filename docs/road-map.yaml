@@ -397,7 +397,7 @@ releases:
         - id: rel08.1-uc006-od
           status: implemented
         - id: rel08.1-uc007-printf
-          status: spec_complete
+          status: implemented
     - version: "09.0"
       name: "Batch 9.0 — hash and checksum utilities (sha224sum, sha384sum, b2sum, cksum, sum)"
       status: spec_complete
