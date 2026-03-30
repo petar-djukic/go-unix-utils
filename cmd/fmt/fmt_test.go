@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/fmt.
-// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1.
+// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1.
 package main
 
 import (
@@ -122,6 +122,83 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		{
+			// R5.1: -w sets custom width
+			Name:  "width_short_flag",
+			Args:  []string{"-w", "30"},
+			Stdin: []byte("this is a line of text that should be wrapped at thirty characters\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R5.1: --width=N long form
+			Name:  "width_long_equals",
+			Args:  []string{"--width=40"},
+			Stdin: []byte("this is a line of text that should be wrapped at about forty characters or so\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R5.1: --width N space-separated long form
+			Name:  "width_long_space",
+			Args:  []string{"--width", "30"},
+			Stdin: []byte("this is a line of text that should be wrapped at thirty characters\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R5.1: -wN attached value
+			Name:  "width_attached",
+			Args:  []string{"-w30"},
+			Stdin: []byte("this is a line of text that should be wrapped at thirty characters\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R6.1: -g sets goal width
+			Name:  "goal_width",
+			Args:  []string{"-w", "60", "-g", "50"},
+			Stdin: []byte("this is some text that we want to fill to approximately fifty characters per line in the output\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R6.1: --goal=N long form
+			Name:  "goal_long_equals",
+			Args:  []string{"--goal=20", "-w", "30"},
+			Stdin: []byte("some text here that needs formatting with a goal width setting\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R7.1: long word exceeding width is not broken
+			Name:  "long_word_no_break",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("a verylongwordthatexceedswidth b\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R8.1: sentence-ending punctuation gets two spaces
+			Name:  "sentence_end_spacing",
+			Args:  []string{},
+			Stdin: []byte("First sentence.  Second sentence.  Third sentence.\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R8.1: multiple spaces in short line pass through (GNU fmt behavior)
+			Name:  "space_preserve_short",
+			Args:  []string{},
+			Stdin: []byte("word     word    word\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R8.1: original spacing preserved when reformatting
+			Name:  "space_preserve_reformat",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("lots   of   extra   spaces   here\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			// R8.1: single-space text reformatted at custom width
+			Name:  "reformat_single_space",
+			Args:  []string{"-w", "30"},
+			Stdin: []byte("End of sentence. Start of another sentence. And more text here.\n"),
+			Env:   []string{"LC_ALL=C"},
 		},
 	}
 
