@@ -105,6 +105,37 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
+		// R3.1: no output to stdout or stderr under normal operation.
+		{
+			Name:     "no_output_normal",
+			Args:     []string{"0.001"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.2: must not read from stdin (stdin provided but ignored).
+		{
+			Name:     "stdin_ignored",
+			Args:     []string{"0"},
+			Stdin:    []byte("this input should be ignored\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: --help prints usage to stdout and exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.4: --version prints version info to stdout and exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
