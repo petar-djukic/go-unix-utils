@@ -526,7 +526,7 @@ releases:
         - id: rel12.0-uc002-chroot
           status: implemented
         - id: rel12.0-uc003-install
-          status: spec_complete
+          status: implemented
     - version: "12.1"
       name: "Batch 12.1 — miscellaneous utilities (tsort, pathchk, test)"
       status: spec_complete
