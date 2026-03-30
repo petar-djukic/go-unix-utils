@@ -3,7 +3,7 @@
 
 // cmd/pr implements GNU pr: paginate or columnate files for printing.
 //
-// Implements prd110-pr R1.1, R2.1, R2.2, R2.3.
+// Implements prd110-pr R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -30,12 +30,16 @@ const (
 
 // prOptions holds parsed flag state.
 type prOptions struct {
-	pageLength     int
-	pageWidth      int
-	customHeader   string
+	pageLength      int
+	pageWidth       int
+	columns         int
+	across          bool
+	separator       string
+	hasSeparator    bool
+	customHeader    string
 	hasCustomHeader bool
-	omitHeader     bool // -t: suppress header and footer
-	omitPagination bool // -T: suppress header/footer and page padding
+	omitHeader      bool // -t: suppress header and footer
+	omitPagination  bool // -T: suppress header/footer and page padding
 }
 
 func main() {
@@ -75,6 +79,7 @@ func parseArgs(args []string) (prOptions, []string, error) {
 	opts := prOptions{
 		pageLength: defaultPageLength,
 		pageWidth:  defaultPageWidth,
+		columns:    1,
 	}
 	var files []string
 	flagsDone := false
@@ -93,15 +98,7 @@ func parseArgs(args []string) (prOptions, []string, error) {
 			files = append(files, arg)
 			continue
 		}
-		consumed, err := parseLongFlag(&opts, args, i)
-		if err != nil {
-			return opts, nil, err
-		}
-		if consumed > 0 {
-			i += consumed - 1
-			continue
-		}
-		consumed, err = parseShortFlags(&opts, args, i)
+		consumed, err := parseFlag(&opts, args, i)
 		if err != nil {
 			return opts, nil, err
 		}
@@ -115,7 +112,20 @@ func parseArgs(args []string) (prOptions, []string, error) {
 	return opts, files, nil
 }
 
-// parseLongFlag handles --length=N, --header=H, --omit-header, --omit-pagination.
+// parseFlag dispatches to long or short flag parsing.
+func parseFlag(opts *prOptions, args []string, i int) (int, error) {
+	consumed, err := parseLongFlag(opts, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if consumed > 0 {
+		return consumed, nil
+	}
+	return parseShortFlags(opts, args, i)
+}
+
+// parseLongFlag handles --length=N, --header=H, --omit-header, --omit-pagination,
+// --columns=N, --width=N, --separator[=CHAR], --across.
 // Returns number of args consumed (0 if not a long flag).
 func parseLongFlag(opts *prOptions, args []string, i int) (int, error) {
 	arg := args[i]
@@ -131,16 +141,40 @@ func parseLongFlag(opts *prOptions, args []string, i int) (int, error) {
 		opts.hasCustomHeader = true
 		return 1, nil
 	}
-	if arg == "--omit-header" {
-		opts.omitHeader = true
-		return 1, nil
+	if val, ok := cutValue(arg, "--columns="); ok {
+		return parseColumnsValue(opts, val)
 	}
-	if arg == "--omit-pagination" {
-		opts.omitPagination = true
-		opts.omitHeader = true
+	if val, ok := cutValue(arg, "--width="); ok {
+		return parseWidthValue(opts, val)
+	}
+	if val, ok := cutValue(arg, "--separator="); ok {
+		opts.separator = val
+		opts.hasSeparator = true
 		return 1, nil
 	}
 
+	return parseLongBoolFlag(opts, arg)
+}
+
+// parseLongBoolFlag handles long flags that take no value.
+func parseLongBoolFlag(opts *prOptions, arg string) (int, error) {
+	switch arg {
+	case "--omit-header":
+		opts.omitHeader = true
+		return 1, nil
+	case "--omit-pagination":
+		opts.omitPagination = true
+		opts.omitHeader = true
+		return 1, nil
+	case "--across":
+		opts.across = true
+		return 1, nil
+	case "--separator":
+		// D3: --separator alone uses TAB
+		opts.separator = "\t"
+		opts.hasSeparator = true
+		return 1, nil
+	}
 	return 0, fmt.Errorf("unrecognized option '%s'", arg)
 }
 
@@ -162,7 +196,27 @@ func parseLengthValue(opts *prOptions, val string) (int, error) {
 	return 1, nil
 }
 
-// parseShortFlags handles -l, -h, -t, -T and their argument consumption.
+// parseColumnsValue parses and validates the column count.
+func parseColumnsValue(opts *prOptions, val string) (int, error) {
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("invalid number of columns: '%s'", val)
+	}
+	opts.columns = n
+	return 1, nil
+}
+
+// parseWidthValue parses and validates the page width.
+func parseWidthValue(opts *prOptions, val string) (int, error) {
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, fmt.Errorf("invalid page width: '%s'", val)
+	}
+	opts.pageWidth = n
+	return 1, nil
+}
+
+// parseShortFlags handles -l, -h, -t, -T, -a, -w, -s, -N and their arguments.
 // Returns number of args consumed (0 if not a recognized flag).
 func parseShortFlags(opts *prOptions, args []string, i int) (int, error) {
 	arg := args[i]
@@ -170,21 +224,56 @@ func parseShortFlags(opts *prOptions, args []string, i int) (int, error) {
 		return 0, nil
 	}
 
-	chars := arg[1:]
+	// R3.1: -N column shorthand like -2, -3, etc.
+	if isColumnShorthand(arg) {
+		return parseColumnShorthand(opts, arg)
+	}
+
+	return parseShortFlagChars(opts, args, i)
+}
+
+// isColumnShorthand returns true if arg is -N where N is all digits.
+func isColumnShorthand(arg string) bool {
+	for _, ch := range arg[1:] {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// parseColumnShorthand parses -N column shorthand.
+func parseColumnShorthand(opts *prOptions, arg string) (int, error) {
+	n, err := strconv.Atoi(arg[1:])
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("invalid number of columns: '%s'", arg[1:])
+	}
+	opts.columns = n
+	return 1, nil
+}
+
+// parseShortFlagChars processes individual short flag characters.
+func parseShortFlagChars(opts *prOptions, args []string, i int) (int, error) {
+	chars := args[i][1:]
 	for j := 0; j < len(chars); j++ {
-		ch := chars[j]
-		switch ch {
+		switch chars[j] {
 		case 't':
 			opts.omitHeader = true
 		case 'T':
 			opts.omitPagination = true
 			opts.omitHeader = true
+		case 'a':
+			opts.across = true
 		case 'l':
 			return parseShortWithArg(opts, chars[j+1:], args, i, setPageLength)
 		case 'h':
 			return parseShortWithArg(opts, chars[j+1:], args, i, setHeader)
+		case 'w':
+			return parseShortWithArg(opts, chars[j+1:], args, i, setWidth)
+		case 's':
+			return parseShortSep(opts, chars[j+1:])
 		default:
-			return 0, fmt.Errorf("unrecognized option '-%c'", ch)
+			return 0, fmt.Errorf("unrecognized option '-%c'", chars[j])
 		}
 	}
 	return 1, nil
@@ -207,6 +296,28 @@ func setHeader(opts *prOptions, val string) error {
 	opts.customHeader = val
 	opts.hasCustomHeader = true
 	return nil
+}
+
+// setWidth sets the page width from a string value.
+func setWidth(opts *prOptions, val string) error {
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return fmt.Errorf("invalid page width: '%s'", val)
+	}
+	opts.pageWidth = n
+	return nil
+}
+
+// parseShortSep handles -s with optional inline character.
+// D3: -s alone uses TAB; -sCHAR uses CHAR.
+func parseShortSep(opts *prOptions, rest string) (int, error) {
+	opts.hasSeparator = true
+	if rest != "" {
+		opts.separator = string(rest[0])
+	} else {
+		opts.separator = "\t"
+	}
+	return 1, nil
 }
 
 // parseShortWithArg handles a short flag that takes an argument.
@@ -280,11 +391,7 @@ func bodyLineCount(opts prOptions) int {
 	if opts.omitHeader {
 		return opts.pageLength
 	}
-	body := opts.pageLength - headerLineCount - footerLineCount
-	if body < 1 {
-		body = 1
-	}
-	return body
+	return max(opts.pageLength-headerLineCount-footerLineCount, 1)
 }
 
 // paginate reads input and writes paginated output.
@@ -297,16 +404,18 @@ func paginate(
 	defer bw.Flush()
 
 	bodyLines := bodyLineCount(opts)
+	linesPerPage := bodyLines * opts.columns
 	pageNum := 1
 	hasMore := true
 
 	for hasMore {
-		lines, more := readBodyLines(scanner, bodyLines)
+		lines, more := readBodyLines(scanner, linesPerPage)
 		hasMore = more
 		if len(lines) == 0 {
 			break
 		}
-		if err := writePage(bw, opts, dateStr, headerText, pageNum, lines, bodyLines); err != nil {
+		formatted := formatColumns(lines, bodyLines, opts)
+		if err := writePage(bw, opts, dateStr, headerText, pageNum, formatted, bodyLines); err != nil {
 			return err
 		}
 		pageNum++
@@ -329,6 +438,136 @@ func readBodyLines(scanner *bufio.Scanner, n int) ([]string, bool) {
 		lines = append(lines, scanner.Text())
 	}
 	return lines, true
+}
+
+// formatColumns arranges input lines into columnar output lines.
+// For single-column mode, returns lines as-is.
+// R3.1: multi-column fills down by default; R4.3: -a fills across.
+func formatColumns(lines []string, _ int, opts prOptions) []string {
+	if opts.columns <= 1 {
+		return lines
+	}
+	if opts.across {
+		return formatAcross(lines, opts)
+	}
+	return formatDown(lines, opts)
+}
+
+// colWidth returns the display width for each column.
+// D2: column width = page width / number of columns.
+func colWidth(opts prOptions) int {
+	return opts.pageWidth / opts.columns
+}
+
+// formatDown arranges lines filling down each column before the next.
+func formatDown(lines []string, opts prOptions) []string {
+	rowCount := (len(lines) + opts.columns - 1) / opts.columns
+	cw := colWidth(opts)
+	result := make([]string, rowCount)
+
+	for row := range rowCount {
+		result[row] = buildRowDown(lines, row, rowCount, cw, opts)
+	}
+	return result
+}
+
+// buildRowDown builds a single output row in fill-down mode.
+func buildRowDown(
+	lines []string, row, rowCount, cw int, opts prOptions,
+) string {
+	var sb strings.Builder
+	lastCol := lastNonEmptyCol(lines, row, rowCount, opts.columns)
+	for col := 0; col <= lastCol; col++ {
+		idx := col*rowCount + row
+		cell := cellAt(lines, idx)
+		writeCell(&sb, cell, cw, col, col == lastCol, opts)
+	}
+	return sb.String()
+}
+
+// formatAcross arranges lines filling across (left to right) each row.
+func formatAcross(lines []string, opts prOptions) []string {
+	rowCount := (len(lines) + opts.columns - 1) / opts.columns
+	cw := colWidth(opts)
+	result := make([]string, rowCount)
+
+	for row := range rowCount {
+		result[row] = buildRowAcross(lines, row, cw, opts)
+	}
+	return result
+}
+
+// buildRowAcross builds a single output row in across mode.
+func buildRowAcross(
+	lines []string, row, cw int, opts prOptions,
+) string {
+	var sb strings.Builder
+	lastCol := lastNonEmptyColAcross(lines, row, opts.columns)
+	for col := 0; col <= lastCol; col++ {
+		idx := row*opts.columns + col
+		cell := cellAt(lines, idx)
+		writeCell(&sb, cell, cw, col, col == lastCol, opts)
+	}
+	return sb.String()
+}
+
+// lastNonEmptyCol finds the last column with content in fill-down mode.
+func lastNonEmptyCol(lines []string, row, rowCount, columns int) int {
+	last := 0
+	for col := range columns {
+		idx := col*rowCount + row
+		if idx < len(lines) {
+			last = col
+		}
+	}
+	return last
+}
+
+// lastNonEmptyColAcross finds the last column with content in across mode.
+func lastNonEmptyColAcross(lines []string, row, columns int) int {
+	last := 0
+	for col := range columns {
+		idx := row*columns + col
+		if idx < len(lines) {
+			last = col
+		}
+	}
+	return last
+}
+
+// cellAt returns the line at index, or "" if out of bounds.
+func cellAt(lines []string, idx int) string {
+	if idx < len(lines) {
+		return lines[idx]
+	}
+	return ""
+}
+
+// writeCell writes a cell to the builder with proper separation/padding.
+func writeCell(
+	sb *strings.Builder, cell string, cw, col int, isLast bool, opts prOptions,
+) {
+	if col > 0 && opts.hasSeparator {
+		sb.WriteString(opts.separator)
+	}
+	if opts.hasSeparator {
+		sb.WriteString(cell)
+	} else if isLast {
+		sb.WriteString(cell)
+	} else {
+		sb.WriteString(truncPad(cell, cw))
+	}
+}
+
+// truncPad truncates or pads a string to exactly width characters.
+func truncPad(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if len(s) >= width {
+		return s[:width]
+	}
+	return s + strings.Repeat(" ", width-len(s))
 }
 
 // writePage outputs a single page with optional header, body, and footer.
@@ -356,8 +595,8 @@ func writePage(
 // writeRawLines writes lines without any pagination structure.
 func writeRawLines(bw *bufio.Writer, lines []string) error {
 	for _, line := range lines {
-		bw.WriteString(line)   //nolint:errcheck
-		bw.WriteByte('\n')     //nolint:errcheck
+		bw.WriteString(line) //nolint:errcheck
+		bw.WriteByte('\n')   //nolint:errcheck
 	}
 	return nil
 }
@@ -367,16 +606,13 @@ func writeRawLines(bw *bufio.Writer, lines []string) error {
 func writeHeader(
 	bw *bufio.Writer, dateStr, headerText string, pageNum, pageWidth int,
 ) {
-	// Two blank lines
 	bw.WriteByte('\n') //nolint:errcheck
 	bw.WriteByte('\n') //nolint:errcheck
 
-	// Header text line
 	headerLine := formatHeaderLine(dateStr, headerText, pageNum, pageWidth)
 	bw.WriteString(headerLine) //nolint:errcheck
 	bw.WriteByte('\n')         //nolint:errcheck
 
-	// Two blank lines
 	bw.WriteByte('\n') //nolint:errcheck
 	bw.WriteByte('\n') //nolint:errcheck
 }
@@ -386,11 +622,11 @@ func writeHeader(
 func formatHeaderLine(
 	dateStr, headerText string, pageNum, pageWidth int,
 ) string {
-	colWidth := pageWidth / 3
+	third := pageWidth / 3
 	rightPart := fmt.Sprintf("Page %d", pageNum)
 
-	left := padRight(dateStr, colWidth)
-	center := padRight(headerText, colWidth)
+	left := padRight(dateStr, third)
+	center := padRight(headerText, third)
 
 	return left + center + rightPart
 }
@@ -421,7 +657,7 @@ func writeBodyLines(bw *bufio.Writer, lines []string, bodyLines int, pad bool) {
 // writeFooter outputs the 5-line page footer (blank lines).
 // R2.2: each page ends with a 5-line trailer block.
 func writeFooter(bw *bufio.Writer) {
-	for i := 0; i < footerLineCount; i++ {
+	for range footerLineCount {
 		bw.WriteByte('\n') //nolint:errcheck
 	}
 }
