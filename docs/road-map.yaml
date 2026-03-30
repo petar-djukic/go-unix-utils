@@ -539,7 +539,7 @@ releases:
         differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel12.1-uc001-tsort
-          status: spec_complete
+          status: implemented
         - id: rel12.1-uc002-pathchk
           status: spec_complete
         - id: rel12.1-uc003-test
