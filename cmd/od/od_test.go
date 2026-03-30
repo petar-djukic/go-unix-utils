@@ -12,8 +12,8 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4
-// via differential testing.
+// TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4 via differential testing.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -30,6 +30,7 @@ func TestDiff(t *testing.T) {
 
 	tests := buildR1TestCases(file1, file2)
 	tests = append(tests, buildR2TestCases(file1)...)
+	tests = append(tests, buildR3TestCases()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -108,5 +109,43 @@ func buildR2TestCases(file1 string) []testutils.DiffTest {
 		// R2.4: final address line with different radixes
 		{Name: "final_addr_decimal", Args: []string{"-A", "d", "-t", "x1"}, Stdin: bin, Env: env},
 		{Name: "final_addr_none", Args: []string{"-A", "n", "-t", "x1"}, Stdin: bin, Env: env},
+	}
+}
+
+func buildR3TestCases() []testutils.DiffTest {
+	env := []string{"LC_ALL=C"}
+	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	text := []byte("hello world\n")
+	// R3.3/R3.4: 64 bytes = 4 identical 16-byte blocks for duplicate testing.
+	block16 := []byte{
+		0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
+		0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50,
+	}
+	dup := make([]byte, 0, 64)
+	dup = append(dup, block16...)
+	dup = append(dup, block16...)
+	dup = append(dup, block16...)
+	dup = append(dup, block16...)
+
+	return []testutils.DiffTest{
+		// R3.1: width control
+		{Name: "width_8", Args: []string{"-w8"}, Stdin: bin, Env: env},
+		{Name: "width_32_default", Args: []string{"-w"}, Stdin: text, Env: env},
+		{Name: "width_long", Args: []string{"--width=4"}, Stdin: bin, Env: env},
+		{Name: "width_long_default", Args: []string{"--width"}, Stdin: text, Env: env},
+		// R3.2: traditional short options
+		{Name: "trad_b", Args: []string{"-b"}, Stdin: bin, Env: env},
+		{Name: "trad_c", Args: []string{"-c"}, Stdin: text, Env: env},
+		{Name: "trad_d", Args: []string{"-d"}, Stdin: bin, Env: env},
+		{Name: "trad_o", Args: []string{"-o"}, Stdin: bin, Env: env},
+		{Name: "trad_s", Args: []string{"-s"}, Stdin: bin, Env: env},
+		{Name: "trad_x", Args: []string{"-x"}, Stdin: bin, Env: env},
+		// R3.3: duplicate suppression with '*'
+		{Name: "dup_suppress", Stdin: dup, Env: env},
+		{Name: "dup_suppress_hex", Args: []string{"-t", "x1"}, Stdin: dup, Env: env},
+		// R3.4: output duplicates (-v disables suppression)
+		{Name: "verbose", Args: []string{"-v"}, Stdin: dup, Env: env},
+		{Name: "verbose_long", Args: []string{"--output-duplicates"}, Stdin: dup, Env: env},
+		{Name: "verbose_hex", Args: []string{"-v", "-t", "x1"}, Stdin: dup, Env: env},
 	}
 }

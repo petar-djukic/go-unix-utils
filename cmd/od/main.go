@@ -3,16 +3,19 @@
 
 // cmd/od implements GNU od: octal and other format dump.
 //
-// Implements prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
@@ -34,6 +37,18 @@ type odConfig struct {
 	addrRadix byte  // R2.1: 'o', 'd', 'x', 'n'
 	skipBytes int64 // R2.2: bytes to skip before formatting
 	readBytes int64 // R2.3: max bytes to format (-1 = unlimited)
+	width     int   // R3.1: bytes per output line
+	verbose   bool  // R3.4: disable duplicate suppression
+}
+
+// R3.2: traditional short options as type specifier aliases.
+var traditionalOpts = map[string]typeSpec{
+	"-b": {letter: 'o', size: 1},
+	"-c": {letter: 'c', size: 1},
+	"-d": {letter: 'u', size: 2},
+	"-o": {letter: 'o', size: 2},
+	"-s": {letter: 'd', size: 2},
+	"-x": {letter: 'x', size: 2},
 }
 
 func main() {
@@ -59,7 +74,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	widths := resolveWidths(cfg.specs)
 	reader, code := openInputs(cfg.files, stdin, stderr)
 	r, startOff := applySkipAndLimit(reader, cfg)
-	if dumpErr := dump(r, stdout, cfg.specs, widths, cfg.addrRadix, startOff); dumpErr != nil {
+	if dumpErr := dump(r, stdout, cfg.specs, widths, cfg.addrRadix, startOff, cfg.width, cfg.verbose); dumpErr != nil {
 		return 1
 	}
 	return code
@@ -79,7 +94,7 @@ func applySkipAndLimit(r io.Reader, cfg odConfig) (io.Reader, int) {
 
 // parseArgs separates flags from file arguments and returns configuration.
 func parseArgs(args []string) (odConfig, error) {
-	cfg := odConfig{addrRadix: 'o', readBytes: -1}
+	cfg := odConfig{addrRadix: 'o', readBytes: -1, width: defaultWidth}
 	done := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -122,6 +137,20 @@ func parseFlag(cfg *odConfig, arg string, args []string, idx int) (int, error) {
 	if matchFlag(arg, 'N', "--read-bytes") {
 		return parseBytesFlag(arg, args, idx, 'N', "--read-bytes", &cfg.readBytes)
 	}
+	// R3.4: -v / --output-duplicates
+	if arg == "-v" || arg == "--output-duplicates" {
+		cfg.verbose = true
+		return 0, nil
+	}
+	// R3.1: -w / --width
+	if isWidthFlag(arg) {
+		return parseWidthFlag(cfg, arg)
+	}
+	// R3.2: traditional short options
+	if spec, ok := traditionalOpts[arg]; ok {
+		cfg.specs = append(cfg.specs, spec)
+		return 0, nil
+	}
 	// R1.2: -t / --format (type specifiers)
 	s, advance, err := extractTypeArg(arg, args, idx)
 	if err != nil {
@@ -129,6 +158,38 @@ func parseFlag(cfg *odConfig, arg string, args []string, idx int) (int, error) {
 	}
 	cfg.specs = append(cfg.specs, s...)
 	return advance, nil
+}
+
+// isWidthFlag reports whether arg is a -w or --width flag.
+func isWidthFlag(arg string) bool {
+	if arg == "--width" || strings.HasPrefix(arg, "--width=") {
+		return true
+	}
+	return len(arg) >= 2 && arg[0] == '-' && arg[1] == 'w'
+}
+
+// parseWidthFlag parses the -w[N] or --width[=N] flag.
+// R3.1: default width is 16; -w without value uses 32.
+func parseWidthFlag(cfg *odConfig, arg string) (int, error) {
+	if strings.HasPrefix(arg, "--width=") {
+		return 0, setWidth(cfg, arg[len("--width="):])
+	}
+	if arg == "--width" || arg == "-w" {
+		cfg.width = 32
+		return 0, nil
+	}
+	// -wN form
+	return 0, setWidth(cfg, arg[2:])
+}
+
+// setWidth parses a width value string and sets it on the config.
+func setWidth(cfg *odConfig, val string) error {
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return fmt.Errorf("invalid width: %q", val)
+	}
+	cfg.width = n
+	return nil
 }
 
 // parseBytesFlag extracts and parses a byte-count flag value via sizeparse.
@@ -366,19 +427,35 @@ func formatAddr(offset int, radix byte) string {
 }
 
 // dump reads input and writes formatted output.
+// R3.1: width controls bytes per output line.
+// R3.3: duplicate blocks are replaced with '*'.
+// R3.4: verbose disables duplicate suppression.
 func dump(
 	r io.Reader, w io.Writer, specs []typeSpec, widths []int,
-	radix byte, startOffset int,
+	radix byte, startOffset, width int, verbose bool,
 ) error {
 	bw := bufio.NewWriter(w)
 	aw := addrWidth(radix)
-	buf := make([]byte, defaultWidth)
+	buf := make([]byte, width)
 	offset := startOffset
+	var prevBlock []byte
+	starPrinted := false
 	for {
 		n, err := io.ReadFull(r, buf)
 		if n > 0 {
-			if wErr := writeBlock(bw, buf[:n], specs, widths, offset, radix, aw); wErr != nil {
-				return wErr
+			block := buf[:n]
+			if !verbose && n == width && isDuplicate(block, prevBlock) {
+				if !starPrinted {
+					fmt.Fprintln(bw, "*")
+					starPrinted = true
+				}
+			} else {
+				starPrinted = false
+				if wErr := writeBlock(bw, block, specs, widths, offset, radix, aw); wErr != nil {
+					return wErr
+				}
+				prevBlock = make([]byte, n)
+				copy(prevBlock, block)
 			}
 			offset += n
 		}
@@ -389,7 +466,18 @@ func dump(
 			return err
 		}
 	}
-	// R2.4: final line with address of byte past the last byte read.
+	return writeFinalAddr(bw, offset, radix)
+}
+
+// isDuplicate reports whether block matches the previous block.
+// R3.3: used for duplicate suppression.
+func isDuplicate(block, prev []byte) bool {
+	return len(prev) > 0 && bytes.Equal(block, prev)
+}
+
+// writeFinalAddr writes the final address line.
+// R2.4: address of the byte past the last byte read.
+func writeFinalAddr(bw *bufio.Writer, offset int, radix byte) error {
 	if radix != 'n' {
 		fmt.Fprintf(bw, "%s\n", formatAddr(offset, radix))
 	}
