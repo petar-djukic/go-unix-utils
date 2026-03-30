@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/shred against gshred (GNU coreutils).
 //
-// Covers prd099-shred R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd099-shred R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -34,6 +35,7 @@ func normalizeProgName(data []byte) []byte {
 // TestDiffErrors runs error-case tests via RunDiffTests (no file mutation).
 // R1.1: missing file operand exits 1.
 // R2.4: nonexistent file exits 1.
+// R3.2: all error scenarios exit 1.
 func TestDiffErrors(t *testing.T) {
 	t.Parallel()
 
@@ -52,6 +54,13 @@ func TestDiffErrors(t *testing.T) {
 		{
 			Name:      "nonexistent_file",
 			Args:      []string{"no_such_file"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R3.2: invalid option exits 1
+		{
+			Name:      "R3.2_invalid_option",
+			Args:      []string{"--bogus"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
@@ -342,6 +351,101 @@ func TestDiffErrorContinue(t *testing.T) {
 	// file2 should still exist — it was processed despite file1 error
 	assertExists(t, filepath.Join(goDir, "file2"), "go")
 	assertExists(t, filepath.Join(refDir, "file2"), "ref")
+}
+
+// TestDiffExitSuccess verifies exit 0 on successful shred.
+// R3.1: exit 0 when all files are processed successfully.
+func TestDiffExitSuccess(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshred")
+	if err != nil {
+		t.Skip("reference binary gshred not in PATH")
+	}
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	writeTestFile(t, filepath.Join(refDir, "f1"), "aaa\n")
+	writeTestFile(t, filepath.Join(refDir, "f2"), "bbb\n")
+	writeTestFile(t, filepath.Join(goDir, "f1"), "aaa\n")
+	writeTestFile(t, filepath.Join(goDir, "f2"), "bbb\n")
+
+	env := append(os.Environ(), "LC_ALL=C")
+	args := []string{"-n", "1", "f1", "f2"}
+
+	_, _, refExit := runBin(t, refBin, args, env, refDir)
+	_, _, goExit := runBin(t, goBin, args, env, goDir)
+
+	if goExit != 0 {
+		t.Errorf("go exit code: got %d, want 0", goExit)
+	}
+	if refExit != goExit {
+		t.Errorf("exit code divergence: ref=%d go=%d", refExit, goExit)
+	}
+}
+
+// TestDiffExitErrorDirectory verifies exit 1 when shredding a directory.
+// R3.2: exit 1 on any error.
+func TestDiffExitErrorDirectory(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshred")
+	if err != nil {
+		t.Skip("reference binary gshred not in PATH")
+	}
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	os.Mkdir(filepath.Join(refDir, "subdir"), 0o755)
+	os.Mkdir(filepath.Join(goDir, "subdir"), 0o755)
+
+	env := append(os.Environ(), "LC_ALL=C")
+	args := []string{"subdir"}
+
+	_, _, refExit := runBin(t, refBin, args, env, refDir)
+	_, _, goExit := runBin(t, goBin, args, env, goDir)
+
+	if goExit != 1 {
+		t.Errorf("go exit code: got %d, want 1", goExit)
+	}
+	if refExit != goExit {
+		t.Errorf("exit code divergence: ref=%d go=%d", refExit, goExit)
+	}
+}
+
+// TestDiffExitMixed verifies exit 1 when one file fails and one succeeds.
+// R3.2: exit 1 on any error. R2.4: continues processing remaining files.
+func TestDiffExitMixed(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshred")
+	if err != nil {
+		t.Skip("reference binary gshred not in PATH")
+	}
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	writeTestFile(t, filepath.Join(refDir, "good"), "data\n")
+	writeTestFile(t, filepath.Join(goDir, "good"), "data\n")
+
+	env := append(os.Environ(), "LC_ALL=C")
+	// "bad" does not exist, "good" does
+	args := []string{"bad", "good"}
+
+	_, _, refExit := runBin(t, refBin, args, env, refDir)
+	_, _, goExit := runBin(t, goBin, args, env, goDir)
+
+	if goExit != 1 {
+		t.Errorf("go exit code: got %d, want 1", goExit)
+	}
+	if refExit != goExit {
+		t.Errorf("exit code divergence: ref=%d go=%d", refExit, goExit)
+	}
+	// good file should still exist (was processed despite bad file error)
+	assertExists(t, filepath.Join(goDir, "good"), "go")
 }
 
 // runBin executes a binary and returns stdout, stderr, exit code.
