@@ -87,6 +87,9 @@ func parseArgs(args []string) (config, error) {
 		case arg == "--help":
 			printUsage()
 			os.Exit(0)
+		case arg == "--version":
+			printVersion()
+			os.Exit(0)
 		case hasPrefix(arg, "-") && arg != "-":
 			return c, fmt.Errorf("invalid option -- '%s'", arg)
 		default:
@@ -168,4 +171,10 @@ func hasPrefix(s, prefix string) bool {
 func printUsage() {
 	fmt.Fprintf(os.Stdout, "Usage: %s [OPTION]... [FILE]\n", progName)
 	fmt.Fprintln(os.Stdout, "Base32 encode or decode FILE, or standard input, to standard output.")
+}
+
+// printVersion prints version information to stdout.
+// R3.3: --version exits 0 after printing version.
+func printVersion() {
+	fmt.Fprintf(os.Stdout, "%s (go-unix-utils)\n", progName)
 }

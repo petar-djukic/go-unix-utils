@@ -23,6 +23,12 @@ import (
 // so "gbase32: ..." and "base32: ..." compare as equal.
 var stderrProgramName = regexp.MustCompile(`^[a-z0-9]+:`)
 
+// versionStdout normalizes --version output since version strings differ.
+var versionStdout = regexp.MustCompile(`(?s).*`)
+
+// helpStdout normalizes --help output since help text differs between impls.
+var helpStdout = regexp.MustCompile(`(?s).*`)
+
 // normalizeProgramName strips the leading program name from stderr lines.
 func normalizeProgramName(data []byte) []byte {
 	return stderrProgramName.ReplaceAll(data, []byte("base32:"))
@@ -35,6 +41,17 @@ var decodeErrDetail = regexp.MustCompile(`invalid input[^\n]*`)
 // normalizeDecodeErrDetail strips Go-specific error detail from decode errors.
 func normalizeDecodeErrDetail(data []byte) []byte {
 	return decodeErrDetail.ReplaceAll(data, []byte("invalid input"))
+}
+
+// normalizeAllStdout replaces all stdout with empty bytes so only exit code
+// is compared. Used for --version and --help where output text differs.
+func normalizeAllStdout(data []byte) []byte {
+	return versionStdout.ReplaceAll(data, []byte(""))
+}
+
+// normalizeAllStderr replaces all stderr with empty bytes.
+func normalizeAllStderr(data []byte) []byte {
+	return helpStdout.ReplaceAll(data, []byte(""))
 }
 
 func TestDiff(t *testing.T) {
@@ -146,6 +163,31 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeDecodeErrDetail},
+		},
+		// R3.1: successful encode exits 0 (covered by encode_stdin above, explicit)
+		// R3.2: error on invalid option exits 1
+		{
+			Name:      "invalid_option",
+			Args:      []string{"--bogus"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
+		},
+		// R3.3: --version exits 0
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeAllStdout},
+		},
+		// R3.3: --help exits 0
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeAllStdout, normalizeAllStderr},
 		},
 	}
 
