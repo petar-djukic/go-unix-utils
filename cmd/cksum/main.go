@@ -5,7 +5,8 @@
 // using alternate algorithms, for files or stdin.
 //
 // Implements prd077-cksum: R1.1-R1.4 (CRC checksum), R2.1 (algorithm selection),
-// R2.2 (--untagged output), R2.3 (--raw output), R3.1 (exit 0 on success).
+// R2.2 (--untagged output), R2.3 (--raw output), R3.1 (exit 0 on success),
+// R3.2 (exit 1 on file error or invalid algorithm), R3.3 (SIGPIPE handling).
 package main
 
 import (

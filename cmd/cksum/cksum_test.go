@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/cksum implementing prd077-cksum R1.1-R1.4, R2.1-R2.3, R3.1.
+// Tests for cmd/cksum implementing prd077-cksum R1.1-R1.4, R2.1-R2.3, R3.1-R3.3.
 package main
 
 import (
@@ -238,6 +238,47 @@ func TestDiffAlgorithmError(t *testing.T) {
 		{
 			Name:      "invalid_algorithm",
 			Args:      []string{"--algorithm=invalid"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodeErrors tests R3.2: exit 1 on file open failure or invalid
+// algorithm for both CRC and non-CRC modes.
+func TestDiffExitCodeErrors(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcksum")
+	if err != nil {
+		t.Skip("reference binary gcksum not in PATH")
+	}
+
+	nonexistent := filepath.Join(t.TempDir(), "missing.txt")
+
+	tests := []testutils.DiffTest{
+		// R3.2: nonexistent file with --algorithm=sha256 exits 1.
+		{
+			Name:      "sha256_nonexistent_file",
+			Args:      []string{"--algorithm=sha256", nonexistent},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R3.2: nonexistent file with --algorithm=blake2b exits 1.
+		{
+			Name:      "blake2b_nonexistent_file",
+			Args:      []string{"--algorithm=blake2b", nonexistent},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R3.2: invalid algorithm exits 1 (--algorithm=bogus).
+		{
+			Name:      "invalid_algorithm_bogus",
+			Args:      []string{"--algorithm=bogus"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr()},
