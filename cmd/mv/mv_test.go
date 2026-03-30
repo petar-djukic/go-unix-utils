@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/mv against gmv (GNU coreutils).
 //
-// Covers prd057-mv R1.1-R1.4.
+// Covers prd057-mv R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -25,10 +25,12 @@ func discardAll(data []byte) []byte {
 
 // mvTestCase describes a differential mv test with per-run setup.
 type mvTestCase struct {
-	name  string
-	args  []string
-	setup func(t *testing.T, dir string)
-	check func(t *testing.T, dir string)
+	name     string
+	args     []string
+	stdin    []byte
+	exitCode int // expected exit code, 0 if omitted
+	setup    func(t *testing.T, dir string)
+	check    func(t *testing.T, dir string)
 }
 
 // TestDiffErrors runs error case tests using RunDiffTests (no file mutation).
@@ -177,8 +179,9 @@ func TestDiffPartialFailure(t *testing.T) {
 	}
 
 	tc := mvTestCase{
-		name: "partial_failure_exit_1",
-		args: []string{"good.txt", "nonexistent.txt", "dest"},
+		name:     "partial_failure_exit_1",
+		args:     []string{"good.txt", "nonexistent.txt", "dest"},
+		exitCode: 1,
 		setup: func(t *testing.T, dir string) {
 			t.Helper()
 			writeFile(t, filepath.Join(dir, "good.txt"), "good\n")
@@ -190,18 +193,197 @@ func TestDiffPartialFailure(t *testing.T) {
 		},
 	}
 
-	runMvDiffTestExitCode(t, goBin, refBin, tc, 1)
+	runMvDiffTest(t, goBin, refBin, tc)
+}
+
+// TestDiffOverwriteControl runs overwrite control tests.
+// R2.1: interactive prompt with -i.
+// R2.2: force with -f, last-flag-wins precedence.
+// R2.3: no-clobber with -n.
+func TestDiffOverwriteControl(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skip("reference binary gmv not in PATH")
+	}
+
+	cases := []mvTestCase{
+		// R2.1: interactive prompt, user answers "y".
+		{
+			name:  "interactive_yes",
+			args:  []string{"-i", "src.txt", "dst.txt"},
+			stdin: []byte("y\n"),
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "new\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		// R2.1: interactive prompt, user answers "n".
+		{
+			name:     "interactive_no",
+			args:     []string{"-i", "src.txt", "dst.txt"},
+			stdin:    []byte("n\n"),
+			exitCode: 1,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "src.txt", "new\n")
+				assertFileContent(t, dir, "dst.txt", "old\n")
+			},
+		},
+		// R2.1: interactive with no conflict — no prompt needed.
+		{
+			name: "interactive_no_conflict",
+			args: []string{"-i", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "data\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		// R2.2: force overwrite without prompt.
+		{
+			name: "force_overwrite",
+			args: []string{"-f", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "new\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		// R2.2: -i then -f, last flag (-f) wins — force overwrites.
+		{
+			name: "interactive_then_force",
+			args: []string{"-i", "-f", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "new\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+		// R2.2: -f then -i, last flag (-i) wins — user declines.
+		{
+			name:     "force_then_interactive",
+			args:     []string{"-f", "-i", "src.txt", "dst.txt"},
+			stdin:    []byte("n\n"),
+			exitCode: 1,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "src.txt", "new\n")
+				assertFileContent(t, dir, "dst.txt", "old\n")
+			},
+		},
+		// R2.3: no-clobber skips existing destination.
+		{
+			name: "no_clobber_exists",
+			args: []string{"-n", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "new\n")
+				writeFile(t, filepath.Join(dir, "dst.txt"), "old\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "src.txt", "new\n")
+				assertFileContent(t, dir, "dst.txt", "old\n")
+			},
+		},
+		// R2.3: no-clobber with no conflict — move succeeds.
+		{
+			name: "no_clobber_no_dest",
+			args: []string{"-n", "src.txt", "dst.txt"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileContent(t, dir, "dst.txt", "data\n")
+				assertFileAbsent(t, dir, "src.txt")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runMvDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffPermissionDenied verifies error output when destination
+// directory is not writable.
+// R2.4: permission error prints to stderr and exits 1.
+func TestDiffPermissionDenied(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmv")
+	if err != nil {
+		t.Skip("reference binary gmv not in PATH")
+	}
+
+	tc := mvTestCase{
+		name:     "dest_dir_not_writable",
+		args:     []string{"src.txt", "nowrite/target.txt"},
+		exitCode: 1,
+		setup: func(t *testing.T, dir string) {
+			t.Helper()
+			writeFile(t, filepath.Join(dir, "src.txt"), "data\n")
+			nowrite := filepath.Join(dir, "nowrite")
+			mkdirAll(t, nowrite)
+			writeFile(t, filepath.Join(nowrite, "target.txt"), "old\n")
+			if err := os.Chmod(nowrite, 0o555); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				os.Chmod(nowrite, 0o755) //nolint:errcheck // best-effort restore
+			})
+		},
+		check: func(t *testing.T, dir string) {
+			t.Helper()
+			assertFileContent(t, dir, "src.txt", "data\n")
+		},
+	}
+
+	runMvDiffTest(t, goBin, refBin, tc)
 }
 
 // runMvDiffTest runs a mv test case against both binaries in separate dirs,
 // comparing exit codes and stdout, then checking filesystem state.
 func runMvDiffTest(t *testing.T, goBin, refBin string, tc mvTestCase) {
-	t.Helper()
-	runMvDiffTestExitCode(t, goBin, refBin, tc, 0)
-}
-
-// runMvDiffTestExitCode runs a mv test with expected exit code.
-func runMvDiffTestExitCode(t *testing.T, goBin, refBin string, tc mvTestCase, expectedExit int) {
 	t.Helper()
 
 	refDir := t.TempDir()
@@ -212,8 +394,8 @@ func runMvDiffTestExitCode(t *testing.T, goBin, refBin string, tc mvTestCase, ex
 
 	env := append(os.Environ(), "LC_ALL=C")
 
-	refOut, refErr, refExit := runBin(t, refBin, tc.args, env, refDir)
-	goOut, goErr, goExit := runBin(t, goBin, tc.args, env, goDir)
+	refOut, refErr, refExit := runBin(t, refBin, tc.args, env, refDir, tc.stdin)
+	goOut, goErr, goExit := runBin(t, goBin, tc.args, env, goDir, tc.stdin)
 
 	// Normalize stderr (binary name differs).
 	refErr = discardAll(refErr)
@@ -225,9 +407,9 @@ func runMvDiffTestExitCode(t *testing.T, goBin, refBin string, tc mvTestCase, ex
 			"  exit   ref: %d\n  exit    go: %d",
 			tc.args, refOut, goOut, refExit, goExit)
 	}
-	if goExit != expectedExit {
+	if goExit != tc.exitCode {
 		t.Errorf("go binary exit code %d, expected %d (args=%v)",
-			goExit, expectedExit, tc.args)
+			goExit, tc.exitCode, tc.args)
 	}
 
 	// Verify filesystem state for Go binary output.
@@ -237,7 +419,7 @@ func runMvDiffTestExitCode(t *testing.T, goBin, refBin string, tc mvTestCase, ex
 }
 
 // runBin executes a binary and returns stdout, stderr, and exit code.
-func runBin(t *testing.T, bin string, args []string, env []string, dir string) ([]byte, []byte, int) {
+func runBin(t *testing.T, bin string, args []string, env []string, dir string, stdin []byte) ([]byte, []byte, int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(
 		context.Background(), 10*time.Second)
@@ -246,6 +428,9 @@ func runBin(t *testing.T, bin string, args []string, env []string, dir string) (
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
+	if len(stdin) > 0 {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

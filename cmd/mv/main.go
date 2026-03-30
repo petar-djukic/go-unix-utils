@@ -3,15 +3,17 @@
 
 // cmd/mv implements GNU mv: move or rename files and directories.
 //
-// Implements prd057-mv R1.1-R1.4.
+// Implements prd057-mv R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -36,6 +38,16 @@ Mandatory arguments to long options are mandatory for short options too.
 
 const versionText = "mv (go-unix-utils) 0.1\n"
 
+// conflictResult describes the outcome of destination conflict resolution.
+// R2.1-R2.4: overwrite control outcomes.
+type conflictResult int
+
+const (
+	conflictProceed  conflictResult = iota // proceed with move
+	conflictSkipOK                         // skip, exit 0 (no-clobber)
+	conflictSkipFail                       // skip, exit 1 (interactive declined)
+)
+
 type parseResult int
 
 const (
@@ -45,7 +57,7 @@ const (
 )
 
 // mvOptions holds parsed command-line flags.
-// R1.1-R1.4: basic move and rename options.
+// R1.1-R1.4: basic move and rename options. R2.1-R2.4: overwrite control.
 type mvOptions struct {
 	force       bool
 	interactive bool
@@ -125,22 +137,38 @@ func moveIntoDir(sources []string, dir string, opts mvOptions, stdin, stdout, st
 // moveSingle moves one source entry to dest.
 // R1.1: rename on same filesystem, copy+delete across filesystems.
 // R1.3: directories are moved without requiring -r.
+// R2.1-R2.4: overwrite control via handleDestConflict.
 func moveSingle(src, dest string, opts mvOptions, stdin, stdout, stderr *os.File) int {
 	if _, err := os.Lstat(src); err != nil {
 		printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
 			src, stripPathError(err)))
 		return 1
 	}
-	if !handleDestConflict(dest, opts, stdin, stderr) {
+	switch handleDestConflict(dest, opts, stdin, stderr) {
+	case conflictSkipOK:
 		return 0
+	case conflictSkipFail:
+		return 1
 	}
-	// R1.1: try rename first (same filesystem).
-	if err := os.Rename(src, dest); err == nil {
+	return doRename(src, dest, opts, stdout, stderr)
+}
+
+// doRename attempts os.Rename and falls back to cross-device copy on EXDEV.
+// R1.1: rename or copy+delete. R2.4: permission error reporting.
+func doRename(src, dest string, opts mvOptions, stdout, stderr *os.File) int {
+	err := os.Rename(src, dest)
+	if err == nil {
 		printVerbose(src, dest, opts, stdout)
 		return 0
 	}
-	// R1.1: cross-device fallback — copy and delete.
-	return crossDeviceMove(src, dest, opts, stdout, stderr)
+	// R1.1: cross-device fallback only for EXDEV.
+	if isCrossDeviceError(err) {
+		return crossDeviceMove(src, dest, opts, stdout, stderr)
+	}
+	// R2.4: permission or other rename error.
+	printError(stderr, fmt.Sprintf("cannot move '%s' to '%s': %s",
+		src, dest, stripLinkError(err)))
+	return 1
 }
 
 // crossDeviceMove copies src to dest then removes src.
@@ -253,18 +281,7 @@ func copySingleEntry(src, dest string, stderr *os.File) int {
 		return 1
 	}
 	if info.IsDir() {
-		srcInfo, err := os.Stat(src)
-		if err != nil {
-			printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
-				src, stripPathError(err)))
-			return 1
-		}
-		if err := os.MkdirAll(dest, srcInfo.Mode().Perm()); err != nil {
-			printError(stderr, fmt.Sprintf(
-				"cannot create directory '%s': %s", dest, err))
-			return 1
-		}
-		return copyDirEntries(src, dest, stderr)
+		return copySingleDir(src, dest, stderr)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return copySymlinkEntry(src, dest, stderr)
@@ -275,6 +292,22 @@ func copySingleEntry(src, dest string, stderr *os.File) int {
 		return 1
 	}
 	return 0
+}
+
+// copySingleDir copies a directory entry for cross-device move.
+func copySingleDir(src, dest string, stderr *os.File) int {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
+			src, stripPathError(err)))
+		return 1
+	}
+	if err := os.MkdirAll(dest, srcInfo.Mode().Perm()); err != nil {
+		printError(stderr, fmt.Sprintf(
+			"cannot create directory '%s': %s", dest, err))
+		return 1
+	}
+	return copyDirEntries(src, dest, stderr)
 }
 
 // copySymlinkEntry copies a symlink for cross-device move.
@@ -294,18 +327,24 @@ func copySymlinkEntry(src, dest string, stderr *os.File) int {
 }
 
 // handleDestConflict manages -n, -i, and -f for an existing destination.
-// Returns true if the move should proceed, false to skip.
-func handleDestConflict(dest string, opts mvOptions, stdin *os.File, stderr *os.File) bool {
+// R2.1: interactive prompt. R2.2: force suppresses prompt.
+// R2.3: no-clobber exits 0. R2.4: declined interactive exits 1.
+func handleDestConflict(dest string, opts mvOptions, stdin *os.File, stderr *os.File) conflictResult {
 	if _, err := os.Lstat(dest); err != nil {
-		return true // dest doesn't exist
+		return conflictProceed
 	}
+	// R2.3: no-clobber silently skips with exit 0.
 	if opts.noClobber {
-		return false
+		return conflictSkipOK
 	}
+	// R2.1: interactive prompts; declined exits 1.
 	if opts.interactive {
-		return promptOverwrite(dest, stdin, stderr)
+		if promptOverwrite(dest, stdin, stderr) {
+			return conflictProceed
+		}
+		return conflictSkipFail
 	}
-	return true
+	return conflictProceed
 }
 
 // promptOverwrite asks the user whether to overwrite dest.
@@ -342,6 +381,15 @@ func copyFile(src, dest string, mode os.FileMode) error {
 		return err
 	}
 	return destFile.Close()
+}
+
+// isCrossDeviceError reports whether err is an EXDEV (cross-device link) error.
+func isCrossDeviceError(err error) bool {
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) {
+		return errors.Is(linkErr.Err, syscall.EXDEV)
+	}
+	return false
 }
 
 // parseArgs separates flags from operands.
@@ -495,6 +543,15 @@ func isDir(path string) bool {
 func stripPathError(err error) string {
 	if pe, ok := err.(*os.PathError); ok {
 		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// stripLinkError extracts the inner error message from *os.LinkError.
+func stripLinkError(err error) string {
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) {
+		return linkErr.Err.Error()
 	}
 	return err.Error()
 }
