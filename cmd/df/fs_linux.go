@@ -66,6 +66,7 @@ func parseMountLine(line string) (fsEntry, bool) {
 }
 
 // linuxStatfsToEntry converts Linux Statfs_t and mount info to fsEntry.
+// D1: inode counts from Files (total) and Ffree; used = total - free.
 func linuxStatfsToEntry(fs *syscall.Statfs_t, device, mount, fstype string) fsEntry {
 	bsize := fs.Frsize
 	if bsize == 0 {
@@ -74,13 +75,18 @@ func linuxStatfsToEntry(fs *syscall.Statfs_t, device, mount, fstype string) fsEn
 	total := int64(fs.Blocks) * bsize / 1024
 	free := int64(fs.Bfree) * bsize / 1024
 	avail := int64(fs.Bavail) * bsize / 1024
+	inodesTotal := int64(fs.Files)
+	inodesFree := int64(fs.Ffree)
 	return fsEntry{
-		source:    device,
-		fsType:    fstype,
-		blocks1K:  total,
-		used:      total - free,
-		available: avail,
-		mountedOn: mount,
+		source:      device,
+		fsType:      fstype,
+		blocks1K:    total,
+		used:        total - free,
+		available:   avail,
+		inodesTotal: inodesTotal,
+		inodesUsed:  inodesTotal - inodesFree,
+		inodesFree:  inodesFree,
+		mountedOn:   mount,
 	}
 }
 

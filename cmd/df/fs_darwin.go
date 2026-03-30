@@ -42,18 +42,24 @@ func statfsForPath(path string) (*fsEntry, error) {
 }
 
 // darwinStatfsToEntry converts a Darwin Statfs_t to an fsEntry.
+// D1: inode counts from Files (total) and Ffree; used = total - free.
 func darwinStatfsToEntry(fs *syscall.Statfs_t) fsEntry {
 	bsize := int64(fs.Bsize)
 	total := int64(fs.Blocks) * bsize / 1024
 	free := int64(fs.Bfree) * bsize / 1024
 	avail := int64(fs.Bavail) * bsize / 1024
+	inodesTotal := int64(fs.Files)
+	inodesFree := int64(fs.Ffree)
 	return fsEntry{
-		source:    int8SliceToString(fs.Mntfromname[:]),
-		fsType:    int8SliceToString(fs.Fstypename[:]),
-		blocks1K:  total,
-		used:      total - free,
-		available: avail,
-		mountedOn: int8SliceToString(fs.Mntonname[:]),
+		source:      int8SliceToString(fs.Mntfromname[:]),
+		fsType:      int8SliceToString(fs.Fstypename[:]),
+		blocks1K:    total,
+		used:        total - free,
+		available:   avail,
+		inodesTotal: inodesTotal,
+		inodesUsed:  inodesTotal - inodesFree,
+		inodesFree:  inodesFree,
+		mountedOn:   int8SliceToString(fs.Mntonname[:]),
 	}
 }
 
