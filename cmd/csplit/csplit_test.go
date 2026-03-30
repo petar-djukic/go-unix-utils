@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/csplit.
-// Covers prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -42,6 +42,7 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary gcsplit not in PATH")
 	}
 	tests := append(buildR1Tests(), buildR2Tests()...)
+	tests = append(tests, buildR3Tests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -217,5 +218,86 @@ func repeatNOverflowTest() testutils.DiffTest {
 		Stdin:     []byte("a\n---\nb\n"),
 		ExitCode:  1,
 		Normalize: []testutils.NormalizeFunc{binaryNameNormalizer()},
+	}
+}
+
+// buildR3Tests returns differential test cases for R3.1-R3.4.
+func buildR3Tests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		defaultPrefixTest(),
+		customPrefixTest(),
+		customDigitsTest(),
+		prefixAndDigitsTest(),
+		elideEmptyTest(),
+	}
+}
+
+// defaultPrefixTest verifies R3.1: output files named xx00, xx01, etc. by default.
+func defaultPrefixTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "default_prefix",
+		Args:     []string{"-", "3"},
+		Stdin:    generateSeq(1, 5),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": generateSeq(1, 2),
+			"xx01": generateSeq(3, 5),
+		},
+	}
+}
+
+// customPrefixTest verifies R3.2: -f PREFIX uses PREFIX instead of 'xx'.
+func customPrefixTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "custom_prefix",
+		Args:     []string{"-f", "chunk", "-", "/c/"},
+		Stdin:    []byte("a\nb\nc\nd\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"chunk00": []byte("a\nb\n"),
+			"chunk01": []byte("c\nd\n"),
+		},
+	}
+}
+
+// customDigitsTest verifies R3.3: -n DIGITS uses DIGITS-wide numeric suffixes.
+func customDigitsTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "custom_digits",
+		Args:     []string{"-n", "4", "-", "/c/"},
+		Stdin:    []byte("a\nb\nc\nd\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx0000": []byte("a\nb\n"),
+			"xx0001": []byte("c\nd\n"),
+		},
+	}
+}
+
+// prefixAndDigitsTest verifies R3.2+R3.3 combined: -f and -n together.
+func prefixAndDigitsTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "prefix_and_digits",
+		Args:     []string{"-f", "part", "-n", "3", "-", "/---/", "{*}"},
+		Stdin:    []byte("a\n---\nb\n---\nc\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"part000": []byte("a\n"),
+			"part001": []byte("---\nb\n"),
+			"part002": []byte("---\nc\n"),
+		},
+	}
+}
+
+// elideEmptyTest verifies R3.4: -z suppresses creation of empty output files.
+func elideEmptyTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "elide_empty",
+		Args:     []string{"-z", "-", "/a/"},
+		Stdin:    []byte("a\nb\nc\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": []byte("a\nb\nc\n"),
+		},
 	}
 }
