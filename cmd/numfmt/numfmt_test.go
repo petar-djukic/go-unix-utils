@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/numfmt.
-// Traces: prd071-numfmt R1.1, R1.2, R1.3, R1.4.
+// Traces: prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -137,6 +137,108 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("abc\n"),
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R1.1: default from-zero rounding matches GNU
+		{
+			Name:  "default_rounding_1111",
+			Args:  []string{"--to=si"},
+			Stdin: []byte("1111\n"),
+		},
+		// R2.1: --format with width (right-align)
+		{
+			Name:  "format_width_right",
+			Args:  []string{"--to=si", "--format=%10f"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.1: --format with precision
+		{
+			Name:  "format_precision",
+			Args:  []string{"--to=si", "--format=%.2f"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.1: --format with left alignment
+		{
+			Name:  "format_left_align",
+			Args:  []string{"--to=si", "--format=%-10f"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.1: --format with width and precision
+		{
+			Name:  "format_width_precision",
+			Args:  []string{"--to=si", "--format=%10.2f"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.2: --padding right-align
+		{
+			Name:  "padding_right",
+			Args:  []string{"--to=iec", "--padding=10"},
+			Stdin: []byte("1048576\n"),
+		},
+		// R2.2: --padding left-align
+		{
+			Name:  "padding_left",
+			Args:  []string{"--to=iec", "--padding=-10"},
+			Stdin: []byte("1048576\n"),
+		},
+		// R2.3: --round=up
+		{
+			Name:  "round_up",
+			Args:  []string{"--to=si", "--round=up"},
+			Stdin: []byte("1444\n"),
+		},
+		// R2.3: --round=down
+		{
+			Name:  "round_down",
+			Args:  []string{"--to=si", "--round=down"},
+			Stdin: []byte("1555\n"),
+		},
+		// R2.3: --round=towards-zero
+		{
+			Name:  "round_towards_zero",
+			Args:  []string{"--to=si", "--round=towards-zero"},
+			Stdin: []byte("1555\n"),
+		},
+		// R2.3: --round=from-zero
+		{
+			Name:  "round_from_zero",
+			Args:  []string{"--to=si", "--round=from-zero"},
+			Stdin: []byte("1444\n"),
+		},
+		// R2.3: --round=nearest
+		{
+			Name:  "round_nearest",
+			Args:  []string{"--to=si", "--round=nearest"},
+			Stdin: []byte("1444\n"),
+		},
+		// R2.4: --suffix appended to output
+		{
+			Name:  "suffix_append",
+			Args:  []string{"--to=si", "--suffix=B"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.4: --suffix stripped from input and re-appended
+		{
+			Name:  "suffix_from_si",
+			Args:  []string{"--from=si", "--suffix=B"},
+			Stdin: []byte("1.5kB\n"),
+		},
+		// R2.4: --suffix with --from and --to
+		{
+			Name:  "suffix_from_to",
+			Args:  []string{"--from=si", "--to=iec", "--suffix=B"},
+			Stdin: []byte("1MB\n"),
+		},
+		// R2.2 + R2.1: --padding overrides --format width
+		{
+			Name:  "padding_with_format",
+			Args:  []string{"--to=si", "--format=%.2f", "--padding=15"},
+			Stdin: []byte("1500\n"),
+		},
+		// R2.3: rounding with magnitude change
+		{
+			Name:  "round_magnitude_change",
+			Args:  []string{"--to=si"},
+			Stdin: []byte("9950\n"),
 		},
 	}
 
