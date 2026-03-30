@@ -89,7 +89,9 @@ func run(args []string) int {
 	}
 	entries, exitCode := collectEntries(opts)
 	entries = applyFilters(entries, opts)
-	printFormatted(entries, opts)
+	if len(entries) > 0 {
+		printFormatted(entries, opts)
+	}
 	return exitCode
 }
 
@@ -257,7 +259,7 @@ func collectFileArgs(files []string) ([]fsEntry, int) {
 	for _, path := range files {
 		entry, err := statfsForPath(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "df: '%s': %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "df: %s: %s\n", path, capitalizeErr(err))
 			exitCode = 1
 			continue
 		}
@@ -320,6 +322,16 @@ func matchesTypeFilter(fsType string, include, exclude []string) bool {
 		return false
 	}
 	return !slices.Contains(exclude, fsType)
+}
+
+// capitalizeErr returns the error message with the first letter uppercased.
+// R4.2: GNU df uses system strerror which capitalizes; Go syscall does not.
+func capitalizeErr(err error) string {
+	s := err.Error()
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // computeUsePct calculates the use percentage matching GNU df.
