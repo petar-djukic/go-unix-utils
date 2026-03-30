@@ -25,63 +25,63 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
-		// R1.1, R2.1: zero duration exits immediately with 0.
+		// R1.1, R2.1, R4.1, R4.4: zero duration exits immediately with 0.
 		{
 			Name:     "zero_duration",
 			Args:     []string{"0"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.1: single numeric argument.
+		// R1.1, R4.1, R4.4: single numeric argument.
 		{
 			Name:     "short_duration",
 			Args:     []string{"0.01"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.2: fractional seconds.
+		// R1.2, R4.1, R4.4: fractional seconds.
 		{
 			Name:     "fractional_seconds",
 			Args:     []string{"0.001"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.3: suffix s (seconds).
+		// R1.3, R4.1, R4.4: suffix s (seconds).
 		{
 			Name:     "suffix_s",
 			Args:     []string{"0.001s"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.3: suffix m (minutes).
+		// R1.3, R4.1, R4.4: suffix m (minutes).
 		{
 			Name:     "suffix_m",
 			Args:     []string{"0.0001m"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.3: suffix h (hours).
+		// R1.3, R4.1, R4.4: suffix h (hours).
 		{
 			Name:     "suffix_h",
 			Args:     []string{"0.000001h"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.3: suffix d (days).
+		// R1.3, R4.1, R4.4: suffix d (days).
 		{
 			Name:     "suffix_d",
 			Args:     []string{"0.0000001d"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R1.4: multiple arguments summed.
+		// R1.4, R4.1, R4.4: multiple arguments summed.
 		{
 			Name:     "multiple_args_summed",
 			Args:     []string{"0", "0.001", "0.001s"},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
-		// R2.2: no arguments → error (discard stderr, binary names differ).
+		// R2.2, R4.2, R4.3, R4.4: no arguments → error (discard stderr, binary names differ).
 		{
 			Name:      "no_args_error",
 			Args:      []string{},
@@ -89,7 +89,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
-		// R2.3: invalid argument → error.
+		// R2.3, R4.2, R4.3, R4.4: invalid argument → error.
 		{
 			Name:      "invalid_arg_error",
 			Args:      []string{"abc"},
@@ -97,7 +97,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
-		// R2.3: negative argument → error.
+		// R2.3, R4.2, R4.3, R4.4: negative argument → error.
 		{
 			Name:      "negative_arg_error",
 			Args:      []string{"-1"},
@@ -135,6 +135,28 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.1, R4.3: exit 0 after sleeping (explicit R4 trace).
+		{
+			Name:     "r4_exit_zero_after_sleep",
+			Args:     []string{"0.01"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.2, R4.3: exit 1 on empty string argument.
+		{
+			Name:      "r4_empty_string_arg_error",
+			Args:      []string{""},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.4: multiple mixed-suffix arguments summed.
+		{
+			Name:     "r4_mixed_suffix_sum",
+			Args:     []string{"0.001s", "0.0001m"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
 		},
 	}
 
