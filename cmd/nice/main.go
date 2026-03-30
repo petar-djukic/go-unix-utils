@@ -3,7 +3,7 @@
 
 // cmd/nice implements GNU nice: run a command with modified scheduling priority.
 //
-// Implements prd094-nice R1.1, R1.2, R1.3, R1.4.
+// Implements prd094-nice R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -147,14 +147,19 @@ func executeCommand(cmdArgs []string) int {
 }
 
 // handleExecError maps command execution errors to exit codes.
+// R2.1: propagate command exit status.
+// R2.2: exit 126 if command found but not executable, 127 if not found.
 func handleExecError(err error, cmdName string) int {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		return exitErr.ExitCode()
 	}
-	fmt.Fprintf(os.Stderr, "%s: '%s': %s\n", progName, cmdName, err)
 	if isNotFound(err) {
+		fmt.Fprintf(os.Stderr, "%s: '%s': No such file or directory\n",
+			progName, cmdName)
 		return exitNotFound
 	}
+	fmt.Fprintf(os.Stderr, "%s: '%s': Permission denied\n",
+		progName, cmdName)
 	return exitCannotExec
 }
 
