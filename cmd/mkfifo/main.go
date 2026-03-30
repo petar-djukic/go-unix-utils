@@ -3,7 +3,7 @@
 
 // cmd/mkfifo implements GNU mkfifo: create named pipes (FIFOs).
 //
-// Implements prd092-mkfifo R1.1, R1.2, R1.3, R1.4.
+// Implements prd092-mkfifo R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
