@@ -5,6 +5,7 @@ package main
 
 import (
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
@@ -129,6 +130,78 @@ func TestDiff(t *testing.T) {
 			ExitCode:  127,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
+
+		// R2.1: -s with named signal KILL, command exceeds timeout.
+		// Both binaries die from re-raised SIGKILL; Go ExitCode() reports -1.
+		{
+			Name:      "signal_named_kill_timeout",
+			Args:      []string{"-s", "KILL", "0.01", "sleep", "10"},
+			ExitCode:  -1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.1: -s with numeric signal 9, command exceeds timeout.
+		{
+			Name:      "signal_numeric_9_timeout",
+			Args:      []string{"-s", "9", "0.01", "sleep", "10"},
+			ExitCode:  -1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.1: --signal= long form with named signal.
+		{
+			Name:      "signal_long_form_timeout",
+			Args:      []string{"--signal=KILL", "0.01", "sleep", "10"},
+			ExitCode:  -1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.1: -s with signal name, command completes before timeout.
+		{
+			Name:      "signal_completes_before_timeout",
+			Args:      []string{"-s", "KILL", "10", "true"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.2: -k kill-after, SIGTERM then SIGKILL escalation.
+		{
+			Name:      "kill_after_escalation",
+			Args:      []string{"-k", "0.01", "0.01", "sleep", "10"},
+			ExitCode:  124,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.2: --kill-after= long form.
+		{
+			Name:      "kill_after_long_form",
+			Args:      []string{"--kill-after=0.01", "0.01", "sleep", "10"},
+			ExitCode:  124,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.3: --foreground, command exceeds timeout.
+		{
+			Name:      "foreground_timeout",
+			Args:      []string{"--foreground", "0.01", "sleep", "10"},
+			ExitCode:  124,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.3: --foreground, command completes before timeout.
+		{
+			Name:      "foreground_completes",
+			Args:      []string{"--foreground", "10", "true"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.4: --preserve-status, command completes before timeout.
+		{
+			Name:      "preserve_status_completes",
+			Args:      []string{"--preserve-status", "10", "true"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R2.4: --preserve-status, command fails before timeout.
+		{
+			Name:      "preserve_status_fails",
+			Args:      []string{"--preserve-status", "10", "false"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -176,6 +249,49 @@ func TestParseDuration(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Fatalf("parseDuration(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseSignal verifies signal parsing for R2.1.
+func TestParseSignal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    syscall.Signal
+		wantErr bool
+	}{
+		{name: "named_kill", input: "KILL", want: syscall.SIGKILL},
+		{name: "named_term", input: "TERM", want: syscall.SIGTERM},
+		{name: "named_hup", input: "HUP", want: syscall.SIGHUP},
+		{name: "named_int", input: "INT", want: syscall.SIGINT},
+		{name: "sig_prefix", input: "SIGKILL", want: syscall.SIGKILL},
+		{name: "lowercase", input: "kill", want: syscall.SIGKILL},
+		{name: "numeric_9", input: "9", want: syscall.Signal(9)},
+		{name: "numeric_15", input: "15", want: syscall.Signal(15)},
+		{name: "numeric_0", input: "0", want: syscall.Signal(0)},
+		{name: "invalid_name", input: "BOGUS", wantErr: true},
+		{name: "negative", input: "-1", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseSignal(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseSignal(%q) = %v, want error", tc.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseSignal(%q) unexpected error: %v", tc.input, err)
+			}
+			if got != tc.want {
+				t.Fatalf("parseSignal(%q) = %v, want %v", tc.input, got, tc.want)
 			}
 		})
 	}
