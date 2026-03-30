@@ -21,6 +21,13 @@ func clearStderr() testutils.NormalizeFunc {
 	return func(b []byte) []byte { return nil }
 }
 
+// clearStdout returns a normalizer that blanks stdout differences so only
+// stderr and exit code are compared. Used when stdout format diverges from
+// GNU (e.g., --version, --help).
+func clearStdout() testutils.NormalizeFunc {
+	return func(b []byte) []byte { return nil }
+}
+
 // TestDiff runs differential tests against the gsha224sum reference binary.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -104,6 +111,24 @@ func TestDiff(t *testing.T) {
 			Stdin:    []byte{},
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
+		},
+		// R4.2: --help prints usage to stdout and exits 0.
+		// Normalize stdout since our help format differs from GNU's.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{clearStdout()},
+		},
+		// R4.1: --version prints version info and exits 0.
+		// Normalize stdout since our version string differs from GNU's.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{clearStdout()},
 		},
 	}
 
@@ -197,13 +222,24 @@ func TestDiffNonexistentFile(t *testing.T) {
 		t.Skip("reference binary gsha224sum not in PATH")
 	}
 
-	nonexistent := filepath.Join(t.TempDir(), "no_such_file.txt")
+	dir := t.TempDir()
+	nonexistent := filepath.Join(dir, "no_such_file.txt")
+	existingFile := filepath.Join(dir, "exists.txt")
+	writeTestFile(t, existingFile, "present\n")
 
 	tests := []testutils.DiffTest{
 		// R1.4, R4.2: nonexistent file exits 1.
 		{
 			Name:      "nonexistent_file",
 			Args:      []string{nonexistent},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R4.3: nonexistent file mixed with existing file still processes remaining.
+		{
+			Name:      "mixed_existing_nonexistent",
+			Args:      []string{nonexistent, existingFile},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr()},
