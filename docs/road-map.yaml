@@ -509,7 +509,7 @@ releases:
         - id: rel11.1-uc002-who
           status: implemented
         - id: rel11.1-uc003-pinky
-          status: spec_complete
+          status: implemented
     - version: "12.0"
       name: "Batch 12.0 — file security and installation (shred, chroot, install)"
       status: spec_complete
