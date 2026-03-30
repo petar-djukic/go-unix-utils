@@ -3,7 +3,17 @@
 
 // cmd/ts implements moreutils ts: prepend timestamps to stdin lines.
 // Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3,
-// R6.1, R6.2, R7.1, R7.2.
+// R6.1, R6.2, R7.1-R7.3, R8.1, R8.2, R9.1.
+//
+// R7.3: The Go implementation compiles timestamp parsing (time.Parse) into the
+// binary unconditionally. Unlike the Perl reference (which requires Date::Parse),
+// the parsing dependency is always available and this error path cannot be reached.
+//
+// R8.1: Wall-clock timestamps respect the TZ environment variable via Go's
+// time.Now(), which uses time.Local (initialized from TZ at startup).
+//
+// R8.2: In -i and -s modes, elapsed time is formatted using UTC (TZ=GMT equivalent)
+// regardless of the user's TZ setting, matching the Perl source behavior.
 package main
 
 import (

@@ -31,6 +31,9 @@ var relativeAgeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 
 // TestDiff verifies cmd/ts against the moreutils reference binary ts.
 // Implements prd004-ts R9.1-R9.2.
+// R7.3: parsing dependency always available in Go (invariant).
+// R8.1: TZ environment respected for wall-clock timestamps.
+// R8.2: -i/-s use TZ=GMT internally regardless of user TZ.
 // R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
 // R9.2: covers default format, custom format, subsecond extensions (R2.3, R2.4),
 // -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.3),
@@ -300,6 +303,50 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R7.3: -r mode works (parsing dependency always available in Go).
+		{
+			Name:      "relative_mode_parsing_available",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  5 14:30:00 event\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R8.1: TZ=UTC causes wall-clock timestamps to be in UTC.
+		{
+			Name:      "tz_utc_wall_clock",
+			Args:      []string{"%Z %H:%M:%S"},
+			Stdin:     []byte("tztest\n"),
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.2: -s mode uses TZ=GMT internally despite user TZ setting.
+		{
+			Name:      "elapsed_mode_ignores_user_tz",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line1\nline2\n"),
+			Env:       []string{"LC_ALL=C", "TZ=US/Eastern"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.2: -i mode uses TZ=GMT internally despite user TZ setting.
+		{
+			Name:      "incremental_mode_ignores_user_tz",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line1\nline2\n"),
+			Env:       []string{"LC_ALL=C", "TZ=US/Eastern"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.1: multi-line default format with TimestampNormalizer.
+		{
+			Name:      "normalizer_multi_line_default",
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
 	}
 
