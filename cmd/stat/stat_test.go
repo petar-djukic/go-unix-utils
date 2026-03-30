@@ -238,6 +238,59 @@ func TestDiff(t *testing.T) {
 			Name: "fs format type hex",
 			Args: []string{"-f", "-c", "%t", dir},
 		},
+		// Multi-file edge cases (R6.1, R7.1, R7.2)
+		{
+			Name: "three regular files",
+			Args: []string{regFile, emptyFile, regFile},
+		},
+		{
+			Name:      "all nonexistent",
+			Args:      []string{filepath.Join(dir, "no1"), filepath.Join(dir, "no2")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgramName},
+		},
+		{
+			Name:      "valid between nonexistent",
+			Args:      []string{filepath.Join(dir, "no1"), regFile, filepath.Join(dir, "no2")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgramName},
+		},
+		{
+			Name: "filesystem format free blocks and inodes",
+			Args: []string{"-f", "-c", "%a %d %f", dir},
+		},
+		{
+			Name: "filesystem format max namelen",
+			Args: []string{"-f", "-c", "%l", dir},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersion verifies --version prints output and exits 0.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("--version produced no output")
+	}
+}
+
+// TestHelp verifies --help prints output and exits 0.
+func TestHelp(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+	if !bytes.Contains(out, []byte("Usage:")) {
+		t.Fatal("--help output missing Usage header")
+	}
 }

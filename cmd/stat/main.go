@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/stat displays file and filesystem status information.
-// Implements prd082-stat R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R5.1, R7.1, R7.2, R7.3.
+// Implements prd082-stat R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R5.1, R6.1, R7.1, R7.2, R7.3.
 package main
 
 import (
@@ -24,6 +24,8 @@ type options struct {
 	terse       bool
 	format      string
 	printfFmt   string
+	version     bool
+	help        bool
 	files       []string
 }
 
@@ -34,6 +36,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stat: %v\n", err)
 		os.Exit(1)
+	}
+	if opts.version {
+		printVersion()
+		return
+	}
+	if opts.help {
+		printUsage()
+		return
 	}
 	os.Exit(run(opts))
 }
@@ -62,6 +72,12 @@ func parseArgs(args []string) (options, error) {
 				return opts, fmt.Errorf("option '--format' requires an argument")
 			}
 			opts.format = args[i]
+		case a == "--version":
+			opts.version = true
+			return opts, nil
+		case a == "--help":
+			opts.help = true
+			return opts, nil
 		case strings.HasPrefix(a, "--printf="):
 			opts.printfFmt = a[len("--printf="):]
 		case a == "--printf":
@@ -82,7 +98,7 @@ func parseArgs(args []string) (options, error) {
 			opts.files = append(opts.files, a)
 		}
 	}
-	if len(opts.files) == 0 {
+	if !opts.version && !opts.help && len(opts.files) == 0 {
 		return opts, fmt.Errorf("missing operand")
 	}
 	return opts, nil
@@ -455,4 +471,24 @@ func capitalizeFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// printVersion outputs version information to stdout.
+func printVersion() {
+	fmt.Println("stat (go-unix-utils)")
+}
+
+// printUsage outputs help information to stdout.
+func printUsage() {
+	fmt.Print(`Usage: stat [OPTION]... FILE...
+Display file or file system status.
+
+  -L, --dereference     follow links
+  -f, --file-system     display file system status instead of file status
+  -c  --format=FORMAT   use the specified FORMAT instead of the default
+      --printf=FORMAT   like --format, but interpret backslash escapes
+  -t, --terse           print the information in terse form
+      --help            display this help and exit
+      --version         output version information and exit
+`)
 }
