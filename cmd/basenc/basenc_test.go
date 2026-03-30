@@ -4,7 +4,8 @@
 // Differential tests for cmd/basenc against gbasenc (Homebrew coreutils).
 //
 // Covers prd081-basenc: R1.1 (--base64), R1.2 (--base64url),
-// R1.3 (--base32), R1.4 (--base32hex).
+// R1.3 (--base32), R1.4 (--base32hex), R2.1 (--base16), R2.2 (--z85),
+// R2.3 (-d/--decode), R2.4 (-w/--wrap).
 package main
 
 import (
@@ -170,6 +171,134 @@ func TestDiff(t *testing.T) {
 			Stdin: longInput,
 			Env:   []string{"LC_ALL=C"},
 		},
+
+		// R2.1: --base16 encode from stdin
+		{
+			Name:  "base16_encode_stdin",
+			Args:  []string{"--base16"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --base16 encode empty input
+		{
+			Name:  "base16_encode_empty",
+			Args:  []string{"--base16"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --base16 encode binary data
+		{
+			Name:  "base16_encode_binary",
+			Args:  []string{"--base16"},
+			Stdin: []byte{0x00, 0x01, 0xfe, 0xff},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --base16 encode long input (wrap test)
+		{
+			Name:  "base16_encode_wrap",
+			Args:  []string{"--base16"},
+			Stdin: longInput,
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --base16 decode uppercase hex
+		{
+			Name:  "base16_decode",
+			Args:  []string{"--base16", "-d"},
+			Stdin: []byte("68656C6C6F0A\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: --base16 decode empty
+		{
+			Name:  "base16_decode_empty",
+			Args:  []string{"--base16", "-d"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R2.2: --z85 encode 4 bytes
+		{
+			Name:  "z85_encode_4bytes",
+			Args:  []string{"--z85"},
+			Stdin: []byte{0x86, 0x4F, 0xD2, 0x6F},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: --z85 encode 8 bytes (ZeroMQ test vector)
+		{
+			Name:  "z85_encode_8bytes",
+			Args:  []string{"--z85"},
+			Stdin: []byte{0x86, 0x4F, 0xD2, 0x6F, 0xB5, 0x59, 0xF7, 0x5B},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: --z85 encode empty input
+		{
+			Name:  "z85_encode_empty",
+			Args:  []string{"--z85"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: --z85 encode non-multiple-of-4 exits 1
+		{
+			Name:     "z85_encode_bad_length",
+			Args:     []string{"--z85"},
+			Stdin:    []byte("hello"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizeProgramName, normalizeAllStderr,
+			},
+		},
+		// R2.2: --z85 decode
+		{
+			Name:  "z85_decode",
+			Args:  []string{"--z85", "-d"},
+			Stdin: []byte("HelloWorld\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: --z85 decode empty
+		{
+			Name:  "z85_decode_empty",
+			Args:  []string{"--z85", "-d"},
+			Stdin: []byte(""),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R2.3: --decode long form
+		{
+			Name:  "decode_long_form",
+			Args:  []string{"--base64", "--decode"},
+			Stdin: []byte("aGVsbG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R2.4: -w with separate argument
+		{
+			Name:  "base64_wrap_40",
+			Args:  []string{"--base64", "-w", "40"},
+			Stdin: longInput,
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -w 0 disables wrapping
+		{
+			Name:  "base64_wrap_0",
+			Args:  []string{"--base64", "-w", "0"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: --wrap=COLS form
+		{
+			Name:  "base64_wrap_eq_20",
+			Args:  []string{"--base64", "--wrap=20"},
+			Stdin: longInput,
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -wCOLS (no space) form
+		{
+			Name:  "base64_wrap_nospace",
+			Args:  []string{"--base64", "-w10"},
+			Stdin: longInput,
+			Env:   []string{"LC_ALL=C"},
+		},
+
 		// No encoding specified exits 1
 		{
 			Name:      "no_encoding_exits_1",

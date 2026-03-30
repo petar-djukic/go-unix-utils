@@ -4,16 +4,20 @@
 // cmd/basenc encodes and decodes data using multiple encoding schemes.
 //
 // Implements prd081-basenc: R1.1 (--base64), R1.2 (--base64url),
-// R1.3 (--base32), R1.4 (--base32hex).
+// R1.3 (--base32), R1.4 (--base32hex), R2.1 (--base16), R2.2 (--z85),
+// R2.3 (-d/--decode), R2.4 (-w/--wrap).
 package main
 
 import (
+	"bytes"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/encutil"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -22,11 +26,28 @@ import (
 const (
 	progName       = "basenc"
 	defaultWrapCol = 76
+	// z85Alphabet is the ZeroMQ Z85 encoding alphabet (85 printable characters).
+	z85Alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"
 )
 
+// z85DecodeTable maps each byte to its Z85 alphabet index, or -1 if invalid.
+var z85DecodeTable = buildZ85DecodeTable()
+
+func buildZ85DecodeTable() [256]int8 {
+	var table [256]int8
+	for i := range len(table) {
+		table[i] = -1
+	}
+	for i := range len(z85Alphabet) {
+		table[z85Alphabet[i]] = int8(i)
+	}
+	return table
+}
+
 type encodingScheme struct {
-	encode func([]byte) string
-	decode func(string) ([]byte, error)
+	encode         func([]byte) string
+	decode         func(string) ([]byte, error)
+	validateEncode func([]byte) error // optional pre-encode validation
 }
 
 type config struct {
@@ -73,6 +94,92 @@ func schemeBase32Hex() *encodingScheme {
 	}
 }
 
+// schemeBase16 returns the hexadecimal (Base16) encoding scheme.
+// R2.1: --base16 encodes with uppercase hex characters.
+func schemeBase16() *encodingScheme {
+	return &encodingScheme{
+		encode: func(data []byte) string {
+			return strings.ToUpper(hex.EncodeToString(data))
+		},
+		decode: func(s string) ([]byte, error) {
+			return hex.DecodeString(s)
+		},
+	}
+}
+
+// schemeZ85 returns the ZeroMQ Z85 encoding scheme.
+// R2.2: --z85 encodes 4-byte groups into 5-character Z85 strings.
+func schemeZ85() *encodingScheme {
+	return &encodingScheme{
+		encode: z85Encode,
+		decode: z85Decode,
+		validateEncode: func(data []byte) error {
+			if len(data)%4 != 0 {
+				return fmt.Errorf("invalid input (length must be a multiple of 4)")
+			}
+			return nil
+		},
+	}
+}
+
+// z85Encode encodes data as Z85. Input length must be a multiple of 4.
+// R2.2: ZeroMQ Z85 encoding algorithm.
+func z85Encode(data []byte) string {
+	var buf strings.Builder
+	buf.Grow(len(data) * 5 / 4)
+	for i := 0; i < len(data); i += 4 {
+		value := uint32(data[i])<<24 |
+			uint32(data[i+1])<<16 |
+			uint32(data[i+2])<<8 |
+			uint32(data[i+3])
+		var chars [5]byte
+		for j := 4; j >= 0; j-- {
+			chars[j] = z85Alphabet[value%85]
+			value /= 85
+		}
+		buf.Write(chars[:])
+	}
+	return buf.String()
+}
+
+// z85Decode decodes a Z85 string. Input length must be a multiple of 5.
+// R2.2: ZeroMQ Z85 decoding algorithm.
+func z85Decode(s string) ([]byte, error) {
+	if len(s)%5 != 0 {
+		return nil, fmt.Errorf(
+			"invalid z85 input length %d (must be multiple of 5)", len(s))
+	}
+	result := make([]byte, len(s)*4/5)
+	for i := 0; i < len(s); i += 5 {
+		value, err := z85DecodeGroup(s[i : i+5])
+		if err != nil {
+			return nil, err
+		}
+		pos := (i / 5) * 4
+		result[pos] = byte(value >> 24)
+		result[pos+1] = byte(value >> 16)
+		result[pos+2] = byte(value >> 8)
+		result[pos+3] = byte(value)
+	}
+	return result, nil
+}
+
+// z85DecodeGroup decodes a 5-character Z85 group into a uint32 value.
+func z85DecodeGroup(s string) (uint32, error) {
+	var value uint64
+	for j := range 5 {
+		idx := z85DecodeTable[s[j]]
+		if idx < 0 {
+			return 0, fmt.Errorf("invalid z85 character: %c", s[j])
+		}
+		value = value*85 + uint64(idx)
+	}
+	if value > 0xFFFFFFFF {
+		return 0, fmt.Errorf("z85 group value overflow")
+	}
+	return uint32(value), nil
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
@@ -114,6 +221,10 @@ func parseOneArg(args []string, i *int, c *config) error {
 		c.scheme = schemeBase32()
 	case arg == "--base32hex":
 		c.scheme = schemeBase32Hex()
+	case arg == "--base16":
+		c.scheme = schemeBase16()
+	case arg == "--z85":
+		c.scheme = schemeZ85()
 	case arg == "-d" || arg == "--decode":
 		c.decode = true
 	case arg == "-i" || arg == "--ignore-garbage":
@@ -176,27 +287,26 @@ func run(c config) error {
 	return runEncode(rc, c)
 }
 
-// runEncode encodes input using the selected scheme with wrap control.
+// runEncode reads all input, validates if needed, and encodes with wrap control.
+// R2.3: encoding is the default mode. R2.4: wrapping at configurable column.
 func runEncode(r io.Reader, c config) error {
-	if c.wrapCol == 0 {
-		return encodeNoWrap(r, c.scheme.encode)
-	}
-	return encutil.Encode(r, os.Stdout, encutil.EncoderConfig{
-		Encode:  c.scheme.encode,
-		WrapCol: c.wrapCol,
-	})
-}
-
-// encodeNoWrap encodes input with no wrapping and no trailing newline,
-// matching GNU coreutils basenc -w 0 behavior.
-func encodeNoWrap(r io.Reader, encode func([]byte) string) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	encoded := encode(data)
-	_, err = io.WriteString(os.Stdout, encoded)
-	return err
+	if c.scheme.validateEncode != nil {
+		if err := c.scheme.validateEncode(data); err != nil {
+			return err
+		}
+	}
+	if c.wrapCol == 0 {
+		_, err = io.WriteString(os.Stdout, c.scheme.encode(data))
+		return err
+	}
+	return encutil.Encode(bytes.NewReader(data), os.Stdout, encutil.EncoderConfig{
+		Encode:  c.scheme.encode,
+		WrapCol: c.wrapCol,
+	})
 }
 
 // runDecode decodes input using the selected scheme.
