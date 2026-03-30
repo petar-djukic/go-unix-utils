@@ -3,7 +3,8 @@
 
 // cmd/chmod implements GNU chmod: change file mode bits.
 //
-// Implements prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R4.1, R4.2.
 package main
 
 import (
@@ -27,6 +28,7 @@ Change the mode of each FILE to MODE.
   -f, --silent, --quiet  suppress most error messages
   -v, --verbose          output a diagnostic for every file processed
   -R, --recursive        change files and directories recursively
+      --reference=RFILE  use RFILE's mode instead of MODE values
       --help        display this help and exit
       --version     output version information and exit
 `
@@ -39,6 +41,7 @@ type options struct {
 	verbose   bool
 	changes   bool
 	silent    bool
+	reference string // R3.2: --reference=RFILE
 }
 
 // modeChange represents a parsed mode specification (octal or symbolic).
@@ -63,12 +66,22 @@ func main() {
 // run executes the chmod logic and returns the exit code.
 // R1.3: processes multiple FILE arguments.
 // R1.4: exits 1 on any error, continues processing remaining files.
+// R4.1: exits 0 when all files processed successfully.
+// R4.2: exits 1 when any file cannot be accessed or mode is invalid.
 func run(args []string, stdout, stderr *os.File) int {
 	opts, operands, err := parseArgs(args)
 	if err != nil {
 		printError(stderr, opts.silent, err.Error())
 		return 1
 	}
+	if opts.reference != "" {
+		return runWithReference(operands, opts, stdout, stderr)
+	}
+	return runWithMode(operands, opts, stdout, stderr)
+}
+
+// runWithMode handles the standard MODE FILE... invocation.
+func runWithMode(operands []string, opts options, stdout, stderr *os.File) int {
 	if len(operands) == 0 {
 		printError(stderr, false, "missing operand")
 		printTryHelp(stderr)
@@ -86,6 +99,25 @@ func run(args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 	return applyToFiles(operands[1:], mc, opts, stdout, stderr)
+}
+
+// runWithReference handles --reference=RFILE FILE... invocation.
+// R3.2: sets each FILE's mode to match RFILE's mode.
+func runWithReference(operands []string, opts options, stdout, stderr *os.File) int {
+	if len(operands) == 0 {
+		printError(stderr, false, "missing operand")
+		printTryHelp(stderr)
+		return 1
+	}
+	refMode, err := getFileMode(opts.reference)
+	if err != nil {
+		msg := fmt.Sprintf("failed to get attributes of '%s': %s",
+			opts.reference, sysErrorMsg(err))
+		printError(stderr, opts.silent, msg)
+		return 1
+	}
+	mc := &modeChange{octal: true, mode: refMode}
+	return applyToFiles(operands, mc, opts, stdout, stderr)
 }
 
 // applyToFiles applies the mode change to each file and returns the exit code.
@@ -125,6 +157,11 @@ func parseArgs(args []string) (options, []string, error) {
 
 // handleFlag processes a single flag argument.
 func handleFlag(arg string, opts options) (options, error) {
+	// R3.2: --reference=RFILE
+	if strings.HasPrefix(arg, "--reference=") {
+		opts.reference = arg[len("--reference="):]
+		return opts, nil
+	}
 	switch arg {
 	case "--recursive":
 		opts.recursive = true
@@ -383,6 +420,7 @@ func normalizeWho(who string) string {
 }
 
 // permBitForChar returns the mode bits for a single permission character.
+// R3.1: supports setuid (u+s), setgid (g+s), and sticky bit (o+t).
 func permBitForChar(p rune, who string, isDir, hasExec bool) os.FileMode {
 	switch p {
 	case 'r':

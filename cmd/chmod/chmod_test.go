@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/chmod against gchmod (GNU coreutils).
 //
-// Traces: prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Traces: prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R4.1, R4.2.
 package main
 
 import (
@@ -61,6 +62,15 @@ func makeRecursiveWorkDir(t *testing.T) string {
 	return dir
 }
 
+// makeRefWorkDir creates a temp dir with a testfile and a reffile at different perms.
+func makeRefWorkDir(t *testing.T, filePerm, refPerm os.FileMode) string {
+	t.Helper()
+	dir := t.TempDir()
+	setupFile(t, dir, "testfile", filePerm)
+	setupFile(t, dir, "reffile", refPerm)
+	return dir
+}
+
 // TestDiff runs differential tests that produce no stdout output, so the
 // shared-workdir issue (ref binary modifies state before Go binary) is harmless.
 func TestDiff(t *testing.T) {
@@ -113,6 +123,49 @@ func TestDiff(t *testing.T) {
 			Env:      []string{"LC_ALL=C"},
 			WorkDir:  t.TempDir(),
 			ExitCode: 1,
+		},
+		// R3.1: setuid via symbolic mode
+		{
+			Name:    "setuid_symbolic",
+			Args:    []string{"u+s", "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t, 0o755),
+		},
+		// R3.1: setgid via symbolic mode
+		{
+			Name:    "setgid_symbolic",
+			Args:    []string{"g+s", "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t, 0o755),
+		},
+		// R3.1: sticky bit via symbolic mode
+		{
+			Name:    "sticky_symbolic",
+			Args:    []string{"+t", "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t, 0o755),
+		},
+		// R3.1: octal setuid + setgid + sticky
+		{
+			Name:    "special_bits_octal",
+			Args:    []string{"7755", "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeWorkDir(t, 0o644),
+		},
+		// R3.2: --reference mode
+		{
+			Name:    "reference_mode",
+			Args:    []string{"--reference=reffile", "testfile"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: makeRefWorkDir(t, 0o644, 0o755),
+		},
+		// R4.1: exit 0 on success
+		{
+			Name:     "exit_zero_success",
+			Args:     []string{"644", "testfile"},
+			Env:      []string{"LC_ALL=C"},
+			WorkDir:  makeWorkDir(t, 0o644),
+			ExitCode: 0,
 		},
 	}
 
@@ -200,6 +253,77 @@ func TestSilentSuppresses(t *testing.T) {
 	if len(out) != 0 {
 		t.Errorf("expected no output with -f, got: %q", string(out))
 	}
+}
+
+// TestSetuidVerbose verifies setuid mode in verbose output.
+// R3.1: setuid (u+s) symbolic mode support.
+func TestSetuidVerbose(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := makeWorkDir(t, 0o755)
+
+	out := runGoBin(t, goBin, dir, "-v", "u+s", "testfile")
+	got := strings.TrimSpace(out)
+	want := "mode of 'testfile' changed from 0755 (rwxr-xr-x) to 4755 (rwsr-xr-x)"
+	if got != want {
+		t.Errorf("got:  %q\nwant: %q", got, want)
+	}
+}
+
+// TestReferenceMode verifies --reference copies mode from reference file.
+// R3.2: --reference=RFILE sets each FILE's mode to match RFILE's mode.
+func TestReferenceMode(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := makeRefWorkDir(t, 0o644, 0o755)
+
+	runGoBin(t, goBin, dir, "--reference=reffile", "testfile")
+
+	info, err := os.Stat(filepath.Join(dir, "testfile"))
+	if err != nil {
+		t.Fatalf("stat testfile: %v", err)
+	}
+	got := info.Mode().Perm()
+	if got != 0o755 {
+		t.Errorf("testfile mode = %04o, want 0755", got)
+	}
+}
+
+// TestExitCodes verifies exit code behavior.
+// R4.1: exit 0 on success.
+// R4.2: exit 1 on error.
+func TestExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("success_exits_zero", func(t *testing.T) {
+		dir := makeWorkDir(t, 0o644)
+		cmd := exec.Command(goBin, "755", "testfile")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if err := cmd.Run(); err != nil {
+			t.Errorf("expected exit 0, got: %v", err)
+		}
+	})
+
+	t.Run("nonexistent_exits_one", func(t *testing.T) {
+		dir := t.TempDir()
+		cmd := exec.Command(goBin, "644", "noexist")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		err := cmd.Run()
+		if err == nil {
+			t.Error("expected exit 1, got exit 0")
+		}
+	})
+
+	t.Run("invalid_mode_exits_one", func(t *testing.T) {
+		dir := makeWorkDir(t, 0o644)
+		cmd := exec.Command(goBin, "xyz", "testfile")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		err := cmd.Run()
+		if err == nil {
+			t.Error("expected exit 1, got exit 0")
+		}
+	})
 }
 
 // runGoBin executes the Go binary and returns stdout.
