@@ -432,7 +432,7 @@ releases:
         reference binaries.
       use_cases:
         - id: rel09.1-uc001-base32
-          status: spec_complete
+          status: implemented
         - id: rel09.1-uc002-base64
           status: spec_complete
         - id: rel09.1-uc003-basenc
