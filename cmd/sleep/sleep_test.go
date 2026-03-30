@@ -4,8 +4,10 @@
 package main
 
 import (
+	"math"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -106,4 +108,78 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestParseDuration verifies duration parsing for cases that cannot be tested
+// via differential testing (e.g., infinity would hang both binaries).
+func TestParseDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		arg     string
+		wantInf bool
+		wantErr bool
+		wantSec float64
+	}{
+		// R2.1: zero duration.
+		{name: "zero", arg: "0", wantSec: 0},
+		// R2.4: infinity variants.
+		{name: "inf", arg: "inf", wantInf: true},
+		{name: "infinity", arg: "infinity", wantInf: true},
+		{name: "Inf", arg: "Inf", wantInf: true},
+		{name: "INF", arg: "INF", wantInf: true},
+		{name: "INFINITY", arg: "INFINITY", wantInf: true},
+		// R2.3: invalid arguments.
+		{name: "non_numeric", arg: "abc", wantErr: true},
+		{name: "negative", arg: "-1", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseDuration(tc.arg)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseDuration(%q) = %v, want error", tc.arg, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseDuration(%q) unexpected error: %v", tc.arg, err)
+			}
+			if tc.wantInf {
+				if !math.IsInf(got, 1) {
+					t.Fatalf("parseDuration(%q) = %v, want +Inf", tc.arg, got)
+				}
+				return
+			}
+			if got != tc.wantSec {
+				t.Fatalf("parseDuration(%q) = %v, want %v", tc.arg, got, tc.wantSec)
+			}
+		})
+	}
+}
+
+// TestSumDurationsInfinity verifies that infinity arguments produce the
+// maximum duration (R2.4). This cannot be tested via RunDiffTests because
+// both binaries would sleep forever.
+func TestSumDurationsInfinity(t *testing.T) {
+	t.Parallel()
+
+	dur, err := sumDurations([]string{"inf"})
+	if err != nil {
+		t.Fatalf("sumDurations([inf]) unexpected error: %v", err)
+	}
+	if dur != time.Duration(math.MaxInt64) {
+		t.Fatalf("sumDurations([inf]) = %v, want max duration", dur)
+	}
+
+	dur, err = sumDurations([]string{"0.01", "infinity"})
+	if err != nil {
+		t.Fatalf("sumDurations([0.01, infinity]) unexpected error: %v", err)
+	}
+	if dur != time.Duration(math.MaxInt64) {
+		t.Fatalf("sumDurations([0.01, infinity]) = %v, want max duration", dur)
+	}
 }
