@@ -109,6 +109,25 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errorNorm,
 		},
+		// R3.1: nonexistent user in long format still exits 0.
+		{
+			Name: "pinky_nonexistent_user_long",
+			Args: []string{"-l", "__nonexistent_user_98765__"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: nonexistent user in short format exits 0 (no matching entries).
+		{
+			Name: "pinky_nonexistent_user_short",
+			Args: []string{"__nonexistent_user_98765__"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: combined valid and invalid flags exits 1.
+		{
+			Name:      "pinky_valid_then_invalid",
+			Args:      []string{"-sx"},
+			ExitCode:  1,
+			Normalize: errorNorm,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

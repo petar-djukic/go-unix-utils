@@ -264,16 +264,18 @@ func printLong(opts options) {
 
 // printLongEntry prints long-format information for one user.
 // R2.3: -b suppresses directory and shell lines.
+// R3.1: nonexistent users still exit 0; trailing blank line only when pw exists.
 func printLongEntry(username string, opts options) {
 	pw := lookupPasswd(username)
 	printLongNameLine(username, pw)
-	if pw != nil && !opts.suppressDir {
+	if pw == nil {
+		return
+	}
+	if !opts.suppressDir {
 		fmt.Printf("Directory: %-29s", pw.dir)
 		fmt.Printf("Shell:  %s\n", pw.shell)
 	}
-	if pw != nil {
-		printLongGecos(pw.gecos)
-	}
+	printLongGecos(pw.gecos)
 	fmt.Println()
 }
 
