@@ -20,6 +20,9 @@ const progName = "chronic"
 // exitStderrTrigger is returned when -e triggers on stderr with exit 0.
 const exitStderrTrigger = 2
 
+// exitNotFound is returned when COMMAND cannot be found or executed (R2.2).
+const exitNotFound = 100
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -72,6 +75,11 @@ func executeCommand(cfg config) int {
 	cmd.Stderr = &stderrBuf
 
 	err := cmd.Run()
+	// R2.2: command not found or cannot be executed → print error, exit 100.
+	if isExecError(err) {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return exitNotFound
+	}
 	exitCode := exitCodeFromErr(err)
 
 	return handleOutput(cfg, exitCode, &stdoutBuf, &stderrBuf)
@@ -108,6 +116,12 @@ func showOutput(verbose bool, exitCode int, stdout, stderr *bytes.Buffer) {
 	}
 }
 
+// isExecError reports whether the error is an exec.Error (command not found).
+func isExecError(err error) bool {
+	_, ok := err.(*exec.Error)
+	return ok
+}
+
 // exitCodeFromErr extracts the exit code from a command result.
 // R2.1: propagates COMMAND exit status.
 func exitCodeFromErr(err error) int {
@@ -117,6 +131,5 @@ func exitCodeFromErr(err error) int {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		return exitErr.ExitCode()
 	}
-	// R2.2: command not found or cannot be executed.
-	return 1
+	return exitNotFound
 }

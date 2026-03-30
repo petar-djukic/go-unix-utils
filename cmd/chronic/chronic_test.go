@@ -5,6 +5,7 @@ package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -88,7 +89,34 @@ func TestDiff(t *testing.T) {
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 2,
 		},
+		// R2.1: exit code propagates from command.
+		{
+			Name:     "exit_code_propagated",
+			Args:     []string{"sh", "-c", "exit 42"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 42,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestCommandNotFound verifies R2.2: exit 100 when command cannot be found.
+// Standalone test because the Perl reference chronic exits differently for this case.
+func TestCommandNotFound(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "nonexistent_command_xyz_12345")
+	cmd.Env = []string{"LC_ALL=C", "PATH="}
+	out, err := cmd.CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exitErr.ExitCode() != 100 {
+		t.Errorf("exit code = %d, want 100", exitErr.ExitCode())
+	}
+	if !strings.Contains(string(out), "nonexistent_command_xyz_12345") {
+		t.Errorf("stderr should mention the command name, got: %s", out)
+	}
 }
