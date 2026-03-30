@@ -356,7 +356,7 @@ releases:
         differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel08.0-uc001-date
-          status: spec_complete
+          status: implemented
         - id: rel08.0-uc002-sleep
           status: implemented
         - id: rel08.0-uc003-touch
