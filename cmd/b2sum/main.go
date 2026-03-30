@@ -8,7 +8,9 @@
 // R1.4 (exit code and stderr diagnostics),
 // R2.1 (--check verification), R2.2 (OK/FAILED output),
 // R2.3 (--warn/--quiet/--status modifiers),
-// R3.1 (binary/text mode), R3.3 (--length variable digest length).
+// R3.1 (binary/text mode), R3.2 (--tag overrides -b/-t),
+// R3.3 (--length variable digest length),
+// R4.1 (exit 0 on success), R4.2 (exit 1 on failure).
 package main
 
 import (
@@ -31,15 +33,16 @@ const (
 
 // options holds all parsed command-line flags.
 type options struct {
-	binary bool
-	tag    bool
-	check  bool
-	quiet  bool
-	status bool
-	warn   bool
-	strict bool
-	length int // digest length in bits (default 512)
-	files  []string
+	binary       bool
+	textExplicit bool // true when -t/--text was explicitly given
+	tag          bool
+	check        bool
+	quiet        bool
+	status       bool
+	warn         bool
+	strict       bool
+	length       int // digest length in bits (default 512)
+	files        []string
 }
 
 func main() {
@@ -89,7 +92,12 @@ func buildConfig(lengthBits int) hashutil.HashConfig {
 }
 
 // validateFlags returns an error if flags are used in invalid combinations.
+//
+// R3.2: --tag does not support --text mode (explicit -t/--text).
 func validateFlags(opts options) error {
+	if opts.tag && opts.textExplicit {
+		return fmt.Errorf("--tag does not support --text mode")
+	}
 	if opts.check {
 		return nil
 	}
@@ -154,6 +162,7 @@ func parseArgs(args []string) (options, error) {
 			opts.binary = true
 		case arg == "-t" || arg == "--text":
 			opts.binary = false
+			opts.textExplicit = true
 		case arg == "--tag":
 			opts.tag = true
 		case arg == "-c" || arg == "--check":
@@ -199,11 +208,15 @@ func parseArgs(args []string) (options, error) {
 
 // parseLengthValue validates and returns the digest length in bits.
 //
-// R3.3: N must be a positive multiple of 8 and at most 512.
+// R3.3: N must be a non-negative multiple of 8 and at most 512.
+// Zero means default (512), matching GNU b2sum behavior.
 func parseLengthValue(val string) (int, error) {
 	n, err := strconv.Atoi(val)
-	if err != nil || n <= 0 || n%8 != 0 || n > maxLengthBits {
+	if err != nil || n < 0 || n%8 != 0 || n > maxLengthBits {
 		return 0, fmt.Errorf("invalid length: %s", val)
+	}
+	if n == 0 {
+		return defaultLengthBits, nil
 	}
 	return n, nil
 }

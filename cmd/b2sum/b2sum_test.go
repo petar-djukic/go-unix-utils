@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/b2sum implementing prd076-b2sum R1.1, R1.2, R1.3, R1.4,
-// R2.1, R2.2, R2.3, R3.1, R3.3.
+// R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2.
 package main
 
 import (
@@ -306,6 +306,158 @@ func TestDiffNonexistentFile(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// clearStdout returns a normalizer that blanks stdout so only stderr and
+// exit code are compared.
+func clearStdout() testutils.NormalizeFunc {
+	return func(b []byte) []byte { return nil }
+}
+
+// TestDiffTagOverride tests that --tag produces BSD tag format regardless
+// of -b or -t flags.
+//
+// R3.2: --tag overrides -b/-t output format selection.
+func TestDiffTagOverride(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gb2sum")
+	if err != nil {
+		t.Skip("reference binary gb2sum not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.2: --tag rejects explicit --text mode.
+		{
+			Name:      "tag_rejects_text",
+			Args:      []string{"--tag", "-t"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R3.2: --tag with -b still uses BSD tag format.
+		{
+			Name:     "tag_overrides_binary",
+			Args:     []string{"--tag", "-b"},
+			Stdin:    []byte("hello\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInvalidLength tests error handling for invalid --length values.
+//
+// R3.3: --length=N must be a positive multiple of 8, at most 512.
+func TestDiffInvalidLength(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gb2sum")
+	if err != nil {
+		t.Skip("reference binary gb2sum not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.3: --length=7 is not a multiple of 8.
+		{
+			Name:      "length_not_multiple_of_8",
+			Args:      []string{"--length=7"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R3.3: --length=0 uses default length (matches GNU behavior).
+		{
+			Name:     "length_zero_default",
+			Args:     []string{"--length=0"},
+			Stdin:    []byte("hello\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: --length=520 exceeds maximum of 512.
+		{
+			Name:      "length_exceeds_max",
+			Args:      []string{"--length=520"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R3.3: --length with non-numeric value.
+		{
+			Name:      "length_non_numeric",
+			Args:      []string{"--length=abc"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffExitCodes tests exit code behavior for success and failure cases.
+//
+// R4.1: exit 0 on success.
+// R4.2: exit 1 on failure (missing file, failed check).
+func TestDiffExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gb2sum")
+	if err != nil {
+		t.Skip("reference binary gb2sum not in PATH")
+	}
+
+	dir := t.TempDir()
+	existFile := filepath.Join(dir, "exists.txt")
+	writeTestFile(t, existFile, "data\n")
+	noSuchFile := filepath.Join(dir, "no_such_file.txt")
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 when all files processed successfully.
+		{
+			Name:     "exit_0_success",
+			Args:     []string{existFile},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.2: exit 1 when a file cannot be opened, continues processing.
+		{
+			Name:      "exit_1_mixed_files",
+			Args:      []string{existFile, noSuchFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffVersion tests --version output.
+//
+// R4.2 (task): --version prints version info and exits 0.
+func TestDiffVersion(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gb2sum")
+	if err != nil {
+		t.Skip("reference binary gb2sum not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// --version exits 0; stdout differs between implementations so normalize.
+		{
+			Name:      "version_exits_0",
+			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{clearStdout()},
 		},
 	}
 
