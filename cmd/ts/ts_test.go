@@ -23,7 +23,8 @@ var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 // Implements prd004-ts R9.1-R9.2.
 // R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
 // R9.2: covers default format, custom format, subsecond extensions (R2.3, R2.4),
-// -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.2),
+// -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.3),
+// -m monotonic mode (R5.1-R5.3),
 // empty stdin, partial last line, additional strftime specifiers (R2.2).
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -175,7 +176,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R4.1: elapsed-since-start mode with custom format.
+		// R4.3: elapsed-since-start mode with custom format overrides default.
 		{
 			Name:      "elapsed_mode_custom_format",
 			Args:      []string{"-s", "%M:%S"},
@@ -200,6 +201,51 @@ func TestDiff(t *testing.T) {
 			Stdin:    []byte(""),
 			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
+		},
+		// R5.1, R5.2: monotonic mode with default format.
+		{
+			Name:      "monotonic_default_format",
+			Args:      []string{"-m"},
+			Stdin:     []byte("mono\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: monotonic mode with custom format string.
+		{
+			Name:      "monotonic_custom_format",
+			Args:      []string{"-m", "%H:%M:%S"},
+			Stdin:     []byte("mono\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: monotonic mode combined with -s (elapsed since start).
+		{
+			Name:      "monotonic_elapsed_mode",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("first\nsecond\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: monotonic mode combined with -i (incremental).
+		{
+			Name:      "monotonic_incremental_mode",
+			Args:      []string{"-m", "-i"},
+			Stdin:     []byte("first\nsecond\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2, R5.3: monotonic mode with subsecond extension.
+		{
+			Name:      "monotonic_subsecond_format",
+			Args:      []string{"-m", "%.T"},
+			Stdin:     []byte("precise\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
 	}
 

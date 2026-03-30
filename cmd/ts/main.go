@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/ts implements moreutils ts: prepend timestamps to stdin lines.
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3.
 package main
 
 import (
@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -64,8 +66,9 @@ var simpleDirectives = map[byte]string{
 
 // tsConfig holds parsed command-line configuration.
 type tsConfig struct {
-	format string
-	mode   tsMode
+	format    string
+	mode      tsMode
+	monotonic bool // R5.1: -m flag for monotonic clock
 }
 
 func main() {
@@ -78,12 +81,18 @@ func main() {
 	case modeElapsed:
 		runElapsed(cfg.format)
 	default:
-		runDefault(cfg.format)
+		if cfg.monotonic {
+			// R5.1: use CLOCK_MONOTONIC for timestamp sampling.
+			processLines(cfg.format, monotonicNow)
+		} else {
+			runDefault(cfg.format)
+		}
 	}
 }
 
 // parseArgs parses ts flags and an optional positional format string.
 // R3.4: -i and -s; last flag wins (matches reference binary behavior).
+// R5.2: -m is compatible with all modes.
 func parseArgs(args []string) tsConfig {
 	cfg := tsConfig{format: defaultFormat}
 	var remaining []string
@@ -93,6 +102,9 @@ func parseArgs(args []string) tsConfig {
 			cfg.mode = modeIncremental
 		case "-s":
 			cfg.mode = modeElapsed
+		case "-m":
+			// R5.1: monotonic clock mode.
+			cfg.monotonic = true
 		default:
 			if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 				printUsageAndExit()
@@ -116,6 +128,17 @@ func printUsageAndExit() {
 	os.Exit(1)
 }
 
+// monotonicNow returns the current CLOCK_MONOTONIC value as a time.Time
+// in the local timezone.
+// R5.1: monotonic clock instead of wall clock for timestamp sampling.
+// R5.3: CLOCK_MONOTONIC does not jump on NTP or wall-clock adjustments.
+func monotonicNow() time.Time {
+	var ts unix.Timespec
+	// CLOCK_MONOTONIC is guaranteed on Darwin and Linux; error ignored.
+	_ = unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts)
+	return time.Unix(ts.Sec, ts.Nsec).In(time.Local)
+}
+
 // runDefault reads stdin and prepends wall-clock timestamps.
 func runDefault(format string) {
 	processLines(format, func() time.Time { return time.Now() })
@@ -126,6 +149,7 @@ func runDefault(format string) {
 // R3.1: elapsed since previous line; first line since start.
 // R3.2: TZ=GMT via UTC epoch offset formatting.
 // R3.3: custom format still uses TZ=GMT behavior.
+// R5.2: -m compatible; Go's time.Sub already uses monotonic readings.
 func runIncremental(format string) {
 	lastTime := time.Now()
 	processLines(format, func() time.Time {
@@ -140,6 +164,8 @@ func runIncremental(format string) {
 // formatted in UTC.
 // R4.1: elapsed since ts started, monotonically increasing.
 // R4.2: default format "%H:%M:%S" with TZ=GMT.
+// R4.3: custom format overrides the -s default format.
+// R5.2: -m compatible; Go's time.Since already uses monotonic readings.
 func runElapsed(format string) {
 	startTime := time.Now()
 	processLines(format, func() time.Time {
