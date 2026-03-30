@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // shuf_test.go implements differential and structural tests for
-// prd064-shuf R1.1–R1.4.
+// prd064-shuf R1.1–R1.4, R2.1–R2.4.
 
 package main
 
@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -57,6 +58,65 @@ func TestDiff(t *testing.T) {
 	t.Run("single_line", func(t *testing.T) {
 		stdin := []byte("only\n")
 		assertStructuralMatch(t, goBin, refBin, nil, stdin, 1)
+	})
+
+	// R2.1: range mode
+	t.Run("range_mode_i_1_5", func(t *testing.T) {
+		assertRangeMatch(t, goBin, refBin, []string{"-i", "1-5"}, 5, 1, 5)
+	})
+
+	// R2.2: head count
+	t.Run("head_count_n3", func(t *testing.T) {
+		stdin := []byte("a\nb\nc\nd\ne\n")
+		assertLineCount(t, goBin, refBin, []string{"-n", "3"}, stdin, 3)
+	})
+
+	// R2.2 + R2.1: head count with range
+	t.Run("range_with_head_count", func(t *testing.T) {
+		assertRangeHeadCount(t, goBin, refBin,
+			[]string{"-i", "1-10", "-n", "3"}, 3, 1, 10)
+	})
+
+	// R2.3: repeat with head count
+	t.Run("repeat_with_head_count", func(t *testing.T) {
+		stdin := []byte("a\nb\nc\n")
+		assertRepeatMatch(t, goBin, refBin,
+			[]string{"-r", "-n", "10"}, stdin, 10, []string{"a", "b", "c"})
+	})
+
+	// R2.4: output to file
+	t.Run("output_file", func(t *testing.T) {
+		dir := t.TempDir()
+		outGo := filepath.Join(dir, "go_out.txt")
+		outRef := filepath.Join(dir, "ref_out.txt")
+		stdin := []byte("x\ny\nz\n")
+
+		runBinNoOutput(t, goBin, []string{"-o", outGo}, stdin)
+		runBinNoOutput(t, refBin, []string{"-o", outRef}, stdin)
+
+		goData, err := os.ReadFile(outGo)
+		if err != nil {
+			t.Fatalf("reading go output file: %v", err)
+		}
+		refData, err := os.ReadFile(outRef)
+		if err != nil {
+			t.Fatalf("reading ref output file: %v", err)
+		}
+		goLines := nonEmptyLines(string(goData))
+		refLines := nonEmptyLines(string(refData))
+		if len(goLines) != 3 || len(refLines) != 3 {
+			t.Errorf("expected 3 lines each, go=%d ref=%d",
+				len(goLines), len(refLines))
+		}
+		assertSameSet(t, goLines, refLines)
+	})
+
+	// R2.1 error: -i with file arguments
+	t.Run("range_with_files_error", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "f.txt")
+		os.WriteFile(f, []byte("a\n"), 0o644)
+		assertBothFail(t, goBin, refBin, []string{"-i", "1-5", f}, nil)
 	})
 }
 
@@ -126,6 +186,84 @@ func TestNoTrailingNewline(t *testing.T) {
 	}
 }
 
+// TestRangeMode verifies R2.1: -i LO-HI generates integers in range.
+func TestRangeMode(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	out := runBin(t, goBin, []string{"-i", "1-5"}, nil)
+	lines := nonEmptyLines(out)
+
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d", len(lines))
+	}
+
+	seen := make(map[int]bool)
+	for _, line := range lines {
+		n, err := strconv.Atoi(line)
+		if err != nil {
+			t.Fatalf("non-integer output: %q", line)
+		}
+		if n < 1 || n > 5 {
+			t.Errorf("value %d out of range [1,5]", n)
+		}
+		if seen[n] {
+			t.Errorf("duplicate value %d", n)
+		}
+		seen[n] = true
+	}
+}
+
+// TestHeadCount verifies R2.2: -n limits output count.
+func TestHeadCount(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	stdin := []byte("a\nb\nc\nd\ne\n")
+	out := runBin(t, goBin, []string{"-n", "2"}, stdin)
+	lines := nonEmptyLines(out)
+
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+}
+
+// TestRepeatMode verifies R2.3: -r allows duplicates.
+func TestRepeatMode(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	stdin := []byte("a\nb\n")
+	out := runBin(t, goBin, []string{"-r", "-n", "20"}, stdin)
+	lines := nonEmptyLines(out)
+
+	if len(lines) != 20 {
+		t.Fatalf("expected 20 lines, got %d", len(lines))
+	}
+	for _, line := range lines {
+		if line != "a" && line != "b" {
+			t.Errorf("unexpected value %q", line)
+		}
+	}
+}
+
+// TestOutputFile verifies R2.4: -o writes to file.
+func TestOutputFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "out.txt")
+
+	stdin := []byte("p\nq\nr\n")
+	runBinNoOutput(t, goBin, []string{"-o", outFile}, stdin)
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+	lines := nonEmptyLines(string(data))
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines in output file, got %d", len(lines))
+	}
+	got := sortedCopy(lines)
+	if !equalSlices(got, []string{"p", "q", "r"}) {
+		t.Errorf("expected {p,q,r}, got %v", got)
+	}
+}
+
 // assertStructuralMatch runs both binaries and compares structural properties.
 func assertStructuralMatch(
 	t *testing.T, goBin, refBin string,
@@ -146,13 +284,140 @@ func assertStructuralMatch(
 		t.Errorf("ref binary: expected %d lines, got %d",
 			expectedLines, len(refLines))
 	}
+	assertSameSet(t, goLines, refLines)
+}
 
-	// Verify same set of values (sorted comparison).
-	goSorted := sortedCopy(goLines)
-	refSorted := sortedCopy(refLines)
-	if !equalSlices(goSorted, refSorted) {
-		t.Errorf("value sets differ:\n  go:  %v\n  ref: %v",
-			goSorted, refSorted)
+// assertRangeMatch verifies both binaries produce the same integer set.
+func assertRangeMatch(
+	t *testing.T, goBin, refBin string,
+	args []string, expectedCount, lo, hi int,
+) {
+	t.Helper()
+	goOut := runBin(t, goBin, args, nil)
+	refOut := runBin(t, refBin, args, nil)
+
+	goLines := nonEmptyLines(goOut)
+	refLines := nonEmptyLines(refOut)
+
+	if len(goLines) != expectedCount {
+		t.Errorf("go: expected %d lines, got %d", expectedCount, len(goLines))
+	}
+	if len(refLines) != expectedCount {
+		t.Errorf("ref: expected %d lines, got %d", expectedCount, len(refLines))
+	}
+	assertIntRange(t, "go", goLines, lo, hi)
+	assertIntRange(t, "ref", refLines, lo, hi)
+}
+
+// assertRangeHeadCount verifies range with -n limit.
+func assertRangeHeadCount(
+	t *testing.T, goBin, refBin string,
+	args []string, expectedCount, lo, hi int,
+) {
+	t.Helper()
+	goOut := runBin(t, goBin, args, nil)
+	refOut := runBin(t, refBin, args, nil)
+
+	goLines := nonEmptyLines(goOut)
+	refLines := nonEmptyLines(refOut)
+
+	if len(goLines) != expectedCount {
+		t.Errorf("go: expected %d lines, got %d", expectedCount, len(goLines))
+	}
+	if len(refLines) != expectedCount {
+		t.Errorf("ref: expected %d lines, got %d", expectedCount, len(refLines))
+	}
+	assertIntRange(t, "go", goLines, lo, hi)
+	assertIntRange(t, "ref", refLines, lo, hi)
+}
+
+// assertRepeatMatch verifies repeat mode output.
+func assertRepeatMatch(
+	t *testing.T, goBin, refBin string,
+	args []string, stdin []byte, expectedCount int, allowed []string,
+) {
+	t.Helper()
+	goOut := runBin(t, goBin, args, stdin)
+	refOut := runBin(t, refBin, args, stdin)
+
+	goLines := nonEmptyLines(goOut)
+	refLines := nonEmptyLines(refOut)
+
+	if len(goLines) != expectedCount {
+		t.Errorf("go: expected %d lines, got %d", expectedCount, len(goLines))
+	}
+	if len(refLines) != expectedCount {
+		t.Errorf("ref: expected %d lines, got %d", expectedCount, len(refLines))
+	}
+	allowSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowSet[a] = true
+	}
+	for _, line := range goLines {
+		if !allowSet[line] {
+			t.Errorf("go: unexpected value %q", line)
+		}
+	}
+}
+
+// assertBothFail verifies both binaries exit non-zero.
+func assertBothFail(
+	t *testing.T, goBin, refBin string,
+	args []string, stdin []byte,
+) {
+	t.Helper()
+	goErr := runBinExpectFail(t, goBin, args, stdin)
+	refErr := runBinExpectFail(t, refBin, args, stdin)
+	if goErr == nil {
+		t.Error("go binary should have failed but succeeded")
+	}
+	if refErr == nil {
+		t.Error("ref binary should have failed but succeeded")
+	}
+}
+
+// assertIntRange checks that all lines are integers in [lo, hi].
+func assertIntRange(t *testing.T, label string, lines []string, lo, hi int) {
+	t.Helper()
+	for _, line := range lines {
+		n, err := strconv.Atoi(line)
+		if err != nil {
+			t.Errorf("%s: non-integer %q", label, line)
+			continue
+		}
+		if n < lo || n > hi {
+			t.Errorf("%s: %d out of range [%d,%d]", label, n, lo, hi)
+		}
+	}
+}
+
+// assertSameSet verifies two line slices contain the same sorted values.
+func assertSameSet(t *testing.T, a, b []string) {
+	t.Helper()
+	aSorted := sortedCopy(a)
+	bSorted := sortedCopy(b)
+	if !equalSlices(aSorted, bSorted) {
+		t.Errorf("value sets differ:\n  a: %v\n  b: %v", aSorted, bSorted)
+	}
+}
+
+// assertLineCount verifies both binaries produce the expected line count.
+func assertLineCount(
+	t *testing.T, goBin, refBin string,
+	args []string, stdin []byte, expectedCount int,
+) {
+	t.Helper()
+	goOut := runBin(t, goBin, args, stdin)
+	refOut := runBin(t, refBin, args, stdin)
+
+	goLines := nonEmptyLines(goOut)
+	refLines := nonEmptyLines(refOut)
+
+	if len(goLines) != expectedCount {
+		t.Errorf("go: expected %d lines, got %d", expectedCount, len(goLines))
+	}
+	if len(refLines) != expectedCount {
+		t.Errorf("ref: expected %d lines, got %d", expectedCount, len(refLines))
 	}
 }
 
@@ -171,6 +436,32 @@ func runBin(t *testing.T, bin string, args []string, stdin []byte) string {
 		t.Fatalf("binary %s failed: %v\nstderr: %s", bin, err, stderr.String())
 	}
 	return stdout.String()
+}
+
+// runBinNoOutput executes a binary, ignoring stdout (for -o tests).
+func runBinNoOutput(t *testing.T, bin string, args []string, stdin []byte) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("binary %s failed: %v\nstderr: %s", bin, err, stderr.String())
+	}
+}
+
+// runBinExpectFail executes a binary and returns the error (expects failure).
+func runBinExpectFail(t *testing.T, bin string, args []string, stdin []byte) error {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	return cmd.Run()
 }
 
 // nonEmptyLines splits output into lines, filtering empty trailing lines.
