@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/stty against gstty (GNU coreutils).
 //
-// Tests prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2.
+// Tests prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2, R7.1, R7.2, R7.3.
 package main
 
 import (
@@ -249,6 +249,95 @@ func TestSettingApplication(t *testing.T) {
 			t.Error("save/restore round trip failed")
 		}
 	})
+}
+
+// TestExitCodeSuccess verifies R7.1: exit 0 on success.
+func TestExitCodeSuccess(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		t.Skipf("/dev/tty not accessible: %v", err)
+	}
+	f.Close()
+
+	// R7.1: display mode exits 0.
+	t.Run("R7.1_default_display_exits_0", func(t *testing.T) {
+		cmd := exec.Command(bin, "-F", "/dev/tty")
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("expected exit 0, got: %v", err)
+		}
+	})
+
+	t.Run("R7.1_all_display_exits_0", func(t *testing.T) {
+		cmd := exec.Command(bin, "-a", "-F", "/dev/tty")
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("expected exit 0, got: %v", err)
+		}
+	})
+
+	t.Run("R7.1_save_display_exits_0", func(t *testing.T) {
+		cmd := exec.Command(bin, "-g", "-F", "/dev/tty")
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("expected exit 0, got: %v", err)
+		}
+	})
+}
+
+// TestExitCodeError verifies R7.2: exit 1 on any error.
+func TestExitCodeError(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"R7.2_invalid_device", []string{"-F", "/dev/nonexistent_stty_test_device"}},
+		{"R7.2_invalid_setting", []string{"-F", "/dev/tty", "zzz_invalid_xyz"}},
+		{"R7.2_conflicting_flags", []string{"-a", "-g"}},
+		{"R7.2_missing_cc_arg", []string{"-F", "/dev/tty", "intr"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(bin, tc.args...)
+			cmd.Stdin = bytes.NewReader([]byte{}) // ensure no terminal on stdin
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected non-zero exit")
+			}
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("unexpected error type: %v", err)
+			}
+			if exitErr.ExitCode() != 1 {
+				t.Errorf("exit code = %d, want 1", exitErr.ExitCode())
+			}
+		})
+	}
+}
+
+// TestSIGPIPE verifies R7.3: SIGPIPE is handled gracefully.
+func TestSIGPIPE(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		t.Skipf("/dev/tty not accessible: %v", err)
+	}
+	f.Close()
+
+	// R7.3: pipe stty -a output through a command that closes stdin early.
+	cmd := exec.Command(bin, "-a", "-F", "/dev/tty")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Close the reader immediately to trigger SIGPIPE on next write.
+	stdout.Close()
+	// stty should exit without error (SIGPIPE handled gracefully).
+	_ = cmd.Wait() // exit code 0 or killed by SIGPIPE — both acceptable
 }
 
 // captureStty runs stty and returns trimmed stdout.

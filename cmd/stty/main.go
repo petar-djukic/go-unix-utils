@@ -3,7 +3,7 @@
 
 // cmd/stty implements GNU stty: change and print terminal line settings.
 //
-// Implements prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2.
+// Implements prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2, R7.1, R7.2, R7.3.
 package main
 
 import (
