@@ -3,10 +3,11 @@
 
 // cmd/install implements GNU install: copy files and set attributes.
 //
-// Implements prd101-install R1.1-R1.4, R2.1-R2.4.
+// Implements prd101-install R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,7 @@ Copy files and set attributes.
 
       --backup[=CONTROL]  make a backup of each existing destination file
   -b                  like --backup but does not accept an argument
+  -C, --compare       compare source and destination, do not install if identical
   -d, --directory     treat all arguments as directory names; create all
                         components of the specified directories
   -D                  create all leading components of DEST except the last,
@@ -68,6 +70,7 @@ const (
 
 // installOptions holds parsed command-line flags.
 // R1.1: mode, R1.2: modeSet, R1.3: owner, R1.4: group.
+// R3.1: compare.
 type installOptions struct {
 	mode          os.FileMode
 	modeSet       bool
@@ -80,6 +83,7 @@ type installOptions struct {
 	suffix        string
 	createLeading bool
 	verbose       bool
+	compare       bool
 }
 
 func main() {
@@ -88,6 +92,7 @@ func main() {
 }
 
 // run executes the install logic and returns the exit code.
+// R3.2: returns 0 on success, 1 on any error.
 func run(args []string, stdout, stderr *os.File) int {
 	opts, operands, result, err := parseArgs(args)
 	switch result {
@@ -266,6 +271,7 @@ func installIntoDir(sources []string, dir string, opts installOptions, stdout, s
 
 // installSingleFile copies one source file to dest with attributes.
 // R1.1: copy with mode. R2.2: create leading dirs. R2.3: backup before overwrite.
+// R3.1: skip if -C and source/dest are identical.
 func installSingleFile(src, dest string, opts installOptions, stdout, stderr *os.File) int {
 	if opts.createLeading {
 		dir := filepath.Dir(dest)
@@ -273,16 +279,20 @@ func installSingleFile(src, dest string, opts installOptions, stdout, stderr *os
 			return 1
 		}
 	}
+	mode := defaultMode
+	if opts.modeSet {
+		mode = opts.mode
+	}
+	// R3.1: skip install if -C and files are identical.
+	if opts.compare && filesEqual(src, dest, mode) {
+		return 0
+	}
 	if opts.backupCtrl != backupNone {
 		if err := makeBackup(dest, opts); err != nil {
 			printError(stderr, fmt.Sprintf(
 				"cannot backup '%s': %s", dest, err))
 			return 1
 		}
-	}
-	mode := defaultMode
-	if opts.modeSet {
-		mode = opts.mode
 	}
 	if err := copyFile(src, dest, mode); err != nil {
 		printError(stderr, fmt.Sprintf(
@@ -296,6 +306,39 @@ func installSingleFile(src, dest string, opts installOptions, stdout, stderr *os
 		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
 	}
 	return 0
+}
+
+// filesEqual reports whether src and dest have identical content and
+// permissions. Returns false if either file cannot be read (R3.1).
+func filesEqual(src, dest string, mode os.FileMode) bool {
+	destInfo, err := os.Stat(dest)
+	if err != nil {
+		return false
+	}
+	if destInfo.Mode().Perm() != mode.Perm() {
+		return false
+	}
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return false
+	}
+	if srcInfo.Size() != destInfo.Size() {
+		return false
+	}
+	return contentEqual(src, dest)
+}
+
+// contentEqual compares file contents byte-for-byte.
+func contentEqual(pathA, pathB string) bool {
+	a, err := os.ReadFile(pathA)
+	if err != nil {
+		return false
+	}
+	b, err := os.ReadFile(pathB)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(a, b)
 }
 
 // copyFile reads src and writes to dest with the given mode.
@@ -468,6 +511,8 @@ func parseLongFlag(flag string, remaining []string, opts *installOptions) (int, 
 		opts.directory = true
 	case "--verbose":
 		opts.verbose = true
+	case "--compare":
+		opts.compare = true
 	case "--no-target-directory":
 		opts.noTargetDir = true
 	case "--backup":
@@ -549,6 +594,8 @@ func parseShortFlags(flags string, remaining []string, opts *installOptions) (in
 			if opts.backupCtrl == backupNone {
 				opts.backupCtrl = backupSimple
 			}
+		case 'C':
+			opts.compare = true
 		case 'D':
 			opts.createLeading = true
 		case 'T':
