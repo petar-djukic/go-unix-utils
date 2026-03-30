@@ -21,22 +21,37 @@ const (
 	sysPathMax   = 1024
 )
 
+const versionStr = progName + " (go-unix-utils) 1.0"
+
+const helpStr = `Usage: pathchk [OPTION]... NAME...
+Diagnose invalid or unportable file names.
+
+  -p                  check for most POSIX systems
+  -P                  check for empty names and leading "-"
+      --portability   check for all POSIX systems (equivalent to -p -P)
+      --help          display this help and exit
+      --version       output version information and exit
+`
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // run parses flags, iterates over pathname arguments, and dispatches checks.
 // R2.1: exits 0 when all pathnames pass. R2.2: exits 1 when any fails.
-func run(args []string, stderr *os.File) int {
-	posix, checkHyphen, paths := parseArgs(args)
+func run(args []string, stdout, stderr *os.File) int {
+	posix, extended, paths, done := parseArgs(args, stdout)
+	if done {
+		return 0
+	}
 	if len(paths) == 0 {
 		return 0
 	}
 	exitCode := 0
-	checkBasic := !posix
+	checkBasic := !posix && !extended
 	for _, path := range paths {
-		if reportErrors(path, checkBasic, posix, checkHyphen, stderr) {
+		if reportErrors(path, checkBasic, posix, extended, stderr) {
 			exitCode = 1
 		}
 	}
@@ -45,7 +60,7 @@ func run(args []string, stderr *os.File) int {
 
 // reportErrors runs applicable checks on path, printing errors to stderr.
 // D3: all modes are checked independently; multiple errors may be reported.
-func reportErrors(path string, basic, posix, hyphen bool, w *os.File) bool {
+func reportErrors(path string, basic, posix, extended bool, w *os.File) bool {
 	hadError := false
 	if basic {
 		if err := checkDefault(path); err != nil {
@@ -59,8 +74,8 @@ func reportErrors(path string, basic, posix, hyphen bool, w *os.File) bool {
 			hadError = true
 		}
 	}
-	if hyphen {
-		if err := checkLeadingHyphen(path); err != nil {
+	if extended {
+		if err := checkPOSIXExtended(path); err != nil {
 			fmt.Fprintln(w, err)
 			hadError = true
 		}
@@ -68,9 +83,10 @@ func reportErrors(path string, basic, posix, hyphen bool, w *os.File) bool {
 	return hadError
 }
 
-// parseArgs extracts -p, -P, --portability flags and remaining pathnames.
-// R1.4: supports multiple pathname arguments.
-func parseArgs(args []string) (posix, checkHyphen bool, paths []string) {
+// parseArgs extracts -p, -P, --portability, --help, --version flags
+// and remaining pathnames. R1.4: supports multiple pathname arguments.
+// R2.3: --help prints usage and returns done=true, --version prints version.
+func parseArgs(args []string, stdout *os.File) (posix, extended bool, paths []string, done bool) {
 	endOfFlags := false
 	for _, arg := range args {
 		if endOfFlags {
@@ -83,15 +99,24 @@ func parseArgs(args []string) (posix, checkHyphen bool, paths []string) {
 		}
 		if arg == "--portability" {
 			posix = true
+			extended = true
 			continue
 		}
+		if arg == "--help" {
+			fmt.Fprint(stdout, helpStr)
+			return false, false, nil, true
+		}
+		if arg == "--version" {
+			fmt.Fprintln(stdout, versionStr)
+			return false, false, nil, true
+		}
 		if isKnownFlags(arg) {
-			posix, checkHyphen = applyFlags(arg, posix, checkHyphen)
+			posix, extended = applyFlags(arg, posix, extended)
 			continue
 		}
 		paths = append(paths, arg)
 	}
-	return posix, checkHyphen, paths
+	return posix, extended, paths, false
 }
 
 // isKnownFlags returns true if arg is a short flag group containing only p and P.
@@ -107,22 +132,21 @@ func isKnownFlags(arg string) bool {
 	return true
 }
 
-// applyFlags sets posix and hyphen flags from a short flag group.
-func applyFlags(arg string, posix, hyphen bool) (bool, bool) {
+// applyFlags sets posix and extended flags from a short flag group.
+func applyFlags(arg string, posix, extended bool) (bool, bool) {
 	for i := 1; i < len(arg); i++ {
 		switch arg[i] {
 		case 'p':
 			posix = true
 		case 'P':
-			hyphen = true
+			extended = true
 		}
 	}
-	return posix, hyphen
+	return posix, extended
 }
 
 // checkDefault checks a pathname against system limits.
 // R1.1: checks component length against NAME_MAX, total path against PATH_MAX.
-// R1.4: empty pathname returns an error.
 func checkDefault(path string) error {
 	if path == "" {
 		return fmt.Errorf("%s: empty file name", progName)
@@ -156,7 +180,6 @@ func checkDefaultComponents(path string) error {
 
 // checkPOSIX checks a pathname against POSIX portability rules.
 // R1.2: only portable filename characters, component <= 14, total <= 256.
-// R1.4: empty pathname returns an error.
 func checkPOSIX(path string) error {
 	if path == "" {
 		return fmt.Errorf("%s: empty file name", progName)
@@ -199,12 +222,35 @@ func isPortableChar(c byte) bool {
 		(c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'
 }
 
+// checkPOSIXExtended checks a pathname for extended POSIX portability.
+// R2.1: rejects empty pathnames, empty components, and leading hyphens.
+func checkPOSIXExtended(path string) error {
+	if path == "" {
+		return fmt.Errorf("%s: empty file name", progName)
+	}
+	if err := checkEmptyComponents(path); err != nil {
+		return err
+	}
+	return checkLeadingHyphen(path)
+}
+
+// checkEmptyComponents rejects consecutive slashes, leading slash, or
+// trailing slash that produce empty pathname components.
+// R2.1: empty component check for -P mode.
+func checkEmptyComponents(path string) error {
+	parts := strings.Split(path, "/")
+	for _, p := range parts {
+		if p == "" {
+			return fmt.Errorf("%s: empty file name component in file name '%s'",
+				progName, path)
+		}
+	}
+	return nil
+}
+
 // checkLeadingHyphen checks that no component starts with a hyphen.
 // R1.3: rejects pathnames with leading-hyphen components.
 func checkLeadingHyphen(path string) error {
-	if path == "" {
-		return nil
-	}
 	for _, comp := range splitNonEmpty(path) {
 		if len(comp) > 0 && comp[0] == '-' {
 			return fmt.Errorf("%s: leading '-' in a component of file name '%s'",
