@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/shuf implements prd064-shuf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: shuffle
-// input lines randomly with range mode, head count, repeat mode, output file,
-// random source, zero-terminated delimiter, and echo mode support.
+// cmd/shuf implements prd064-shuf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4:
+// shuffle input lines randomly with range mode, head count, repeat mode, output
+// file, random source, zero-terminated delimiter, and echo mode support.
+// R4.1: exits 0 on success. R4.2: exits 1 on error.
 package main
 
 import (

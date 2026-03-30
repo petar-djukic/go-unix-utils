@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // shuf_test.go implements differential and structural tests for
-// prd064-shuf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
+// prd064-shuf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4, R4.1–R4.4.
 
 package main
 
@@ -123,6 +123,39 @@ func TestDiff(t *testing.T) {
 	// R3.4: empty echo input
 	t.Run("echo_empty", func(t *testing.T) {
 		assertStructuralMatch(t, goBin, refBin, []string{"-e"}, nil, 0)
+	})
+
+	// R4.1: exit 0 on successful operation
+	t.Run("exit_0_on_success", func(t *testing.T) {
+		assertExitCode(t, goBin, []string{"-e", "a", "b"}, nil, 0)
+		assertExitCode(t, refBin, []string{"-e", "a", "b"}, nil, 0)
+	})
+
+	// R4.2: exit 1 on invalid range
+	t.Run("exit_1_invalid_range", func(t *testing.T) {
+		assertBothFail(t, goBin, refBin, []string{"-i", "abc"}, nil)
+	})
+
+	// R4.2: exit 1 on reversed range
+	t.Run("exit_1_reversed_range", func(t *testing.T) {
+		assertBothFail(t, goBin, refBin, []string{"-i", "10-1"}, nil)
+	})
+
+	// R4.2: exit 1 on conflicting -e and -i
+	t.Run("exit_1_echo_with_range", func(t *testing.T) {
+		assertBothFail(t, goBin, refBin, []string{"-e", "-i", "1-5", "a"}, nil)
+	})
+
+	// R4.4: shuffle stdin lines (covered above, explicit re-check)
+	t.Run("r4_4_shuffle_stdin", func(t *testing.T) {
+		stdin := []byte("d\ne\nf\n")
+		assertStructuralMatch(t, goBin, refBin, nil, stdin, 3)
+	})
+
+	// R4.4: -i range with -n and -r combined
+	t.Run("r4_4_range_repeat_head", func(t *testing.T) {
+		assertRepeatRangeMatch(t, goBin, refBin,
+			[]string{"-i", "1-3", "-r", "-n", "8"}, 8, 1, 3)
 	})
 }
 
@@ -491,6 +524,53 @@ func assertRepeatMatch(
 			t.Errorf("go: unexpected value %q", line)
 		}
 	}
+}
+
+// assertExitCode runs a binary and checks its exit code.
+// R4.1: used to verify exit 0 on success.
+func assertExitCode(
+	t *testing.T, bin string,
+	args []string, stdin []byte, expectedCode int,
+) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		} else {
+			t.Fatalf("unexpected error running %s: %v", bin, err)
+		}
+	}
+	if code != expectedCode {
+		t.Errorf("%s: expected exit code %d, got %d", bin, expectedCode, code)
+	}
+}
+
+// assertRepeatRangeMatch verifies -i range with -r produces values in range.
+// R4.4: combined -i, -r, -n test coverage.
+func assertRepeatRangeMatch(
+	t *testing.T, goBin, refBin string,
+	args []string, expectedCount, lo, hi int,
+) {
+	t.Helper()
+	goOut := runBin(t, goBin, args, nil)
+	refOut := runBin(t, refBin, args, nil)
+	goLines := nonEmptyLines(goOut)
+	refLines := nonEmptyLines(refOut)
+	if len(goLines) != expectedCount {
+		t.Errorf("go: expected %d lines, got %d", expectedCount, len(goLines))
+	}
+	if len(refLines) != expectedCount {
+		t.Errorf("ref: expected %d lines, got %d", expectedCount, len(refLines))
+	}
+	assertIntRange(t, "go", goLines, lo, hi)
+	assertIntRange(t, "ref", refLines, lo, hi)
 }
 
 // assertBothFail verifies both binaries exit non-zero.
