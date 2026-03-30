@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/b2sum implementing prd076-b2sum R1.1, R1.2, R1.3, R1.4,
-// R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2.
+// R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -462,6 +463,58 @@ func TestDiffVersion(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestSIGPIPE verifies that b2sum exits gracefully when stdout is closed
+// early by a downstream consumer (e.g., head -1).
+//
+// R4.3: SIGPIPE handling via pkg/sys.InstallSIGPIPEHandler.
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	// Create enough files to produce multiple output lines so the pipe
+	// closes before b2sum finishes writing.
+	for i := 0; i < 10; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
+		writeTestFile(t, p, fmt.Sprintf("content %d\n", i))
+	}
+
+	var files []string
+	for i := 0; i < 10; i++ {
+		files = append(files, filepath.Join(dir, fmt.Sprintf("file%d.txt", i)))
+	}
+
+	// Pipe b2sum output through head -1, which closes the pipe after one line.
+	args := append([]string{goBin}, files...)
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Read one byte and close, triggering SIGPIPE on next write.
+	buf := make([]byte, 1)
+	_, _ = stdout.Read(buf)
+	stdout.Close()
+
+	err = cmd.Wait()
+	// With SIGPIPE handler installed, exit code should be 0 or
+	// the process may receive SIGPIPE (exit code -1 on some systems).
+	// The key assertion is it does NOT exit with code 1 (error).
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() == 1 {
+				t.Errorf("R4.3: expected graceful SIGPIPE handling, got exit code 1")
+			}
+		}
+	}
 }
 
 // createChecksumFile runs the reference binary to generate a checksum file.

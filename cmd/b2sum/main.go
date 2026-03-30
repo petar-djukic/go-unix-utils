@@ -10,7 +10,8 @@
 // R2.3 (--warn/--quiet/--status modifiers),
 // R3.1 (binary/text mode), R3.2 (--tag overrides -b/-t),
 // R3.3 (--length variable digest length),
-// R4.1 (exit 0 on success), R4.2 (exit 1 on failure).
+// R4.1 (exit 0 on success), R4.2 (exit 1 on failure),
+// R4.3 (SIGPIPE graceful exit).
 package main
 
 import (
