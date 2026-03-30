@@ -3,7 +3,7 @@
 
 // cmd/factor implements GNU factor: print prime factorizations of integers.
 //
-// Implements prd065-factor R1.1, R1.2, R1.3, R1.4.
+// Implements prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -52,6 +52,8 @@ func factorArgs(args []string, stdout, stderr *os.File) int {
 }
 
 // factorStdin reads integers from stdin, one per line.
+// R2.1: stdin mode when no arguments given.
+// R2.3: blank lines are skipped without output or error.
 func factorStdin(stdin *os.File, stdout, stderr *os.File) int {
 	scanner := bufio.NewScanner(stdin)
 	w := bufio.NewWriter(stdout)
@@ -73,6 +75,8 @@ func factorStdin(stdin *os.File, stdout, stderr *os.File) int {
 }
 
 // processInput parses a single input string and writes its factorization.
+// R2.2: ParseInt with 64-bit accepts up to 2^63-1.
+// R2.4: errors on non-integer or negative input, does not stop processing.
 func processInput(input string, w *bufio.Writer, stderr *os.File) error {
 	n, err := strconv.ParseInt(input, 10, 64)
 	if err != nil || n < 0 {

@@ -3,15 +3,24 @@
 
 // Differential tests for cmd/factor against gfactor (GNU coreutils).
 //
-// Covers prd065-factor R1.1, R1.2, R1.3, R1.4.
+// Covers prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeBinaryName replaces program name prefixes in error messages
+// so that "gfactor:" and "factor:" both become "PROG:".
+var normalizeBinaryName testutils.NormalizeFunc = func(data []byte) []byte {
+	return binaryNameRe.ReplaceAll(data, []byte("PROG:"))
+}
+
+var binaryNameRe = regexp.MustCompile(`(?m)^g?factor:`)
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -71,7 +80,7 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"3"},
 			ExitCode: 0,
 		},
-		// R1.3: large prime
+		// R1.3, R2.2: large prime within int64 range
 		{
 			Name:     "R1.3_large_prime",
 			Args:     []string{"999999937"},
@@ -88,6 +97,57 @@ func TestDiff(t *testing.T) {
 			Name:     "R1.4_two_args",
 			Args:     []string{"15", "28"},
 			ExitCode: 0,
+		},
+		// R2.1: stdin mode with single number
+		{
+			Name:     "R2.1_stdin_single",
+			Stdin:    []byte("15\n"),
+			ExitCode: 0,
+		},
+		// R2.1: stdin mode with multiple lines
+		{
+			Name:     "R2.1_stdin_multiple",
+			Stdin:    []byte("12\n97\n15\n"),
+			ExitCode: 0,
+		},
+		// R2.2: large composite within int64 range (2^40)
+		{
+			Name:     "R2.2_large_power_of_two",
+			Args:     []string{"1099511627776"},
+			ExitCode: 0,
+		},
+		// R2.3: blank lines in stdin are skipped
+		{
+			Name:     "R2.3_blank_lines",
+			Stdin:    []byte("12\n\n15\n\n"),
+			ExitCode: 0,
+		},
+		// R2.3: stdin with leading blank line
+		{
+			Name:     "R2.3_leading_blank",
+			Stdin:    []byte("\n12\n"),
+			ExitCode: 0,
+		},
+		// R2.4: non-integer input in stdin
+		{
+			Name:      "R2.4_non_integer_stdin",
+			Stdin:     []byte("abc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R2.4: negative number in stdin
+		{
+			Name:      "R2.4_negative_stdin",
+			Stdin:     []byte("-5\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R2.4: mixed valid and invalid in stdin — continues processing
+		{
+			Name:      "R2.4_mixed_valid_invalid",
+			Stdin:     []byte("12\nabc\n15\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
 	}
 
