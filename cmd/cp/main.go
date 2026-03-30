@@ -3,7 +3,7 @@
 
 // cmd/cp implements GNU cp: copy files and directories.
 //
-// Implements prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (

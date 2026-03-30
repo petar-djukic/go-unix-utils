@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cp against gcp (GNU coreutils).
 //
-// Covers prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Covers prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -34,6 +34,10 @@ func discardAll(data []byte) []byte {
 // R3.2: -a archive mode.
 // R3.3: --preserve=ATTR_LIST.
 // R3.4: -v verbose (covered in verbose_output).
+// R4.1: exit 0 on success (covered by all successful copy tests).
+// R4.2: exit 1 on failure (covered by error_cases, partial_failure).
+// R4.3: -t/--target-directory (covered in target_directory, target_dir_long).
+// R4.4: comprehensive differential tests across all flag combinations.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +80,21 @@ func TestDiff(t *testing.T) {
 	t.Run("target_directory", func(t *testing.T) {
 		t.Parallel()
 		runTargetDirTest(t, goBin, refBin)
+	})
+
+	t.Run("target_dir_long", func(t *testing.T) {
+		t.Parallel()
+		runTargetDirLongFormTest(t, goBin, refBin)
+	})
+
+	t.Run("target_dir_multi", func(t *testing.T) {
+		t.Parallel()
+		runTargetDirMultiTest(t, goBin, refBin)
+	})
+
+	t.Run("partial_failure", func(t *testing.T) {
+		t.Parallel()
+		runPartialFailureTest(t, goBin, refBin)
 	})
 
 	t.Run("recursive_copy", func(t *testing.T) {
@@ -504,6 +523,79 @@ func runArchiveCopyTest(t *testing.T, goBin, refBin string) {
 			ExpectedFiles: map[string][]byte{
 				"destdir/file.txt":     []byte("archive\n"),
 				"destdir/sub/deep.txt": []byte("deep archive\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runTargetDirLongFormTest verifies R4.3: --target-directory=DIR long form.
+func runTargetDirLongFormTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "f1.txt"), "long form\n")
+	mkdirAll(t, filepath.Join(workDir, "tdir"))
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "target_dir_long_form",
+			Args:     []string{"--target-directory=tdir", "f1.txt"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"tdir/f1.txt": []byte("long form\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runTargetDirMultiTest verifies R4.3: -t with multiple source files.
+func runTargetDirMultiTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "m1.txt"), "multi1\n")
+	writeFile(t, filepath.Join(workDir, "m2.txt"), "multi2\n")
+	mkdirAll(t, filepath.Join(workDir, "mdir"))
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "target_dir_multi_sources",
+			Args:     []string{"-t", "mdir", "m1.txt", "m2.txt"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"mdir/m1.txt": []byte("multi1\n"),
+				"mdir/m2.txt": []byte("multi2\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runPartialFailureTest verifies R4.2: exit 1 when any copy fails.
+// One valid source and one non-existent source; exit code must be 1.
+func runPartialFailureTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "good.txt"), "good\n")
+	mkdirAll(t, filepath.Join(workDir, "dest"))
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "partial_failure_exit_1",
+			Args:      []string{"good.txt", "nonexistent.txt", "dest"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+			ExpectedFiles: map[string][]byte{
+				"dest/good.txt": []byte("good\n"),
 			},
 		},
 	}
