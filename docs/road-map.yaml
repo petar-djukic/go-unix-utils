@@ -473,7 +473,7 @@ releases:
         - id: rel10.1-uc002-chgrp
           status: implemented
         - id: rel10.1-uc003-chown
-          status: spec_complete
+          status: implemented
     - version: "11.0"
       name: "Batch 11.0 — special files and process control (mkfifo, mknod, nice, nohup)"
       status: spec_complete
