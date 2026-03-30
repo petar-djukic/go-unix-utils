@@ -3,7 +3,7 @@
 
 // cmd/mknod implements GNU mknod: create block or character special files.
 //
-// Implements prd093-mknod R1.1, R1.2, R1.3.
+// Implements prd093-mknod R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -43,6 +43,7 @@ func main() {
 }
 
 // run parses arguments and creates the special file.
+// R2.1: returns 0 on success. R2.2: returns 1 on failure.
 func run(args []string, stderr *os.File) int {
 	opts, err := parseArgs(args)
 	if err != nil {
