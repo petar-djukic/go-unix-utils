@@ -3,7 +3,7 @@
 
 // cmd/shred implements GNU shred: overwrite a file to hide its contents.
 //
-// Implements prd099-shred R1.1, R1.2, R1.3, R1.4.
+// Implements prd099-shred R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -32,10 +33,10 @@ type shredOptions struct {
 	iterations int   // R1.2: -n/--iterations
 	zero       bool  // R1.3: -z/--zero
 	remove     bool  // R1.4: -u/--remove
-	verbose    bool  // R2.1: -v/--verbose (parsed, not yet active)
+	verbose    bool  // R2.1: -v/--verbose
 	force      bool  // -f/--force (parsed, not yet active)
 	exact      bool  // -x/--exact (parsed, not yet active)
-	size       int64 // R2.2: -s/--size (parsed, not yet active)
+	size       int64 // R2.2: -s/--size
 }
 
 func main() {
@@ -44,6 +45,8 @@ func main() {
 }
 
 // run parses flags and shreds each file.
+// R2.3: processes multiple FILE arguments in order.
+// R2.4: continues processing remaining files on error, exits 1.
 func run(args []string, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
@@ -57,7 +60,7 @@ func run(args []string, stderr io.Writer) int {
 	}
 	exitCode := 0
 	for _, name := range files {
-		if err := shredFile(name, opts); err != nil {
+		if err := shredFile(name, opts, stderr); err != nil {
 			if isBrokenPipe(err) {
 				return 0
 			}
@@ -168,9 +171,10 @@ func setSizeOpt(opts *shredOptions, val string, hasVal bool, args []string, idx 
 	return 0, parseSizeVal(&opts.size, val)
 }
 
-// parseSizeVal parses a size string into an int64.
+// parseSizeVal parses a size string with unit suffixes into an int64.
+// R2.2: supports K, M, G and other suffixes via sizeparse.
 func parseSizeVal(dest *int64, val string) error {
-	size, err := strconv.ParseInt(val, 10, 64)
+	size, err := sizeparse.Parse(val)
 	if err != nil {
 		return fmt.Errorf("invalid file size: %q", val)
 	}
@@ -238,7 +242,7 @@ func parseShortSizeVal(opts *shredOptions, rest string, args []string, idx int) 
 
 // shredFile performs overwrite passes and optional removal for one file.
 // R1.1: overwrites with random data for the configured number of passes.
-func shredFile(name string, opts shredOptions) error {
+func shredFile(name string, opts shredOptions, stderr io.Writer) error {
 	f, err := os.OpenFile(name, os.O_WRONLY, 0)
 	if err != nil {
 		return err
@@ -250,12 +254,12 @@ func shredFile(name string, opts shredOptions) error {
 		return err
 	}
 
-	if err := performPasses(f, size, opts); err != nil {
+	if err := performPasses(f, size, opts, name, stderr); err != nil {
 		return err
 	}
 
 	if opts.remove {
-		return removeAfterShred(f, name)
+		return removeAfterShred(f, name, opts.verbose, stderr)
 	}
 	return nil
 }
@@ -272,15 +276,38 @@ func fileShredSize(f *os.File, optSize int64) (int64, error) {
 	return info.Size(), nil
 }
 
+// totalPasses returns the total number of overwrite passes.
+func totalPasses(opts shredOptions) int {
+	n := opts.iterations
+	if opts.zero {
+		n++
+	}
+	return n
+}
+
+// printProgress prints a verbose progress line to stderr.
+// R2.1: format matches GNU shred verbose output.
+func printProgress(w io.Writer, name string, passNum, total int, passType string) {
+	fmt.Fprintf(w, "%s: %s: pass %d/%d (%s)...\n", progName, name, passNum, total, passType)
+}
+
 // performPasses runs all overwrite passes: N random plus optional zero.
 // R1.1: random data passes. R1.3: optional final zero pass.
-func performPasses(f *os.File, size int64, opts shredOptions) error {
+// R2.1: prints verbose progress to stderr when enabled.
+func performPasses(f *os.File, size int64, opts shredOptions, name string, stderr io.Writer) error {
+	total := totalPasses(opts)
 	for i := 0; i < opts.iterations; i++ {
+		if opts.verbose {
+			printProgress(stderr, name, i+1, total, "random")
+		}
 		if err := overwritePass(f, size, rand.Reader); err != nil {
 			return err
 		}
 	}
 	if opts.zero {
+		if opts.verbose {
+			printProgress(stderr, name, total, total, "000000")
+		}
 		if err := overwritePass(f, size, zeroReader{}); err != nil {
 			return err
 		}
@@ -324,7 +351,11 @@ func (zeroReader) Read(p []byte) (int, error) {
 
 // removeAfterShred truncates and removes the file.
 // R1.4: truncate then unlink.
-func removeAfterShred(f *os.File, name string) error {
+// R2.1: prints verbose remove progress when enabled.
+func removeAfterShred(f *os.File, name string, verbose bool, stderr io.Writer) error {
+	if verbose {
+		fmt.Fprintf(stderr, "%s: %s: removing\n", progName, name)
+	}
 	if err := f.Truncate(0); err != nil {
 		return err
 	}
@@ -332,10 +363,17 @@ func removeAfterShred(f *os.File, name string) error {
 		return err
 	}
 	f.Close() // best-effort close before remove
-	return os.Remove(name)
+	if err := os.Remove(name); err != nil {
+		return err
+	}
+	if verbose {
+		fmt.Fprintf(stderr, "%s: %s: removed\n", progName, name)
+	}
+	return nil
 }
 
 // reportError prints a shred error message to stderr.
+// R2.4: error output includes program name and filename.
 func reportError(w io.Writer, name string, err error) {
 	fmt.Fprintf(w, "%s: %s: %v\n", progName, name, unwrapErr(err))
 }
