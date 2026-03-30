@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/date — differential tests against gdate.
-// Covers prd060-date R1.1-R1.4, R2.1-R2.4.
+// Covers prd060-date R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -190,7 +193,80 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
+		// R3.1: -u displays date in UTC
+		{
+			Name:     "utc_flag_short",
+			Args:     []string{"-u", "-d", "@1234567890", "+%Y-%m-%d %H:%M:%S %Z"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: --utc long form
+		{
+			Name:     "utc_flag_long",
+			Args:     []string{"--utc", "-d", "@1234567890", "+%Z"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.1: --universal synonym
+		{
+			Name:     "utc_universal_flag",
+			Args:     []string{"--universal", "-d", "@1234567890", "+%Z"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.4: output goes to stdout only, no stdin reading
+		{
+			Name:     "stdout_only_no_stdin",
+			Args:     []string{"-u", "-d", "@0", "+%Y"},
+			Stdin:    []byte("ignored input\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
 	}
+
+	// R3.2: -r FILE displays the last modification time of FILE.
+	// R3.3: missing file exits 1.
+	refFile := filepath.Join(t.TempDir(), "reffile")
+	if err := os.WriteFile(refFile, []byte("test"), 0o644); err != nil {
+		t.Fatalf("creating reference file: %v", err)
+	}
+	// Set a known modification time so output is deterministic.
+	knownTime := parseTestTime(t, "2024-03-15 12:00:00")
+	if err := os.Chtimes(refFile, knownTime, knownTime); err != nil {
+		t.Fatalf("setting reference file time: %v", err)
+	}
+
+	tests = append(tests,
+		// R3.2: -r FILE shows file modification time
+		testutils.DiffTest{
+			Name:     "reference_file",
+			Args:     []string{"-r", refFile, "+%Y-%m-%d %H:%M:%S"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R3.2: --reference=FILE long form
+		testutils.DiffTest{
+			Name:     "reference_file_long",
+			Args:     []string{"--reference=" + refFile, "+%Y-%m-%d"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R3.2: -r with -u UTC mode
+		testutils.DiffTest{
+			Name:     "reference_file_utc",
+			Args:     []string{"-u", "-r", refFile, "+%Y-%m-%d %H:%M:%S %Z"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R3.3: missing referenced file exits 1
+		testutils.DiffTest{
+			Name:      "reference_file_missing",
+			Args:      []string{"-r", "/nonexistent_date_test_file", "+%Y"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+	)
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -198,4 +274,14 @@ func TestDiff(t *testing.T) {
 // discardAll blanks all output so tests check only exit code.
 func discardAll(data []byte) []byte {
 	return nil
+}
+
+// parseTestTime parses a UTC time string for test setup.
+func parseTestTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	parsed, err := time.Parse("2006-01-02 15:04:05", s)
+	if err != nil {
+		t.Fatalf("parseTestTime: %v", err)
+	}
+	return parsed.UTC()
 }
