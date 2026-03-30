@@ -4,7 +4,7 @@
 // cmd/od implements GNU od: octal and other format dump.
 //
 // Implements prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -72,7 +72,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		cfg.files = []string{"-"}
 	}
 	widths := resolveWidths(cfg.specs)
-	reader, code := openInputs(cfg.files, stdin, stderr)
+	reader, code, hasInput := openInputs(cfg.files, stdin, stderr)
+	if !hasInput {
+		return code
+	}
 	r, startOff := applySkipAndLimit(reader, cfg)
 	if dumpErr := dump(r, stdout, cfg.specs, widths, cfg.addrRadix, startOff, cfg.width, cfg.verbose); dumpErr != nil {
 		return 1
@@ -281,7 +284,7 @@ func parseTypeStr(s string) ([]typeSpec, error) {
 	for i < len(s) {
 		ts, n, err := specFromLetter(s[i], s[i+1:])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid character '%c' in type string '%s'", s[i], s)
 		}
 		specs = append(specs, ts)
 		i += 1 + n
@@ -379,7 +382,7 @@ func resolveWidths(specs []typeSpec) []int {
 
 // openInputs opens file arguments and returns a concatenated reader.
 // R1.4: reads "-" as stdin; concatenates multiple files in order.
-func openInputs(files []string, stdin io.Reader, stderr io.Writer) (io.Reader, int) {
+func openInputs(files []string, stdin io.Reader, stderr io.Writer) (io.Reader, int, bool) {
 	var readers []io.Reader
 	code := 0
 	for _, name := range files {
@@ -389,13 +392,26 @@ func openInputs(files []string, stdin io.Reader, stderr io.Writer) (io.Reader, i
 		}
 		f, err := os.Open(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "od: %s\n", err)
+			reportOpenError(stderr, name, err)
 			code = 1
 			continue
 		}
 		readers = append(readers, f)
 	}
-	return io.MultiReader(readers...), code
+	return io.MultiReader(readers...), code, len(readers) > 0
+}
+
+// reportOpenError formats a file-open error matching GNU od style.
+func reportOpenError(stderr io.Writer, name string, err error) {
+	if pe, ok := err.(*os.PathError); ok {
+		msg := pe.Err.Error()
+		if len(msg) > 0 && msg[0] >= 'a' && msg[0] <= 'z' {
+			msg = string(msg[0]-32) + msg[1:]
+		}
+		fmt.Fprintf(stderr, "od: %s: %s\n", name, msg)
+		return
+	}
+	fmt.Fprintf(stderr, "od: %s\n", err)
 }
 
 // addrWidth returns the character width of the address column for a radix.

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +13,14 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+// normalizeProgramName replaces "god: " with "od: " so stderr from
+// the reference binary matches our binary's program name prefix.
+func normalizeProgramName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("god: "), []byte("od: "))
+}
+
 // TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4 via differential testing.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4 via differential testing.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -31,6 +38,7 @@ func TestDiff(t *testing.T) {
 	tests := buildR1TestCases(file1, file2)
 	tests = append(tests, buildR2TestCases(file1)...)
 	tests = append(tests, buildR3TestCases()...)
+	tests = append(tests, buildR4TestCases(tmpDir)...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -109,6 +117,24 @@ func buildR2TestCases(file1 string) []testutils.DiffTest {
 		// R2.4: final address line with different radixes
 		{Name: "final_addr_decimal", Args: []string{"-A", "d", "-t", "x1"}, Stdin: bin, Env: env},
 		{Name: "final_addr_none", Args: []string{"-A", "n", "-t", "x1"}, Stdin: bin, Env: env},
+	}
+}
+
+// buildR4TestCases covers R4.1 (exit 0 on success), R4.2 (exit 1 on error),
+// R4.3 (differential testing), and R4.4 (error cases: invalid type, missing file).
+func buildR4TestCases(tmpDir string) []testutils.DiffTest {
+	env := []string{"LC_ALL=C"}
+	norm := []testutils.NormalizeFunc{normalizeProgramName}
+	missingFile := filepath.Join(tmpDir, "nonexistent.bin")
+	return []testutils.DiffTest{
+		// R4.1: exit 0 on successful dump
+		{Name: "exit_0_success", Args: []string{"-t", "x1"}, Stdin: []byte{0xAB}, Env: env, ExitCode: 0},
+		// R4.2: exit 1 on invalid type specifier
+		{Name: "err_invalid_type", Args: []string{"-t", "z"}, Stdin: []byte{0x01}, Env: env, ExitCode: 1, Normalize: norm},
+		// R4.2: exit 1 on missing file
+		{Name: "err_missing_file", Args: []string{missingFile}, Env: env, ExitCode: 1, Normalize: norm},
+		// R4.2: exit 1 on invalid address radix
+		{Name: "err_invalid_radix", Args: []string{"-A", "q"}, Stdin: []byte{0x01}, Env: env, ExitCode: 1, Normalize: norm},
 	}
 }
 
