@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -53,7 +54,7 @@ func progBaseName(arg0 string) string {
 	return filepath.Base(arg0)
 }
 
-// prepareArgs handles '[' invocation (D2) by checking for closing ']'.
+// prepareArgs handles '[' invocation by checking for closing ']'.
 // Returns the expression arguments with program name and brackets stripped.
 func prepareArgs(args []string) ([]string, error) {
 	base := progBaseName(args[0])
@@ -243,9 +244,13 @@ func isIntegerOp(op string) bool {
 	return false
 }
 
-// isStringBinaryOp returns true for binary string operators (R2.1).
+// isStringBinaryOp returns true for binary string operators (R2.1, R2.2).
 func isStringBinaryOp(op string) bool {
-	return op == "=" || op == "!="
+	switch op {
+	case "=", "!=", "<", ">":
+		return true
+	}
+	return false
 }
 
 // isFileCompareOp returns true for binary file comparison operators (R1.2).
@@ -253,7 +258,7 @@ func isFileCompareOp(op string) bool {
 	return op == "-nt" || op == "-ot" || op == "-ef"
 }
 
-// fileTest evaluates a unary file test operator (R1.1 stub).
+// fileTest evaluates a unary file test operator (R1.1).
 func fileTest(op, path string) (bool, error) {
 	if op == "-t" {
 		return terminalTest(path)
@@ -271,17 +276,7 @@ func terminalTest(fdStr string) (bool, error) {
 	if err != nil {
 		return false, nil
 	}
-	f := os.NewFile(uintptr(fd), "")
-	if f == nil {
-		return false, nil
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		return false, nil
-	}
-	_ = fi
-	// TODO R1.1: implement terminal check for fd
-	return false, nil
+	return sys.IsTerminal(uintptr(fd)), nil
 }
 
 // fileStat calls os.Lstat or os.Stat depending on the operator.
@@ -335,15 +330,21 @@ func evalFileMode(op string, info os.FileInfo) (bool, error) {
 }
 
 // evalOwnerGID checks if the file is owned by the effective GID (R1.1: -G).
-func evalOwnerGID(_ os.FileInfo) (bool, error) {
-	// TODO R1.1: implement -G effective GID check
-	return false, nil
+func evalOwnerGID(info os.FileInfo) (bool, error) {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false, nil
+	}
+	return st.Gid == uint32(os.Getegid()), nil
 }
 
 // evalOwnerUID checks if the file is owned by the effective UID (R1.1: -O).
-func evalOwnerUID(_ os.FileInfo) (bool, error) {
-	// TODO R1.1: implement -O effective UID check
-	return false, nil
+func evalOwnerUID(info os.FileInfo) (bool, error) {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false, nil
+	}
+	return st.Uid == uint32(os.Geteuid()), nil
 }
 
 // stringTest evaluates a unary string test (R2.1).
@@ -357,13 +358,18 @@ func stringTest(op, s string) (bool, error) {
 	return false, fmt.Errorf("unknown operator '%s'", op)
 }
 
-// stringCompare evaluates a binary string comparison (R2.1).
+// stringCompare evaluates a binary string comparison (R2.1, R2.2).
+// D3: byte-level comparison for LC_ALL=C semantics.
 func stringCompare(left, op, right string) (bool, error) {
 	switch op {
 	case "=":
 		return left == right, nil
 	case "!=":
 		return left != right, nil
+	case "<":
+		return left < right, nil
+	case ">":
+		return left > right, nil
 	}
 	return false, fmt.Errorf("unknown operator '%s'", op)
 }
@@ -414,6 +420,7 @@ func fileCompare(left, op, right string) (bool, error) {
 }
 
 // fileNewer returns true if left is newer than right (R1.2: -nt).
+// If left doesn't exist, returns false. If right doesn't exist, returns true.
 func fileNewer(left, right string) (bool, error) {
 	li, err := os.Stat(left)
 	if err != nil {
@@ -427,21 +434,21 @@ func fileNewer(left, right string) (bool, error) {
 }
 
 // fileOlder returns true if left is older than right (R1.2: -ot).
+// If left doesn't exist and right does, returns true. Otherwise false.
 func fileOlder(left, right string) (bool, error) {
-	li, err := os.Stat(left)
-	if err != nil {
-		return true, nil
+	li, lerr := os.Stat(left)
+	ri, rerr := os.Stat(right)
+	if lerr != nil {
+		return rerr == nil, nil
 	}
-	ri, err := os.Stat(right)
-	if err != nil {
+	if rerr != nil {
 		return false, nil
 	}
 	return li.ModTime().Before(ri.ModTime()), nil
 }
 
-// fileSameInode returns true if both files have the same device and inode (R1.2: -ef).
+// fileSameInode returns true if both files have same device and inode (R1.2: -ef).
 func fileSameInode(left, right string) (bool, error) {
-	// TODO R1.2: implement -ef using os.SameFile
 	li, err := os.Stat(left)
 	if err != nil {
 		return false, nil
