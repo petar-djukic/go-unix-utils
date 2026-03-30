@@ -4,7 +4,7 @@
 // Differential tests for cmd/chmod against gchmod (GNU coreutils).
 //
 // Traces: prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R4.1, R4.2.
+// R3.1, R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -324,6 +324,32 @@ func TestExitCodes(t *testing.T) {
 			t.Error("expected exit 1, got exit 0")
 		}
 	})
+}
+
+// TestSIGPIPE verifies that chmod exits 0 when stdout is closed early.
+// R4.3: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := makeWorkDir(t, 0o644)
+
+	cmd := exec.Command(goBin, "-v", "755", "testfile")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	// Close stdout immediately to trigger SIGPIPE
+	stdout.Close()
+
+	err = cmd.Wait()
+	if err != nil {
+		t.Errorf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
 }
 
 // runGoBin executes the Go binary and returns stdout.
