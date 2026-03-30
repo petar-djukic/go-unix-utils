@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/split.
 // Covers prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -39,6 +39,7 @@ func TestDiff(t *testing.T) {
 	}
 	tests := append(buildR1Tests(), buildR2Tests()...)
 	tests = append(tests, buildR3Tests()...)
+	tests = append(tests, buildR4Tests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -348,6 +349,78 @@ func filterCommandTest() testutils.DiffTest {
 		ExpectedFiles: map[string][]byte{
 			"xaa": generateLines(1, 2),
 			"xab": generateLines(3, 2),
+		},
+	}
+}
+
+// buildR4Tests returns differential test cases for R4.1-R4.4.
+// R4.1: exit 0 on success. R4.2: exit 1 on errors.
+// R4.3: differential tests compare file contents and exit codes.
+// R4.4: comprehensive coverage of all flag combinations.
+func buildR4Tests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		invalidLineCountTest(),
+		invalidByteCountTest(),
+		invalidChunkCountTest(),
+		invalidOptionTest(),
+		successExitCodeTest(),
+	}
+}
+
+// invalidLineCountTest verifies R4.2: invalid -l count exits 1.
+func invalidLineCountTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "invalid_line_count",
+		Args:      []string{"-l", "0"},
+		Stdin:     []byte("test\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{clearOutput},
+	}
+}
+
+// invalidByteCountTest verifies R4.2: invalid -b count exits 1.
+func invalidByteCountTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "invalid_byte_count",
+		Args:      []string{"-b", "abc"},
+		Stdin:     []byte("test\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{clearOutput},
+	}
+}
+
+// invalidChunkCountTest verifies R4.2: invalid -n count exits 1.
+func invalidChunkCountTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "invalid_chunk_count",
+		Args:      []string{"-n", "0"},
+		Stdin:     []byte("test\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{clearOutput},
+	}
+}
+
+// invalidOptionTest verifies R4.2: unrecognized option exits 1.
+func invalidOptionTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "invalid_option",
+		Args:      []string{"--nonexistent-option"},
+		Stdin:     []byte("test\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{clearOutput},
+	}
+}
+
+// successExitCodeTest verifies R4.1: successful split exits 0.
+func successExitCodeTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "success_exit_code",
+		Args:     []string{"-l", "5"},
+		Stdin:    generateLines(1, 10),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xaa": generateLines(1, 5),
+			"xab": generateLines(6, 5),
 		},
 	}
 }
