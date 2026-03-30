@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/numfmt converts numbers between raw numeric and human-readable formats.
-// Implements prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -43,12 +44,17 @@ var (
 
 // config holds all command-line options.
 type config struct {
-	fromUnit string
-	toUnit   string
-	format   string // R2.1: printf-style format string
-	padding  int    // R2.2: output padding width
-	round    string // R2.3: rounding method
-	suffix   string // R2.4: suffix appended after unit
+	fromUnit  string
+	toUnit    string
+	format    string  // R2.1: printf-style format string
+	padding   int     // R2.2: output padding width
+	round     string  // R2.3: rounding method
+	suffix    string  // R2.4: suffix appended after unit
+	field     string  // R3.1: field specification
+	delimiter string  // R3.2: field delimiter
+	header    int     // R3.3: header lines to pass through
+	fromUnitN float64 // R3.4: input scaling factor
+	toUnitN   float64 // R3.4: output scaling factor
 }
 
 // fmtSpec holds parsed --format components (R2.1).
@@ -60,6 +66,18 @@ type fmtSpec struct {
 	tail      string
 }
 
+// R3.1: fieldRange represents a range of 1-indexed field numbers.
+type fieldRange struct {
+	lo int
+	hi int // -1 means unbounded
+}
+
+// R3.1: segment represents a piece of a tokenized line.
+type segment struct {
+	text  string
+	field int // 0 = separator, >0 = 1-indexed field number
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	cfg, operands := parseArgs()
@@ -67,7 +85,10 @@ func main() {
 }
 
 func parseArgs() (config, []string) {
-	cfg := config{fromUnit: unitNone, toUnit: unitNone, round: roundFromZero}
+	cfg := config{
+		fromUnit: unitNone, toUnit: unitNone, round: roundFromZero,
+		fromUnitN: 1, toUnitN: 1,
+	}
 	var operands []string
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
@@ -75,10 +96,16 @@ func parseArgs() (config, []string) {
 			operands = append(operands, os.Args[i+1:]...)
 			return cfg, operands
 		}
+		// R3.2: -d short flag takes next argument.
+		if arg == "-d" && i+1 < len(os.Args) {
+			i++
+			cfg.delimiter = os.Args[i]
+			continue
+		}
 		if parseFlag(arg, &cfg) {
 			continue
 		}
-		if strings.HasPrefix(arg, "-") {
+		if strings.HasPrefix(arg, "-") && arg != "-" {
 			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
 			os.Exit(1)
 		}
@@ -87,7 +114,7 @@ func parseArgs() (config, []string) {
 	return cfg, operands
 }
 
-// parseFlag handles --from, --to, --format, --padding, --round, --suffix.
+// parseFlag handles long-form --flags. Returns true if the arg was consumed.
 func parseFlag(arg string, cfg *config) bool {
 	switch {
 	case strings.HasPrefix(arg, "--from="):
@@ -105,6 +132,27 @@ func parseFlag(arg string, cfg *config) bool {
 		cfg.round = arg[len("--round="):]
 	case strings.HasPrefix(arg, "--suffix="):
 		cfg.suffix = arg[len("--suffix="):]
+	case strings.HasPrefix(arg, "--field="):
+		cfg.field = arg[len("--field="):]
+	case strings.HasPrefix(arg, "--delimiter="):
+		cfg.delimiter = arg[len("--delimiter="):]
+	case arg == "--header":
+		cfg.header = 1
+	case strings.HasPrefix(arg, "--header="):
+		v, err := strconv.Atoi(arg[len("--header="):])
+		if err == nil {
+			cfg.header = v
+		}
+	case strings.HasPrefix(arg, "--from-unit="):
+		v, err := strconv.ParseFloat(arg[len("--from-unit="):], 64)
+		if err == nil {
+			cfg.fromUnitN = v
+		}
+	case strings.HasPrefix(arg, "--to-unit="):
+		v, err := strconv.ParseFloat(arg[len("--to-unit="):], 64)
+		if err == nil {
+			cfg.toUnitN = v
+		}
 	default:
 		return false
 	}
@@ -137,16 +185,59 @@ func run(cfg config, operands []string) int {
 		fmt.Fprintf(os.Stderr, "%s: invalid --round argument: '%s'\n", progName, cfg.round)
 		return 1
 	}
+	fields := parseFieldSpec(cfg.field)
 	if len(operands) > 0 {
-		return processOperands(operands, cfg)
+		return processOperands(operands, cfg, fields)
 	}
-	return processStdin(cfg)
+	return processStdin(cfg, fields)
 }
 
-func processOperands(operands []string, cfg config) int {
+// --- R3.1: Field specification parsing ---
+
+// parseFieldSpec parses a comma-separated field specification into ranges.
+func parseFieldSpec(spec string) []fieldRange {
+	if spec == "" {
+		return nil
+	}
+	var ranges []fieldRange
+	for _, part := range strings.Split(spec, ",") {
+		ranges = append(ranges, parseSingleRange(part))
+	}
+	return ranges
+}
+
+func parseSingleRange(s string) fieldRange {
+	idx := strings.IndexByte(s, '-')
+	if idx < 0 {
+		n, _ := strconv.Atoi(s)
+		return fieldRange{lo: n, hi: n}
+	}
+	lo := 1
+	hi := -1
+	if s[:idx] != "" {
+		lo, _ = strconv.Atoi(s[:idx])
+	}
+	if s[idx+1:] != "" {
+		hi, _ = strconv.Atoi(s[idx+1:])
+	}
+	return fieldRange{lo: lo, hi: hi}
+}
+
+func fieldSelected(ranges []fieldRange, n int) bool {
+	for _, r := range ranges {
+		if n >= r.lo && (r.hi == -1 || n <= r.hi) {
+			return true
+		}
+	}
+	return false
+}
+
+// --- Line processing ---
+
+func processOperands(operands []string, cfg config, fields []fieldRange) int {
 	exitCode := 0
 	for _, op := range operands {
-		if err := convertAndPrint(op, cfg); err != nil {
+		if err := processLine(op, cfg, fields); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 			exitCode = 2
 		}
@@ -154,12 +245,19 @@ func processOperands(operands []string, cfg config) int {
 	return exitCode
 }
 
-// R1.4: read numbers from stdin when no operands given.
-func processStdin(cfg config) int {
+// R1.4, R3.3: read from stdin with optional header passthrough.
+func processStdin(cfg config, fields []fieldRange) int {
 	exitCode := 0
 	scanner := bufio.NewScanner(os.Stdin)
+	headerLeft := cfg.header
 	for scanner.Scan() {
-		if err := convertAndPrint(scanner.Text(), cfg); err != nil {
+		line := scanner.Text()
+		if headerLeft > 0 {
+			fmt.Println(line)
+			headerLeft--
+			continue
+		}
+		if err := processLine(line, cfg, fields); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 			exitCode = 2
 		}
@@ -167,33 +265,139 @@ func processStdin(cfg config) int {
 	return exitCode
 }
 
-func convertAndPrint(input string, cfg config) error {
-	input = strings.TrimSpace(input)
-	// R1.3: pure passthrough when no options are active.
-	if isPassthrough(cfg) {
-		return passthroughAndPrint(input)
+// processLine converts a single line, with optional field selection (R3.1).
+func processLine(line string, cfg config, fields []fieldRange) error {
+	if fields != nil {
+		return processFieldLine(line, cfg, fields)
 	}
-	// R2.4: strip user suffix from input before parsing.
+	return convertAndPrint(line, cfg)
+}
+
+// R3.1, R3.2: split line into fields, convert selected ones.
+func processFieldLine(line string, cfg config, fields []fieldRange) error {
+	delimited := cfg.delimiter != ""
+	var segs []segment
+	if delimited {
+		segs = tokenizeDelimited(line, cfg.delimiter)
+	} else {
+		segs = tokenizeWhitespace(line)
+	}
+	var convErr error
+	for i, seg := range segs {
+		if seg.field > 0 && fieldSelected(fields, seg.field) {
+			result, err := convertValue(seg.text, cfg)
+			if err != nil {
+				convErr = err
+				continue
+			}
+			// Whitespace mode: right-align to original field width
+			// when field has a preceding separator (not the first token).
+			if !delimited && i > 0 && len(result) < len(seg.text) {
+				result = strings.Repeat(" ", len(seg.text)-len(result)) + result
+			}
+			segs[i].text = result
+		}
+	}
+	printSegments(segs)
+	return convErr
+}
+
+func printSegments(segs []segment) {
+	var buf strings.Builder
+	for _, seg := range segs {
+		buf.WriteString(seg.text)
+	}
+	fmt.Println(buf.String())
+}
+
+// --- R3.1, R3.2: Line tokenization ---
+
+// tokenizeWhitespace splits a line on whitespace runs, preserving separators.
+func tokenizeWhitespace(line string) []segment {
+	var segs []segment
+	i := 0
+	fieldNum := 0
+	for i < len(line) {
+		j := skipWhitespace(line, i)
+		if j > i {
+			segs = append(segs, segment{text: line[i:j]})
+			i = j
+		}
+		if i >= len(line) {
+			break
+		}
+		j = skipNonWhitespace(line, i)
+		fieldNum++
+		segs = append(segs, segment{text: line[i:j], field: fieldNum})
+		i = j
+	}
+	return segs
+}
+
+func skipWhitespace(s string, start int) int {
+	i := start
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	return i
+}
+
+func skipNonWhitespace(s string, start int) int {
+	i := start
+	for i < len(s) && s[i] != ' ' && s[i] != '\t' {
+		i++
+	}
+	return i
+}
+
+// tokenizeDelimited splits a line on a specific delimiter string (R3.2).
+func tokenizeDelimited(line, delim string) []segment {
+	parts := strings.Split(line, delim)
+	segs := make([]segment, 0, len(parts)*2-1)
+	for i, p := range parts {
+		if i > 0 {
+			segs = append(segs, segment{text: delim})
+		}
+		segs = append(segs, segment{text: p, field: i + 1})
+	}
+	return segs
+}
+
+// --- Conversion ---
+
+func convertAndPrint(input string, cfg config) error {
+	result, err := convertValue(strings.TrimSpace(input), cfg)
+	if err != nil {
+		return err
+	}
+	fmt.Println(result)
+	return nil
+}
+
+// convertValue converts a single value string and returns the formatted result.
+func convertValue(input string, cfg config) (string, error) {
+	input = strings.TrimSpace(input)
+	if isPassthrough(cfg) {
+		if _, err := strconv.ParseFloat(input, 64); err != nil {
+			return "", fmt.Errorf("invalid number: '%s'", input)
+		}
+		return input, nil
+	}
 	stripped := stripInputSuffix(input, cfg.suffix)
 	value, err := parseNumber(stripped, cfg.fromUnit)
 	if err != nil {
-		return fmt.Errorf("invalid number: '%s'", input)
+		return "", fmt.Errorf("invalid number: '%s'", input)
 	}
-	fmt.Println(formatOutput(value, cfg))
-	return nil
+	// R3.4: apply input/output scaling factors.
+	value *= cfg.fromUnitN
+	value /= cfg.toUnitN
+	return formatOutput(value, cfg), nil
 }
 
 func isPassthrough(cfg config) bool {
 	return cfg.fromUnit == unitNone && cfg.toUnit == unitNone &&
-		cfg.format == "" && cfg.padding == 0 && cfg.suffix == ""
-}
-
-func passthroughAndPrint(input string) error {
-	if _, err := strconv.ParseFloat(input, 64); err != nil {
-		return fmt.Errorf("invalid number: '%s'", input)
-	}
-	fmt.Println(input)
-	return nil
+		cfg.format == "" && cfg.padding == 0 && cfg.suffix == "" &&
+		cfg.fromUnitN == 1 && cfg.toUnitN == 1
 }
 
 // R2.4: strip --suffix from input before parsing.
@@ -204,7 +408,8 @@ func stripInputSuffix(s, suffix string) string {
 	return s
 }
 
-// R1.2: parse input number, optionally interpreting suffixes.
+// --- Number parsing (R1.2) ---
+
 func parseNumber(s string, unit string) (float64, error) {
 	if unit == unitNone {
 		v, err := strconv.ParseFloat(s, 64)

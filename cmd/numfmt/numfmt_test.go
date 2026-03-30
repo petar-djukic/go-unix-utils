@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/numfmt.
-// Traces: prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Traces: prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -239,6 +240,84 @@ func TestDiff(t *testing.T) {
 			Name:  "round_magnitude_change",
 			Args:  []string{"--to=si"},
 			Stdin: []byte("9950\n"),
+		},
+		// R3.1: --field=2 converts only the second field
+		{
+			Name:  "field_2",
+			Args:  []string{"--to=iec", "--field=2"},
+			Stdin: []byte("name 1048576\n"),
+		},
+		// R3.1: --field=1 converts only the first field
+		{
+			Name:  "field_1",
+			Args:  []string{"--to=iec", "--field=1"},
+			Stdin: []byte("1048576 name\n"),
+		},
+		// R3.1: --field=2- converts from field 2 onwards
+		{
+			Name:  "field_2_onwards",
+			Args:  []string{"--to=iec", "--field=2-"},
+			Stdin: []byte("text 1024 1048576\n"),
+		},
+		// R3.1: --field=1,3 converts fields 1 and 3
+		{
+			Name:  "field_1_and_3",
+			Args:  []string{"--to=iec", "--field=1,3"},
+			Stdin: []byte("1024 text 1048576\n"),
+		},
+		// R3.2: --delimiter=: uses colon as field delimiter
+		{
+			Name:  "delimiter_colon",
+			Args:  []string{"--to=iec", "--field=2", "--delimiter=:"},
+			Stdin: []byte("name:1048576\n"),
+		},
+		// R3.2: -d , short form
+		{
+			Name:  "delimiter_short_comma",
+			Args:  []string{"--to=iec", "--field=2", "-d", ","},
+			Stdin: []byte("name,1048576\n"),
+		},
+		// R3.3: --header passes first line through unchanged
+		{
+			Name:  "header_default",
+			Args:  []string{"--to=iec", "--header"},
+			Stdin: []byte("size\n1048576\n"),
+		},
+		// R3.3: --header=2 passes first 2 lines through
+		{
+			Name:  "header_2",
+			Args:  []string{"--to=iec", "--header=2"},
+			Stdin: []byte("col1\ncol2\n1048576\n"),
+		},
+		// R3.3: --header combined with --field
+		{
+			Name:  "header_with_field",
+			Args:  []string{"--to=iec", "--header", "--field=2"},
+			Stdin: []byte("name size\nfoo 1048576\n"),
+		},
+		// R3.4: --from-unit multiplies input value
+		{
+			Name:  "from_unit_1024",
+			Args:  []string{"--to=iec", "--from-unit=1024"},
+			Stdin: []byte("1024\n"),
+		},
+		// R3.4: --to-unit divides output value
+		{
+			Name:  "to_unit_1000",
+			Args:  []string{"--to-unit=1000"},
+			Stdin: []byte("5000\n"),
+		},
+		// R3.4: --from-unit combined with --to
+		{
+			Name:  "from_unit_with_to_si",
+			Args:  []string{"--to=si", "--from-unit=1000000"},
+			Stdin: []byte("5\n"),
+		},
+		// R3.4: --to-unit combined with --to
+		{
+			Name:  "to_unit_with_to_si",
+			Args:  []string{"--to=si", "--to-unit=1000"},
+			Stdin: []byte("5000000\n"),
 		},
 	}
 
