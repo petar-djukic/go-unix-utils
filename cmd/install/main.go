@@ -3,7 +3,7 @@
 
 // cmd/install implements GNU install: copy files and set attributes.
 //
-// Implements prd101-install R1.1-R1.4.
+// Implements prd101-install R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -129,26 +129,80 @@ func installDirectories(dirs []string, opts installOptions, stdout, stderr *os.F
 	return exitCode
 }
 
-// createDir creates a single directory and sets its attributes.
+// createDir creates a single directory and its missing parents, applying
+// mode and ownership to each newly created component (R2.1).
 func createDir(dir string, mode os.FileMode, opts installOptions, stdout, stderr *os.File) int {
-	if err := os.MkdirAll(dir, mode); err != nil {
-		printError(stderr, fmt.Sprintf(
-			"cannot create directory '%s': %s", dir, stripPathError(err)))
-		return 1
+	for _, comp := range pathComponents(dir) {
+		if isDir(comp) {
+			continue
+		}
+		if mkdirComponent(comp, mode, opts, stdout, stderr) != 0 {
+			return 1
+		}
 	}
-	// R1.2: Chmod explicitly because MkdirAll is affected by umask.
+	// R1.2: Always apply mode to the target dir, even if it existed.
 	if err := os.Chmod(dir, mode); err != nil {
 		printError(stderr, fmt.Sprintf(
 			"cannot set permissions on '%s': %s", dir, stripPathError(err)))
 		return 1
 	}
-	if applyOwnership(dir, opts, stderr) != 0 {
+	return applyOwnership(dir, opts, stderr)
+}
+
+// mkdirComponent creates a single directory component with mode and ownership.
+func mkdirComponent(comp string, mode os.FileMode, opts installOptions, stdout, stderr *os.File) int {
+	if err := os.Mkdir(comp, mode); err != nil && !os.IsExist(err) {
+		printError(stderr, fmt.Sprintf(
+			"cannot create directory '%s': %s", comp, stripPathError(err)))
 		return 1
 	}
+	// R1.2: Chmod explicitly because Mkdir is affected by umask.
+	if err := os.Chmod(comp, mode); err != nil {
+		printError(stderr, fmt.Sprintf(
+			"cannot set permissions on '%s': %s", comp, stripPathError(err)))
+		return 1
+	}
+	if applyOwnership(comp, opts, stderr) != 0 {
+		return 1
+	}
+	// R2.4: Print each created directory when verbose.
 	if opts.verbose {
-		fmt.Fprintf(stdout, "install: creating directory '%s'\n", dir) //nolint:errcheck
+		fmt.Fprintf(stdout, "install: creating directory '%s'\n", comp) //nolint:errcheck
 	}
 	return 0
+}
+
+// createLeadingDirs creates leading directory components for -D mode (R2.2).
+// Uses default 0755 mode for leading directories, not the -m mode.
+func createLeadingDirs(dir string, opts installOptions, stdout, stderr *os.File) int {
+	for _, comp := range pathComponents(dir) {
+		if isDir(comp) {
+			continue
+		}
+		if err := os.Mkdir(comp, 0o755); err != nil && !os.IsExist(err) {
+			printError(stderr, fmt.Sprintf(
+				"cannot create directory '%s': %s", comp, stripPathError(err)))
+			return 1
+		}
+		// R2.4: Print each created directory when verbose.
+		if opts.verbose {
+			fmt.Fprintf(stdout, "install: creating directory '%s'\n", comp) //nolint:errcheck
+		}
+	}
+	return 0
+}
+
+// pathComponents returns cumulative path components from root to leaf.
+// Example: "a/b/c" → ["a", "a/b", "a/b/c"].
+func pathComponents(dir string) []string {
+	dir = filepath.Clean(dir)
+	var components []string
+	current := dir
+	for current != "." && current != "/" {
+		components = append([]string{current}, components...)
+		current = filepath.Dir(current)
+	}
+	return components
 }
 
 // installFiles dispatches file copy based on flags and operand count.
@@ -192,9 +246,7 @@ func missingOperandError(operands []string, stderr *os.File) int {
 // installIntoDir copies all sources into the target directory.
 func installIntoDir(sources []string, dir string, opts installOptions, stdout, stderr *os.File) int {
 	if opts.createLeading {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			printError(stderr, fmt.Sprintf(
-				"cannot create directory '%s': %s", dir, stripPathError(err)))
+		if createLeadingDirs(dir, opts, stdout, stderr) != 0 {
 			return 1
 		}
 	}
@@ -213,13 +265,11 @@ func installIntoDir(sources []string, dir string, opts installOptions, stdout, s
 }
 
 // installSingleFile copies one source file to dest with attributes.
-// R1.1: copy with mode. R2.3: backup before overwrite.
+// R1.1: copy with mode. R2.2: create leading dirs. R2.3: backup before overwrite.
 func installSingleFile(src, dest string, opts installOptions, stdout, stderr *os.File) int {
 	if opts.createLeading {
 		dir := filepath.Dir(dest)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			printError(stderr, fmt.Sprintf(
-				"cannot create directory '%s': %s", dir, stripPathError(err)))
+		if createLeadingDirs(dir, opts, stdout, stderr) != 0 {
 			return 1
 		}
 	}
