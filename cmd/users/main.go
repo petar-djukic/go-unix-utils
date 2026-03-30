@@ -30,9 +30,13 @@ import (
 const progName = "users"
 
 func main() {
+	// R2.3: handle SIGPIPE gracefully.
 	sys.InstallSIGPIPEHandler()
+
+	// R2.1, R2.2: exit 0 on success, 1 on error.
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
 }
