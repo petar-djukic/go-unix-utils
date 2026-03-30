@@ -67,6 +67,16 @@ func TestDiff(t *testing.T) {
 	// R2.1 + R2.4 combined: join on non-first field with custom separator.
 	dirCommaField := writeTestFiles(t, "1,a\n2,b\n", "a,P\nb,Q\n")
 
+	// R3.1: -a unpairable lines test data.
+	dirUnpair := writeTestFiles(t, "a 1\nb 2\nc 3\n", "b Y\nc Z\nd W\n")
+	// R3.2: -v unpairable only test data.
+	dirVOnly := writeTestFiles(t, "a 1\nb 2\nc 3\n", "b Y\nd W\n")
+	// R3.3: -e empty replacement test data.
+	dirEmptyRepl := writeTestFiles(t, "a 1\nb 2\nc 3\n", "a X\nc Z\n")
+	// R3.4: --header test data (headers may not be sorted relative to data).
+	dirHeader := writeTestFiles(t, "NAME VAL\na 1\nb 2\n", "NAME CODE\na X\nb Y\n")
+	dirHeaderUnsorted := writeTestFiles(t, "ZZZ VAL\na 1\nb 2\n", "ZZZ CODE\na X\nb Y\n")
+
 	errNorm := []testutils.NormalizeFunc{normalizeProgramName, normalizeFileError}
 
 	tests := []testutils.DiffTest{
@@ -200,6 +210,80 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-t", ",", "-1", "2", "-2", "1", "file1.txt", "file2.txt"},
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirCommaField,
+		},
+
+		// R3.1: -a FILENUM prints unpairable lines from the specified file.
+		{
+			Name:    "R3.1_unpair_file1",
+			Args:    []string{"-a", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirUnpair,
+		},
+		{
+			Name:    "R3.1_unpair_file2",
+			Args:    []string{"-a", "2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirUnpair,
+		},
+		{
+			Name:    "R3.1_unpair_both",
+			Args:    []string{"-a", "1", "-a", "2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirUnpair,
+		},
+		{
+			Name:    "R3.1_unpair_all_match_no_extra",
+			Args:    []string{"-a", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirAllMatch,
+		},
+
+		// R3.2: -v FILENUM prints only unpairable lines, suppressing paired.
+		{
+			Name:    "R3.2_v_file1",
+			Args:    []string{"-v", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirVOnly,
+		},
+		{
+			Name:    "R3.2_v_file2",
+			Args:    []string{"-v", "2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirVOnly,
+		},
+		{
+			Name:    "R3.2_v_no_unpairable",
+			Args:    []string{"-v", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirAllMatch,
+		},
+
+		// R3.3: -e STRING replaces missing fields.
+		{
+			Name:    "R3.3_empty_replacement_with_format",
+			Args:    []string{"-a", "1", "-e", "EMPTY", "-o", "0,1.2,2.2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirEmptyRepl,
+		},
+		{
+			Name:    "R3.3_empty_replacement_both_files",
+			Args:    []string{"-a", "1", "-a", "2", "-e", "N/A", "-o", "0,1.2,2.2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirUnpair,
+		},
+
+		// R3.4: --header treats first line as header.
+		{
+			Name:    "R3.4_header_mode",
+			Args:    []string{"--header", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirHeader,
+		},
+		{
+			Name:    "R3.4_header_unsorted_header_line",
+			Args:    []string{"--header", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirHeaderUnsorted,
 		},
 
 		// Error: missing file exits 1.
