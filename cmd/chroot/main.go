@@ -269,13 +269,11 @@ func execCommand(cmd []string) int {
 	}
 	err = syscall.Exec(binary, cmd, os.Environ())
 	// syscall.Exec only returns on failure
-	if os.IsPermission(err) {
-		fmt.Fprintf(os.Stderr, "%s: cannot execute '%s': %s\n",
-			progName, cmd[0], err)
-		return exitCannotExec
-	}
 	fmt.Fprintf(os.Stderr, "%s: failed to run command '%s': %s\n",
 		progName, cmd[0], err)
+	if os.IsNotExist(err) {
+		return exitNotFound
+	}
 	return exitCannotExec
 }
 
