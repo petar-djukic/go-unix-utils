@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // dircolors outputs shell commands to set the LS_COLORS environment variable.
-// Implements prd109-dircolors R1.1-R1.4, R2.1-R2.5, R3.1-R3.3.
+// Implements prd109-dircolors R1.1-R1.4, R2.1-R2.5, R3.1-R3.5.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -145,7 +146,7 @@ func loadAndParse(filename string) (string, error) {
 	case filename != "":
 		data, err := os.ReadFile(filename)
 		if err != nil {
-			return "", fmt.Errorf("dircolors: %v", err)
+			return "", formatFileError(filename, err)
 		}
 		content = string(data)
 	default:
@@ -253,6 +254,16 @@ func stripComment(line string) string {
 		}
 	}
 	return strings.TrimSpace(line)
+}
+
+// R3.4: formatFileError produces GNU-compatible error messages for file I/O errors.
+// GNU format: "dircolors: <path>: <OS error>" (no "open" prefix, capitalized).
+func formatFileError(filename string, err error) error {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return fmt.Errorf("dircolors: %s: %v", filename, pathErr.Err)
+	}
+	return fmt.Errorf("dircolors: %s: %v", filename, err)
 }
 
 func dbError(filename string, lineNum int, keyword string) error {

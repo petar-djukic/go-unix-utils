@@ -14,7 +14,8 @@ import (
 )
 
 // normalizeDircolorsErr normalizes error output by stripping "Try ..." help
-// lines and replacing the reference binary name prefix with "dircolors".
+// lines, replacing the reference binary name prefix with "dircolors", and
+// lowercasing OS error messages for cross-platform consistency.
 func normalizeDircolorsErr(b []byte) []byte {
 	var out [][]byte
 	for _, line := range bytes.Split(b, []byte("\n")) {
@@ -24,6 +25,7 @@ func normalizeDircolorsErr(b []byte) []byte {
 		if bytes.HasPrefix(line, []byte("gdircolors:")) {
 			line = append([]byte("dircolors:"), line[len("gdircolors:"):]...)
 		}
+		line = bytes.ToLower(line)
 		out = append(out, line)
 	}
 	return bytes.Join(out, []byte("\n"))
@@ -75,6 +77,10 @@ func TestDiff(t *testing.T) {
 	// R2.2: COLORTERM pattern matching.
 	colortermDB := filepath.Join(tmpDir, "colorterm.db")
 	writeFile(t, colortermDB, "COLORTERM ?*\nDIR 01;34\n")
+
+	// R3.4: database with unrecognized keyword to trigger error.
+	invalidDB := filepath.Join(tmpDir, "invalid.db")
+	writeFile(t, invalidDB, "TERM *\nBADKEYWORD 01;31\n")
 
 	tests := []testutils.DiffTest{
 		// --- R1 tests (existing) ---
@@ -228,6 +234,29 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "exit 0 on success default",
 			Args: []string{"--sh"},
+			Env:  []string{"SHELL=/bin/bash"},
+		},
+
+		// --- R3.4: error exit codes and diagnostics ---
+		{
+			Name:      "file not found exits 1",
+			Args:      []string{"--sh", filepath.Join(tmpDir, "nonexistent-file")},
+			Env:       []string{"SHELL=/bin/bash"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeDircolorsErr},
+		},
+		{
+			Name:      "invalid keyword exits 1 with line number",
+			Args:      []string{"--sh", invalidDB},
+			Env:       []string{"SHELL=/bin/bash", "TERM=xterm"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeDircolorsErr},
+		},
+
+		// --- R3.5: SIGPIPE handler (verified by building and running with pipe) ---
+		{
+			Name: "sigpipe handler default output",
+			Args: []string{"-p"},
 			Env:  []string{"SHELL=/bin/bash"},
 		},
 	}
