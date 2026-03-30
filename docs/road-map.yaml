@@ -456,7 +456,7 @@ releases:
         - id: rel10.0-uc003-link
           status: implemented
         - id: rel10.0-uc004-sync
-          status: spec_complete
+          status: implemented
     - version: "10.1"
       name: "Batch 10.1 — permission and ownership (chmod, chgrp, chown)"
       status: spec_complete
