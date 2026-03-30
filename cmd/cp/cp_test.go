@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cp against gcp (GNU coreutils).
 //
-// Covers prd056-cp R1.1-R1.4.
+// Covers prd056-cp R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -26,6 +26,10 @@ func discardAll(data []byte) []byte {
 // R1.2: -i interactive (skipped — requires tty).
 // R1.3: -f force remove and retry.
 // R1.4: -n no-clobber.
+// R2.1: -r/-R recursive directory copy.
+// R2.2: directory without -r error.
+// R2.3: -L dereference symlinks.
+// R2.4: -P no-dereference preserves symlinks.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -68,6 +72,26 @@ func TestDiff(t *testing.T) {
 	t.Run("target_directory", func(t *testing.T) {
 		t.Parallel()
 		runTargetDirTest(t, goBin, refBin)
+	})
+
+	t.Run("recursive_copy", func(t *testing.T) {
+		t.Parallel()
+		runRecursiveCopyTest(t, goBin, refBin)
+	})
+
+	t.Run("recursive_R_alias", func(t *testing.T) {
+		t.Parallel()
+		runRecursiveRAliasTest(t, goBin, refBin)
+	})
+
+	t.Run("dereference_recursive", func(t *testing.T) {
+		t.Parallel()
+		runDerefRecursiveTest(t, goBin, refBin)
+	})
+
+	t.Run("no_deref_symlink", func(t *testing.T) {
+		t.Parallel()
+		runNoDerefTest(t, goBin, refBin)
 	})
 }
 
@@ -127,9 +151,7 @@ func runMultiCopyTest(t *testing.T, goBin, refBin string) {
 	workDir := t.TempDir()
 	writeFile(t, filepath.Join(workDir, "a.txt"), "aaa\n")
 	writeFile(t, filepath.Join(workDir, "b.txt"), "bbb\n")
-	if err := os.Mkdir(filepath.Join(workDir, "dest"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	mkdirAll(t, filepath.Join(workDir, "dest"))
 
 	tests := []testutils.DiffTest{
 		{
@@ -221,9 +243,7 @@ func runTargetDirTest(t *testing.T, goBin, refBin string) {
 
 	workDir := t.TempDir()
 	writeFile(t, filepath.Join(workDir, "t1.txt"), "target dir\n")
-	if err := os.Mkdir(filepath.Join(workDir, "tdir"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	mkdirAll(t, filepath.Join(workDir, "tdir"))
 
 	tests := []testutils.DiffTest{
 		{
@@ -251,9 +271,7 @@ func TestDiffDirWithoutR(t *testing.T) {
 	}
 
 	workDir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(workDir, "srcdir"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	mkdirAll(t, filepath.Join(workDir, "srcdir"))
 
 	tests := []testutils.DiffTest{
 		{
@@ -268,10 +286,120 @@ func TestDiffDirWithoutR(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// runRecursiveCopyTest verifies R2.1: -r copies directories recursively.
+func runRecursiveCopyTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	mkdirAll(t, filepath.Join(workDir, "srcdir", "sub"))
+	writeFile(t, filepath.Join(workDir, "srcdir", "top.txt"), "top\n")
+	writeFile(t, filepath.Join(workDir, "srcdir", "sub", "deep.txt"), "deep\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "recursive_copy",
+			Args:     []string{"-r", "srcdir", "destdir"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"destdir/top.txt":      []byte("top\n"),
+				"destdir/sub/deep.txt": []byte("deep\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runRecursiveRAliasTest verifies R2.1: -R is an alias for -r.
+func runRecursiveRAliasTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	mkdirAll(t, filepath.Join(workDir, "srcdir"))
+	writeFile(t, filepath.Join(workDir, "srcdir", "file.txt"), "content\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "recursive_R_flag",
+			Args:     []string{"-R", "srcdir", "destdir"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"destdir/file.txt": []byte("content\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runDerefRecursiveTest verifies R2.3: -L follows symlinks during recursive copy.
+func runDerefRecursiveTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	mkdirAll(t, filepath.Join(workDir, "srcdir"))
+	writeFile(t, filepath.Join(workDir, "srcdir", "real.txt"), "real\n")
+	if err := os.Symlink("real.txt",
+		filepath.Join(workDir, "srcdir", "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "deref_recursive",
+			Args:     []string{"-rL", "srcdir", "destdir"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"destdir/real.txt": []byte("real\n"),
+				"destdir/link.txt": []byte("real\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runNoDerefTest verifies R2.4: -P preserves symlinks as symlinks.
+func runNoDerefTest(t *testing.T, goBin, refBin string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "target.txt"), "target\n")
+	if err := os.Symlink("target.txt",
+		filepath.Join(workDir, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "no_deref_copy",
+			Args:     []string{"-P", "link.txt", "link_copy.txt"},
+			WorkDir:  workDir,
+			ExitCode: 0,
+			ExpectedFiles: map[string][]byte{
+				"link_copy.txt": []byte("target\n"),
+			},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // writeFile creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// mkdirAll creates a directory and all parents.
+func mkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
 }

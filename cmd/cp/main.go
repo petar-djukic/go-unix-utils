@@ -3,7 +3,7 @@
 
 // cmd/cp implements GNU cp: copy files and directories.
 //
-// Implements prd056-cp R1.1-R1.4.
+// Implements prd056-cp R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -27,7 +27,10 @@ Mandatory arguments to long options are mandatory for short options too.
   -f, --force                  if an existing destination file cannot be
                                  opened, remove it and try again
   -i, --interactive            prompt before overwrite
+  -L, --dereference            always follow symbolic links in SOURCE
   -n, --no-clobber             do not overwrite an existing file
+  -P, --no-dereference         never follow symbolic links in SOURCE
+  -r, -R, --recursive          copy directories recursively
   -t, --target-directory=DIRECTORY  copy all SOURCE arguments into DIRECTORY
   -v, --verbose                explain what is being done
       --help        display this help and exit
@@ -44,13 +47,18 @@ const (
 	parseVer
 )
 
-// cpOptions holds parsed command-line flags for R1.1-R1.4.
+// cpOptions holds parsed command-line flags.
+// R1.1-R1.4: force, interactive, noClobber, verbose, targetDir.
+// R2.1-R2.4: recursive, dereference, noDereference.
 type cpOptions struct {
-	force       bool
-	interactive bool
-	noClobber   bool
-	verbose     bool
-	targetDir   string
+	force         bool
+	interactive   bool
+	noClobber     bool
+	verbose       bool
+	targetDir     string
+	recursive     bool
+	dereference   bool
+	noDereference bool
 }
 
 func main() {
@@ -69,13 +77,11 @@ func run(args []string, stdin *os.File, stdout, stderr *os.File) int {
 		fmt.Fprint(stdout, versionText) //nolint:errcheck
 		return 0
 	}
-
 	if err != nil {
 		printError(stderr, err.Error())
 		printTryHelp(stderr)
 		return 1
 	}
-
 	return dispatch(operands, opts, stdin, stdout, stderr)
 }
 
@@ -84,24 +90,21 @@ func dispatch(operands []string, opts cpOptions, stdin *os.File, stdout, stderr 
 	if opts.targetDir != "" {
 		return copyIntoDir(operands, opts.targetDir, opts, stdin, stdout, stderr)
 	}
-
 	if len(operands) < 2 {
 		if len(operands) == 0 {
 			printError(stderr, "missing file operand")
 		} else {
-			printError(stderr, fmt.Sprintf("missing destination file operand after '%s'", operands[0]))
+			printError(stderr, fmt.Sprintf(
+				"missing destination file operand after '%s'", operands[0]))
 		}
 		printTryHelp(stderr)
 		return 1
 	}
-
 	dest := operands[len(operands)-1]
 	sources := operands[:len(operands)-1]
-
 	if len(sources) > 1 || isDir(dest) {
 		return copyIntoDir(sources, dest, opts, stdin, stdout, stderr)
 	}
-
 	return copySingle(sources[0], dest, opts, stdin, stdout, stderr)
 }
 
@@ -122,36 +125,140 @@ func copyIntoDir(sources []string, dir string, opts cpOptions, stdin *os.File, s
 	return exitCode
 }
 
-// copySingle copies one source file to dest.
-// R1.1: single file copy.
-// R1.2: -i prompts before overwrite.
-// R1.3: -f removes dest if it cannot be opened.
-// R1.4: -n skips if dest exists.
+// copySingle copies one source entry (file, directory, or symlink) to dest.
+// R2.1: directories are copied recursively when -r is set.
+// R2.2: directories without -r produce an error.
+// R2.3: -L follows symlinks.
+// R2.4: -P preserves symlinks (default with -r).
 func copySingle(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
-	srcInfo, err := os.Stat(src)
+	info, err := os.Lstat(src)
 	if err != nil {
-		printError(stderr, fmt.Sprintf("cannot stat '%s': %s", src, stripPathError(err)))
+		printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
+			src, stripPathError(err)))
 		return 1
 	}
 
-	if srcInfo.IsDir() {
-		printError(stderr, fmt.Sprintf("-r not specified; omitting directory '%s'", src))
-		return 1
+	isSymlink := info.Mode()&os.ModeSymlink != 0
+
+	// R2.4: preserve symlinks when not dereferencing.
+	if isSymlink && !shouldDereference(opts) {
+		return copySymlinkEntry(src, dest, opts, stdin, stdout, stderr)
 	}
 
+	// R2.3: follow symlink to get real file info.
+	if isSymlink {
+		info, err = os.Stat(src)
+		if err != nil {
+			printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
+				src, stripPathError(err)))
+			return 1
+		}
+	}
+
+	if info.IsDir() {
+		if !opts.recursive {
+			// R2.2: refuse to copy directory without -r.
+			printError(stderr, fmt.Sprintf(
+				"-r not specified; omitting directory '%s'", src))
+			return 1
+		}
+		return copyDir(src, dest, opts, stdin, stdout, stderr)
+	}
+
+	return copyRegularFile(src, dest, info.Mode(), opts, stdin, stdout, stderr)
+}
+
+// copySymlinkEntry copies a symbolic link, preserving it as a symlink.
+// R2.4: -P no-dereference.
+func copySymlinkEntry(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
 	if !handleDestConflict(dest, opts, stdin, stderr) {
-		return 0 // -n skipped; not an error
+		return 0
 	}
-
-	if err := copyFile(src, dest, srcInfo.Mode(), opts); err != nil {
-		printError(stderr, fmt.Sprintf("cannot copy '%s' to '%s': %s", src, dest, err))
+	target, err := os.Readlink(src)
+	if err != nil {
+		printError(stderr, fmt.Sprintf("cannot read symlink '%s': %s", src, err))
 		return 1
 	}
-
+	// Remove existing dest; os.Symlink cannot overwrite.
+	os.Remove(dest) //nolint:errcheck // best-effort removal
+	if err := os.Symlink(target, dest); err != nil {
+		printError(stderr, fmt.Sprintf(
+			"cannot create symlink '%s': %s", dest, err))
+		return 1
+	}
 	if opts.verbose {
 		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
 	}
 	return 0
+}
+
+// copyDir recursively copies a directory tree from src to dest.
+// R2.1: -r recursive directory copy.
+func copyDir(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
+			src, stripPathError(err)))
+		return 1
+	}
+	if err := os.MkdirAll(dest, srcInfo.Mode().Perm()); err != nil {
+		printError(stderr, fmt.Sprintf("cannot create directory '%s': %s",
+			dest, err))
+		return 1
+	}
+	if opts.verbose {
+		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
+	}
+	return copyDirEntries(src, dest, opts, stdin, stdout, stderr)
+}
+
+// copyDirEntries reads and copies all entries from src directory into dest.
+func copyDirEntries(src, dest string, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		printError(stderr, fmt.Sprintf("cannot read directory '%s': %s",
+			src, stripPathError(err)))
+		return 1
+	}
+	exitCode := 0
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+		if copySingle(srcPath, destPath, opts, stdin, stdout, stderr) != 0 {
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+// copyRegularFile copies a regular file from src to dest.
+func copyRegularFile(src, dest string, mode os.FileMode, opts cpOptions, stdin *os.File, stdout, stderr *os.File) int {
+	if !handleDestConflict(dest, opts, stdin, stderr) {
+		return 0
+	}
+	if err := copyFile(src, dest, mode, opts); err != nil {
+		printError(stderr, fmt.Sprintf(
+			"cannot copy '%s' to '%s': %s", src, dest, err))
+		return 1
+	}
+	if opts.verbose {
+		fmt.Fprintf(stdout, "'%s' -> '%s'\n", src, dest) //nolint:errcheck
+	}
+	return 0
+}
+
+// shouldDereference returns true when symlinks should be followed.
+// R2.3: -L forces dereferencing.
+// R2.4: -P forces no dereferencing; default with -r.
+func shouldDereference(opts cpOptions) bool {
+	if opts.dereference {
+		return true
+	}
+	if opts.noDereference {
+		return false
+	}
+	// Default: -P when recursive, dereference otherwise.
+	return !opts.recursive
 }
 
 // handleDestConflict manages -n, -i, and -f for an existing destination.
@@ -160,17 +267,14 @@ func handleDestConflict(dest string, opts cpOptions, stdin *os.File, stderr *os.
 	if _, err := os.Lstat(dest); err != nil {
 		return true // dest doesn't exist
 	}
-
 	// R1.4: -n takes precedence over -i.
 	if opts.noClobber {
 		return false
 	}
-
 	// R1.2: -i prompts the user.
 	if opts.interactive {
 		return promptOverwrite(dest, stdin, stderr)
 	}
-
 	return true
 }
 
@@ -192,14 +296,12 @@ func copyFile(src, dest string, mode os.FileMode, opts cpOptions) error {
 	if err == nil {
 		return nil
 	}
-
 	// R1.3: if -f and dest exists, remove it and retry.
 	if opts.force {
 		if removeErr := os.Remove(dest); removeErr == nil {
 			return doCopy(src, dest, mode)
 		}
 	}
-
 	return err
 }
 
@@ -211,16 +313,15 @@ func doCopy(src, dest string, mode os.FileMode) error {
 	}
 	defer srcFile.Close()
 
-	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	destFile, err := os.OpenFile(dest,
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-
 	if _, err := io.Copy(destFile, srcFile); err != nil {
 		destFile.Close()
 		return err
 	}
-
 	return destFile.Close()
 }
 
@@ -277,6 +378,14 @@ func parseLongFlag(flag string, remaining []string, opts *cpOptions) (int, parse
 		opts.noClobber = true
 	case "--verbose":
 		opts.verbose = true
+	case "--recursive":
+		opts.recursive = true
+	case "--dereference":
+		opts.dereference = true
+		opts.noDereference = false
+	case "--no-dereference":
+		opts.noDereference = true
+		opts.dereference = false
 	case "--target-directory":
 		if hasValue {
 			opts.targetDir = value
@@ -284,7 +393,8 @@ func parseLongFlag(flag string, remaining []string, opts *cpOptions) (int, parse
 			opts.targetDir = remaining[0]
 			return 1, parseOK, nil
 		} else {
-			return 0, parseOK, fmt.Errorf("option '--target-directory' requires an argument")
+			return 0, parseOK, fmt.Errorf(
+				"option '--target-directory' requires an argument")
 		}
 	default:
 		return 0, parseOK, fmt.Errorf("unrecognized option '%s'", flag)
@@ -292,7 +402,7 @@ func parseLongFlag(flag string, remaining []string, opts *cpOptions) (int, parse
 	return 0, parseOK, nil
 }
 
-// parseShortFlags handles -f, -i, -n, -v, -t and combined forms.
+// parseShortFlags handles short flags and combined forms.
 func parseShortFlags(flags string, remaining []string, opts *cpOptions) (int, error) {
 	consumed := 0
 	for i := 0; i < len(flags); i++ {
@@ -305,6 +415,14 @@ func parseShortFlags(flags string, remaining []string, opts *cpOptions) (int, er
 			opts.noClobber = true
 		case 'v':
 			opts.verbose = true
+		case 'r', 'R':
+			opts.recursive = true
+		case 'L':
+			opts.dereference = true
+			opts.noDereference = false
+		case 'P':
+			opts.noDereference = true
+			opts.dereference = false
 		case 't':
 			rest := flags[i+1:]
 			if rest != "" {
@@ -313,7 +431,8 @@ func parseShortFlags(flags string, remaining []string, opts *cpOptions) (int, er
 				opts.targetDir = remaining[consumed]
 				consumed++
 			} else {
-				return consumed, fmt.Errorf("option requires an argument -- 't'")
+				return consumed, fmt.Errorf(
+					"option requires an argument -- 't'")
 			}
 			return consumed, nil
 		default:
