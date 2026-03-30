@@ -3,7 +3,8 @@
 
 // cmd/factor implements GNU factor: print prime factorizations of integers.
 //
-// Implements prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -19,6 +20,11 @@ import (
 
 const programName = "factor"
 
+const usageText = `Usage: factor [NUMBER]...
+Print the prime factors of each specified integer.
+If none are specified on the command line, read them from standard input.
+`
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
@@ -28,8 +34,18 @@ func main() {
 
 // run processes arguments or stdin and prints factorizations.
 // Returns 0 on success, 1 if any input was invalid.
+// R3.1: --help prints usage to stdout, exits 0.
+// R3.2: --version prints version info to stdout, exits 0.
 func run(args []string, stdin *os.File, stdout, stderr *os.File) int {
 	if len(args) > 0 {
+		switch args[0] {
+		case "--help":
+			fmt.Fprint(stdout, usageText)
+			return 0
+		case "--version":
+			fmt.Fprintf(stdout, "%s (go-unix-utils)\n", programName)
+			return 0
+		}
 		return factorArgs(args, stdout, stderr)
 	}
 	return factorStdin(stdin, stdout, stderr)
@@ -76,13 +92,15 @@ func factorStdin(stdin *os.File, stdout, stderr *os.File) int {
 
 // processInput parses a single input string and writes its factorization.
 // R2.2: ParseInt with 64-bit accepts up to 2^63-1.
-// R2.4: errors on non-integer or negative input, does not stop processing.
+// R2.4, R3.4: errors on non-integer or negative input to stderr,
+// does not stop processing.
 func processInput(input string, w *bufio.Writer, stderr *os.File) error {
 	n, err := strconv.ParseInt(input, 10, 64)
 	if err != nil || n < 0 {
 		fmt.Fprintf(stderr, "%s: '%s' is not a valid positive integer\n", programName, input)
 		return fmt.Errorf("invalid input")
 	}
+	// R3.3: factorization output goes to stdout.
 	printFactors(w, n)
 	return nil
 }

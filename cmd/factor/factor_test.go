@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/factor against gfactor (GNU coreutils).
 //
-// Covers prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -21,6 +22,13 @@ var normalizeBinaryName testutils.NormalizeFunc = func(data []byte) []byte {
 }
 
 var binaryNameRe = regexp.MustCompile(`(?m)^g?factor:`)
+
+// normalizeHelpVersion strips all output content for --help and --version
+// tests, keeping only the exit code comparison. GNU and Go binaries produce
+// different help/version text, so byte-level comparison is not meaningful.
+var normalizeHelpVersion testutils.NormalizeFunc = func(data []byte) []byte {
+	return nil
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -146,6 +154,33 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "R2.4_mixed_valid_invalid",
 			Stdin:     []byte("12\nabc\n15\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R3.1: --help prints usage to stdout and exits 0
+		{
+			Name:      "R3.1_help",
+			Args:      []string{"--help"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeHelpVersion},
+		},
+		// R3.2: --version prints version info to stdout and exits 0
+		{
+			Name:      "R3.2_version",
+			Args:      []string{"--version"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{normalizeHelpVersion},
+		},
+		// R3.3: factorization output goes to stdout (verified by all passing tests)
+		{
+			Name:     "R3.3_output_stdout",
+			Args:     []string{"42"},
+			ExitCode: 0,
+		},
+		// R3.4: error to stderr without stopping — mixed valid and invalid args
+		{
+			Name:      "R3.4_error_continues",
+			Args:      []string{"12", "notanumber", "15"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
