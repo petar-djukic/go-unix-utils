@@ -225,7 +225,7 @@ func printOutput(entries []utmpxEntry, opts options) {
 // Type flags (-b, -u) add PID column; -u also adds IDLE column.
 func printHeading(opts options) {
 	if opts.showIdle {
-		fmt.Println("NAME     LINE         TIME             IDLE          PID COMMENT")
+		fmt.Println("NAME     LINE         TIME         IDLE          PID COMMENT")
 	} else if opts.boot {
 		fmt.Println("NAME     LINE         TIME                PID COMMENT")
 	} else {
@@ -314,10 +314,10 @@ func printUserBasic(e utmpxEntry, timeStr string) {
 // R2.2: -u/--users shows idle time for each user.
 func printUserWithIdle(e utmpxEntry, timeStr, idle string) {
 	if e.host != "" {
-		fmt.Printf("%-8s %-12s %s %s %5d (%s)\n",
+		fmt.Printf("%-8s %-12s %s %-7s%10d (%s)\n",
 			e.user, e.line, timeStr, idle, e.pid, e.host)
 	} else {
-		fmt.Printf("%-8s %-12s %s %s %5d\n",
+		fmt.Printf("%-8s %-12s %s %-7s%10d\n",
 			e.user, e.line, timeStr, idle, e.pid)
 	}
 }
