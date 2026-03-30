@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/rm against grm (GNU coreutils).
 //
-// Covers prd058-rm R1.1-R1.4.
+// Covers prd058-rm R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -307,6 +307,273 @@ func TestDiffNonexistentFile(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursive verifies recursive directory removal.
+// R2.1: -r removes directories and their contents recursively.
+func TestDiffRecursive(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name: "recursive_single_dir",
+			args: []string{"-r", "mydir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "mydir", "sub"))
+				writeFile(t, filepath.Join(dir, "mydir", "a.txt"), "aaa\n")
+				writeFile(t, filepath.Join(dir, "mydir", "sub", "b.txt"), "bbb\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "mydir")
+			},
+		},
+		{
+			name: "recursive_with_R_flag",
+			args: []string{"-R", "d"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "d"))
+				writeFile(t, filepath.Join(dir, "d", "f.txt"), "data\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "d")
+			},
+		},
+		{
+			name: "recursive_long_flag",
+			args: []string{"--recursive", "tree"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "tree", "a", "b"))
+				writeFile(t, filepath.Join(dir, "tree", "a", "b", "c.txt"), "deep\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "tree")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffForce verifies force mode.
+// R2.2: -f ignores non-existent files, never prompts.
+func TestDiffForce(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name:     "force_nonexistent_file",
+			args:     []string{"-f", "nosuch.txt"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "force_no_operands",
+			args:     []string{"-f"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "force_long_flag",
+			args:     []string{"--force", "missing.txt"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "force_removes_existing_file",
+			args:     []string{"-f", "exists.txt"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "exists.txt"), "data\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "exists.txt")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffRecursiveForce verifies -rf combined behavior.
+// R2.3: silently removes directory trees without prompting.
+func TestDiffRecursiveForce(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name:     "rf_directory_tree",
+			args:     []string{"-rf", "tree"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "tree", "sub"))
+				writeFile(t, filepath.Join(dir, "tree", "f1.txt"), "one\n")
+				writeFile(t, filepath.Join(dir, "tree", "sub", "f2.txt"), "two\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "tree")
+			},
+		},
+		{
+			name:     "rf_nonexistent_dir",
+			args:     []string{"-rf", "nosuchdir"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "rf_mixed_existing_nonexistent",
+			args:     []string{"-rf", "real", "fake"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "real"))
+				writeFile(t, filepath.Join(dir, "real", "x.txt"), "x\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "real")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffEmptyDir verifies -d flag for empty directory removal.
+// R2.4: -d removes empty directories; without -d or -r, directory removal fails.
+func TestDiffEmptyDir(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name:     "d_removes_empty_dir",
+			args:     []string{"-d", "emptydir"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "emptydir"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "emptydir")
+			},
+		},
+		{
+			name:     "d_long_flag",
+			args:     []string{"--dir", "emptydir"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "emptydir"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "emptydir")
+			},
+		},
+		{
+			name:     "d_nonempty_dir_fails",
+			args:     []string{"-d", "notempty"},
+			exitCode: 1,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "notempty"))
+				writeFile(t, filepath.Join(dir, "notempty", "f.txt"), "x\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertDirExists(t, dir, "notempty")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffRecursiveVerbose verifies verbose output during recursive removal.
+// R2.1 + R3.3: verbose output matches GNU rm format for directory removal.
+func TestDiffRecursiveVerbose(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	tc := rmTestCase{
+		name:     "recursive_verbose",
+		args:     []string{"-rv", "d"},
+		exitCode: 0,
+		setup: func(t *testing.T, dir string) {
+			t.Helper()
+			mkdirAll(t, filepath.Join(dir, "d"))
+			writeFile(t, filepath.Join(dir, "d", "f.txt"), "data\n")
+		},
+		check: func(t *testing.T, dir string) {
+			t.Helper()
+			assertFileAbsent(t, dir, "d")
+		},
+	}
+
+	runRmDiffTest(t, goBin, refBin, tc)
 }
 
 // runRmDiffTest runs an rm test case against both binaries in separate dirs,

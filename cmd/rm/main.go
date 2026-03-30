@@ -3,7 +3,7 @@
 
 // cmd/rm implements GNU rm: remove files or directories.
 //
-// Implements prd058-rm R1.1-R1.4.
+// Implements prd058-rm R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -137,13 +137,14 @@ func removeDirEntry(path string, opts rmOptions, stdout, stderr *os.File) int {
 }
 
 // removeEmptyDir attempts to remove an empty directory.
+// R2.4: -d removes empty directories.
 func removeEmptyDir(path string, opts rmOptions, stdout, stderr *os.File) int {
 	if err := os.Remove(path); err != nil {
 		printRemoveError(stderr, path, err)
 		return 1
 	}
 	if opts.verbose {
-		printRemoved(stdout, path)
+		printRemovedDir(stdout, path)
 	}
 	return 0
 }
@@ -167,7 +168,7 @@ func removeRecursive(path string, opts rmOptions, stdout, stderr *os.File) int {
 		return 1
 	}
 	if opts.verbose {
-		printRemoved(stdout, path)
+		printRemovedDir(stdout, path)
 	}
 	return exitCode
 }
@@ -211,9 +212,14 @@ func printRemoveError(stderr *os.File, path string, err error) {
 		progName, path, stripPathError(err))
 }
 
-// printRemoved prints verbose removal output.
+// printRemoved prints verbose removal output for files.
 func printRemoved(stdout *os.File, path string) {
 	fmt.Fprintf(stdout, "removed '%s'\n", path) //nolint:errcheck
+}
+
+// printRemovedDir prints verbose removal output for directories.
+func printRemovedDir(stdout *os.File, path string) {
+	fmt.Fprintf(stdout, "removed directory '%s'\n", path) //nolint:errcheck
 }
 
 // parseArgs separates flags from operands.
