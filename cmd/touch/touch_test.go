@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/touch against gtouch (GNU coreutils).
 //
-// Covers prd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -99,6 +100,34 @@ func TestDiff(t *testing.T) {
 			{
 				Name:      "bad_stamp",
 				Args:      []string{"-t", "notadate", "file"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{discardAll},
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R3.3: -r with nonexistent reference file — exit 1
+	t.Run("ref_missing", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "ref_not_found",
+				Args:      []string{"-r", "nonexistent", "target"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{discardAll},
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+
+	// R3.2: invalid -d string — exit 1
+	t.Run("invalid_d_string", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:      "bad_date",
+				Args:      []string{"-d", "notadate", "file"},
 				ExitCode:  1,
 				Normalize: []testutils.NormalizeFunc{discardAll},
 			},
@@ -283,6 +312,170 @@ func TestTouchBothAM(t *testing.T) {
 	})
 }
 
+// TestTouchRefFile verifies -r FILE copies timestamps from reference file.
+// R3.1: -r FILE or --reference=FILE uses reference timestamps.
+func TestTouchRefFile(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skip("reference binary gtouch not in PATH")
+	}
+
+	past := time.Date(2020, 3, 15, 8, 30, 0, 0, time.Local)
+
+	// R3.1: -r copies both timestamps to new file
+	t.Run("ref_both", func(t *testing.T) {
+		t.Parallel()
+		compareTouchWithSetups(t, goBin, refBin,
+			[]*fileSetup{{name: "ref", atime: past, mtime: past}},
+			[]string{"-r", "ref", "target"}, "target")
+	})
+
+	// R3.1: --reference=FILE long form
+	t.Run("ref_long_form", func(t *testing.T) {
+		t.Parallel()
+		compareTouchWithSetups(t, goBin, refBin,
+			[]*fileSetup{{name: "ref", atime: past, mtime: past}},
+			[]string{"--reference=ref", "target"}, "target")
+	})
+
+	// R3.1: -r with -a sets only access time from reference
+	t.Run("ref_access_only", func(t *testing.T) {
+		t.Parallel()
+		older := time.Date(2019, 1, 1, 0, 0, 0, 0, time.Local)
+		compareTouchWithSetups(t, goBin, refBin,
+			[]*fileSetup{
+				{name: "ref", atime: past, mtime: past},
+				{name: "target", atime: older, mtime: older},
+			},
+			[]string{"-a", "-r", "ref", "target"}, "target")
+	})
+
+	// R3.1: -r with -m sets only modification time from reference
+	t.Run("ref_mod_only", func(t *testing.T) {
+		t.Parallel()
+		older := time.Date(2019, 1, 1, 0, 0, 0, 0, time.Local)
+		compareTouchWithSetups(t, goBin, refBin,
+			[]*fileSetup{
+				{name: "ref", atime: past, mtime: past},
+				{name: "target", atime: older, mtime: older},
+			},
+			[]string{"-m", "-r", "ref", "target"}, "target")
+	})
+}
+
+// TestTouchDateString verifies -d STRING parses date strings.
+// R3.2: -d STRING or --date=STRING parses date and uses as timestamp.
+func TestTouchDateString(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skip("reference binary gtouch not in PATH")
+	}
+
+	// R3.2: -d with epoch seconds
+	t.Run("date_epoch", func(t *testing.T) {
+		t.Parallel()
+		compareTouchTimestamps(t, goBin, refBin, nil,
+			[]string{"-d", "@1705312200", "file"}, "file")
+	})
+
+	// R3.2: --date= long form with epoch
+	t.Run("date_long_form", func(t *testing.T) {
+		t.Parallel()
+		compareTouchTimestamps(t, goBin, refBin, nil,
+			[]string{"--date=@1705312200", "file"}, "file")
+	})
+
+	// R3.2: -d with ISO date-time
+	t.Run("date_iso_datetime", func(t *testing.T) {
+		t.Parallel()
+		compareTouchTimestamps(t, goBin, refBin, nil,
+			[]string{"-d", "2024-01-15 10:30:00", "file"}, "file")
+	})
+
+	// R3.2: -d with -a sets only access time
+	t.Run("date_access_only", func(t *testing.T) {
+		t.Parallel()
+		past := time.Date(2020, 6, 15, 12, 0, 0, 0, time.Local)
+		setup := &fileSetup{name: "file", atime: past, mtime: past}
+		compareTouchTimestamps(t, goBin, refBin, setup,
+			[]string{"-a", "-d", "@1705312200", "file"}, "file")
+	})
+}
+
+// TestTouchNoDereference verifies -h affects the symlink itself.
+// R3.4: -h or --no-dereference changes the symlink, not its target.
+func TestTouchNoDereference(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtouch")
+	if err != nil {
+		t.Skip("reference binary gtouch not in PATH")
+	}
+
+	// R3.4: -h with -t on a symlink
+	t.Run("h_symlink", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, dir := range []string{goDir, refDir} {
+			setupSymlink(t, dir, "target", "link")
+		}
+
+		args := []string{"-h", "-t", "202401151030.00", "link"}
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		_, _, refExit := execBin(t, refBin, args, refDir)
+
+		if goExit != refExit {
+			t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+
+		// Compare symlink timestamps (not target)
+		compareLstatTimestamps(t, goDir, refDir, "link")
+	})
+
+	// R3.4: --no-dereference long form
+	t.Run("no_deref_long", func(t *testing.T) {
+		t.Parallel()
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+
+		for _, dir := range []string{goDir, refDir} {
+			setupSymlink(t, dir, "target", "link")
+		}
+
+		args := []string{"--no-dereference", "-t", "202401151030.00", "link"}
+		_, _, goExit := execBin(t, goBin, args, goDir)
+		_, _, refExit := execBin(t, refBin, args, refDir)
+
+		if goExit != refExit {
+			t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
+		}
+
+		compareLstatTimestamps(t, goDir, refDir, "link")
+	})
+
+	// R3.4: -h on nonexistent symlink with -c does not create
+	t.Run("h_no_create", func(t *testing.T) {
+		t.Parallel()
+		tests := []testutils.DiffTest{
+			{
+				Name:     "h_c_nonexistent",
+				Args:     []string{"-h", "-c", "nonexistent"},
+				ExitCode: 0,
+			},
+		}
+		testutils.RunDiffTests(t, goBin, refBin, tests)
+	})
+}
+
 // fileSetup describes a pre-existing file with known timestamps.
 type fileSetup struct {
 	name  string
@@ -300,6 +493,55 @@ func setupTestFile(t *testing.T, dir string, fs *fileSetup) {
 	if err := os.Chtimes(path, fs.atime, fs.mtime); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// setupSymlink creates a target file and a symlink to it.
+func setupSymlink(t *testing.T, dir, targetName, linkName string) {
+	t.Helper()
+	target := filepath.Join(dir, targetName)
+	if err := os.WriteFile(target, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, linkName)
+	if err := os.Symlink(targetName, link); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// statFunc is used to select between sys.Stat and sys.Lstat.
+type statFunc func(string) (*sys.FileInfo, error)
+
+// compareTimestamps compares atime and mtime using the given stat function.
+func compareTimestamps(t *testing.T, goDir, refDir, name string, sf statFunc) {
+	t.Helper()
+	goSt, err := sf(filepath.Join(goDir, name))
+	if err != nil {
+		t.Fatalf("stat go file: %v", err)
+	}
+	refSt, err := sf(filepath.Join(refDir, name))
+	if err != nil {
+		t.Fatalf("stat ref file: %v", err)
+	}
+	if !goSt.AccessTime.Equal(refSt.AccessTime) {
+		t.Errorf("atime divergence: go=%v ref=%v",
+			goSt.AccessTime, refSt.AccessTime)
+	}
+	if !goSt.ModTime.Equal(refSt.ModTime) {
+		t.Errorf("mtime divergence: go=%v ref=%v",
+			goSt.ModTime, refSt.ModTime)
+	}
+}
+
+// compareFileTimestamps compares atime and mtime of a file in two dirs.
+func compareFileTimestamps(t *testing.T, goDir, refDir, name string) {
+	t.Helper()
+	compareTimestamps(t, goDir, refDir, name, sys.Stat)
+}
+
+// compareLstatTimestamps compares atime and mtime of a symlink in two dirs.
+func compareLstatTimestamps(t *testing.T, goDir, refDir, name string) {
+	t.Helper()
+	compareTimestamps(t, goDir, refDir, name, sys.Lstat)
 }
 
 // compareTouchTimestamps runs both binaries and compares resulting timestamps.
@@ -326,25 +568,29 @@ func compareTouchTimestamps(
 	compareFileTimestamps(t, goDir, refDir, name)
 }
 
-// compareFileTimestamps compares atime and mtime of a file in two dirs.
-func compareFileTimestamps(t *testing.T, goDir, refDir, name string) {
+// compareTouchWithSetups runs both binaries with multiple file setups
+// and compares the resulting timestamps of checkFile.
+func compareTouchWithSetups(
+	t *testing.T, goBin, refBin string,
+	setups []*fileSetup, args []string, checkFile string,
+) {
 	t.Helper()
-	goSt, err := sys.Stat(filepath.Join(goDir, name))
-	if err != nil {
-		t.Fatalf("stat go file: %v", err)
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+
+	for _, s := range setups {
+		setupTestFile(t, goDir, s)
+		setupTestFile(t, refDir, s)
 	}
-	refSt, err := sys.Stat(filepath.Join(refDir, name))
-	if err != nil {
-		t.Fatalf("stat ref file: %v", err)
+
+	_, _, goExit := execBin(t, goBin, args, goDir)
+	_, _, refExit := execBin(t, refBin, args, refDir)
+
+	if goExit != refExit {
+		t.Errorf("exit code divergence: go=%d ref=%d", goExit, refExit)
 	}
-	if !goSt.AccessTime.Equal(refSt.AccessTime) {
-		t.Errorf("atime divergence: go=%v ref=%v",
-			goSt.AccessTime, refSt.AccessTime)
-	}
-	if !goSt.ModTime.Equal(refSt.ModTime) {
-		t.Errorf("mtime divergence: go=%v ref=%v",
-			goSt.ModTime, refSt.ModTime)
-	}
+
+	compareFileTimestamps(t, goDir, refDir, checkFile)
 }
 
 // compareTouch runs both binaries in separate temp dirs and compares

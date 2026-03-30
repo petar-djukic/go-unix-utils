@@ -3,7 +3,8 @@
 
 // cmd/touch implements GNU touch: create files and update timestamps.
 //
-// Implements prd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -13,15 +14,26 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 // touchOptions holds parsed flag state.
 type touchOptions struct {
-	noCreate   bool   // -c, --no-create: do not create files
-	accessOnly bool   // R2.1: -a changes only access time
-	modOnly    bool   // R2.2: -m changes only modification time
-	stamp      string // R2.4: -t [[CC]YY]MMDDhhmm[.ss]
+	noCreate      bool   // -c, --no-create: do not create files
+	accessOnly    bool   // R2.1: -a changes only access time
+	modOnly       bool   // R2.2: -m changes only modification time
+	stamp         string // R2.4: -t [[CC]YY]MMDDhhmm[.ss]
+	refFile       string // R3.1: -r FILE, --reference=FILE
+	dateStr       string // R3.2: -d STRING, --date=STRING
+	noDereference bool   // R3.4: -h, --no-dereference
+}
+
+// resolvedTime holds the resolved atime and mtime to apply.
+type resolvedTime struct {
+	atime time.Time
+	mtime time.Time
 }
 
 func main() {
@@ -40,8 +52,7 @@ func run(args []string, stderr *os.File) int {
 		return 1
 	}
 
-	now := time.Now()
-	t, err := resolveTimestamp(opts, now)
+	rt, err := resolveTimestamp(opts, time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "touch: %v\n", err)
 		return 1
@@ -49,7 +60,7 @@ func run(args []string, stderr *os.File) int {
 
 	exitCode := 0
 	for _, f := range files {
-		if err := touchFile(f, t, opts); err != nil {
+		if err := touchFile(f, rt, opts); err != nil {
 			fmt.Fprintf(stderr, "touch: %v\n", err)
 			exitCode = 1
 		}
@@ -57,13 +68,45 @@ func run(args []string, stderr *os.File) int {
 	return exitCode
 }
 
-// resolveTimestamp determines the timestamp to apply.
-// R2.4: -t STAMP overrides current time.
-func resolveTimestamp(opts touchOptions, now time.Time) (time.Time, error) {
-	if opts.stamp != "" {
-		return parseStamp(opts.stamp, now)
+// resolveTimestamp determines the atime and mtime to apply.
+// R3.1: -r uses reference file timestamps.
+// R3.2: -d parses date string.
+// R2.4: -t uses stamp format.
+func resolveTimestamp(opts touchOptions, now time.Time) (resolvedTime, error) {
+	if opts.refFile != "" {
+		return resolveFromRef(opts.refFile)
 	}
-	return now, nil
+	if opts.dateStr != "" {
+		return resolveFromDate(opts.dateStr)
+	}
+	if opts.stamp != "" {
+		t, err := parseStamp(opts.stamp, now)
+		if err != nil {
+			return resolvedTime{}, err
+		}
+		return resolvedTime{atime: t, mtime: t}, nil
+	}
+	return resolvedTime{atime: now, mtime: now}, nil
+}
+
+// resolveFromRef reads timestamps from the reference file.
+// R3.3: returns error if reference file does not exist.
+func resolveFromRef(path string) (resolvedTime, error) {
+	fi, err := sys.Stat(path)
+	if err != nil {
+		return resolvedTime{}, fmt.Errorf(
+			"failed to get attributes of %q: %v", path, err)
+	}
+	return resolvedTime{atime: fi.AccessTime, mtime: fi.ModTime}, nil
+}
+
+// resolveFromDate parses a date string into resolved timestamps.
+func resolveFromDate(s string) (resolvedTime, error) {
+	t, err := parseDateString(s)
+	if err != nil {
+		return resolvedTime{}, err
+	}
+	return resolvedTime{atime: t, mtime: t}, nil
 }
 
 // parseArgs separates flags from file arguments.
@@ -82,20 +125,15 @@ func parseArgs(args []string) (touchOptions, []string) {
 			flagsDone = true
 			continue
 		}
-		if arg == "--no-create" {
-			opts.noCreate = true
-			continue
-		}
 		if strings.HasPrefix(arg, "--") {
-			// Unknown long flag — treat as file
-			files = append(files, arg)
+			i += parseLongFlag(&opts, arg, args, i)
 			continue
 		}
 		if len(arg) >= 2 && arg[0] == '-' {
-			needsArg := parseShortFlags(&opts, arg[1:])
-			if needsArg && i+1 < len(args) {
+			target := parseShortFlags(&opts, arg[1:])
+			if target != nil && i+1 < len(args) {
 				i++
-				opts.stamp = args[i]
+				*target = args[i]
 			}
 			continue
 		}
@@ -104,9 +142,31 @@ func parseArgs(args []string) (touchOptions, []string) {
 	return opts, files
 }
 
+// parseLongFlag handles --flag and --flag=VALUE forms.
+// Returns the number of additional args consumed.
+func parseLongFlag(opts *touchOptions, arg string, args []string, idx int) int {
+	switch {
+	case arg == "--no-create":
+		opts.noCreate = true
+	case arg == "--no-dereference":
+		opts.noDereference = true
+	case strings.HasPrefix(arg, "--reference="):
+		opts.refFile = arg[len("--reference="):]
+	case arg == "--reference" && idx+1 < len(args):
+		opts.refFile = args[idx+1]
+		return 1
+	case strings.HasPrefix(arg, "--date="):
+		opts.dateStr = arg[len("--date="):]
+	case arg == "--date" && idx+1 < len(args):
+		opts.dateStr = args[idx+1]
+		return 1
+	}
+	return 0
+}
+
 // parseShortFlags processes short flag characters.
-// Returns true when -t appears at the end and needs the next argument.
-func parseShortFlags(opts *touchOptions, chars string) bool {
+// Returns a pointer to the field needing the next argument, or nil.
+func parseShortFlags(opts *touchOptions, chars string) *string {
 	for i, ch := range chars {
 		switch ch {
 		case 'c':
@@ -117,17 +177,91 @@ func parseShortFlags(opts *touchOptions, chars string) bool {
 		case 'm':
 			// R2.2: change only modification time
 			opts.modOnly = true
-		case 't':
-			// R2.4: -t takes the rest of the cluster or next arg
-			rest := chars[i+1:]
-			if rest != "" {
-				opts.stamp = rest
-				return false
-			}
-			return true
+		case 'h':
+			// R3.4: affect symlink itself
+			opts.noDereference = true
+		case 't', 'r', 'd':
+			return consumeArgFlag(opts, ch, chars[i+1:])
 		}
 	}
-	return false
+	return nil
+}
+
+// consumeArgFlag handles -t, -r, -d which take a value argument.
+// If remaining chars exist after the flag, they are the value.
+func consumeArgFlag(opts *touchOptions, ch rune, rest string) *string {
+	target := shortFlagTarget(opts, ch)
+	if rest != "" {
+		*target = rest
+		return nil
+	}
+	return target
+}
+
+// shortFlagTarget returns a pointer to the option field for the flag.
+func shortFlagTarget(opts *touchOptions, ch rune) *string {
+	switch ch {
+	case 't':
+		return &opts.stamp
+	case 'r':
+		return &opts.refFile
+	default:
+		return &opts.dateStr
+	}
+}
+
+// parseDateString parses a -d date string.
+// R3.2: supports @epoch and ISO 8601 formats.
+func parseDateString(s string) (time.Time, error) {
+	if strings.HasPrefix(s, "@") {
+		return parseEpoch(s[1:])
+	}
+	return tryDateLayouts(s)
+}
+
+// parseEpoch parses @SECONDS[.NANOSECONDS] epoch format.
+func parseEpoch(s string) (time.Time, error) {
+	dot := strings.Index(s, ".")
+	if dot < 0 {
+		sec, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid date %q", "@"+s)
+		}
+		return time.Unix(sec, 0), nil
+	}
+	return parseEpochFractional(s, dot)
+}
+
+// parseEpochFractional parses epoch with fractional seconds.
+func parseEpochFractional(s string, dot int) (time.Time, error) {
+	sec, err := strconv.ParseInt(s[:dot], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date %q", "@"+s)
+	}
+	nsecStr := (s[dot+1:] + "000000000")[:9]
+	nsec, err := strconv.ParseInt(nsecStr, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date %q", "@"+s)
+	}
+	return time.Unix(sec, nsec), nil
+}
+
+// dateLayouts lists ISO 8601 formats for tryDateLayouts.
+var dateLayouts = []string{
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02",
+}
+
+// tryDateLayouts attempts to parse s with each layout in local time.
+func tryDateLayouts(s string) (time.Time, error) {
+	for _, layout := range dateLayouts {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid date format %q", s)
 }
 
 // parseStamp parses the -t [[CC]YY]MMDDhhmm[.ss] format.
@@ -242,41 +376,50 @@ func expandTwoDigitYear(yy int) int {
 }
 
 // touchFile updates timestamps or creates a single file.
-// R1.1: updates atime and mtime to t.
+// R1.1: updates atime and mtime.
 // R1.2: creates the file if it does not exist.
 // R1.3: skips creation when noCreate is set.
-func touchFile(path string, t time.Time, opts touchOptions) error {
-	_, err := os.Stat(path)
+func touchFile(path string, rt resolvedTime, opts touchOptions) error {
+	_, err := statForCheck(path, opts.noDereference)
 	if os.IsNotExist(err) {
 		if opts.noCreate {
 			return nil
 		}
-		return createAndTouch(path, t, opts)
+		return createAndTouch(path, rt, opts)
 	}
 	if err != nil {
 		return err
 	}
-	return applyTimestamps(path, t, opts)
+	return applyTimestamps(path, rt, opts)
+}
+
+// statForCheck checks file existence, respecting -h for symlinks.
+func statForCheck(path string, noDeref bool) (os.FileInfo, error) {
+	if noDeref {
+		return os.Lstat(path)
+	}
+	return os.Stat(path)
 }
 
 // createAndTouch creates an empty file and sets its timestamps.
-func createAndTouch(path string, t time.Time, opts touchOptions) error {
+func createAndTouch(path string, rt resolvedTime, opts touchOptions) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
 		return err
 	}
 	f.Close() // best-effort; error on applyTimestamps is more important
-	return applyTimestamps(path, t, opts)
+	return applyTimestamps(path, rt, opts)
 }
 
 // applyTimestamps sets atime and/or mtime based on -a/-m flags.
 // R2.1: -a alone changes only access time, preserving mtime.
 // R2.2: -m alone changes only modification time, preserving atime.
 // R2.3: neither -a nor -m (or both) changes both times.
-func applyTimestamps(path string, t time.Time, opts touchOptions) error {
-	atime, mtime := t, t
+// R3.4: uses lchtimes when -h is set.
+func applyTimestamps(path string, rt resolvedTime, opts touchOptions) error {
+	atime, mtime := rt.atime, rt.mtime
 	if opts.accessOnly != opts.modOnly {
-		fi, err := sys.Stat(path)
+		fi, err := sysStatFile(path, opts.noDereference)
 		if err != nil {
 			return err
 		}
@@ -286,5 +429,26 @@ func applyTimestamps(path string, t time.Time, opts touchOptions) error {
 			atime = fi.AccessTime
 		}
 	}
+	if opts.noDereference {
+		return lchtimes(path, atime, mtime)
+	}
 	return os.Chtimes(path, atime, mtime)
+}
+
+// sysStatFile reads extended file info, respecting -h for symlinks.
+func sysStatFile(path string, noDeref bool) (*sys.FileInfo, error) {
+	if noDeref {
+		return sys.Lstat(path)
+	}
+	return sys.Stat(path)
+}
+
+// lchtimes changes timestamps of a symlink without following it.
+// R3.4: uses AT_SYMLINK_NOFOLLOW to affect the link itself.
+func lchtimes(path string, atime, mtime time.Time) error {
+	ts := []unix.Timespec{
+		unix.NsecToTimespec(atime.UnixNano()),
+		unix.NsecToTimespec(mtime.UnixNano()),
+	}
+	return unix.UtimesNanoAt(unix.AT_FDCWD, path, ts, unix.AT_SYMLINK_NOFOLLOW)
 }
