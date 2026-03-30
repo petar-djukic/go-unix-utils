@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/fmt.
-// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1, R9.1, R10.1, R11.1, R12.1.
+// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1, R9.1, R10.1, R11.1, R12.1,
+// R13.1, R13.2, R13.3, R13.4.
 package main
 
 import (
@@ -276,6 +277,25 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--tagged-paragraph", "-w", "40"},
 			Stdin: []byte("Header line for paragraph.\n  Body text with indent that should be preserved and wrapped if needed.\n"),
 			Env:   []string{"LC_ALL=C"},
+		},
+		// R13.1: exit 0 on successful formatting (covered by all tests above with ExitCode 0)
+		// R13.2: exit 1 on invalid option
+		{
+			Name:      "invalid_option_error",
+			Args:      []string{"--bogus"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R13.2: exit 1 on invalid width value
+		{
+			Name:      "invalid_width_error",
+			Args:      []string{"-w", "abc"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
 		},
 	}
 

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/fmt: a simple text formatter.
-// Implements prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1, R9.1, R10.1, R11.1, R12.1.
+// Implements prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1, R9.1, R10.1, R11.1, R12.1,
+// R13.1, R13.2, R13.3, R13.4.
 package main
 
 import (
