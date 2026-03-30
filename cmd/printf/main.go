@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/printf implements GNU printf: format and print data.
-// Implements prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -230,7 +230,7 @@ func formatVerb(spec string, verb byte, arg string) (string, error) {
 	case verb == 'b':
 		return interpretBEscapes(arg), nil
 	default:
-		return "", fmt.Errorf("%%%c: invalid directive", verb)
+		return "", fmt.Errorf("%%%c: invalid conversion specification", verb)
 	}
 }
 

@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/printf against GNU gprintf.
-// Tests prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Tests prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normProgName normalizes the program name prefix in stderr so that
+// "gprintf:" and "printf:" both become "printf:" for comparison.
+func normProgName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gprintf:"), []byte("printf:"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -19,6 +26,7 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary gprintf not in PATH")
 	}
+	errNorm := []testutils.NormalizeFunc{normProgName}
 	tests := []testutils.DiffTest{
 		// R1.1: format string interpretation
 		{
@@ -320,6 +328,82 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "quote prefix zero char",
 			Args: []string{"%d\\n", "'0"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.1: exit 0 on success
+		{
+			Name:     "exit zero on success",
+			Args:     []string{"%d\\n", "42"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "exit zero empty format",
+			Args:     []string{""},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.2: exit 1 on numeric conversion error, partial output preserved
+		{
+			Name:      "exit one non-numeric for d",
+			Args:      []string{"%d\\n", "abc"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "exit one non-numeric for f",
+			Args:      []string{"%f\\n", "notanumber"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "partial output before error",
+			Args:      []string{"ok %d\\n", "notnum"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R4.4: additional coverage for comprehensive test suite
+		{
+			Name: "percent E uppercase scientific",
+			Args: []string{"%E\\n", "3.14"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "percent G uppercase general",
+			Args: []string{"%G\\n", "3.14"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "percent F uppercase float",
+			Args: []string{"%F\\n", "3.14"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "percent b with octal escape",
+			Args: []string{"%b\\n", "\\0101"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "percent b with hex escape",
+			Args: []string{"%b\\n", "\\x41"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "percent b with c stop",
+			Args: []string{"%b", "hello\\cworld"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "hex integer input",
+			Args: []string{"%d\\n", "0xff"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "octal integer input",
+			Args: []string{"%d\\n", "077"},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
