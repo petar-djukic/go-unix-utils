@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/b2sum implementing prd076-b2sum R1.1, R1.2, R1.3, R1.4,
-// R3.1, R3.3.
+// R2.1, R2.2, R2.3, R3.1, R3.3.
 package main
 
 import (
@@ -207,6 +207,86 @@ func TestDiffCheckFailed(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffCheckWarnStrict tests --warn and --strict with malformed lines.
+//
+// R2.3: --warn prints warnings for malformed lines.
+// R2.3: --strict exits non-zero for malformed lines.
+func TestDiffCheckWarnStrict(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gb2sum")
+	if err != nil {
+		t.Skip("reference binary gb2sum not in PATH")
+	}
+
+	dir := t.TempDir()
+	dataFile := filepath.Join(dir, "data.txt")
+	writeTestFile(t, dataFile, "test data\n")
+
+	// Create a checksum file with a valid line plus a malformed line.
+	checksumFile := filepath.Join(dir, "mixed.txt")
+	createChecksumFileWithMalformed(t, refBin, dataFile, checksumFile)
+
+	tests := []testutils.DiffTest{
+		// R2.3: --warn prints warning about malformed line, exits 0 if checksums pass.
+		{
+			Name:      "check_warn_malformed",
+			Args:      []string{"-c", "--warn", checksumFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R2.3: --strict exits 1 when malformed lines are present.
+		{
+			Name:      "check_strict_malformed",
+			Args:      []string{"-c", "--strict", checksumFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+		// R2.3: --warn --strict together.
+		{
+			Name:      "check_warn_strict_malformed",
+			Args:      []string{"-c", "--warn", "--strict", checksumFile},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearStderr()},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCheckTag tests --check with BSD tag format checksum files.
+//
+// R2.1: --check parses BSD tag format.
+func TestDiffCheckTag(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gb2sum")
+	if err != nil {
+		t.Skip("reference binary gb2sum not in PATH")
+	}
+
+	dir := t.TempDir()
+	dataFile := filepath.Join(dir, "data.txt")
+	writeTestFile(t, dataFile, "tag check\n")
+
+	// Generate a BSD-tag format checksum file using the reference binary.
+	tagChecksumFile := filepath.Join(dir, "tag_sums.txt")
+	createTagChecksumFile(t, refBin, dataFile, tagChecksumFile)
+
+	tests := []testutils.DiffTest{
+		// R2.1: --check can verify BSD tag format checksum files.
+		{
+			Name:     "check_tag_format",
+			Args:     []string{"-c", tagChecksumFile},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffNonexistentFile tests error handling for missing files.
 //
 // R1.4: exit 1 on unreadable file.
@@ -243,6 +323,37 @@ func createChecksumFile(t *testing.T, refBin, dataFile, checksumFile string) {
 	}
 	if err := os.WriteFile(checksumFile, out, 0o644); err != nil {
 		t.Fatalf("failed to write checksum file: %v", err)
+	}
+}
+
+// createChecksumFileWithMalformed generates a checksum file with one valid
+// line and one malformed line.
+func createChecksumFileWithMalformed(t *testing.T, refBin, dataFile, checksumFile string) {
+	t.Helper()
+	cmd := exec.Command(refBin, dataFile)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("failed to generate checksum: %v", err)
+	}
+	// Append a malformed line after the valid checksum line.
+	content := string(out) + "this is not a valid checksum line\n"
+	if err := os.WriteFile(checksumFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write checksum file: %v", err)
+	}
+}
+
+// createTagChecksumFile generates a BSD-tag format checksum file using --tag.
+func createTagChecksumFile(t *testing.T, refBin, dataFile, checksumFile string) {
+	t.Helper()
+	cmd := exec.Command(refBin, "--tag", dataFile)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("failed to generate tag checksum: %v", err)
+	}
+	if err := os.WriteFile(checksumFile, out, 0o644); err != nil {
+		t.Fatalf("failed to write tag checksum file: %v", err)
 	}
 }
 

@@ -6,6 +6,8 @@
 // Implements prd076-b2sum: R1.1 (file digest computation),
 // R1.2 (stdin as '-'), R1.3 (--tag with bit length in tag name),
 // R1.4 (exit code and stderr diagnostics),
+// R2.1 (--check verification), R2.2 (OK/FAILED output),
+// R2.3 (--warn/--quiet/--status modifiers),
 // R3.1 (binary/text mode), R3.3 (--length variable digest length).
 package main
 
