@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/csplit.
-// Covers prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
+// Covers prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -18,11 +18,31 @@ import (
 // stderrBinaryRe matches the binary name prefix in stderr error messages.
 var stderrBinaryRe = regexp.MustCompile(`\S*g?csplit: `)
 
+// tryHelpRe matches the "Try '...' for more information." line GNU appends.
+var tryHelpRe = regexp.MustCompile(`(?m)^Try '.*' for more information\.\n`)
+
 // binaryNameNormalizer normalizes binary path prefixes in stderr messages
 // so that /opt/homebrew/bin/gcsplit and csplit compare equal.
 func binaryNameNormalizer() testutils.NormalizeFunc {
 	return func(data []byte) []byte {
 		return stderrBinaryRe.ReplaceAll(data, []byte("csplit: "))
+	}
+}
+
+// tryHelpNormalizer removes "Try '...' for more information." lines
+// that GNU appends to error messages but our implementation does not.
+func tryHelpNormalizer() testutils.NormalizeFunc {
+	return func(data []byte) []byte {
+		return tryHelpRe.ReplaceAll(data, nil)
+	}
+}
+
+// regexErrorNormalizer normalizes the error detail portion of invalid regex
+// messages, since Go and GNU use different error formats.
+func regexErrorNormalizer() testutils.NormalizeFunc {
+	re := regexp.MustCompile(`(?m)csplit: .*invalid.*\n`)
+	return func(data []byte) []byte {
+		return re.ReplaceAll(data, []byte("csplit: invalid regex\n"))
 	}
 }
 
@@ -43,6 +63,7 @@ func TestDiff(t *testing.T) {
 	}
 	tests := append(buildR1Tests(), buildR2Tests()...)
 	tests = append(tests, buildR3Tests()...)
+	tests = append(tests, buildR4Tests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -298,6 +319,97 @@ func elideEmptyTest() testutils.DiffTest {
 		ExitCode: 0,
 		ExpectedFiles: map[string][]byte{
 			"xx00": []byte("a\nb\nc\n"),
+		},
+	}
+}
+
+// buildR4Tests returns differential test cases for R4.1-R4.4.
+// R4.3: compare output file contents and exit codes via pkg/testutils.
+// R4.4: covers regex split, line number, skip, repeat, offset, prefix,
+// digits, elide, stdin, and error cases (no match, invalid regex).
+func buildR4Tests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		exitZeroSuccessTest(),
+		exitOneNoMatchTest(),
+		exitOneInvalidOptionTest(),
+		invalidRegexTest(),
+		stdinRegexSplitTest(),
+		combinedFeaturesTest(),
+	}
+}
+
+// exitZeroSuccessTest verifies R4.1: exit 0 on successful split.
+func exitZeroSuccessTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "exit_zero_success",
+		Args:     []string{"-", "3"},
+		Stdin:    generateSeq(1, 5),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": generateSeq(1, 2),
+			"xx01": generateSeq(3, 5),
+		},
+	}
+}
+
+// exitOneNoMatchTest verifies R4.2: exit 1 when pattern fails to match.
+func exitOneNoMatchTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "exit_one_no_match",
+		Args:      []string{"-", "/zzz_not_found/"},
+		Stdin:     []byte("line1\nline2\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{binaryNameNormalizer()},
+	}
+}
+
+// exitOneInvalidOptionTest verifies R4.2: exit 1 for an invalid option.
+func exitOneInvalidOptionTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "exit_one_invalid_option",
+		Args:      []string{"--invalid-option-xyz", "-", "/a/"},
+		Stdin:     []byte("a\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{binaryNameNormalizer(), tryHelpNormalizer()},
+	}
+}
+
+// invalidRegexTest verifies R4.4: error case for invalid regular expression.
+func invalidRegexTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:      "invalid_regex",
+		Args:      []string{"-", "/[invalid/"},
+		Stdin:     []byte("a\nb\n"),
+		ExitCode:  1,
+		Normalize: []testutils.NormalizeFunc{binaryNameNormalizer(), regexErrorNormalizer()},
+	}
+}
+
+// stdinRegexSplitTest verifies R4.4: stdin input with regex split.
+func stdinRegexSplitTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "stdin_regex_split",
+		Args:     []string{"-", "/---/"},
+		Stdin:    []byte("first\n---\nsecond\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xx00": []byte("first\n"),
+			"xx01": []byte("---\nsecond\n"),
+		},
+	}
+}
+
+// combinedFeaturesTest verifies R4.4: combined prefix, digits, elide, and repeat.
+func combinedFeaturesTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "combined_features",
+		Args:     []string{"-f", "out", "-n", "3", "-z", "-", "/---/", "{*}"},
+		Stdin:    []byte("a\n---\nb\n---\nc\n"),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"out000": []byte("a\n"),
+			"out001": []byte("---\nb\n"),
+			"out002": []byte("---\nc\n"),
 		},
 	}
 }
