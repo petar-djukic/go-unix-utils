@@ -471,7 +471,7 @@ releases:
         - id: rel10.1-uc001-chmod
           status: implemented
         - id: rel10.1-uc002-chgrp
-          status: spec_complete
+          status: implemented
         - id: rel10.1-uc003-chown
           status: spec_complete
     - version: "11.0"
