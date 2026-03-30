@@ -3,17 +3,34 @@
 
 // Differential tests for cmd/sort against gsort (GNU coreutils).
 //
-// Covers prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4.
+// Covers prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrPrefixNormalizer strips the binary path prefix from stderr messages.
+// GNU sort outputs "/opt/homebrew/bin/gsort:" while our binary outputs "sort:".
+// This normalizer replaces both forms with "sort:" for comparison.
+var stderrPrefixNormalizer = func() testutils.NormalizeFunc {
+	re := regexp.MustCompile(`(?m)^[^\s:]+(?:sort|gsort):`)
+	return func(data []byte) []byte {
+		return re.ReplaceAll(data, []byte("sort:"))
+	}
+}()
+
+// stderrTryLineNormalizer strips the "Try ... --help" line GNU sort appends.
+var stderrTryLineNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
+	re := regexp.MustCompile(`(?m)^Try '.*' for more information\.\n`)
+	return re.ReplaceAll(data, nil)
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -398,6 +415,243 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-k2b,2", "-t:"},
 			Stdin: []byte("a:  z\nb:  a\nc:  m\n"),
 			Env:   []string{"LC_ALL=C"},
+		},
+
+		// --- R4.1: Exit 0 on successful sort ---
+		{
+			Name:     "R4.1_exit_0_default",
+			Stdin:    []byte("b\na\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// --- R4.2: -c check mode ---
+		{
+			Name:     "R4.2_check_sorted",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:      "R4.2_check_unsorted",
+			Args:      []string{"-c"},
+			Stdin:     []byte("b\na\nc\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+		},
+		{
+			Name:     "R4.2_check_long",
+			Args:     []string{"--check"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:      "R4.2_check_long_unsorted",
+			Args:      []string{"--check"},
+			Stdin:     []byte("c\na\nb\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+		},
+		{
+			Name:     "R4.2_check_quiet_sorted",
+			Args:     []string{"-C"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.2_check_quiet_unsorted",
+			Args:     []string{"-C"},
+			Stdin:    []byte("c\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R4.2_check_quiet_long",
+			Args:     []string{"--check=quiet"},
+			Stdin:    []byte("c\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R4.2_check_quiet_silent",
+			Args:     []string{"--check=silent"},
+			Stdin:    []byte("c\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
+		},
+		{
+			Name:     "R4.2_check_empty_input",
+			Args:     []string{"-c"},
+			Stdin:    []byte(""),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.2_check_single_line",
+			Args:     []string{"-c"},
+			Stdin:    []byte("hello\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.2_check_duplicates",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\na\nb\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:      "R4.2_check_unique_duplicates",
+			Args:      []string{"-cu"},
+			Stdin:     []byte("a\na\nb\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+		},
+		{
+			Name:     "R4.2_check_numeric",
+			Args:     []string{"-c", "-n"},
+			Stdin:    []byte("1\n2\n10\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:      "R4.2_check_numeric_unsorted",
+			Args:      []string{"-c", "-n"},
+			Stdin:     []byte("10\n2\n1\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+		},
+		{
+			Name:     "R4.2_check_reverse",
+			Args:     []string{"-c", "-r"},
+			Stdin:    []byte("c\nb\na\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+
+		// --- R4.3: Exit 2 on usage errors ---
+		{
+			Name:      "R4.3_invalid_flag",
+			Args:      []string{"--bogus-flag"},
+			Stdin:     []byte("a\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer, stderrTryLineNormalizer},
+		},
+		{
+			Name:      "R4.3_invalid_short_flag",
+			Args:      []string{"-Z"},
+			Stdin:     []byte("a\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer, stderrTryLineNormalizer},
+		},
+
+		// --- R4.4: comprehensive differential tests ---
+		{
+			Name:     "R4.4_diff_default_sort",
+			Stdin:    []byte("zebra\napple\nmango\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_reverse",
+			Args:     []string{"-r"},
+			Stdin:    []byte("zebra\napple\nmango\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_numeric",
+			Args:     []string{"-n"},
+			Stdin:    []byte("100\n20\n3\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_human",
+			Args:     []string{"-h"},
+			Stdin:    []byte("1G\n1M\n1K\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_month",
+			Args:     []string{"-M"},
+			Stdin:    []byte("DEC\nJAN\nJUN\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_version",
+			Args:     []string{"-V"},
+			Stdin:    []byte("v1.10\nv1.2\nv1.1\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_unique",
+			Args:     []string{"-u"},
+			Stdin:    []byte("a\nb\na\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_stable",
+			Args:     []string{"-s", "-k1,1"},
+			Stdin:    []byte("b 2\na 1\nb 1\na 2\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_key_with_field",
+			Args:     []string{"-k2,2", "-t:"},
+			Stdin:    []byte("x:3\ny:1\nz:2\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_delimiter_tab",
+			Args:     []string{"-t\t", "-k2,2"},
+			Stdin:    []byte("x\t3\ny\t1\nz\t2\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_ignore_blanks",
+			Args:     []string{"-b"},
+			Stdin:    []byte("  c\n a\n  b\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "R4.4_diff_check_sorted",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\nb\nc\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		{
+			Name:      "R4.4_diff_check_unsorted",
+			Args:      []string{"-c"},
+			Stdin:     []byte("c\na\nb\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+		},
+		{
+			Name:     "R4.4_diff_stdin_explicit",
+			Args:     []string{"-"},
+			Stdin:    []byte("z\na\nm\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
 		},
 	}
 

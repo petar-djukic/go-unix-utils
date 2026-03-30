@@ -3,7 +3,7 @@
 
 // cmd/sort implements GNU sort: sort lines of text files.
 //
-// Implements prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4.
+// Implements prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -55,6 +55,8 @@ type sortOptions struct {
 	fieldSep     string    // R3.1: -t CHAR: field delimiter
 	keys         []keySpec // R3.2, R3.3: -k KEYDEF
 	ignoreBlanks bool      // R3.4: -b: ignore leading blanks
+	check        bool      // R4.2: -c: check whether input is sorted
+	checkQuiet   bool      // R4.2: -C/--check=quiet: check silently
 }
 
 func main() {
@@ -73,6 +75,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		files = []string{"-"}
 	}
 	lines, exitCode := readAllLines(files, stdin, stderr)
+	if opts.check || opts.checkQuiet {
+		return checkSorted(lines, opts, files, stderr)
+	}
 	sortLines(lines, opts)
 	if opts.unique {
 		lines = dedup(lines, opts)
@@ -140,8 +145,25 @@ func parseLongWithValue(opts *sortOptions, key, val string) (int, error) {
 			return 0, err
 		}
 		opts.keys = append(opts.keys, k)
+	case "check":
+		return parseLongCheckValue(opts, val)
 	default:
 		return 0, fmt.Errorf("unrecognized option '--%s'", key)
+	}
+	return 0, nil
+}
+
+// parseLongCheckValue handles --check=VALUE.
+// R4.2: --check=quiet or --check=silent suppresses the diagnostic.
+func parseLongCheckValue(opts *sortOptions, val string) (int, error) {
+	opts.check = true
+	switch val {
+	case "quiet", "silent":
+		opts.checkQuiet = true
+	case "diagnose-first":
+		// default check behavior
+	default:
+		return 0, fmt.Errorf("invalid argument '%s' for '--check'", val)
 	}
 	return 0, nil
 }
@@ -165,6 +187,8 @@ func parseLongNoValue(opts *sortOptions, name string, rest []string) (int, error
 		opts.mode = modeVersion
 	case "ignore-leading-blanks":
 		opts.ignoreBlanks = true
+	case "check":
+		opts.check = true
 	case "output", "field-separator", "key":
 		return parseLongArgFlag(opts, name, rest)
 	default:
@@ -206,6 +230,11 @@ func parseShortFlags(opts *sortOptions, chars string, rest []string) (int, error
 			opts.stable = true
 		case 'b':
 			opts.ignoreBlanks = true
+		case 'c':
+			opts.check = true
+		case 'C':
+			opts.checkQuiet = true
+			opts.check = true
 		case 'o':
 			return consumeFlagArg(chars[idx+1:], rest, &opts.outputFile, 'o')
 		case 't':
@@ -375,6 +404,43 @@ func dedup(lines []string, opts sortOptions) []string {
 		}
 	}
 	return result
+}
+
+// --- R4.2: Check mode ---
+
+// checkSorted verifies that lines are already sorted.
+// R4.2: exit 0 if sorted, exit 1 if not. -C suppresses diagnostic.
+func checkSorted(
+	lines []string, opts sortOptions, files []string, stderr io.Writer,
+) int {
+	for i := 1; i < len(lines); i++ {
+		cmp := compareLines(lines[i-1], lines[i], opts)
+		if opts.reverse {
+			cmp = -cmp
+		}
+		outOfOrder := cmp > 0
+		if opts.unique && cmp == 0 {
+			outOfOrder = true
+		}
+		if outOfOrder {
+			if !opts.checkQuiet {
+				fname := inferCheckFilename(files)
+				fmt.Fprintf(stderr,
+					"sort: %s:%d: disorder: %s\n",
+					fname, i+1, lines[i])
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// inferCheckFilename returns the filename for check-mode diagnostics.
+func inferCheckFilename(files []string) string {
+	if len(files) == 0 || files[0] == "-" {
+		return "-"
+	}
+	return files[0]
 }
 
 // --- R2.1: Numeric sort ---
