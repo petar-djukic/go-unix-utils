@@ -417,7 +417,7 @@ releases:
         - id: rel09.0-uc003-b2sum
           status: implemented
         - id: rel09.0-uc004-cksum
-          status: spec_complete
+          status: implemented
         - id: rel09.0-uc005-sum
           status: spec_complete
     - version: "09.1"
