@@ -439,7 +439,7 @@ releases:
           status: implemented
     - version: "10.0"
       name: "Batch 10.0 — file metadata and operations (stat, truncate, link, sync)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement four file metadata and operation utilities. stat displays file and
