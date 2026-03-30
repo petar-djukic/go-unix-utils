@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/ts implements moreutils ts: prepend timestamps to stdin lines.
-// Implements prd004-ts R1.1-R1.6, R2.1-R2.2.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.2.
 package main
 
 import (
@@ -18,6 +18,18 @@ import (
 // defaultFormat is the strftime format used when no format argument is given.
 // R1.2: "%b %d %H:%M:%S" (e.g., "Mar 30 14:05:32").
 const defaultFormat = "%b %d %H:%M:%S"
+
+// defaultIncrFormat is the default format for -i mode.
+// R3.2: "%H:%M:%S" with TZ=GMT.
+const defaultIncrFormat = "%H:%M:%S"
+
+// tsMode represents the timestamp source mode.
+type tsMode int
+
+const (
+	modeDefault     tsMode = iota
+	modeIncremental        // -i: elapsed since previous line
+)
 
 // simpleDirectives maps strftime single-character directives to Go time layouts.
 var simpleDirectives = map[byte]string{
@@ -49,32 +61,80 @@ var simpleDirectives = map[byte]string{
 	'Z': "MST",
 }
 
-func main() {
-	sys.InstallSIGPIPEHandler()
-
-	format := defaultFormat
-	if len(os.Args) > 1 {
-		format = os.Args[1]
-	}
-
-	processStdin(format)
+// tsConfig holds parsed command-line configuration.
+type tsConfig struct {
+	format string
+	mode   tsMode
 }
 
-// processStdin reads stdin line by line and writes each line to stdout
-// prefixed by a timestamp formatted with the given strftime format.
-// R1.1: reads stdin line by line (newline-delimited).
+func main() {
+	sys.InstallSIGPIPEHandler()
+	cfg := parseArgs(os.Args[1:])
+
+	switch cfg.mode {
+	case modeIncremental:
+		runIncremental(cfg.format)
+	default:
+		runDefault(cfg.format)
+	}
+}
+
+// parseArgs parses ts flags and an optional positional format string.
+func parseArgs(args []string) tsConfig {
+	cfg := tsConfig{format: defaultFormat}
+	var remaining []string
+	for _, arg := range args {
+		if arg == "-i" {
+			cfg.mode = modeIncremental
+		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			fmt.Fprintf(os.Stderr, "usage: ts [-i] [-s] [-m] [-r] [format]\n")
+			os.Exit(1)
+		} else {
+			remaining = append(remaining, arg)
+		}
+	}
+	if len(remaining) > 0 {
+		cfg.format = remaining[0]
+	} else if cfg.mode == modeIncremental {
+		// R3.2: default format for -i is "%H:%M:%S".
+		cfg.format = defaultIncrFormat
+	}
+	return cfg
+}
+
+// runDefault reads stdin and prepends wall-clock timestamps.
+func runDefault(format string) {
+	processLines(format, func() time.Time { return time.Now() })
+}
+
+// runIncremental reads stdin and prepends elapsed-since-previous-line
+// timestamps formatted in UTC.
+// R3.1: elapsed since previous line; first line since start.
+// R3.2: TZ=GMT via UTC epoch offset formatting.
+func runIncremental(format string) {
+	lastTime := time.Now()
+	processLines(format, func() time.Time {
+		now := time.Now()
+		elapsed := now.Sub(lastTime)
+		lastTime = now
+		return time.Unix(0, 0).UTC().Add(elapsed)
+	})
+}
+
+// processLines reads stdin line by line and writes each line to stdout
+// prefixed by a timestamp obtained from timeFn.
+// R1.1: reads stdin line by line.
 // R1.3: flushes stdout after each line.
-// R1.4: preserves the original newline; does not add an extra one.
-// R1.5: passes through partial lines (no trailing newline at EOF).
-// R1.6: exits 0 on EOF; SIGPIPE handled by sys.InstallSIGPIPEHandler.
-func processStdin(format string) {
+// R1.4: preserves original newline.
+// R1.5: passes through partial lines at EOF.
+func processLines(format string, timeFn func() time.Time) {
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
-			now := time.Now()
-			ts := formatTime(now, format)
+			t := timeFn()
+			ts := formatTime(t, format)
 			fmt.Fprintf(writer, "%s %s", ts, line)
 			writer.Flush()
 		}
@@ -88,6 +148,8 @@ func processStdin(format string) {
 // R1.2: evaluates format at the time each line is received.
 // R2.1: supports custom strftime format strings.
 // R2.2: supports all standard strftime(3) conversion specifications.
+// R2.3: supports ts-specific subsecond extensions %.S, %.s, %.T.
+// R2.4: single time sample ensures atomic second+microsecond.
 func formatTime(t time.Time, format string) string {
 	var buf strings.Builder
 	for i := 0; i < len(format); i++ {
@@ -100,7 +162,6 @@ func formatTime(t time.Time, format string) string {
 			buf.WriteByte('%')
 			break
 		}
-		// R2.3: ts-specific subsecond extensions %.S, %.s, %.T.
 		if format[i] == '.' && i+1 < len(format) {
 			i++
 			writeSubsecond(&buf, t, format[i])

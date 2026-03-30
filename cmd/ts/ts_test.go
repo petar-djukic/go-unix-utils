@@ -5,15 +5,25 @@ package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+// subsecNormalizer replaces bare subsecond timestamps (e.g., "32.001234")
+// with a fixed placeholder, for %.S format where TimestampNormalizer does
+// not match the pattern.
+var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d{1,2}\.\d{6}`)
+	return re.ReplaceAll(b, []byte("SS.USEC"))
+}
+
 // TestDiff verifies cmd/ts against the moreutils reference binary ts.
 // Implements prd004-ts R9.1-R9.2.
 // R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
-// R9.2: covers default format, custom format, empty stdin, partial last line,
+// R9.2: covers default format, custom format, subsecond extensions (R2.3, R2.4),
+// -i incremental mode (R3.1, R3.2), empty stdin, partial last line,
 // additional strftime specifiers (R2.2).
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -107,6 +117,42 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "multiline_partial_last",
 			Stdin:     []byte("first\nsecond"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.3, R2.4: subsecond extension %.S (seconds with microsecond suffix).
+		{
+			Name:      "subsecond_format_dotS",
+			Args:      []string{"%.S"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
+		},
+		// R2.3, R2.4: subsecond extension %.T (HH:MM:SS with microsecond suffix).
+		{
+			Name:      "subsecond_format_dotT",
+			Args:      []string{"%.T"},
+			Stdin:     []byte("test\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1, R3.2: incremental mode shows elapsed time since previous line.
+		{
+			Name:      "incremental_mode",
+			Args:      []string{"-i"},
+			Stdin:     []byte("first\nsecond\nthird\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1: incremental mode with custom format overrides default.
+		{
+			Name:      "incremental_mode_custom_format",
+			Args:      []string{"-i", "%M:%S"},
+			Stdin:     []byte("alpha\nbeta\n"),
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
