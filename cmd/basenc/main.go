@@ -5,7 +5,8 @@
 //
 // Implements prd081-basenc: R1.1 (--base64), R1.2 (--base64url),
 // R1.3 (--base32), R1.4 (--base32hex), R2.1 (--base16), R2.2 (--z85),
-// R2.3 (-d/--decode), R2.4 (-w/--wrap).
+// R2.3 (-d/--decode), R2.4 (-w/--wrap), R3.1 (-i/--ignore-garbage),
+// R3.2 (FILE/stdin input), R3.3 (error exits), R3.4 (SIGPIPE).
 package main
 
 import (

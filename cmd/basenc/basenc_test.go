@@ -5,7 +5,8 @@
 //
 // Covers prd081-basenc: R1.1 (--base64), R1.2 (--base64url),
 // R1.3 (--base32), R1.4 (--base32hex), R2.1 (--base16), R2.2 (--z85),
-// R2.3 (-d/--decode), R2.4 (-w/--wrap).
+// R2.3 (-d/--decode), R2.4 (-w/--wrap), R3.1 (-i/--ignore-garbage),
+// R3.2 (FILE/stdin input), R3.3 (error exits), R3.4 (SIGPIPE).
 package main
 
 import (
@@ -299,7 +300,37 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 
-		// No encoding specified exits 1
+		// R3.1: --ignore-garbage with base64 decode ignoring invalid chars
+		{
+			Name:  "base64_decode_ignore_garbage",
+			Args:  []string{"--base64", "-d", "-i"},
+			Stdin: []byte("aGVs!!!bG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --ignore-garbage long form
+		{
+			Name:  "base64_decode_ignore_garbage_long",
+			Args:  []string{"--base64", "--decode", "--ignore-garbage"},
+			Stdin: []byte("aGVs bG8K\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --ignore-garbage with base32 decode
+		{
+			Name:  "base32_decode_ignore_garbage",
+			Args:  []string{"--base32", "-d", "-i"},
+			Stdin: []byte("NBSWY3DP!!!BI======\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.2: read from stdin when "-" is given
+		{
+			Name:  "base64_encode_dash_stdin",
+			Args:  []string{"--base64", "-"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+
+		// R3.3: no encoding specified exits 1
 		{
 			Name:      "no_encoding_exits_1",
 			Stdin:     []byte("hello\n"),
@@ -307,6 +338,33 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
 		},
+		// R3.3: invalid decode input exits 1
+		{
+			Name:      "base64_decode_invalid_exits_1",
+			Args:      []string{"--base64", "-d"},
+			Stdin:     []byte("!!!not-valid-base64!!!\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
+		},
+		// R3.3: nonexistent file exits 1
+		{
+			Name:      "nonexistent_file_exits_1",
+			Args:      []string{"--base64", "/nonexistent/file/path"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
+		},
+		// R3.3: base16 decode invalid hex exits 1
+		{
+			Name:      "base16_decode_invalid_exits_1",
+			Args:      []string{"--base16", "-d"},
+			Stdin:     []byte("ZZZZ\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
+		},
+
 		// --version exits 0
 		{
 			Name:      "version_flag",
