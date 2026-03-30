@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/rm against grm (GNU coreutils).
 //
-// Covers prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Covers prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -926,6 +926,175 @@ func TestDiffInteractiveWhen(t *testing.T) {
 				t.Helper()
 				assertFileAbsent(t, dir, "file.txt")
 			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffExitCodeSuccess verifies exit code 0 when all removals succeed.
+// R4.1: must exit 0 when all files are removed successfully.
+func TestDiffExitCodeSuccess(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name:     "exit_0_single_file",
+			args:     []string{"f.txt"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "f.txt"), "x\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "f.txt")
+			},
+		},
+		{
+			name:     "exit_0_recursive_dir",
+			args:     []string{"-r", "d"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "d", "sub"))
+				writeFile(t, filepath.Join(dir, "d", "sub", "f.txt"), "x\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "d")
+			},
+		},
+		{
+			name:     "exit_0_empty_dir_d_flag",
+			args:     []string{"-d", "edir"},
+			exitCode: 0,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "edir"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "edir")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffExitCodeFailure verifies exit code 1 when any removal fails.
+// R4.2: must exit 1 when any removal fails; must continue removing remaining files.
+func TestDiffExitCodeFailure(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name:     "exit_1_nonexistent",
+			args:     []string{"missing.txt"},
+			exitCode: 1,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "exit_1_dir_without_r",
+			args:     []string{"adir"},
+			exitCode: 1,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				mkdirAll(t, filepath.Join(dir, "adir"))
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertDirExists(t, dir, "adir")
+			},
+		},
+		{
+			name:     "exit_1_partial_continues",
+			args:     []string{"ok1.txt", "missing.txt", "ok2.txt"},
+			exitCode: 1,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "ok1.txt"), "1\n")
+				writeFile(t, filepath.Join(dir, "ok2.txt"), "2\n")
+			},
+			check: func(t *testing.T, dir string) {
+				t.Helper()
+				assertFileAbsent(t, dir, "ok1.txt")
+				assertFileAbsent(t, dir, "ok2.txt")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runRmDiffTest(t, goBin, refBin, tc)
+		})
+	}
+}
+
+// TestDiffExitCodeForceNonexistent verifies -f exits 0 for non-existent files.
+// R4.3: with -f, must exit 0 even when specified files do not exist.
+func TestDiffExitCodeForceNonexistent(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grm")
+	if err != nil {
+		t.Skip("reference binary grm not in PATH")
+	}
+
+	cases := []rmTestCase{
+		{
+			name:     "force_nonexistent_exit_0",
+			args:     []string{"-f", "gone.txt"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "force_multiple_nonexistent_exit_0",
+			args:     []string{"-f", "a.txt", "b.txt", "c.txt"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "force_no_args_exit_0",
+			args:     []string{"-f"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
+		},
+		{
+			name:     "rf_nonexistent_exit_0",
+			args:     []string{"-rf", "nodir"},
+			exitCode: 0,
+			setup:    func(t *testing.T, dir string) { t.Helper() },
+			check:    func(t *testing.T, dir string) { t.Helper() },
 		},
 	}
 

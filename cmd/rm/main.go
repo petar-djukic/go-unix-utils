@@ -3,7 +3,7 @@
 
 // cmd/rm implements GNU rm: remove files or directories.
 //
-// Implements prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements prd058-rm R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -119,6 +119,7 @@ func handleParseResult(
 }
 
 // handleNoOperands handles the case when no file arguments are provided.
+// R4.3: with -f, exits 0 even with no operands.
 func handleNoOperands(opts rmOptions, stderr *os.File) int {
 	if opts.force {
 		return 0
@@ -131,6 +132,8 @@ func handleNoOperands(opts rmOptions, stderr *os.File) int {
 // removeAll processes each operand and returns the overall exit code.
 // R1.4: continues with remaining files on error.
 // R3.2: -I prompts once before removing >3 files or recursively.
+// R4.1: returns 0 when all removals succeed.
+// R4.2: returns 1 when any removal fails; continues with remaining files.
 func removeAll(operands []string, ctx *rmContext) int {
 	if shouldPromptOnce(operands, ctx.opts) {
 		if !promptYes(ctx, promptOnceMsg(operands)) {
@@ -188,6 +191,7 @@ func promptYes(ctx *rmContext, msg string) bool {
 // R1.1: removes files via os.Remove (unlink).
 // R1.2: refuses directories without -r.
 // R1.3: refuses '.' and '..'.
+// R4.3: with -f, returns 0 for non-existent files.
 func removeOne(path string, ctx *rmContext) int {
 	if isDotOrDotDot(path) {
 		printRefuseDot(ctx.stderr, path)
