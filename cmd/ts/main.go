@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/ts implements moreutils ts: prepend timestamps to stdin lines.
-// Implements prd004-ts R1.1-R1.4, R2.1.
+// Implements prd004-ts R1.1-R1.6, R2.1-R2.2.
 package main
 
 import (
@@ -65,6 +65,8 @@ func main() {
 // R1.1: reads stdin line by line (newline-delimited).
 // R1.3: flushes stdout after each line.
 // R1.4: preserves the original newline; does not add an extra one.
+// R1.5: passes through partial lines (no trailing newline at EOF).
+// R1.6: exits 0 on EOF; SIGPIPE handled by sys.InstallSIGPIPEHandler.
 func processStdin(format string) {
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
@@ -85,6 +87,7 @@ func processStdin(format string) {
 // formatTime converts a time value to a string using a strftime format.
 // R1.2: evaluates format at the time each line is received.
 // R2.1: supports custom strftime format strings.
+// R2.2: supports all standard strftime(3) conversion specifications.
 func formatTime(t time.Time, format string) string {
 	var buf strings.Builder
 	for i := 0; i < len(format); i++ {
@@ -140,6 +143,12 @@ func writeComputedDirective(buf *strings.Builder, t time.Time, spec byte) {
 	switch spec {
 	case 'C':
 		fmt.Fprintf(buf, "%02d", t.Year()/100)
+	case 'G':
+		year, _ := t.ISOWeek()
+		fmt.Fprintf(buf, "%04d", year)
+	case 'g':
+		year, _ := t.ISOWeek()
+		fmt.Fprintf(buf, "%02d", year%100)
 	case 'j':
 		fmt.Fprintf(buf, "%03d", t.YearDay())
 	case 'k':
@@ -164,12 +173,35 @@ func writeComputedDirective(buf *strings.Builder, t time.Time, spec byte) {
 			d = 7
 		}
 		fmt.Fprintf(buf, "%d", d)
+	case 'U':
+		// R2.2: week number (Sunday as first day, 00-53).
+		fmt.Fprintf(buf, "%02d", weekNumberSunday(t))
+	case 'V':
+		_, week := t.ISOWeek()
+		fmt.Fprintf(buf, "%02d", week)
 	case 'w':
 		fmt.Fprintf(buf, "%d", int(t.Weekday()))
+	case 'W':
+		// R2.2: week number (Monday as first day, 00-53).
+		fmt.Fprintf(buf, "%02d", weekNumberMonday(t))
 	case '%':
 		buf.WriteByte('%')
 	default:
 		buf.WriteByte('%')
 		buf.WriteByte(spec)
 	}
+}
+
+// weekNumberSunday returns the week number of the year with Sunday as
+// the first day of the week (strftime %U). Days before the first Sunday
+// are in week 00.
+func weekNumberSunday(t time.Time) int {
+	return (t.YearDay() + 6 - int(t.Weekday())) / 7
+}
+
+// weekNumberMonday returns the week number of the year with Monday as
+// the first day of the week (strftime %W). Days before the first Monday
+// are in week 00.
+func weekNumberMonday(t time.Time) int {
+	return (t.YearDay() + 6 - (int(t.Weekday())+6)%7) / 7
 }

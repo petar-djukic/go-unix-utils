@@ -13,7 +13,8 @@ import (
 // TestDiff verifies cmd/ts against the moreutils reference binary ts.
 // Implements prd004-ts R9.1-R9.2.
 // R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
-// R9.2: covers default format, custom format, empty stdin, partial last line.
+// R9.2: covers default format, custom format, empty stdin, partial last line,
+// additional strftime specifiers (R2.2).
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -63,6 +64,50 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"%H:%M:%S"},
 			Stdin:     []byte("event\n"),
 			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.2: ISO week-based year and week number (%G, %V).
+		{
+			Name:      "strftime_iso_week",
+			Args:      []string{"%G-W%V"},
+			Stdin:     []byte("isoweek\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.2: week number with Sunday start (%U) and Monday start (%W).
+		{
+			Name:      "strftime_week_numbers",
+			Args:      []string{"%U %W"},
+			Stdin:     []byte("weeks\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.2: day of year (%j), century (%C), ISO weekday (%u).
+		{
+			Name:      "strftime_day_of_year_and_century",
+			Args:      []string{"%j %C %u"},
+			Stdin:     []byte("misc\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.2: short ISO week year (%g), weekday number (%w).
+		{
+			Name:      "strftime_short_iso_year_weekday",
+			Args:      []string{"%g %w"},
+			Stdin:     []byte("data\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R1.5: multiple lines with partial last line (no trailing newline).
+		{
+			Name:      "multiline_partial_last",
+			Stdin:     []byte("first\nsecond"),
+			Env:       []string{"LC_ALL=C"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
