@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/date — differential tests against gdate.
-// Covers prd060-date R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Covers prd060-date R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -220,6 +220,35 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"-u", "-d", "@0", "+%Y"},
 			Stdin:    []byte("ignored input\n"),
 			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.1: exit 0 on successful display with compound format
+		{
+			Name:     "exit_0_compound_format",
+			Args:     []string{"-d", "@86400", "+%F %T"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
+			ExitCode: 0,
+		},
+		// R4.2: exit 1 on invalid epoch value
+		{
+			Name:      "exit_1_bad_epoch",
+			Args:      []string{"-d", "@notanumber"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		// R4.3: deterministic output via fixed -d @EPOCH
+		{
+			Name:     "deterministic_epoch_date",
+			Args:     []string{"-u", "-d", "@0", "+%Y-%m-%d %H:%M:%S"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.4: comprehensive coverage — padding modifiers with epoch
+		{
+			Name:     "coverage_padding_modifiers",
+			Args:     []string{"-d", "@86400", "+%-m %_d %0H"},
+			Env:      []string{"LC_ALL=C", "TZ=UTC"},
 			ExitCode: 0,
 		},
 	}
