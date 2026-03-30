@@ -546,7 +546,7 @@ releases:
           status: implemented
     - version: "13.0"
       name: "Batch 13.0 — directory listing and filesystem (df, dir, vdir, dircolors)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement four directory listing and filesystem utilities. df reports filesystem
