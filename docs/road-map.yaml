@@ -541,7 +541,7 @@ releases:
         - id: rel12.1-uc001-tsort
           status: implemented
         - id: rel12.1-uc002-pathchk
-          status: spec_complete
+          status: implemented
         - id: rel12.1-uc003-test
           status: spec_complete
     - version: "13.0"
