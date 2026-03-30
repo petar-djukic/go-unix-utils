@@ -4,8 +4,10 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -19,13 +21,22 @@ var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	return re.ReplaceAll(b, []byte("SS.USEC"))
 }
 
+// relativeAgeNormalizer replaces relative age strings (e.g., "5m30s ago")
+// with a fixed placeholder so timing differences between binary invocations
+// do not cause false divergences.
+var relativeAgeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	re := regexp.MustCompile(`\d+[ydhms](?:\d+[ydhms])? (?:ago|from now)|right now`)
+	return re.ReplaceAll(b, []byte("REL_AGE"))
+}
+
 // TestDiff verifies cmd/ts against the moreutils reference binary ts.
 // Implements prd004-ts R9.1-R9.2.
 // R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
 // R9.2: covers default format, custom format, subsecond extensions (R2.3, R2.4),
 // -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.3),
-// -m monotonic mode (R5.1-R5.3),
-// empty stdin, partial last line, additional strftime specifiers (R2.2).
+// -m monotonic mode (R5.1-R5.3), -r relative mode (R6.1, R6.2),
+// empty stdin, partial last line, additional strftime specifiers (R2.2),
+// R7.1 exit codes.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +56,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R1.1, R1.6: empty stdin produces no output and exits 0.
+		// R1.1, R1.6, R7.1: empty stdin produces no output and exits 0.
 		{
 			Name:     "default_format_empty_stdin",
 			Stdin:    []byte(""),
@@ -194,7 +205,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R4.1, R4.2: elapsed mode with empty stdin.
+		// R4.1, R4.2, R7.1: elapsed mode with empty stdin exits 0.
 		{
 			Name:     "elapsed_mode_empty_stdin",
 			Args:     []string{"-s"},
@@ -247,7 +258,113 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
+		// R6.1: -r mode replaces syslog timestamps with relative age.
+		{
+			Name:      "relative_mode_syslog",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  1 00:00:00 system started\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R6.2: -r mode recognizes RFC 2822 timestamps.
+		{
+			Name:      "relative_mode_rfc2822",
+			Args:      []string{"-r"},
+			Stdin:     []byte("16 Jun 2024 07:29:35 GMT event\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R6.1: -r mode passes through lines without timestamps unchanged.
+		{
+			Name:     "relative_mode_no_timestamp",
+			Args:     []string{"-r"},
+			Stdin:    []byte("no timestamp here\n"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R6.1, R7.1: -r mode with empty stdin exits 0.
+		{
+			Name:     "relative_mode_empty_stdin",
+			Args:     []string{"-r"},
+			Stdin:    []byte(""),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R6.1: -r mode with multiple lines, some with timestamps.
+		{
+			Name:      "relative_mode_mixed_lines",
+			Args:      []string{"-r"},
+			Stdin:     []byte("Jan  1 00:00:00 boot\nno ts here\nJan  1 00:00:01 init\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestRelativeISO8601 verifies R6.2: -r mode recognizes ISO-8601 timestamps.
+// Tested standalone because Date::Parse availability varies across systems,
+// and the reference binary may not handle ISO-8601.
+func TestRelativeISO8601(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r")
+	cmd.Stdin = strings.NewReader("event at 2020-01-01T00:00:00Z done\n")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "2020-01-01") {
+		t.Errorf("ISO-8601 timestamp not replaced: %q", out)
+	}
+	if !strings.Contains(out, "ago") {
+		t.Errorf("expected relative age with 'ago', got: %q", out)
+	}
+}
+
+// TestRelativeLastlog verifies R6.2: -r mode recognizes lastlog timestamps.
+// Tested standalone because Date::Parse availability varies across systems.
+func TestRelativeLastlog(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r")
+	cmd.Stdin = strings.NewReader("Mon Jan  6 14:30 login\n")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "14:30") {
+		t.Errorf("lastlog timestamp not replaced: %q", out)
+	}
+	if !strings.Contains(out, "ago") {
+		t.Errorf("expected relative age with 'ago', got: %q", out)
+	}
+}
+
+// TestUnrecognizedFlag verifies R7.2: unrecognized flags cause non-zero
+// exit with a usage message on stderr.
+func TestUnrecognizedFlag(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-x")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit code for unrecognized flag -x")
+	}
+	if stderr.Len() == 0 {
+		t.Error("expected usage message on stderr for unrecognized flag")
+	}
 }
