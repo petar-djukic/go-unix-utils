@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/pinky implements prd098-pinky R1.1-R1.3:
+// cmd/pinky implements prd098-pinky R1.1-R1.3, R2.1-R2.3, R3.1-R3.3:
 // lightweight finger information lookup showing logged-in user details
 // in short or long format, verified against gpinky via differential testing.
 
@@ -34,21 +34,15 @@ const progName = "pinky"
 // timeStringLen is the expected width of formatted time strings with LC_ALL=C.
 const timeStringLen = 12
 
-func main() {
-	// R3.3: handle SIGPIPE gracefully.
-	sys.InstallSIGPIPEHandler()
-
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		os.Exit(1)
-	}
-}
-
 // options holds parsed command-line flags and user operands.
 type options struct {
-	shortFormat bool
-	longFormat  bool
-	users       []string
+	shortFormat     bool
+	longFormat      bool
+	suppressHeader  bool // R2.2: -f suppresses header in short format.
+	suppressDir     bool // R2.3: -b suppresses home dir and shell in long format.
+	suppressProject bool // R2.3: -h suppresses project file (no-op per non_goals).
+	suppressPlan    bool // R2.3: -p suppresses plan file (no-op per non_goals).
+	users           []string
 }
 
 // utmpxEntry holds fields extracted from a utmpx record.
@@ -67,17 +61,31 @@ type passwdInfo struct {
 	shell string
 }
 
+func main() {
+	// R3.3: handle SIGPIPE gracefully.
+	sys.InstallSIGPIPEHandler()
+
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+}
+
 // run parses arguments and prints pinky output.
 func run(args []string) error {
 	opts, err := parseArgs(args)
 	if err != nil {
 		return err
 	}
+	if opts.longFormat && len(opts.users) == 0 {
+		return fmt.Errorf("no username specified; at least one must be specified when using -l")
+	}
 	if opts.shortFormat {
-		printShort(opts.users)
+		printShort(opts)
 	}
 	if opts.longFormat {
-		printLong(opts.users)
+		printLong(opts)
 	}
 	return nil
 }
@@ -104,6 +112,7 @@ func parseArgs(args []string) (options, error) {
 }
 
 // applyFlags processes combined short flags like -sl.
+// R2.2: -f suppresses header. R2.3: -b, -h, -p flags.
 func applyFlags(opts *options, flags string) error {
 	for _, ch := range flags {
 		switch ch {
@@ -112,6 +121,14 @@ func applyFlags(opts *options, flags string) error {
 		case 'l':
 			opts.shortFormat = false
 			opts.longFormat = true
+		case 'f':
+			opts.suppressHeader = true
+		case 'b':
+			opts.suppressDir = true
+		case 'h':
+			opts.suppressProject = true
+		case 'p':
+			opts.suppressPlan = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", ch)
 		}
@@ -163,20 +180,30 @@ func lookupPasswd(username string) *passwdInfo {
 	}
 }
 
+// gecosField extracts the field at index from a comma-separated GECOS string.
+// Returns empty string if the index is out of range.
+func gecosField(gecos string, index int) string {
+	fields := strings.Split(gecos, ",")
+	if index < len(fields) {
+		return fields[index]
+	}
+	return ""
+}
+
 // gecosName extracts the first field (real name) from a GECOS string.
 func gecosName(gecos string) string {
-	if name, _, ok := strings.Cut(gecos, ","); ok {
-		return name
-	}
-	return gecos
+	return gecosField(gecos, 0)
 }
 
 // printShort prints logged-in users in short format.
 // R1.1: default output shows login name, full name, terminal, idle, time, host.
-func printShort(users []string) {
-	printShortHeader()
+// R2.2: -f suppresses the header line.
+func printShort(opts options) {
+	if !opts.suppressHeader {
+		printShortHeader()
+	}
 	entries := readUtmpxEntries()
-	userSet := makeUserSet(users)
+	userSet := makeUserSet(opts.users)
 	for _, e := range entries {
 		if len(userSet) > 0 && !userSet[e.user] {
 			continue
@@ -226,17 +253,32 @@ func printShortName(pw *passwdInfo) {
 	}
 }
 
-// printLong prints long-format user information for specified users.
-// R2.1: shows login name, real name, directory, and shell.
-func printLong(users []string) {
-	for _, user := range users {
-		printLongEntry(user)
+// printLong prints long-format user information.
+// R2.1: shows login name, real name, directory, shell, office, phone.
+// R2.3: -b suppresses directory and shell.
+func printLong(opts options) {
+	for _, user := range opts.users {
+		printLongEntry(user, opts)
 	}
 }
 
 // printLongEntry prints long-format information for one user.
-func printLongEntry(username string) {
+// R2.3: -b suppresses directory and shell lines.
+func printLongEntry(username string, opts options) {
 	pw := lookupPasswd(username)
+	printLongNameLine(username, pw)
+	if pw != nil && !opts.suppressDir {
+		fmt.Printf("Directory: %-29s", pw.dir)
+		fmt.Printf("Shell:  %s\n", pw.shell)
+	}
+	if pw != nil {
+		printLongGecos(pw.gecos)
+	}
+	fmt.Println()
+}
+
+// printLongNameLine prints the login/real-name line in long format.
+func printLongNameLine(username string, pw *passwdInfo) {
 	fmt.Printf("Login name: %-28s", username)
 	fmt.Printf("In real life:  ")
 	if pw != nil {
@@ -245,11 +287,31 @@ func printLongEntry(username string) {
 		fmt.Printf("???")
 	}
 	fmt.Println()
-	if pw != nil {
-		fmt.Printf("Directory: %-29s", pw.dir)
-		fmt.Printf("Shell:  %s\n", pw.shell)
+}
+
+// printLongGecos prints office and phone fields from GECOS in long format.
+func printLongGecos(gecos string) {
+	office := gecosField(gecos, 1)
+	officePhone := gecosField(gecos, 2)
+	homePhone := gecosField(gecos, 3)
+	printOfficeLine(office, officePhone)
+	if homePhone != "" {
+		fmt.Printf("Home Phone: %s\n", homePhone)
 	}
-	fmt.Println()
+}
+
+// printOfficeLine prints the office location and phone if present.
+func printOfficeLine(office, phone string) {
+	if office == "" && phone == "" {
+		return
+	}
+	if office != "" && phone != "" {
+		fmt.Printf("Office: %s, %s\n", office, phone)
+	} else if office != "" {
+		fmt.Printf("Office: %s\n", office)
+	} else {
+		fmt.Printf("Office: %s\n", phone)
+	}
 }
 
 // getIdleStr returns the idle time string for a terminal device.
