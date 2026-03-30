@@ -62,12 +62,27 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 		{
+			// R2.2: exit 126 when COMMAND is found but cannot be invoked.
+			Name:      "cannot_invoke",
+			Args:      []string{"/dev/null"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  126,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
 			// R2.2: exit 125 when no operand given.
 			Name:      "missing_operand",
 			Args:      []string{},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  125,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeTryPath},
+		},
+		{
+			// R2.1: exit status of COMMAND propagated (non-zero).
+			Name:     "exit_status_one",
+			Args:     []string{"sh", "-c", "exit 1"},
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 1,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

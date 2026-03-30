@@ -3,7 +3,7 @@
 
 // cmd/nohup implements GNU nohup: run a command immune to hangups.
 //
-// Implements prd095-nohup R1.1, R1.2, R1.3, R1.4.
+// Implements prd095-nohup R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -105,6 +105,7 @@ func redirectStderr(outFile *os.File) {
 }
 
 // executeCommand starts the command and returns its exit code.
+// R2.1: exits with the exit status of COMMAND.
 func executeCommand(args []string) int {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdin = os.Stdin
@@ -117,6 +118,7 @@ func executeCommand(args []string) int {
 }
 
 // handleExecError maps command execution errors to exit codes.
+// R2.1: propagates COMMAND exit status. R2.2: 125/126/127 for nohup failures.
 func handleExecError(err error, cmdName string) int {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		return exitErr.ExitCode()
