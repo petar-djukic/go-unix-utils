@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/chown against gchown (GNU coreutils).
 //
-// Traces: prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
+// Traces: prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -20,10 +20,23 @@ import (
 )
 
 // normProgName normalizes the program name prefix in stderr output so
-// "gchown:" and "chown:" compare as equal.
+// "gchown:" and "chown:" compare as equal, and normalizes the --help hint
+// path so reference and Go binary paths match.
 func normProgName(b []byte) []byte {
 	s := strings.ReplaceAll(string(b), "gchown:", "chown:")
+	s = normTryHelp(s)
 	return []byte(s)
+}
+
+// normTryHelp normalizes "Try '/path/to/gchown --help'" to "Try 'chown --help'".
+func normTryHelp(s string) string {
+	const suffix = " --help' for more information.\n"
+	for _, line := range strings.SplitAfter(s, "\n") {
+		if strings.HasPrefix(line, "Try '") && strings.HasSuffix(line, suffix) {
+			s = strings.Replace(s, line, "Try 'chown --help' for more information.\n", 1)
+		}
+	}
+	return s
 }
 
 // currentUser returns the current user's username.
@@ -300,6 +313,32 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-R", ownerGroup, "."},
 			Env:       []string{"LC_ALL=C"},
 			WorkDir:   makePermDeniedDir(t),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		// R3.2: exit 0 on successful ownership change
+		{
+			Name:     "exit_zero_on_success",
+			Args:     []string{ownerGroup, "testfile"},
+			Env:      []string{"LC_ALL=C"},
+			WorkDir:  makeWorkDir(t),
+			ExitCode: 0,
+		},
+		// R3.2: exit 1 when file does not exist
+		{
+			Name:      "exit_one_on_error",
+			Args:      []string{ownerGroup, "nonexistent_file"},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   t.TempDir(),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normProgName},
+		},
+		// R3.2: exit 1 with missing operand
+		{
+			Name:      "exit_one_missing_operand",
+			Args:      []string{},
+			Env:       []string{"LC_ALL=C"},
+			WorkDir:   t.TempDir(),
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normProgName},
 		},
@@ -622,5 +661,24 @@ func TestChangesOutput(t *testing.T) {
 	// File already has our uid:gid, so -c should produce no output
 	if len(out) != 0 {
 		t.Errorf("expected no output for no-change, got %q", string(out))
+	}
+}
+
+// TestSIGPIPE verifies graceful SIGPIPE handling.
+// R3.3: exit 0 when stdout pipe is closed early.
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	owner := currentUser(t)
+	group := currentGroup(t)
+	dir := makeRecursiveDir(t)
+
+	// Run with -Rv to produce output, pipe through head -1 to trigger SIGPIPE
+	cmd := exec.Command("sh", "-c",
+		fmt.Sprintf("%s -Rv %s:%s . | head -1", goBin, owner, group))
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("R3.3: expected exit 0 on SIGPIPE, got error: %v\noutput: %s", err, out)
 	}
 }

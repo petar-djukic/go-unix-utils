@@ -3,7 +3,7 @@
 
 // cmd/chown implements GNU chown: change file owner and group.
 //
-// Implements prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1.
+// Implements prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -73,7 +73,7 @@ type options struct {
 }
 
 func main() {
-	sys.InstallSIGPIPEHandler()
+	sys.InstallSIGPIPEHandler() // R3.3: graceful SIGPIPE handling
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
