@@ -490,7 +490,7 @@ releases:
         - id: rel11.0-uc002-mknod
           status: implemented
         - id: rel11.0-uc003-nice
-          status: spec_complete
+          status: implemented
         - id: rel11.0-uc004-nohup
           status: spec_complete
     - version: "11.1"
