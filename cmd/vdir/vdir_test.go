@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/vdir differential tests for prd108-vdir R1.1-R1.4.
+// cmd/vdir differential tests for prd108-vdir R1.1-R2.2.
 package main
 
 import (
@@ -123,6 +123,54 @@ func TestDiff(t *testing.T) {
 			// R1.6: reverse sort with -r.
 			Name:      "R1.6_reverse_sort",
 			Args:      []string{"-r"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R1.5: -m comma format overrides default long listing.
+			Name:      "R1.5_comma_format_override",
+			Args:      []string{"-m"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R1.5: -x across format overrides default long listing.
+			Name:      "R1.5_across_format_override",
+			Args:      []string{"-x"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.1: --color=never disables color output.
+			Name:      "R2.1_color_never",
+			Args:      []string{"--color=never"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.1: --color=always enables color output.
+			Name:      "R2.1_color_always",
+			Args:      []string{"--color=always"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.2: -a shows . and .. entries.
+			Name:      "R2.2_show_all_dotfiles",
+			Args:      []string{"-a", "-1"},
+			WorkDir:   basicDir,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{norm},
+		},
+		{
+			// R2.2: -A shows dotfiles except . and ..
+			Name:      "R2.2_almost_all_dotfiles",
+			Args:      []string{"-A", "-1"},
 			WorkDir:   basicDir,
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{norm},

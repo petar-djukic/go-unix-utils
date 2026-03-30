@@ -178,6 +178,8 @@ func formatOutput(cfg *vdirConfig, entries []vdirEntry) {
 		formatLongListing(cfg, entries)
 	case formatAcross:
 		formatAcrossColumns(cfg, entries, pw)
+	case formatComma:
+		formatCommaList(cfg, entries)
 	default:
 		formatMultiColumn(cfg, entries, pw)
 	}
@@ -372,6 +374,46 @@ func chunkNames(names []string, numCols int) [][]string {
 		rows = append(rows, names[i:end])
 	}
 	return rows
+}
+
+// --- Comma-separated format (-m) ---
+
+// formatCommaList prints entries in comma-separated format, wrapping at
+// the terminal width. R1.5: -m overrides the default long format.
+func formatCommaList(cfg *vdirConfig, entries []vdirEntry) {
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = entryDisplayName(cfg, e)
+	}
+	printCommaWrapped(names, cfg.termWidth)
+}
+
+// printCommaWrapped prints names separated by ", " with line wrapping.
+func printCommaWrapped(names []string, termWidth int) {
+	if len(names) == 0 {
+		return
+	}
+	col := 0
+	for i, name := range names {
+		suffix := ""
+		if i < len(names)-1 {
+			suffix = ","
+		}
+		entry := name + suffix
+		entryLen := utf8.RuneCountInString(entry)
+		if i > 0 {
+			if col+1+entryLen > termWidth {
+				fmt.Println()
+				col = 0
+			} else {
+				fmt.Print(" ")
+				col++
+			}
+		}
+		fmt.Print(entry)
+		col += entryLen
+	}
+	fmt.Println()
 }
 
 // --- Long format ---

@@ -25,6 +25,7 @@ const (
 	formatColumns                    // -C
 	formatSingle                     // -1
 	formatAcross                     // -x
+	formatComma                      // -m
 )
 
 // filterMode selects which entries are visible.
@@ -168,6 +169,9 @@ func applyShortFlag(cfg *vdirConfig, ch rune) error {
 		cfg.formatSet = true
 	case 'x':
 		cfg.format = formatAcross
+		cfg.formatSet = true
+	case 'm':
+		cfg.format = formatComma
 		cfg.formatSet = true
 	case 'a':
 		cfg.filter = filterAll
