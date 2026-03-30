@@ -3,7 +3,7 @@
 
 // cmd/numfmt converts numbers between raw numeric and human-readable formats.
 // Implements prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2.
 package main
 
 import (
@@ -33,6 +33,12 @@ const (
 	roundUp          = "up"
 	roundDown        = "down"
 	roundNearest     = "nearest"
+
+	// R4.2: invalid number handling modes.
+	invalidAbort  = "abort"
+	invalidFail   = "fail"
+	invalidWarn   = "warn"
+	invalidIgnore = "ignore"
 )
 
 // R1.1: suffixes for --to output formatting.
@@ -55,6 +61,7 @@ type config struct {
 	header    int     // R3.3: header lines to pass through
 	fromUnitN float64 // R3.4: input scaling factor
 	toUnitN   float64 // R3.4: output scaling factor
+	invalid   string  // R4.2: invalid number handling mode
 }
 
 // fmtSpec holds parsed --format components (R2.1).
@@ -87,7 +94,7 @@ func main() {
 func parseArgs() (config, []string) {
 	cfg := config{
 		fromUnit: unitNone, toUnit: unitNone, round: roundFromZero,
-		fromUnitN: 1, toUnitN: 1,
+		fromUnitN: 1, toUnitN: 1, invalid: invalidAbort,
 	}
 	var operands []string
 	for i := 1; i < len(os.Args); i++ {
@@ -153,6 +160,8 @@ func parseFlag(arg string, cfg *config) bool {
 		if err == nil {
 			cfg.toUnitN = v
 		}
+	case strings.HasPrefix(arg, "--invalid="):
+		cfg.invalid = arg[len("--invalid="):]
 	default:
 		return false
 	}
@@ -172,6 +181,16 @@ func isValidRound(r string) bool {
 	}
 }
 
+// R4.2: validate --invalid mode.
+func isValidInvalid(m string) bool {
+	switch m {
+	case invalidAbort, invalidFail, invalidWarn, invalidIgnore:
+		return true
+	default:
+		return false
+	}
+}
+
 func run(cfg config, operands []string) int {
 	if !isValidUnit(cfg.fromUnit) {
 		fmt.Fprintf(os.Stderr, "%s: invalid --from argument: '%s'\n", progName, cfg.fromUnit)
@@ -183,6 +202,10 @@ func run(cfg config, operands []string) int {
 	}
 	if !isValidRound(cfg.round) {
 		fmt.Fprintf(os.Stderr, "%s: invalid --round argument: '%s'\n", progName, cfg.round)
+		return 1
+	}
+	if !isValidInvalid(cfg.invalid) {
+		fmt.Fprintf(os.Stderr, "%s: invalid --invalid argument: '%s'\n", progName, cfg.invalid)
 		return 1
 	}
 	fields := parseFieldSpec(cfg.field)
@@ -238,8 +261,10 @@ func processOperands(operands []string, cfg config, fields []fieldRange) int {
 	exitCode := 0
 	for _, op := range operands {
 		if err := processLine(op, cfg, fields); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-			exitCode = 2
+			code := handleConvError(op, err, cfg, fields != nil)
+			if code > exitCode {
+				exitCode = code
+			}
 		}
 	}
 	return exitCode
@@ -258,11 +283,40 @@ func processStdin(cfg config, fields []fieldRange) int {
 			continue
 		}
 		if err := processLine(line, cfg, fields); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-			exitCode = 2
+			code := handleConvError(line, err, cfg, fields != nil)
+			if code > exitCode {
+				exitCode = code
+			}
 		}
 	}
 	return exitCode
+}
+
+// R4.2: handleConvError handles a conversion error per the --invalid mode.
+// printed indicates the line was already output to stdout (field mode).
+func handleConvError(original string, err error, cfg config, printed bool) int {
+	switch cfg.invalid {
+	case invalidIgnore:
+		if !printed {
+			fmt.Println(original)
+		}
+		return 0
+	case invalidWarn:
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		if !printed {
+			fmt.Println(original)
+		}
+		return 0
+	case invalidFail:
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		if !printed {
+			fmt.Println(original)
+		}
+		return 2
+	default: // abort
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 2
+	}
 }
 
 // processLine converts a single line, with optional field selection (R3.1).

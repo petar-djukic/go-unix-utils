@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/numfmt.
 // Traces: prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -131,7 +131,7 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--to=iec"},
 			Stdin: []byte("1024\n1048576\n1073741824\n"),
 		},
-		// Error: invalid number exits 2
+		// R4.1, R4.2: invalid number exits 2 (default --invalid=abort)
 		{
 			Name:      "invalid_number",
 			Args:      []string{"--to=iec"},
@@ -318,6 +318,78 @@ func TestDiff(t *testing.T) {
 			Name:  "to_unit_with_to_si",
 			Args:  []string{"--to=si", "--to-unit=1000"},
 			Stdin: []byte("5000000\n"),
+		},
+
+		// --- R4.1, R4.2: exit code and --invalid mode tests ---
+
+		// R4.1: exit 0 on successful conversion
+		{
+			Name:  "exit_0_success",
+			Args:  []string{"--to=iec"},
+			Stdin: []byte("1024\n"),
+		},
+		// R4.1: exit 0 on successful multi-line conversion
+		{
+			Name:  "exit_0_multiline_success",
+			Args:  []string{"--to=si"},
+			Stdin: []byte("1000\n2000\n3000\n"),
+		},
+		// R4.2: --invalid=fail prints error, continues, exits 2
+		{
+			Name:      "invalid_fail",
+			Args:      []string{"--to=iec", "--invalid=fail"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.2: --invalid=warn prints warning, continues, exits 0
+		{
+			Name:      "invalid_warn",
+			Args:      []string{"--to=iec", "--invalid=warn"},
+			Stdin:     []byte("abc\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.2: --invalid=ignore silently passes through, exits 0
+		{
+			Name:  "invalid_ignore",
+			Args:  []string{"--to=iec", "--invalid=ignore"},
+			Stdin: []byte("abc\n"),
+		},
+		// R4.2: --invalid=fail with mixed valid/invalid lines
+		{
+			Name:      "invalid_fail_mixed",
+			Args:      []string{"--to=iec", "--invalid=fail"},
+			Stdin:     []byte("1024\nabc\n2048\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.2: --invalid=warn with mixed valid/invalid lines
+		{
+			Name:      "invalid_warn_mixed",
+			Args:      []string{"--to=iec", "--invalid=warn"},
+			Stdin:     []byte("1024\nabc\n2048\n"),
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.2: --invalid=ignore with mixed valid/invalid lines
+		{
+			Name:      "invalid_ignore_mixed",
+			Args:      []string{"--to=iec", "--invalid=ignore"},
+			Stdin:     []byte("1024\nabc\n2048\n"),
+		},
+		// R4.4: operand error case
+		{
+			Name:      "operand_invalid",
+			Args:      []string{"--to=iec", "xyz"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+		},
+		// R4.4: unknown suffix error
+		{
+			Name:      "unknown_suffix_error",
+			Args:      []string{"--from=si"},
+			Stdin:     []byte("1Q\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
 		},
 	}
 
