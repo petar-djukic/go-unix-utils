@@ -507,7 +507,7 @@ releases:
         - id: rel11.1-uc001-users
           status: implemented
         - id: rel11.1-uc002-who
-          status: spec_complete
+          status: implemented
         - id: rel11.1-uc003-pinky
           status: spec_complete
     - version: "12.0"
