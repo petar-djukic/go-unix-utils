@@ -6,7 +6,8 @@
 // Covers prd080-base64: R1.1 (encode stdin/file), R1.2 (default wrap),
 // R1.3 (-w COLS wrap control), R1.4 (exit 1 on missing file),
 // R2.1 (-d decode), R2.2 (ignore whitespace), R2.3 (-i ignore garbage),
-// R2.4 (exit 1 on invalid input).
+// R2.4 (exit 1 on invalid input), R3.1 (exit 0 on success),
+// R3.2 (exit 1 on error), R3.3 (SIGPIPE handling).
 package main
 
 import (
@@ -209,6 +210,35 @@ func TestDiff(t *testing.T) {
 			Name:      "decode_invalid_input",
 			Args:      []string{"-d"},
 			Stdin:     []byte("!!!invalid!!!\n"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.1: successful encode exits 0
+		{
+			Name:  "exit_0_encode_success",
+			Stdin: []byte("test\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: successful decode exits 0
+		{
+			Name:  "exit_0_decode_success",
+			Args:  []string{"-d"},
+			Stdin: []byte("dGVzdAo=\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: invalid option exits 1
+		{
+			Name:      "exit_1_invalid_option",
+			Args:      []string{"--bogus"},
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
+		},
+		// R3.2: invalid wrap value exits 1
+		{
+			Name:      "exit_1_invalid_wrap",
+			Args:      []string{"-w", "abc"},
 			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
