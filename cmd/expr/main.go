@@ -4,7 +4,9 @@
 // cmd/expr implements the GNU expr utility for evaluating expressions.
 // Implements prd066-expr R1.1 (arithmetic), R1.2 (comparisons),
 // R1.3 (logical operators), R1.4 (parentheses), R2.1 (match/:),
-// R2.2 (substr), R2.3 (index), R2.4 (length).
+// R2.2 (substr), R2.3 (index), R2.4 (length),
+// R3.1 (+ token escaping), R3.2 (precedence), R3.3 (left-associativity),
+// R3.4 (division by zero).
 package main
 
 import (
@@ -288,9 +290,15 @@ func (p *parser) parseColon() (string, error) {
 
 // parsePrimary parses atoms, parenthesized expressions, and keyword operations.
 // R1.4: parentheses. R2.1-R2.4: keyword string operations.
+// R3.1: + TOKEN treats TOKEN as a literal string.
 func (p *parser) parsePrimary() (string, error) {
 	if p.pos >= len(p.args) {
 		return "", fmt.Errorf("syntax error: missing operand")
+	}
+	// R3.1: + TOKEN interprets the next token as a string literal.
+	if p.peek() == "+" && p.pos+1 < len(p.args) {
+		p.next() // consume "+"
+		return p.next(), nil
 	}
 	switch p.peek() {
 	case "(":

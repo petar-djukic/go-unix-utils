@@ -4,7 +4,9 @@
 // Differential tests for cmd/expr.
 // Covers prd066-expr R1.1 (arithmetic), R1.2 (comparisons),
 // R1.3 (logical operators), R1.4 (parentheses), R2.1 (match/:),
-// R2.2 (substr), R2.3 (index), R2.4 (length).
+// R2.2 (substr), R2.3 (index), R2.4 (length),
+// R3.1 (+ token escaping), R3.2 (precedence), R3.3 (left-associativity),
+// R3.4 (division by zero).
 package main
 
 import (
@@ -126,6 +128,37 @@ func TestDiff(t *testing.T) {
 		{Name: "length_empty", Args: []string{"length", ""}, ExitCode: 1},
 		{Name: "length_one", Args: []string{"length", "x"}, ExitCode: 0},
 		{Name: "length_numeric_string", Args: []string{"length", "12345"}, ExitCode: 0},
+
+		// R3.1: + TOKEN escapes keywords and operators as string literals
+		{Name: "plus_escape_match", Args: []string{"+", "match", "=", "+", "match"}, ExitCode: 0},
+		{Name: "plus_escape_length", Args: []string{"length", "+", "length"}, ExitCode: 0},
+		{Name: "plus_escape_index", Args: []string{"+", "index", "=", "+", "index"}, ExitCode: 0},
+		{Name: "plus_escape_substr", Args: []string{"+", "substr", "=", "+", "substr"}, ExitCode: 0},
+		{Name: "plus_escape_paren", Args: []string{"+", "(", "=", "+", "("}, ExitCode: 0},
+
+		// R3.2: Operator precedence (lowest to highest: | & comp +- */%)
+		{Name: "precedence_or_and", Args: []string{"0", "|", "5", "&", "3"}, ExitCode: 0},
+		{Name: "precedence_comp_add", Args: []string{"1", "+", "2", "=", "3"}, ExitCode: 0},
+		{Name: "precedence_add_mul", Args: []string{"2", "+", "3", "*", "4"}, ExitCode: 0},
+
+		// R3.3: Left-associativity
+		{Name: "left_assoc_sub", Args: []string{"10", "-", "3", "-", "2"}, ExitCode: 0},
+		{Name: "left_assoc_div", Args: []string{"100", "/", "10", "/", "2"}, ExitCode: 0},
+		{Name: "left_assoc_comp", Args: []string{"1", "<", "2", "<", "1"}, ExitCode: 1},
+
+		// R3.4: Division by zero exits 2 with error on stderr
+		{
+			Name:      "div_by_zero_r3",
+			Args:      []string{"1", "/", "0"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		{
+			Name:      "mod_by_zero_r3",
+			Args:      []string{"10", "%", "0"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
