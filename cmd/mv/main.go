@@ -3,7 +3,7 @@
 
 // cmd/mv implements GNU mv: move or rename files and directories.
 //
-// Implements prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1.
+// Implements prd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4.
 package main
 
 import (
@@ -118,6 +118,7 @@ func dispatch(operands []string, opts mvOptions, stdin, stdout, stderr *os.File)
 // moveIntoDir moves each source into the destination directory.
 // R1.2: multi-source move into directory.
 // R1.4: DEST is a directory, move SOURCE into DEST/SOURCE.
+// R4.3: continues moving remaining files after a failure.
 func moveIntoDir(sources []string, dir string, opts mvOptions, stdin, stdout, stderr *os.File) int {
 	if !isDir(dir) {
 		printError(stderr, fmt.Sprintf(
@@ -138,6 +139,7 @@ func moveIntoDir(sources []string, dir string, opts mvOptions, stdin, stdout, st
 // R1.1: rename on same filesystem, copy+delete across filesystems.
 // R1.3: directories are moved without requiring -r.
 // R2.1-R2.4: overwrite control via handleDestConflict.
+// R4.2: returns 1 on any failure (permission denied, source not found).
 func moveSingle(src, dest string, opts mvOptions, stdin, stdout, stderr *os.File) int {
 	if _, err := os.Lstat(src); err != nil {
 		printError(stderr, fmt.Sprintf("cannot stat '%s': %s",
