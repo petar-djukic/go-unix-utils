@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements the split utility.
-// Implements prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -52,13 +54,16 @@ type chunkSpec struct {
 
 // config holds parsed command-line options for split.
 type config struct {
-	mode      splitMode
-	lines     int
-	byteCount int64
-	chunk     chunkSpec
-	file      string
-	prefix    string
-	suffixLen int
+	mode             splitMode
+	lines            int
+	byteCount        int64
+	chunk            chunkSpec
+	file             string
+	prefix           string
+	suffixLen        int
+	numericSuffix    bool
+	additionalSuffix string
+	filterCmd        string
 }
 
 func main() {
@@ -135,54 +140,97 @@ func parseFlag(cfg *config, args []string, i int) (int, error) {
 	return parseShortFlag(cfg, args, i)
 }
 
-// parseLongFlag handles --lines, --bytes, --line-bytes, --number.
+// parseLongFlag handles --lines, --bytes, --line-bytes, --number,
+// --suffix-length, --numeric-suffixes, --additional-suffix, --filter.
 func parseLongFlag(cfg *config, args []string, i int) (int, error) {
 	key, val, hasEq := strings.Cut(args[i], "=")
-	if key != "--lines" && key != "--bytes" && key != "--line-bytes" && key != "--number" {
-		return i, fmt.Errorf("unrecognized option '%s'", args[i])
+	if key == "--numeric-suffixes" {
+		cfg.numericSuffix = true
+		return i, nil
 	}
-	if !hasEq {
-		if i+1 >= len(args) {
-			return i, fmt.Errorf("option '%s' requires an argument", key)
-		}
-		i++
-		val = args[i]
+	val, i, err := longFlagValue(key, val, hasEq, args, i)
+	if err != nil {
+		return i, err
 	}
+	return i, applyLongFlag(cfg, key, val)
+}
+
+// longFlagValue extracts the value for a long flag that requires an argument.
+func longFlagValue(key, val string, hasEq bool, args []string, i int) (string, int, error) {
+	if hasEq {
+		return val, i, nil
+	}
+	if i+1 >= len(args) {
+		return "", i, fmt.Errorf("option '%s' requires an argument", key)
+	}
+	return args[i+1], i + 1, nil
+}
+
+// applyLongFlag applies a long flag's value to the config.
+func applyLongFlag(cfg *config, key, val string) error {
 	switch key {
 	case "--lines":
-		return i, setLines(cfg, val)
+		return setLines(cfg, val)
 	case "--bytes":
-		return i, setByteMode(cfg, modeBytes, val)
+		return setByteMode(cfg, modeBytes, val)
 	case "--line-bytes":
-		return i, setByteMode(cfg, modeLineBytes, val)
+		return setByteMode(cfg, modeLineBytes, val)
+	case "--number":
+		return setChunks(cfg, val)
+	case "--suffix-length":
+		return setSuffixLen(cfg, val)
+	case "--additional-suffix":
+		cfg.additionalSuffix = val
+		return nil
+	case "--filter":
+		cfg.filterCmd = val
+		return nil
 	default:
-		return i, setChunks(cfg, val)
+		return fmt.Errorf("unrecognized option '%s'", key)
 	}
 }
 
-// parseShortFlag handles -l, -b, -C, -n with optional attached values.
+// parseShortFlag handles -l, -b, -C, -n, -a, -d with optional attached values.
 func parseShortFlag(cfg *config, args []string, i int) (int, error) {
 	flag := args[i][1]
-	if flag != 'l' && flag != 'b' && flag != 'C' && flag != 'n' {
-		return i, fmt.Errorf("invalid option -- '%c'", flag)
+	if flag == 'd' {
+		cfg.numericSuffix = true
+		return i, nil
 	}
+	val, idx, err := shortFlagValue(args, i, flag)
+	if err != nil {
+		return i, err
+	}
+	return idx, applyShortFlag(cfg, flag, val)
+}
+
+// shortFlagValue extracts the value from a short flag that requires an argument.
+func shortFlagValue(args []string, i int, flag byte) (string, int, error) {
 	val := args[i][2:]
 	if val == "" {
 		if i+1 >= len(args) {
-			return i, fmt.Errorf("option '-%c' requires an argument", flag)
+			return "", i, fmt.Errorf("option '-%c' requires an argument", flag)
 		}
-		i++
-		val = args[i]
+		return args[i+1], i + 1, nil
 	}
+	return val, i, nil
+}
+
+// applyShortFlag applies a short flag's value to the config.
+func applyShortFlag(cfg *config, flag byte, val string) error {
 	switch flag {
+	case 'a':
+		return setSuffixLen(cfg, val)
 	case 'l':
-		return i, setLines(cfg, val)
+		return setLines(cfg, val)
 	case 'b':
-		return i, setByteMode(cfg, modeBytes, val)
+		return setByteMode(cfg, modeBytes, val)
 	case 'C':
-		return i, setByteMode(cfg, modeLineBytes, val)
+		return setByteMode(cfg, modeLineBytes, val)
+	case 'n':
+		return setChunks(cfg, val)
 	default:
-		return i, setChunks(cfg, val)
+		return fmt.Errorf("invalid option -- '%c'", flag)
 	}
 }
 
@@ -232,6 +280,17 @@ func setChunks(cfg *config, val string) error {
 		return err
 	}
 	cfg.chunk = spec
+	return nil
+}
+
+// setSuffixLen configures the suffix length.
+// R3.1: -a N or --suffix-length=N.
+func setSuffixLen(cfg *config, val string) error {
+	n, err := strconv.Atoi(val)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("invalid suffix length: '%s'", val)
+	}
+	cfg.suffixLen = n
 	return nil
 }
 
@@ -301,16 +360,46 @@ func openInput(file string) (io.ReadCloser, error) {
 	return os.Open(file)
 }
 
+// outputName generates the full output filename for the given index.
+// Combines prefix + suffix (alpha or numeric) + additional suffix.
+func outputName(cfg config, index int) (string, error) {
+	suffix, err := generateSuffix(index, cfg.suffixLen, cfg.numericSuffix)
+	if err != nil {
+		return "", err
+	}
+	return cfg.prefix + suffix + cfg.additionalSuffix, nil
+}
+
+// writeOutputData writes data to a file or pipes it through the filter command.
+// R3.4: --filter support.
+func writeOutputData(filename string, data []byte, cfg config) error {
+	if cfg.filterCmd != "" {
+		return runFilter(cfg.filterCmd, filename, data)
+	}
+	return os.WriteFile(filename, data, 0o666)
+}
+
+// runFilter pipes data through a shell command with $FILE set to filename.
+// R3.4: --filter=COMMAND support.
+func runFilter(command, filename string, data []byte) error {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = append(os.Environ(), "FILE="+filename)
+	cmd.Stdin = bytes.NewReader(data)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // splitByLines reads from r and writes chunks of cfg.lines lines each.
 // R1.1: default 1000 lines. R1.3: configurable via -l.
 func splitByLines(r io.Reader, cfg config) error {
 	br := bufio.NewReaderSize(r, 64*1024)
 	for fileIndex := 0; ; fileIndex++ {
-		suffix, err := generateSuffix(fileIndex, cfg.suffixLen)
+		name, err := outputName(cfg, fileIndex)
 		if err != nil {
 			return err
 		}
-		done, werr := writeLineChunk(br, cfg.prefix+suffix, cfg.lines)
+		done, werr := writeLineChunk(br, name, cfg.lines, cfg)
 		if werr != nil {
 			return werr
 		}
@@ -322,7 +411,7 @@ func splitByLines(r io.Reader, cfg config) error {
 
 // writeLineChunk reads up to maxLines lines and writes them to filename.
 // Returns true when EOF is reached (no more data to read).
-func writeLineChunk(br *bufio.Reader, filename string, maxLines int) (bool, error) {
+func writeLineChunk(br *bufio.Reader, filename string, maxLines int, cfg config) (bool, error) {
 	var buf bytes.Buffer
 	eof := false
 	for range maxLines {
@@ -337,7 +426,7 @@ func writeLineChunk(br *bufio.Reader, filename string, maxLines int) (bool, erro
 		}
 	}
 	if buf.Len() > 0 {
-		if err := os.WriteFile(filename, buf.Bytes(), 0o666); err != nil {
+		if err := writeOutputData(filename, buf.Bytes(), cfg); err != nil {
 			return false, err
 		}
 	}
@@ -348,11 +437,11 @@ func writeLineChunk(br *bufio.Reader, filename string, maxLines int) (bool, erro
 // R2.1: byte-based splitting.
 func splitByBytes(r io.Reader, cfg config) error {
 	for fileIndex := 0; ; fileIndex++ {
-		suffix, err := generateSuffix(fileIndex, cfg.suffixLen)
+		name, err := outputName(cfg, fileIndex)
 		if err != nil {
 			return err
 		}
-		done, werr := writeByteChunk(r, cfg.prefix+suffix, cfg.byteCount)
+		done, werr := writeByteChunk(r, name, cfg.byteCount, cfg)
 		if werr != nil {
 			return werr
 		}
@@ -364,12 +453,12 @@ func splitByBytes(r io.Reader, cfg config) error {
 
 // writeByteChunk reads up to maxBytes bytes and writes them to filename.
 // Returns true when EOF is reached.
-func writeByteChunk(r io.Reader, filename string, maxBytes int64) (bool, error) {
+func writeByteChunk(r io.Reader, filename string, maxBytes int64, cfg config) (bool, error) {
 	data, err := io.ReadAll(io.LimitReader(r, maxBytes))
 	if len(data) == 0 {
 		return true, nil
 	}
-	if werr := os.WriteFile(filename, data, 0o666); werr != nil {
+	if werr := writeOutputData(filename, data, cfg); werr != nil {
 		return false, werr
 	}
 	return int64(len(data)) < maxBytes, err
@@ -390,11 +479,11 @@ func splitByLineBytes(r io.Reader, cfg config) error {
 		if len(chunk) == 0 {
 			return nil
 		}
-		suffix, serr := generateSuffix(fileIndex, cfg.suffixLen)
+		name, serr := outputName(cfg, fileIndex)
 		if serr != nil {
 			return serr
 		}
-		if werr := os.WriteFile(cfg.prefix+suffix, chunk, 0o666); werr != nil {
+		if werr := writeOutputData(name, chunk, cfg); werr != nil {
 			return werr
 		}
 		fileIndex++
@@ -420,6 +509,13 @@ func collectLineBytes(
 			return buf.Bytes(), nil, false, nil
 		}
 	}
+	return collectLineBytesLoop(&buf, br, maxBytes)
+}
+
+// collectLineBytesLoop reads lines from br until the buffer reaches maxBytes.
+func collectLineBytesLoop(
+	buf *bytes.Buffer, br *bufio.Reader, maxBytes int64,
+) ([]byte, []byte, bool, error) {
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) == 0 && err == io.EOF {
@@ -527,11 +623,11 @@ func splitChunkRoundRobin(data []byte, cfg config) error {
 
 // writeChunkFile writes chunk data to the output file for chunk index i.
 func writeChunkFile(cfg config, i int, data []byte) error {
-	suffix, err := generateSuffix(i, cfg.suffixLen)
+	name, err := outputName(cfg, i)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(cfg.prefix+suffix, data, 0o666)
+	return writeOutputData(name, data, cfg)
 }
 
 // joinLines concatenates a sub-slice of lines into a single byte slice.
@@ -561,9 +657,18 @@ func splitIntoLines(data []byte) [][]byte {
 	return lines
 }
 
-// generateSuffix returns the alphabetic suffix for the given index and length.
+// generateSuffix returns the suffix for the given index and length.
+// R3.1: suffix length. R3.2: numeric vs alphabetic.
+func generateSuffix(index, length int, numeric bool) (string, error) {
+	if numeric {
+		return generateNumericSuffix(index, length)
+	}
+	return generateAlphaSuffix(index, length)
+}
+
+// generateAlphaSuffix returns the alphabetic suffix for the given index.
 // R1.1: suffix pattern aa, ab, ..., az, ba, ..., zz for length 2.
-func generateSuffix(index, length int) (string, error) {
+func generateAlphaSuffix(index, length int) (string, error) {
 	suffix := make([]byte, length)
 	idx := index
 	for i := length - 1; i >= 0; i-- {
@@ -574,4 +679,14 @@ func generateSuffix(index, length int) (string, error) {
 		return "", fmt.Errorf("output file suffixes exhausted")
 	}
 	return string(suffix), nil
+}
+
+// generateNumericSuffix returns the zero-padded numeric suffix for the index.
+// R3.2: numeric suffixes 00, 01, 02, ...
+func generateNumericSuffix(index, length int) (string, error) {
+	s := strconv.Itoa(index)
+	if len(s) > length {
+		return "", fmt.Errorf("output file suffixes exhausted")
+	}
+	return strings.Repeat("0", length-len(s)) + s, nil
 }

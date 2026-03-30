@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/split.
-// Covers prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -37,6 +38,7 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary gsplit not in PATH")
 	}
 	tests := append(buildR1Tests(), buildR2Tests()...)
+	tests = append(tests, buildR3Tests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -62,6 +64,18 @@ func buildR2Tests() []testutils.DiffTest {
 		chunkByLinesTest(),
 		chunkRoundRobinTest(),
 		conflictingModesTest(),
+	}
+}
+
+// buildR3Tests returns differential test cases for R3.1-R3.4.
+func buildR3Tests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		suffixLengthTest(),
+		numericSuffixShortTest(),
+		numericSuffixLongTest(),
+		additionalSuffixTest(),
+		numericWithSuffixLenTest(),
+		filterCommandTest(),
 	}
 }
 
@@ -247,5 +261,93 @@ func conflictingModesTest() testutils.DiffTest {
 		Stdin:     []byte("test\n"),
 		ExitCode:  1,
 		Normalize: []testutils.NormalizeFunc{clearOutput},
+	}
+}
+
+// suffixLengthTest verifies R3.1: -a N uses suffixes of length N.
+func suffixLengthTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "suffix_length_3",
+		Args:     []string{"-l", "2", "-a", "3"},
+		Stdin:    generateLines(1, 5),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xaaa": generateLines(1, 2),
+			"xaab": generateLines(3, 2),
+			"xaac": generateLines(5, 1),
+		},
+	}
+}
+
+// numericSuffixShortTest verifies R3.2: -d uses numeric suffixes.
+func numericSuffixShortTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "numeric_suffix_short",
+		Args:     []string{"-l", "2", "-d"},
+		Stdin:    generateLines(1, 5),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"x00": generateLines(1, 2),
+			"x01": generateLines(3, 2),
+			"x02": generateLines(5, 1),
+		},
+	}
+}
+
+// numericSuffixLongTest verifies R3.2: --numeric-suffixes uses numeric suffixes.
+func numericSuffixLongTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "numeric_suffix_long",
+		Args:     []string{"-l", "2", "--numeric-suffixes"},
+		Stdin:    generateLines(1, 4),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"x00": generateLines(1, 2),
+			"x01": generateLines(3, 2),
+		},
+	}
+}
+
+// additionalSuffixTest verifies R3.3: --additional-suffix appends to filenames.
+func additionalSuffixTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "additional_suffix",
+		Args:     []string{"-l", "2", "--additional-suffix=.txt"},
+		Stdin:    generateLines(1, 5),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xaa.txt": generateLines(1, 2),
+			"xab.txt": generateLines(3, 2),
+			"xac.txt": generateLines(5, 1),
+		},
+	}
+}
+
+// numericWithSuffixLenTest verifies R3.1+R3.2 combined: -d -a 3.
+func numericWithSuffixLenTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "numeric_suffix_length_3",
+		Args:     []string{"-l", "2", "-d", "-a", "3"},
+		Stdin:    generateLines(1, 5),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"x000": generateLines(1, 2),
+			"x001": generateLines(3, 2),
+			"x002": generateLines(5, 1),
+		},
+	}
+}
+
+// filterCommandTest verifies R3.4: --filter pipes output through a command.
+func filterCommandTest() testutils.DiffTest {
+	return testutils.DiffTest{
+		Name:     "filter_command",
+		Args:     []string{"-l", "2", "--filter=cat > $FILE"},
+		Stdin:    generateLines(1, 4),
+		ExitCode: 0,
+		ExpectedFiles: map[string][]byte{
+			"xaa": generateLines(1, 2),
+			"xab": generateLines(3, 2),
+		},
 	}
 }
