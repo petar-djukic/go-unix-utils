@@ -56,6 +56,17 @@ func TestDiff(t *testing.T) {
 	dirDupKeys := writeTestFiles(t, "a 1\na 2\n", "a X\na Y\n")
 	dirSingleField := writeTestFiles(t, "a\nb\nc\n", "a\nc\n")
 
+	// R2.1: -1/-2 field selection test data.
+	dirField12 := writeTestFiles(t, "X a 1\nY b 2\n", "a P\nb Q\n")
+	// R2.2: -j combined field test data.
+	dirFieldJ := writeTestFiles(t, "1 a\n2 b\n", "1 X\n2 Y\n")
+	// R2.3: -o output format test data.
+	dirOutputFmt := writeTestFiles(t, "a 1 2\nb 3 4\n", "a X Y\nb Z W\n")
+	// R2.4: -t custom separator test data.
+	dirCommaSep := writeTestFiles(t, "a,1,2\nb,3,4\n", "a,X,Y\nb,Z,W\n")
+	// R2.1 + R2.4 combined: join on non-first field with custom separator.
+	dirCommaField := writeTestFiles(t, "1,a\n2,b\n", "a,P\nb,Q\n")
+
 	errNorm := []testutils.NormalizeFunc{normalizeProgramName, normalizeFileError}
 
 	tests := []testutils.DiffTest{
@@ -133,6 +144,62 @@ func TestDiff(t *testing.T) {
 			Stdin:   []byte("a X\nb Y\nc Z\n"),
 			Env:     []string{"LC_ALL=C"},
 			WorkDir: dirAllMatch,
+		},
+
+		// R2.1: -1 FIELD and -2 FIELD join on specified fields.
+		{
+			Name:    "R2.1_field_selection_1_2",
+			Args:    []string{"-1", "2", "-2", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirField12,
+		},
+
+		// R2.2: -j FIELD sets join field for both files.
+		{
+			Name:    "R2.2_combined_field_j",
+			Args:    []string{"-j", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirFieldJ,
+		},
+		{
+			Name:    "R2.2_j_field2",
+			Args:    []string{"-j", "2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: writeTestFiles(t, "X a\nY b\n", "P a\nQ b\n"),
+		},
+
+		// R2.3: -o FORMAT output field selection.
+		{
+			Name:    "R2.3_output_format_join_field",
+			Args:    []string{"-o", "0", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirOutputFmt,
+		},
+		{
+			Name:    "R2.3_output_format_specific_fields",
+			Args:    []string{"-o", "1.2,2.2", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirOutputFmt,
+		},
+		{
+			Name:    "R2.3_output_format_mixed",
+			Args:    []string{"-o", "0,1.2,2.2,1.3,2.3", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirOutputFmt,
+		},
+
+		// R2.4: -t CHAR custom field separator.
+		{
+			Name:    "R2.4_comma_separator",
+			Args:    []string{"-t", ",", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirCommaSep,
+		},
+		{
+			Name:    "R2.4_comma_sep_with_field_selection",
+			Args:    []string{"-t", ",", "-1", "2", "-2", "1", "file1.txt", "file2.txt"},
+			Env:     []string{"LC_ALL=C"},
+			WorkDir: dirCommaField,
 		},
 
 		// Error: missing file exits 1.
