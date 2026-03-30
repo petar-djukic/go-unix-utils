@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/shuf implements prd064-shuf R1.1–R1.4, R2.1–R2.4: shuffle input lines
-// randomly with range mode, head count, repeat mode, and output file support.
+// cmd/shuf implements prd064-shuf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4: shuffle
+// input lines randomly with range mode, head count, repeat mode, output file,
+// random source, zero-terminated delimiter, and echo mode support.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -19,11 +21,23 @@ import (
 
 // options holds parsed command-line flags.
 type options struct {
-	inputRange string // R2.1: -i LO-HI
-	headCount  int    // R2.2: -n COUNT (-1 = unset)
-	repeat     bool   // R2.3: -r
-	outputFile string // R2.4: -o FILE
-	files      []string
+	inputRange   string // R2.1: -i LO-HI
+	headCount    int    // R2.2: -n COUNT (-1 = unset)
+	repeat       bool   // R2.3: -r
+	outputFile   string // R2.4: -o FILE
+	randomSource string // R3.1: --random-source=FILE
+	zeroTerm     bool   // R3.2: -z
+	echo         bool   // R3.3: -e
+	files        []string
+}
+
+// delim returns the line delimiter byte.
+// R3.2: NUL when -z is set, newline otherwise.
+func (o options) delim() byte {
+	if o.zeroTerm {
+		return 0
+	}
+	return '\n'
 }
 
 func main() {
@@ -48,12 +62,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	rng, err := createRNG(opts)
+	if err != nil {
+		return err
+	}
 	w, closer, err := openOutput(opts, stdout)
 	if err != nil {
 		return err
 	}
 	defer closer()
-	return outputLines(w, lines, opts)
+	return outputLines(w, lines, opts, rng)
 }
 
 // parseArgs parses command-line arguments into options.
@@ -89,45 +107,42 @@ func parseLongFlag(args []string, i int, opts *options) (int, error) {
 	key, val, hasEq := strings.Cut(arg, "=")
 	switch key {
 	case "--input-range":
-		v, err := longFlagValue(args, i, val, hasEq, key)
-		if err != nil {
-			return 0, err
-		}
-		opts.inputRange = v
-		if hasEq {
-			return i + 1, nil
-		}
-		return i + 2, nil
+		return applyLongValue(args, i, val, hasEq, key, setString(&opts.inputRange))
 	case "--head-count":
-		v, err := longFlagValue(args, i, val, hasEq, key)
-		if err != nil {
-			return 0, err
-		}
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return 0, fmt.Errorf("invalid line count: %q", v)
-		}
-		opts.headCount = n
-		if hasEq {
-			return i + 1, nil
-		}
-		return i + 2, nil
+		return applyLongValue(args, i, val, hasEq, key, parseHeadCount(&opts.headCount))
 	case "--repeat":
 		opts.repeat = true
 		return i + 1, nil
 	case "--output":
-		v, err := longFlagValue(args, i, val, hasEq, key)
-		if err != nil {
-			return 0, err
-		}
-		opts.outputFile = v
-		if hasEq {
-			return i + 1, nil
-		}
-		return i + 2, nil
+		return applyLongValue(args, i, val, hasEq, key, setString(&opts.outputFile))
+	case "--random-source":
+		return applyLongValue(args, i, val, hasEq, key, setString(&opts.randomSource))
+	case "--zero-terminated":
+		opts.zeroTerm = true
+		return i + 1, nil
+	case "--echo":
+		opts.echo = true
+		return i + 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option %q", arg)
 	}
+}
+
+// applyLongValue extracts and applies a value for a --key=val or --key val flag.
+func applyLongValue(
+	args []string, i int, val string, hasEq bool, key string, apply func(string) error,
+) (int, error) {
+	v, err := longFlagValue(args, i, val, hasEq, key)
+	if err != nil {
+		return 0, err
+	}
+	if err := apply(v); err != nil {
+		return 0, err
+	}
+	if hasEq {
+		return i + 1, nil
+	}
+	return i + 2, nil
 }
 
 // longFlagValue extracts the value for a --key=val or --key val flag.
@@ -141,6 +156,26 @@ func longFlagValue(args []string, i int, val string, hasEq bool, key string) (st
 	return args[i+1], nil
 }
 
+// setString returns an apply function that sets a string pointer.
+func setString(target *string) func(string) error {
+	return func(v string) error {
+		*target = v
+		return nil
+	}
+}
+
+// parseHeadCount returns an apply function for head count values.
+func parseHeadCount(target *int) func(string) error {
+	return func(v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid line count: %q", v)
+		}
+		*target = n
+		return nil
+	}
+}
+
 // parseShortFlags handles short flags, including combined flags like -rn5.
 func parseShortFlags(args []string, i int, opts *options) (int, error) {
 	arg := args[i]
@@ -150,34 +185,40 @@ func parseShortFlags(args []string, i int, opts *options) (int, error) {
 	}
 	j := 1
 	for j < len(arg) {
-		switch arg[j] {
-		case 'r':
-			opts.repeat = true
-			j++
-		case 'i':
-			return shortFlagWithValue(args, i, arg, j, func(v string) error {
-				opts.inputRange = v
-				return nil
-			})
-		case 'n':
-			return shortFlagWithValue(args, i, arg, j, func(v string) error {
-				n, err := strconv.Atoi(v)
-				if err != nil {
-					return fmt.Errorf("invalid line count: %q", v)
-				}
-				opts.headCount = n
-				return nil
-			})
-		case 'o':
-			return shortFlagWithValue(args, i, arg, j, func(v string) error {
-				opts.outputFile = v
-				return nil
-			})
-		default:
-			return 0, fmt.Errorf("invalid option -- '%c'", arg[j])
+		next, err := applyShortChar(args, i, arg, j, opts)
+		if err != nil {
+			return 0, err
 		}
+		if next != 0 {
+			return next, nil
+		}
+		j++
 	}
 	return i + 1, nil
+}
+
+// applyShortChar processes a single short flag character.
+// Returns (0, nil) to continue to the next char, or (nextIndex, nil) to stop.
+func applyShortChar(args []string, i int, arg string, j int, opts *options) (int, error) {
+	switch arg[j] {
+	case 'r':
+		opts.repeat = true
+		return 0, nil
+	case 'e':
+		opts.echo = true
+		return 0, nil
+	case 'z':
+		opts.zeroTerm = true
+		return 0, nil
+	case 'i':
+		return shortFlagWithValue(args, i, arg, j, setString(&opts.inputRange))
+	case 'n':
+		return shortFlagWithValue(args, i, arg, j, parseHeadCount(&opts.headCount))
+	case 'o':
+		return shortFlagWithValue(args, i, arg, j, setString(&opts.outputFile))
+	default:
+		return 0, fmt.Errorf("invalid option -- '%c'", arg[j])
+	}
 }
 
 // shortFlagWithValue extracts the value for a short flag that takes an argument.
@@ -202,18 +243,25 @@ func shortFlagWithValue(
 
 // validateOpts checks for conflicting options.
 func validateOpts(opts options) error {
-	if opts.inputRange != "" && len(opts.files) > 0 {
+	if opts.inputRange != "" && len(opts.files) > 0 && !opts.echo {
 		return fmt.Errorf("cannot combine -i and file arguments")
+	}
+	if opts.echo && opts.inputRange != "" {
+		return fmt.Errorf("cannot combine -e and -i")
 	}
 	return nil
 }
 
 // collectLines gathers input lines based on mode.
+// R3.3: -e treats positional args as input lines.
 func collectLines(opts options, stdin io.Reader) ([]string, error) {
+	if opts.echo {
+		return opts.files, nil
+	}
 	if opts.inputRange != "" {
 		return rangeLines(opts.inputRange)
 	}
-	return readAllLines(opts.files, stdin)
+	return readAllLines(opts.files, stdin, opts.delim())
 }
 
 // rangeLines generates integer strings from LO to HI inclusive.
@@ -251,16 +299,14 @@ func parseRange(spec string) (int, int, error) {
 }
 
 // readAllLines reads lines from the given files, or stdin if no files given.
-// R1.1: reads all lines from each file.
-// R1.2: reads from stdin when no files given or "-" specified.
-// R1.4: last line need not end with newline but is included.
-func readAllLines(files []string, stdin io.Reader) ([]string, error) {
+// R1.1, R1.2, R1.4: reads all lines respecting the configured delimiter.
+func readAllLines(files []string, stdin io.Reader, delim byte) ([]string, error) {
 	if len(files) == 0 {
-		return scanLines(stdin)
+		return scanWithDelim(stdin, delim)
 	}
 	var all []string
 	for _, name := range files {
-		lines, err := readFileLines(name, stdin)
+		lines, err := readFileLines(name, stdin, delim)
 		if err != nil {
 			return nil, err
 		}
@@ -270,29 +316,46 @@ func readAllLines(files []string, stdin io.Reader) ([]string, error) {
 }
 
 // readFileLines reads lines from a single file or stdin for "-".
-func readFileLines(name string, stdin io.Reader) ([]string, error) {
+func readFileLines(name string, stdin io.Reader, delim byte) ([]string, error) {
 	if name == "-" {
-		return scanLines(stdin)
+		return scanWithDelim(stdin, delim)
 	}
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return scanLines(f)
+	return scanWithDelim(f, delim)
 }
 
-// scanLines reads all lines from r using a scanner.
-func scanLines(r io.Reader) ([]string, error) {
+// scanWithDelim reads all records from r using the given delimiter.
+// R3.2: when delim is NUL, splits on NUL instead of newline.
+func scanWithDelim(r io.Reader, delim byte) ([]string, error) {
 	scanner := bufio.NewScanner(r)
+	if delim != '\n' {
+		scanner.Split(splitByByte(delim))
+	}
 	var lines []string
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	return lines, scanner.Err()
+}
+
+// splitByByte returns a bufio.SplitFunc that splits on the given byte.
+func splitByByte(delim byte) bufio.SplitFunc {
+	return func(data []byte, atEOF bool) (int, []byte, error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		if i := bytes.IndexByte(data, delim); i >= 0 {
+			return i + 1, data[:i], nil
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
 	}
-	return lines, nil
 }
 
 // openOutput returns a writer and closer for the output destination.
@@ -308,42 +371,58 @@ func openOutput(opts options, stdout io.Writer) (io.Writer, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
+// createRNG creates a random number generator based on options.
+// R3.1: --random-source uses bytes from FILE as entropy seed.
+func createRNG(opts options) (*rand.Rand, error) {
+	if opts.randomSource == "" {
+		return rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), nil
+	}
+	data, err := os.ReadFile(opts.randomSource)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %q for reading: %v", opts.randomSource, err)
+	}
+	var seed [32]byte
+	copy(seed[:], data)
+	return rand.New(rand.NewChaCha8(seed)), nil
+}
+
 // outputLines writes shuffled lines, respecting -n and -r flags.
-func outputLines(w io.Writer, lines []string, opts options) error {
+// R3.4: empty input produces no output.
+func outputLines(w io.Writer, lines []string, opts options, rng *rand.Rand) error {
 	if len(lines) == 0 {
 		return nil
 	}
 	if opts.repeat {
-		return writeRepeat(w, lines, opts.headCount)
+		return writeRepeat(w, lines, opts.headCount, opts.delim(), rng)
 	}
-	return writePermutation(w, lines, opts.headCount)
+	return writePermutation(w, lines, opts.headCount, opts.delim(), rng)
 }
 
 // writePermutation shuffles and writes lines, limited by headCount.
 // R1.3: each line appears exactly once.
 // R2.2: -n COUNT limits output.
-func writePermutation(w io.Writer, lines []string, headCount int) error {
-	rand.Shuffle(len(lines), func(i, j int) {
+func writePermutation(w io.Writer, lines []string, headCount int, delim byte, rng *rand.Rand) error {
+	rng.Shuffle(len(lines), func(i, j int) {
 		lines[i], lines[j] = lines[j], lines[i]
 	})
 	n := len(lines)
 	if headCount >= 0 && headCount < n {
 		n = headCount
 	}
-	return writeNLines(w, lines[:n])
+	return writeNLines(w, lines[:n], delim)
 }
 
 // writeRepeat writes random selections with replacement.
 // R2.3: -r allows duplicates. Without -n, runs indefinitely.
-func writeRepeat(w io.Writer, lines []string, headCount int) error {
+func writeRepeat(w io.Writer, lines []string, headCount int, delim byte, rng *rand.Rand) error {
 	bw := bufio.NewWriter(w)
 	count := 0
 	for headCount < 0 || count < headCount {
-		idx := rand.IntN(len(lines))
+		idx := rng.IntN(len(lines))
 		if _, err := bw.WriteString(lines[idx]); err != nil {
 			return err
 		}
-		if err := bw.WriteByte('\n'); err != nil {
+		if err := bw.WriteByte(delim); err != nil {
 			return err
 		}
 		count++
@@ -356,14 +435,14 @@ func writeRepeat(w io.Writer, lines []string, headCount int) error {
 	return bw.Flush()
 }
 
-// writeNLines writes n lines to w.
-func writeNLines(w io.Writer, lines []string) error {
+// writeNLines writes lines to w separated by the given delimiter.
+func writeNLines(w io.Writer, lines []string, delim byte) error {
 	bw := bufio.NewWriter(w)
 	for _, line := range lines {
 		if _, err := bw.WriteString(line); err != nil {
 			return err
 		}
-		if err := bw.WriteByte('\n'); err != nil {
+		if err := bw.WriteByte(delim); err != nil {
 			return err
 		}
 	}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // shuf_test.go implements differential and structural tests for
-// prd064-shuf R1.1–R1.4, R2.1–R2.4.
+// prd064-shuf R1.1–R1.4, R2.1–R2.4, R3.1–R3.4.
 
 package main
 
@@ -86,29 +86,7 @@ func TestDiff(t *testing.T) {
 
 	// R2.4: output to file
 	t.Run("output_file", func(t *testing.T) {
-		dir := t.TempDir()
-		outGo := filepath.Join(dir, "go_out.txt")
-		outRef := filepath.Join(dir, "ref_out.txt")
-		stdin := []byte("x\ny\nz\n")
-
-		runBinNoOutput(t, goBin, []string{"-o", outGo}, stdin)
-		runBinNoOutput(t, refBin, []string{"-o", outRef}, stdin)
-
-		goData, err := os.ReadFile(outGo)
-		if err != nil {
-			t.Fatalf("reading go output file: %v", err)
-		}
-		refData, err := os.ReadFile(outRef)
-		if err != nil {
-			t.Fatalf("reading ref output file: %v", err)
-		}
-		goLines := nonEmptyLines(string(goData))
-		refLines := nonEmptyLines(string(refData))
-		if len(goLines) != 3 || len(refLines) != 3 {
-			t.Errorf("expected 3 lines each, go=%d ref=%d",
-				len(goLines), len(refLines))
-		}
-		assertSameSet(t, goLines, refLines)
+		assertOutputFile(t, goBin, refBin)
 	})
 
 	// R2.1 error: -i with file arguments
@@ -118,6 +96,86 @@ func TestDiff(t *testing.T) {
 		os.WriteFile(f, []byte("a\n"), 0o644)
 		assertBothFail(t, goBin, refBin, []string{"-i", "1-5", f}, nil)
 	})
+
+	// R3.1: random source
+	t.Run("random_source", func(t *testing.T) {
+		assertRandomSource(t, goBin, refBin)
+	})
+
+	// R3.2: zero-terminated
+	t.Run("zero_terminated", func(t *testing.T) {
+		stdin := []byte("a\x00b\x00c\x00")
+		assertZeroTermMatch(t, goBin, refBin, []string{"-z"}, stdin, 3)
+	})
+
+	// R3.3: echo mode
+	t.Run("echo_mode", func(t *testing.T) {
+		assertStructuralMatch(t, goBin, refBin,
+			[]string{"-e", "alpha", "beta", "gamma"}, nil, 3)
+	})
+
+	// R3.3: echo with head count
+	t.Run("echo_with_head_count", func(t *testing.T) {
+		assertLineCount(t, goBin, refBin,
+			[]string{"-e", "-n", "2", "a", "b", "c", "d"}, nil, 2)
+	})
+
+	// R3.4: empty echo input
+	t.Run("echo_empty", func(t *testing.T) {
+		assertStructuralMatch(t, goBin, refBin, []string{"-e"}, nil, 0)
+	})
+}
+
+// assertOutputFile verifies R2.4: -o writes to file for both binaries.
+func assertOutputFile(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	dir := t.TempDir()
+	outGo := filepath.Join(dir, "go_out.txt")
+	outRef := filepath.Join(dir, "ref_out.txt")
+	stdin := []byte("x\ny\nz\n")
+
+	runBinNoOutput(t, goBin, []string{"-o", outGo}, stdin)
+	runBinNoOutput(t, refBin, []string{"-o", outRef}, stdin)
+
+	goData, err := os.ReadFile(outGo)
+	if err != nil {
+		t.Fatalf("reading go output file: %v", err)
+	}
+	refData, err := os.ReadFile(outRef)
+	if err != nil {
+		t.Fatalf("reading ref output file: %v", err)
+	}
+	goLines := nonEmptyLines(string(goData))
+	refLines := nonEmptyLines(string(refData))
+	if len(goLines) != 3 || len(refLines) != 3 {
+		t.Errorf("expected 3 lines each, go=%d ref=%d",
+			len(goLines), len(refLines))
+	}
+	assertSameSet(t, goLines, refLines)
+}
+
+// assertRandomSource verifies R3.1: --random-source is accepted by both binaries.
+func assertRandomSource(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	dir := t.TempDir()
+	rsrc := filepath.Join(dir, "randsrc")
+	data := make([]byte, 4096)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	os.WriteFile(rsrc, data, 0o644)
+	stdin := []byte("a\nb\nc\n")
+	goOut := runBin(t, goBin, []string{"--random-source=" + rsrc}, stdin)
+	refOut := runBin(t, refBin, []string{"--random-source=" + rsrc}, stdin)
+	goLines := nonEmptyLines(goOut)
+	refLines := nonEmptyLines(refOut)
+	if len(goLines) != 3 {
+		t.Errorf("go: expected 3 lines, got %d", len(goLines))
+	}
+	if len(refLines) != 3 {
+		t.Errorf("ref: expected 3 lines, got %d", len(refLines))
+	}
+	assertSameSet(t, goLines, refLines)
 }
 
 // TestShufflePermutation verifies R1.3: each line appears exactly once.
@@ -132,9 +190,7 @@ func TestShufflePermutation(t *testing.T) {
 	}
 
 	expected := []string{"a", "b", "c", "d", "e"}
-	got := make([]string, len(lines))
-	copy(got, lines)
-	sort.Strings(got)
+	got := sortedCopy(lines)
 	if !equalSlices(got, expected) {
 		t.Errorf("expected set %v, got %v", expected, got)
 	}
@@ -158,9 +214,7 @@ func TestMultipleFiles(t *testing.T) {
 	}
 
 	expected := []string{"a", "b", "c", "d"}
-	got := make([]string, len(lines))
-	copy(got, lines)
-	sort.Strings(got)
+	got := sortedCopy(lines)
 	if !equalSlices(got, expected) {
 		t.Errorf("expected set %v, got %v", expected, got)
 	}
@@ -178,9 +232,7 @@ func TestNoTrailingNewline(t *testing.T) {
 	}
 
 	expected := []string{"first", "second"}
-	got := make([]string, len(lines))
-	copy(got, lines)
-	sort.Strings(got)
+	got := sortedCopy(lines)
 	if !equalSlices(got, expected) {
 		t.Errorf("expected set %v, got %v", expected, got)
 	}
@@ -264,6 +316,68 @@ func TestOutputFile(t *testing.T) {
 	}
 }
 
+// TestEchoMode verifies R3.3: -e treats args as input lines.
+func TestEchoMode(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	out := runBin(t, goBin, []string{"-e", "alpha", "beta", "gamma"}, nil)
+	lines := nonEmptyLines(out)
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d", len(lines))
+	}
+	got := sortedCopy(lines)
+	if !equalSlices(got, []string{"alpha", "beta", "gamma"}) {
+		t.Errorf("expected {alpha,beta,gamma}, got %v", got)
+	}
+}
+
+// TestZeroTerminated verifies R3.2: -z uses NUL delimiter.
+func TestZeroTerminated(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	stdin := []byte("a\x00b\x00c\x00")
+	out := runBin(t, goBin, []string{"-z"}, stdin)
+	items := splitNul(out)
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d: %v", len(items), items)
+	}
+	got := sortedCopy(items)
+	if !equalSlices(got, []string{"a", "b", "c"}) {
+		t.Errorf("expected {a,b,c}, got %v", got)
+	}
+}
+
+// TestRandomSourceDeterministic verifies R3.1: same random source yields same output.
+func TestRandomSourceDeterministic(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	rsrc := filepath.Join(dir, "randsrc")
+	data := make([]byte, 256)
+	for i := range data {
+		data[i] = byte(i)
+	}
+	os.WriteFile(rsrc, data, 0o644)
+
+	stdin := []byte("a\nb\nc\nd\ne\n")
+	out1 := runBin(t, goBin, []string{"--random-source=" + rsrc}, stdin)
+	out2 := runBin(t, goBin, []string{"--random-source=" + rsrc}, stdin)
+	if out1 != out2 {
+		t.Errorf("same random source gave different output:\n  1: %q\n  2: %q", out1, out2)
+	}
+	lines := nonEmptyLines(out1)
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d", len(lines))
+	}
+}
+
+// TestEmptyInput verifies R3.4: empty input produces no output.
+func TestEmptyInput(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	out := runBin(t, goBin, nil, nil)
+	lines := nonEmptyLines(out)
+	if len(lines) != 0 {
+		t.Errorf("expected 0 lines, got %d: %v", len(lines), lines)
+	}
+}
+
 // assertStructuralMatch runs both binaries and compares structural properties.
 func assertStructuralMatch(
 	t *testing.T, goBin, refBin string,
@@ -285,6 +399,25 @@ func assertStructuralMatch(
 			expectedLines, len(refLines))
 	}
 	assertSameSet(t, goLines, refLines)
+}
+
+// assertZeroTermMatch runs both binaries with -z and compares NUL-delimited output.
+func assertZeroTermMatch(
+	t *testing.T, goBin, refBin string,
+	args []string, stdin []byte, expectedCount int,
+) {
+	t.Helper()
+	goOut := runBin(t, goBin, args, stdin)
+	refOut := runBin(t, refBin, args, stdin)
+	goItems := splitNul(goOut)
+	refItems := splitNul(refOut)
+	if len(goItems) != expectedCount {
+		t.Errorf("go: expected %d items, got %d", expectedCount, len(goItems))
+	}
+	if len(refItems) != expectedCount {
+		t.Errorf("ref: expected %d items, got %d", expectedCount, len(refItems))
+	}
+	assertSameSet(t, goItems, refItems)
 }
 
 // assertRangeMatch verifies both binaries produce the same integer set.
@@ -471,6 +604,15 @@ func nonEmptyLines(s string) []string {
 		return nil
 	}
 	return lines
+}
+
+// splitNul splits NUL-delimited output into items, filtering trailing empty items.
+func splitNul(s string) []string {
+	parts := strings.Split(strings.TrimRight(s, "\x00"), "\x00")
+	if len(parts) == 1 && parts[0] == "" {
+		return nil
+	}
+	return parts
 }
 
 // sortedCopy returns a sorted copy of the slice.
