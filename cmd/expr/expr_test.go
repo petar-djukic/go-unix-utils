@@ -6,7 +6,8 @@
 // R1.3 (logical operators), R1.4 (parentheses), R2.1 (match/:),
 // R2.2 (substr), R2.3 (index), R2.4 (length),
 // R3.1 (+ token escaping), R3.2 (precedence), R3.3 (left-associativity),
-// R3.4 (division by zero).
+// R3.4 (division by zero), R4.1 (exit 0), R4.2 (exit 1),
+// R4.3 (exit 2/3), R4.4 (differential tests).
 package main
 
 import (
@@ -156,6 +157,42 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "mod_by_zero_r3",
 			Args:      []string{"10", "%", "0"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+
+		// R4.1: Exit 0 for non-null, non-zero results
+		{Name: "exit0_nonzero_int", Args: []string{"1"}, ExitCode: 0},
+		{Name: "exit0_string_value", Args: []string{"match", "abc", `a\(.*\)`}, ExitCode: 0},
+		{Name: "exit0_negative_int", Args: []string{"0", "-", "1"}, ExitCode: 0},
+
+		// R4.2: Exit 1 for null or zero results
+		{Name: "exit1_zero_subtraction", Args: []string{"5", "-", "5"}, ExitCode: 1},
+		{Name: "exit1_literal_zero", Args: []string{"0"}, ExitCode: 1},
+		{Name: "exit1_empty_match", Args: []string{"abc", ":", `xyz\(.*\)`}, ExitCode: 1},
+
+		// R4.3: Exit 2 on syntax errors
+		{
+			Name:      "exit2_non_integer_add",
+			Args:      []string{"abc", "+", "1"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		{
+			Name:      "exit2_unmatched_paren",
+			Args:      []string{"(", "1", "+", "2"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		{
+			Name:      "exit2_extra_token",
+			Args:      []string{"1", "2"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{discardAll},
+		},
+		{
+			Name:      "exit2_non_integer_mul",
+			Args:      []string{"abc", "*", "2"},
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},

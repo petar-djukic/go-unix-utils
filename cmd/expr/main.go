@@ -6,7 +6,8 @@
 // R1.3 (logical operators), R1.4 (parentheses), R2.1 (match/:),
 // R2.2 (substr), R2.3 (index), R2.4 (length),
 // R3.1 (+ token escaping), R3.2 (precedence), R3.3 (left-associativity),
-// R3.4 (division by zero).
+// R3.4 (division by zero), R4.1 (exit 0), R4.2 (exit 1),
+// R4.3 (exit 2/3), R4.4 (differential tests).
 package main
 
 import (
@@ -26,6 +27,13 @@ type parser struct {
 
 func main() {
 	sys.InstallSIGPIPEHandler()
+	// R4.3: exit 3 on internal error (unexpected panic).
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "expr: internal error: %v\n", r)
+			os.Exit(3)
+		}
+	}()
 	args := os.Args[1:]
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "expr: missing operand\n")
