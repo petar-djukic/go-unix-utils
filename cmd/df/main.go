@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements df: report filesystem disk space usage.
-// Implements prd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.6, R4.1-R4.3.
+// Implements prd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.7, R4.1-R4.3.
 //
 // TODO: prd106-df R2.1 task requested -B (--block-size=SIZE) but this
 // conflicts with PRD non_goals which excludes --block-size=SIZE. Skipped per E6.
@@ -12,6 +12,9 @@
 //
 // TODO: Task requested --total (grand total row) but prd106-df non_goals
 // explicitly excludes --total. Skipped per E6.
+//
+// TODO: Task 4160 requested --sync but prd106-df non_goals explicitly
+// excludes --sync (invoke sync before getting usage info). Skipped per E6.
 package main
 
 import (
