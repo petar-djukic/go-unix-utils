@@ -450,7 +450,7 @@ releases:
         binaries.
       use_cases:
         - id: rel10.0-uc001-stat
-          status: spec_complete
+          status: implemented
         - id: rel10.0-uc002-truncate
           status: spec_complete
         - id: rel10.0-uc003-link
