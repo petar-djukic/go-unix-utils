@@ -3,7 +3,7 @@
 
 // cmd/ts implements moreutils ts: prepend timestamps to stdin lines.
 // Implements prd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3,
-// R6.1, R6.2, R7.1-R7.3, R8.1, R8.2, R9.1.
+// R6.1, R6.2, R7.1-R7.3, R8.1, R8.2, R9.1, R9.2, R10.1-R10.3.
 //
 // R7.3: The Go implementation compiles timestamp parsing (time.Parse) into the
 // binary unconditionally. Unlike the Perl reference (which requires Date::Parse),
@@ -98,7 +98,8 @@ func main() {
 		runElapsed(cfg.format)
 	case modeRelative:
 		// R6.1: scan lines for timestamps, replace with relative age.
-		runRelative()
+		// R10.1: if format is non-empty, convert to strftime instead.
+		runRelative(cfg.format)
 	default:
 		if cfg.monotonic {
 			// R5.1: use CLOCK_MONOTONIC for timestamp sampling.
@@ -114,21 +115,27 @@ func main() {
 // R5.2: -m is compatible with all modes.
 // R6.1: -r enables relative-time conversion mode.
 // R7.2: unrecognized flags print usage and exit non-zero.
+// R10.3: -r is mutually exclusive with -i and -s.
 func parseArgs(args []string) tsConfig {
 	cfg := tsConfig{format: defaultFormat}
 	var remaining []string
+	hasRelative := false
+	hasElapsedOrIncr := false
 	for _, arg := range args {
 		switch arg {
 		case "-i":
 			cfg.mode = modeIncremental
+			hasElapsedOrIncr = true
 		case "-s":
 			cfg.mode = modeElapsed
+			hasElapsedOrIncr = true
 		case "-m":
 			// R5.1: monotonic clock mode.
 			cfg.monotonic = true
 		case "-r":
 			// R6.1: relative-time conversion mode.
 			cfg.mode = modeRelative
+			hasRelative = true
 		default:
 			if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 				printUsageAndExit()
@@ -136,12 +143,19 @@ func parseArgs(args []string) tsConfig {
 			remaining = append(remaining, arg)
 		}
 	}
+	// R10.3: -r is mutually exclusive with -i and -s.
+	if hasRelative && hasElapsedOrIncr {
+		printUsageAndExit()
+	}
 	if len(remaining) > 0 {
-		// R3.3, R4.3: custom format overrides mode default.
+		// R3.3, R4.3, R10.1: custom format overrides mode default.
 		cfg.format = remaining[0]
 	} else if cfg.mode == modeIncremental || cfg.mode == modeElapsed {
 		// R3.2, R4.2: default format for -i/-s is "%H:%M:%S".
 		cfg.format = defaultElapsedFormat
+	} else if cfg.mode == modeRelative {
+		// R10.1: empty format means use relative age; non-empty means strftime.
+		cfg.format = ""
 	}
 	return cfg
 }
@@ -385,16 +399,18 @@ func buildTimestampPatterns() []tsPattern {
 }
 
 // runRelative reads stdin and replaces recognized timestamps with
-// relative age strings.
+// relative age strings or strftime-formatted timestamps.
 // R6.1: replace matched timestamps with human-readable relative age.
-func runRelative() {
+// R10.1: when format is non-empty, convert to strftime instead of relative age.
+// R10.2: lines without recognized timestamps pass through unchanged.
+func runRelative(format string) {
 	patterns := buildTimestampPatterns()
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
-			result := replaceTimestamp(line, patterns, time.Now())
+			result := replaceTimestamp(line, patterns, time.Now(), format)
 			fmt.Fprint(writer, result)
 			writer.Flush()
 		}
@@ -405,9 +421,11 @@ func runRelative() {
 }
 
 // replaceTimestamp scans line for the first matching timestamp pattern
-// and replaces it with a relative age string.
+// and replaces it with a relative age string or strftime-formatted timestamp.
 // R6.1: replaces matched timestamp with human-readable relative age.
-func replaceTimestamp(line string, patterns []tsPattern, now time.Time) string {
+// R10.1: when format is non-empty, formats parsed time via strftime.
+// R10.2: lines with no recognizable timestamp pass through unchanged.
+func replaceTimestamp(line string, patterns []tsPattern, now time.Time, format string) string {
 	for _, p := range patterns {
 		loc := p.re.FindStringIndex(line)
 		if loc == nil {
@@ -417,9 +435,17 @@ func replaceTimestamp(line string, patterns []tsPattern, now time.Time) string {
 		if !ok {
 			continue
 		}
-		age := now.Sub(t)
-		return line[:loc[0]] + formatRelativeAge(age) + line[loc[1]:]
+		var replacement string
+		if format != "" {
+			// R10.1: convert to specified strftime format.
+			replacement = formatTime(t, format)
+		} else {
+			age := now.Sub(t)
+			replacement = formatRelativeAge(age)
+		}
+		return line[:loc[0]] + replacement + line[loc[1]:]
 	}
+	// R10.2: no recognizable timestamp, pass through unchanged.
 	return line
 }
 

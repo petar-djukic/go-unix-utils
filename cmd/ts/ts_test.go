@@ -39,7 +39,7 @@ var relativeAgeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 // -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.3),
 // -m monotonic mode (R5.1-R5.3), -r relative mode (R6.1, R6.2),
 // empty stdin, partial last line, additional strftime specifiers (R2.2),
-// R7.1 exit codes.
+// R7.1 exit codes, R10.2 no-timestamp passthrough.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -279,7 +279,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
-		// R6.1: -r mode passes through lines without timestamps unchanged.
+		// R10.2: -r mode passes through lines without timestamps unchanged.
 		{
 			Name:     "relative_mode_no_timestamp",
 			Args:     []string{"-r"},
@@ -340,7 +340,7 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R9.1: multi-line default format with TimestampNormalizer.
+		// R9.1, R9.2: multi-line default format with TimestampNormalizer.
 		{
 			Name:      "normalizer_multi_line_default",
 			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
@@ -413,5 +413,110 @@ func TestUnrecognizedFlag(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Error("expected usage message on stderr for unrecognized flag")
+	}
+}
+
+// TestRelativeWithFormat verifies R10.1: -r with a format string converts
+// matched timestamps to strftime format instead of relative age.
+// Tested standalone because the reference binary behavior may vary.
+func TestRelativeWithFormat(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r", "%Y-%m-%d")
+	cmd.Stdin = strings.NewReader("event at 2020-06-15T12:30:00Z done\n")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// R10.1: timestamp should be converted to strftime format, not relative age.
+	if strings.Contains(out, "ago") {
+		t.Errorf("expected strftime output, got relative age: %q", out)
+	}
+	if !strings.Contains(out, "2020-06-15") {
+		t.Errorf("expected strftime-formatted date 2020-06-15, got: %q", out)
+	}
+	if !strings.Contains(out, "done") {
+		t.Errorf("expected rest of line preserved, got: %q", out)
+	}
+}
+
+// TestRelativeWithFormatNoTimestamp verifies R10.2: -r with format passes
+// through lines without recognizable timestamps unchanged.
+func TestRelativeWithFormatNoTimestamp(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r", "%Y-%m-%d")
+	cmd.Stdin = strings.NewReader("no timestamp here\n")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if out != "no timestamp here\n" {
+		t.Errorf("expected unchanged line, got: %q", out)
+	}
+}
+
+// TestRelativeWithSyslogFormat verifies R10.1: -r with a format string
+// converts syslog timestamps to the specified strftime format.
+func TestRelativeWithSyslogFormat(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r", "%H:%M:%S")
+	cmd.Stdin = strings.NewReader("Jan  5 14:30:00 event happened\n")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "ago") {
+		t.Errorf("expected strftime output, got relative age: %q", out)
+	}
+	// The syslog timestamp should be replaced with formatted time.
+	if !strings.Contains(out, "14:30:00") {
+		t.Errorf("expected formatted time 14:30:00, got: %q", out)
+	}
+}
+
+// TestRelativeMutualExclusionWithIncremental verifies R10.3: -r and -i
+// together must print a usage error to stderr and exit non-zero.
+func TestRelativeMutualExclusionWithIncremental(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r", "-i")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit code for -r -i combination")
+	}
+	if stderr.Len() == 0 {
+		t.Error("expected usage message on stderr for -r -i combination")
+	}
+}
+
+// TestRelativeMutualExclusionWithElapsed verifies R10.3: -r and -s
+// together must print a usage error to stderr and exit non-zero.
+func TestRelativeMutualExclusionWithElapsed(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "-r", "-s")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit code for -r -s combination")
+	}
+	if stderr.Len() == 0 {
+		t.Error("expected usage message on stderr for -r -s combination")
 	}
 }
