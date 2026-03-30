@@ -576,7 +576,7 @@ releases:
         testing against Homebrew moreutils reference binaries.
       use_cases:
         - id: rel14.0-uc001-chronic
-          status: spec_complete
+          status: implemented
         - id: rel14.0-uc002-pee
           status: spec_complete
         - id: rel14.0-uc003-vidir
