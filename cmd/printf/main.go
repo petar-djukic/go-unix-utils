@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/printf implements GNU printf: format and print data.
-// Implements prd073-printf R1.1-R1.4, R2.1-R2.4.
+// Implements prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -286,9 +286,13 @@ func formatChar(spec string, arg string) string {
 }
 
 // parseIntArg parses a string as an integer, supporting 0x and 0 prefixes.
+// R3.4: leading quote (single or double) means use numeric value of next char.
 func parseIntArg(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
+	}
+	if v, ok := parseQuotedChar(s); ok {
+		return v, nil
 	}
 	val, err := strconv.ParseInt(s, 0, 64)
 	if err != nil {
@@ -298,15 +302,33 @@ func parseIntArg(s string) (int64, error) {
 }
 
 // parseFloatArg parses a string as a float64.
+// R3.4: leading quote (single or double) means use numeric value of next char.
 func parseFloatArg(s string) (float64, error) {
 	if s == "" {
 		return 0, nil
+	}
+	if v, ok := parseQuotedChar(s); ok {
+		return float64(v), nil
 	}
 	val, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return 0, fmt.Errorf("'%s': expected a numeric value", s)
 	}
 	return val, nil
+}
+
+// parseQuotedChar checks if s starts with a single or double quote followed
+// by a character, and returns the numeric value of that character.
+// R3.4: e.g., "'A" -> 65, "\"Z" -> 90.
+func parseQuotedChar(s string) (int64, bool) {
+	if len(s) < 2 {
+		return 0, false
+	}
+	if s[0] != '\'' && s[0] != '"' {
+		return 0, false
+	}
+	r, _ := utf8.DecodeRuneInString(s[1:])
+	return int64(r), true
 }
 
 // processEscape handles a backslash escape in the format string at pos.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/printf against GNU gprintf.
-// Tests prd073-printf R1.1-R1.4, R2.1-R2.4.
+// Tests prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -231,6 +231,95 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "percent in mixed format",
 			Args: []string{"%d%% of %s\\n", "50", "total"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: escape sequences in FORMAT
+		{
+			Name: "escape octal",
+			Args: []string{"\\101\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "escape hex",
+			Args: []string{"\\x41\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "escape unicode u",
+			Args: []string{"\\u0041\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "escape unicode U",
+			Args: []string{"\\U00000041\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "escape backslash literal",
+			Args: []string{"\\\\\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "escape alert bell",
+			Args: []string{"\\a"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: argument recycling
+		{
+			Name: "recycle format one arg",
+			Args: []string{"%s\\n", "a", "b", "c"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "recycle format two args",
+			Args: []string{"%s=%d\\n", "x", "1", "y", "2"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "recycle single char format",
+			Args: []string{"%c\\n", "A", "B", "C"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.3: missing arguments default to 0 or empty
+		{
+			Name: "missing int arg defaults zero",
+			Args: []string{"%d\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "missing float arg defaults zero",
+			Args: []string{"%f\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "missing string arg defaults empty",
+			Args: []string{"%s\\n"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "partial missing args",
+			Args: []string{"%s %d\\n", "hello"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: quote prefix character values
+		{
+			Name: "single quote A gives 65",
+			Args: []string{"%d\\n", "'A"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "double quote A gives 65",
+			Args: []string{"%d\\n", "\"A"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "quote prefix in float context",
+			Args: []string{"%f\\n", "'A"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "quote prefix zero char",
+			Args: []string{"%d\\n", "'0"},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
