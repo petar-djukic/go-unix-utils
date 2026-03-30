@@ -3,7 +3,8 @@
 
 // Differential tests for cmd/expr.
 // Covers prd066-expr R1.1 (arithmetic), R1.2 (comparisons),
-// R1.3 (logical operators), R1.4 (parentheses).
+// R1.3 (logical operators), R1.4 (parentheses), R2.1 (match/:),
+// R2.2 (substr), R2.3 (index), R2.4 (length).
 package main
 
 import (
@@ -92,6 +93,39 @@ func TestDiff(t *testing.T) {
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{discardAll},
 		},
+
+		// R2.1: match keyword and : operator
+		{Name: "match_no_group", Args: []string{"match", "abcdef", "abc"}, ExitCode: 0},
+		{Name: "match_with_group", Args: []string{"match", "abcdef", `abc\(.*\)`}, ExitCode: 0},
+		{Name: "match_failure", Args: []string{"match", "abcdef", "xyz"}, ExitCode: 1},
+		{Name: "match_group_failure", Args: []string{"match", "abcdef", `xyz\(.*\)`}, ExitCode: 1},
+		{Name: "colon_no_group", Args: []string{"abcdef", ":", "abc"}, ExitCode: 0},
+		{Name: "colon_with_group", Args: []string{"abcdef", ":", `abc\(.*\)`}, ExitCode: 0},
+		{Name: "colon_failure", Args: []string{"abcdef", ":", "xyz"}, ExitCode: 1},
+		{Name: "colon_dot_star", Args: []string{"hello", ":", ".*"}, ExitCode: 0},
+		{Name: "match_empty_group", Args: []string{"match", "abc", `abc\(\)`}, ExitCode: 1},
+
+		// R2.2: substr
+		{Name: "substr_basic", Args: []string{"substr", "hello", "2", "3"}, ExitCode: 0},
+		{Name: "substr_full", Args: []string{"substr", "hello", "1", "5"}, ExitCode: 0},
+		{Name: "substr_single", Args: []string{"substr", "hello", "3", "1"}, ExitCode: 0},
+		{Name: "substr_past_end", Args: []string{"substr", "hello", "3", "10"}, ExitCode: 0},
+		{Name: "substr_pos_zero", Args: []string{"substr", "hello", "0", "3"}, ExitCode: 1},
+		{Name: "substr_len_zero", Args: []string{"substr", "hello", "1", "0"}, ExitCode: 1},
+		{Name: "substr_pos_beyond", Args: []string{"substr", "hello", "10", "3"}, ExitCode: 1},
+
+		// R2.3: index
+		{Name: "index_found", Args: []string{"index", "hello", "el"}, ExitCode: 0},
+		{Name: "index_first_char", Args: []string{"index", "abcdef", "a"}, ExitCode: 0},
+		{Name: "index_last_char", Args: []string{"index", "abcdef", "f"}, ExitCode: 0},
+		{Name: "index_not_found", Args: []string{"index", "hello", "xyz"}, ExitCode: 1},
+		{Name: "index_multi_chars", Args: []string{"index", "hello", "lo"}, ExitCode: 0},
+
+		// R2.4: length
+		{Name: "length_basic", Args: []string{"length", "hello"}, ExitCode: 0},
+		{Name: "length_empty", Args: []string{"length", ""}, ExitCode: 1},
+		{Name: "length_one", Args: []string{"length", "x"}, ExitCode: 0},
+		{Name: "length_numeric_string", Args: []string{"length", "12345"}, ExitCode: 0},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
