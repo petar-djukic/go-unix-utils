@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -22,6 +23,7 @@ func main() {
 
 // run executes the tsort logic and returns the exit code.
 // R1.4: reads from FILE argument, stdin when no argument or "-".
+// R2.1: exits 0 on success. R2.2: exits 1 on cycle or malformed input.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 1 {
 		fmt.Fprintf(stderr, "%s: extra operand '%s'\n", progName, args[1])
@@ -111,7 +113,10 @@ func ensureNode(g *dagGraph, name string, order []string) []string {
 	return order
 }
 
-// emitOrder performs Kahn's algorithm, reporting cycles per R1.2.
+// emitOrder performs Kahn's algorithm matching GNU tsort ordering.
+// GNU uses a FIFO queue with alphabetically-sorted initial zeros and
+// reverse-insertion-order successor iteration (due to prepended linked list).
+// R1.2: reports cycles and continues sorting.
 func emitOrder(g *dagGraph, order []string, filename string, stdout, stderr io.Writer) int {
 	queue := collectReady(g, order)
 	exitCode := 0
@@ -131,7 +136,8 @@ func emitOrder(g *dagGraph, order []string, filename string, stdout, stderr io.W
 	return exitCode
 }
 
-// collectReady gathers all nodes with zero in-degree in insertion order.
+// collectReady gathers zero in-degree nodes sorted alphabetically.
+// GNU tsort uses a BST traversal that produces alphabetical order.
 func collectReady(g *dagGraph, order []string) []string {
 	var q []string
 	for _, n := range order {
@@ -140,12 +146,18 @@ func collectReady(g *dagGraph, order []string) []string {
 			delete(g.indeg, n)
 		}
 	}
+	sort.Strings(q)
 	return q
 }
 
-// decrementSuccessors reduces in-degree for successors, enqueuing at zero.
+// decrementSuccessors reduces in-degree for successors in reverse order.
+// GNU tsort prepends successors to a linked list, so iteration is in reverse
+// insertion order. Our adjacency lists use append, so we iterate backwards
+// and append newly ready nodes to the FIFO queue.
 func decrementSuccessors(g *dagGraph, node string, queue []string) []string {
-	for _, succ := range g.adj[node] {
+	succs := g.adj[node]
+	for i := len(succs) - 1; i >= 0; i-- {
+		succ := succs[i]
 		if _, ok := g.indeg[succ]; !ok {
 			continue
 		}
@@ -187,8 +199,6 @@ type dfsFrame struct {
 
 // findCycle traces a cycle from start using DFS, returning the cycle path.
 func findCycle(g *dagGraph, start string) []string {
-	// DFS keeping the current path on a stack; when we revisit a node on
-	// the current path, the portion from that node to the top is the cycle.
 	onPath := make(map[string]bool)
 	stack := []dfsFrame{{node: start, idx: 0}}
 	onPath[start] = true
@@ -230,7 +240,6 @@ func extractCycle(stack []dfsFrame, target string) []string {
 }
 
 // reportCycle writes the GNU-style cycle diagnostic to stderr.
-// Format: "tsort: <file>: input contains a loop:" then "tsort: <node>" per node.
 func reportCycle(cycle []string, filename string, stderr io.Writer) {
 	fmt.Fprintf(stderr, "%s: %s: input contains a loop:\n", progName, filename)
 	for _, n := range cycle {
