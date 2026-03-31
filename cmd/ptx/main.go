@@ -3,7 +3,7 @@
 
 // cmd/ptx implements GNU ptx: produce a permuted index.
 //
-// Implements prd111-ptx R1.1, R2.1, R2.2, R2.3, R5.1, R5.2.
+// Implements prd111-ptx R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R5.1, R5.2.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,16 +28,27 @@ const (
 
 // ptxOptions holds parsed flag state.
 type ptxOptions struct {
-	width      int  // R2.1: output line width
-	gapSize    int  // R2.1: minimum gap between columns
-	ignoreCase bool // R2.2: fold case for sorting
+	width      int    // R2.1: output line width
+	gapSize    int    // R2.1: minimum gap between columns
+	ignoreCase bool   // R2.2: fold case for sorting
+	wordRegexp string // R3.1: regexp defining words
+	autoRef    bool   // R4.1: automatic references (filename:linenum)
+	references bool   // R4.2: first field is reference
+}
+
+// inputLine holds a line of input with source metadata.
+type inputLine struct {
+	text     string
+	filename string
+	lineNum  int
 }
 
 // indexEntry holds one permuted index entry.
 type indexEntry struct {
-	left    string // text before keyword on the input line
-	keyword string // the keyword itself
-	right   string // text after keyword on the input line
+	left    string
+	keyword string
+	right   string
+	ref     string
 }
 
 // wordPos records a word and its byte offsets in a line.
@@ -52,7 +64,7 @@ func main() {
 }
 
 // run parses flags, reads input, builds and outputs the permuted index.
-func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "ptx: %v\n", err)
@@ -65,10 +77,29 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	if err != nil {
 		return 1
 	}
-	entries := buildIndex(lines)
+	wordRE, err := compileWordRegexp(opts.wordRegexp)
+	if err != nil {
+		fmt.Fprintf(stderr, "ptx: %v\n", err)
+		return 1
+	}
+	entries := buildIndex(lines, opts, wordRE)
 	sortEntries(entries, opts.ignoreCase)
 	return writeOutput(entries, opts, stdout, stderr)
 }
+
+// compileWordRegexp compiles the -W pattern if provided.
+func compileWordRegexp(pattern string) (*regexp.Regexp, error) {
+	if pattern == "" {
+		return nil, nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid regexp: %w", err)
+	}
+	return re, nil
+}
+
+// --- Flag Parsing ---
 
 // parseArgs separates flags from file arguments.
 func parseArgs(args []string) (ptxOptions, []string, error) {
@@ -101,8 +132,15 @@ func parseArgs(args []string) (ptxOptions, []string, error) {
 
 // parseLongFlag handles a single --name or --name=value argument.
 func parseLongFlag(opts *ptxOptions, args []string, i int) (int, error) {
-	if args[i] == "--ignore-case" {
+	switch args[i] {
+	case "--ignore-case":
 		opts.ignoreCase = true
+		return i, nil
+	case "--auto-reference":
+		opts.autoRef = true
+		return i, nil
+	case "--references":
+		opts.references = true
 		return i, nil
 	}
 	name, val, hasVal := splitLongFlag(args[i])
@@ -113,19 +151,22 @@ func parseLongFlag(opts *ptxOptions, args []string, i int) (int, error) {
 		val = args[i+1]
 		i++
 	}
-	n, err := strconv.Atoi(val)
-	if err != nil {
-		return i, fmt.Errorf("invalid number: %s", val)
-	}
+	return applyLongValue(opts, name, val, i)
+}
+
+// applyLongValue sets the option for a long flag that takes a value.
+func applyLongValue(opts *ptxOptions, name, val string, i int) (int, error) {
 	switch name {
 	case "--width":
-		opts.width = n
+		return i, parseInt(val, &opts.width)
 	case "--gap-size":
-		opts.gapSize = n
+		return i, parseInt(val, &opts.gapSize)
+	case "--word-regexp":
+		opts.wordRegexp = val
+		return i, nil
 	default:
 		return i, fmt.Errorf("unrecognized option '%s'", name)
 	}
-	return i, nil
 }
 
 // splitLongFlag splits --name=value into (name, value, true).
@@ -144,10 +185,18 @@ func parseShortFlags(opts *ptxOptions, args []string, i int) (int, error) {
 		case 'f':
 			opts.ignoreCase = true
 			j++
+		case 'A':
+			opts.autoRef = true
+			j++
+		case 'r':
+			opts.references = true
+			j++
 		case 'w':
-			return parseShortValue(chars[j+1:], args, i, &opts.width)
+			return parseShortInt(chars[j+1:], args, i, &opts.width)
 		case 'g':
-			return parseShortValue(chars[j+1:], args, i, &opts.gapSize)
+			return parseShortInt(chars[j+1:], args, i, &opts.gapSize)
+		case 'W':
+			return parseShortString(chars[j+1:], args, i, &opts.wordRegexp)
 		default:
 			return i, fmt.Errorf("invalid option -- '%c'", chars[j])
 		}
@@ -155,9 +204,8 @@ func parseShortFlags(opts *ptxOptions, args []string, i int) (int, error) {
 	return i, nil
 }
 
-// parseShortValue extracts an integer value for a short flag.
-// rest is the remaining characters after the flag letter in the same arg.
-func parseShortValue(rest string, args []string, i int, target *int) (int, error) {
+// parseShortInt extracts an integer value for a short flag.
+func parseShortInt(rest string, args []string, i int, target *int) (int, error) {
 	val := rest
 	if val == "" {
 		if i+1 >= len(args) {
@@ -166,17 +214,37 @@ func parseShortValue(rest string, args []string, i int, target *int) (int, error
 		val = args[i+1]
 		i++
 	}
-	n, err := strconv.Atoi(val)
-	if err != nil {
-		return i, fmt.Errorf("invalid number: %s", val)
-	}
-	*target = n
-	return i, nil
+	return i, parseInt(val, target)
 }
 
+// parseShortString extracts a string value for a short flag.
+func parseShortString(rest string, args []string, i int, target *string) (int, error) {
+	if rest != "" {
+		*target = rest
+		return i, nil
+	}
+	if i+1 >= len(args) {
+		return i, fmt.Errorf("option requires an argument")
+	}
+	*target = args[i+1]
+	return i + 1, nil
+}
+
+// parseInt parses a string as an integer and stores it in target.
+func parseInt(val string, target *int) error {
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return fmt.Errorf("invalid number: %s", val)
+	}
+	*target = n
+	return nil
+}
+
+// --- Input Reading ---
+
 // readAllInput reads lines from all named files.
-func readAllInput(files []string, stdin io.Reader, stderr io.Writer) ([]string, error) {
-	var lines []string
+func readAllInput(files []string, stdin io.Reader, stderr io.Writer) ([]inputLine, error) {
+	var lines []inputLine
 	for _, name := range files {
 		fl, err := readFile(name, stdin)
 		if err != nil {
@@ -189,7 +257,7 @@ func readAllInput(files []string, stdin io.Reader, stderr io.Writer) ([]string, 
 }
 
 // readFile reads all lines from a single file or stdin.
-func readFile(name string, stdin io.Reader) ([]string, error) {
+func readFile(name string, stdin io.Reader) ([]inputLine, error) {
 	r, closer, err := openInput(name, stdin)
 	if err != nil {
 		return nil, err
@@ -197,10 +265,25 @@ func readFile(name string, stdin io.Reader) ([]string, error) {
 	if closer != nil {
 		defer closer.Close()
 	}
-	var lines []string
+	displayName := name
+	if name == "-" {
+		displayName = ""
+	}
+	return scanLines(r, displayName)
+}
+
+// scanLines reads lines from r, tagging each with filename and line number.
+func scanLines(r io.Reader, filename string) ([]inputLine, error) {
+	var lines []inputLine
 	scanner := bufio.NewScanner(r)
+	lineNum := 0
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		lineNum++
+		lines = append(lines, inputLine{
+			text:     scanner.Text(),
+			filename: filename,
+			lineNum:  lineNum,
+		})
 	}
 	return lines, scanner.Err()
 }
@@ -217,25 +300,82 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 	return f, f, nil
 }
 
+// --- Index Building ---
+
 // buildIndex creates index entries for every word in every line.
 // R1.1: each significant word appears as a keyword in context.
-func buildIndex(lines []string) []indexEntry {
+func buildIndex(lines []inputLine, opts ptxOptions, wordRE *regexp.Regexp) []indexEntry {
 	var entries []indexEntry
 	for _, line := range lines {
-		words := extractWords(line)
+		text, ref := lineTextAndRef(line, opts)
+		words := extractWordsFrom(text, wordRE)
 		for _, w := range words {
 			entries = append(entries, indexEntry{
-				left:    strings.TrimRight(line[:w.start], " \t"),
+				left:    strings.TrimRight(text[:w.start], " \t"),
 				keyword: w.word,
-				right:   line[w.end:],
+				right:   text[w.end:],
+				ref:     ref,
 			})
 		}
 	}
 	return entries
 }
 
+// lineTextAndRef extracts the indexable text and reference for a line.
+func lineTextAndRef(line inputLine, opts ptxOptions) (string, string) {
+	if opts.references {
+		return extractReference(line.text)
+	}
+	if opts.autoRef {
+		return line.text, formatAutoRef(line.filename, line.lineNum)
+	}
+	return line.text, ""
+}
+
+// extractReference splits the first field as a reference (R4.2).
+func extractReference(text string) (string, string) {
+	idx := strings.IndexAny(text, " \t")
+	if idx < 0 {
+		return "", text
+	}
+	ref := text[:idx]
+	rest := strings.TrimLeft(text[idx:], " \t")
+	return rest, ref
+}
+
+// formatAutoRef produces a filename:linenum reference (R4.1).
+func formatAutoRef(filename string, lineNum int) string {
+	if filename == "" {
+		return fmt.Sprintf("%d", lineNum)
+	}
+	return fmt.Sprintf("%s:%d", filename, lineNum)
+}
+
+// --- Word Extraction ---
+
+// extractWordsFrom dispatches to regexp or whitespace word extraction.
+func extractWordsFrom(text string, wordRE *regexp.Regexp) []wordPos {
+	if wordRE != nil {
+		return extractWordsRegexp(text, wordRE)
+	}
+	return extractWords(text)
+}
+
+// extractWordsRegexp finds all words matching the compiled regexp (R3.1).
+func extractWordsRegexp(text string, re *regexp.Regexp) []wordPos {
+	matches := re.FindAllStringIndex(text, -1)
+	words := make([]wordPos, 0, len(matches))
+	for _, m := range matches {
+		words = append(words, wordPos{
+			word:  text[m[0]:m[1]],
+			start: m[0],
+			end:   m[1],
+		})
+	}
+	return words
+}
+
 // extractWords finds all whitespace-delimited words and their positions.
-// R2.1 (task): words are separated by whitespace.
 func extractWords(line string) []wordPos {
 	var words []wordPos
 	i := 0
@@ -253,6 +393,8 @@ func extractWords(line string) []wordPos {
 	return words
 }
 
+// --- Sorting ---
+
 // sortEntries sorts index entries alphabetically by keyword.
 // R2.2: when ignoreCase is true, comparison folds to uppercase.
 func sortEntries(entries []indexEntry, ignoreCase bool) {
@@ -265,33 +407,14 @@ func sortEntries(entries []indexEntry, ignoreCase bool) {
 	})
 }
 
-// formatEntry formats one index entry as a fixed-width output line.
-// R2.1 (PRD): output respects width and gap-size settings.
-func formatEntry(e indexEntry, opts ptxOptions) string {
-	halfWidth := (opts.width - opts.gapSize) / 2
-	rightWidth := opts.width - halfWidth - opts.gapSize
-
-	left := e.left
-	if len(left) > halfWidth {
-		left = left[len(left)-halfWidth:]
-	}
-
-	right := e.keyword + e.right
-	if len(right) > rightWidth {
-		right = right[:rightWidth]
-	}
-
-	return fmt.Sprintf("%*s%*s%s", halfWidth, left, opts.gapSize, "", right)
-}
+// --- Output ---
 
 // writeOutput writes all formatted index entries to stdout.
-func writeOutput(
-	entries []indexEntry, opts ptxOptions,
-	stdout io.Writer, stderr io.Writer,
-) int {
+func writeOutput(entries []indexEntry, opts ptxOptions, stdout, stderr io.Writer) int {
+	maxRef := maxRefWidth(entries)
 	bw := bufio.NewWriter(stdout)
 	for _, e := range entries {
-		line := formatEntry(e, opts)
+		line := formatEntry(e, opts, maxRef)
 		if _, err := fmt.Fprintln(bw, line); err != nil {
 			return handleWriteErr(err, stderr)
 		}
@@ -300,6 +423,68 @@ func writeOutput(
 		return handleWriteErr(err, stderr)
 	}
 	return 0
+}
+
+// maxRefWidth returns the length of the longest reference string.
+func maxRefWidth(entries []indexEntry) int {
+	m := 0
+	for _, e := range entries {
+		if len(e.ref) > m {
+			m = len(e.ref)
+		}
+	}
+	return m
+}
+
+// formatEntry formats one index entry as a fixed-width output line.
+func formatEntry(e indexEntry, opts ptxOptions, maxRef int) string {
+	if maxRef > 0 {
+		return formatEntryWithRef(e, opts, maxRef)
+	}
+	return formatEntryPlain(e, opts)
+}
+
+// formatEntryPlain formats an entry without references.
+func formatEntryPlain(e indexEntry, opts ptxOptions) string {
+	halfWidth := (opts.width - opts.gapSize) / 2
+	rightWidth := opts.width - halfWidth - opts.gapSize
+	left := truncateLeft(e.left, halfWidth)
+	right := truncateRight(e.keyword+e.right, rightWidth)
+	return fmt.Sprintf("%*s%*s%s", halfWidth, left, opts.gapSize, "", right)
+}
+
+// formatEntryWithRef formats an entry with a right-justified reference.
+func formatEntryWithRef(e indexEntry, opts ptxOptions, maxRef int) string {
+	refCol := maxRef + opts.gapSize
+	contentWidth := opts.width - refCol
+	halfWidth := (contentWidth - opts.gapSize) / 2
+	rightWidth := contentWidth - halfWidth - opts.gapSize
+	left := truncateLeft(e.left, halfWidth)
+	right := truncateRight(e.keyword+e.right, rightWidth)
+	content := fmt.Sprintf("%*s%*s%-*s", halfWidth, left, opts.gapSize, "", rightWidth, right)
+	return fmt.Sprintf("%s%*s", content, refCol, e.ref)
+}
+
+// truncateLeft keeps the rightmost maxLen characters of s.
+func truncateLeft(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if len(s) > maxLen {
+		return s[len(s)-maxLen:]
+	}
+	return s
+}
+
+// truncateRight keeps the leftmost maxLen characters of s.
+func truncateRight(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
 }
 
 // handleWriteErr returns 0 for broken pipe, 1 for other write errors.
