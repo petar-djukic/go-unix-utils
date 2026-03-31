@@ -54,10 +54,10 @@ requirements:
     items:
       - R5.1:
           text: Must exit 0 on success. Must exit 1 on any error.
-          weight: 1
+          weight: 4
       - R5.2:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
+          weight: 4
 
 non_goals:
   - cmd/ptx does not implement TeX/roff output format in this release.
