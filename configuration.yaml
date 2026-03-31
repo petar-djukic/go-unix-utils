@@ -34,24 +34,11 @@ project:
         - "05.4"
         - "06.0"
         - "06.1"
-        - "07.0"
-        - "07.1"
-        - "08.0"
-        - "08.1"
-        - "09.0"
-        - "09.1"
-        - "10.0"
-        - "10.1"
-        - "11.0"
-        - "11.1"
-        - "12.0"
-        - "12.1"
-        - "13.0"
-        - "14.0"
+        - "15.0"
         - "15.0"
 generation:
     prefix: generation-
-    cycles: 100
+    cycles: 500
 cobbler:
     dir: .cobbler/
     max_stitch_issues_per_cycle: 1

@@ -1,0 +1,365 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// Differential tests for cmd/cat against gcat (GNU coreutils).
+//
+// Covers prd006-cat R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4,
+// R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4.
+package main
+
+import (
+	"bytes"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcat")
+	if err != nil {
+		t.Skip("reference binary gcat not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.4: blank line is only \n; lines with spaces/tabs are not blank
+		{
+			Name:  "R2.4_blank_vs_whitespace_with_b",
+			Args:  []string{"-b"},
+			Stdin: []byte("a\n\n \n\t\nb\n"),
+		},
+		// R3.1: suppress repeated blank lines
+		{
+			Name:  "R3.1_squeeze_repeated_blanks",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		{
+			Name:  "R3.1_squeeze_single_blank_kept",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\n\nb\n"),
+		},
+		{
+			Name:  "R3.1_squeeze_three_blanks",
+			Args:  []string{"-s"},
+			Stdin: []byte("\n\n\na\n\n\n\nb\n\n\n"),
+		},
+		// R3.2: squeeze across file boundaries
+		{
+			Name:     "R3.2_squeeze_across_files",
+			Args:     []string{"-s"},
+			ExitCode: 0,
+		},
+		// R3.3: squeeze with -n (squeeze before numbering)
+		{
+			Name:  "R3.3_squeeze_with_n",
+			Args:  []string{"-sn"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		// R3.3: squeeze with -b
+		{
+			Name:  "R3.3_squeeze_with_b",
+			Args:  []string{"-sb"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		// R2.4: ensure spaces-only line is not blank for -b
+		{
+			Name:  "R2.4_space_line_numbered_by_b",
+			Args:  []string{"-b"},
+			Stdin: []byte("a\n \nb\n"),
+		},
+		// R3.1: no blanks, no effect
+		{
+			Name:  "R3.1_no_blanks_no_effect",
+			Args:  []string{"-s"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.3: squeeze with both -n and -b (b overrides n)
+		{
+			Name:  "R3.3_squeeze_with_bn",
+			Args:  []string{"-sbn"},
+			Stdin: []byte("x\n\n\n\ny\n"),
+		},
+		// R4.1: -v shows control characters as ^X
+		{
+			Name:  "R4.1_v_control_chars",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x01, 0x02, 0x1B, 0x0A},
+		},
+		// R4.1: -v shows DEL as ^?
+		{
+			Name:  "R4.1_v_del_char",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x7F, 0x0A},
+		},
+		// R4.1: -v shows high bytes with M- prefix
+		{
+			Name:  "R4.1_v_high_bytes",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x80, 0x9F, 0xA0, 0xFE, 0xFF, 0x0A},
+		},
+		// R4.1: -v with full range of control chars
+		{
+			Name:  "R4.1_v_all_low_controls",
+			Args:  []string{"-v"},
+			Stdin: []byte{0x00, 0x03, 0x07, 0x08, 0x0E, 0x1F, 0x0A},
+		},
+		// R4.2: -v does not alter tab or newline
+		{
+			Name:  "R4.2_v_preserves_tab_newline",
+			Args:  []string{"-v"},
+			Stdin: []byte("hello\tworld\n"),
+		},
+		// R4.3: -E shows $ at end of line
+		{
+			Name:  "R4.3_E_dollar_at_eol",
+			Args:  []string{"-E"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		// R4.3: -E with blank lines
+		{
+			Name:  "R4.3_E_blank_lines",
+			Args:  []string{"-E"},
+			Stdin: []byte("a\n\n\nb\n"),
+		},
+		// R4.4: -T shows tabs as ^I
+		{
+			Name:  "R4.4_T_tab_as_caret_I",
+			Args:  []string{"-T"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		// R4.4: -T with multiple tabs
+		{
+			Name:  "R4.4_T_multiple_tabs",
+			Args:  []string{"-T"},
+			Stdin: []byte("\t\thello\t\n"),
+		},
+		// R4.1+R4.3: -v -E combined
+		{
+			Name:  "R4.1_R4.3_v_E_combined",
+			Args:  []string{"-vE"},
+			Stdin: []byte{0x01, 'h', 'i', 0x0A},
+		},
+		// R4.1+R4.4: -v -T combined
+		{
+			Name:  "R4.1_R4.4_v_T_combined",
+			Args:  []string{"-vT"},
+			Stdin: []byte{0x01, 0x09, 'a', 0x0A},
+		},
+		// R4.3+R4.4: -E -T combined
+		{
+			Name:  "R4.3_R4.4_E_T_combined",
+			Args:  []string{"-ET"},
+			Stdin: []byte("a\tb\n"),
+		},
+		// R4.1+R4.3+R4.4: all three combined
+		{
+			Name:  "R4.1_R4.3_R4.4_all_combined",
+			Args:  []string{"-vET"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.1: -v with printable ASCII is unchanged
+		{
+			Name:  "R4.1_v_printable_unchanged",
+			Args:  []string{"-v"},
+			Stdin: []byte("Hello, World! 123\n"),
+		},
+		// R4.5: -A is equivalent to -vET
+		{
+			Name:  "R4.5_A_equals_vET",
+			Args:  []string{"-A"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.5: -A with high bytes
+		{
+			Name:  "R4.5_A_high_bytes",
+			Args:  []string{"-A"},
+			Stdin: []byte{0x80, 0xA0, 0xFF, 0x0A},
+		},
+		// R4.6: -e is equivalent to -vE
+		{
+			Name:  "R4.6_e_equals_vE",
+			Args:  []string{"-e"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.6: -e preserves tabs (no -T)
+		{
+			Name:  "R4.6_e_preserves_tabs",
+			Args:  []string{"-e"},
+			Stdin: []byte("a\tb\n"),
+		},
+		// R4.7: -t is equivalent to -vT
+		{
+			Name:  "R4.7_t_equals_vT",
+			Args:  []string{"-t"},
+			Stdin: []byte{0x01, 0x09, 'x', 0x7F, 0x0A},
+		},
+		// R4.7: -t does not show $ at EOL (no -E)
+		{
+			Name:  "R4.7_t_no_dollar",
+			Args:  []string{"-t"},
+			Stdin: []byte("hello\n"),
+		},
+		// R4.8: -u accepted, no effect
+		{
+			Name:  "R4.8_u_no_effect",
+			Args:  []string{"-u"},
+			Stdin: []byte("hello world\n"),
+		},
+		// R4.8: -u combined with other flags
+		{
+			Name:  "R4.8_u_with_n",
+			Args:  []string{"-un"},
+			Stdin: []byte("hello\nworld\n"),
+		},
+		// R4.9: full transformation order: squeeze → transform → end marker → number
+		{
+			Name:  "R4.9_all_flags_snvET",
+			Args:  []string{"-snvET"},
+			Stdin: []byte("a\t\n\n\n\x01b\n"),
+		},
+		// R4.9: squeeze + number-nonblank + all display
+		{
+			Name:  "R4.9_sbA_combined",
+			Args:  []string{"-sbA"},
+			Stdin: []byte("x\n\n\n\ty\x7f\n\nz\n"),
+		},
+		// R4.9: squeeze + show-ends + number
+		{
+			Name:  "R4.9_snE_combined",
+			Args:  []string{"-snE"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+		},
+		// R4.9: all flags with high bytes
+		{
+			Name:  "R4.9_sbnA_high_bytes",
+			Args:  []string{"-sbnA"},
+			Stdin: []byte{0x80, 0x0A, 0x0A, 0x0A, 0xFF, 0x0A},
+		},
+		// R5.1: successful exit code 0
+		{
+			Name:     "R5.1_success_exit_zero",
+			Args:     []string{},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 0,
+		},
+		// R5.2: nonexistent file exits 1, continues processing remaining files
+		{
+			Name:      "R5.2_nonexistent_file_exit_1",
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeCatErrors},
+		},
+	}
+
+	// R3.2: create temp files for cross-boundary squeeze test
+	setupCrossBoundaryTest(t, tests)
+	// R5.2: create temp files for nonexistent file test
+	setupNonexistentFileTest(t, tests)
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// setupCrossBoundaryTest creates temp files for the R3.2 cross-boundary test.
+func setupCrossBoundaryTest(t *testing.T, tests []testutils.DiffTest) {
+	t.Helper()
+	for i := range tests {
+		if tests[i].Name != "R3.2_squeeze_across_files" {
+			continue
+		}
+		dir := t.TempDir()
+		file1 := filepath.Join(dir, "f1.txt")
+		file2 := filepath.Join(dir, "f2.txt")
+		writeTestFile(t, file1, "a\n\n")
+		writeTestFile(t, file2, "\nb\n")
+		tests[i].Args = []string{"-s", file1, file2}
+		tests[i].Stdin = nil
+	}
+}
+
+// setupNonexistentFileTest creates temp files for the R5.2 nonexistent file test.
+// R5.2: cat must continue processing remaining files after an open error.
+func setupNonexistentFileTest(t *testing.T, tests []testutils.DiffTest) {
+	t.Helper()
+	for i := range tests {
+		if tests[i].Name != "R5.2_nonexistent_file_exit_1" {
+			continue
+		}
+		dir := t.TempDir()
+		validFile := filepath.Join(dir, "valid.txt")
+		writeTestFile(t, validFile, "hello\n")
+		nonexistent := filepath.Join(dir, "nonexistent.txt")
+		tests[i].Args = []string{nonexistent, validFile}
+		tests[i].Stdin = nil
+	}
+}
+
+// normalizeCatErrors normalizes error messages between binaries.
+// R5.2: different binaries produce different program name prefixes
+// and potentially different error string capitalization.
+func normalizeCatErrors(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	for i, line := range lines {
+		colonIdx := bytes.Index(line, []byte(": "))
+		if colonIdx <= 0 {
+			continue
+		}
+		prefix := line[:colonIdx]
+		if bytes.ContainsAny(prefix, " \t") {
+			continue
+		}
+		rest := bytes.ToLower(line[colonIdx:])
+		lines[i] = append([]byte("cat"), rest...)
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// TestSIGPIPE verifies R5.4: cat exits 0 when stdout is closed by a
+// downstream consumer (SIGPIPE), not non-zero.
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// Create a large input so cat will still be writing when we close the pipe.
+	largeInput := bytes.Repeat([]byte("sigpipe test line\n"), 100000)
+
+	cmd := exec.Command(goBin)
+	cmd.Stdin = bytes.NewReader(largeInput)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Read a small amount then close stdout to trigger SIGPIPE.
+	buf := make([]byte, 64)
+	_, _ = stdout.Read(buf) // best-effort read, may partially fill
+	stdout.Close()
+
+	waitErr := cmd.Wait()
+	if waitErr == nil {
+		return // exit code 0, R5.4 satisfied
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		if exitErr.ExitCode() != 0 {
+			t.Errorf("R5.4: expected exit 0 on SIGPIPE, got %d", exitErr.ExitCode())
+		}
+	}
+}
+
+// writeTestFile writes content to a file, failing the test on error.
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writeTestFile %s: %v", path, err)
+	}
+}
