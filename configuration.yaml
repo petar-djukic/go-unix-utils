@@ -34,15 +34,28 @@ project:
         - "05.4"
         - "06.0"
         - "06.1"
-        - "15.0"
+        - "07.0"
+        - "07.1"
+        - "08.0"
+        - "08.1"
+        - "09.0"
+        - "09.1"
+        - "10.0"
+        - "10.1"
+        - "11.0"
+        - "11.1"
+        - "12.0"
+        - "12.1"
+        - "13.0"
+        - "14.0"
         - "15.0"
 generation:
     prefix: generation-
-    cycles: 500
+    cycles: 100
 cobbler:
     dir: .cobbler/
     max_stitch_issues_per_cycle: 1
-    max_measure_issues: 4
+    max_measure_issues: 1
     measure_prompt: docs/prompts/measure.yaml
     stitch_prompt: docs/prompts/stitch.yaml
     planning_constitution: docs/constitutions/planning.yaml
