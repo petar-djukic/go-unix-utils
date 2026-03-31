@@ -28,12 +28,13 @@ const (
 
 // ptxOptions holds parsed flag state.
 type ptxOptions struct {
-	width      int    // R2.1: output line width
-	gapSize    int    // R2.1: minimum gap between columns
-	ignoreCase bool   // R2.2: fold case for sorting
-	wordRegexp string // R3.1: regexp defining words
-	autoRef    bool   // R4.1: automatic references (filename:linenum)
-	references bool   // R4.2: first field is reference
+	width          int    // R2.1: output line width
+	gapSize        int    // R2.1: minimum gap between columns
+	ignoreCase     bool   // R2.2: fold case for sorting
+	wordRegexp     string // R3.1: regexp defining words
+	sentenceRegexp string // -S: sentence-end regex
+	autoRef        bool   // R4.1: automatic references (filename:linenum)
+	references     bool   // R4.2: first field is reference
 }
 
 // inputLine holds a line of input with source metadata.
@@ -77,8 +78,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err != nil {
 		return 1
 	}
-	wordRE, err := compileWordRegexp(opts.wordRegexp)
+	wordRE, err := compileWordRegexp(opts)
 	if err != nil {
+		fmt.Fprintf(stderr, "ptx: %v\n", err)
+		return 1
+	}
+	if err := validateSentenceRegexp(opts.sentenceRegexp); err != nil {
 		fmt.Fprintf(stderr, "ptx: %v\n", err)
 		return 1
 	}
@@ -87,16 +92,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return writeOutput(entries, opts, stdout, stderr)
 }
 
-// compileWordRegexp compiles the -W pattern if provided.
-func compileWordRegexp(pattern string) (*regexp.Regexp, error) {
-	if pattern == "" {
+// compileWordRegexp compiles the -W pattern, with case-insensitive flag if -f.
+func compileWordRegexp(opts ptxOptions) (*regexp.Regexp, error) {
+	if opts.wordRegexp == "" {
 		return nil, nil
+	}
+	pattern := opts.wordRegexp
+	if opts.ignoreCase {
+		pattern = "(?i)" + pattern
 	}
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid regexp: %w", err)
 	}
 	return re, nil
+}
+
+// validateSentenceRegexp validates the -S pattern if provided.
+func validateSentenceRegexp(pattern string) error {
+	if pattern == "" {
+		return nil
+	}
+	_, err := regexp.Compile(pattern)
+	if err != nil {
+		return fmt.Errorf("invalid regexp: %w", err)
+	}
+	return nil
 }
 
 // --- Flag Parsing ---
@@ -164,6 +185,9 @@ func applyLongValue(opts *ptxOptions, name, val string, i int) (int, error) {
 	case "--word-regexp":
 		opts.wordRegexp = val
 		return i, nil
+	case "--sentence-regexp":
+		opts.sentenceRegexp = val
+		return i, nil
 	default:
 		return i, fmt.Errorf("unrecognized option '%s'", name)
 	}
@@ -197,6 +221,8 @@ func parseShortFlags(opts *ptxOptions, args []string, i int) (int, error) {
 			return parseShortInt(chars[j+1:], args, i, &opts.gapSize)
 		case 'W':
 			return parseShortString(chars[j+1:], args, i, &opts.wordRegexp)
+		case 'S':
+			return parseShortString(chars[j+1:], args, i, &opts.sentenceRegexp)
 		default:
 			return i, fmt.Errorf("invalid option -- '%c'", chars[j])
 		}
@@ -302,12 +328,20 @@ func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
 
 // --- Index Building ---
 
-// buildIndex creates index entries for every word in every line.
-// R1.1: each significant word appears as a keyword in context.
+// buildIndex creates KWIC entries. With -r, lines stay separate;
+// otherwise all input is concatenated into one text.
 func buildIndex(lines []inputLine, opts ptxOptions, wordRE *regexp.Regexp) []indexEntry {
+	if opts.references {
+		return buildIndexPerLine(lines, opts, wordRE)
+	}
+	return buildIndexConcat(lines, opts, wordRE)
+}
+
+// buildIndexPerLine builds entries per line (used with -r).
+func buildIndexPerLine(lines []inputLine, _ ptxOptions, wordRE *regexp.Regexp) []indexEntry {
 	var entries []indexEntry
 	for _, line := range lines {
-		text, ref := lineTextAndRef(line, opts)
+		text, ref := extractReference(line.text)
 		words := extractWordsFrom(text, wordRE)
 		for _, w := range words {
 			entries = append(entries, indexEntry{
@@ -321,15 +355,66 @@ func buildIndex(lines []inputLine, opts ptxOptions, wordRE *regexp.Regexp) []ind
 	return entries
 }
 
-// lineTextAndRef extracts the indexable text and reference for a line.
-func lineTextAndRef(line inputLine, opts ptxOptions) (string, string) {
-	if opts.references {
-		return extractReference(line.text)
+// buildIndexConcat concatenates all input and builds entries.
+func buildIndexConcat(lines []inputLine, opts ptxOptions, wordRE *regexp.Regexp) []indexEntry {
+	texts, refs := prepareInput(lines, opts)
+	fullText := strings.Join(texts, " ")
+	offsets := buildOffsets(texts)
+	words := extractWordsFrom(fullText, wordRE)
+	return makeEntries(fullText, words, offsets, refs)
+}
+
+// prepareInput extracts indexable text and reference for each line.
+func prepareInput(lines []inputLine, opts ptxOptions) ([]string, []string) {
+	texts := make([]string, len(lines))
+	refs := make([]string, len(lines))
+	for i, line := range lines {
+		texts[i] = line.text
+		if opts.autoRef {
+			refs[i] = formatAutoRef(line.filename, line.lineNum)
+		}
 	}
-	if opts.autoRef {
-		return line.text, formatAutoRef(line.filename, line.lineNum)
+	return texts, refs
+}
+
+// buildOffsets computes the starting byte offset of each line in joined text.
+func buildOffsets(texts []string) []int {
+	offsets := make([]int, len(texts))
+	pos := 0
+	for i, t := range texts {
+		offsets[i] = pos
+		pos += len(t) + 1 // +1 for joining space
 	}
-	return line.text, ""
+	return offsets
+}
+
+// makeEntries creates index entries from words in the full text.
+func makeEntries(fullText string, words []wordPos, offsets []int, refs []string) []indexEntry {
+	entries := make([]indexEntry, 0, len(words))
+	for _, w := range words {
+		entries = append(entries, indexEntry{
+			left:    strings.TrimRight(fullText[:w.start], " \t"),
+			keyword: w.word,
+			right:   fullText[w.end:],
+			ref:     findRef(w.start, offsets, refs),
+		})
+	}
+	return entries
+}
+
+// findRef determines the reference for a word at the given byte offset.
+func findRef(offset int, offsets []int, refs []string) string {
+	lineIdx := 0
+	for i := len(offsets) - 1; i >= 0; i-- {
+		if offset >= offsets[i] {
+			lineIdx = i
+			break
+		}
+	}
+	if lineIdx < len(refs) {
+		return refs[lineIdx]
+	}
+	return ""
 }
 
 // extractReference splits the first field as a reference (R4.2).
@@ -343,12 +428,12 @@ func extractReference(text string) (string, string) {
 	return rest, ref
 }
 
-// formatAutoRef produces a filename:linenum reference (R4.1).
+// formatAutoRef produces a :linenum: or filename:linenum: reference (R4.1).
 func formatAutoRef(filename string, lineNum int) string {
 	if filename == "" {
-		return fmt.Sprintf("%d", lineNum)
+		return fmt.Sprintf(":%d:", lineNum)
 	}
-	return fmt.Sprintf("%s:%d", filename, lineNum)
+	return fmt.Sprintf("%s:%d:", filename, lineNum)
 }
 
 // --- Word Extraction ---
@@ -446,23 +531,24 @@ func formatEntry(e indexEntry, opts ptxOptions, maxRef int) string {
 
 // formatEntryPlain formats an entry without references.
 func formatEntryPlain(e indexEntry, opts ptxOptions) string {
-	halfWidth := (opts.width - opts.gapSize) / 2
+	halfWidth := opts.width / 2
 	rightWidth := opts.width - halfWidth - opts.gapSize
 	left := truncateLeft(e.left, halfWidth)
 	right := truncateRight(e.keyword+e.right, rightWidth)
 	return fmt.Sprintf("%*s%*s%s", halfWidth, left, opts.gapSize, "", right)
 }
 
-// formatEntryWithRef formats an entry with a right-justified reference.
+// formatEntryWithRef formats an entry with a left-justified reference.
 func formatEntryWithRef(e indexEntry, opts ptxOptions, maxRef int) string {
-	refCol := maxRef + opts.gapSize
-	contentWidth := opts.width - refCol
-	halfWidth := (contentWidth - opts.gapSize) / 2
-	rightWidth := contentWidth - halfWidth - opts.gapSize
-	left := truncateLeft(e.left, halfWidth)
+	halfWidth := opts.width / 2
+	if opts.autoRef {
+		halfWidth = (opts.width - 2) / 2
+	}
+	remaining := halfWidth - maxRef
+	rightWidth := opts.width - halfWidth - opts.gapSize
+	left := truncateLeft(e.left, remaining)
 	right := truncateRight(e.keyword+e.right, rightWidth)
-	content := fmt.Sprintf("%*s%*s%-*s", halfWidth, left, opts.gapSize, "", rightWidth, right)
-	return fmt.Sprintf("%s%*s", content, refCol, e.ref)
+	return fmt.Sprintf("%-*s%*s%*s%s", maxRef, e.ref, remaining, left, opts.gapSize, "", right)
 }
 
 // truncateLeft keeps the rightmost maxLen characters of s.
