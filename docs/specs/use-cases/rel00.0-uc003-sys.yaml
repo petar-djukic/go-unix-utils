@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD revision (prd002-sys.yaml) and wants to verify that
+  The operator has completed the PRD revision (srd002-sys.yaml) and wants to verify that
   pkg/sys satisfies its requirements via unit tests.
 
 flow:
@@ -35,9 +35,9 @@ flow:
       F2-F3 (signal handling has no shared state with terminal or stat APIs).
 
 touchpoints:
-  - T1: "pkg/sys — TerminalWidth, IsTerminal, InstallSIGPIPEHandler (prd002-sys R1)"
-  - T2: "pkg/sys — Stat, Lstat, FileInfo, fillFromStat (prd002-sys R2)"
-  - T3: "pkg/sys — OnTerminalResize (prd002-sys R3)"
+  - T1: "pkg/sys — TerminalWidth, IsTerminal, InstallSIGPIPEHandler (srd002-sys R1)"
+  - T2: "pkg/sys — Stat, Lstat, FileInfo, fillFromStat (srd002-sys R2)"
+  - T3: "pkg/sys — OnTerminalResize (srd002-sys R3)"
 
 success_criteria:
   - id: S1

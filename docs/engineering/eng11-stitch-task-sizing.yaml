@@ -9,7 +9,7 @@ introduction: |
 
   This guideline documents the relationship between task scope and stitch success, derives a
   practical sizing rule from observed outcomes across eng04-eng10, and gives concrete guidance
-  for the measure agent prompt and for human reviewers decomposing PRD requirements into tasks.
+  for the measure agent prompt and for human reviewers decomposing SRD requirements into tasks.
 
 sections:
   - title: "Observed task outcomes"
@@ -55,7 +55,7 @@ sections:
 
   - title: "Practical sizing guidance"
     content: |
-      When decomposing a PRD into stitch tasks, apply the following rules in order:
+      When decomposing a SRD into stitch tasks, apply the following rules in order:
 
       Rule 1: One new subsystem per task. If a set of requirements requires calling a new
       system API or integrating a new library, that is one task. Requirements that can be
@@ -73,7 +73,7 @@ sections:
       implementation increases task scope unnecessarily.
 
       Rule 4: For ls-style extended output (long format), treat each output mode as its own
-      task. The decomposition for prd008-ls R2 (long format) should be:
+      task. The decomposition for srd008-ls R2 (long format) should be:
         - Task A: Implement stat() calls and -l flag skeleton (plain output, no color)
         - Task B: Add --color support using pkg/format color API
         - Task C: Add -h human sizes using pkg/format HumanSize
@@ -98,13 +98,13 @@ sections:
       When the measure prompt is assembled, the agent should apply the following heuristic
       when scoping tasks:
 
-      For each unimplemented PRD section, identify the primary new interface it requires
+      For each unimplemented SRD section, identify the primary new interface it requires
       (a new syscall, a new pkg/ API, a new output format). That interface defines one task.
       Requirements that share the same interface belong in the same task. Requirements that
       each need a different interface belong in separate tasks, even if they are co-located
-      in the same PRD.
+      in the same SRD.
 
-      Example decomposition for prd008-ls:
+      Example decomposition for srd008-ls:
         - R1 (default listing), R3 (filter flags -a/-A/-d), R6 (exit codes), R7 (signals):
           all operate on os.ReadDir() output with flag variations → one task (4k3, succeeded)
         - R2 (long format): introduces os.Lstat() + stat fields + formatting → one task
@@ -150,7 +150,7 @@ sections:
 
       For the GH-29 run, record the following before generator:run:
         - mage stats:tokens output: file list, byte counts, total
-        - Hypothesis for minimal viable context: architecture + roadmap + PRDs + use cases +
+        - Hypothesis for minimal viable context: architecture + roadmap + SRDs + use cases +
           test suites is sufficient. VISION, SPECIFICATIONS, engineering guidelines, dependency-map,
           and sources can all be excluded.
 

@@ -1,0 +1,134 @@
+id: srd021-tac
+title: "cmd/tac: Concatenate and Print Files in Reverse"
+
+problem: |
+  tac is the reverse of cat: it prints lines of its input in reverse order. macOS does not
+  ship a native tac equivalent; scripts that use tac depend on the Homebrew GNU binary
+  (gtac, installed by coreutils). The Go implementation must match gtac byte-for-byte on
+  all flag and input combinations, including custom separators and binary input, verified
+  by differential testing via pkg/testutils.
+
+goals:
+  - G1: Read each file (or stdin) and write its records in reverse order, matching GNU tac behavior.
+  - G2: Support custom record separators via -s, enabling reversal on boundaries other than newlines.
+  - G3: Support -b to position the separator before the record rather than after it.
+  - G4: Support -r to interpret the separator as a regular expression.
+
+requirements:
+  R1:
+    title: Core reversal behavior
+    items:
+      - R1.1:
+          text: Must read the entire input into memory, split it into records on the separator (default newline), and write the records in reverse order to stdout.
+          weight: 1
+      - R1.2:
+          text: Must treat a trailing separator at the end of input as the terminator of the last record, not as a separator before an empty record. This matches gtac behavior where "a\nb\n" reversed produces "b\na\n" not "\nb\na".
+          weight: 1
+      - R1.3:
+          text: Must read from stdin when no file arguments are given, or when "-" appears as a filename.
+          weight: 1
+      - R1.4:
+          text: When multiple files are given, must process each file independently and write them in argument order (each file's records reversed, files not merged before reversal).
+          weight: 1
+
+  R2:
+    title: Separator options (-s, -b, -r)
+    items:
+      - R2.1:
+          text: -s SEP must use SEP as the record separator instead of newline. SEP may be any string.
+          weight: 1
+      - R2.2:
+          text: By default the separator follows each record. -b must place the separator before each record instead of after it.
+          weight: 1
+      - R2.3:
+          text: -r must interpret the -s SEP argument as a regular expression (Go regexp syntax). Each match of the pattern becomes a record boundary.
+          weight: 1
+      - R2.4:
+          text: When -s and -r are combined, the separator is a regex; records are the text between consecutive matches.
+          weight: 1
+
+  R3:
+    title: Exit codes and SIGPIPE
+    items:
+      - R3.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when any input file cannot be opened or read, printing the error to stderr. Processing continues for remaining files.
+          weight: 1
+      - R3.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R3.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1:
+          text: Differential tests must compare Go tac output against gtac byte-for-byte via pkg/testutils.RunDiffTests.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: single-file reversal, stdin reversal, multi-file reversal, -s with a custom separator, -b flag, and a file with no trailing newline."
+          weight: 1
+      - R4.3:
+          text: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
+          weight: 1
+
+non_goals:
+  - cmd/tac does not implement the block-level backward seek optimization from the C source; it buffers the full input in memory.
+  - cmd/tac does not support files too large to fit in memory; it accumulates all input before producing output.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "printf 'a\\nb\\nc\\n' | tac produces 'c\\nb\\na\\n', matching gtac byte-for-byte."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "printf 'a\\nb\\nc' | tac produces 'c\\nb\\na' (no trailing newline), matching gtac."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC3
+    criterion: "tac -s : on 'a:b:c:' produces 'c:b:a:', matching gtac -s :."
+    traces:
+      - R2.1
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC4
+    criterion: "tac -b -s : on ':a:b:c' produces ':c:b:a', matching gtac -b -s :."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gtac passes for all required test cases."
+    traces:
+      - R4.1
+  - id: AC6
+    criterion: "cmd/tac compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3

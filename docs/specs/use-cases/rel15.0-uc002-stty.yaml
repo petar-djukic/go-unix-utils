@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd105-stty.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd105-stty.yaml) and invokes do-work to produce
   a passing differential test for cmd/stty.
 
 flow:
@@ -22,7 +22,7 @@ flow:
       gstty with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/stty — stty prints and changes terminal settings (prd105-stty R1, R2, R3, R4, R5, R6, R7)"
+  - T1: "cmd/stty — stty prints and changes terminal settings (srd105-stty R1, R2, R3, R4, R5, R6, R7)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

@@ -1,0 +1,133 @@
+id: srd020-echo
+title: "cmd/echo: Display a Line of Text"
+
+problem: |
+  The macOS BSD echo differs from GNU echo in escape sequence handling and flag interpretation.
+  Scripts that rely on GNU echo's -e flag for escape sequences or the -n flag to suppress
+  the trailing newline behave differently on macOS. The Go implementation must match the
+  Homebrew GNU reference binary (gecho, installed by coreutils) byte-for-byte on all flag
+  and argument combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Output the given arguments to stdout, joined by spaces and followed by a newline, matching GNU echo behavior.
+  - G2: Support -n to suppress the trailing newline.
+  - G3: Support -e to interpret backslash escape sequences in the output string.
+  - G4: Support -E to disable escape interpretation (the default; provided for explicit override of -e).
+
+requirements:
+  R1:
+    title: Core output behavior
+    items:
+      - R1.1:
+          text: Must write each argument to stdout, separated by single space characters, followed by a newline character.
+          weight: 1
+      - R1.2:
+          text: When given no arguments, must write only a newline character to stdout.
+          weight: 1
+      - R1.3:
+          text: -n must suppress the trailing newline. Output ends at the last argument character with no newline appended.
+          weight: 1
+      - R1.4:
+          text: Arguments beginning with "-" must be passed through as literal text when they are not recognized flags (-n, -e, -E). Unrecognized flags are treated as positional arguments.
+          weight: 1
+
+  R2:
+    title: Escape sequence interpretation (-e, -E)
+    items:
+      - R2.1:
+          text: "-e must enable interpretation of the following backslash sequences: \\\\  (backslash), \\a (alert/BEL, 0x07), \\b (backspace, 0x08), \\c (suppress all further output including the trailing newline), \\e (escape, 0x1B), \\f (form feed, 0x0C), \\n (newline, 0x0A), \\r (carriage return, 0x0D), \\t (horizontal tab, 0x09), \\v (vertical tab, 0x0B), \\0NNN (octal value NNN, 1-3 digits), \\xHH (hex value HH, 1-2 digits)."
+          weight: 1
+      - R2.2:
+          text: "\\c with -e terminates output immediately: no further characters, no trailing newline, regardless of remaining arguments."
+          weight: 1
+      - R2.3:
+          text: -E must disable escape interpretation. When -E is active, backslash sequences are written literally. -E is the default; specifying -E explicitly is a no-op when -e has not been given.
+          weight: 1
+      - R2.4:
+          text: When both -e and -E are given, the last one on the command line takes precedence.
+          weight: 1
+
+  R3:
+    title: Exit codes and SIGPIPE
+    items:
+      - R3.1:
+          text: Must exit 0 on successful output.
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R3.3:
+          text: Must handle SIGPIPE gracefully (exit 0) when stdout is closed by a downstream consumer, using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1:
+          text: Differential tests must compare Go echo output against gecho byte-for-byte via pkg/testutils.RunDiffTests.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: no arguments, single argument, multiple arguments, -n flag, -e with each supported escape sequence, -E flag, combined -n -e, and arguments starting with '-'."
+          weight: 1
+      - R4.3:
+          text: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
+          weight: 1
+
+non_goals:
+  - cmd/echo does not implement --help or --version (GNU echo does not process these as flags either; they are printed as literals).
+  - cmd/echo does not implement XSI-compliant echo behavior (no -n suppression of escape warning).
+  - cmd/echo does not read from stdin.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "echo hello world produces 'hello world\\n', matching gecho hello world byte-for-byte."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "echo -n hello produces 'hello' with no trailing newline, matching gecho -n hello."
+    traces:
+      - R1.3
+      - R1.4
+      - R4.2
+  - id: AC3
+    criterion: "echo -e 'a\\tb\\nc' produces a tab between a and b and a newline between b and c, matching gecho -e."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC4
+    criterion: "echo -e 'before\\cafter' produces 'before' only with no trailing newline, matching gecho -e."
+    traces:
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gecho passes for all flag combinations on the required test cases."
+    traces:
+      - R4.1
+  - id: AC6
+    criterion: "cmd/echo compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

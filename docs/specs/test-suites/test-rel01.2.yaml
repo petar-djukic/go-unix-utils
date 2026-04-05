@@ -4,19 +4,19 @@ release: rel01.2
 
 traces:
   - rel01.2-uc001-sponge
-  - prd007-sponge R1
-  - prd007-sponge R2
-  - prd007-sponge R3
-  - prd007-sponge R4
-  - prd007-sponge R5
-  - prd007-sponge R6
+  - srd007-sponge R1
+  - srd007-sponge R2
+  - srd007-sponge R3
+  - srd007-sponge R4
+  - srd007-sponge R5
+  - srd007-sponge R6
 
 preconditions:
   - ./bin/sponge exists (built via mage build).
   - Reference binary sponge is installed via Homebrew (moreutils) and on PATH.
   - Tests are run via go test ./cmd/sponge/... which invokes RunDiffTests from pkg/testutils.
   - All tests use LC_ALL=C to eliminate locale-dependent divergence.
-  - "sponge: each test creates an isolated temp directory. Comparison is on output file content (prd001-testutils R5) for tests with an output filename. Passthrough mode tests compare stdout byte-for-byte."
+  - "sponge: each test creates an isolated temp directory. Comparison is on output file content (srd001-testutils R5) for tests with an output filename. Passthrough mode tests compare stdout byte-for-byte."
 
 test_cases:
   - name: sponge_small_stdin_to_file
@@ -31,9 +31,9 @@ test_cases:
       stdout_structure: 'expected file outfile.txt contains "100 lines, 1\n through 100\n"'
       stderr: ""
     traces:
-      - prd007-sponge R1.1
-      - prd007-sponge R1.2
-      - prd007-sponge R2.1
+      - srd007-sponge R1.1
+      - srd007-sponge R1.2
+      - srd007-sponge R2.1
 
   - name: sponge_soak_before_write
     description: 'Same input and output file (cat file | sponge file). Output must equal input, proving sponge did not truncate before reading. Setup: data.txt contains "line1\nline2\nline3\n", Pipeline: cat data.txt | sponge data.txt'
@@ -47,8 +47,8 @@ test_cases:
       stdout_structure: 'expected file data.txt contains "line1\nline2\nline3\n"'
       stderr: ""
     traces:
-      - prd007-sponge R1.1
-      - prd007-sponge R2.5
+      - srd007-sponge R1.1
+      - srd007-sponge R2.5
 
   - name: sponge_passthrough_stdout
     description: No output filename; stdin content appears on stdout.
@@ -62,8 +62,8 @@ test_cases:
       stdout: "hello world\n"
       stderr: ""
     traces:
-      - prd007-sponge R4.1
-      - prd007-sponge R4.3
+      - srd007-sponge R4.1
+      - srd007-sponge R4.3
 
   - name: sponge_append_mode
     description: '-a flag prepends original file content before stdin content. Setup: existing.txt contains "original line\n"'
@@ -77,8 +77,8 @@ test_cases:
       stdout_structure: 'expected file existing.txt contains "original line\nappended line\n"'
       stderr: ""
     traces:
-      - prd007-sponge R3.1
-      - prd007-sponge R3.3
+      - srd007-sponge R3.1
+      - srd007-sponge R3.3
 
   - name: sponge_append_mode_no_existing_file
     description: '-a with a non-existent output file behaves as default mode (creates new file). Setup: newfile.txt does not exist'
@@ -92,7 +92,7 @@ test_cases:
       stdout_structure: 'expected file newfile.txt contains "new content\n"'
       stderr: ""
     traces:
-      - prd007-sponge R3.2
+      - srd007-sponge R3.2
 
   - name: sponge_large_stdin
     description: Input >= 1 MB forces temp-file spill; output file content must match.
@@ -106,8 +106,8 @@ test_cases:
       stdout_structure: 'expected file large_out.txt contains "identical to stdin content"'
       stderr: ""
     traces:
-      - prd007-sponge R1.3
-      - prd007-sponge R1.4
+      - srd007-sponge R1.3
+      - srd007-sponge R1.4
 
   - name: sponge_output_file_exists_mode
     description: 'Existing file has mode 0640; after sponge, file mode is preserved. Setup: protected.txt exists with mode 0640 and contains "old content\n"'
@@ -121,7 +121,7 @@ test_cases:
       stdout_structure: 'expected file protected.txt contains "new content\n" with mode 0640'
       stderr: ""
     traces:
-      - prd007-sponge R2.3
+      - srd007-sponge R2.3
 
   - name: sponge_empty_stdin
     description: Zero bytes of stdin; output file created with zero bytes.
@@ -135,5 +135,5 @@ test_cases:
       stdout_structure: 'expected file empty_out.txt contains ""'
       stderr: ""
     traces:
-      - prd007-sponge R1.1
-      - prd007-sponge R2.1
+      - srd007-sponge R1.1
+      - srd007-sponge R2.1

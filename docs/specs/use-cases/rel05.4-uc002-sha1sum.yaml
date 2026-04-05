@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd031-sha1sum.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd031-sha1sum.yaml) and invokes do-work to produce
   a passing differential test for cmd/sha1sum.
 
 flow:
@@ -31,7 +31,7 @@ flow:
       (binary must be built).
 
 touchpoints:
-  - T1: "cmd/sha1sum — SHA-1 digest computation, GNU format output, check mode, binary/tag flags (prd031-sha1sum R1, R2, R3)"
+  - T1: "cmd/sha1sum — SHA-1 digest computation, GNU format output, check mode, binary/tag flags (srd031-sha1sum R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

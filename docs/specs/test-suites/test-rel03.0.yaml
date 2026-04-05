@@ -4,12 +4,12 @@ release: rel03.0
 
 traces:
   - rel03.0-uc001-wc
-  - prd005-wc R1
-  - prd005-wc R2
-  - prd005-wc R3
-  - prd005-wc R4
-  - prd005-wc R5
-  - prd005-wc R6
+  - srd005-wc R1
+  - srd005-wc R2
+  - srd005-wc R3
+  - srd005-wc R4
+  - srd005-wc R5
+  - srd005-wc R6
 
 preconditions:
   - ./bin/wc exists (built via mage build).
@@ -31,9 +31,9 @@ test_cases:
       stdout_structure: 'output contains "3"'
       stderr: ""
     traces:
-      - prd005-wc R1.1
-      - prd005-wc R1.2
-      - prd005-wc R1.3
+      - srd005-wc R1.1
+      - srd005-wc R1.2
+      - srd005-wc R1.3
 
   - name: wc_lines_only
     description: -l flag counts newline characters only.
@@ -47,8 +47,8 @@ test_cases:
       stdout_structure: 'output contains "3"'
       stderr: ""
     traces:
-      - prd005-wc R2.1
-      - prd005-wc R2.6
+      - srd005-wc R2.1
+      - srd005-wc R2.6
 
   - name: wc_words_only
     description: -w flag counts words (maximal sequences of non-whitespace).
@@ -62,8 +62,8 @@ test_cases:
       stdout_structure: 'output contains "5"'
       stderr: ""
     traces:
-      - prd005-wc R2.2
-      - prd005-wc R2.6
+      - srd005-wc R2.2
+      - srd005-wc R2.6
 
   - name: wc_bytes_only
     description: -c flag counts bytes.
@@ -77,7 +77,7 @@ test_cases:
       stdout_structure: 'output contains "4"'
       stderr: ""
     traces:
-      - prd005-wc R2.3
+      - srd005-wc R2.3
 
   - name: wc_chars_lc_c
     description: -m with LC_ALL=C; character count equals byte count under C locale.
@@ -91,9 +91,9 @@ test_cases:
       stdout_structure: 'output contains "6"'
       stderr: ""
     traces:
-      - prd005-wc R2.4
-      - prd005-wc R5.1
-      - prd005-wc R5.2
+      - srd005-wc R2.4
+      - srd005-wc R5.1
+      - srd005-wc R5.2
 
   - name: wc_max_line_length
     description: -L flag reports the longest line length with tab expansion.
@@ -107,7 +107,7 @@ test_cases:
       stdout_structure: 'output contains "22"'
       stderr: ""
     traces:
-      - prd005-wc R2.5
+      - srd005-wc R2.5
 
   - name: wc_combined_flags_order
     description: Combined flags (-l -w -c) produce counts in fixed order (lines, words, bytes).
@@ -121,7 +121,7 @@ test_cases:
       stdout_structure: counts in order lines, words, bytes regardless of flag order
       stderr: ""
     traces:
-      - prd005-wc R2.6
+      - srd005-wc R2.6
 
   - name: wc_multi_file_total
     description: 'Two files produce per-file lines and a total line with right-aligned columns. Setup: file1.txt contains "hello\nworld\n" (2 lines, 2 words, 12 bytes), file2.txt contains "foo bar baz\n" (1 line, 3 words, 12 bytes)'
@@ -135,9 +135,9 @@ test_cases:
       stdout_structure: three lines — file1 counts, file2 counts, total with label "total"; columns right-aligned
       stderr: ""
     traces:
-      - prd005-wc R1.4
-      - prd005-wc R3.1
-      - prd005-wc R3.2
+      - srd005-wc R1.4
+      - srd005-wc R3.1
+      - srd005-wc R3.2
 
   - name: wc_total_only
     description: '--total=only with two files prints only the total line. Setup: file1.txt contains "a\n", file2.txt contains "b\nc\n"'
@@ -151,7 +151,7 @@ test_cases:
       stdout_structure: one line with summed counts and label "total"
       stderr: ""
     traces:
-      - prd005-wc R3.3
+      - srd005-wc R3.3
 
   - name: wc_total_never
     description: '--total=never with two files prints no total line. Setup: file1.txt contains "x\n", file2.txt contains "y\n"'
@@ -165,7 +165,7 @@ test_cases:
       stdout_structure: two lines (one per file), no total line
       stderr: ""
     traces:
-      - prd005-wc R3.3
+      - srd005-wc R3.3
 
   - name: wc_stdin_dash
     description: '"-" as a filename argument reads from stdin.'
@@ -179,7 +179,7 @@ test_cases:
       stdout_structure: one line of counts (no filename label for stdin dash)
       stderr: ""
     traces:
-      - prd005-wc R4.1
+      - srd005-wc R4.1
 
   - name: wc_empty_stdin
     description: Zero bytes of stdin produces "0 0 0" for default flags.
@@ -193,7 +193,7 @@ test_cases:
       stdout_structure: 'output contains "0"'
       stderr: ""
     traces:
-      - prd005-wc R4.3
+      - srd005-wc R4.3
 
   - name: wc_missing_file
     description: 'Non-existent file prints error to stderr, exits 1, processes remaining files. Setup: real.txt contains "data\n", nonexistent.txt does not exist'
@@ -207,4 +207,4 @@ test_cases:
       stdout_structure: counts for real.txt and a total line are printed
       stderr_contains: "nonexistent.txt"
     traces:
-      - prd005-wc R6.2
+      - srd005-wc R6.2

@@ -1,0 +1,132 @@
+id: srd054-tr
+title: "cmd/tr: Translate or Delete Characters"
+
+problem: |
+  tr is a character-level stream transform used for case conversion, character deletion,
+  and whitespace normalization in Unix pipelines. The macOS BSD tr differs from GNU tr
+  in character class support, octal escape handling, and squeeze behavior with complement
+  mode. The Go implementation must match the Homebrew GNU reference binary (gtr, installed
+  by coreutils) byte-for-byte on all flag combinations, verified by differential testing
+  via pkg/testutils.
+
+goals:
+  - G1: Translate characters from SET1 to corresponding characters in SET2.
+  - G2: Delete characters in SET1 with -d, squeeze repeated characters with -s.
+  - G3: Support character classes, ranges, and escape sequences in SET specifications.
+  - G4: Verify functional parity against gtr via differential testing.
+
+requirements:
+  R1:
+    title: Character translation
+    items:
+      - R1.1:
+          text: "When two SETs are given without flags, must translate each character in SET1 to the corresponding character in SET2. If SET2 is shorter than SET1, the last character of SET2 is repeated to match SET1's length."
+          weight: 4
+      - R1.2:
+          text: Must read from stdin and write translated output to stdout. tr does not accept file arguments.
+          weight: 4
+      - R1.3:
+          text: "SET specifications must support: individual characters, ranges (a-z), octal escapes (\\NNN), backslash escapes (\\n, \\t, \\\\, \\a, \\b, \\f, \\r, \\v), and repetition (CHAR*N, CHAR*)."
+          weight: 4
+      - R1.4:
+          text: "SET specifications must support POSIX character classes: [:alnum:], [:alpha:], [:blank:], [:cntrl:], [:digit:], [:graph:], [:lower:], [:print:], [:punct:], [:space:], [:upper:], [:xdigit:]."
+          weight: 4
+
+  R2:
+    title: Delete and squeeze modes
+    items:
+      - R2.1:
+          text: "-d or --delete must delete all characters in SET1 from the input. SET2 is not used with -d alone."
+          weight: 4
+      - R2.2:
+          text: "-s or --squeeze-repeats must replace each run of repeated characters listed in the last SET with a single occurrence of that character."
+          weight: 4
+      - R2.3:
+          text: "When -d and -s are used together, must delete characters in SET1 and squeeze characters in SET2."
+          weight: 4
+      - R2.4:
+          text: "-c or -C or --complement must complement SET1, operating on all characters not in SET1."
+          weight: 4
+
+  R3:
+    title: Character class translation pairs
+    items:
+      - R3.1:
+          text: "[:lower:] to [:upper:] must translate lowercase to uppercase. [:upper:] to [:lower:] must translate uppercase to lowercase."
+          weight: 4
+      - R3.2:
+          text: "When translating (not deleting), SET2 must not be empty. If SET2 is omitted, must print a usage error."
+          weight: 4
+      - R3.3:
+          text: "Equivalence classes [=CHAR=] must be supported in SET2 for specifying characters that sort identically."
+          weight: 4
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1:
+          text: Must exit 0 when translation or deletion completes successfully.
+          weight: 4
+      - R4.2:
+          text: Must exit 1 on usage errors (missing SET, invalid class, conflicting flags).
+          weight: 4
+      - R4.3:
+          text: "Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must cover: basic translation, -d delete, -s squeeze, -c complement, -ds combined, character ranges, POSIX classes, case conversion, octal escapes, and error cases."
+          weight: 4
+
+non_goals:
+  - cmd/tr does not implement multibyte character support beyond single-byte encodings. All tests use LC_ALL=C.
+  - cmd/tr does not accept file arguments; it reads exclusively from stdin per the POSIX specification.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "echo 'hello' | go run ./cmd/tr 'a-z' 'A-Z' produces HELLO, matching gtr."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "echo 'hello' | go run ./cmd/tr -d 'l' produces heo, matching gtr."
+    traces:
+      - R2.1
+      - R2.3
+      - R4.3
+  - id: AC3
+    criterion: "echo 'aabbcc' | go run ./cmd/tr -s 'a-c' produces abc, matching gtr."
+    traces:
+      - R2.2
+      - R2.3
+      - R4.3
+  - id: AC4
+    criterion: "echo 'hello world' | go run ./cmd/tr -c 'a-z\\n' '*' replaces non-alpha characters with *, matching gtr."
+    traces:
+      - R2.4
+      - R4.3
+  - id: AC5
+    criterion: "echo 'hello 123' | go run ./cmd/tr -d '[:digit:]' produces 'hello ', matching gtr."
+    traces:
+      - R2.1
+      - R2.3
+      - R4.3
+  - id: AC6
+    criterion: "Differential test against gtr passes for all flag combinations listed in R4.3."
+    traces:
+      - R4.3
+  - id: AC7
+    criterion: "cmd/tr compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

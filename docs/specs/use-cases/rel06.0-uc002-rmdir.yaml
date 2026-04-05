@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd035-rmdir.yaml) and invokes do-work to
+  The operator has completed the PRD (srd035-rmdir.yaml) and invokes do-work to
   produce a passing differential test for cmd/rmdir.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       must be built). The harness compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/rmdir — single directory removal, parent removal (-p), non-empty directory error (prd035-rmdir R1, R2, R3)"
+  - T1: "cmd/rmdir — single directory removal, parent removal (-p), non-empty directory error (srd035-rmdir R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

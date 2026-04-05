@@ -6,18 +6,18 @@ traces:
   - rel07.0-uc001-sort
   - rel07.0-uc002-tr
   - rel07.0-uc003-tail
-  - prd053-sort R1
-  - prd053-sort R2
-  - prd053-sort R3
-  - prd053-sort R4
-  - prd054-tr R1
-  - prd054-tr R2
-  - prd054-tr R3
-  - prd054-tr R4
-  - prd055-tail R1
-  - prd055-tail R2
-  - prd055-tail R3
-  - prd055-tail R4
+  - srd053-sort R1
+  - srd053-sort R2
+  - srd053-sort R3
+  - srd053-sort R4
+  - srd054-tr R1
+  - srd054-tr R2
+  - srd054-tr R3
+  - srd054-tr R4
+  - srd055-tail R1
+  - srd055-tail R2
+  - srd055-tail R3
+  - srd055-tail R4
 
 preconditions:
   - ./bin/sort, ./bin/tr, and ./bin/tail exist (built via mage build).
@@ -42,7 +42,7 @@ test_cases:
       stdout: "apple\nbanana\ncherry\n"
       stderr: ""
     traces:
-      - prd053-sort R1.1
+      - srd053-sort R1.1
 
   # --- sort: numeric ---
   - name: sort_numeric
@@ -57,7 +57,7 @@ test_cases:
       stdout: "1\n2\n10\n20\n"
       stderr: ""
     traces:
-      - prd053-sort R2.1
+      - srd053-sort R2.1
 
   # --- sort: reverse ---
   - name: sort_reverse
@@ -72,7 +72,7 @@ test_cases:
       stdout: "cherry\nbanana\napple\n"
       stderr: ""
     traces:
-      - prd053-sort R1.4
+      - srd053-sort R1.4
 
   # --- sort: unique ---
   - name: sort_unique
@@ -87,7 +87,7 @@ test_cases:
       stdout: "apple\nbanana\ncherry\n"
       stderr: ""
     traces:
-      - prd053-sort R1.5
+      - srd053-sort R1.5
 
   # --- sort: key field with delimiter ---
   - name: sort_key_field_delimiter
@@ -102,8 +102,8 @@ test_cases:
       stdout: "b:apple\nc:banana\na:cherry\n"
       stderr: ""
     traces:
-      - prd053-sort R3.1
-      - prd053-sort R3.2
+      - srd053-sort R3.1
+      - srd053-sort R3.2
 
   # --- sort: check sorted ---
   - name: sort_check_sorted
@@ -118,7 +118,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd053-sort R4.2
+      - srd053-sort R4.2
 
   # --- sort: check unsorted ---
   - name: sort_check_unsorted
@@ -133,7 +133,7 @@ test_cases:
       stdout: ""
       stderr_contains: "disorder"
     traces:
-      - prd053-sort R4.2
+      - srd053-sort R4.2
 
   # --- tr: basic translation ---
   - name: tr_basic_translate
@@ -148,7 +148,7 @@ test_cases:
       stdout: "HELLO WORLD\n"
       stderr: ""
     traces:
-      - prd054-tr R1.1
+      - srd054-tr R1.1
 
   # --- tr: delete ---
   - name: tr_delete
@@ -163,7 +163,7 @@ test_cases:
       stdout: "heo\n"
       stderr: ""
     traces:
-      - prd054-tr R2.1
+      - srd054-tr R2.1
 
   # --- tr: squeeze ---
   - name: tr_squeeze
@@ -178,7 +178,7 @@ test_cases:
       stdout: "abc\n"
       stderr: ""
     traces:
-      - prd054-tr R2.2
+      - srd054-tr R2.2
 
   # --- tr: complement delete ---
   - name: tr_complement_delete
@@ -193,7 +193,7 @@ test_cases:
       stdout: "helloworld\n"
       stderr: ""
     traces:
-      - prd054-tr R2.4
+      - srd054-tr R2.4
 
   # --- tr: character class ---
   - name: tr_character_class_digit_delete
@@ -208,7 +208,7 @@ test_cases:
       stdout: "abcdef\n"
       stderr: ""
     traces:
-      - prd054-tr R1.4
+      - srd054-tr R1.4
 
   # --- tail: default 10 lines ---
   - name: tail_default_10_lines
@@ -223,7 +223,7 @@ test_cases:
       stdout: "3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n"
       stderr: ""
     traces:
-      - prd055-tail R1.1
+      - srd055-tail R1.1
 
   # --- tail: explicit line count ---
   - name: tail_n_5
@@ -238,7 +238,7 @@ test_cases:
       stdout: "6\n7\n8\n9\n10\n"
       stderr: ""
     traces:
-      - prd055-tail R1.2
+      - srd055-tail R1.2
 
   # --- tail: plus offset ---
   - name: tail_n_plus_5
@@ -253,7 +253,7 @@ test_cases:
       stdout: "5\n6\n7\n8\n9\n10\n"
       stderr: ""
     traces:
-      - prd055-tail R1.3
+      - srd055-tail R1.3
 
   # --- tail: byte count ---
   - name: tail_c_5
@@ -268,7 +268,7 @@ test_cases:
       stdout: "fghij"
       stderr: ""
     traces:
-      - prd055-tail R2.1
+      - srd055-tail R2.1
 
   # --- tail: multi-file headers ---
   - name: tail_multi_file_headers
@@ -283,7 +283,7 @@ test_cases:
       stdout_contains: "==> file1.txt <=="
       stderr: ""
     traces:
-      - prd055-tail R3.1
+      - srd055-tail R3.1
 
   # --- tail: missing file error ---
   - name: tail_missing_file
@@ -297,5 +297,5 @@ test_cases:
       exit_code: 1
       stderr_contains: "missing.txt"
     traces:
-      - prd055-tail R4.2
-      - prd055-tail R4.4
+      - srd055-tail R4.2
+      - srd055-tail R4.4

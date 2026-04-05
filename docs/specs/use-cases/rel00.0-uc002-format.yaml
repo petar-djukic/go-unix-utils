@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD revision (prd003-format.yaml) and wants to verify
+  The operator has completed the PRD revision (srd003-format.yaml) and wants to verify
   that pkg/format satisfies its requirements via unit tests.
 
 flow:
@@ -34,9 +34,9 @@ flow:
       Independent of F2-F3 (no shared state with column or color APIs).
 
 touchpoints:
-  - T1: "pkg/format — Columns, PadRight, PadLeft, displayWidth (prd003-format R1)"
-  - T2: "pkg/format — FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled (prd003-format R2)"
-  - T3: "pkg/format — HumanSize (prd003-format R3)"
+  - T1: "pkg/format — Columns, PadRight, PadLeft, displayWidth (srd003-format R1)"
+  - T2: "pkg/format — FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled (srd003-format R2)"
+  - T3: "pkg/format — HumanSize (srd003-format R3)"
   - T4: "pkg/sys — IsTerminal, called internally by ColorEnabled"
 
 success_criteria:

@@ -13,7 +13,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD revision (prd001-testutils.yaml) and wants to verify
+  The operator has completed the PRD revision (srd001-testutils.yaml) and wants to verify
   that pkg/testutils satisfies its requirements via unit tests.
 
 flow:
@@ -42,11 +42,11 @@ flow:
       LC_ALL=C default is applied. Both depend on RunDiffTests (F2) for execution.
 
 touchpoints:
-  - T1: "pkg/testutils — DiffTest, NormalizeFunc (prd001-testutils R1)"
-  - T2: "pkg/testutils — RunDiffTests, WorkDir, LC_ALL default (prd001-testutils R2)"
-  - T3: "pkg/testutils — comparison and divergence reporting (prd001-testutils R3)"
-  - T4: "pkg/testutils — TimestampNormalizer, ComposeNormalizers (prd001-testutils R4)"
-  - T5: "pkg/testutils — ExpectedFiles file-state comparison (prd001-testutils R5)"
+  - T1: "pkg/testutils — DiffTest, NormalizeFunc (srd001-testutils R1)"
+  - T2: "pkg/testutils — RunDiffTests, WorkDir, LC_ALL default (srd001-testutils R2)"
+  - T3: "pkg/testutils — comparison and divergence reporting (srd001-testutils R3)"
+  - T4: "pkg/testutils — TimestampNormalizer, ComposeNormalizers (srd001-testutils R4)"
+  - T5: "pkg/testutils — ExpectedFiles file-state comparison (srd001-testutils R5)"
 
 success_criteria:
   - id: S1

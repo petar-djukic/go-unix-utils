@@ -34,7 +34,7 @@ implementation_strategy: |
   that re-send the entire prompt context on each iteration.
 
   When writing a new cmd/ utility:
-  1. Read the PRD and existing pkg/ contracts.
+  1. Read the SRD and existing pkg/ contracts.
   2. Write main.go with all flag parsing, logic, and error handling in one pass.
   3. Write the test file with all test cases in one pass.
   4. Run `go vet` once to verify compilation.
@@ -230,7 +230,7 @@ project_structure: |
   enforced by Go's internal/ directory convention. This rule applies uniformly to
   packages under pkg/ and to top-level internal/ packages alike.
 
-  Align package structure to PRD component structure. Each major component maps
+  Align package structure to SRD component structure. Each major component maps
   to one package. Avoid package names like util, common, helpers. Name packages
   by domain: storage, auth, config.
 

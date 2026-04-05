@@ -5,14 +5,14 @@ release: rel02.2
 traces:
   - rel02.2-uc001-head
   - rel02.2-uc002-seq
-  - prd018-head R1
-  - prd018-head R2
-  - prd018-head R3
-  - prd018-head R4
-  - prd019-seq R1
-  - prd019-seq R2
-  - prd019-seq R3
-  - prd019-seq R4
+  - srd018-head R1
+  - srd018-head R2
+  - srd018-head R3
+  - srd018-head R4
+  - srd019-seq R1
+  - srd019-seq R2
+  - srd019-seq R3
+  - srd019-seq R4
 
 preconditions:
   - ./bin/head and ./bin/seq exist (built via mage build).
@@ -36,7 +36,7 @@ test_cases:
       stdout: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
       stderr: ""
     traces:
-      - prd018-head R1.1
+      - srd018-head R1.1
 
   # --- explicit line count ---
   - name: head_n_5
@@ -51,7 +51,7 @@ test_cases:
       stdout: "1\n2\n3\n4\n5\n"
       stderr: ""
     traces:
-      - prd018-head R1.2
+      - srd018-head R1.2
 
   # --- negative line count ---
   - name: head_n_negative_5
@@ -66,7 +66,7 @@ test_cases:
       stdout: "1\n2\n3\n4\n5\n"
       stderr: ""
     traces:
-      - prd018-head R1.3
+      - srd018-head R1.3
 
   # --- byte count ---
   - name: head_c_5
@@ -81,7 +81,7 @@ test_cases:
       stdout: "abcde"
       stderr: ""
     traces:
-      - prd018-head R2.1
+      - srd018-head R2.1
 
   # --- negative byte count ---
   - name: head_c_negative_100
@@ -96,7 +96,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd018-head R2.2
+      - srd018-head R2.2
 
   # --- negative byte count with sufficient input ---
   - name: head_c_negative_3
@@ -111,7 +111,7 @@ test_cases:
       stdout: "abcde"
       stderr: ""
     traces:
-      - prd018-head R2.2
+      - srd018-head R2.2
 
   # --- stdin with dash ---
   - name: head_stdin_dash
@@ -126,7 +126,7 @@ test_cases:
       stdout: "a\nb\n"
       stderr: ""
     traces:
-      - prd018-head R1.4
+      - srd018-head R1.4
 
   # --- multi-file headers ---
   - name: head_multi_file_headers
@@ -141,7 +141,7 @@ test_cases:
       stdout: "==> file1.txt <==\n1\n2\n\n==> file2.txt <==\n3\n4\n"
       stderr: ""
     traces:
-      - prd018-head R3.1
+      - srd018-head R3.1
 
   # --- single file no header ---
   - name: head_single_file_no_header
@@ -156,7 +156,7 @@ test_cases:
       stdout: "1\n2\n3\n"
       stderr: ""
     traces:
-      - prd018-head R3.2
+      - srd018-head R3.2
 
   # --- quiet mode ---
   - name: head_quiet_multi_file
@@ -171,7 +171,7 @@ test_cases:
       stdout: "1\n2\n"
       stderr: ""
     traces:
-      - prd018-head R3.3
+      - srd018-head R3.3
 
   # --- verbose mode ---
   - name: head_verbose_single_file
@@ -186,7 +186,7 @@ test_cases:
       stdout: "==> file.txt <==\ndata\n"
       stderr: ""
     traces:
-      - prd018-head R3.4
+      - srd018-head R3.4
 
   # --- non-existent file error ---
   - name: head_missing_file
@@ -201,8 +201,8 @@ test_cases:
       stdout_contains: "data"
       stderr_contains: "missing.txt"
     traces:
-      - prd018-head R3.5
-      - prd018-head R4.2
+      - srd018-head R3.5
+      - srd018-head R4.2
 
   # --- fewer lines than requested ---
   - name: head_fewer_lines_than_n
@@ -217,7 +217,7 @@ test_cases:
       stdout: "a\nb\n"
       stderr: ""
     traces:
-      - prd018-head R1.2
+      - srd018-head R1.2
 
   # --- empty stdin ---
   - name: head_empty_stdin
@@ -232,7 +232,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd018-head R1.1
+      - srd018-head R1.1
 
   # --- no trailing newline ---
   - name: head_no_trailing_newline
@@ -247,7 +247,7 @@ test_cases:
       stdout: "a\nb"
       stderr: ""
     traces:
-      - prd018-head R1.5
+      - srd018-head R1.5
 
   # --- byte count with suffix ---
   - name: head_c_1K
@@ -262,7 +262,7 @@ test_cases:
       stdout: "first 1024 bytes"
       stderr: ""
     traces:
-      - prd018-head R2.3
+      - srd018-head R2.3
 
   # --- seq: single argument ---
   - name: seq_single_arg
@@ -277,7 +277,7 @@ test_cases:
       stdout: "1\n2\n3\n4\n5\n"
       stderr: ""
     traces:
-      - prd019-seq R1.1
+      - srd019-seq R1.1
 
   # --- seq: two arguments ---
   - name: seq_two_args
@@ -292,7 +292,7 @@ test_cases:
       stdout: "2\n3\n4\n5\n"
       stderr: ""
     traces:
-      - prd019-seq R1.1
+      - srd019-seq R1.1
 
   # --- seq: three arguments ---
   - name: seq_three_args
@@ -307,8 +307,8 @@ test_cases:
       stdout: "1\n3\n5\n7\n9\n"
       stderr: ""
     traces:
-      - prd019-seq R1.1
-      - prd019-seq R1.2
+      - srd019-seq R1.1
+      - srd019-seq R1.2
 
   # --- seq: descending ---
   - name: seq_descending
@@ -323,7 +323,7 @@ test_cases:
       stdout: "5\n4\n3\n2\n1\n"
       stderr: ""
     traces:
-      - prd019-seq R1.2
+      - srd019-seq R1.2
 
   # --- seq: first equals last ---
   - name: seq_first_equals_last
@@ -338,7 +338,7 @@ test_cases:
       stdout: "3\n"
       stderr: ""
     traces:
-      - prd019-seq R1.3
+      - srd019-seq R1.3
 
   # --- seq: empty sequence ---
   - name: seq_empty_ascending
@@ -353,8 +353,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd019-seq R1.4
-      - prd019-seq R4.1
+      - srd019-seq R1.4
+      - srd019-seq R4.1
 
   # --- seq: floating point ---
   - name: seq_floating_point
@@ -369,8 +369,8 @@ test_cases:
       stdout: "0.1\n0.2\n0.3\n0.4\n0.5\n"
       stderr: ""
     traces:
-      - prd019-seq R1.1
-      - prd019-seq R2.3
+      - srd019-seq R1.1
+      - srd019-seq R2.3
 
   # --- seq: custom separator ---
   - name: seq_custom_separator
@@ -385,7 +385,7 @@ test_cases:
       stdout: "1, 2, 3\n"
       stderr: ""
     traces:
-      - prd019-seq R2.2
+      - srd019-seq R2.2
 
   # --- seq: equal width ---
   - name: seq_equal_width
@@ -400,7 +400,7 @@ test_cases:
       stdout: "08\n09\n10\n11\n12\n"
       stderr: ""
     traces:
-      - prd019-seq R3.3
+      - srd019-seq R3.3
 
   # --- seq: format string ---
   - name: seq_format_string
@@ -415,7 +415,7 @@ test_cases:
       stdout: "1.00\n2.00\n3.00\n"
       stderr: ""
     traces:
-      - prd019-seq R3.1
+      - srd019-seq R3.1
 
   # --- seq: zero step error ---
   - name: seq_zero_step_error
@@ -430,8 +430,8 @@ test_cases:
       stdout: ""
       stderr_contains: "zero"
     traces:
-      - prd019-seq R1.5
-      - prd019-seq R4.2
+      - srd019-seq R1.5
+      - srd019-seq R4.2
 
   # --- seq: invalid format error ---
   - name: seq_invalid_format_error
@@ -446,5 +446,5 @@ test_cases:
       stdout: ""
       stderr_contains: "format"
     traces:
-      - prd019-seq R3.2
-      - prd019-seq R4.2
+      - srd019-seq R3.2
+      - srd019-seq R4.2

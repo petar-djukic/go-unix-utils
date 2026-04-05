@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd080-base64.yaml) and invokes do-work to
+  The operator has completed the PRD (srd080-base64.yaml) and invokes do-work to
   produce a passing differential test for cmd/base64.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       gbase64 with the same inputs and compares stdout byte-for-byte.
 
 touchpoints:
-  - T1: "cmd/base64 — Base64 encoding/decoding, wrap control, garbage handling (prd080-base64 R1, R2, R3)"
+  - T1: "cmd/base64 — Base64 encoding/decoding, wrap control, garbage handling (srd080-base64 R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

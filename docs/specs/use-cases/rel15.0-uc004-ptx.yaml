@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd111-ptx.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd111-ptx.yaml) and invokes do-work to produce
   a passing differential test for cmd/ptx.
 
 flow:
@@ -22,7 +22,7 @@ flow:
       gptx with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/ptx — ptx produces KWIC index (prd111-ptx R1, R2, R3, R4, R5)"
+  - T1: "cmd/ptx — ptx produces KWIC index (srd111-ptx R1, R2, R3, R4, R5)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

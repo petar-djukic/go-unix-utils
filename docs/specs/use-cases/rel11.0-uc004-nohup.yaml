@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd095-nohup.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd095-nohup.yaml) and invokes do-work to produce
   a passing differential test for cmd/nohup.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       gnohup with the same inputs and compares exit codes and stderr messages.
 
 touchpoints:
-  - T1: "cmd/nohup — SIGHUP immunity, output redirection, command execution (prd095-nohup R1, R2)"
+  - T1: "cmd/nohup — SIGHUP immunity, output redirection, command execution (srd095-nohup R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

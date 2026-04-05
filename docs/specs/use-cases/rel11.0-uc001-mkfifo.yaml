@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd092-mkfifo.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd092-mkfifo.yaml) and invokes do-work to produce
   a passing differential test for cmd/mkfifo.
 
 flow:
@@ -23,7 +23,7 @@ flow:
       gmkfifo with the same inputs and compares exit codes and stderr.
 
 touchpoints:
-  - T1: "cmd/mkfifo — FIFO creation, mode specification (prd092-mkfifo R1, R2)"
+  - T1: "cmd/mkfifo — FIFO creation, mode specification (srd092-mkfifo R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

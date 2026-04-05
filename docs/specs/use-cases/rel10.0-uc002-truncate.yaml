@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd083-truncate.yaml) and invokes do-work to
+  The operator has completed the PRD (srd083-truncate.yaml) and invokes do-work to
   produce a passing differential test for cmd/truncate.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       and gtruncate with the same inputs and compares resulting file sizes.
 
 touchpoints:
-  - T1: "cmd/truncate — file size control, relative adjustment, reference file (prd083-truncate R1, R2, R3)"
+  - T1: "cmd/truncate — file size control, relative adjustment, reference file (srd083-truncate R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

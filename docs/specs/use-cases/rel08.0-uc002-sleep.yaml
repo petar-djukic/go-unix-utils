@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd061-sleep.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd061-sleep.yaml) and invokes do-work to produce
   a passing differential test for cmd/sleep.
 
 flow:
@@ -26,7 +26,7 @@ flow:
       compared; stdout and stderr are compared for error cases.
 
 touchpoints:
-  - T1: "cmd/sleep — duration parsing, suffix handling, multi-arg sum (prd061-sleep R1, R2, R3, R4)"
+  - T1: "cmd/sleep — duration parsing, suffix handling, multi-arg sum (srd061-sleep R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, exit code comparison"
 
 success_criteria:

@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd017-tee.yaml) and invokes do-work to
+  The operator has completed the PRD (srd017-tee.yaml) and invokes do-work to
   produce a passing differential test for cmd/tee.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       both stdout and output file contents byte-for-byte via file-state comparison.
 
 touchpoints:
-  - T1: "cmd/tee — stdin copy, file output, append mode, SIGINT suppression (prd017-tee R1, R2, R3)"
+  - T1: "cmd/tee — stdin copy, file output, append mode, SIGINT suppression (srd017-tee R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout and file comparison"
 
 success_criteria:

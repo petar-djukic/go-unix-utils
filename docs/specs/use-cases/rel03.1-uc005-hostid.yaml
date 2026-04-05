@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd048-hostid.yaml) and invokes do-work to
+  The operator has completed the PRD (srd048-hostid.yaml) and invokes do-work to
   produce a passing differential test for cmd/hostid.
 
 flow:
@@ -24,7 +24,7 @@ flow:
       byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/hostid — host identifier output (prd048-hostid R1, R2)"
+  - T1: "cmd/hostid — host identifier output (srd048-hostid R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler"
 

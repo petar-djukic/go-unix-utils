@@ -5,12 +5,12 @@ release: rel05.1
 traces:
   - rel05.1-uc001-expand
   - rel05.1-uc002-unexpand
-  - prd024-expand R1
-  - prd024-expand R2
-  - prd024-expand R3
-  - prd025-unexpand R1
-  - prd025-unexpand R2
-  - prd025-unexpand R3
+  - srd024-expand R1
+  - srd024-expand R2
+  - srd024-expand R3
+  - srd025-unexpand R1
+  - srd025-unexpand R2
+  - srd025-unexpand R3
 
 preconditions:
   - ./bin/expand and ./bin/unexpand exist (built via mage build).
@@ -35,7 +35,7 @@ test_cases:
       stdout: "a       b\n"
       stderr: ""
     traces:
-      - prd024-expand R1.1
+      - srd024-expand R1.1
 
   - name: expand_multiple_tabs
     description: Two consecutive tabs each advance to the next tab stop.
@@ -49,8 +49,8 @@ test_cases:
       stdout: "                x\n"
       stderr: ""
     traces:
-      - prd024-expand R1.1
-      - prd024-expand R1.2
+      - srd024-expand R1.1
+      - srd024-expand R1.2
 
   - name: expand_no_tabs
     description: Input with no tabs passes through unchanged.
@@ -64,7 +64,7 @@ test_cases:
       stdout: "hello world\n"
       stderr: ""
     traces:
-      - prd024-expand R1.3
+      - srd024-expand R1.3
 
   - name: expand_tab_interval_4
     description: -t 4 sets tab stops every 4 columns.
@@ -78,7 +78,7 @@ test_cases:
       stdout: "a   b\n"
       stderr: ""
     traces:
-      - prd024-expand R2.1
+      - srd024-expand R2.1
 
   - name: expand_tab_list
     description: "-t 1,5,9 sets absolute tab stops at columns 1, 5, and 9."
@@ -92,7 +92,7 @@ test_cases:
       stdout: "    a   b\n"
       stderr: ""
     traces:
-      - prd024-expand R2.2
+      - srd024-expand R2.2
 
   - name: expand_tab_past_last_stop
     description: A tab at or past the last explicit stop is replaced by one space.
@@ -106,7 +106,7 @@ test_cases:
       stdout: "12345678 9\n"
       stderr: ""
     traces:
-      - prd024-expand R2.2
+      - srd024-expand R2.2
 
   - name: expand_multiline
     description: Column counter resets to 1 at each newline.
@@ -120,7 +120,7 @@ test_cases:
       stdout: "        a\n        b\n"
       stderr: ""
     traces:
-      - prd024-expand R1.4
+      - srd024-expand R1.4
 
   # ---- unexpand ----
 
@@ -136,7 +136,7 @@ test_cases:
       stdout: "\ttext\n"
       stderr: ""
     traces:
-      - prd025-unexpand R1.1
+      - srd025-unexpand R1.1
 
   - name: unexpand_nonleading_spaces_unchanged
     description: Non-leading spaces are not converted in default mode.
@@ -150,7 +150,7 @@ test_cases:
       stdout: "a        b\n"
       stderr: ""
     traces:
-      - prd025-unexpand R1.2
+      - srd025-unexpand R1.2
 
   - name: unexpand_all_mode
     description: -a converts non-leading space runs at tab stop boundaries.
@@ -164,7 +164,7 @@ test_cases:
       stdout: "a\tb\n"
       stderr: ""
     traces:
-      - prd025-unexpand R2.1
+      - srd025-unexpand R2.1
 
   - name: unexpand_partial_spaces_preserved
     description: A run of spaces not reaching a tab stop is preserved.
@@ -178,7 +178,7 @@ test_cases:
       stdout: "   text\n"
       stderr: ""
     traces:
-      - prd025-unexpand R1.3
+      - srd025-unexpand R1.3
 
   - name: unexpand_custom_interval
     description: -t 4 converts leading 4-space runs to tabs.
@@ -192,7 +192,7 @@ test_cases:
       stdout: "\ttext\n"
       stderr: ""
     traces:
-      - prd025-unexpand R3.1
+      - srd025-unexpand R3.1
 
   - name: unexpand_no_tabs_possible
     description: Input with no runs of spaces at tab stops passes through unchanged.
@@ -206,4 +206,4 @@ test_cases:
       stdout: "a b c\n"
       stderr: ""
     traces:
-      - prd025-unexpand R1.3
+      - srd025-unexpand R1.3

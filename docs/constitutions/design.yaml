@@ -1,7 +1,7 @@
 # Design Constitution
 #
 # This constitution governs the design/architecting phase: creating VISION,
-# ARCHITECTURE, PRDs, use cases, test suites, and other documentation. It is
+# ARCHITECTURE, SRDs, use cases, test suites, and other documentation. It is
 # scaffolded into consuming projects so Claude knows how to write specs that
 # match the project's documentation standards.
 
@@ -10,13 +10,13 @@ articles:
     title: Specification-driven development
     rule: |
       Specifications are the source of truth. Code serves specifications, not
-      the other way around. No implementation code before the PRD and use case
+      the other way around. No implementation code before the SRD and use case
       exist. No implementation issue before a test suite exists for its use case.
 
   - id: D2
     title: YAML-first for structured docs
     rule: |
-      Use YAML for structured documents (VISION, ARCHITECTURE, PRDs, use cases,
+      Use YAML for structured documents (VISION, ARCHITECTURE, SRDs, use cases,
       test suites). Use markdown for prose-heavy guidelines and specifications
       summaries. YAML is machine-readable by design.
 
@@ -30,9 +30,9 @@ articles:
   - id: D4
     title: Traceability
     rule: |
-      Every PRD traces to VISION and ARCHITECTURE. Every use case traces to
-      PRDs (via touchpoints). Every test suite traces to use cases (via the
-      traces field). Code traces to PRDs via commit messages and comments.
+      Every SRD traces to VISION and ARCHITECTURE. Every use case traces to
+      SRDs (via touchpoints). Every test suite traces to use cases (via the
+      traces field). Code traces to SRDs via commit messages and comments.
 
   - id: D5
     title: Roadmap-driven releases
@@ -97,7 +97,7 @@ document_types:
     purpose: |
       States what the project is, why it exists, how success is measured, and
       what it is not. Orients stakeholders, new contributors, and downstream
-      docs (ARCHITECTURE, PRDs).
+      docs (ARCHITECTURE, SRDs).
 
   architecture:
     location: docs/ARCHITECTURE.yaml
@@ -116,11 +116,11 @@ document_types:
     purpose: |
       Describes how the system is built: components, interfaces, protocols,
       data flow, design decisions. Bridge between vision (what and why) and
-      PRDs (numbered requirements).
+      SRDs (numbered requirements).
 
-  prd:
-    location: "docs/specs/product-requirements/prd[NNN]-[feature-name].yaml"
-    format_rule: prd-format
+  srd:
+    location: "docs/specs/software-requirements/srd[NNN]-[feature-name].yaml"
+    format_rule: srd-format
     required_fields:
       - id
       - title
@@ -147,12 +147,12 @@ document_types:
           - R6.1:
               text: Must scan each input line for known timestamp patterns
               weight: 3
-      acceptance_criteria_ids: "AC1, AC2, AC3, ... (sequential within each PRD)"
+      acceptance_criteria_ids: "AC1, AC2, AC3, ... (sequential within each SRD)"
     acceptance_criteria_schema:
       description: |
         Each acceptance criterion is a structured object linking a checkable
         statement to the requirement items it validates. Every R-item in the
-        PRD must appear in at least one AC's traces list.
+        SRD must appear in at least one AC's traces list.
       fields:
         - id: "AC1, AC2, ... (sequential)"
         - criterion: "Checkable statement (the prose text)"
@@ -188,18 +188,18 @@ document_types:
     success_criteria_schema:
       description: |
         Each success criterion is a structured object linking a checkable
-        outcome to the PRD acceptance criteria it exercises. The traces field
-        references PRD AC IDs using the format prdNNN-name ACN.
+        outcome to the SRD acceptance criteria it exercises. The traces field
+        references SRD AC IDs using the format srdNNN-name ACN.
       fields:
         - id: "S1, S2, ... (sequential)"
         - criterion: "Checkable outcome statement"
-        - traces: "List of PRD AC IDs (e.g., [prd001-orchestrator-core AC1])"
+        - traces: "List of SRD AC IDs (e.g., [srd001-orchestrator-core AC1])"
       example: |
         success_criteria:
           - id: S1
             criterion: New(config) returns a non-nil *Orchestrator
             traces:
-              - prd001-orchestrator-core AC2
+              - srd001-orchestrator-core AC2
     purpose: |
       Describes a concrete usage of the architecture. One end-to-end path
       (tracer bullet) through the system. Leads to a proof-of-concept or demo.
@@ -216,8 +216,8 @@ document_types:
       - test_cases (list organized by use case sub-sections, each with name, inputs, expected outputs)
     traces_format: |
       The traces field in test_cases can reference three kinds of IDs:
-        - PRD R-item IDs: prdNNN-name RN.N (e.g., prd001-orchestrator-core R1.1)
-        - PRD AC IDs: prdNNN-name ACN (e.g., prd001-orchestrator-core AC1)
+        - SRD R-item IDs: srdNNN-name RN.N (e.g., srd001-orchestrator-core R1.1)
+        - SRD AC IDs: srdNNN-name ACN (e.g., srd001-orchestrator-core AC1)
         - UC S-item IDs: relNN.N-ucNNN-name SN (e.g., rel01.0-uc001-orchestrator-initialization S1)
     purpose: |
       Groups test cases for a full release. Each use case in the release appears
@@ -238,8 +238,28 @@ document_types:
       - references
     purpose: |
       Documents conventions, practices, and patterns above the code and
-      architecture. Not PRDs (no numbered requirements). Not architecture (no
+      architecture. Not SRDs (no numbered requirements). Not architecture (no
       component descriptions).
+
+  interface_specification:
+    location: "docs/interfaces/ifc-[kebab-case-name].yaml"
+    format_rule: interface-specification-format
+    required_fields:
+      - id (matches filename without extension)
+      - name (must match ARCHITECTURE.yaml interface entry)
+      - summary (one to three sentences)
+    optional_fields:
+      - "data_structures (list: name, description, fields as typed field list)"
+      - "operations (list: name, description, parameters, returns)"
+      - announcements (list of events the interface emits)
+      - references (list of SRD or use case IDs)
+    purpose: |
+      Standalone, language-agnostic interface contract. Uses typed field
+      lists for data structures and typed parameter/return lists for
+      operations. Pure YAML throughout, consistent with D2. Replaces
+      Go-specific signatures inlined in ARCHITECTURE.yaml with
+      machine-parseable definitions. See eng10-interface-specifications for
+      the full format and examples.
 
   specification:
     location: docs/SPECIFICATIONS.yaml
@@ -249,16 +269,16 @@ document_types:
       - title
       - overview (multi-line text)
       - "roadmap_summary (list: version, name, use_cases_done, use_cases_total, status)"
-      - "prd_index (list: id, title, summary, path)"
+      - "srd_index (list: id, title, summary, path)"
       - "use_case_index (list: id, title, release, status, test_suite, path)"
       - "test_suite_index (list: id, title, traces, test_case_count, path)"
-      - "prd_to_use_case_mapping (list: use_case, prd, why_required, coverage)"
+      - "srd_to_use_case_mapping (list: use_case, srd, why_required, coverage)"
       - coverage_gaps (list or multi-line text)
     optional_fields:
       - traceability_diagram (Mermaid as multi-line string)
       - references
     purpose: |
-      Human-readable summary tying together PRDs, use cases, test suites, and
+      Human-readable summary tying together SRDs, use cases, test suites, and
       roadmap into one navigable page. Does not duplicate content; summarizes
       and shows relationships. Regenerate when any artifact changes.
 
@@ -300,10 +320,11 @@ document_types:
       Do not estimate; read the files.
 
 naming_conventions:
-  prd: "prd[NNN]-[feature-name].yaml (e.g., prd001-cupboard-core.yaml)"
+  srd: "srd[NNN]-[feature-name].yaml (e.g., srd001-cupboard-core.yaml)"
   use_case: "rel[NN].[N]-uc[NNN]-[short-name].yaml (e.g., rel01.0-uc001-cupboard-lifecycle.yaml)"
   test_suite: "test-[use-case-id].yaml (e.g., test-rel01.0-uc001-cupboard-lifecycle.yaml)"
   engineering_guideline: "eng[NN]-[short-name].yaml (e.g., eng01-git-integration.yaml)"
+  interface_specification: "ifc-[kebab-case-name].yaml (e.g., ifc-generation-lifecycle.yaml)"
   architecture: "ARCHITECTURE.yaml"
   vision: "VISION.yaml"
   specification: "SPECIFICATIONS.yaml"
@@ -318,10 +339,10 @@ writing_guidelines:
 traceability_model:
   vision: Goals and boundaries
   architecture: Components and interfaces (implements vision)
-  prds: Numbered requirements (architecture points to PRDs for detail)
+  srds: Numbered requirements (architecture points to SRDs for detail)
   use_cases: Tracer bullets (exercise architecture components via touchpoints)
   test_suites: Validation (validate use case success criteria)
-  code: Implementation (traces to PRDs via commit messages)
+  code: Implementation (traces to SRDs via commit messages)
 
 completeness_checklists:
   vision:
@@ -337,13 +358,13 @@ completeness_checklists:
   architecture:
     - id matches project name
     - overview.summary states what the system does and core insight
-    - interfaces list data structures, operations, announcements; link to PRD for full spec
-    - components list each major component with responsibility; link to PRD or use case
+    - interfaces list data structures, operations, announcements; link to SRD for full spec
+    - components list each major component with responsibility; link to SRD or use case
     - design_decisions are numbered with decision statement and benefits
     - project_structure shows directory paths and roles
     - File saved as ARCHITECTURE.yaml in docs/
 
-  prd:
+  srd:
     - id matches filename without extension
     - problem states what we solve and why it matters
     - goals are numbered (G1, G2, ...) and measurable
@@ -353,14 +374,14 @@ completeness_checklists:
     - acceptance_criteria are structured objects with id, criterion, and traces
     - Every R-item appears in at least one AC's traces list
     - Interactive requirements (prompting, confirmation) specify exact prompt text, accepted input values, case sensitivity, retry behavior on invalid input, and default behavior when stdin is not a terminal
-    - File saved as prd[NNN]-[feature-name].yaml
+    - File saved as srd[NNN]-[feature-name].yaml
 
   use_case:
     - id matches filename without extension
     - flow steps are numbered (F1, F2, ...), end-to-end, map to real components
     - touchpoints are numbered (T1, T2, ...) and list interfaces, components, protocols
-    - touchpoints that cite PRDs must include R-group references (e.g., "prd030-md5sum R1, R2, R3"); bare PRD citations without R-groups break codereadiness computation
-    - success_criteria are structured objects with id, criterion, and traces to PRD AC IDs
+    - touchpoints that cite SRDs must include R-group references (e.g., "srd030-md5sum R1, R2, R3"); bare SRD citations without R-groups break codereadiness computation
+    - success_criteria are structured objects with id, criterion, and traces to SRD AC IDs
     - test_suite references a corresponding test suite ID
     - Test suite YAML exists and traces back to this use case
     - Use case added to appropriate release in road-map.yaml
@@ -368,12 +389,21 @@ completeness_checklists:
 
   test_suite:
     - id matches filename
-    - traces lists at least one use case or PRD requirement
+    - traces lists at least one use case or SRD requirement
     - preconditions describe shared starting state
     - Each test case has name, inputs, expected outputs
     - Inputs use real commands and data
     - Expected outputs are specific and checkable
     - File saved as test-[use-case-id].yaml
+
+  interface_specification:
+    - id matches filename without extension (ifc-[kebab-case-name])
+    - name matches the corresponding ARCHITECTURE.yaml interface entry
+    - summary describes the interface contract in one to three sentences
+    - data_structures use typed field lists (name, type, description, required)
+    - operations have name, description, typed parameters, and typed returns
+    - references list SRD or use case IDs the interface traces to
+    - File saved as ifc-[kebab-case-name].yaml in docs/interfaces/
 
 sections:
   - tag: articles
@@ -392,14 +422,15 @@ sections:
   - tag: document_types
     title: Document Types
     content: |
-      Seven document types are defined: vision, architecture, PRD, use case,
-      test suite, engineering guideline, and specification. Each has a canonical
-      location, format rule, required fields, and optional fields.
+      Eight document types are defined: vision, architecture, SRD, use case,
+      test suite, engineering guideline, interface specification, and
+      specification. Each has a canonical location, format rule, required
+      fields, and optional fields.
   - tag: naming_conventions
     title: Naming Conventions
     content: |
       File names follow strict patterns per document type (e.g.,
-      prd[NNN]-[feature].yaml, rel[NN].[N]-uc[NNN]-[name].yaml). Use lowercase
+      srd[NNN]-[feature].yaml, rel[NN].[N]-uc[NNN]-[name].yaml). Use lowercase
       kebab-case throughout.
   - tag: writing_guidelines
     title: Writing Guidelines
@@ -411,7 +442,7 @@ sections:
     title: Traceability Model
     content: |
       Every artifact traces through the chain: vision goals → architecture
-      components → PRD requirements → use case tracer bullets → test suite
+      components → SRD requirements → use case tracer bullets → test suite
       validation → code implementation.
   - tag: completeness_checklists
     title: Completeness Checklists

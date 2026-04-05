@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd078-sum.yaml) and invokes do-work to
+  The operator has completed the PRD (srd078-sum.yaml) and invokes do-work to
   produce a passing differential test for cmd/sum.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       (binary must be built).
 
 touchpoints:
-  - T1: "cmd/sum — BSD and System V checksum algorithms, block count output (prd078-sum R1, R2, R3)"
+  - T1: "cmd/sum — BSD and System V checksum algorithms, block count output (srd078-sum R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

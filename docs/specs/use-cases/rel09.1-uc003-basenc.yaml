@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd081-basenc.yaml) and invokes do-work to
+  The operator has completed the PRD (srd081-basenc.yaml) and invokes do-work to
   produce a passing differential test for cmd/basenc.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       gbasenc with the same inputs and compares stdout byte-for-byte.
 
 touchpoints:
-  - T1: "cmd/basenc — multi-alphabet encoding/decoding, wrap control, garbage handling (prd081-basenc R1, R2, R3)"
+  - T1: "cmd/basenc — multi-alphabet encoding/decoding, wrap control, garbage handling (srd081-basenc R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

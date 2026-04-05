@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd053-logname.yaml) and invokes do-work to
+  The operator has completed the PRD (srd053-logname.yaml) and invokes do-work to
   produce a passing differential test for cmd/logname.
 
 flow:
@@ -25,7 +25,7 @@ flow:
       byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/logname — login name output (prd053-logname R1, R2)"
+  - T1: "cmd/logname — login name output (srd053-logname R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

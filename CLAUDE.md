@@ -9,9 +9,9 @@ cmd/<name>/          One directory per utility. Contains main.go and <name>_test
 pkg/testutils/       Differential testing framework (DiffTest, RunDiffTests, BuildBinary).
 pkg/sys/             System calls: Stat, Lstat, terminal width, SIGPIPE handler.
 pkg/format/          Output formatting: HumanSize, color, column alignment.
-docs/specs/          PRDs, use cases, test suites (YAML). Source of truth for requirements.
+docs/specs/          SRDs, use cases, test suites (YAML). Source of truth for requirements.
 docs/constitutions/  Style guides and schemas for code and documentation.
-magefiles/           Build automation (mage). Do not modify unless working on prd011.
+magefiles/           Build automation (mage). Do not modify unless working on srd011.
 configuration.yaml   Orchestrator config. Do not modify during stitch tasks.
 ```
 

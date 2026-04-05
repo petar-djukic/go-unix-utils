@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd034-mkdir.yaml) and invokes do-work to
+  The operator has completed the PRD (srd034-mkdir.yaml) and invokes do-work to
   produce a passing differential test for cmd/mkdir.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       resulting filesystem state including permission bits.
 
 touchpoints:
-  - T1: "cmd/mkdir — single directory creation, parent creation (-p), permission mode (-m) (prd034-mkdir R1, R2, R3)"
+  - T1: "cmd/mkdir — single directory creation, parent creation (-p), permission mode (-m) (srd034-mkdir R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

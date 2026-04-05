@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd085-sync.yaml) and invokes do-work to
+  The operator has completed the PRD (srd085-sync.yaml) and invokes do-work to
   produce a passing differential test for cmd/sync.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       gsync with the same inputs and compares exit codes.
 
 touchpoints:
-  - T1: "cmd/sync — global sync, per-file fsync, fdatasync, filesystem sync (prd085-sync R1, R2)"
+  - T1: "cmd/sync — global sync, per-file fsync, fdatasync, filesystem sync (srd085-sync R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and exit code comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

@@ -56,29 +56,29 @@ articles:
   - id: P5
     title: Dependency ordering
     rule: |
-      Identify what should be built first and why. PRDs before use cases,
+      Identify what should be built first and why. SRDs before use cases,
       use cases before test suites, test suites before code, foundational code
       before features, libraries before CLI.
 
   - id: P6
     title: Requirement-anchored decomposition
     rule: |
-      Anchor each task to specific PRD requirements by ID (e.g., prd001 R1.1,
-      prd002 R2.3). Include the requirement ID(s) in the task title. Each PRD
+      Anchor each task to specific SRD requirements by ID (e.g., srd001 R1.1,
+      srd002 R2.3). Include the requirement ID(s) in the task title. Each SRD
       requirement maps to exactly one task unless the requirement exceeds the
       line budget, in which case split into implementation and test tasks that
       both reference the same requirement. Do not invent task boundaries that
       cross requirement boundaries. This makes decomposition deterministic:
-      given the same PRD and release, the same set of tasks should be proposed.
+      given the same SRD and release, the same set of tasks should be proposed.
 
   - id: P7
     title: File naming conventions
     rule: |
       Derive file names from the module or feature name established in the
-      PRD or architecture document. Use the existing project naming pattern
+      SRD or architecture document. Use the existing project naming pattern
       (snake_case for Go files, kebab-case for YAML documents). When creating
       a new package, use the name from ARCHITECTURE.yaml. Do not invent novel
-      file names. If the PRD names a component "crumb", the file is crumb.go,
+      file names. If the SRD names a component "crumb", the file is crumb.go,
       not item.go or entity.go. Go packages must name the primary source file
       after the primary exported type, not the package name.
       `testutils/testutils.go` is forbidden; if the primary type is
@@ -102,7 +102,7 @@ articles:
     rule: |
       Code tasks target 5-8 requirements, 5-8 acceptance criteria, and 3-5
       design decisions. Documentation tasks target 2-4 requirements and 3-5
-      acceptance criteria. Each PRD requirement maps to exactly one task
+      acceptance criteria. Each SRD requirement maps to exactly one task
       requirement. Do not inflate counts by splitting a single requirement
       into sub-bullets, and do not deflate counts by merging unrelated
       requirements. If a task falls outside these ranges, re-examine the
@@ -118,7 +118,7 @@ issue_structure:
     required_reading:
       required: true
       description: |
-        Files the agent must read before starting. List PRDs, ARCHITECTURE
+        Files the agent must read before starting. List SRDs, ARCHITECTURE
         sections, existing code, or upstream docs. This is mandatory for all
         issues.
 
@@ -153,7 +153,7 @@ issue_structure:
       format_rule:
         required: true
         description: |
-          The rule file that governs the output format (e.g., prd-format,
+          The rule file that governs the output format (e.g., srd-format,
           use-case-format, test-case-format, architecture-format,
           vision-format, specification-format, engineering-guideline-format).
 
@@ -161,7 +161,7 @@ issue_structure:
         required: false
         description: |
           List of sections the document must contain, per the format rule.
-          For PRD: Problem, Goals, Requirements, Non-Goals, Acceptance Criteria.
+          For SRD: Problem, Goals, Requirements, Non-Goals, Acceptance Criteria.
           For use case: Summary, Actor/trigger, Flow, Success criteria.
 
     deliverable_types:
@@ -170,9 +170,9 @@ issue_structure:
         format_rule: architecture-format
         when: Updating system overview, components, design decisions
 
-      - type: PRD
-        location: "docs/specs/product-requirements/prd[NNN]-[feature-name].yaml"
-        format_rule: prd-format
+      - type: SRD
+        location: "docs/specs/software-requirements/srd[NNN]-[feature-name].yaml"
+        format_rule: srd-format
         when: New or updated product requirements
 
       - type: Use case
@@ -193,7 +193,7 @@ issue_structure:
       - type: Specification
         location: docs/SPECIFICATIONS.md
         format_rule: specification-format
-        when: Summary of PRDs, use cases, test suites, roadmap
+        when: Summary of SRDs, use cases, test suites, roadmap
 
   yaml_quality:
     - Use ASCII dashes (--), not Unicode em dashes or en dashes.
@@ -201,21 +201,21 @@ issue_structure:
 
   code_issues:
     rules:
-      - No PRD-style Problem/Goals/Non-Goals sections in code issues
+      - No SRD-style Problem/Goals/Non-Goals sections in code issues
       - "Requirements focus on implementation: interfaces, operations, tests"
-      - Design decisions reference PRDs and architecture patterns
+      - Design decisions reference SRDs and architecture patterns
       - Acceptance criteria include tests passing and behavior verified
 
 example_documentation_issue: |
   deliverable_type: documentation
-  format_rule: prd-format
+  format_rule: srd-format
 
   required_reading:
     - docs/ARCHITECTURE.yaml (components section)
-    - docs/specs/product-requirements/prd001-cupboard-core.yaml
+    - docs/specs/software-requirements/srd001-cupboard-core.yaml
 
   files:
-    - path: docs/specs/product-requirements/prd-feature-name.yaml
+    - path: docs/specs/software-requirements/srd-feature-name.yaml
       action: create
 
   required_sections:
@@ -229,7 +229,7 @@ example_documentation_issue: |
     - id: AC1
       text: All required sections present
     - id: AC2
-      text: File saved as prd-feature-name.yaml
+      text: File saved as srd-feature-name.yaml
     - id: AC3
       text: Requirements numbered and specific
 
@@ -237,7 +237,7 @@ example_code_issue: |
   deliverable_type: code
 
   required_reading:
-    - docs/specs/product-requirements/prd003-crumbs-interface.yaml
+    - docs/specs/software-requirements/srd003-crumbs-interface.yaml
     - pkg/types/cupboard.go
 
   files:
@@ -253,7 +253,7 @@ example_code_issue: |
 
   requirements:
     - id: R1
-      text: Implement CrumbTable interface per prd003-crumbs-interface
+      text: Implement CrumbTable interface per srd003-crumbs-interface
     - id: R2
       text: Add, Get, Archive, Purge, Fetch operations
     - id: R3
@@ -261,9 +261,9 @@ example_code_issue: |
 
   design_decisions:
     - id: D1
-      text: Use table accessor pattern from prd001-cupboard-core
+      text: Use table accessor pattern from srd001-cupboard-core
     - id: D2
-      text: Filter as map[string]any per PRD
+      text: Filter as map[string]any per SRD
 
   acceptance_criteria:
     - id: AC1
@@ -271,7 +271,7 @@ example_code_issue: |
     - id: AC2
       text: Tests pass for each operation
     - id: AC3
-      text: Errors match PRD error types
+      text: Errors match SRD error types
 
 sections:
   - tag: articles
@@ -291,7 +291,7 @@ sections:
     title: Documentation Issue Example
     content: |
       A worked example shows a properly structured documentation issue for
-      writing a PRD, including required reading, output path, format rule, and
+      writing a SRD, including required reading, output path, format rule, and
       acceptance criteria.
   - tag: example_code_issue
     title: Code Issue Example

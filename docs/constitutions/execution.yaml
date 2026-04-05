@@ -8,16 +8,16 @@ articles:
   - id: E1
     title: Specification-first
     rule: |
-      Code must correspond to existing PRDs and architecture. Read the PRDs and
+      Code must correspond to existing SRDs and architecture. Read the SRDs and
       ARCHITECTURE sections listed in Required Reading before writing code. Do
       not invent interfaces, types, or patterns not described in those docs.
 
   - id: E2
     title: Traceability
     rule: |
-      Commit messages must mention which PRDs (or aspects) are implemented.
-      Example: "Implement X (prd-feature-name R6-R7)". Where useful (package or
-      top-of-file comments), list the implemented PRDs.
+      Commit messages must mention which SRDs (or aspects) are implemented.
+      Example: "Implement X (srd-feature-name R6-R7)". Where useful (package or
+      top-of-file comments), list the implemented SRDs.
 
   - id: E3
     title: No scope creep
@@ -43,7 +43,7 @@ articles:
   - id: E6
     title: Non-goals enforcement
     rule: |
-      Features listed in a PRD's non_goals must not be implemented. Do not
+      Features listed in a SRD's non_goals must not be implemented. Do not
       parse, accept, or act on flags, options, or behaviors that appear in
       non_goals. If a requirement references a non_goal feature, treat it as
       a specification error and skip the requirement with a TODO comment
@@ -137,7 +137,7 @@ coding_standards:
     tests/: Integration tests.
     magefiles/: Build tooling. Flat directory. One file per concern.
 
-    Align package structure to PRD component structure. Each major component
+    Align package structure to SRD component structure. Each major component
     maps to one package. Avoid package names like util, common, helpers.
 
   standard_packages:
@@ -168,23 +168,23 @@ coding_standards:
 
 traceability:
   before_implementing:
-    - Identify related PRDs, ARCHITECTURE, use cases, test suites, guidelines, VISION
+    - Identify related SRDs, ARCHITECTURE, use cases, test suites, guidelines, VISION
     - Read the relevant sections so behavior, data shapes, and contracts are clear
     - Implement so the code conforms to the requirements and design described
 
   commit_message: |
-    Must mention which PRDs (or aspects) are being implemented. Prefer explicit:
-    "Implement X (prd-feature-name, prd-component)" or "Add Y per prd-feature R12".
-    If only parts touched, say so: "Implement operation X (prd-feature R8, R13)".
+    Must mention which SRDs (or aspects) are being implemented. Prefer explicit:
+    "Implement X (srd-feature-name, srd-component)" or "Add Y per srd-feature R12".
+    If only parts touched, say so: "Implement operation X (srd-feature R8, R13)".
 
   code_comments: |
-    At the top of a file or package doc, list implemented PRDs and architecture
+    At the top of a file or package doc, list implemented SRDs and architecture
     sections. Do not repeat this in every function; use file- or package-level
     comments only.
 
   reference_paths:
     - "Architecture: docs/ARCHITECTURE.yaml"
-    - "PRDs: docs/specs/product-requirements/prd*.yaml"
+    - "SRDs: docs/specs/software-requirements/srd*.yaml"
     - "Use cases: docs/specs/use-cases/rel*-uc*-*.yaml"
     - "Test suites (YAML specs): docs/specs/test-suites/test-rel-*.yaml"
     - "Release tests (Go): tests/rel-*/rel-*_test.go"
@@ -268,8 +268,8 @@ sections:
   - tag: traceability
     title: Traceability
     content: |
-      Before implementing, read the specified PRDs and architecture sections.
-      Commit messages must cite PRDs. Add a PRD list to file or package comments
+      Before implementing, read the specified SRDs and architecture sections.
+      Commit messages must cite SRDs. Add a SRD list to file or package comments
       where useful.
   - tag: session_completion
     title: Session Completion

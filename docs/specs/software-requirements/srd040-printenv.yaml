@@ -1,0 +1,110 @@
+id: srd040-printenv
+title: "cmd/printenv: Print Environment Variables"
+
+problem: |
+  Scripts and debugging sessions need a simple way to inspect specific environment variables
+  or dump the entire environment. While env overlaps in functionality, printenv provides a
+  cleaner interface for querying named variables and reporting which ones are missing via its
+  exit code. The macOS BSD printenv lacks the -0 NUL-delimited flag available in GNU printenv.
+  The Go implementation must match the Homebrew GNU reference binary (gprintenv, installed by
+  coreutils) byte-for-byte on all flag combinations and edge cases, verified by differential
+  testing via pkg/testutils.
+
+goals:
+  - G1: Print all environment variables when invoked with no arguments.
+  - G2: Print only the values of specified variables when one or more VARIABLE arguments are given.
+  - G3: Report success or failure via exit code depending on whether all requested variables exist.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1:
+          text: When invoked with no arguments, must print every environment variable on its own line in NAME=VALUE format and exit 0.
+          weight: 1
+      - R1.2:
+          text: When invoked with one or more VARIABLE arguments, must print only the value (not the name or '=') of each named variable, one per line, in the order given.
+          weight: 1
+      - R1.3:
+          text: If a named VARIABLE is not set in the environment, must produce no output for that variable and must not print an error message.
+          weight: 1
+
+  R2:
+    title: Output formatting and exit codes
+    items:
+      - R2.1:
+          text: -0 or --null must terminate each output line with a NUL byte (0x00) instead of a newline.
+          weight: 1
+      - R2.2:
+          text: Must exit 0 if all requested VARIABLE arguments are found in the environment.
+          weight: 1
+      - R2.3:
+          text: Must exit 1 if any requested VARIABLE argument is not found in the environment.
+          weight: 1
+      - R2.4:
+          text: When no VARIABLE arguments are given, must always exit 0 (the dump of all variables cannot fail).
+          weight: 1
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gprintenv) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: no-argument full dump, single existing variable, multiple existing variables, missing variable (exit 1), mix of existing and missing variables, and -0 NUL-delimited output."
+          weight: 1
+      - R3.3:
+          text: Tests must verify that no error message is printed to stderr for missing variables.
+          weight: 1
+
+non_goals:
+  - cmd/printenv does not support setting or modifying variables; it is read-only.
+  - cmd/printenv does not accept variable names from stdin; all input comes from command-line arguments.
+  - cmd/printenv does not print the NAME= prefix when querying specific variables; only the value is printed.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/printenv with no arguments produces the same output as gprintenv."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC2
+    criterion: "go run ./cmd/printenv HOME produces the value of HOME followed by a newline, matching gprintenv HOME."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC3
+    criterion: "go run ./cmd/printenv NONEXISTENT exits 1 with no output, matching gprintenv."
+    traces:
+      - R1.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+  - id: AC4
+    criterion: "go run ./cmd/printenv -0 HOME terminates output with a NUL byte instead of a newline, matching gprintenv -0 HOME."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC5
+    criterion: "Differential test against gprintenv passes for full dump, single variable, multiple variables, missing variables, and -0 mode."
+    traces:
+      - R3.1
+  - id: AC6
+    criterion: "cmd/printenv compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3

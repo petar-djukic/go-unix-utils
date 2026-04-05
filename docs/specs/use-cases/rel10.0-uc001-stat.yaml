@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd082-stat.yaml) and invokes do-work to
+  The operator has completed the PRD (srd082-stat.yaml) and invokes do-work to
   produce a passing differential test for cmd/stat.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       gstat with the same inputs and compares stdout byte-for-byte.
 
 touchpoints:
-  - T1: "cmd/stat — file status display, format strings, filesystem mode (prd082-stat R1, R2, R3, R4)"
+  - T1: "cmd/stat — file status display, format strings, filesystem mode (srd082-stat R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

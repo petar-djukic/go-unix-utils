@@ -6,15 +6,15 @@ traces:
   - rel09.1-uc001-base32
   - rel09.1-uc002-base64
   - rel09.1-uc003-basenc
-  - prd079-base32 R1
-  - prd079-base32 R2
-  - prd079-base32 R3
-  - prd080-base64 R1
-  - prd080-base64 R2
-  - prd080-base64 R3
-  - prd081-basenc R1
-  - prd081-basenc R2
-  - prd081-basenc R3
+  - srd079-base32 R1
+  - srd079-base32 R2
+  - srd079-base32 R3
+  - srd080-base64 R1
+  - srd080-base64 R2
+  - srd080-base64 R3
+  - srd081-basenc R1
+  - srd081-basenc R2
+  - srd081-basenc R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -37,8 +37,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd079-base32 R1.1
-      - prd079-base32 R1.2
+      - srd079-base32 R1.1
+      - srd079-base32 R1.2
 
   - name: base32_decode
     description: "base32 -d decodes Base32 input"
@@ -52,8 +52,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd079-base32 R2.1
-      - prd079-base32 R2.2
+      - srd079-base32 R2.1
+      - srd079-base32 R2.2
 
   - name: base32_wrap_zero
     description: "base32 -w 0 disables line wrapping"
@@ -67,7 +67,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd079-base32 R1.3
+      - srd079-base32 R1.3
 
   # ---- base64 ----
 
@@ -83,8 +83,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd080-base64 R1.1
-      - prd080-base64 R1.2
+      - srd080-base64 R1.1
+      - srd080-base64 R1.2
 
   - name: base64_decode
     description: "base64 -d decodes Base64 input"
@@ -98,8 +98,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd080-base64 R2.1
-      - prd080-base64 R2.2
+      - srd080-base64 R2.1
+      - srd080-base64 R2.2
 
   - name: base64_wrap_zero
     description: "base64 -w 0 disables line wrapping"
@@ -113,7 +113,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd080-base64 R1.3
+      - srd080-base64 R1.3
 
   # ---- basenc ----
 
@@ -129,7 +129,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd081-basenc R1.1
+      - srd081-basenc R1.1
 
   - name: basenc_base16
     description: "basenc --base16 encodes to hex"
@@ -143,7 +143,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd081-basenc R2.1
+      - srd081-basenc R2.1
 
   - name: basenc_base64url
     description: "basenc --base64url encodes with URL-safe alphabet"
@@ -157,7 +157,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd081-basenc R1.2
+      - srd081-basenc R1.2
 
   - name: basenc_base32hex
     description: "basenc --base32hex encodes with extended hex Base32"
@@ -171,7 +171,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd081-basenc R1.4
+      - srd081-basenc R1.4
 
   - name: basenc_decode
     description: "basenc --base64 -d decodes Base64 input"
@@ -185,4 +185,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd081-basenc R2.3
+      - srd081-basenc R2.3

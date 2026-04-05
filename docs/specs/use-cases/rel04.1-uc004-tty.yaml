@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd052-tty.yaml) and invokes do-work to
+  The operator has completed the PRD (srd052-tty.yaml) and invokes do-work to
   produce a passing differential test for cmd/tty.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/tty — terminal device name output (prd052-tty R1, R2)"
+  - T1: "cmd/tty — terminal device name output (srd052-tty R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler"
 

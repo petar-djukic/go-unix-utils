@@ -1,0 +1,135 @@
+id: srd064-shuf
+title: "cmd/shuf: Shuffle Lines Randomly"
+
+problem: |
+  Shell scripts and data pipelines use shuf to randomly permute input lines, select random
+  samples, or generate random numbers within a range. The macOS BSD system has no built-in
+  shuf command. GNU shuf from coreutils supports input from files or stdin, range generation,
+  head count limiting, and repeat mode. The Go implementation must match the Homebrew GNU
+  reference binary (gshuf, installed by coreutils) in output format and exit codes, verified
+  by differential testing via pkg/testutils. Because shuf output is non-deterministic,
+  differential tests verify structural properties (line count, value ranges, uniqueness)
+  rather than exact byte equality.
+
+goals:
+  - G1: Randomly permute input lines from files or stdin.
+  - G2: Support integer range generation via -i LO-HI.
+  - G3: Support output count limiting via -n COUNT and repeat mode via -r.
+
+requirements:
+  R1:
+    title: Default shuffle behavior
+    items:
+      - R1.1:
+          text: When given one or more FILE arguments, must read all lines from each file, randomly permute them, and write the result to stdout.
+          weight: 1
+      - R1.2:
+          text: When no file arguments are given or when "-" is given as a filename, must read from stdin.
+          weight: 1
+      - R1.3:
+          text: Must output each input line exactly once in a random order (a permutation, not sampling with replacement) unless -r is given.
+          weight: 1
+      - R1.4:
+          text: Must treat each line as terminated by a newline. The last line need not end with a newline, but must be included in the shuffle.
+          weight: 1
+
+  R2:
+    title: Range mode and output control
+    items:
+      - R2.1:
+          text: "-i LO-HI or --input-range=LO-HI must generate and shuffle integers from LO to HI inclusive, one per line. Must not be combined with file arguments."
+          weight: 1
+      - R2.2:
+          text: "-n COUNT or --head-count=COUNT must output at most COUNT lines."
+          weight: 1
+      - R2.3:
+          text: "-r or --repeat must allow output lines to repeat (sampling with replacement). Without -n, runs indefinitely."
+          weight: 1
+      - R2.4:
+          text: "-o FILE or --output=FILE must write output to FILE instead of stdout."
+          weight: 1
+
+  R3:
+    title: Random source and zero-delimiter
+    items:
+      - R3.1:
+          text: "--random-source=FILE must read random bytes from FILE instead of the system random source."
+          weight: 1
+      - R3.2:
+          text: "-z or --zero-terminated must use NUL (\\0) as the line delimiter instead of newline, for both input and output."
+          weight: 1
+      - R3.3:
+          text: "-e or --echo must treat each ARG as an input line instead of reading from files."
+          weight: 1
+      - R3.4:
+          text: Must handle empty input (zero lines) by producing no output and exiting 0.
+          weight: 1
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1:
+          text: Must exit 0 on successful operation.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 on error (invalid range, conflicting options, write error).
+          weight: 1
+      - R4.3:
+          text: "Differential tests must verify structural properties rather than exact output: correct line count, values within range for -i, no duplicates without -r, duplicates allowed with -r."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: shuffle stdin lines, shuffle file lines, -i range mode, -n head count, -r repeat mode, -e echo mode, -z zero-terminated, empty input, and error cases (invalid range, -i with files)."
+          weight: 1
+
+non_goals:
+  - cmd/shuf does not guarantee a specific PRNG algorithm or reproducible output for a given random seed.
+  - cmd/shuf does not implement --random-source with /dev/urandom compatibility testing (the random source changes output).
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "printf 'a\\nb\\nc\\n' | go run ./cmd/shuf produces exactly 3 lines containing a, b, c in some order."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/shuf -i 1-5 -n 3 produces exactly 3 distinct integers from 1 to 5."
+    traces:
+      - R2.1
+      - R2.2
+  - id: AC3
+    criterion: "go run ./cmd/shuf -e alpha beta gamma produces exactly 3 lines containing alpha, beta, gamma in some order."
+    traces:
+      - R3.3
+      - R4.1
+  - id: AC4
+    criterion: "go run ./cmd/shuf -i 1-5 -r -n 10 produces exactly 10 integers each between 1 and 5 (duplicates allowed)."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+  - id: AC5
+    criterion: "Differential test against gshuf passes for all structural checks listed in R4.4."
+    traces:
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/shuf compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

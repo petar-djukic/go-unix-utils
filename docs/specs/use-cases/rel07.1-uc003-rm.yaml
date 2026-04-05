@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd058-rm.yaml) and invokes do-work to
+  The operator has completed the PRD (srd058-rm.yaml) and invokes do-work to
   produce a passing differential test for cmd/rm.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       (file existence).
 
 touchpoints:
-  - T1: "cmd/rm — single removal, multi-file, recursive, force, interactive, verbose, empty directory (prd058-rm R1, R2, R3, R4)"
+  - T1: "cmd/rm — single removal, multi-file, recursive, force, interactive, verbose, empty directory (srd058-rm R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, exit code and file system comparison"
 
 success_criteria:

@@ -1,0 +1,117 @@
+id: srd038-unlink
+title: "cmd/unlink: Remove a Single File"
+
+problem: |
+  The unlink utility provides a minimal interface to the unlink(2) system call, removing exactly
+  one file without the recursive or force semantics of rm. The macOS BSD unlink and GNU unlink
+  behave identically for valid inputs but differ in error message formatting. The Go implementation
+  must match the Homebrew GNU reference binary (gunlink, installed by coreutils) byte-for-byte on
+  output and exit codes, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Remove exactly one file by calling the unlink(2) system call.
+  - G2: Reject invalid usage with appropriate error messages and exit codes.
+
+requirements:
+  R1:
+    title: Basic operation
+    items:
+      - R1.1:
+          text: Must call unlink(2) on exactly one FILE argument provided on the command line.
+          weight: 1
+      - R1.2:
+          text: Must produce no output on stdout when the operation succeeds.
+          weight: 1
+      - R1.3:
+          text: Must exit 0 on success.
+          weight: 1
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1:
+          text: Must exit with a non-zero status and print an error to stderr when called with zero arguments.
+          weight: 1
+      - R2.2:
+          text: Must exit with a non-zero status and print an error to stderr when called with more than one argument.
+          weight: 1
+      - R2.3:
+          text: Must exit with a non-zero status and print an error to stderr when the specified FILE does not exist.
+          weight: 1
+      - R2.4:
+          text: Must exit with a non-zero status and print an error to stderr when the specified FILE is a directory, since unlink(2) does not remove directories on standard systems.
+          weight: 1
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1:
+          text: Differential tests must compare stdout, stderr, and exit codes between the Go binary and gunlink via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: successful removal of a regular file, successful removal of a symbolic link, zero-argument error, multi-argument error, non-existent file error, and directory argument error."
+          weight: 1
+      - R3.3:
+          text: Tests must verify that the target file no longer exists after a successful invocation, matching gunlink behavior.
+          weight: 1
+
+non_goals:
+  - cmd/unlink does not support any flags; it accepts exactly one positional argument.
+  - cmd/unlink does not remove directories; use rmdir for empty directories or rm -r for non-empty ones.
+  - cmd/unlink does not read filenames from stdin; input comes from the command-line argument only.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/unlink testfile removes testfile and exits 0, matching gunlink."
+    traces:
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+  - id: AC2
+    criterion: "go run ./cmd/unlink (no arguments) exits non-zero with an error message, matching gunlink."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "go run ./cmd/unlink a b exits non-zero with an error message, matching gunlink."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+  - id: AC4
+    criterion: "go run ./cmd/unlink nonexistent exits non-zero with an error message, matching gunlink."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+  - id: AC5
+    criterion: "Differential test against gunlink passes for regular file, symbolic link, zero args, multi args, non-existent, and directory cases."
+    traces:
+      - R3.1
+      - R3.2
+  - id: AC6
+    criterion: "cmd/unlink compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3

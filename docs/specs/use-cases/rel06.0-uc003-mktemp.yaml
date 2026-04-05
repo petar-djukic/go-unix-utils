@@ -14,7 +14,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd036-mktemp.yaml) and invokes do-work to
+  The operator has completed the PRD (srd036-mktemp.yaml) and invokes do-work to
   produce a passing differential test for cmd/mktemp.
 
 flow:
@@ -33,7 +33,7 @@ flow:
       permissions) rather than byte-for-byte stdout.
 
 touchpoints:
-  - T1: "cmd/mktemp — default temp file, temp directory (-d), explicit template (prd036-mktemp R1, R2, R3)"
+  - T1: "cmd/mktemp — default temp file, temp directory (-d), explicit template (srd036-mktemp R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

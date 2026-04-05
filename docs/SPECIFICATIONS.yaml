@@ -2,7 +2,7 @@ id: go-unix-utils-specifications
 title: "go-unix-utils Specification Summary"
 
 overview: |
-  We tie together the PRDs, use cases, test suites, and roadmap for go-unix-utils
+  We tie together the SRDs, use cases, test suites, and roadmap for go-unix-utils
   into a single navigable index, summarizing each artifact and showing the
   relationships between them. Regenerate this file when any specification artifact
   changes.
@@ -69,115 +69,115 @@ roadmap_summary:
     use_cases_total: 5
     status: spec_complete
 
-prd_index:
-  - id: prd001-testutils
+srd_index:
+  - id: srd001-testutils
     title: "pkg/testutils: Differential Testing Harness"
     summary: Shared harness for executing Go and reference binaries side by side and comparing outputs.
-    path: docs/specs/product-requirements/prd001-testutils.yaml
-  - id: prd002-sys
+    path: docs/specs/software-requirements/srd001-testutils.yaml
+  - id: srd002-sys
     title: "pkg/sys: Syscall Abstractions"
     summary: Portable terminal-width, extended file metadata, and signal handling for Darwin and Linux.
-    path: docs/specs/product-requirements/prd002-sys.yaml
-  - id: prd003-format
+    path: docs/specs/software-requirements/srd002-sys.yaml
+  - id: srd003-format
     title: "pkg/format: Output Formatting"
     summary: Column alignment, ANSI color, and human-readable size conversion shared across utilities.
-    path: docs/specs/product-requirements/prd003-format.yaml
-  - id: prd004-ts
+    path: docs/specs/software-requirements/srd003-format.yaml
+  - id: srd004-ts
     title: "cmd/ts: Timestamp Stdin Lines"
     summary: Prepend strftime timestamps to each stdin line with incremental, elapsed, monotonic, and relative modes.
-    path: docs/specs/product-requirements/prd004-ts.yaml
-  - id: prd005-wc
+    path: docs/specs/software-requirements/srd004-ts.yaml
+  - id: srd005-wc
     title: "cmd/wc: Count Lines, Words, and Bytes"
     summary: Count lines, words, bytes, characters, and max line length from files or stdin.
-    path: docs/specs/product-requirements/prd005-wc.yaml
-  - id: prd006-cat
+    path: docs/specs/software-requirements/srd005-wc.yaml
+  - id: srd006-cat
     title: "cmd/cat: Concatenate and Display Files"
     summary: Concatenate files to stdout with line numbering, blank squeezing, and non-printing display.
-    path: docs/specs/product-requirements/prd006-cat.yaml
-  - id: prd007-sponge
+    path: docs/specs/software-requirements/srd006-cat.yaml
+  - id: srd007-sponge
     title: "cmd/sponge: Soak Stdin and Write to File"
     summary: Buffer all stdin before opening the output file, enabling safe in-place pipeline rewrites.
-    path: docs/specs/product-requirements/prd007-sponge.yaml
-  - id: prd008-ls
+    path: docs/specs/software-requirements/srd007-sponge.yaml
+  - id: srd008-ls
     title: "cmd/ls: Core File Listing"
     summary: List directory contents with all output formats, sorting, filtering, metadata display, color, classification, and recursive listing.
-    path: docs/specs/product-requirements/prd008-ls.yaml
-  - id: prd009-du
+    path: docs/specs/software-requirements/srd008-ls.yaml
+  - id: srd009-du
     title: "cmd/du: Recursive Directory Disk Usage"
     summary: Report disk usage with recursive traversal, hard-link deduplication, and human-readable output.
-    path: docs/specs/product-requirements/prd009-du.yaml
-  - id: prd059-version
+    path: docs/specs/software-requirements/srd009-du.yaml
+  - id: srd059-version
     title: "cmd/version: Version Identity Binary"
     summary: A cmd/version binary that prints the repository's last known version tag, with ldflags injection and an exported version variable.
-    path: docs/specs/product-requirements/prd059-version.yaml
-  - id: prd012-yes
+    path: docs/specs/software-requirements/srd059-version.yaml
+  - id: srd012-yes
     title: "cmd/yes: Repeatedly Output a String"
     summary: Output a string repeatedly until killed, with buffered writes for throughput.
-    path: docs/specs/product-requirements/prd012-yes.yaml
-  - id: prd013-true
+    path: docs/specs/software-requirements/srd012-yes.yaml
+  - id: srd013-true
     title: "cmd/true: Exit Successfully"
     summary: Exit with status 0, ignoring all arguments.
-    path: docs/specs/product-requirements/prd013-true.yaml
-  - id: prd014-false
+    path: docs/specs/software-requirements/srd013-true.yaml
+  - id: srd014-false
     title: "cmd/false: Exit Unsuccessfully"
     summary: Exit with status 1, ignoring all arguments.
-    path: docs/specs/product-requirements/prd014-false.yaml
-  - id: prd015-basename
+    path: docs/specs/software-requirements/srd014-false.yaml
+  - id: srd015-basename
     title: "cmd/basename: Strip Directory and Suffix from Filenames"
     summary: Strip directory prefix and optional suffix from file paths with multi-argument and NUL-delimited modes.
-    path: docs/specs/product-requirements/prd015-basename.yaml
-  - id: prd016-dirname
+    path: docs/specs/software-requirements/srd015-basename.yaml
+  - id: srd016-dirname
     title: "cmd/dirname: Strip Last Component from File Paths"
     summary: Extract directory component from file paths with NUL-delimited output mode.
-    path: docs/specs/product-requirements/prd016-dirname.yaml
-  - id: prd017-tee
+    path: docs/specs/software-requirements/srd016-dirname.yaml
+  - id: srd017-tee
     title: "cmd/tee: Read Stdin and Write to Stdout and Files"
     summary: Copy stdin to stdout and one or more files with append mode and SIGINT suppression.
-    path: docs/specs/product-requirements/prd017-tee.yaml
-  - id: prd018-head
+    path: docs/specs/software-requirements/srd017-tee.yaml
+  - id: srd018-head
     title: "cmd/head: Print the First Lines or Bytes of Files"
     summary: Print first N lines or bytes with negative counts, multi-file headers, and quiet/verbose modes.
-    path: docs/specs/product-requirements/prd018-head.yaml
-  - id: prd034-mkdir
+    path: docs/specs/software-requirements/srd018-head.yaml
+  - id: srd034-mkdir
     title: "cmd/mkdir: Create Directories"
     summary: Create directories with optional parent creation and permission mode setting.
-    path: docs/specs/product-requirements/prd034-mkdir.yaml
-  - id: prd035-rmdir
+    path: docs/specs/software-requirements/srd034-mkdir.yaml
+  - id: srd035-rmdir
     title: "cmd/rmdir: Remove Empty Directories"
     summary: Remove empty directories with optional ancestor removal and error suppression.
-    path: docs/specs/product-requirements/prd035-rmdir.yaml
-  - id: prd036-mktemp
+    path: docs/specs/software-requirements/srd035-rmdir.yaml
+  - id: srd036-mktemp
     title: "cmd/mktemp: Create Temporary Files or Directories"
     summary: Create temporary files or directories with unique names, configurable templates and locations.
-    path: docs/specs/product-requirements/prd036-mktemp.yaml
-  - id: prd037-ln
+    path: docs/specs/software-requirements/srd036-mktemp.yaml
+  - id: srd037-ln
     title: "cmd/ln: Create Links Between Files"
     summary: Create hard or symbolic links with force, no-dereference, and verbose modes.
-    path: docs/specs/product-requirements/prd037-ln.yaml
-  - id: prd038-unlink
+    path: docs/specs/software-requirements/srd037-ln.yaml
+  - id: srd038-unlink
     title: "cmd/unlink: Remove a Single File"
     summary: Call unlink(2) to remove exactly one file, rejecting directories and wrong argument counts.
-    path: docs/specs/product-requirements/prd038-unlink.yaml
-  - id: prd039-env
+    path: docs/specs/software-requirements/srd038-unlink.yaml
+  - id: srd039-env
     title: "cmd/env: Run a Command in a Modified Environment"
     summary: Print or modify environment variables and run commands with variable overrides.
-    path: docs/specs/product-requirements/prd039-env.yaml
-  - id: prd040-printenv
+    path: docs/specs/software-requirements/srd039-env.yaml
+  - id: srd040-printenv
     title: "cmd/printenv: Print Environment Variables"
     summary: Print all or selected environment variables with optional NUL-delimited output.
-    path: docs/specs/product-requirements/prd040-printenv.yaml
-  - id: prd041-id
+    path: docs/specs/software-requirements/srd040-printenv.yaml
+  - id: srd041-id
     title: "cmd/id: Print User and Group Information"
     summary: Print real and effective user and group IDs with selection and name-display flags.
-    path: docs/specs/product-requirements/prd041-id.yaml
-  - id: prd042-whoami
+    path: docs/specs/software-requirements/srd041-id.yaml
+  - id: srd042-whoami
     title: "cmd/whoami: Print Effective User Name"
     summary: Print the effective username and exit.
-    path: docs/specs/product-requirements/prd042-whoami.yaml
-  - id: prd043-groups
+    path: docs/specs/software-requirements/srd042-whoami.yaml
+  - id: srd043-groups
     title: "cmd/groups: Print Group Memberships"
     summary: Print group memberships for the current or named users.
-    path: docs/specs/product-requirements/prd043-groups.yaml
+    path: docs/specs/software-requirements/srd043-groups.yaml
 
 use_case_index:
   - id: rel03.0-uc001-wc
@@ -416,131 +416,131 @@ test_suite_index:
     test_case_count: 18
     path: docs/specs/test-suites/test-rel06.1.yaml
 
-prd_to_use_case_mapping:
+srd_to_use_case_mapping:
   - use_case: rel03.0-uc001-wc
-    prd: prd005-wc
+    srd: srd005-wc
     why_required: wc exercises multi-file output, column alignment, and locale handling.
-    coverage: Full — all prd005-wc requirement groups (R1-R6) are traced from the test suite.
+    coverage: Full — all srd005-wc requirement groups (R1-R6) are traced from the test suite.
   - use_case: rel01.1-uc001-cat
-    prd: prd006-cat
+    srd: srd006-cat
     why_required: cat exercises binary passthrough, non-printing display, and flag combinations.
-    coverage: Full — all prd006-cat requirement groups (R1-R5) are traced from the test suite.
+    coverage: Full — all srd006-cat requirement groups (R1-R5) are traced from the test suite.
   - use_case: rel01.2-uc001-sponge
-    prd: prd007-sponge
+    srd: srd007-sponge
     why_required: sponge exercises file-state comparison in pkg/testutils and atomic write patterns.
-    coverage: Full — all prd007-sponge requirement groups (R1-R6) are traced from the test suite.
+    coverage: Full — all srd007-sponge requirement groups (R1-R6) are traced from the test suite.
   - use_case: rel01.3-uc001-du
-    prd: prd009-du
+    srd: srd009-du
     why_required: du exercises hard-link deduplication and recursive block accumulation.
-    coverage: Full — all prd009-du requirement groups (R1-R5) are traced from the test suite.
+    coverage: Full — all srd009-du requirement groups (R1-R5) are traced from the test suite.
   - use_case: rel04.0-uc001-ls
-    prd: prd008-ls
+    srd: srd008-ls
     why_required: ls core exercises pkg/sys and pkg/format for the first time in the pipeline.
-    coverage: Full — all prd008-ls core requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd008-ls core requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel04.0-uc002-ls-extended
-    prd: prd008-ls
-    why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing from the combined prd008-ls.
-    coverage: Full — all prd008-ls extended requirement items are traced from the test suite.
+    srd: srd008-ls
+    why_required: ls extended exercises sort modes, metadata display, classification, and recursive listing from the combined srd008-ls.
+    coverage: Full — all srd008-ls extended requirement items are traced from the test suite.
   - use_case: rel15.0-uc001-ts
-    prd: prd004-ts
+    srd: srd004-ts
     why_required: ts exercises timestamp prepending with multiple time modes and strftime formatting.
-    coverage: Full — all prd004-ts requirement groups (R1-R8) are traced from the test suite.
+    coverage: Full — all srd004-ts requirement groups (R1-R8) are traced from the test suite.
 
   - use_case: rel02.0-uc001-true
-    prd: prd013-true
+    srd: srd013-true
     why_required: true is the simplest possible utility, validating the build pipeline for trivial binaries.
-    coverage: Full — all prd013-true requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd013-true requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel02.0-uc002-false
-    prd: prd014-false
+    srd: srd014-false
     why_required: false validates non-zero exit code handling in the differential testing harness.
-    coverage: Full — all prd014-false requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd014-false requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel02.0-uc003-yes
-    prd: prd012-yes
+    srd: srd012-yes
     why_required: yes exercises infinite output, SIGPIPE handling, and buffered I/O patterns.
-    coverage: Full — all prd012-yes requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd012-yes requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel02.0-uc004-basename
-    prd: prd015-basename
+    srd: srd015-basename
     why_required: basename exercises path string manipulation and multi-argument flag processing.
-    coverage: Full — all prd015-basename requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd015-basename requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel02.0-uc005-dirname
-    prd: prd016-dirname
+    srd: srd016-dirname
     why_required: dirname exercises path component extraction and trailing-slash edge cases.
-    coverage: Full — all prd016-dirname requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd016-dirname requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel02.1-uc001-tee
-    prd: prd017-tee
+    srd: srd017-tee
     why_required: tee exercises simultaneous multi-destination I/O and append semantics.
-    coverage: Full — all prd017-tee requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd017-tee requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel02.2-uc001-head
-    prd: prd018-head
+    srd: srd018-head
     why_required: head exercises line and byte counting, negative counts, and multi-file header formatting.
-    coverage: Full — all prd018-head requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd018-head requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.0-uc001-mkdir
-    prd: prd034-mkdir
+    srd: srd034-mkdir
     why_required: mkdir exercises directory creation, parent chain creation, and permission mode setting.
-    coverage: Full — all prd034-mkdir requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd034-mkdir requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.0-uc002-rmdir
-    prd: prd035-rmdir
+    srd: srd035-rmdir
     why_required: rmdir exercises empty directory removal, ancestor chain removal, and error suppression.
-    coverage: Full — all prd035-rmdir requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd035-rmdir requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.0-uc003-mktemp
-    prd: prd036-mktemp
+    srd: srd036-mktemp
     why_required: mktemp exercises temp file creation with unique names and configurable templates.
-    coverage: Full — all prd036-mktemp requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd036-mktemp requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.0-uc004-ln
-    prd: prd037-ln
+    srd: srd037-ln
     why_required: ln exercises hard and symbolic link creation with force and safety flags.
-    coverage: Full — all prd037-ln requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd037-ln requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.0-uc005-unlink
-    prd: prd038-unlink
+    srd: srd038-unlink
     why_required: unlink exercises the simplest file removal via the unlink(2) syscall.
-    coverage: Full — all prd038-unlink requirement groups (R1-R3) are traced from the test suite.
+    coverage: Full — all srd038-unlink requirement groups (R1-R3) are traced from the test suite.
   - use_case: rel06.1-uc001-env
-    prd: prd039-env
+    srd: srd039-env
     why_required: env exercises process spawning with modified environment variables.
-    coverage: Full — all prd039-env requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd039-env requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.1-uc002-printenv
-    prd: prd040-printenv
+    srd: srd040-printenv
     why_required: printenv exercises environment variable lookup and NUL-delimited output.
-    coverage: Full — all prd040-printenv requirement groups (R1-R3) are traced from the test suite.
+    coverage: Full — all srd040-printenv requirement groups (R1-R3) are traced from the test suite.
   - use_case: rel06.1-uc003-id
-    prd: prd041-id
+    srd: srd041-id
     why_required: id exercises user/group ID lookup with multiple output format flags.
-    coverage: Full — all prd041-id requirement groups (R1-R4) are traced from the test suite.
+    coverage: Full — all srd041-id requirement groups (R1-R4) are traced from the test suite.
   - use_case: rel06.1-uc004-whoami
-    prd: prd042-whoami
+    srd: srd042-whoami
     why_required: whoami exercises effective user lookup as the simplest identity utility.
-    coverage: Full — all prd042-whoami requirement groups (R1-R3) are traced from the test suite.
+    coverage: Full — all srd042-whoami requirement groups (R1-R3) are traced from the test suite.
   - use_case: rel06.1-uc005-groups
-    prd: prd043-groups
+    srd: srd043-groups
     why_required: groups exercises group membership lookup for current and named users.
-    coverage: Full — all prd043-groups requirement groups (R1-R3) are traced from the test suite.
+    coverage: Full — all srd043-groups requirement groups (R1-R3) are traced from the test suite.
 
 coverage_gaps: |
-  Shared library PRDs (prd001-testutils, prd002-sys, prd003-format) have dedicated use cases
+  Shared library SRDs (srd001-testutils, srd002-sys, srd003-format) have dedicated use cases
   and test suites in rel00.0 (foundational infrastructure). They are also exercised indirectly
   through the utility use cases that depend on them.
 
-  prd011-magefiles documents scaffold-provided build lifecycle targets and is covered
-  indirectly by rel00.0 use cases. prd059-version specifies the cmd/version binary
-  extracted from the original prd011.
+  srd011-magefiles documents scaffold-provided build lifecycle targets and is covered
+  indirectly by rel00.0 use cases. srd059-version specifies the cmd/version binary
+  extracted from the original srd011.
 
-  ts (prd004-ts) is in rel15.0 with full specification coverage.
+  ts (srd004-ts) is in rel15.0 with full specification coverage.
 
 traceability_diagram: |
   ```mermaid
   graph TD
     V["VISION.yaml<br/>Goals, risks, boundaries"]
     A["ARCHITECTURE.yaml<br/>Components, design decisions"]
-    P1["prd001-testutils"] & P2["prd002-sys"] & P3["prd003-format"]
-    P4["prd004-ts"] & P5["prd005-wc"] & P6["prd006-cat"] & P7["prd007-sponge"]
-    P8["prd008-ls"] & P9["prd009-du"]
-    P12["prd012-yes"] & P13["prd013-true"] & P14["prd014-false"]
-    P15["prd015-basename"] & P16["prd016-dirname"]
-    P17["prd017-tee"] & P18["prd018-head"]
-    P34["prd034-mkdir"] & P35["prd035-rmdir"] & P36["prd036-mktemp"]
-    P37["prd037-ln"] & P38["prd038-unlink"]
-    P39["prd039-env"] & P40["prd040-printenv"] & P41["prd041-id"]
-    P42["prd042-whoami"] & P43["prd043-groups"]
+    P1["srd001-testutils"] & P2["srd002-sys"] & P3["srd003-format"]
+    P4["srd004-ts"] & P5["srd005-wc"] & P6["srd006-cat"] & P7["srd007-sponge"]
+    P8["srd008-ls"] & P9["srd009-du"]
+    P12["srd012-yes"] & P13["srd013-true"] & P14["srd014-false"]
+    P15["srd015-basename"] & P16["srd016-dirname"]
+    P17["srd017-tee"] & P18["srd018-head"]
+    P34["srd034-mkdir"] & P35["srd035-rmdir"] & P36["srd036-mktemp"]
+    P37["srd037-ln"] & P38["srd038-unlink"]
+    P39["srd039-env"] & P40["srd040-printenv"] & P41["srd041-id"]
+    P42["srd042-whoami"] & P43["srd043-groups"]
     UC1["rel03.0-uc001-wc"] & UC2["rel01.1-uc001-cat"] & UC3["rel01.2-uc001-sponge"]
     UC4["rel01.3-uc001-du"] & UC5["rel04.0-uc001-ls"] & UC6["rel04.0-uc002-ls-extended"]
     UC7["rel15.0-uc001-ts"]

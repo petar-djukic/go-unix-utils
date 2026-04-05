@@ -13,7 +13,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed prd008-ls.yaml (the combined ls PRD covering both core and
+  The operator has completed srd008-ls.yaml (the combined ls PRD covering both core and
   extended flags) and invokes do-work to produce a passing differential test for cmd/ls
   extended flags.
 
@@ -34,7 +34,7 @@ flow:
       compares normalized outputs byte-for-byte. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/ls — multi-column layout, sort order, metadata display, classify, recursive (prd008-ls R1, R2, R3, R4)"
+  - T1: "cmd/ls — multi-column layout, sort order, metadata display, classify, recursive (srd008-ls R1, R2, R3, R4)"
   - T2: "pkg/sys — TerminalWidth, Stat/Lstat for mtime, size, inode, blocks"
   - T3: "pkg/format — Columns for -C/-x, FileTypeColor, HumanSize for -s -h"
   - T4: "pkg/testutils — RunDiffTests, LsExtendedNormalizer"

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd057-mv.yaml) and invokes do-work to
+  The operator has completed the PRD (srd057-mv.yaml) and invokes do-work to
   produce a passing differential test for cmd/mv.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       (existence, content, location).
 
 touchpoints:
-  - T1: "cmd/mv — rename, move into directory, multi-file, interactive, force, no-clobber, verbose, target directory (prd057-mv R1, R2, R3, R4)"
+  - T1: "cmd/mv — rename, move into directory, multi-file, interactive, force, no-clobber, verbose, target directory (srd057-mv R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, exit code and file system comparison"
 
 success_criteria:

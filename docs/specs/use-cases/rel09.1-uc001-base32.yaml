@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd079-base32.yaml) and invokes do-work to
+  The operator has completed the PRD (srd079-base32.yaml) and invokes do-work to
   produce a passing differential test for cmd/base32.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       gbase32 with the same inputs and compares stdout byte-for-byte.
 
 touchpoints:
-  - T1: "cmd/base32 — Base32 encoding/decoding, wrap control, garbage handling (prd079-base32 R1, R2, R3)"
+  - T1: "cmd/base32 — Base32 encoding/decoding, wrap control, garbage handling (srd079-base32 R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

@@ -9,7 +9,7 @@ introduction: |
 
   The eng04 generation run used default settings (all three fields empty), which loads a
   standard set of 27 files via nine glob patterns: VISION.yaml, ARCHITECTURE.yaml,
-  SPECIFICATIONS.yaml, road-map.yaml, all PRDs, use cases, test suites, dependency-map.yaml,
+  SPECIFICATIONS.yaml, road-map.yaml, all SRDs, use cases, test suites, dependency-map.yaml,
   and sources.yaml. We do not know whether this default is optimal. Including more files may
   give the model better context at higher token cost. Excluding all files may reveal which
   documents the model considers necessary by observing what it requests.
@@ -28,7 +28,7 @@ sections:
 
       | Variant | context_sources | context_include | context_exclude | Effect |
       |---------|-----------------|-----------------|-----------------|--------|
-      | 1 (default) | "" | "" | "" | Standard discovery: 9 glob patterns resolve ~27 files (VISION, ARCHITECTURE, SPECIFICATIONS, road-map, PRDs, use cases, test suites, dependency-map, sources) |
+      | 1 (default) | "" | "" | "" | Standard discovery: 9 glob patterns resolve ~27 files (VISION, ARCHITECTURE, SPECIFICATIONS, road-map, SRDs, use cases, test suites, dependency-map, sources) |
       | 2 (include-all) | "" | see below | "" | Replaces standard discovery with globs that capture every YAML, markdown, and Go file in the repo |
       | 3 (exclude-all) | "" | "" | "." | Excludes all files from both documentation context and Go source context |
 
@@ -72,7 +72,7 @@ sections:
   - title: "Target scope"
     content: |
       Each variant generates the same set of packages that eng04 produced: pkg/testutils, cmd/ts,
-      cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. The specification artifacts (PRDs,
+      cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. The specification artifacts (SRDs,
       use cases, test suites) are identical across variants because main has not changed.
 
       Each variant runs as its own generation lifecycle (generator:start through generator:stop)
@@ -132,7 +132,7 @@ sections:
       | Vet | go vet ./... | Zero warnings |
       | Completeness | Compare generated packages to target scope | All 7 packages present |
       | Test pass | go test ./... (after installing reference binaries) | All tests pass or skip gracefully |
-      | Spec conformance | Manual review against PRD requirements | No missing flags or modes |
+      | Spec conformance | Manual review against SRD requirements | No missing flags or modes |
 
       If a variant fails to produce all 7 packages, we still compare the packages it did produce.
       Partial completion is a valid outcome that informs the cost/quality tradeoff.

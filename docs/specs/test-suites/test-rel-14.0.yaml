@@ -6,12 +6,12 @@ traces:
   - rel14.0-uc001-chronic
   - rel14.0-uc002-pee
   - rel14.0-uc003-vidir
-  - prd112-chronic R1
-  - prd112-chronic R2
-  - prd113-pee R1
-  - prd113-pee R2
-  - prd114-vidir R1
-  - prd114-vidir R2
+  - srd112-chronic R1
+  - srd112-chronic R2
+  - srd113-pee R1
+  - srd113-pee R2
+  - srd114-vidir R1
+  - srd114-vidir R2
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -32,7 +32,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd112-chronic R1.1
+      - srd112-chronic R1.1
 
   - name: chronic_failure_shown
     description: "chronic shows output on failure"
@@ -46,8 +46,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd112-chronic R1.1
-      - prd112-chronic R2.1
+      - srd112-chronic R1.1
+      - srd112-chronic R2.1
 
   - name: pee_two_commands
     description: "pee pipes stdin to two commands"
@@ -61,8 +61,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd113-pee R1.1
-      - prd113-pee R1.3
+      - srd113-pee R1.1
+      - srd113-pee R1.3
 
   - name: vidir_list_format
     description: "vidir lists files with tab-separated numbers"
@@ -76,4 +76,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd114-vidir R1.1
+      - srd114-vidir R1.1

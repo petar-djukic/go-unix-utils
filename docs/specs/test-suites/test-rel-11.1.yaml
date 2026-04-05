@@ -6,14 +6,14 @@ traces:
   - rel11.1-uc001-users
   - rel11.1-uc002-who
   - rel11.1-uc003-pinky
-  - prd096-users R1
-  - prd096-users R2
-  - prd097-who R1
-  - prd097-who R2
-  - prd097-who R3
-  - prd098-pinky R1
-  - prd098-pinky R2
-  - prd098-pinky R3
+  - srd096-users R1
+  - srd096-users R2
+  - srd097-who R1
+  - srd097-who R2
+  - srd097-who R3
+  - srd098-pinky R1
+  - srd098-pinky R2
+  - srd098-pinky R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -34,7 +34,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd096-users R1.1
+      - srd096-users R1.1
 
   - name: who_default
     description: "who prints logged-in users with terminal and time"
@@ -48,7 +48,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd097-who R1.1
+      - srd097-who R1.1
 
   - name: who_heading
     description: "who -H prints header line"
@@ -62,7 +62,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd097-who R2.1
+      - srd097-who R2.1
 
   - name: who_boot
     description: "who -b prints boot time"
@@ -76,7 +76,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd097-who R2.3
+      - srd097-who R2.3
 
   - name: pinky_short
     description: "pinky prints short format user info"
@@ -90,4 +90,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd098-pinky R1.1
+      - srd098-pinky R1.1

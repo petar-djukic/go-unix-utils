@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd062-touch.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd062-touch.yaml) and invokes do-work to produce
   a passing differential test for cmd/touch.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       harness compares exit codes and verifies file existence and timestamps.
 
 touchpoints:
-  - T1: "cmd/touch — file creation, timestamp update, explicit time, reference file (prd062-touch R1, R2, R3, R4)"
+  - T1: "cmd/touch — file creation, timestamp update, explicit time, reference file (srd062-touch R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, exit code and file system state comparison"
 
 success_criteria:

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd012-yes.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd012-yes.yaml) and invokes do-work to produce
   a passing differential test for cmd/yes.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       Output is captured after head truncates the infinite stream.
 
 touchpoints:
-  - T1: "cmd/yes — repeated output, argument joining, SIGPIPE handling (prd012-yes R1, R2, R3)"
+  - T1: "cmd/yes — repeated output, argument joining, SIGPIPE handling (srd012-yes R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

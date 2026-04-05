@@ -1,0 +1,72 @@
+id: srd093-mknod
+title: "cmd/mknod: Make Block or Character Special Files"
+
+problem: |
+  macOS ships mknod but the GNU version supports --mode (-m) for setting permissions.
+  The Go implementation must match the Homebrew GNU reference binary (gmknod, installed
+  by coreutils) byte-for-byte on all flag combinations, verified by differential
+  testing via pkg/testutils.
+
+goals:
+  - G1: Create block special, character special, or FIFO special files.
+  - G2: Support permission mode specification at creation.
+  - G3: Verify functional parity against gmknod via differential testing.
+
+requirements:
+  R1:
+    title: Special file creation
+    items:
+      - R1.1:
+          text: "Must accept NAME TYPE [MAJOR MINOR] arguments. TYPE is b (block special), c or u (character special), or p (FIFO). Block and character types require MAJOR and MINOR device numbers."
+          weight: 4
+      - R1.2:
+          text: "-m MODE or --mode=MODE must set the file's permission bits to MODE (octal or symbolic). Default is 0666 modified by umask for FIFOs, 0660 for device files."
+          weight: 1
+      - R1.3:
+          text: Must exit 1 with an error when arguments are invalid (wrong count, non-numeric device numbers, FIFO with device numbers given).
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 when the special file is created successfully.
+          weight: 1
+      - R2.2:
+          text: Must exit 1 when creation fails or arguments are invalid.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/mknod does not implement SELinux context setting.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "mknod pipe1 p creates a FIFO, matching gmknod."
+    traces:
+      - R1.1
+  - id: AC2
+    criterion: "mknod -m 644 pipe1 p creates a FIFO with mode 644, matching gmknod."
+    traces:
+      - R1.2
+  - id: AC3
+    criterion: "Differential test against gmknod passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC4
+    criterion: "cmd/mknod compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R2.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

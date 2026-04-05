@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd022-nl.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd022-nl.yaml) and invokes do-work to produce
   a passing differential test for cmd/nl.
 
 flow:
@@ -31,7 +31,7 @@ flow:
       with the same stdin, args, and environment. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/nl — section parsing, line numbering, format/width/separator options (prd022-nl R1, R2, R3, R4)"
+  - T1: "cmd/nl — section parsing, line numbering, format/width/separator options (srd022-nl R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
 
 success_criteria:

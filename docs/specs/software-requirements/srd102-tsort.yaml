@@ -1,0 +1,75 @@
+id: srd102-tsort
+title: "cmd/tsort: Topological Sort"
+
+problem: |
+  macOS ships tsort but the GNU version has consistent error formatting. The Go
+  implementation must match the Homebrew GNU reference binary (gtsort, installed by
+  coreutils) byte-for-byte, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Perform a topological sort on a set of partial orderings.
+  - G2: Detect and report cycles.
+  - G3: Verify functional parity against gtsort via differential testing.
+
+requirements:
+  R1:
+    title: Topological sorting
+    items:
+      - R1.1:
+          text: Must read pairs of strings from stdin (or FILE argument), where each pair "A B" means A must come before B, and produce a topological ordering on stdout, one item per line.
+          weight: 4
+      - R1.2:
+          text: When a cycle is detected, must print a cycle diagnostic to stderr and continue sorting the remaining items. Must exit 1 when any cycle is found.
+          weight: 4
+      - R1.3:
+          text: Must exit 1 when the input has an odd number of tokens (incomplete pair).
+          weight: 1
+      - R1.4:
+          text: Must read from FILE when given as argument, or stdin when no argument or "-" is given.
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 when sorting completes with no cycles.
+          weight: 1
+      - R2.2:
+          text: Must exit 1 when any cycle is detected or input is malformed.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/tsort does not implement graphical cycle visualization.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "echo 'a b b c' | tsort produces a, b, c in order, matching gtsort."
+    traces:
+      - R1.1
+      - R1.4
+  - id: AC2
+    criterion: "tsort detects a cycle and exits 1, matching gtsort."
+    traces:
+      - R1.2
+  - id: AC3
+    criterion: "Differential test against gtsort passes."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC4
+    criterion: "cmd/tsort compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

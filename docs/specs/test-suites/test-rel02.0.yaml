@@ -8,26 +8,26 @@ traces:
   - rel02.0-uc003-yes
   - rel02.0-uc004-basename
   - rel02.0-uc005-dirname
-  - prd013-true R1
-  - prd013-true R2
-  - prd013-true R3
-  - prd013-true R4
-  - prd014-false R1
-  - prd014-false R2
-  - prd014-false R3
-  - prd014-false R4
-  - prd012-yes R1
-  - prd012-yes R2
-  - prd012-yes R3
-  - prd012-yes R4
-  - prd015-basename R1
-  - prd015-basename R2
-  - prd015-basename R3
-  - prd015-basename R4
-  - prd016-dirname R1
-  - prd016-dirname R2
-  - prd016-dirname R3
-  - prd016-dirname R4
+  - srd013-true R1
+  - srd013-true R2
+  - srd013-true R3
+  - srd013-true R4
+  - srd014-false R1
+  - srd014-false R2
+  - srd014-false R3
+  - srd014-false R4
+  - srd012-yes R1
+  - srd012-yes R2
+  - srd012-yes R3
+  - srd012-yes R4
+  - srd015-basename R1
+  - srd015-basename R2
+  - srd015-basename R3
+  - srd015-basename R4
+  - srd016-dirname R1
+  - srd016-dirname R2
+  - srd016-dirname R3
+  - srd016-dirname R4
 
 preconditions:
   - All binaries exist in ./bin/ (built via mage build).
@@ -50,7 +50,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd013-true R1.1
+      - srd013-true R1.1
 
   - name: true_arbitrary_args
     description: Invoke true with arbitrary arguments; expect exit 0, no output.
@@ -64,7 +64,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd013-true R1.2
+      - srd013-true R1.2
 
   # --- false ---
   - name: false_no_args
@@ -79,7 +79,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd014-false R1.1
+      - srd014-false R1.1
 
   - name: false_arbitrary_args
     description: Invoke false with arbitrary arguments; expect exit 1, no output.
@@ -93,7 +93,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd014-false R1.2
+      - srd014-false R1.2
 
   # --- yes ---
   - name: yes_default_output
@@ -109,7 +109,7 @@ test_cases:
       stdout: "y\ny\ny\ny\ny\n"
       stderr: ""
     traces:
-      - prd012-yes R1.1
+      - srd012-yes R1.1
 
   - name: yes_single_arg
     description: "yes hello piped through head -n 3; expect 3 lines of 'hello'."
@@ -124,7 +124,7 @@ test_cases:
       stdout: "hello\nhello\nhello\n"
       stderr: ""
     traces:
-      - prd012-yes R1.2
+      - srd012-yes R1.2
 
   - name: yes_multi_arg
     description: "yes hello world piped through head -n 2; expect 2 lines of 'hello world'."
@@ -139,7 +139,7 @@ test_cases:
       stdout: "hello world\nhello world\n"
       stderr: ""
     traces:
-      - prd012-yes R1.2
+      - srd012-yes R1.2
 
   - name: yes_double_dash_separator
     description: "yes -- --help piped through head -n 1; expect '--help'."
@@ -154,7 +154,7 @@ test_cases:
       stdout: "--help\n"
       stderr: ""
     traces:
-      - prd012-yes R1.3
+      - srd012-yes R1.3
 
   # --- basename ---
   - name: basename_simple_path
@@ -169,7 +169,7 @@ test_cases:
       stdout: "sort\n"
       stderr: ""
     traces:
-      - prd015-basename R1.1
+      - srd015-basename R1.1
 
   - name: basename_suffix_removal
     description: "basename include/stdio.h .h; expect 'stdio'."
@@ -183,7 +183,7 @@ test_cases:
       stdout: "stdio\n"
       stderr: ""
     traces:
-      - prd015-basename R1.2
+      - srd015-basename R1.2
 
   - name: basename_trailing_slashes
     description: "basename /usr/bin/sort///; expect 'sort' (trailing slashes stripped)."
@@ -197,7 +197,7 @@ test_cases:
       stdout: "sort\n"
       stderr: ""
     traces:
-      - prd015-basename R1.3
+      - srd015-basename R1.3
 
   - name: basename_root_path
     description: "basename /; expect '/'."
@@ -211,7 +211,7 @@ test_cases:
       stdout: "/\n"
       stderr: ""
     traces:
-      - prd015-basename R1.4
+      - srd015-basename R1.4
 
   - name: basename_empty_string
     description: "basename ''; expect empty line."
@@ -225,7 +225,7 @@ test_cases:
       stdout: "\n"
       stderr: ""
     traces:
-      - prd015-basename R1.5
+      - srd015-basename R1.5
 
   - name: basename_multi_argument_mode
     description: "basename -a /usr/bin/sort /usr/bin/cat; expect 'sort' and 'cat' on separate lines."
@@ -239,7 +239,7 @@ test_cases:
       stdout: "sort\ncat\n"
       stderr: ""
     traces:
-      - prd015-basename R2.1
+      - srd015-basename R2.1
 
   - name: basename_suffix_mode
     description: "basename -s .h include/stdio.h include/stdlib.h; expect 'stdio' and 'stdlib'."
@@ -253,7 +253,7 @@ test_cases:
       stdout: "stdio\nstdlib\n"
       stderr: ""
     traces:
-      - prd015-basename R2.2
+      - srd015-basename R2.2
 
   - name: basename_nul_delimited
     description: "basename -z /usr/bin/sort; expect 'sort' followed by NUL byte instead of newline."
@@ -267,7 +267,7 @@ test_cases:
       stdout: "sort\x00"
       stderr: ""
     traces:
-      - prd015-basename R3.1
+      - srd015-basename R3.1
 
   # --- dirname ---
   - name: dirname_simple_path
@@ -282,7 +282,7 @@ test_cases:
       stdout: "/usr/bin\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.1
+      - srd016-dirname R1.1
 
   - name: dirname_no_directory
     description: "dirname stdio.h; expect '.' (current directory)."
@@ -296,7 +296,7 @@ test_cases:
       stdout: ".\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.2
+      - srd016-dirname R1.2
 
   - name: dirname_root_path
     description: "dirname /; expect '/'."
@@ -310,7 +310,7 @@ test_cases:
       stdout: "/\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.3
+      - srd016-dirname R1.3
 
   - name: dirname_trailing_slashes
     description: "dirname /usr/bin/; expect '/usr' (trailing slash stripped before processing)."
@@ -324,8 +324,8 @@ test_cases:
       stdout: "/usr\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.1
-      - prd016-dirname R1.4
+      - srd016-dirname R1.1
+      - srd016-dirname R1.4
 
   - name: dirname_dot_path
     description: "dirname .; expect '.'."
@@ -339,7 +339,7 @@ test_cases:
       stdout: ".\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.2
+      - srd016-dirname R1.2
 
   - name: dirname_dotdot_path
     description: "dirname ..; expect '.'."
@@ -353,7 +353,7 @@ test_cases:
       stdout: ".\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.2
+      - srd016-dirname R1.2
 
   - name: dirname_multiple_args
     description: "dirname dir1/file dir2/file; expect 'dir1' and 'dir2' on separate lines."
@@ -367,7 +367,7 @@ test_cases:
       stdout: "dir1\ndir2\n"
       stderr: ""
     traces:
-      - prd016-dirname R1.5
+      - srd016-dirname R1.5
 
   - name: dirname_nul_delimited
     description: "dirname -z /usr/bin/sort; expect '/usr/bin' followed by NUL byte."
@@ -381,7 +381,7 @@ test_cases:
       stdout: "/usr/bin\x00"
       stderr: ""
     traces:
-      - prd016-dirname R2.1
+      - srd016-dirname R2.1
 
   - name: dirname_no_args_error
     description: "dirname with no arguments; expect exit 1 and error message on stderr."
@@ -395,4 +395,4 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd016-dirname R3.2
+      - srd016-dirname R3.2

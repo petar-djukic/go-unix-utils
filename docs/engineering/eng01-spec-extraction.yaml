@@ -8,7 +8,7 @@ introduction: |
   the things that matter when building a compatible re-implementation.
 
   This guideline describes the process we use in go-unix-utils: reading C and Perl source to
-  produce numbered PRD requirements that an agent can implement and a differential test harness
+  produce numbered SRD requirements that an agent can implement and a differential test harness
   can verify. The process applies to any target software for which you have source, a reference
   binary, or both.
 
@@ -29,16 +29,16 @@ sections:
       right.
 
       Tier 3 — Man page or documentation only. Weakest. Use only as a starting point for
-      Tier 2 experiments. Never ship a PRD derived solely from documentation without binary
+      Tier 2 experiments. Never ship a SRD derived solely from documentation without binary
       verification.
 
       Record which tier you used in sources.yaml under the utility's entry so readers know
-      the confidence level of each PRD.
+      the confidence level of each SRD.
 
   - title: "Before you read code: build a surface map"
     content: |
       Before reading any source file, build a map of the surface you need to cover. The surface
-      map drives what you look for and becomes the skeleton of the PRD requirements groups.
+      map drives what you look for and becomes the skeleton of the SRD requirements groups.
 
       Run the binary with --help or no arguments to get the flag list. For each flag, record
       its short form, long form, argument type (bool/string/int), and default value. This
@@ -47,7 +47,7 @@ sections:
       Run the binary under several conditions and note what goes to stdout vs stderr. Many
       utilities write errors to stderr and results to stdout; some mix them. Count the distinct
       exit codes you can provoke: at minimum 0 (success), 1 (minor error), and often 2 (usage
-      error). These exit codes must each appear in the PRD.
+      error). These exit codes must each appear in the SRD.
 
       Identify whether the utility reads files, reads stdin, writes files, or writes stdout.
       If it writes files, note whether writes are atomic (via a temp file) or in-place. This
@@ -59,11 +59,11 @@ sections:
 
   - title: "Reading C source: the extraction sequence"
     content: |
-      Work through C source in a fixed order. Skipping steps produces incomplete PRDs.
+      Work through C source in a fixed order. Skipping steps produces incomplete SRDs.
 
       Step 1 — Locate main(). The comment at the top of main() often describes what the
-      program does in one sentence. Use it as the PRD problem statement seed. Note the main()
-      line number in sources.yaml (e.g., prd004-ts records main_line: 550 for cat.c).
+      program does in one sentence. Use it as the SRD problem statement seed. Note the main()
+      line number in sources.yaml (e.g., srd004-ts records main_line: 550 for cat.c).
 
       Step 2 — Find flag parsing. In GNU coreutils this is getopt_long(); in moreutils it
       is Perl's GetOptions(). Read every case in the switch statement. For each flag: record
@@ -76,7 +76,7 @@ sections:
       Step 3 — Find exit code logic. Search for exit() calls and return statements in main().
       In coreutils, a common pattern is "return ok ? EXIT_SUCCESS : EXIT_FAILURE". Note the
       line number. Read every condition that sets ok = false or sets a status variable to
-      EXIT_FAILURE. Each condition is a distinct exit-code requirement in the PRD.
+      EXIT_FAILURE. Each condition is a distinct exit-code requirement in the SRD.
 
       Step 4 — Find default values. Before the getopt_long loop, look for boolean flags
       initialized to true or false. These are the defaults. They matter: GNU wc initializes
@@ -89,13 +89,13 @@ sections:
       stdin or files and produces output. Note what triggers a flush (fflush in C, Flush in
       Go). Note what constitutes a "line" or a "record". Note any locale-sensitive operations
       (isspace(), strcoll(), mblen()). Each locale-sensitive operation needs a corresponding
-      note in the PRD: the differential test must set LC_ALL=C to neutralize locale divergence
+      note in the SRD: the differential test must set LC_ALL=C to neutralize locale divergence
       between the Go and reference binary outputs.
 
       Step 6 — Find signal handling. Search for signal() or sigaction() calls. In ls, a
       SIGPIPE handler suppresses broken-pipe errors when piping to head. A SIGWINCH handler
       re-queries terminal width on resize. Each signal handler translates to a requirement in
-      the PRD for pkg/sys (or wherever signal handling lives). Missing a signal handler means
+      the SRD for pkg/sys (or wherever signal handling lives). Missing a signal handler means
       the re-implementation exits noisily in conditions where the original exits silently.
 
       Step 7 — Find error messages. Search for fprintf(stderr, ...) and perror() calls.
@@ -119,14 +119,14 @@ sections:
       Pay attention to use statements. ts uses Time::HiRes for sub-second timestamps and
       Date::Parse for -r mode. Each Perl module is a dependency your Go implementation must
       replicate using stdlib or a specific algorithm. Document what each module provides and
-      which PRD requirements it serves. For ts, Time::HiRes::gettimeofday maps to
+      which SRD requirements it serves. For ts, Time::HiRes::gettimeofday maps to
       time.Now().UnixMicro() in Go; Date::Parse maps to a set of timestamp regexes you must
       replicate exactly (the regex patterns in the Perl source become literal requirements in
-      R6.2 of prd004-ts).
+      R6.2 of srd004-ts).
 
       Perl's string operations are character-based by default; Go's are byte-based. Any
       Perl code that splits on whitespace or counts characters is locale-sensitive. Note these
-      in the PRD and constrain differential tests to LC_ALL=C.
+      in the SRD and constrain differential tests to LC_ALL=C.
 
   - title: "What man pages do not tell you"
     content: |
@@ -159,12 +159,12 @@ sections:
       Environment variable sensitivity. ts respects TZ for wall-clock timestamps but forces
       TZ=GMT internally for elapsed-time formatting in -i and -s modes. grep respects
       LC_ALL for character class matching. These environment interactions must be requirements
-      in the PRD and constraints in the differential test setup.
+      in the SRD and constraints in the differential test setup.
 
-  - title: "Structuring the PRD"
+  - title: "Structuring the SRD"
     content: |
-      Once you have completed the extraction sequence, you have raw notes. The PRD structures
-      them into a numbered, verifiable form. The mapping from raw notes to PRD sections is
+      Once you have completed the extraction sequence, you have raw notes. The SRD structures
+      them into a numbered, verifiable form. The mapping from raw notes to SRD sections is
       mechanical.
 
       The problem field is one paragraph: what gap this utility fills, and what the
@@ -173,7 +173,7 @@ sections:
       differential testing."
 
       Goals (G1, G2, ...) are the major capability areas, each in one sentence starting with
-      a verb. One goal per flag group is a good starting point. prd004-ts has five goals, one
+      a verb. One goal per flag group is a good starting point. srd004-ts has five goals, one
       per flag mode (-i, -s, -m, -r, and default).
 
       Requirements groups (R1, R2, ...) map to the sections of your surface map: default
@@ -183,13 +183,13 @@ sections:
       requirements: split "must do X and Y" into two items so each can be traced to a test
       independently.
 
-      Cite source line numbers in requirements when the behavior is non-obvious. prd005-wc
+      Cite source line numbers in requirements when the behavior is non-obvious. srd005-wc
       cites wc.c:862 for the default flag initialization and wc.c:237-247 for the output
       column ordering. These citations let the next reader verify the requirement without
       re-reading the whole source file.
 
       non_goals are equally important as requirements. Every behavior you choose not to
-      implement should appear here. prd004-ts excludes file input, egrep-style colorization,
+      implement should appear here. srd004-ts excludes file input, egrep-style colorization,
       and localized date parsing. Without explicit non-goals, implementers will guess and
       often guess wrong.
 
@@ -203,27 +203,27 @@ sections:
       Some utilities share low-level capabilities: terminal width queries, extended stat
       fields, SIGPIPE handling. These capabilities belong in shared packages (pkg/sys,
       pkg/format) rather than in each cmd/. During extraction, flag each capability that
-      appears in more than one utility and file a shared-package PRD.
+      appears in more than one utility and file a shared-package SRD.
 
       The signal for a shared capability is repeated source patterns. Every GNU utility that
       writes to stdout calls signal(SIGPIPE, SIG_IGN) or installs a sigaction handler.
       ls, du, find, cat, and wc all do this. Rather than documenting it in each utility's
-      PRD, we document it once in prd002-sys under R3 (SIGPIPE handling) and reference it
-      from each utility PRD.
+      SRD, we document it once in srd002-sys under R3 (SIGPIPE handling) and reference it
+      from each utility SRD.
 
       Similarly, struct stat field divergence between Darwin and Linux (st_mtimespec vs
       st_mtim, st_blocks interpretation) appears in every utility that touches file metadata.
-      prd002-sys R2 covers this once. Each utility PRD references the shared requirement with
+      srd002-sys R2 covers this once. Each utility SRD references the shared requirement with
       a note like "Utility context — ls (ls.c:213): ls needs st_nlink, st_uid, st_gid for -l
       format."
 
-      Include these utility-context notes in the shared PRD, not in the utility PRD. The
-      utility PRD remains focused on behavior; the shared PRD shows why the shared capability
+      Include these utility-context notes in the shared SRD, not in the utility SRD. The
+      utility SRD remains focused on behavior; the shared SRD shows why the shared capability
       exists and which utilities drive each requirement.
 
   - title: "Difficulty and memory model classification"
     content: |
-      After writing the PRD, classify the utility along two axes. These classifications feed
+      After writing the SRD, classify the utility along two axes. These classifications feed
       the utility catalog (docs/utilities.yaml) and inform release sequencing.
 
       Difficulty captures implementation effort, which depends on: the number of flags and
@@ -231,7 +231,7 @@ sections:
       language's standard library.
 
       Trivial utilities (single syscall, printf output) need no planning. Easy utilities
-      (line-oriented I/O, simple flags) need a PRD but no shared-library work. Medium
+      (line-oriented I/O, simple flags) need a SRD but no shared-library work. Medium
       utilities involve non-trivial flag combinations or moderate algorithms but have direct
       stdlib support. Hard utilities need custom layout logic or complex state machines.
       Very-hard utilities require capabilities that Go's stdlib does not provide: locale-aware
@@ -251,7 +251,7 @@ sections:
 
   - title: "Differential testing as specification verification"
     content: |
-      A PRD requirement is not verified until a test fails when the requirement is violated.
+      A SRD requirement is not verified until a test fails when the requirement is violated.
       Differential testing — running the Go binary and the reference binary on the same inputs
       and comparing their outputs — is the most reliable verification mechanism for
       re-implementations because it does not require the test author to know the correct output
@@ -262,7 +262,7 @@ sections:
       them byte-for-byte after normalization. A test failure reports the triggering input and
       both outputs side by side.
 
-      During extraction, design the test inputs concurrently with the PRD requirements. For
+      During extraction, design the test inputs concurrently with the SRD requirements. For
       each requirements group, identify at least one concrete input that exercises it. For ts
       R2.3 (subsecond extensions), the test input is a format string like "%.S" and a single
       line of stdin; the expected behavior is a timestamp with microsecond precision. Capture
@@ -280,10 +280,10 @@ sections:
       clock) must run with a fixed TZ. Record these constraints in the test suite YAML under
       preconditions so the test is reproducible without knowing the extraction history.
 
-  - title: "Checklist: from source to PRD"
+  - title: "Checklist: from source to SRD"
     content: |
       The following checklist summarizes the full extraction process. Complete every item
-      before submitting a PRD for review.
+      before submitting a SRD for review.
 
       Source reading
         - Recorded source repository, commit hash, and source file in sources.yaml
@@ -306,12 +306,12 @@ sections:
         - Identified locale-sensitive operations
         - Identified environment variables read at runtime
 
-      PRD
+      SRD
         - problem states the gap and the verification goal
         - Goals (G1...) cover all major flag groups and behavior modes
         - Requirements (R1.1...) start with "Must" or "Must not" and are non-compound
         - Source line numbers cited for non-obvious behaviors
-        - Shared capabilities referenced to their shared-package PRD, not duplicated
+        - Shared capabilities referenced to their shared-package SRD, not duplicated
         - non_goals list every explicit omission
         - acceptance_criteria are runnable without ambiguity
 
@@ -327,8 +327,8 @@ sections:
           preconditions
 
 references:
-  - "docs/specs/product-requirements/prd002-sys.yaml — shared syscall library PRD; shows how shared capabilities are extracted and documented separately from utility PRDs."
-  - "docs/specs/product-requirements/prd004-ts.yaml — example PRD extracted from Perl source (ts from moreutils); illustrates Perl-specific extraction patterns and subsecond timestamp handling."
-  - "docs/specs/product-requirements/prd005-wc.yaml — example PRD extracted from C source (wc from coreutils); illustrates column-ordering extraction and locale constraints."
+  - "docs/specs/product-requirements/srd002-sys.yaml — shared syscall library SRD; shows how shared capabilities are extracted and documented separately from utility SRDs."
+  - "docs/specs/product-requirements/srd004-ts.yaml — example SRD extracted from Perl source (ts from moreutils); illustrates Perl-specific extraction patterns and subsecond timestamp handling."
+  - "docs/specs/product-requirements/srd005-wc.yaml — example SRD extracted from C source (wc from coreutils); illustrates column-ordering extraction and locale constraints."
   - "docs/specs/sources.yaml — catalog of reference repositories; records commit hash, source file, flag-parsing location, and exit-code logic location for each utility."
   - "docs/utilities.yaml — full utility catalog with difficulty and memory model classifications derived from this extraction process."

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd068-csplit.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd068-csplit.yaml) and invokes do-work to produce
   a passing differential test for cmd/csplit.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       compare output file contents and exit codes under LC_ALL=C.
 
 touchpoints:
-  - T1: "cmd/csplit — regex split, line number split, repeat counts, output control (prd068-csplit R1, R2, R3, R4)"
+  - T1: "cmd/csplit — regex split, line number split, repeat counts, output control (srd068-csplit R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, output file and exit code comparison"
 
 success_criteria:

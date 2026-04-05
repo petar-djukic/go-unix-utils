@@ -1,0 +1,183 @@
+id: srd109-dircolors
+title: "cmd/dircolors: Color Setup for ls"
+
+problem: |
+  dircolors outputs shell commands to set the LS_COLORS environment variable, which controls
+  file-type colorization in ls. macOS does not ship dircolors; the Go implementation must
+  match the Homebrew GNU reference binary (gdircolors, installed by coreutils) byte-for-byte
+  on all flag combinations, verified by differential testing via pkg/testutils.
+
+  dircolors reads a color configuration database (either a file argument or built-in defaults)
+  and translates it into a shell-evaluable assignment of LS_COLORS. The database format maps
+  file types and extensions to ANSI color codes. dircolors requires pkg/sys for SIGPIPE
+  handling.
+
+goals:
+  - G1: Output shell commands to set LS_COLORS from a color database, matching GNU dircolors output.
+  - G2: Support Bourne shell (-b/--sh/--bourne-shell) and C shell (-c/--csh/--c-shell) output formats.
+  - G3: Support printing the built-in default database (-p/--print-database).
+  - G4: Parse the GNU dircolors database format including TERM entries, file type keywords, and extension mappings.
+
+requirements:
+  R1:
+    title: Shell output format
+    items:
+      - R1.1:
+          text: |
+            When invoked with -b, --sh, or --bourne-shell, must output Bourne shell commands
+            to set and export LS_COLORS. The output format is:
+            LS_COLORS='<value>';
+            export LS_COLORS
+            where <value> is the colon-separated list of type=code pairs derived from the
+            database.
+          weight: 1
+      - R1.2:
+          text: |
+            When invoked with -c, --csh, or --c-shell, must output C shell commands to set
+            LS_COLORS. The output format is:
+            setenv LS_COLORS '<value>'
+            where <value> is the colon-separated list of type=code pairs.
+          weight: 1
+      - R1.3:
+          text: |
+            When neither -b nor -c is given, must auto-detect the shell from the SHELL
+            environment variable. If SHELL ends with "csh" (e.g., /bin/tcsh, /bin/csh), use
+            C shell format. Otherwise use Bourne shell format. This matches GNU dircolors
+            auto-detection behavior.
+          weight: 1
+      - R1.4:
+          text: |
+            -b and -c are mutually exclusive. The last one on the command line takes
+            precedence.
+          weight: 1
+
+  R2:
+    title: Database parsing
+    items:
+      - R2.1:
+          text: |
+            Must parse the GNU dircolors database format. Lines beginning with # are comments.
+            Blank lines are ignored. Each non-comment line has the form "KEYWORD value" where
+            KEYWORD is a file type name (e.g., DIR, LINK, EXEC, FIFO, SOCK, BLK, CHR, ORPHAN,
+            SETUID, SETGID, STICKY, OTHER_WRITABLE, STICKY_OTHER_WRITABLE, CAPABILITY,
+            MULTIHARDLINK) or a TERM entry, or a file extension (e.g., .tar, .gz, .jpg).
+          weight: 4
+      - R2.2:
+          text: |
+            TERM lines specify terminal types for which the color database applies. If the
+            current TERM environment variable does not match any TERM line in the database,
+            must output an empty LS_COLORS value. When no TERM lines are present in the
+            database, the database applies to all terminals.
+          weight: 1
+      - R2.3:
+          text: |
+            File type keywords map to two-letter LS_COLORS codes: DIR=di, LINK=ln, EXEC=ex,
+            FIFO=pi, SOCK=so, BLK=bd, CHR=cd, ORPHAN=or, SETUID=su, SETGID=sg, STICKY=st,
+            OTHER_WRITABLE=ow, STICKY_OTHER_WRITABLE=tw, CAPABILITY=ca, MULTIHARDLINK=mh,
+            NORMAL=no, FILE=fi, RESET=rs, MISSING=mi, LEFT=lc, RIGHT=rc, END=ec.
+            Extension entries (lines starting with . or *.) map to the full extension
+            pattern in LS_COLORS (e.g., "*.tar=01;31").
+          weight: 4
+      - R2.4:
+          text: |
+            When a filename argument is given, must read and parse that file as the color
+            database. When no filename is given (and -p is not given), must use the built-in
+            default database. The built-in defaults must match the output of
+            gdircolors --print-database.
+          weight: 4
+      - R2.5:
+          text: |
+            When "-" is given as the filename argument, must read the database from stdin.
+          weight: 1
+
+  R3:
+    title: Print database, exit codes, and signal handling
+    items:
+      - R3.1:
+          text: |
+            -p or --print-database must print the built-in default color database to stdout
+            in the dircolors database format (comments, TERM lines, keywords, extensions).
+            The output must match gdircolors --print-database byte-for-byte.
+          weight: 1
+      - R3.2:
+          text: |
+            -p is incompatible with a filename argument. If both are given, must print an
+            error to stderr and exit 1.
+          weight: 1
+      - R3.3:
+          text: Must exit 0 on success.
+          weight: 1
+      - R3.4:
+          text: |
+            Must exit 1 on error (invalid database syntax, file not found, incompatible
+            options). Must print a diagnostic to stderr for each error including the
+            filename and line number of the offending line in the database.
+          weight: 1
+      - R3.5:
+          text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping dircolors output to head or other truncating consumers does not produce a broken-pipe error message.
+          weight: 1
+
+non_goals:
+  - Custom color themes beyond the built-in GNU defaults are out of scope; dircolors reads whatever database is provided but ships only the GNU default.
+  - Interactive editing of the color database is out of scope.
+  - Validation of ANSI color code syntax within database values is out of scope; values are passed through verbatim.
+  - COLORTERM environment variable handling is out of scope.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "Bourne shell output -- gdircolors --sh and go run ./cmd/dircolors --sh produce identical LS_COLORS assignment output."
+    traces:
+      - R1.1
+      - R1.3
+      - R2.4
+  - id: AC2
+    criterion: "C shell output -- gdircolors --csh and go run ./cmd/dircolors --csh produce identical setenv output."
+    traces:
+      - R1.2
+      - R1.3
+      - R2.4
+  - id: AC3
+    criterion: "Print database -- gdircolors -p and go run ./cmd/dircolors -p produce identical default database output."
+    traces:
+      - R3.1
+      - R3.2
+  - id: AC4
+    criterion: "Custom database -- gdircolors --sh FILE and go run ./cmd/dircolors --sh FILE produce identical output when given the same custom database file."
+    traces:
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+  - id: AC5
+    criterion: "Shell auto-detection -- with SHELL=/bin/bash, gdircolors and go run ./cmd/dircolors produce Bourne shell format. With SHELL=/bin/tcsh, both produce C shell format."
+    traces:
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "Exit codes -- the Go binary exits 1 when given both -p and a filename argument, and exits 1 for an invalid database file, matching gdircolors behavior."
+    traces:
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+  - id: AC7
+    criterion: "cmd/dircolors compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R2.5
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

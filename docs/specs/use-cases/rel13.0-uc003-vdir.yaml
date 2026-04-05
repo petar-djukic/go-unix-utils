@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd108-vdir.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd108-vdir.yaml) and invokes do-work to produce
   a passing differential test for cmd/vdir.
 
 flow:
@@ -22,7 +22,7 @@ flow:
       gvdir with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/vdir — vdir lists directory contents verbosely (prd108-vdir R1, R2)"
+  - T1: "cmd/vdir — vdir lists directory contents verbosely (srd108-vdir R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

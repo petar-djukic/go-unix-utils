@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd091-chown.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd091-chown.yaml) and invokes do-work to produce
   a passing differential test for cmd/chown.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       gchown with the same inputs and compares exit codes and stderr.
 
 touchpoints:
-  - T1: "cmd/chown — ownership parsing, recursive traversal, symlink handling (prd091-chown R1, R2, R3)"
+  - T1: "cmd/chown — ownership parsing, recursive traversal, symlink handling (srd091-chown R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

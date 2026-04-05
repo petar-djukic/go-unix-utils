@@ -6,18 +6,18 @@ traces:
   - rel07.1-uc001-cp
   - rel07.1-uc002-mv
   - rel07.1-uc003-rm
-  - prd056-cp R1
-  - prd056-cp R2
-  - prd056-cp R3
-  - prd056-cp R4
-  - prd057-mv R1
-  - prd057-mv R2
-  - prd057-mv R3
-  - prd057-mv R4
-  - prd058-rm R1
-  - prd058-rm R2
-  - prd058-rm R3
-  - prd058-rm R4
+  - srd056-cp R1
+  - srd056-cp R2
+  - srd056-cp R3
+  - srd056-cp R4
+  - srd057-mv R1
+  - srd057-mv R2
+  - srd057-mv R3
+  - srd057-mv R4
+  - srd058-rm R1
+  - srd058-rm R2
+  - srd058-rm R3
+  - srd058-rm R4
 
 preconditions:
   - ./bin/cp, ./bin/mv, and ./bin/rm exist (built via mage build).
@@ -41,7 +41,7 @@ test_cases:
       file_exists: "dest.txt"
       file_content: "hello"
     traces:
-      - prd056-cp R1.1
+      - srd056-cp R1.1
 
   # --- cp: copy into directory ---
   - name: cp_into_directory
@@ -55,7 +55,7 @@ test_cases:
       exit_code: 0
       file_exists: "destdir/source.txt"
     traces:
-      - prd056-cp R1.1
+      - srd056-cp R1.1
 
   # --- cp: recursive directory copy ---
   - name: cp_recursive
@@ -69,7 +69,7 @@ test_cases:
       exit_code: 0
       file_exists: "destdir/sub/file.txt"
     traces:
-      - prd056-cp R2.1
+      - srd056-cp R2.1
 
   # --- cp: no-clobber ---
   - name: cp_no_clobber
@@ -83,7 +83,7 @@ test_cases:
       exit_code: 0
       file_content_target: "old"
     traces:
-      - prd056-cp R1.4
+      - srd056-cp R1.4
 
   # --- cp: directory without -r fails ---
   - name: cp_directory_without_recursive
@@ -97,7 +97,7 @@ test_cases:
       exit_code: 1
       stderr_contains: "directory"
     traces:
-      - prd056-cp R2.2
+      - srd056-cp R2.2
 
   # --- cp: missing source ---
   - name: cp_missing_source
@@ -111,7 +111,7 @@ test_cases:
       exit_code: 1
       stderr_contains: "nonexistent.txt"
     traces:
-      - prd056-cp R4.2
+      - srd056-cp R4.2
 
   # --- mv: rename file ---
   - name: mv_rename
@@ -126,7 +126,7 @@ test_cases:
       file_exists: "dest.txt"
       file_not_exists: "source.txt"
     traces:
-      - prd057-mv R1.1
+      - srd057-mv R1.1
 
   # --- mv: move into directory ---
   - name: mv_into_directory
@@ -141,8 +141,8 @@ test_cases:
       file_exists: "destdir/file.txt"
       file_not_exists: "file.txt"
     traces:
-      - prd057-mv R1.2
-      - prd057-mv R1.4
+      - srd057-mv R1.2
+      - srd057-mv R1.4
 
   # --- mv: no-clobber ---
   - name: mv_no_clobber
@@ -156,7 +156,7 @@ test_cases:
       exit_code: 0
       file_content_target: "old"
     traces:
-      - prd057-mv R2.3
+      - srd057-mv R2.3
 
   # --- mv: missing source ---
   - name: mv_missing_source
@@ -170,7 +170,7 @@ test_cases:
       exit_code: 1
       stderr_contains: "nonexistent.txt"
     traces:
-      - prd057-mv R4.2
+      - srd057-mv R4.2
 
   # --- rm: single file removal ---
   - name: rm_single_file
@@ -184,7 +184,7 @@ test_cases:
       exit_code: 0
       file_not_exists: "target.txt"
     traces:
-      - prd058-rm R1.1
+      - srd058-rm R1.1
 
   # --- rm: recursive directory removal ---
   - name: rm_recursive
@@ -198,7 +198,7 @@ test_cases:
       exit_code: 0
       file_not_exists: "dir"
     traces:
-      - prd058-rm R2.1
+      - srd058-rm R2.1
 
   # --- rm: force on non-existent ---
   - name: rm_force_nonexistent
@@ -213,8 +213,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd058-rm R2.2
-      - prd058-rm R4.3
+      - srd058-rm R2.2
+      - srd058-rm R4.3
 
   # --- rm: directory without -r fails ---
   - name: rm_directory_without_recursive
@@ -228,7 +228,7 @@ test_cases:
       exit_code: 1
       stderr_contains: "directory"
     traces:
-      - prd058-rm R1.2
+      - srd058-rm R1.2
 
   # --- rm: refuse dot and dotdot ---
   - name: rm_refuse_dot
@@ -242,4 +242,4 @@ test_cases:
       exit_code: 1
       stderr_contains: "."
     traces:
-      - prd058-rm R1.3
+      - srd058-rm R1.3

@@ -1,0 +1,137 @@
+id: srd067-split
+title: "cmd/split: Split a File into Pieces"
+
+problem: |
+  Shell scripts and data pipelines use split to divide large files into smaller pieces by
+  line count, byte count, or number of chunks. The macOS BSD split differs from GNU split
+  in suffix handling, numeric suffixes, and additional splitting modes. The Go implementation
+  must match the Homebrew GNU reference binary (gsplit, installed by coreutils) in output
+  and exit codes for all supported flag combinations, verified by differential testing via
+  pkg/testutils.
+
+goals:
+  - G1: Split a file into pieces by line count (default mode).
+  - G2: Split a file by byte count or into a fixed number of chunks.
+  - G3: Support configurable output prefix and suffix options.
+  - G4: Verify functional parity against gsplit via differential testing.
+
+requirements:
+  R1:
+    title: Default behavior and line-based splitting
+    items:
+      - R1.1:
+          text: When invoked with no options, must split the input into pieces of 1000 lines each, writing to files named xaa, xab, xac, etc.
+          weight: 1
+      - R1.2:
+          text: "When a PREFIX argument is given, must use PREFIX instead of 'x' as the output filename prefix."
+          weight: 1
+      - R1.3:
+          text: "-l N or --lines=N must split the input into pieces of N lines each."
+          weight: 1
+      - R1.4:
+          text: When reading from stdin or when FILE is "-", must read from stdin.
+          weight: 1
+
+  R2:
+    title: Byte-based and chunk-based splitting
+    items:
+      - R2.1:
+          text: "-b N or --bytes=N must split the input into pieces of N bytes each. N may have a suffix (K, M, G, T, P, E, Z, Y for powers of 1024, or KB, MB, etc. for powers of 1000)."
+          weight: 1
+      - R2.2:
+          text: "-C N or --line-bytes=N must split the input into pieces of at most N bytes each, breaking only at line boundaries. Lines longer than N bytes are written to their own piece."
+          weight: 1
+      - R2.3:
+          text: "-n CHUNKS or --number=CHUNKS must split the input into CHUNKS pieces of roughly equal size. Must support N (by bytes), l/N (by lines), and r/N (round-robin by lines) forms."
+          weight: 1
+      - R2.4:
+          text: "Must not split in more than one mode simultaneously; conflicting split options must produce an error and exit 1."
+          weight: 1
+
+  R3:
+    title: Suffix control and additional options
+    items:
+      - R3.1:
+          text: "-a N or --suffix-length=N must use suffixes of length N (default 2)."
+          weight: 1
+      - R3.2:
+          text: "-d or --numeric-suffixes must use numeric suffixes (00, 01, 02, ...) instead of alphabetic."
+          weight: 1
+      - R3.3:
+          text: "--additional-suffix=SUFFIX must append SUFFIX to each output filename after the alphabetic or numeric suffix."
+          weight: 1
+      - R3.4:
+          text: "--filter=COMMAND must write each piece to the given shell COMMAND via a pipe, with the output filename available as $FILE in the command."
+          weight: 1
+
+  R4:
+    title: Exit codes and differential testing
+    items:
+      - R4.1:
+          text: Must exit 0 when the input is split successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when an invalid option, conflicting options, or write error occurs.
+          weight: 1
+      - R4.3:
+          text: "Differential tests must compare output file contents and exit codes between the Go binary and the reference binary via pkg/testutils."
+          weight: 1
+      - R4.4:
+          text: "Tests must cover: default 1000-line split, -l with custom line count, -b byte split with and without suffixes, -C line-bytes, -n chunk modes, -a suffix length, -d numeric suffixes, --additional-suffix, stdin input, custom prefix, and error cases (conflicting options, invalid counts)."
+          weight: 1
+
+non_goals:
+  - cmd/split does not implement --verbose output mode.
+  - cmd/split does not implement --elide-empty-files beyond what -n provides natively.
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sizeparse
+    - github.com/petar-djukic/go-unix-utils/pkg/sys
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "seq 1 3000 | go run ./cmd/split produces xaa (lines 1-1000), xab (lines 1001-2000), xac (lines 2001-3000), matching gsplit."
+    traces:
+      - R1.1
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/split -b 100 testfile produces pieces of 100 bytes each, matching gsplit."
+    traces:
+      - R2.1
+      - R4.1
+  - id: AC3
+    criterion: "go run ./cmd/split -d -a 3 testfile chunk_ produces chunk_000, chunk_001, etc., matching gsplit."
+    traces:
+      - R1.2
+      - R3.1
+      - R3.2
+  - id: AC4
+    criterion: "go run ./cmd/split -n 3 testfile produces 3 roughly equal pieces, matching gsplit."
+    traces:
+      - R2.3
+  - id: AC5
+    criterion: "Differential test against gsplit passes for all flag combinations listed in R4.4."
+    traces:
+      - R4.3
+      - R4.4
+  - id: AC6
+    criterion: "cmd/split compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

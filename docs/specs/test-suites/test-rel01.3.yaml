@@ -4,11 +4,11 @@ release: rel01.3
 
 traces:
   - rel01.3-uc001-du
-  - prd009-du R1
-  - prd009-du R2
-  - prd009-du R3
-  - prd009-du R4
-  - prd009-du R5
+  - srd009-du R1
+  - srd009-du R2
+  - srd009-du R3
+  - srd009-du R4
+  - srd009-du R5
 
 preconditions:
   - Binaries exist under ./bin/ (built via mage build).
@@ -33,9 +33,9 @@ test_cases:
       stdout_structure: one "SIZE\tPATH" line per subdirectory, ending with the root directory total
       stderr: ""
     traces:
-      - prd009-du R1.1
-      - prd009-du R1.2
-      - prd009-du R1.3
+      - srd009-du R1.1
+      - srd009-du R1.2
+      - srd009-du R1.3
 
   - name: du_summary_mode
     description: -s prints only the total for each argument.
@@ -49,7 +49,7 @@ test_cases:
       stdout_structure: one line with total size and path
       stderr: ""
     traces:
-      - prd009-du R2.2
+      - srd009-du R2.2
 
   - name: du_all_files
     description: -a prints size for every file, not just directories.
@@ -63,7 +63,7 @@ test_cases:
       stdout_structure: one line per file and directory in the tree
       stderr: ""
     traces:
-      - prd009-du R2.3
+      - srd009-du R2.3
 
   - name: du_human_readable
     description: -h displays sizes as human-readable strings (K/M/G).
@@ -77,7 +77,7 @@ test_cases:
       stdout_structure: size values contain unit suffixes (K, M, G)
       stderr: ""
     traces:
-      - prd009-du R2.1
+      - srd009-du R2.1
 
   - name: du_max_depth_1
     description: -d 1 limits output to the argument and its immediate children.
@@ -91,7 +91,7 @@ test_cases:
       stdout_structure: lines for immediate subdirectories and the root; no deeper entries
       stderr: ""
     traces:
-      - prd009-du R2.4
+      - srd009-du R2.4
 
   - name: du_grand_total
     description: -c prints a grand total "total" line after all arguments.
@@ -105,7 +105,7 @@ test_cases:
       stdout_structure: per-argument lines followed by a "SIZE\ttotal" line
       stderr: ""
     traces:
-      - prd009-du R2.7
+      - srd009-du R2.7
 
   - name: du_hard_link_dedup
     description: 'A file hard-linked into two directories is counted only once. Setup: create testdata/du-hardlink-fixture/ with dir_a/shared.txt (a regular file) and dir_b/shared.txt (hard link to dir_a/shared.txt, same inode). The hard link is created at test time via os.Link.'
@@ -119,9 +119,9 @@ test_cases:
       stdout_structure: total for the root counts shared.txt blocks once, not twice
       stderr: ""
     traces:
-      - prd009-du R3.1
-      - prd009-du R3.2
-      - prd009-du R3.3
+      - srd009-du R3.1
+      - srd009-du R3.2
+      - srd009-du R3.3
 
   - name: du_apparent_size
     description: --apparent-size reports st_size instead of st_blocks.
@@ -135,7 +135,7 @@ test_cases:
       stdout_structure: sizes based on file content length, not block allocation
       stderr: ""
     traces:
-      - prd009-du R2.8
+      - srd009-du R2.8
 
   - name: du_kilobyte_units
     description: -k reports in 1024-byte blocks (default, accepted without error).
@@ -149,7 +149,7 @@ test_cases:
       stdout_structure: identical to default_recursive (1K is the default)
       stderr: ""
     traces:
-      - prd009-du R2.5
+      - srd009-du R2.5
 
   - name: du_megabyte_units
     description: -m reports in 1048576-byte (1M) blocks.
@@ -163,7 +163,7 @@ test_cases:
       stdout_structure: sizes in megabyte units, smaller values show as 1 (rounded up)
       stderr: ""
     traces:
-      - prd009-du R2.6
+      - srd009-du R2.6
 
   - name: du_missing_path
     description: Non-existent argument prints error to stderr, exits 1.
@@ -176,4 +176,4 @@ test_cases:
       exit_code: 0
       stderr_contains: "nonexistent_dir"
     traces:
-      - prd009-du R4.2
+      - srd009-du R4.2

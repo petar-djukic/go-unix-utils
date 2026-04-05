@@ -268,14 +268,14 @@ sections:
   - title: "Relationship to GH-252 (OOD in specifications)"
     content: |
       GH-252 asks how specifications can encode OOD principles. This analysis provides concrete
-      evidence for one recommendation: PRDs should declare package_contract sections listing
+      evidence for one recommendation: SRDs should declare package_contract sections listing
       exported types and functions. These contracts would:
 
       1. Guide the stitch agent to implement the correct API surface
       2. Serve as the source for generating doc.go interface files
       3. Enable the measure prompt to include contracts instead of full implementations
 
-      The traceability chain would extend: PRD (package_contract) → doc.go (interface file) →
+      The traceability chain would extend: SRD (package_contract) → doc.go (interface file) →
       implementation (full code) → tests (validation).
 
 references:

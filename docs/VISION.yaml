@@ -23,12 +23,12 @@ what_this_does: |
   We run a four-stage pipeline for each utility. In the extraction stage, we clone the
   C source (coreutils, moreutils, grep, findutils) and analyze behavior directly from
   the source of truth. In the specification stage, a human operator uses the make-work
-  and do-work Claude Code skills to produce two artifacts: a PRD (numbered requirements
+  and do-work Claude Code skills to produce two artifacts: a SRD (numbered requirements
   and acceptance criteria covering all flags, exit codes, and stream behaviors) and a
   use case (concrete end-to-end execution path through the system). Shared library
-  components (pkg/) also receive PRDs when their requirements span multiple utilities.
+  components (pkg/) also receive SRDs when their requirements span multiple utilities.
   In the synthesis stage, the mage-claude-orchestrator library drives a Claude agent to
-  generate idiomatic Go from the PRD. In the verification stage, a differential testing
+  generate idiomatic Go from the SRD. In the verification stage, a differential testing
   harness runs the Go binary and the Homebrew reference binary side by side and compares
   outputs.
 
@@ -49,7 +49,7 @@ success_criteria:
     Every utility passes differential tests against its Homebrew reference binary
     with 100% output parity on exit code, stdout, and stderr.
   SC2: >
-    Every utility has a PRD that covers all flags, exit codes, and stream
+    Every utility has a SRD that covers all flags, exit codes, and stream
     behaviors derived from C source.
   SC3: >
     Go binaries are idiomatic and compile with no warnings under standard linting
@@ -66,16 +66,16 @@ success_criteria:
 implementation_phases:
   - phase: "1"
     focus: "Foundation: pipeline infrastructure, first utility (ts), shared pkg/ skeleton."
-    deliverables: "Differential testing harness in pkg/testutils/, pkg/sys/ and pkg/format/ initial implementations, cmd/ts/ with PRD and passing differential tests."
+    deliverables: "Differential testing harness in pkg/testutils/, pkg/sys/ and pkg/format/ initial implementations, cmd/ts/ with SRD and passing differential tests."
   - phase: "2"
     focus: "Moreutils: remaining moreutils tools (sponge, vidir, pee, chronic)."
-    deliverables: "PRD and Go implementation for sponge, vidir, pee, and chronic. Differential tests for each moreutils utility."
+    deliverables: "SRD and Go implementation for sponge, vidir, pee, and chronic. Differential tests for each moreutils utility."
   - phase: "3"
     focus: "Coreutils: high-complexity coreutils tools (ls, cat, cp, mv, wc, du)."
-    deliverables: "PRD and Go implementation for each coreutils utility. Shared formatting and syscall logic promoted to pkg/."
+    deliverables: "SRD and Go implementation for each coreutils utility. Shared formatting and syscall logic promoted to pkg/."
   - phase: "4"
     focus: "Search Utilities: grep, egrep, fgrep (grep package) and find, xargs (findutils)."
-    deliverables: "PRD and Go implementations for all grep and findutils tools. Full differential test coverage for the search utility suite."
+    deliverables: "SRD and Go implementations for all grep and findutils tools. Full differential test coverage for the search utility suite."
 
 risks:
   - risk: Platform divergence between GNU and macOS behavior.
@@ -103,7 +103,7 @@ risks:
     likelihood: medium
     mitigation: |
       Differential testing is the gating check. Code cannot pass review until
-      differential tests pass. Edge cases are explicit in the PRD and exercised
+      differential tests pass. Edge cases are explicit in the SRD and exercised
       as named test inputs in pkg/testutils/.
   - risk: Go has no locale-aware string collation (strcoll equivalent).
     impact: high

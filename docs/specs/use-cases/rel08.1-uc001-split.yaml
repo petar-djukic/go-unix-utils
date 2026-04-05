@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd067-split.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd067-split.yaml) and invokes do-work to produce
   a passing differential test for cmd/split.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       compare output file contents and exit codes under LC_ALL=C.
 
 touchpoints:
-  - T1: "cmd/split — line split, byte split, chunk split, suffix options (prd067-split R1, R2, R3, R4)"
+  - T1: "cmd/split — line split, byte split, chunk split, suffix options (srd067-split R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, output file and exit code comparison"
 
 success_criteria:

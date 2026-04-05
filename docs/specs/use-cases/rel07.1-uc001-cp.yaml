@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd056-cp.yaml) and invokes do-work to
+  The operator has completed the PRD (srd056-cp.yaml) and invokes do-work to
   produce a passing differential test for cmd/cp.
 
 flow:
@@ -31,7 +31,7 @@ flow:
       (existence, content, permissions).
 
 touchpoints:
-  - T1: "cmd/cp — single copy, multi-file, recursive, preserve, archive, force, no-clobber, interactive, symlinks, verbose (prd056-cp R1, R2, R3, R4)"
+  - T1: "cmd/cp — single copy, multi-file, recursive, preserve, archive, force, no-clobber, interactive, symlinks, verbose (srd056-cp R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, exit code and file system comparison"
 
 success_criteria:

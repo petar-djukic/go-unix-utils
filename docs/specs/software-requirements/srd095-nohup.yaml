@@ -1,0 +1,77 @@
+id: srd095-nohup
+title: "cmd/nohup: Run a Command Immune to Hangups"
+
+problem: |
+  macOS ships nohup but the GNU version has specific behavior for stdout/stderr
+  redirection to nohup.out. The Go implementation must match the Homebrew GNU reference
+  binary (gnohup, installed by coreutils) byte-for-byte on all flag combinations,
+  verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Run a command immune to SIGHUP, with stdout/stderr redirection when not a terminal.
+  - G2: Verify functional parity against gnohup via differential testing.
+
+requirements:
+  R1:
+    title: SIGHUP immunity and output redirection
+    items:
+      - R1.1:
+          text: Must ignore SIGHUP (signal.Ignore(syscall.SIGHUP)) before executing COMMAND.
+          weight: 1
+      - R1.2:
+          text: If stdout is a terminal, must redirect stdout to nohup.out in the current directory. If that fails, must redirect to $HOME/nohup.out. Must print a message to stderr indicating where output is redirected.
+          weight: 4
+      - R1.3:
+          text: If stderr is a terminal and stdout has been redirected, must redirect stderr to stdout (i.e., both go to nohup.out).
+          weight: 1
+      - R1.4:
+          text: Must pass all remaining arguments after COMMAND as arguments to the executed command.
+          weight: 1
+
+  R2:
+    title: Exit codes
+    items:
+      - R2.1:
+          text: Must exit with the exit status of COMMAND when COMMAND completes.
+          weight: 1
+      - R2.2:
+          text: Must exit 125 when nohup itself fails. Must exit 126 when COMMAND is found but cannot be invoked. Must exit 127 when COMMAND is not found.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/nohup does not implement --help or --version beyond usage on error.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "nohup echo hello redirects output to nohup.out when stdout is a terminal, matching gnohup."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.4
+  - id: AC2
+    criterion: "nohup missing-cmd exits 127, matching gnohup."
+    traces:
+      - R2.2
+  - id: AC3
+    criterion: "Differential test against gnohup passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC4
+    criterion: "cmd/nohup compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

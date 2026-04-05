@@ -6,14 +6,14 @@ traces:
   - rel12.0-uc001-shred
   - rel12.0-uc002-chroot
   - rel12.0-uc003-install
-  - prd099-shred R1
-  - prd099-shred R2
-  - prd099-shred R3
-  - prd100-chroot R1
-  - prd100-chroot R2
-  - prd101-install R1
-  - prd101-install R2
-  - prd101-install R3
+  - srd099-shred R1
+  - srd099-shred R2
+  - srd099-shred R3
+  - srd100-chroot R1
+  - srd100-chroot R2
+  - srd101-install R1
+  - srd101-install R2
+  - srd101-install R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -34,7 +34,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd099-shred R1.1
+      - srd099-shred R1.1
 
   - name: shred_zero_remove
     description: "shred -n 1 -z -u overwrites, zeros, and removes"
@@ -48,9 +48,9 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd099-shred R1.2
-      - prd099-shred R1.3
-      - prd099-shred R1.4
+      - srd099-shred R1.2
+      - srd099-shred R1.3
+      - srd099-shred R1.4
 
   - name: install_copy
     description: "install copies file with default permissions"
@@ -64,7 +64,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd101-install R1.1
+      - srd101-install R1.1
 
   - name: install_directory
     description: "install -d creates directories"
@@ -78,7 +78,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd101-install R2.1
+      - srd101-install R2.1
 
   - name: install_mode
     description: "install -m 644 sets specific permissions"
@@ -92,4 +92,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd101-install R1.2
+      - srd101-install R1.2

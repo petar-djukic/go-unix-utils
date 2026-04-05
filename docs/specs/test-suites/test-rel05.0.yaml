@@ -7,19 +7,19 @@ traces:
   - rel05.0-uc002-tac
   - rel05.0-uc003-nl
   - rel05.0-uc004-fold
-  - prd020-echo R1
-  - prd020-echo R2
-  - prd020-echo R3
-  - prd021-tac R1
-  - prd021-tac R2
-  - prd021-tac R3
-  - prd022-nl R1
-  - prd022-nl R2
-  - prd022-nl R3
-  - prd022-nl R4
-  - prd023-fold R1
-  - prd023-fold R2
-  - prd023-fold R3
+  - srd020-echo R1
+  - srd020-echo R2
+  - srd020-echo R3
+  - srd021-tac R1
+  - srd021-tac R2
+  - srd021-tac R3
+  - srd022-nl R1
+  - srd022-nl R2
+  - srd022-nl R3
+  - srd022-nl R4
+  - srd023-fold R1
+  - srd023-fold R2
+  - srd023-fold R3
 
 preconditions:
   - ./bin/echo, ./bin/tac, ./bin/nl, and ./bin/fold exist (built via mage build).
@@ -44,7 +44,7 @@ test_cases:
       stdout: "hello world\n"
       stderr: ""
     traces:
-      - prd020-echo R1.1
+      - srd020-echo R1.1
 
   - name: echo_no_args
     description: No arguments; outputs only a newline.
@@ -58,7 +58,7 @@ test_cases:
       stdout: "\n"
       stderr: ""
     traces:
-      - prd020-echo R1.2
+      - srd020-echo R1.2
 
   - name: echo_suppress_newline
     description: -n flag suppresses trailing newline.
@@ -72,7 +72,7 @@ test_cases:
       stdout: "hello"
       stderr: ""
     traces:
-      - prd020-echo R1.3
+      - srd020-echo R1.3
 
   - name: echo_escape_tab
     description: -e interprets \\t as a horizontal tab.
@@ -86,7 +86,7 @@ test_cases:
       stdout: "col1\tcol2\n"
       stderr: ""
     traces:
-      - prd020-echo R2.1
+      - srd020-echo R2.1
 
   - name: echo_escape_newline
     description: -e interprets \\n as an embedded newline.
@@ -100,7 +100,7 @@ test_cases:
       stdout: "line1\nline2\n"
       stderr: ""
     traces:
-      - prd020-echo R2.1
+      - srd020-echo R2.1
 
   - name: echo_escape_c_terminates
     description: -e with \\c terminates output at that point; no trailing newline.
@@ -114,7 +114,7 @@ test_cases:
       stdout: "before"
       stderr: ""
     traces:
-      - prd020-echo R2.2
+      - srd020-echo R2.2
 
   - name: echo_no_escape_default
     description: Without -e, backslash sequences are literal.
@@ -128,7 +128,7 @@ test_cases:
       stdout: "a\\tb\n"
       stderr: ""
     traces:
-      - prd020-echo R2.3
+      - srd020-echo R2.3
 
   - name: echo_combined_n_e
     description: -n -e combined; escape sequences processed and no trailing newline.
@@ -142,8 +142,8 @@ test_cases:
       stdout: "x\ty"
       stderr: ""
     traces:
-      - prd020-echo R1.3
-      - prd020-echo R2.1
+      - srd020-echo R1.3
+      - srd020-echo R2.1
 
   # ---- tac ----
 
@@ -159,8 +159,8 @@ test_cases:
       stdout: "gamma\nbeta\nalpha\n"
       stderr: ""
     traces:
-      - prd021-tac R1.1
-      - prd021-tac R1.2
+      - srd021-tac R1.1
+      - srd021-tac R1.2
 
   - name: tac_no_trailing_newline
     description: Input without trailing newline; last line (now first) has no newline.
@@ -174,7 +174,7 @@ test_cases:
       stdout: "c\nb\na"
       stderr: ""
     traces:
-      - prd021-tac R1.2
+      - srd021-tac R1.2
 
   - name: tac_custom_separator
     description: -s ':' splits on colon; records reversed with colon separator after each.
@@ -188,7 +188,7 @@ test_cases:
       stdout: "c:b:a:"
       stderr: ""
     traces:
-      - prd021-tac R2.1
+      - srd021-tac R2.1
 
   - name: tac_before_flag
     description: -b places separator before each record.
@@ -202,7 +202,7 @@ test_cases:
       stdout: ":c:b:a"
       stderr: ""
     traces:
-      - prd021-tac R2.2
+      - srd021-tac R2.2
 
   - name: tac_single_line
     description: Single line input reverses to itself.
@@ -216,7 +216,7 @@ test_cases:
       stdout: "only\n"
       stderr: ""
     traces:
-      - prd021-tac R1.1
+      - srd021-tac R1.1
 
   # ---- nl ----
 
@@ -232,8 +232,8 @@ test_cases:
       stdout: "     1\tfirst\n\n     2\tsecond\n"
       stderr: ""
     traces:
-      - prd022-nl R1.1
-      - prd022-nl R1.2
+      - srd022-nl R1.1
+      - srd022-nl R1.2
 
   - name: nl_number_all_lines
     description: -b a numbers every line including empty lines.
@@ -247,7 +247,7 @@ test_cases:
       stdout: "     1\tx\n     2\t\n     3\ty\n"
       stderr: ""
     traces:
-      - prd022-nl R2.1
+      - srd022-nl R2.1
 
   - name: nl_format_ln_width_3_separator
     description: "-n ln -w 3 -s ': ' uses left-justified 3-char field with custom separator."
@@ -261,9 +261,9 @@ test_cases:
       stdout: "1  : a\n2  : b\n"
       stderr: ""
     traces:
-      - prd022-nl R3.1
-      - prd022-nl R3.2
-      - prd022-nl R3.3
+      - srd022-nl R3.1
+      - srd022-nl R3.2
+      - srd022-nl R3.3
 
   - name: nl_start_and_increment
     description: -v 10 -i 5 starts at 10 and increments by 5.
@@ -277,7 +277,7 @@ test_cases:
       stdout: "    10\tp\n    15\tq\n    20\tr\n"
       stderr: ""
     traces:
-      - prd022-nl R3.4
+      - srd022-nl R3.4
 
   - name: nl_section_delimiters
     description: Section delimiter lines consumed; header numbered with -h a.
@@ -291,8 +291,8 @@ test_cases:
       stdout: "     1\theader line\n     1\tbody line\n"
       stderr: ""
     traces:
-      - prd022-nl R4.1
-      - prd022-nl R4.2
+      - srd022-nl R4.1
+      - srd022-nl R4.2
 
   # ---- fold ----
 
@@ -308,7 +308,7 @@ test_cases:
       stdout: "short line\n"
       stderr: ""
     traces:
-      - prd023-fold R1.2
+      - srd023-fold R1.2
 
   - name: fold_wrap_at_width
     description: -w 4 wraps a 10-character string into segments of 4, 4, 2.
@@ -322,9 +322,9 @@ test_cases:
       stdout: "abcd\nefgh\nij"
       stderr: ""
     traces:
-      - prd023-fold R1.1
-      - prd023-fold R1.3
-      - prd023-fold R1.4
+      - srd023-fold R1.1
+      - srd023-fold R1.3
+      - srd023-fold R1.4
 
   - name: fold_space_break
     description: -w 11 -s breaks at the last space within 11 columns.
@@ -338,7 +338,7 @@ test_cases:
       stdout: "hello world\nfoo\n"
       stderr: ""
     traces:
-      - prd023-fold R3.1
+      - srd023-fold R3.1
 
   - name: fold_byte_mode
     description: -b measures width in bytes; no tab-stop expansion.
@@ -352,7 +352,7 @@ test_cases:
       stdout: "abcd\ne"
       stderr: ""
     traces:
-      - prd023-fold R2.3
+      - srd023-fold R2.3
 
   - name: fold_tab_columns
     description: Tab expands to tab stops for column counting; wrap accounts for tab width.
@@ -366,7 +366,7 @@ test_cases:
       stdout: "a\tbcd\ne\n"
       stderr: ""
     traces:
-      - prd023-fold R2.2
+      - srd023-fold R2.2
 
   - name: fold_space_break_no_space
     description: -s with no space in first W columns falls back to hard wrap.
@@ -380,4 +380,4 @@ test_cases:
       stdout: "abcd\nefgh\n"
       stderr: ""
     traces:
-      - prd023-fold R3.2
+      - srd023-fold R3.2

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd071-numfmt.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd071-numfmt.yaml) and invokes do-work to produce
   a passing differential test for cmd/numfmt.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       Tests compare stdout and exit codes under LC_ALL=C.
 
 touchpoints:
-  - T1: "cmd/numfmt — unit conversion, format control, field selection, header mode (prd071-numfmt R1, R2, R3, R4)"
+  - T1: "cmd/numfmt — unit conversion, format control, field selection, header mode (srd071-numfmt R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
 
 success_criteria:

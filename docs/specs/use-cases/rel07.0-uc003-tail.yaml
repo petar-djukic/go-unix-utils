@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd055-tail.yaml) and invokes do-work to
+  The operator has completed the PRD (srd055-tail.yaml) and invokes do-work to
   produce a passing differential test for cmd/tail.
 
 flow:
@@ -31,7 +31,7 @@ flow:
       codes.
 
 touchpoints:
-  - T1: "cmd/tail — line-count, byte-count, plus-offset, multi-file headers, quiet/verbose (prd055-tail R1, R2, R3, R4)"
+  - T1: "cmd/tail — line-count, byte-count, plus-offset, multi-file headers, quiet/verbose (srd055-tail R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

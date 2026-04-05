@@ -1,26 +1,26 @@
 id: eng13-stress-test-decomposition
-title: "Stress Test: PRD Requirement Decomposition Against Stitch Budget"
+title: "Stress Test: SRD Requirement Decomposition Against Stitch Budget"
 
 introduction: |
-  We analyze every PRD (rel00.0 through rel02.0 and deferred rel99.0/99.1) to validate
+  We analyze every SRD (rel00.0 through rel02.0 and deferred rel99.0/99.1) to validate
   whether current requirements can be decomposed into tasks that fit within the stitch
-  agent's 15-minute execution budget. For each PRD we apply the eng11 subsystem boundary
+  agent's 15-minute execution budget. For each SRD we apply the eng11 subsystem boundary
   rule, estimate LOC, identify infrastructure dependencies, and flag tasks at risk of
   failure. We then compare our proposed decompositions against actual measure proposals
-  from eng12 (run 6) and recommend concrete PRD changes where sizing violations exist.
+  from eng12 (run 6) and recommend concrete SRD changes where sizing violations exist.
 
-  The analysis confirms that no PRD has structural sizing violations after the GH-31
+  The analysis confirms that no SRD has structural sizing violations after the GH-31
   atomicity and GH-37/GH-38 infrastructure revisions. Every requirement group decomposes
   into single-subsystem tasks within the 400-500 LOC budget. The dominant failure mode
   in eng12 was not task oversizing but infrastructure unavailability: the stitch agent
   spent 8-11 minutes rebuilding pkg/testutils and pkg/sys from scratch because they did
-  not exist on the generation branch. Three PRD requirements contain unnecessary inline
+  not exist on the generation branch. Three SRD requirements contain unnecessary inline
   instructions that duplicate pkg/format functionality and should be changed.
 
 sections:
   - title: "Methodology"
     content: |
-      For each PRD we identify:
+      For each SRD we identify:
 
       1. Subsystem boundaries per eng11: any point where a new external API call, new data
          source, or new output mode is introduced.
@@ -28,7 +28,7 @@ sections:
          one task; separate requirements that cross different subsystem boundaries into
          separate tasks.
       3. LOC estimate: based on actuals from eng04/eng10/eng12 where available, or structural
-         analysis of requirement complexity for untested PRDs.
+         analysis of requirement complexity for untested SRDs.
       4. Infrastructure dependencies: which pkg/ packages must exist before the task can
          compile.
       5. Risk flag: LOW (single subsystem, proven or straightforward), MEDIUM (single
@@ -46,7 +46,7 @@ sections:
     content: |
       Table 1: rel00.0 task decomposition
 
-      | PRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
+      | SRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
       |-----|------|-------------|-----------|---------|-----------|------|--------|
       | prd001 | pkg/testutils: DiffTest harness | R1-R5 | 1 (test harness) | 300-425 | none | LOW | 250 LOC (eng04) |
       | prd002 | pkg/sys: syscall abstractions | R1-R4 | 1 (golang.org/x/sys/unix) | 190-290 | golang.org/x/sys/unix | LOW | ~284 LOC (eng04) |
@@ -67,7 +67,7 @@ sections:
     content: |
       Table 2: rel01.0 task decomposition
 
-      | PRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
+      | SRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
       |-----|------|-------------|-----------|---------|-----------|------|--------|
       | prd004 | cmd/ts: all modes | R1-R9 | 1 (strftime/time) | 340-510 | pkg/testutils | LOW | 546 LOC (eng04) |
 
@@ -82,7 +82,7 @@ sections:
     content: |
       Table 3: rel01.1 task decomposition
 
-      | PRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
+      | SRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
       |-----|------|-------------|-----------|---------|-----------|------|--------|
       | prd005 | cmd/wc: multi-mode counter | R1-R6 | 1 (bufio + unicode) | 340-520 | pkg/testutils | LOW | 629 (eng04), 340 (eng12) |
       | prd006 | cmd/cat: streaming display | R1-R5 | 1 (format flags) | pkg/testutils | LOW | 357 LOC (eng04) |
@@ -97,7 +97,7 @@ sections:
     content: |
       Table 4: rel02.0 task decomposition
 
-      | PRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
+      | SRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
       |-----|------|-------------|-----------|---------|-----------|------|--------|
       | prd009 | cmd/du: recursive traversal | R1-R5 | 1 (filepath.Walk) | 350-500 | pkg/testutils, pkg/sys | LOW | 406 LOC (eng10) |
 
@@ -108,21 +108,21 @@ sections:
       Infrastructure dependency: pkg/sys must exist for Stat/Lstat and InstallSIGPIPEHandler.
       With pre-committed infrastructure, risk is LOW.
 
-      Note on inline instruction: prd009-du R2.1 says "using algorithm inlined in cmd/du
-      (not pkg/format.HumanSize)". See "Recommended PRD changes" section for analysis.
+      Note on inline instruction: srd009-du R2.1 says "using algorithm inlined in cmd/du
+      (not pkg/format.HumanSize)". See "Recommended SRD changes" section for analysis.
 
   - title: "rel99.0 — ls core"
     content: |
       Table 5: rel99.0 task decomposition
 
-      | PRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
+      | SRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
       |-----|------|-------------|-----------|---------|-----------|------|--------|
       | prd008 | ls-core-A: default + filters + exit + signals | R1, R3, R6, R7 | 1 (os.ReadDir + sort) | 150-250 | pkg/testutils, pkg/sys, pkg/format | LOW | 316 LOC (eng10, task 4k3) |
       | prd008 | ls-core-B: long format | R2 | 1 (os.Lstat + stat fields) | pkg/sys | MEDIUM | untested |
       | prd008 | ls-core-C: color | R4 | 1 (ANSI escapes) | none (inlined) | LOW | untested |
       | prd008 | ls-core-D: human sizes | R5 | 0 (minor addition to -l) | none (inlined) | LOW | untested |
 
-      prd008-ls is the first PRD that requires multi-task decomposition. The eng10 failure
+      srd008-ls is the first SRD that requires multi-task decomposition. The eng10 failure
       (task 5el) confirmed that bundling R2+R4+R5 as a single task crosses three subsystem
       boundaries and exceeds the stitch budget. The eng11 Rule 4 decomposition applies:
       each output mode is its own task.
@@ -139,22 +139,22 @@ sections:
       (200-350) approaches the upper range.
 
       Tasks ls-core-C (R4) and ls-core-D (R5) are currently specified as inline
-      implementations. See "Recommended PRD changes" for analysis.
+      implementations. See "Recommended SRD changes" for analysis.
 
   - title: "rel99.1 — ls extended"
     content: |
       Table 6: rel99.1 task decomposition
 
-      | PRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
+      | SRD | Task | Requirements | Subsystems | LOC est. | Infra deps | Risk | Actual |
       |-----|------|-------------|-----------|---------|-----------|------|--------|
       | prd010 | ls-ext-A: multi-column layout + flag interactions | R1, R6 | 0 (existing pkg/format.Columns) | 140-220 | pkg/format | LOW | untested |
       | prd010 | ls-ext-B: sort implementations | R2 | 1 (strverscmp) | none | MEDIUM | untested |
       | prd010 | ls-ext-C: metadata display + classification | R3, R4 | 1 (inode/blocks display) | 120-190 | pkg/sys | LOW | eng12: 21v failed (infra) |
       | prd010 | ls-ext-D: recursive listing | R5 | 1 (recursive descent) | none | MEDIUM | untested |
 
-      The GH-31 atomicity improvements already structured prd010-ls-extended so that
+      The GH-31 atomicity improvements already structured srd010-ls-extended so that
       requirements map cleanly to subsystem boundaries. The eng12 measure agent correctly
-      proposed R3+R4 as a scoped task (21v), validating the PRD structure.
+      proposed R3+R4 as a scoped task (21v), validating the SRD structure.
 
       Task 21v failed in eng12 not because of sizing but because pkg/testutils and pkg/sys
       did not exist on the generation branch. The stitch agent spent 8-11 minutes per
@@ -261,14 +261,14 @@ sections:
       start. The measure agent should use a releases filter or the pipeline should enforce
       ordering: run rel00.0-rel02.0 first, then rel99.0, then rel99.1.
 
-  - title: "Recommended PRD changes"
+  - title: "Recommended SRD changes"
     content: |
-      Three PRD requirements contain inline implementation instructions that duplicate
+      Three SRD requirements contain inline implementation instructions that duplicate
       functionality already provided by pkg/format. These inline instructions were written
       as defensive measures to avoid subsystem boundary crossings, but they are unnecessary
       when infrastructure is pre-committed and the tasks are properly decomposed.
 
-      Change 1: prd008-ls R4.3 — remove inline color table
+      Change 1: srd008-ls R4.3 — remove inline color table
 
       Current: "Colorized output: inline color table in cmd/ls (do NOT call
       pkg/format.FileTypeColor)"
@@ -284,7 +284,7 @@ sections:
       the color table (8 file-type entries + reset) and creates a maintenance burden if
       color values change. Estimated LOC reduction: 15-25 lines.
 
-      Change 2: prd008-ls R5.1 — remove inline human-size algorithm
+      Change 2: srd008-ls R5.1 — remove inline human-size algorithm
 
       Current: "display file sizes using binary algorithm (inlined in cmd/ls, not
       pkg/format.HumanSize)"
@@ -296,14 +296,14 @@ sections:
       a new subsystem boundary. Inlining duplicates the binary/SI conversion algorithm
       (~30-40 lines). Estimated LOC reduction: 25-35 lines.
 
-      Change 3: prd009-du R2.1 — remove inline human-size algorithm
+      Change 3: srd009-du R2.1 — remove inline human-size algorithm
 
       Current: "using algorithm inlined in cmd/du (not pkg/format.HumanSize)"
 
       Recommended: "via pkg/format.HumanSize(bytes, HumanSizeOpts{Binary: true})."
 
       Rationale: Identical to Change 2. cmd/du R2.1 (-h flag) currently inlines the same
-      algorithm that prd003-format R3 specifies. With pkg/format pre-committed, calling
+      algorithm that srd003-format R3 specifies. With pkg/format pre-committed, calling
       HumanSize reduces duplication without adding a subsystem boundary.
 
       These three changes collectively reduce estimated code duplication by 55-100 LOC
@@ -334,7 +334,7 @@ sections:
     content: |
       YES. The next generation run (GH-36) can proceed with the following conditions:
 
-      1. Apply the three PRD changes (prd008-ls R4.3, R5.1; prd009-du R2.1) to remove
+      1. Apply the three SRD changes (srd008-ls R4.3, R5.1; srd009-du R2.1) to remove
          inline instructions and use pkg/format APIs. This reduces code duplication and
          simplifies stitch tasks.
 
@@ -358,7 +358,7 @@ sections:
 
       No structural barriers to generation exist. All 16 proposed tasks decompose into
       single-subsystem units within the 400-500 LOC budget. The eng11 subsystem boundary
-      rule holds across all PRDs.
+      rule holds across all SRDs.
 
 references:
   - "docs/engineering/eng04-generation-run-results.yaml — Run 1 task outcomes"

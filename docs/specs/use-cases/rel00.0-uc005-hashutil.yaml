@@ -26,7 +26,7 @@ flow:
       output format, parsing, and verification behavior.
 
 touchpoints:
-  - T1: "pkg/hashutil — hash output formatting, checksum parsing, verification (prd086-hashutil R1, R2, R3)"
+  - T1: "pkg/hashutil — hash output formatting, checksum parsing, verification (srd086-hashutil R1, R2, R3)"
 
 success_criteria:
   - id: S1

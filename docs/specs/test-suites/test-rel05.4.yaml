@@ -7,14 +7,14 @@ traces:
   - rel05.4-uc002-sha1sum
   - rel05.4-uc003-sha256sum
   - rel05.4-uc004-sha512sum
-  - prd030-md5sum R1
-  - prd030-md5sum R2
-  - prd031-sha1sum R1
-  - prd031-sha1sum R2
-  - prd032-sha256sum R1
-  - prd032-sha256sum R2
-  - prd033-sha512sum R1
-  - prd033-sha512sum R2
+  - srd030-md5sum R1
+  - srd030-md5sum R2
+  - srd031-sha1sum R1
+  - srd031-sha1sum R2
+  - srd032-sha256sum R1
+  - srd032-sha256sum R2
+  - srd033-sha512sum R1
+  - srd033-sha512sum R2
 
 preconditions:
   - ./bin/md5sum, ./bin/sha1sum, ./bin/sha256sum, and ./bin/sha512sum exist (built via mage build).
@@ -40,8 +40,8 @@ test_cases:
       stdout: "b1946ac92492d2347c6235b4d2611184  -\n"
       stderr: ""
     traces:
-      - prd030-md5sum R1.1
-      - prd030-md5sum R1.2
+      - srd030-md5sum R1.1
+      - srd030-md5sum R1.2
 
   - name: md5sum_compute_file
     description: "Compute MD5 of a named file. Setup: hello.txt contains 'hello\\n'."
@@ -55,7 +55,7 @@ test_cases:
       stdout: "b1946ac92492d2347c6235b4d2611184  hello.txt\n"
       stderr: ""
     traces:
-      - prd030-md5sum R1.1
+      - srd030-md5sum R1.1
 
   - name: md5sum_binary_mode
     description: "-b uses asterisk format: 'HASH *FILENAME'."
@@ -69,7 +69,7 @@ test_cases:
       stdout: "b1946ac92492d2347c6235b4d2611184 *hello.txt\n"
       stderr: ""
     traces:
-      - prd030-md5sum R3.1
+      - srd030-md5sum R3.1
 
   - name: md5sum_tag_format
     description: "--tag uses BSD format: 'MD5 (FILENAME) = HASH'."
@@ -83,7 +83,7 @@ test_cases:
       stdout: "MD5 (hello.txt) = b1946ac92492d2347c6235b4d2611184\n"
       stderr: ""
     traces:
-      - prd030-md5sum R1.3
+      - srd030-md5sum R1.3
 
   - name: md5sum_check_valid
     description: "--check on a valid checksum file exits 0 and prints OK. Setup: checksums.md5 contains the correct hash for hello.txt."
@@ -97,8 +97,8 @@ test_cases:
       stdout: "hello.txt: OK\n"
       stderr: ""
     traces:
-      - prd030-md5sum R2.1
-      - prd030-md5sum R2.2
+      - srd030-md5sum R2.1
+      - srd030-md5sum R2.2
 
   - name: md5sum_check_failure
     description: "--check on a file with wrong hash exits 1 and prints FAILED. Setup: bad.md5 contains an incorrect hash for hello.txt."
@@ -112,7 +112,7 @@ test_cases:
       stdout: "hello.txt: FAILED\n"
       stderr_contains: "WARNING"
     traces:
-      - prd030-md5sum R2.2
+      - srd030-md5sum R2.2
 
   # ---- sha1sum ----
 
@@ -128,8 +128,8 @@ test_cases:
       stdout: "f572d396fae9206628714fb2ce00f72e94f2258f  -\n"
       stderr: ""
     traces:
-      - prd031-sha1sum R1.1
-      - prd031-sha1sum R1.2
+      - srd031-sha1sum R1.1
+      - srd031-sha1sum R1.2
 
   - name: sha1sum_check_valid
     description: "--check on a valid SHA-1 checksum file exits 0."
@@ -143,8 +143,8 @@ test_cases:
       stdout: "hello.txt: OK\n"
       stderr: ""
     traces:
-      - prd031-sha1sum R2.1
-      - prd031-sha1sum R2.2
+      - srd031-sha1sum R2.1
+      - srd031-sha1sum R2.2
 
   - name: sha1sum_tag_format
     description: "--tag uses BSD format: 'SHA1 (FILENAME) = HASH'."
@@ -158,7 +158,7 @@ test_cases:
       stdout: "SHA1 (hello.txt) = f572d396fae9206628714fb2ce00f72e94f2258f\n"
       stderr: ""
     traces:
-      - prd031-sha1sum R1.3
+      - srd031-sha1sum R1.3
 
   # ---- sha256sum ----
 
@@ -174,8 +174,8 @@ test_cases:
       stdout: "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03  -\n"
       stderr: ""
     traces:
-      - prd032-sha256sum R1.1
-      - prd032-sha256sum R1.2
+      - srd032-sha256sum R1.1
+      - srd032-sha256sum R1.2
 
   - name: sha256sum_check_valid
     description: "--check on a valid SHA-256 checksum file exits 0."
@@ -189,8 +189,8 @@ test_cases:
       stdout: "hello.txt: OK\n"
       stderr: ""
     traces:
-      - prd032-sha256sum R2.1
-      - prd032-sha256sum R2.2
+      - srd032-sha256sum R2.1
+      - srd032-sha256sum R2.2
 
   - name: sha256sum_tag_format
     description: "--tag uses BSD format: 'SHA256 (FILENAME) = HASH'."
@@ -204,7 +204,7 @@ test_cases:
       stdout: "SHA256 (hello.txt) = 5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\n"
       stderr: ""
     traces:
-      - prd032-sha256sum R1.3
+      - srd032-sha256sum R1.3
 
   # ---- sha512sum ----
 
@@ -220,8 +220,8 @@ test_cases:
       stdout: "e7c22b994c59d9cf2b48e549b1e24666636045930d3da7c1acb299d1c3b7f931f94aae41edda2c2b207a36e10f8bcb8d45223e54878f5b316e7ce3b6bc019629  -\n"
       stderr: ""
     traces:
-      - prd033-sha512sum R1.1
-      - prd033-sha512sum R1.2
+      - srd033-sha512sum R1.1
+      - srd033-sha512sum R1.2
 
   - name: sha512sum_check_valid
     description: "--check on a valid SHA-512 checksum file exits 0."
@@ -235,8 +235,8 @@ test_cases:
       stdout: "hello.txt: OK\n"
       stderr: ""
     traces:
-      - prd033-sha512sum R2.1
-      - prd033-sha512sum R2.2
+      - srd033-sha512sum R2.1
+      - srd033-sha512sum R2.2
 
   - name: sha512sum_tag_format
     description: "--tag uses BSD format: 'SHA512 (FILENAME) = HASH'."
@@ -250,4 +250,4 @@ test_cases:
       stdout: "SHA512 (hello.txt) = e7c22b994c59d9cf2b48e549b1e24666636045930d3da7c1acb299d1c3b7f931f94aae41edda2c2b207a36e10f8bcb8d45223e54878f5b316e7ce3b6bc019629\n"
       stderr: ""
     traces:
-      - prd033-sha512sum R1.3
+      - srd033-sha512sum R1.3

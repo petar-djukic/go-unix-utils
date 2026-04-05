@@ -17,7 +17,7 @@ sections:
       the Claude Opus 4.6 model via the Claude Code CLI in a Podman container.
 
       Run A timestamp: 2026-02-24-21-51-50. Run B timestamp: 2026-02-24-21-54-24. Both
-      ran against the same main branch commit with 10 PRDs, 7 use cases, 4 test suites,
+      ran against the same main branch commit with 10 SRDs, 7 use cases, 4 test suites,
       and 0 lines of Go code.
 
   - title: "Prompt reproducibility"
@@ -33,7 +33,7 @@ sections:
   - title: "Issue reproducibility"
     content: |
       Both runs proposed exactly 1 issue targeting the same component (pkg/testutils) and
-      the same PRD requirements (prd001 R1-R5). The issues are semantically equivalent but
+      the same SRD requirements (prd001 R1-R5). The issues are semantically equivalent but
       not textually identical.
 
       | Dimension              | Run A                        | Run B                        |
@@ -121,7 +121,7 @@ sections:
       normalization, we ran two more back-to-back measure cycles on the same codebase state.
 
       Run E timestamp: 2026-02-24-23-22-31. Run F timestamp: 2026-02-24-23-25-30. Both ran
-      against the same main branch with 10 PRDs, 7 use cases, 4 test suites, and 0 lines of
+      against the same main branch with 10 SRDs, 7 use cases, 4 test suites, and 0 lines of
       Go code. The orchestrator now passes --max-turns 1 to the Claude CLI.
 
   - title: "Single-turn results"
@@ -170,13 +170,13 @@ sections:
       |-----------------|--------|--------|--------|--------|--------|--------|
       | Mode            | multi  | multi  | multi  | multi  | single | single |
       | Target          | testutils | testutils | testutils | testutils | testutils | testutils |
-      | PRD reference   | prd001 | prd001 | prd001 | prd001 | prd001 | prd001 |
+      | SRD reference   | prd001 | prd001 | prd001 | prd001 | prd001 | prd001 |
       | Requirements    | 6      | 5      | 6      | 4      | 5      | 6      |
       | ACs             | 6      | 7      | 6      | 6      | 6      | 7      |
       | Issue size (B)  | 6,200  | 7,999  | 7,210  | 5,636  | 6,513  | 6,093  |
       | Normalizer file | normalize | normalizers | normalizers | normalizers | normalizers | normalize |
 
-      All six runs target the same component and PRD. Requirement count ranges from 4 to 6;
+      All six runs target the same component and SRD. Requirement count ranges from 4 to 6;
       AC count ranges from 6 to 7. The normalizer filename alternates between singular and
       plural. These patterns are consistent between multi-turn and single-turn modes,
       confirming that the single-turn change does not affect output quality — only cost and

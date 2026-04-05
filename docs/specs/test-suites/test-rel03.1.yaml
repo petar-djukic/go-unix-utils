@@ -8,22 +8,22 @@ traces:
   - rel03.1-uc003-nproc
   - rel03.1-uc004-hostname
   - rel03.1-uc005-hostid
-  - prd044-uname R1
-  - prd044-uname R2
-  - prd044-uname R3
-  - prd044-uname R4
-  - prd045-arch R1
-  - prd045-arch R2
-  - prd045-arch R3
-  - prd046-nproc R1
-  - prd046-nproc R2
-  - prd046-nproc R3
-  - prd047-hostname R1
-  - prd047-hostname R2
-  - prd047-hostname R3
-  - prd048-hostid R1
-  - prd048-hostid R2
-  - prd048-hostid R3
+  - srd044-uname R1
+  - srd044-uname R2
+  - srd044-uname R3
+  - srd044-uname R4
+  - srd045-arch R1
+  - srd045-arch R2
+  - srd045-arch R3
+  - srd046-nproc R1
+  - srd046-nproc R2
+  - srd046-nproc R3
+  - srd047-hostname R1
+  - srd047-hostname R2
+  - srd047-hostname R3
+  - srd048-hostid R1
+  - srd048-hostid R2
+  - srd048-hostid R3
 
 preconditions:
   - All binaries exist in ./bin/ (built via mage build).
@@ -45,7 +45,7 @@ test_cases:
       stdout: "kernel name followed by newline (e.g., Darwin)"
       stderr: ""
     traces:
-      - prd044-uname R1.1
+      - srd044-uname R1.1
 
   - name: uname_kernel_name
     description: "uname -s prints the kernel name."
@@ -59,7 +59,7 @@ test_cases:
       stdout: "kernel name followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.2
+      - srd044-uname R1.2
 
   - name: uname_nodename
     description: "uname -n prints the network node hostname."
@@ -73,7 +73,7 @@ test_cases:
       stdout: "hostname followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.3
+      - srd044-uname R1.3
 
   - name: uname_kernel_release
     description: "uname -r prints the kernel release string."
@@ -87,7 +87,7 @@ test_cases:
       stdout: "kernel release followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.4
+      - srd044-uname R1.4
 
   - name: uname_kernel_version
     description: "uname -v prints the kernel version string."
@@ -101,7 +101,7 @@ test_cases:
       stdout: "kernel version followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.5
+      - srd044-uname R1.5
 
   - name: uname_machine
     description: "uname -m prints the machine hardware name."
@@ -115,7 +115,7 @@ test_cases:
       stdout: "machine hardware name followed by newline (e.g., arm64)"
       stderr: ""
     traces:
-      - prd044-uname R1.6
+      - srd044-uname R1.6
 
   - name: uname_processor
     description: "uname -p prints the processor type."
@@ -129,7 +129,7 @@ test_cases:
       stdout: "processor type or unknown followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.7
+      - srd044-uname R1.7
 
   - name: uname_hardware_platform
     description: "uname -i prints the hardware platform."
@@ -143,7 +143,7 @@ test_cases:
       stdout: "hardware platform or unknown followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.8
+      - srd044-uname R1.8
 
   - name: uname_os
     description: "uname -o prints the operating system name."
@@ -157,7 +157,7 @@ test_cases:
       stdout: "operating system name followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R1.9
+      - srd044-uname R1.9
 
   - name: uname_all
     description: "uname -a prints all fields in canonical order."
@@ -171,7 +171,7 @@ test_cases:
       stdout: "all fields space-separated followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R2.1
+      - srd044-uname R2.1
 
   - name: uname_combined_flags
     description: "uname -sn prints kernel name and node name, space-separated."
@@ -185,7 +185,7 @@ test_cases:
       stdout: "kernel name and hostname space-separated followed by newline"
       stderr: ""
     traces:
-      - prd044-uname R2.2
+      - srd044-uname R2.2
 
   - name: uname_extra_operand
     description: "uname with a positional operand prints an error."
@@ -199,7 +199,7 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd044-uname R3.1
+      - srd044-uname R3.1
 
   # --- arch ---
   - name: arch_default
@@ -214,7 +214,7 @@ test_cases:
       stdout: "machine hardware name followed by newline (e.g., arm64)"
       stderr: ""
     traces:
-      - prd045-arch R1.1
+      - srd045-arch R1.1
 
   - name: arch_extra_operand
     description: "arch with a positional operand prints an error."
@@ -228,7 +228,7 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd045-arch R2.1
+      - srd045-arch R2.1
 
   # --- nproc ---
   - name: nproc_default
@@ -243,7 +243,7 @@ test_cases:
       stdout: "numeric processor count followed by newline"
       stderr: ""
     traces:
-      - prd046-nproc R1.1
+      - srd046-nproc R1.1
 
   - name: nproc_all
     description: "nproc --all prints the installed processor count."
@@ -257,7 +257,7 @@ test_cases:
       stdout: "numeric installed processor count followed by newline"
       stderr: ""
     traces:
-      - prd046-nproc R1.2
+      - srd046-nproc R1.2
 
   - name: nproc_ignore
     description: "nproc --ignore=1 prints one fewer than the available count."
@@ -271,7 +271,7 @@ test_cases:
       stdout: "available count minus 1 followed by newline"
       stderr: ""
     traces:
-      - prd046-nproc R1.3
+      - srd046-nproc R1.3
 
   - name: nproc_all_ignore
     description: "nproc --all --ignore=1 subtracts from the installed count."
@@ -285,7 +285,7 @@ test_cases:
       stdout: "installed count minus 1 followed by newline"
       stderr: ""
     traces:
-      - prd046-nproc R1.4
+      - srd046-nproc R1.4
 
   - name: nproc_extra_operand
     description: "nproc with a positional operand prints an error."
@@ -299,7 +299,7 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd046-nproc R2.1
+      - srd046-nproc R2.1
 
   # --- hostname ---
   - name: hostname_default
@@ -314,7 +314,7 @@ test_cases:
       stdout: "system hostname followed by newline"
       stderr: ""
     traces:
-      - prd047-hostname R1.1
+      - srd047-hostname R1.1
 
   - name: hostname_extra_operand
     description: "hostname with a positional operand prints an error."
@@ -328,7 +328,7 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd047-hostname R2.1
+      - srd047-hostname R2.1
 
   # --- hostid ---
   - name: hostid_default
@@ -343,7 +343,7 @@ test_cases:
       stdout: "8-digit lowercase hex number followed by newline"
       stderr: ""
     traces:
-      - prd048-hostid R1.1
+      - srd048-hostid R1.1
 
   - name: hostid_extra_operand
     description: "hostid with a positional operand prints an error."
@@ -357,4 +357,4 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd048-hostid R2.1
+      - srd048-hostid R2.1

@@ -4,10 +4,10 @@ release: rel04.0
 
 traces:
   - rel04.0-uc001-ls
-  - prd008-ls R1
-  - prd008-ls R2
-  - prd008-ls R3
-  - prd008-ls R4
+  - srd008-ls R1
+  - srd008-ls R2
+  - srd008-ls R3
+  - srd008-ls R4
 
 preconditions:
   - Binaries exist under ./bin/ (built via mage build).
@@ -31,9 +31,9 @@ test_cases:
       stdout_structure: one entry per line, sorted in C locale order, no dotfiles
       stderr: ""
     traces:
-      - prd008-ls R1.2
-      - prd008-ls R1.3
-      - prd008-ls R1.4
+      - srd008-ls R1.2
+      - srd008-ls R1.3
+      - srd008-ls R1.4
 
   - name: ls_default_multi_col_tty
     description: 'Default on TTY (or forced with -C and --width=80); multi-column output. -C forces multi-column even without TTY; -w 80 sets column width'
@@ -47,7 +47,7 @@ test_cases:
       stdout_structure: entries arranged in columns fitting within 80 characters
       stderr: ""
     traces:
-      - prd008-ls R1.1
+      - srd008-ls R1.1
 
   - name: ls_single_col_flag
     description: -1 forces single-column output regardless of TTY.
@@ -61,7 +61,7 @@ test_cases:
       stdout_structure: one entry per line, sorted in C locale order
       stderr: ""
     traces:
-      - prd008-ls R1.5
+      - srd008-ls R1.5
 
   - name: ls_long_format
     description: -l produces long format with permissions, nlink, owner, group, size, mtime, name.
@@ -77,11 +77,11 @@ test_cases:
         Each line has: type+perms, nlink, owner, group, size, MTIME, name.
       stderr: ""
     traces:
-      - prd008-ls R1.6
-      - prd008-ls R1.7
-      - prd008-ls R1.8
-      - prd008-ls R1.9
-      - prd008-ls R1.10
+      - srd008-ls R1.6
+      - srd008-ls R1.7
+      - srd008-ls R1.8
+      - srd008-ls R1.9
+      - srd008-ls R1.10
 
   - name: ls_long_format_symlink
     description: -l on a directory containing a symlink shows "name -> target".
@@ -95,7 +95,7 @@ test_cases:
       stdout_structure: 'output contains " -> "'
       stderr: ""
     traces:
-      - prd008-ls R1.10
+      - srd008-ls R1.10
 
   - name: ls_long_human
     description: -lh displays human-readable file sizes matching gls -lh.
@@ -109,8 +109,8 @@ test_cases:
       stdout_structure: long format with sizes like "1.0K", "1.5K", "1.0M" instead of byte counts
       stderr: ""
     traces:
-      - prd008-ls R3.5
-      - prd008-ls R3.6
+      - srd008-ls R3.5
+      - srd008-ls R3.6
 
   - name: ls_filter_all
     description: -a includes all entries including . and .. and dotfiles.
@@ -124,7 +124,7 @@ test_cases:
       stdout_structure: 'output contains ".", "..", and ".hidden"'
       stderr: ""
     traces:
-      - prd008-ls R2.1
+      - srd008-ls R2.1
 
   - name: ls_filter_almost_all
     description: -A includes dotfiles but excludes . and .. entries.
@@ -138,7 +138,7 @@ test_cases:
       stdout_structure: 'output contains ".hidden" and must not contain standalone "." or ".." entries'
       stderr: ""
     traces:
-      - prd008-ls R2.2
+      - srd008-ls R2.2
 
   - name: ls_directory_itself
     description: -d shows the directory entry itself, not its contents.
@@ -152,7 +152,7 @@ test_cases:
       stdout: "testdata/ls-fixture/\n"
       stderr: ""
     traces:
-      - prd008-ls R2.3
+      - srd008-ls R2.3
 
   - name: ls_color_suppressed
     description: --color=never produces no ANSI escape sequences.
@@ -166,7 +166,7 @@ test_cases:
       stdout_structure: 'output must not contain "\\033["'
       stderr: ""
     traces:
-      - prd008-ls R3.4
+      - srd008-ls R3.4
 
   - name: ls_color_always
     description: '--color=always produces ANSI escape sequences for file types. structural check only, not a diff test (ANSI codes must be present)'
@@ -180,8 +180,8 @@ test_cases:
       stdout_structure: 'output contains "\\033["'
       stderr: ""
     traces:
-      - prd008-ls R3.1
-      - prd008-ls R3.3
+      - srd008-ls R3.1
+      - srd008-ls R3.3
 
   - name: ls_missing_file
     description: Non-existent argument prints error to stderr, exits 1, lists other args.
@@ -195,7 +195,7 @@ test_cases:
       stdout_structure: listing of testdata/ls-fixture/ entries
       stderr_contains: "nonexistent"
     traces:
-      - prd008-ls R4.2
+      - srd008-ls R4.2
 
   - name: ls_bad_option
     description: Unknown flag produces error and exits 2.
@@ -208,4 +208,4 @@ test_cases:
       exit_code: 2
       stderr_contains: "unrecognized option"
     traces:
-      - prd008-ls R4.3
+      - srd008-ls R4.3

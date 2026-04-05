@@ -11,7 +11,7 @@ sections:
   - title: "Experiment design"
     content: |
       We executed a full measure+stitch cycle on the same codebase state used in the GH-5
-      reproducibility experiment. The codebase had 10 PRDs, 7 use cases, 4 test suites, and
+      reproducibility experiment. The codebase had 10 SRDs, 7 use cases, 4 test suites, and
       0 lines of Go code. Configuration: temperature 0, 5-minute timeout, Claude Opus 4.6
       via Claude Code CLI in a Podman container.
 
@@ -24,7 +24,7 @@ sections:
   - title: "Measure reproducibility (three-run comparison)"
     content: |
       We now have four measure runs on an identical codebase state. All four are semantically
-      equivalent: same target component (pkg/testutils), same PRD (prd001 R1-R5), same DiffTest
+      equivalent: same target component (pkg/testutils), same SRD (prd001 R1-R5), same DiffTest
       harness concept.
 
       | Metric              | Run A (GH-5)  | Run B (GH-5)  | Run C (GH-2)  | Run D (GH-2)  |
@@ -87,7 +87,7 @@ sections:
       - ComposeNormalizers for chaining multiple normalizers
 
       The code compiles clean with go build and go vet. It follows the project naming
-      convention (primary file named after primary type). PRD requirement traceability
+      convention (primary file named after primary type). SRD requirement traceability
       comments are present throughout. The normalizer file was not separated (all code is in
       difftest.go), which differs from the measure proposal (normalizers.go as a separate
       file). This is a reasonable implementation decision for 244 lines.
