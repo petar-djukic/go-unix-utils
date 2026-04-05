@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Petar Djukic. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+id: ifc-events
+name: Events
+summary: |
+  Observable events emitted by the system during operation.
+
+operations:
+  - name: DifferentialTestFailure
+    description: Report divergence between Go binary and reference binary output for a given input.
+    parameters:
+      - name: input
+        type: string
+        description: The input (arguments, stdin) that triggered the divergence.
+      - name: expected
+        type: string
+        description: Output from the reference binary.
+      - name: actual
+        type: string
+        description: Output from the Go binary.
+    returns: []
