@@ -20,7 +20,7 @@ requirements:
     items:
       - R1.1:
           text: Must open all named files simultaneously and read one line from each per output line. Lines from files are joined with the delimiter and written to stdout, followed by a newline.
-          weight: 1
+          weight: 4
       - R1.2:
           text: When files have unequal line counts, the shorter files contribute empty fields (the delimiter is still written) until all files are exhausted. The final output line ends with a newline.
           weight: 1

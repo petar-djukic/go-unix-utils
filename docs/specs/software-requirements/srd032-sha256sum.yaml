@@ -52,14 +52,14 @@ requirements:
           weight: 1
       - R3.2:
           text: --tag produces BSD tag format regardless of -b/-t.
-          weight: 1
+          weight: 4
 
   R4:
     title: Exit codes and SIGPIPE
     items:
       - R4.1:
           text: Must exit 0 when all files are processed and all verified digests match.
-          weight: 1
+          weight: 4
       - R4.2:
           text: Must exit 1 when any file cannot be opened, any digest fails, or the checksum file is unreadable.
           weight: 1

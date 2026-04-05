@@ -68,7 +68,7 @@ requirements:
           weight: 1
       - R4.2:
           text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
-          weight: 1
+          weight: 4
       - R4.3:
           text: Must exit 1 when a write error occurs on stdout.
           weight: 1

@@ -52,7 +52,7 @@ requirements:
     items:
       - R3.1:
           text: By default, comm checks that input files are sorted. When a line is encountered that is less than the previous line in the same file, comm prints a warning to stderr and continues.
-          weight: 1
+          weight: 4
       - R3.2:
           text: --check-order makes the ordering check fatal; comm exits non-zero if input is not sorted.
           weight: 1

@@ -75,7 +75,7 @@ requirements:
           weight: 1
       - R2.4:
           text: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.
-          weight: 1
+          weight: 4
       - R2.5:
           text: -k must report sizes in 1024-byte blocks. Since 1K is already the default, -k has no visible effect but must be accepted without error for compatibility.
           weight: 1
