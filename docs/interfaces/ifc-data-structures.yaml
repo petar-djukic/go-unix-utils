@@ -1,0 +1,107 @@
+# Copyright (c) 2026 Petar Djukic. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+id: ifc-data-structures
+name: Data Structures
+summary: |
+  Specification artifacts and runtime data structures used across the pipeline.
+
+data_structures:
+  - name: SRD
+    description: Per-utility software requirements document with numbered goals, requirements, and acceptance criteria.
+    fields:
+      - name: id
+        type: string
+        description: Unique identifier in the form srd[NNN]-<utility>.
+        required: true
+      - name: title
+        type: string
+        description: Human-readable title of the utility or component.
+        required: true
+      - name: goals
+        type: array
+        description: Numbered goal statements (G1, G2, ...).
+      - name: requirements
+        type: array
+        description: Numbered requirement groups (R1, R2, ...) with sub-items.
+      - name: acceptance_criteria
+        type: array
+        description: Numbered acceptance criteria (AC1, AC2, ...).
+
+  - name: UseCase
+    description: Per-utility use case describing a concrete end-to-end execution path through the system.
+    fields:
+      - name: id
+        type: string
+        description: Unique identifier in the form rel[NN].[N]-uc[NNN]-<utility>.
+        required: true
+      - name: touchpoints
+        type: array
+        description: References to SRD requirements exercised by this use case.
+      - name: success_criteria
+        type: array
+        description: Observable outcomes that confirm the use case succeeds.
+
+  - name: DiffTest
+    description: Go struct in pkg/testutils/ defining a single differential test case.
+    fields:
+      - name: Name
+        type: string
+        description: Human-readable test case name.
+        required: true
+      - name: Args
+        type: array
+        description: Command-line arguments passed to both binaries.
+      - name: Stdin
+        type: string
+        description: Standard input fed to both binaries.
+      - name: Env
+        type: array
+        description: Environment variables set for both binaries.
+      - name: ExitCode
+        type: integer
+        description: Expected exit code from the reference binary.
+
+  - name: Configuration
+    description: Orchestrator configuration file at the project root consumed by magefiles/.
+    fields:
+      - name: project
+        type: object
+        description: Project metadata (name, module path, source directories).
+        required: true
+      - name: cobbler
+        type: object
+        description: Measure and stitch settings (issues repo, Claude args).
+      - name: generation
+        type: object
+        description: Generation run settings (cycles, timeouts, preserve_sources).
+
+operations:
+  - name: build
+    description: Compile all cmd/ binaries to bin/.
+    parameters: []
+    returns:
+      - name: error
+        type: error
+  - name: lint
+    description: Run golangci-lint on all Go source under cmd/ and pkg/.
+    parameters: []
+    returns:
+      - name: error
+        type: error
+  - name: stats:loc
+    description: Print Go lines of code (production and test) and documentation word counts.
+    parameters: []
+    returns: []
+  - name: analyze
+    description: Run cross-artifact consistency checks on docs/ (SRDs, use cases, test suites, roadmap).
+    parameters: []
+    returns:
+      - name: error
+        type: error
+  - name: test
+    description: Run all tests including differential tests in each cmd/ package.
+    parameters: []
+    returns:
+      - name: error
+        type: error

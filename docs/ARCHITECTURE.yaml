@@ -30,24 +30,9 @@ overview:
 
 interfaces:
   - name: Data Structures
-    summary: |
-      Specification artifacts and runtime data structures used across the pipeline.
-    data_structures:
-      - "SRD (srd[NNN]-<utility>.yaml): per-utility software requirements document with numbered goals, requirements, and acceptance criteria."
-      - "Use case (rel[NN].[N]-uc[NNN]-<utility>.yaml): per-utility use case describing a concrete end-to-end execution path through the system."
-      - "DiffTest: Go struct in pkg/testutils/ defining a single differential test case with fields for input arguments, stdin, environment, expected exit code, and expected output."
-      - "configuration.yaml: orchestrator configuration file at the project root consumed by magefiles/ to configure build, analysis, and generation targets."
-    operations:
-      - "mage build: compiles all cmd/ binaries to bin/."
-      - "mage lint: runs golangci-lint on all Go source under cmd/ and pkg/."
-      - "mage stats:loc: prints Go lines of code (production and test) and documentation word counts."
-      - "mage analyze: runs cross-artifact consistency checks on docs/ (SRDs, use cases, test suites, roadmap)."
-      - "go test ./...: runs all tests including differential tests in each cmd/ package."
+    spec_file: docs/interfaces/ifc-data-structures.yaml
   - name: Events
-    summary: |
-      Observable events emitted by the system during operation.
-    operations:
-      - "Differential test failure: go test reports the divergence with the input that triggered it, the expected output (reference binary), and the actual output (Go binary)."
+    spec_file: docs/interfaces/ifc-events.yaml
 
 components:
   - name: Human Operator
