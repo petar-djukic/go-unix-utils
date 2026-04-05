@@ -35,7 +35,7 @@ requirements:
     items:
       - R2.1:
           text: -p or --parents must remove the target directory and then remove each successive empty parent component of the path, similar to 'rmdir -p a/b/c' removing c, then b, then a.
-          weight: 1
+          weight: 4
       - R2.2:
           text: Must stop ascending when a parent directory is not empty and report an error for that component.
           weight: 1

@@ -19,7 +19,7 @@ requirements:
     items:
       - R1.1:
           text: Must create a single directory when invoked as 'mkdir DIR'.
-          weight: 1
+          weight: 4
       - R1.2:
           text: Must create multiple directories when invoked with multiple DIR arguments, processing each independently.
           weight: 1
@@ -35,7 +35,7 @@ requirements:
     items:
       - R2.1:
           text: -p or --parents must create intermediate parent directories as needed, similar to 'mkdir -p a/b/c' creating a, a/b, and a/b/c.
-          weight: 1
+          weight: 4
       - R2.2:
           text: Must not report an error when the target directory already exists and -p is given.
           weight: 1
@@ -51,7 +51,7 @@ requirements:
           weight: 1
       - R3.2:
           text: When -m is not given, must create directories with default permissions (0777 modified by the process umask).
-          weight: 1
+          weight: 4
       - R3.3:
           text: When -p is combined with -m, must apply the specified mode only to the final target directory; intermediate directories must be created with default permissions modified by umask.
           weight: 1

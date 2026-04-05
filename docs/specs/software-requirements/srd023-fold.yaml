@@ -20,7 +20,7 @@ requirements:
     items:
       - R1.1:
           text: Must read each file (or stdin when no arguments are given) and write each line wrapped to at most W characters (columns by default, bytes with -b). The default width is 80.
-          weight: 1
+          weight: 4
       - R1.2:
           text: Lines shorter than or equal to the maximum width must be written unchanged (including the trailing newline).
           weight: 1

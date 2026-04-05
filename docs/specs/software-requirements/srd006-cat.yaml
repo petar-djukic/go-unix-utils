@@ -94,14 +94,14 @@ requirements:
           weight: 1
       - R4.9:
           text: "Transformation flags are compatible with -n, -b, and -s. The order of application is: squeeze blanks (-s), then apply non-printing display (-v/-T), then append end-of-line marker (-E), then prepend line number (-n/-b)."
-          weight: 1
+          weight: 4
 
   R5:
     title: Error handling and exit codes
     items:
       - R5.1:
           text: Must exit 0 when all inputs are processed successfully.
-          weight: 1
+          weight: 4
       - R5.2:
           text: Must exit 1 when any input file cannot be opened. The error message must be written to stderr. cat must continue processing remaining file arguments after the error.
           weight: 1

@@ -38,14 +38,14 @@ requirements:
           weight: 1
       - R1.5:
           text: "Must register a cleanup handler (atexit equivalent in Go: defer or os/signal) that deletes the temp file if the process exits or receives SIGINT, SIGTERM, SIGHUP, or SIGPIPE before the rename completes."
-          weight: 1
+          weight: 4
 
   R2:
     title: Output file handling
     items:
       - R2.1:
           text: When an output filename is given, must attempt an atomic rename of the temp file to the output filename when the output file is a regular file or does not yet exist (sponge.c:371-373).
-          weight: 1
+          weight: 4
       - R2.2:
           text: When the rename fails (e.g., cross-device move), must fall back to a byte-for-byte copy of the temp file content to the output file, then delete the temp file.
           weight: 1

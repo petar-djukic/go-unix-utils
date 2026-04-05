@@ -51,7 +51,7 @@ requirements:
     items:
       - R3.1:
           text: Must exit 0 when all inputs are processed successfully.
-          weight: 1
+          weight: 4
       - R3.2:
           text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
           weight: 1
