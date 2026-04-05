@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd018-head.yaml) and invokes do-work to
+  The operator has completed the PRD (srd018-head.yaml) and invokes do-work to
   produce a passing differential test for cmd/head.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       with the same arguments and stdin. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/head — line-count, byte-count, negative counts, multi-file headers, quiet/verbose (prd018-head R1, R2, R3, R4)"
+  - T1: "cmd/head — line-count, byte-count, negative counts, multi-file headers, quiet/verbose (srd018-head R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

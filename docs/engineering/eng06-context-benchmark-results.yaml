@@ -6,7 +6,7 @@ introduction: |
   the context configuration in configuration.yaml. The experiment tests whether more or less
   project context improves code generation quality, cost efficiency, and task selection accuracy.
 
-  The specification baseline contained 10 PRDs, 7 use cases, 4 test suites, and zero Go source
+  The specification baseline contained 10 SRDs, 7 use cases, 4 test suites, and zero Go source
   code. All three variants used Claude Opus 4.6 at temperature 0 with identical constitutions,
   prompts, and generation lifecycle parameters. The eng05 protocol document describes the
   experiment design; we report the results here.
@@ -28,7 +28,7 @@ sections:
       | 3 (exclude-all) | "" | "" | "." | ~26,593 |
 
       Variant 1 uses the standard 9-glob discovery that resolves VISION.yaml, ARCHITECTURE.yaml,
-      SPECIFICATIONS.yaml, road-map.yaml, all PRDs, use cases, test suites, dependency-map.yaml,
+      SPECIFICATIONS.yaml, road-map.yaml, all SRDs, use cases, test suites, dependency-map.yaml,
       and sources.yaml. The orchestrator's dedicated parsers (VisionDoc, ArchitectureDoc,
       RoadmapDoc) expand these into structured JSON within the prompt.
 
@@ -74,7 +74,7 @@ sections:
 
       Variant 3 refused immediately. The measure agent identified the empty project_context and
       correctly declined to propose tasks, stating minimum required context: ARCHITECTURE.yaml,
-      roadmap, PRDs, use cases, existing issues, and source code.
+      roadmap, SRDs, use cases, existing issues, and source code.
 
   - title: "Variant 1 results (default context)"
     content: |
@@ -87,14 +87,14 @@ sections:
       | Cycle | Gen | Proposed task | Productive? | Stitch cost |
       |-------|-----|---------------|-------------|-------------|
       | 1 | A | pkg/testutils (prd001 R1-R5) | Yes (+354 prod) | $0.96 |
-      | 2 | A | cmd/ts (prd004-ts R1-R8) | Yes (+652 prod) | $1.47 |
+      | 2 | A | cmd/ts (srd004-ts R1-R8) | Yes (+652 prod) | $1.47 |
       | 3 | B | pkg/testutils (re-proposal) | No | $1.28 |
       | 4 | B | pkg/testutils (re-proposal) | No | $1.30 |
       | 5 | B | pkg/testutils (re-proposal) | No | $1.00 |
       | 6 | B | pkg/testutils (re-proposal) | No | $1.21 |
       | 7 | B | pkg/testutils (re-proposal) | No | $1.12 |
       | 8 | B | cmd/ts differential tests | Yes (+218 test) | $1.47 |
-      | 9 | B | cmd/cat (prd006-cat R1-R5) | Yes (+328 prod) | $3.07 |
+      | 9 | B | cmd/cat (srd006-cat R1-R5) | Yes (+328 prod) | $3.07 |
       | 10 | B | pkg/testutils (re-proposal) | No | $1.14 |
       | 11 | B | pkg/testutils (re-proposal) | No | $1.50 |
       | 12 | B | pkg/testutils (re-proposal) | No | $1.39 |
@@ -149,10 +149,10 @@ sections:
       The stitch agent also modified pkg/testutils/difftest.go (+155 LOC) during the chronic
       tests cycle, bringing total production LOC to 584 (429 new utilities + 155 testutils).
 
-      Without roadmap context, the measure agent selected utilities by PRD complexity rather
+      Without roadmap context, the measure agent selected utilities by SRD complexity rather
       than release order. It chose chronic, pee, and vidir (rel02.0 and beyond) instead of the
       rel01.0/01.1 targets (testutils, ts, cat, wc, sponge). All proposed tasks were valid
-      implementations of existing PRDs, and none were re-proposals.
+      implementations of existing SRDs, and none were re-proposals.
 
       The zero re-proposal rate in variant 2 is explained by the absence of ARCHITECTURE.yaml's
       misleading implementation_status text. Without the "specifications only" assertion, the
@@ -162,7 +162,7 @@ sections:
     content: |
       Variant 3 set context_exclude to "." which excludes all files. The prompt shrank to
       ~26,593 bytes: just the system template, constitutions, and an empty project_context
-      object. No vision, architecture, roadmap, PRDs, use cases, test suites, issues, or source
+      object. No vision, architecture, roadmap, SRDs, use cases, test suites, issues, or source
       code were included.
 
       The measure agent produced a single-turn response in ~17 seconds at $0.09. The response
@@ -170,7 +170,7 @@ sections:
 
       - docs/ARCHITECTURE.yaml
       - The roadmap (road-map.yaml or equivalent)
-      - Relevant PRDs from docs/specs/product-requirements/
+      - Relevant SRDs from docs/specs/product-requirements/
       - Use cases from docs/specs/use-cases/
       - Existing issues list
       - Any existing source code paths and their contents
@@ -185,7 +185,7 @@ sections:
       |--------------------|------------------|--------------------|-----------|
       | ARCHITECTURE.yaml | Yes | Yes (raw) | Required |
       | road-map.yaml | Yes | Yes (raw) | Required |
-      | PRDs | Yes | Yes | Required |
+      | SRDs | Yes | Yes | Required |
       | Use cases | Yes | Yes | Required |
       | Existing issues | Yes (via issue tracker) | Yes (via issue tracker) | Required |
       | Source code | Yes (go_source_dirs) | No | Required |
@@ -223,7 +223,7 @@ sections:
     content: |
       Finding 1: The default context set is approximately correct. Variant 3's file-request list
       maps closely to the standard discovery set. The measure agent considers ARCHITECTURE, roadmap,
-      PRDs, use cases, issues, and source code necessary. VISION and SPECIFICATIONS are
+      SRDs, use cases, issues, and source code necessary. VISION and SPECIFICATIONS are
       supplementary.
 
       Finding 2: Structured document parsing matters more than file count. Variant 2 included more

@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd005-wc.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd005-wc.yaml) and invokes do-work to produce
   a passing differential test for cmd/wc.
 
 flow:
@@ -34,7 +34,7 @@ flow:
       remaining files are still processed. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/wc — line, word, byte, char, max-line-length counting, multi-file totals (prd005-wc R1, R2, R3, R4, R5, R6)"
+  - T1: "cmd/wc — line, word, byte, char, max-line-length counting, multi-file totals (srd005-wc R1, R2, R3, R4, R5, R6)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
 
 success_criteria:

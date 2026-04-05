@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd037-ln.yaml) and invokes do-work to
+  The operator has completed the PRD (srd037-ln.yaml) and invokes do-work to
   produce a passing differential test for cmd/ln.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       that resulting links have identical type and target.
 
 touchpoints:
-  - T1: "cmd/ln — hard link creation, symbolic link (-s), force overwrite (-f) (prd037-ln R1, R2, R3)"
+  - T1: "cmd/ln — hard link creation, symbolic link (-s), force overwrite (-f) (srd037-ln R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

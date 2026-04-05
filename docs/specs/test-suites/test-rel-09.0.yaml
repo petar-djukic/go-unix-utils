@@ -8,24 +8,24 @@ traces:
   - rel09.0-uc003-b2sum
   - rel09.0-uc004-cksum
   - rel09.0-uc005-sum
-  - prd074-sha224sum R1
-  - prd074-sha224sum R2
-  - prd074-sha224sum R3
-  - prd074-sha224sum R4
-  - prd075-sha384sum R1
-  - prd075-sha384sum R2
-  - prd075-sha384sum R3
-  - prd075-sha384sum R4
-  - prd076-b2sum R1
-  - prd076-b2sum R2
-  - prd076-b2sum R3
-  - prd076-b2sum R4
-  - prd077-cksum R1
-  - prd077-cksum R2
-  - prd077-cksum R3
-  - prd078-sum R1
-  - prd078-sum R2
-  - prd078-sum R3
+  - srd074-sha224sum R1
+  - srd074-sha224sum R2
+  - srd074-sha224sum R3
+  - srd074-sha224sum R4
+  - srd075-sha384sum R1
+  - srd075-sha384sum R2
+  - srd075-sha384sum R3
+  - srd075-sha384sum R4
+  - srd076-b2sum R1
+  - srd076-b2sum R2
+  - srd076-b2sum R3
+  - srd076-b2sum R4
+  - srd077-cksum R1
+  - srd077-cksum R2
+  - srd077-cksum R3
+  - srd078-sum R1
+  - srd078-sum R2
+  - srd078-sum R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -48,8 +48,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd074-sha224sum R1.1
-      - prd074-sha224sum R1.2
+      - srd074-sha224sum R1.1
+      - srd074-sha224sum R1.2
 
   - name: sha224sum_compute_file
     description: "sha224sum on a named file produces correct hash and filename"
@@ -63,7 +63,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd074-sha224sum R1.1
+      - srd074-sha224sum R1.1
 
   - name: sha224sum_check_valid
     description: "sha224sum --check with correct checksums exits 0 and prints OK"
@@ -77,8 +77,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd074-sha224sum R2.1
-      - prd074-sha224sum R2.2
+      - srd074-sha224sum R2.1
+      - srd074-sha224sum R2.2
 
   - name: sha224sum_tag_format
     description: "sha224sum --tag produces BSD-style tagged output"
@@ -92,7 +92,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd074-sha224sum R1.3
+      - srd074-sha224sum R1.3
 
   # ---- sha384sum ----
 
@@ -108,8 +108,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd075-sha384sum R1.1
-      - prd075-sha384sum R1.2
+      - srd075-sha384sum R1.1
+      - srd075-sha384sum R1.2
 
   - name: sha384sum_compute_file
     description: "sha384sum on a named file produces correct hash and filename"
@@ -123,7 +123,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd075-sha384sum R1.1
+      - srd075-sha384sum R1.1
 
   - name: sha384sum_check_valid
     description: "sha384sum --check with correct checksums exits 0 and prints OK"
@@ -137,8 +137,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd075-sha384sum R2.1
-      - prd075-sha384sum R2.2
+      - srd075-sha384sum R2.1
+      - srd075-sha384sum R2.2
 
   - name: sha384sum_tag_format
     description: "sha384sum --tag produces BSD-style tagged output"
@@ -152,7 +152,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd075-sha384sum R1.3
+      - srd075-sha384sum R1.3
 
   # ---- b2sum ----
 
@@ -168,8 +168,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd076-b2sum R1.1
-      - prd076-b2sum R1.2
+      - srd076-b2sum R1.1
+      - srd076-b2sum R1.2
 
   - name: b2sum_compute_file
     description: "b2sum on a named file produces correct hash and filename"
@@ -183,7 +183,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd076-b2sum R1.1
+      - srd076-b2sum R1.1
 
   - name: b2sum_length_256
     description: "b2sum --length=256 produces a shorter hex digest"
@@ -197,7 +197,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd076-b2sum R3.3
+      - srd076-b2sum R3.3
 
   - name: b2sum_check_valid
     description: "b2sum --check with correct checksums exits 0 and prints OK"
@@ -211,8 +211,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd076-b2sum R2.1
-      - prd076-b2sum R2.2
+      - srd076-b2sum R2.1
+      - srd076-b2sum R2.2
 
   # ---- cksum ----
 
@@ -228,8 +228,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd077-cksum R1.1
-      - prd077-cksum R1.2
+      - srd077-cksum R1.1
+      - srd077-cksum R1.2
 
   - name: cksum_file
     description: "cksum on a named file produces checksum, byte count, and filename"
@@ -243,8 +243,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd077-cksum R1.1
-      - prd077-cksum R1.3
+      - srd077-cksum R1.1
+      - srd077-cksum R1.3
 
   - name: cksum_algorithm_sha256
     description: "cksum --algorithm=sha256 produces tagged SHA-256 output"
@@ -258,7 +258,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd077-cksum R2.1
+      - srd077-cksum R2.1
 
   # ---- sum ----
 
@@ -274,8 +274,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd078-sum R1.1
-      - prd078-sum R1.2
+      - srd078-sum R1.1
+      - srd078-sum R1.2
 
   - name: sum_file
     description: "sum on a named file produces checksum, block count, and filename"
@@ -289,8 +289,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd078-sum R1.1
-      - prd078-sum R1.3
+      - srd078-sum R1.1
+      - srd078-sum R1.3
 
   - name: sum_sysv
     description: "sum -s produces System V checksum with 512-byte block count"
@@ -304,4 +304,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd078-sum R2.2
+      - srd078-sum R2.2

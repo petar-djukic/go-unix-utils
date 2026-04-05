@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd053-sort.yaml) and invokes do-work to
+  The operator has completed the PRD (srd053-sort.yaml) and invokes do-work to
   produce a passing differential test for cmd/sort.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       codes.
 
 touchpoints:
-  - T1: "cmd/sort — lexicographic, numeric, human-numeric, month, version sort, key fields, delimiters, reverse, unique, stable, check mode (prd053-sort R1, R2, R3, R4)"
+  - T1: "cmd/sort — lexicographic, numeric, human-numeric, month, version sort, key fields, delimiters, reverse, unique, stable, check mode (srd053-sort R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

@@ -5,12 +5,12 @@ release: rel05.2
 traces:
   - rel05.2-uc001-cut
   - rel05.2-uc002-paste
-  - prd026-cut R1
-  - prd026-cut R2
-  - prd026-cut R3
-  - prd027-paste R1
-  - prd027-paste R2
-  - prd027-paste R3
+  - srd026-cut R1
+  - srd026-cut R2
+  - srd026-cut R3
+  - srd027-paste R1
+  - srd027-paste R2
+  - srd027-paste R3
 
 preconditions:
   - ./bin/cut and ./bin/paste exist (built via mage build).
@@ -36,7 +36,7 @@ test_cases:
       stdout: "bcd\n"
       stderr: ""
     traces:
-      - prd026-cut R1.1
+      - srd026-cut R1.1
 
   - name: cut_byte_open_range
     description: "-b 3- extracts from byte 3 to end of line."
@@ -50,7 +50,7 @@ test_cases:
       stdout: "cdef\n"
       stderr: ""
     traces:
-      - prd026-cut R1.1
+      - srd026-cut R1.1
 
   - name: cut_field_with_delimiter
     description: "-d: -f2 extracts the second colon-delimited field."
@@ -64,8 +64,8 @@ test_cases:
       stdout: "b\n"
       stderr: ""
     traces:
-      - prd026-cut R2.1
-      - prd026-cut R2.2
+      - srd026-cut R2.1
+      - srd026-cut R2.2
 
   - name: cut_field_multiple
     description: "-d: -f1,3 extracts fields 1 and 3."
@@ -79,7 +79,7 @@ test_cases:
       stdout: "a:c\n"
       stderr: ""
     traces:
-      - prd026-cut R2.1
+      - srd026-cut R2.1
 
   - name: cut_suppress_no_delimiter
     description: -s suppresses lines that contain no delimiter.
@@ -93,7 +93,7 @@ test_cases:
       stdout: "b\n"
       stderr: ""
     traces:
-      - prd026-cut R2.3
+      - srd026-cut R2.3
 
   - name: cut_no_delimiter_passthrough
     description: Without -s, lines with no delimiter are printed unchanged.
@@ -107,7 +107,7 @@ test_cases:
       stdout: "no-delimiter\n"
       stderr: ""
     traces:
-      - prd026-cut R2.3
+      - srd026-cut R2.3
 
   - name: cut_output_delimiter
     description: "--output-delimiter uses a different separator in the output."
@@ -121,7 +121,7 @@ test_cases:
       stdout: "a|c\n"
       stderr: ""
     traces:
-      - prd026-cut R2.4
+      - srd026-cut R2.4
 
   - name: cut_complement
     description: "--complement with -f inverts the field selection."
@@ -135,7 +135,7 @@ test_cases:
       stdout: "a:c\n"
       stderr: ""
     traces:
-      - prd026-cut R3.1
+      - srd026-cut R3.1
 
   # ---- paste ----
 
@@ -151,7 +151,7 @@ test_cases:
       stdout: "a\t1\nb\t2\n"
       stderr: ""
     traces:
-      - prd027-paste R1.1
+      - srd027-paste R1.1
 
   - name: paste_custom_delimiter
     description: "-d: merges with colon as delimiter."
@@ -165,7 +165,7 @@ test_cases:
       stdout: "a:1\nb:2\n"
       stderr: ""
     traces:
-      - prd027-paste R2.1
+      - srd027-paste R2.1
 
   - name: paste_serial_mode
     description: "-s produces one output line per file with all lines joined."
@@ -179,7 +179,7 @@ test_cases:
       stdout: "a\tb\n"
       stderr: ""
     traces:
-      - prd027-paste R3.1
+      - srd027-paste R3.1
 
   - name: paste_unequal_length
     description: "Shorter file contributes empty fields until both are exhausted. Setup: file1 has 'a\\nb\\nc\\n', file2 has '1\\n'."
@@ -193,7 +193,7 @@ test_cases:
       stdout: "a\t1\nb\t\nc\t\n"
       stderr: ""
     traces:
-      - prd027-paste R1.2
+      - srd027-paste R1.2
 
   - name: paste_stdin_dash
     description: "-  reads from stdin for that column."
@@ -207,7 +207,7 @@ test_cases:
       stdout: "x:1\ny:2\n"
       stderr: ""
     traces:
-      - prd027-paste R1.3
+      - srd027-paste R1.3
 
   - name: paste_delimiter_cycling
     description: "-d,: cycles through comma then colon for successive field separators."
@@ -221,5 +221,5 @@ test_cases:
       stdout: "a,1:a\nb,2:b\n"
       stderr: ""
     traces:
-      - prd027-paste R2.1
-      - prd027-paste R2.3
+      - srd027-paste R2.1
+      - srd027-paste R2.3

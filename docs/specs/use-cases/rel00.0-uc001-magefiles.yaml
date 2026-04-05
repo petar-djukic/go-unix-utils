@@ -5,13 +5,13 @@ summary: |
   The operator runs mage build to compile cmd/version to bin/version, verifies that the
   binary prints the repository's version tag, runs mage lint to confirm no warnings, and
   runs mage clean to remove build artifacts. This exercises the scaffold-provided build
-  lifecycle (prd011-magefiles) and the version binary (prd059-version) before any utility
+  lifecycle (srd011-magefiles) and the version binary (srd059-version) before any utility
   code exists.
 
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRDs (prd011-magefiles.yaml, prd059-version.yaml) and
+  The operator has completed the PRDs (srd011-magefiles.yaml, srd059-version.yaml) and
   wants to verify that the build pipeline produces a working binary.
 
 flow:
@@ -39,9 +39,9 @@ flow:
       removes what build produced).
 
 touchpoints:
-  - T1: "cmd/version — version string printing, ldflags injection (prd059-version R1)"
-  - T2: "magefiles/ — build, lint, clean targets (prd011-magefiles R1, R2, R3)"
-  - T3: "configuration.yaml — project fields (prd011-magefiles R5)"
+  - T1: "cmd/version — version string printing, ldflags injection (srd059-version R1)"
+  - T2: "magefiles/ — build, lint, clean targets (srd011-magefiles R1, R2, R3)"
+  - T3: "configuration.yaml — project fields (srd011-magefiles R5)"
 
 success_criteria:
   - id: S1
@@ -49,15 +49,15 @@ success_criteria:
       The full build-run-clean lifecycle completes without error: mage build produces
       bin/version, the binary prints a version tag and exits 0, and mage clean removes bin/.
     traces:
-      - prd059-version AC1
-      - prd011-magefiles AC1
-      - prd011-magefiles AC3
+      - srd059-version AC1
+      - srd011-magefiles AC1
+      - srd011-magefiles AC3
   - id: S2
     criterion: |
       A development build (no ldflags) produces a binary that prints "dev", confirming
       the ldflags injection path controls version output end-to-end.
     traces:
-      - prd059-version AC4
+      - srd059-version AC4
 
 out_of_scope:
   - Differential testing of cmd/version against a reference binary (there is no GNU version equivalent).

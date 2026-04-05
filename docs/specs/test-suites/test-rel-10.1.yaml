@@ -6,16 +6,16 @@ traces:
   - rel10.1-uc001-chmod
   - rel10.1-uc002-chgrp
   - rel10.1-uc003-chown
-  - prd089-chmod R1
-  - prd089-chmod R2
-  - prd089-chmod R3
-  - prd089-chmod R4
-  - prd090-chgrp R1
-  - prd090-chgrp R2
-  - prd090-chgrp R3
-  - prd091-chown R1
-  - prd091-chown R2
-  - prd091-chown R3
+  - srd089-chmod R1
+  - srd089-chmod R2
+  - srd089-chmod R3
+  - srd089-chmod R4
+  - srd090-chgrp R1
+  - srd090-chgrp R2
+  - srd090-chgrp R3
+  - srd091-chown R1
+  - srd091-chown R2
+  - srd091-chown R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -39,8 +39,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd089-chmod R1.1
-      - prd089-chmod R1.3
+      - srd089-chmod R1.1
+      - srd089-chmod R1.3
 
   - name: chmod_symbolic
     description: "chmod u+x,go-w applies symbolic mode"
@@ -54,7 +54,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd089-chmod R1.2
+      - srd089-chmod R1.2
 
   - name: chmod_recursive
     description: "chmod -R 644 changes permissions recursively"
@@ -68,7 +68,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd089-chmod R2.1
+      - srd089-chmod R2.1
 
   - name: chmod_verbose
     description: "chmod -v 644 prints diagnostic for each file"
@@ -82,7 +82,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd089-chmod R2.2
+      - srd089-chmod R2.2
 
   # ---- chgrp ----
 
@@ -98,8 +98,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd090-chgrp R1.1
-      - prd090-chgrp R1.3
+      - srd090-chgrp R1.1
+      - srd090-chgrp R1.3
 
   - name: chgrp_recursive
     description: "chgrp -R staff dir changes group recursively"
@@ -113,7 +113,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd090-chgrp R2.1
+      - srd090-chgrp R2.1
 
   # ---- chown ----
 
@@ -129,8 +129,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd091-chown R1.1
-      - prd091-chown R1.2
+      - srd091-chown R1.1
+      - srd091-chown R1.2
 
   - name: chown_group_only
     description: "chown :staff file changes only group"
@@ -144,7 +144,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd091-chown R1.1
+      - srd091-chown R1.1
 
   - name: chown_recursive
     description: "chown -R user dir changes owner recursively"
@@ -158,4 +158,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd091-chown R2.1
+      - srd091-chown R2.1

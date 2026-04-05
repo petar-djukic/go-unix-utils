@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd112-chronic.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd112-chronic.yaml) and invokes do-work to produce
   a passing differential test for cmd/chronic.
 
 flow:
@@ -22,7 +22,7 @@ flow:
       chronic with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/chronic — chronic suppresses output on success (prd112-chronic R1, R2)"
+  - T1: "cmd/chronic — chronic suppresses output on success (srd112-chronic R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

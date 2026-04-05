@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd009-du.yaml) and shared component PRDs
+  The operator has completed the PRD (srd009-du.yaml) and shared component PRDs
   (pkg/sys, pkg/format from rel00.0) and invokes do-work to produce a passing differential
   test for cmd/du.
 
@@ -37,7 +37,7 @@ flow:
       counts are deterministic. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/du — recursive traversal, block accumulation, hard-link dedup, flag modes (prd009-du R1, R2, R3, R4, R5)"
+  - T1: "cmd/du — recursive traversal, block accumulation, hard-link dedup, flag modes (srd009-du R1, R2, R3, R4, R5)"
   - T2: "pkg/sys — Stat/Lstat for st_blocks, st_dev, st_ino, InstallSIGPIPEHandler"
   - T3: "pkg/format — HumanSize for -h output"
   - T4: "pkg/testutils — RunDiffTests, binary execution and comparison"
@@ -73,7 +73,7 @@ success_criteria:
 out_of_scope:
   - Cross-filesystem behavior (files on different mount points) is not tested in the
     differential harness; both binaries see the same single filesystem.
-  - SIGPIPE handling is specified in prd009-du R5.1 but is not directly testable in the
+  - SIGPIPE handling is specified in srd009-du R5.1 but is not directly testable in the
     differential harness.
   - Sparse file creation depends on the filesystem; --apparent-size tests use a regular file
     with known size rather than a true sparse file.

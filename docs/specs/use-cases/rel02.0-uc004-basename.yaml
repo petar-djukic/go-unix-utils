@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd015-basename.yaml) and invokes do-work to
+  The operator has completed the PRD (srd015-basename.yaml) and invokes do-work to
   produce a passing differential test for cmd/basename.
 
 flow:
@@ -26,7 +26,7 @@ flow:
       (root, trailing slashes, empty string) are included to catch boundary behavior.
 
 touchpoints:
-  - T1: "cmd/basename — path stripping, suffix removal, multi-argument mode, NUL output (prd015-basename R1, R2, R3)"
+  - T1: "cmd/basename — path stripping, suffix removal, multi-argument mode, NUL output (srd015-basename R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

@@ -1,0 +1,217 @@
+id: srd106-df
+title: "cmd/df: Report Filesystem Disk Space Usage"
+
+problem: |
+  df reports filesystem disk space usage, but macOS BSD df and GNU df differ in default
+  block size (512-byte vs 1024-byte blocks), column headers, output alignment, and flag
+  availability (--output absent in BSD df, -T absent in BSD df). Scripts that parse df
+  output break when moving between platforms. The Go implementation must match the Homebrew
+  GNU reference binary (gdf, installed by coreutils) byte-for-byte on all in-scope flag
+  combinations, verified by differential testing via pkg/testutils.
+
+  df requires pkg/sys for filesystem metadata (statvfs for block counts, device resolution)
+  and for SIGPIPE handling. These shared components are specified in srd002-sys.
+
+goals:
+  - G1: Report filesystem disk space usage for mounted filesystems, showing total, used, available, use percentage, and mount point.
+  - G2: Support human-readable output (-h for binary, -H for SI units).
+  - G3: Support filesystem type display (-T) and type-based filtering (-t, -x).
+  - G4: Support inode reporting (-i) and customizable column selection (--output).
+
+requirements:
+  R1:
+    title: Default output formatting
+    items:
+      - R1.1:
+          text: |
+            When invoked with no arguments, must list all mounted filesystems excluding
+            pseudo-filesystems (those with 0 total blocks), displaying one line per filesystem.
+            Default columns are: Filesystem, 1K-blocks, Used, Available, Use%, Mounted on.
+            Sizes are reported in 1024-byte block units.
+          weight: 4
+      - R1.2:
+          text: |
+            Must print a header line as the first line of output. Column headers must match
+            GNU df exactly: "Filesystem", "1K-blocks", "Used", "Available", "Use%",
+            "Mounted on". Numeric columns (1K-blocks, Used, Available, Use%) are right-aligned.
+            Filesystem and Mounted on are left-aligned.
+          weight: 4
+      - R1.3:
+          text: |
+            Use% is calculated as ceiling((total - available) * 100 / total) when total > 0.
+            When total is 0, Use% is displayed as a dash "-". The percentage is followed by
+            "%" with no space. Values are right-aligned in a column wide enough for "100%".
+          weight: 4
+      - R1.4:
+          text: |
+            When one or more FILE arguments are given, must report the filesystem containing
+            each FILE rather than all filesystems. If a FILE does not exist, must print a
+            diagnostic to stderr and continue processing remaining arguments.
+          weight: 1
+      - R1.5:
+          text: |
+            Column widths must be computed as per-column maxima of entry lengths across all
+            rows including the header, matching GNU df alignment. Fields are separated by
+            at least one space.
+          weight: 4
+
+  R2:
+    title: Human-readable and SI output
+    items:
+      - R2.1:
+          text: |
+            -h or --human-readable must display sizes using binary units (1024-based: K, M, G,
+            T, P, E) via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with
+            opts.Binary = true. The column header changes from "1K-blocks" to "Size". -h
+            applies to the Size, Used, and Available columns.
+          weight: 1
+      - R2.2:
+          text: |
+            -H or --si must display sizes using SI units (1000-based: kB, MB, GB, TB, PB, EB)
+            via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary =
+            false. The column header changes from "1K-blocks" to "Size". -H applies to the
+            Size, Used, and Available columns.
+          weight: 1
+      - R2.3:
+          text: -h and -H are mutually exclusive. The last one on the command line takes precedence.
+          weight: 1
+
+  R3:
+    title: Filesystem type, inode display, and column selection
+    items:
+      - R3.1:
+          text: |
+            -T or --print-type must insert a "Type" column after the Filesystem column,
+            showing the filesystem type (e.g., apfs, ext4, tmpfs) for each entry.
+          weight: 1
+      - R3.2:
+          text: |
+            -i or --inodes must display inode information instead of block usage. Columns
+            become: Filesystem, Inodes, IUsed, IFree, IUse%, Mounted on. IUse% is calculated
+            the same way as Use% but using inode counts instead of block counts.
+          weight: 1
+      - R3.3:
+          text: |
+            -a or --all must include pseudo-filesystems (those with 0 total blocks) in the
+            output. Without -a, filesystems with 0 total blocks are excluded.
+          weight: 1
+      - R3.4:
+          text: |
+            -l or --local must restrict output to local filesystems only, excluding network
+            filesystems (NFS, SMB, CIFS, etc.).
+          weight: 1
+      - R3.5:
+          text: |
+            -t TYPE or --type=TYPE must include only filesystems of the specified type.
+            Multiple -t flags may be given to include multiple types. When -t is given,
+            only filesystems matching at least one specified type are shown.
+          weight: 1
+      - R3.6:
+          text: |
+            -x TYPE or --exclude-type=TYPE must exclude filesystems of the specified type.
+            Multiple -x flags may be given. When both -t and -x are given, -t inclusion
+            is applied first, then -x exclusion.
+          weight: 1
+      - R3.7:
+          text: |
+            --output or --output=FIELD_LIST must select which columns to display. When
+            --output is given without a field list, all available fields are shown. When
+            a comma-separated field list is given, only those fields appear in the specified
+            order. Available fields: source, fstype, itotal, iused, iavail, ipcent, size,
+            used, avail, pcent, file, target. --output is incompatible with -i, -T, and -h;
+            if combined, must print an error and exit 1.
+          weight: 4
+
+  R4:
+    title: Exit codes and signal handling
+    items:
+      - R4.1:
+          text: Must exit 0 when all filesystems are reported successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any error occurs (inaccessible FILE argument, invalid option). Must print a diagnostic to stderr for each error.
+          weight: 1
+      - R4.3:
+          text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping df output to head or other truncating consumers does not produce a broken-pipe error message.
+          weight: 1
+
+non_goals:
+  - --sync (invoke sync before getting usage info) is out of scope.
+  - --no-sync is accepted but has no effect (it is the default).
+  - --total (produce a grand total line) is out of scope.
+  - -P (POSIX output format) is out of scope; default output matches GNU df.
+  - --block-size=SIZE with arbitrary unit suffixes is out of scope; only -h, -H, and default 1K blocks are supported.
+  - -k is accepted but has no visible effect (1K is the default).
+  - Reporting on individual block devices or disk partitions beyond what the OS mounts is out of scope.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "Default mode comparison -- gdf and go run ./cmd/df produce identical output for mounted filesystems when run on the same machine. Differential tests must compare column headers, alignment, and Use% values."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.5
+  - id: AC2
+    criterion: "Human-readable sizes -- gdf -h and go run ./cmd/df -h produce identical size strings for all columns."
+    traces:
+      - R2.1
+      - R2.3
+  - id: AC3
+    criterion: "SI units -- gdf -H and go run ./cmd/df -H produce identical size strings for all columns."
+    traces:
+      - R2.2
+      - R2.3
+  - id: AC4
+    criterion: "Filesystem type display -- gdf -T and go run ./cmd/df -T produce identical output including the Type column."
+    traces:
+      - R3.1
+  - id: AC5
+    criterion: "Inode display -- gdf -i and go run ./cmd/df -i produce identical inode columns and IUse% values."
+    traces:
+      - R3.2
+  - id: AC6
+    criterion: "Type filtering -- gdf -t apfs and go run ./cmd/df -t apfs produce identical filtered output. gdf -x devfs and the Go binary with -x devfs exclude the same filesystems."
+    traces:
+      - R3.5
+      - R3.6
+  - id: AC7
+    criterion: "Output column selection -- gdf --output=source,size,used,avail,pcent,target and the Go binary produce identical column-selected output."
+    traces:
+      - R3.7
+  - id: AC8
+    criterion: "FILE argument -- gdf / and go run ./cmd/df / produce identical output for the root filesystem."
+    traces:
+      - R1.4
+  - id: AC9
+    criterion: "Exit codes -- the Go binary exits 1 when given a non-existent file argument and prints a diagnostic to stderr, matching gdf behavior."
+    traces:
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC10
+    criterion: "cmd/df compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R3.5
+      - R3.6
+      - R3.7
+      - R4.1
+      - R4.2
+      - R4.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/format
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

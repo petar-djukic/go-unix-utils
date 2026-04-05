@@ -1,0 +1,73 @@
+id: srd085-sync
+title: "cmd/sync: Synchronize Cached Writes to Persistent Storage"
+
+problem: |
+  macOS ships sync but the GNU version supports --data and --file-system flags for
+  selective synchronization. The Go implementation must match the Homebrew GNU reference
+  binary (gsync, installed by coreutils) byte-for-byte on all flag combinations, verified
+  by differential testing via pkg/testutils.
+
+goals:
+  - G1: Synchronize cached writes to persistent storage.
+  - G2: Support per-file and filesystem-level sync options.
+  - G3: Verify functional parity against gsync via differential testing.
+
+requirements:
+  R1:
+    title: Synchronization modes
+    items:
+      - R1.1:
+          text: When invoked with no arguments, must call sync(2) to flush all filesystem caches to persistent storage.
+          weight: 1
+      - R1.2:
+          text: When given FILE arguments, must open each file and call fsync(2) on each to flush that file's data and metadata to storage.
+          weight: 1
+      - R1.3:
+          text: "-d or --data must call fdatasync(2) instead of fsync(2) on each FILE, syncing only the file's data (not metadata). Must exit 1 if no FILE is given with -d."
+          weight: 1
+      - R1.4:
+          text: "-f or --file-system must call sync(2) for the filesystem containing each FILE rather than syncing the individual file. Must exit 1 if no FILE is given with -f."
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 when all sync operations complete successfully.
+          weight: 1
+      - R2.2:
+          text: Must exit 1 when any file cannot be opened or sync fails.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/sync does not implement filesystem-type-specific sync semantics beyond what the OS provides.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "sync with no arguments completes without error, matching gsync."
+    traces:
+      - R1.1
+  - id: AC2
+    criterion: "sync file flushes the file to storage, matching gsync file."
+    traces:
+      - R1.2
+  - id: AC3
+    criterion: "Differential test against gsync passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC4
+    criterion: "cmd/sync compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3

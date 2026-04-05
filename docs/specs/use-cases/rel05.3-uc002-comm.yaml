@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd029-comm.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd029-comm.yaml) and invokes do-work to produce
   a passing differential test for cmd/comm.
 
 flow:
@@ -31,7 +31,7 @@ flow:
       with the same file arguments and environment. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/comm — three-column comparison, column suppression, indentation, order checking (prd029-comm R1, R2, R3)"
+  - T1: "cmd/comm — three-column comparison, column suppression, indentation, order checking (srd029-comm R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

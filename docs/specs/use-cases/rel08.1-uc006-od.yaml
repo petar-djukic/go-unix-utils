@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd072-od.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd072-od.yaml) and invokes do-work to produce
   a passing differential test for cmd/od.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       compare stdout and exit codes under LC_ALL=C.
 
 touchpoints:
-  - T1: "cmd/od — format dump, address radix, byte range, duplicate suppression (prd072-od R1, R2, R3, R4)"
+  - T1: "cmd/od — format dump, address radix, byte range, duplicate suppression (srd072-od R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
 
 success_criteria:

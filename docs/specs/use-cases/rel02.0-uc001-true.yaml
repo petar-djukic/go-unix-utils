@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd013-true.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd013-true.yaml) and invokes do-work to produce
   a passing differential test for cmd/true.
 
 flow:
@@ -25,7 +25,7 @@ flow:
       Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/true — unconditional exit 0, argument ignoring (prd013-true R1, R2, R3)"
+  - T1: "cmd/true — unconditional exit 0, argument ignoring (srd013-true R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, exit code comparison"
 
 success_criteria:

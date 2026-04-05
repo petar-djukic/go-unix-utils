@@ -1,0 +1,84 @@
+id: srd047-hostname
+title: "cmd/hostname: Print System Hostname"
+
+problem: |
+  Scripts and configuration tools use hostname to query the system's network node name.
+  The GNU coreutils hostname is deliberately minimal compared to the net-tools hostname:
+  it prints the hostname and exits. The Go implementation must match the Homebrew GNU
+  reference binary (ghostname, installed by coreutils) byte-for-byte on stdout and exit
+  code, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the system hostname followed by a newline.
+  - G2: Reject any extra operands or unsupported flags with an error message and nonzero exit.
+
+requirements:
+  R1:
+    title: Default behavior
+    items:
+      - R1.1:
+          text: When invoked with no arguments, must print the system hostname followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: The output must be identical to the value returned by the gethostname(2) syscall on the current system.
+          weight: 1
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1:
+          text: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 1.
+          weight: 1
+      - R2.2:
+          text: Must not accept any flags other than --help and --version. Unknown flags must produce an error message to stderr and exit 1.
+          weight: 1
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (ghostname) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: normal invocation (no arguments), extra operand error, and unknown flag error."
+          weight: 1
+      - R3.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
+
+non_goals:
+  - cmd/hostname does not set the hostname; it is read-only.
+  - cmd/hostname does not support -s (short), -f (FQDN), -d (domain), or -i (IP) flags found in the net-tools hostname. The GNU coreutils hostname is a simpler utility.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/hostname prints the system hostname, matching ghostname."
+    traces:
+      - R1.1
+      - R1.2
+  - id: AC2
+    criterion: "go run ./cmd/hostname extraarg exits 1 with an error message to stderr, matching ghostname."
+    traces:
+      - R1.1
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "Differential test against ghostname passes for normal invocation and error cases."
+    traces:
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC4
+    criterion: "cmd/hostname compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3

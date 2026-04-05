@@ -8,23 +8,23 @@ traces:
   - rel04.1-uc003-pwd
   - rel04.1-uc004-tty
   - rel04.1-uc005-logname
-  - prd049-realpath R1
-  - prd049-realpath R2
-  - prd049-realpath R3
-  - prd049-realpath R4
-  - prd050-readlink R1
-  - prd050-readlink R2
-  - prd050-readlink R3
-  - prd050-readlink R4
-  - prd051-pwd R1
-  - prd051-pwd R2
-  - prd051-pwd R3
-  - prd052-tty R1
-  - prd052-tty R2
-  - prd052-tty R3
-  - prd053-logname R1
-  - prd053-logname R2
-  - prd053-logname R3
+  - srd049-realpath R1
+  - srd049-realpath R2
+  - srd049-realpath R3
+  - srd049-realpath R4
+  - srd050-readlink R1
+  - srd050-readlink R2
+  - srd050-readlink R3
+  - srd050-readlink R4
+  - srd051-pwd R1
+  - srd051-pwd R2
+  - srd051-pwd R3
+  - srd052-tty R1
+  - srd052-tty R2
+  - srd052-tty R3
+  - srd053-logname R1
+  - srd053-logname R2
+  - srd053-logname R3
 
 preconditions:
   - All binaries exist in ./bin/ (built via mage build).
@@ -47,7 +47,7 @@ test_cases:
       stdout: "canonical absolute path of /tmp followed by newline"
       stderr: ""
     traces:
-      - prd049-realpath R1.1
+      - srd049-realpath R1.1
 
   - name: realpath_relative
     description: "realpath on a relative path prints the absolute canonical form."
@@ -61,7 +61,7 @@ test_cases:
       stdout: "absolute path of current directory followed by newline"
       stderr: ""
     traces:
-      - prd049-realpath R1.1
+      - srd049-realpath R1.1
 
   - name: realpath_missing_default
     description: "realpath on a nonexistent path prints an error by default."
@@ -75,7 +75,7 @@ test_cases:
       stdout: ""
       stderr: "error message about nonexistent path"
     traces:
-      - prd049-realpath R1.2
+      - srd049-realpath R1.2
 
   - name: realpath_canonicalize_existing
     description: "realpath -e on a nonexistent path exits 1."
@@ -89,7 +89,7 @@ test_cases:
       stdout: ""
       stderr: "error message about nonexistent path"
     traces:
-      - prd049-realpath R1.3
+      - srd049-realpath R1.3
 
   - name: realpath_canonicalize_missing
     description: "realpath -m on a nonexistent path prints the constructed canonical path."
@@ -103,7 +103,7 @@ test_cases:
       stdout: "/nonexistent_path_xyz/subdir\n"
       stderr: ""
     traces:
-      - prd049-realpath R1.4
+      - srd049-realpath R1.4
 
   - name: realpath_no_symlinks
     description: "realpath -s cleans path components without resolving symlinks."
@@ -117,7 +117,7 @@ test_cases:
       stdout: "/tmp\n"
       stderr: ""
     traces:
-      - prd049-realpath R1.5
+      - srd049-realpath R1.5
 
   - name: realpath_relative_to
     description: "realpath --relative-to=DIR prints path relative to DIR."
@@ -131,7 +131,7 @@ test_cases:
       stdout: "bin\n"
       stderr: ""
     traces:
-      - prd049-realpath R2.1
+      - srd049-realpath R2.1
 
   - name: realpath_no_operand
     description: "realpath with no operand prints a usage error."
@@ -145,7 +145,7 @@ test_cases:
       stdout: ""
       stderr: "error message about missing operand"
     traces:
-      - prd049-realpath R3.1
+      - srd049-realpath R3.1
 
   # --- readlink ---
   - name: readlink_symlink
@@ -160,7 +160,7 @@ test_cases:
       stdout: "symlink target followed by newline"
       stderr: ""
     traces:
-      - prd050-readlink R1.1
+      - srd050-readlink R1.1
 
   - name: readlink_non_symlink
     description: "readlink on a regular file (not a symlink) exits 1 with no output."
@@ -174,7 +174,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd050-readlink R1.2
+      - srd050-readlink R1.2
 
   - name: readlink_canonicalize
     description: "readlink -f resolves the full canonical path through symlinks."
@@ -188,7 +188,7 @@ test_cases:
       stdout: "canonical absolute path followed by newline"
       stderr: ""
     traces:
-      - prd050-readlink R1.3
+      - srd050-readlink R1.3
 
   - name: readlink_canonicalize_existing
     description: "readlink -e on a path where all components must exist."
@@ -202,7 +202,7 @@ test_cases:
       stdout: "canonical path of /tmp followed by newline"
       stderr: ""
     traces:
-      - prd050-readlink R1.4
+      - srd050-readlink R1.4
 
   - name: readlink_canonicalize_missing
     description: "readlink -m on a nonexistent path prints the constructed path."
@@ -216,7 +216,7 @@ test_cases:
       stdout: "/nonexistent_path_xyz/foo\n"
       stderr: ""
     traces:
-      - prd050-readlink R1.5
+      - srd050-readlink R1.5
 
   - name: readlink_no_newline
     description: "readlink -n suppresses the trailing newline."
@@ -230,7 +230,7 @@ test_cases:
       stdout: "symlink target without trailing newline"
       stderr: ""
     traces:
-      - prd050-readlink R1.6
+      - srd050-readlink R1.6
 
   - name: readlink_no_operand
     description: "readlink with no operand prints a usage error."
@@ -244,7 +244,7 @@ test_cases:
       stdout: ""
       stderr: "error message about missing operand"
     traces:
-      - prd050-readlink R3.1
+      - srd050-readlink R3.1
 
   # --- pwd ---
   - name: pwd_default
@@ -259,7 +259,7 @@ test_cases:
       stdout: "absolute path of current directory followed by newline"
       stderr: ""
     traces:
-      - prd051-pwd R1.1
+      - srd051-pwd R1.1
 
   - name: pwd_physical
     description: "pwd -P prints the physical path with symlinks resolved."
@@ -273,7 +273,7 @@ test_cases:
       stdout: "physical absolute path followed by newline"
       stderr: ""
     traces:
-      - prd051-pwd R1.3
+      - srd051-pwd R1.3
 
   - name: pwd_logical
     description: "pwd -L prints the logical path from PWD."
@@ -287,7 +287,7 @@ test_cases:
       stdout: "logical path from PWD followed by newline"
       stderr: ""
     traces:
-      - prd051-pwd R1.2
+      - srd051-pwd R1.2
 
   - name: pwd_extra_operand
     description: "pwd with a positional operand prints an error."
@@ -301,7 +301,7 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd051-pwd R2.1
+      - srd051-pwd R2.1
 
   # --- tty ---
   - name: tty_not_a_tty
@@ -316,7 +316,7 @@ test_cases:
       stdout: "not a tty\n"
       stderr: ""
     traces:
-      - prd052-tty R1.2
+      - srd052-tty R1.2
 
   - name: tty_silent_not_a_tty
     description: "tty -s with stdin from a pipe prints nothing and exits 1."
@@ -330,7 +330,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd052-tty R1.3
+      - srd052-tty R1.3
 
   - name: tty_extra_operand
     description: "tty with a positional operand prints an error and exits 2."
@@ -344,7 +344,7 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd052-tty R2.1
+      - srd052-tty R2.1
 
   # --- logname ---
   - name: logname_default
@@ -359,7 +359,7 @@ test_cases:
       stdout: "login name followed by newline"
       stderr: ""
     traces:
-      - prd053-logname R1.1
+      - srd053-logname R1.1
 
   - name: logname_extra_operand
     description: "logname with a positional operand prints an error."
@@ -373,4 +373,4 @@ test_cases:
       stdout: ""
       stderr: "error message about extra operand"
     traces:
-      - prd053-logname R2.1
+      - srd053-logname R2.1

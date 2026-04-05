@@ -5,12 +5,12 @@ release: rel05.3
 traces:
   - rel05.3-uc001-uniq
   - rel05.3-uc002-comm
-  - prd028-uniq R1
-  - prd028-uniq R2
-  - prd028-uniq R3
-  - prd029-comm R1
-  - prd029-comm R2
-  - prd029-comm R3
+  - srd028-uniq R1
+  - srd028-uniq R2
+  - srd028-uniq R3
+  - srd029-comm R1
+  - srd029-comm R2
+  - srd029-comm R3
 
 preconditions:
   - ./bin/uniq and ./bin/comm exist (built via mage build).
@@ -36,8 +36,8 @@ test_cases:
       stdout: "a\nb\na\n"
       stderr: ""
     traces:
-      - prd028-uniq R1.1
-      - prd028-uniq R1.2
+      - srd028-uniq R1.1
+      - srd028-uniq R1.2
 
   - name: uniq_count
     description: -c prefixes each line with its run count.
@@ -51,7 +51,7 @@ test_cases:
       stdout: "      2 a\n      1 b\n"
       stderr: ""
     traces:
-      - prd028-uniq R2.4
+      - srd028-uniq R2.4
 
   - name: uniq_duplicates_only
     description: -d outputs only lines with run length > 1 (one copy per run).
@@ -65,7 +65,7 @@ test_cases:
       stdout: "a\n"
       stderr: ""
     traces:
-      - prd028-uniq R2.1
+      - srd028-uniq R2.1
 
   - name: uniq_all_duplicates
     description: -D outputs every line of duplicate runs.
@@ -79,7 +79,7 @@ test_cases:
       stdout: "a\na\n"
       stderr: ""
     traces:
-      - prd028-uniq R2.2
+      - srd028-uniq R2.2
 
   - name: uniq_unique_only
     description: -u outputs only lines that appear exactly once.
@@ -93,7 +93,7 @@ test_cases:
       stdout: "b\n"
       stderr: ""
     traces:
-      - prd028-uniq R2.3
+      - srd028-uniq R2.3
 
   - name: uniq_case_insensitive
     description: -i treats upper and lower case as equal.
@@ -107,7 +107,7 @@ test_cases:
       stdout: "A\nb\n"
       stderr: ""
     traces:
-      - prd028-uniq R3.1
+      - srd028-uniq R3.1
 
   - name: uniq_skip_fields
     description: -f 1 skips the first field when comparing lines.
@@ -121,7 +121,7 @@ test_cases:
       stdout: "key1 val\nkey3 other\n"
       stderr: ""
     traces:
-      - prd028-uniq R3.2
+      - srd028-uniq R3.2
 
   - name: uniq_single_line
     description: Single input line produces that line unchanged.
@@ -135,7 +135,7 @@ test_cases:
       stdout: "only\n"
       stderr: ""
     traces:
-      - prd028-uniq R1.1
+      - srd028-uniq R1.1
 
   # ---- comm ----
 
@@ -151,8 +151,8 @@ test_cases:
       stdout: "a\n\tb\n\t\tc\n\t\tc\n\td\n"
       stderr: ""
     traces:
-      - prd029-comm R1.1
-      - prd029-comm R1.2
+      - srd029-comm R1.1
+      - srd029-comm R1.2
 
   - name: comm_suppress_col1
     description: -1 suppresses lines unique to file1.
@@ -166,7 +166,7 @@ test_cases:
       stdout: "b\n\tc\n\tc\nd\n"
       stderr: ""
     traces:
-      - prd029-comm R2.1
+      - srd029-comm R2.1
 
   - name: comm_common_only
     description: -12 outputs only lines common to both files.
@@ -180,8 +180,8 @@ test_cases:
       stdout: "b\nc\n"
       stderr: ""
     traces:
-      - prd029-comm R2.1
-      - prd029-comm R2.2
+      - srd029-comm R2.1
+      - srd029-comm R2.2
 
   - name: comm_unique_only
     description: "-3 outputs only lines unique to each file."
@@ -195,7 +195,7 @@ test_cases:
       stdout: "a\n\td\n"
       stderr: ""
     traces:
-      - prd029-comm R2.3
+      - srd029-comm R2.3
 
   - name: comm_output_delimiter
     description: "--output-delimiter=| uses pipe as column separator."
@@ -209,7 +209,7 @@ test_cases:
       stdout: "a\n|b\n||c\n||c\n|d\n"
       stderr: ""
     traces:
-      - prd029-comm R3.4
+      - srd029-comm R3.4
 
   - name: comm_file1_exhausted_first
     description: "When file1 is shorter, remaining file2 lines go to column 2. Setup: file1='a\\n', file2='a\\nb\\n'."
@@ -223,4 +223,4 @@ test_cases:
       stdout: "\t\ta\n\tb\n"
       stderr: ""
     traces:
-      - prd029-comm R1.3
+      - srd029-comm R1.3

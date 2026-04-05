@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd050-readlink.yaml) and invokes do-work to
+  The operator has completed the PRD (srd050-readlink.yaml) and invokes do-work to
   produce a passing differential test for cmd/readlink.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/readlink — symlink target and canonicalization (prd050-readlink R1, R2, R3)"
+  - T1: "cmd/readlink — symlink target and canonicalization (srd050-readlink R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler"
 

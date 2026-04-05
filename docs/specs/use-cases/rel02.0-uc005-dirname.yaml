@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd016-dirname.yaml) and invokes do-work to
+  The operator has completed the PRD (srd016-dirname.yaml) and invokes do-work to
   produce a passing differential test for cmd/dirname.
 
 flow:
@@ -25,7 +25,7 @@ flow:
       (root, trailing slashes, dots, multiple arguments) are included.
 
 touchpoints:
-  - T1: "cmd/dirname — path stripping, trailing slash handling, NUL output (prd016-dirname R1, R2, R3)"
+  - T1: "cmd/dirname — path stripping, trailing slash handling, NUL output (srd016-dirname R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

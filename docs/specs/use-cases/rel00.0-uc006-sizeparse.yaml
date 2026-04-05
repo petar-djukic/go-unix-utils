@@ -24,7 +24,7 @@ flow:
       suffixes, sign prefixes, default units, and error cases.
 
 touchpoints:
-  - T1: "pkg/sizeparse — size string parsing with unit suffixes (prd087-sizeparse R1, R2, R3)"
+  - T1: "pkg/sizeparse — size string parsing with unit suffixes (srd087-sizeparse R1, R2, R3)"
 
 success_criteria:
   - id: S1

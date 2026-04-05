@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd054-tr.yaml) and invokes do-work to
+  The operator has completed the PRD (srd054-tr.yaml) and invokes do-work to
   produce a passing differential test for cmd/tr.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       codes.
 
 touchpoints:
-  - T1: "cmd/tr — character translation, deletion, squeezing, complement, character classes, ranges, escapes (prd054-tr R1, R2, R3, R4)"
+  - T1: "cmd/tr — character translation, deletion, squeezing, complement, character classes, ranges, escapes (srd054-tr R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

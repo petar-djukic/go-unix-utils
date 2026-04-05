@@ -6,14 +6,14 @@ traces:
   - rel12.1-uc001-tsort
   - rel12.1-uc002-pathchk
   - rel12.1-uc003-test
-  - prd102-tsort R1
-  - prd102-tsort R2
-  - prd103-pathchk R1
-  - prd103-pathchk R2
-  - prd104-test R1
-  - prd104-test R2
-  - prd104-test R3
-  - prd104-test R4
+  - srd102-tsort R1
+  - srd102-tsort R2
+  - srd103-pathchk R1
+  - srd103-pathchk R2
+  - srd104-test R1
+  - srd104-test R2
+  - srd104-test R3
+  - srd104-test R4
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -34,7 +34,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd102-tsort R1.1
+      - srd102-tsort R1.1
 
   - name: tsort_cycle
     description: "tsort detects cycle and exits 1"
@@ -48,7 +48,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd102-tsort R1.2
+      - srd102-tsort R1.2
 
   - name: pathchk_valid
     description: "pathchk on valid path exits 0"
@@ -62,7 +62,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd103-pathchk R1.1
+      - srd103-pathchk R1.1
 
   - name: pathchk_posix_invalid
     description: "pathchk -p on non-portable path exits 1"
@@ -76,7 +76,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd103-pathchk R1.2
+      - srd103-pathchk R1.2
 
   - name: test_file_exists
     description: "test -f on existing file exits 0"
@@ -90,7 +90,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd104-test R1.1
+      - srd104-test R1.1
 
   - name: test_integer_eq
     description: "test 1 -eq 1 exits 0"
@@ -104,7 +104,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd104-test R2.2
+      - srd104-test R2.2
 
   - name: test_not
     description: "test ! -d /nonexistent exits 0"
@@ -118,5 +118,5 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd104-test R3.1
+      - srd104-test R3.1
 

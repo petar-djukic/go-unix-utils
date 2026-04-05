@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd073-printf.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd073-printf.yaml) and invokes do-work to produce
   a passing differential test for cmd/printf.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       compare stdout and exit codes under LC_ALL=C.
 
 touchpoints:
-  - T1: "cmd/printf — format directives, escape sequences, argument recycling (prd073-printf R1, R2, R3, R4)"
+  - T1: "cmd/printf — format directives, escape sequences, argument recycling (srd073-printf R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
 
 success_criteria:

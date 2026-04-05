@@ -1,0 +1,77 @@
+id: srd094-nice
+title: "cmd/nice: Run a Program with Modified Scheduling Priority"
+
+problem: |
+  macOS ships nice but the GNU version supports the --adjustment (-n) flag syntax.
+  The Go implementation must match the Homebrew GNU reference binary (gnice, installed
+  by coreutils) byte-for-byte on all flag combinations, verified by differential
+  testing via pkg/testutils.
+
+goals:
+  - G1: Run a command with an adjusted scheduling priority (nice value).
+  - G2: Print the current nice value when invoked without a command.
+  - G3: Verify functional parity against gnice via differential testing.
+
+requirements:
+  R1:
+    title: Priority adjustment
+    items:
+      - R1.1:
+          text: Must run COMMAND with its scheduling priority adjusted by the given increment. Default increment is 10 (lower priority).
+          weight: 1
+      - R1.2:
+          text: "-n ADJUST or --adjustment=ADJUST must set the priority increment. ADJUST may be negative (requires privileges) or positive."
+          weight: 1
+      - R1.3:
+          text: When invoked with no COMMAND, must print the current nice value to stdout and exit 0.
+          weight: 1
+      - R1.4:
+          text: Must pass all remaining arguments after COMMAND as arguments to the executed command.
+          weight: 1
+
+  R2:
+    title: Exit codes
+    items:
+      - R2.1:
+          text: Must exit with the exit status of COMMAND when COMMAND completes.
+          weight: 1
+      - R2.2:
+          text: Must exit 125 when the adjustment is invalid or nice(2) fails. Must exit 126 when COMMAND is found but cannot be invoked. Must exit 127 when COMMAND is not found.
+          weight: 1
+      - R2.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/nice does not implement real-time scheduling priorities.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "nice echo hello runs echo with default +10 priority, matching gnice."
+    traces:
+      - R1.1
+      - R1.4
+  - id: AC2
+    criterion: "nice -n 5 echo hello adjusts priority by 5, matching gnice."
+    traces:
+      - R1.2
+  - id: AC3
+    criterion: "Differential test against gnice passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+  - id: AC4
+    criterion: "cmd/nice compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

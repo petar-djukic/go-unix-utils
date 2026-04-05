@@ -1,0 +1,146 @@
+id: srd034-mkdir
+title: "cmd/mkdir: Create Directories"
+
+problem: |
+  Build scripts, installers, and deployment pipelines create directory trees as a prerequisite
+  for writing files. The macOS BSD mkdir differs from GNU mkdir in long-option names and
+  fine-grained mode handling with -p. The Go implementation must match the Homebrew GNU
+  reference binary (gmkdir, installed by coreutils) byte-for-byte on all flag combinations
+  and edge cases, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Create one or more directories specified as command-line arguments.
+  - G2: Support recursive creation of intermediate parent directories with -p.
+  - G3: Support explicit permission mode setting with -m.
+
+requirements:
+  R1:
+    title: Basic directory creation
+    items:
+      - R1.1:
+          text: Must create a single directory when invoked as 'mkdir DIR'.
+          weight: 1
+      - R1.2:
+          text: Must create multiple directories when invoked with multiple DIR arguments, processing each independently.
+          weight: 1
+      - R1.3:
+          text: Must exit with a non-zero status and print an error to stderr when a target directory already exists and -p is not given.
+          weight: 1
+      - R1.4:
+          text: Must exit with a non-zero status and print an error to stderr when the parent of the target does not exist and -p is not given.
+          weight: 1
+
+  R2:
+    title: Parent directory creation (-p, --parents)
+    items:
+      - R2.1:
+          text: -p or --parents must create intermediate parent directories as needed, similar to 'mkdir -p a/b/c' creating a, a/b, and a/b/c.
+          weight: 1
+      - R2.2:
+          text: Must not report an error when the target directory already exists and -p is given.
+          weight: 1
+      - R2.3:
+          text: Must not report an error when intermediate directories already exist and -p is given.
+          weight: 1
+
+  R3:
+    title: Mode setting (-m, --mode)
+    items:
+      - R3.1:
+          text: -m MODE or --mode=MODE must set the file permission bits of the created directory to MODE, where MODE is an octal value or symbolic mode string.
+          weight: 1
+      - R3.2:
+          text: When -m is not given, must create directories with default permissions (0777 modified by the process umask).
+          weight: 1
+      - R3.3:
+          text: When -p is combined with -m, must apply the specified mode only to the final target directory; intermediate directories must be created with default permissions modified by umask.
+          weight: 1
+      - R3.4:
+          text: -v or --verbose must print a message to stdout for each directory created.
+          weight: 1
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1:
+          text: Differential tests must compare stdout, stderr, and exit codes between the Go binary and gmkdir via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: single directory creation, multiple directory creation, -p with nested paths, -p on existing directory, -m with octal mode, -v verbose output, and error cases for missing parents and existing targets."
+          weight: 1
+      - R4.3:
+          text: Tests must verify that permission bits match between the Go implementation and gmkdir for all -m and -p combinations.
+          weight: 1
+
+non_goals:
+  - cmd/mkdir does not implement SELinux context options (-Z, --context).
+  - cmd/mkdir does not read directory names from stdin; all input comes from command-line arguments.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/mkdir testdir creates a directory named 'testdir', matching gmkdir."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "go run ./cmd/mkdir -p a/b/c creates the full directory chain a/b/c, matching gmkdir -p."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.3
+      - R4.2
+      - R4.3
+  - id: AC3
+    criterion: "go run ./cmd/mkdir -m 0755 testdir creates a directory with mode 0755, matching gmkdir -m 0755."
+    traces:
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.2
+      - R4.3
+  - id: AC4
+    criterion: "go run ./cmd/mkdir existing_dir exits non-zero with an error message when existing_dir already exists, matching gmkdir."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.2
+      - R2.3
+      - R4.1
+      - R4.2
+  - id: AC5
+    criterion: "Differential test against gmkdir passes for single creation, multiple creation, -p, -m, -v, and error cases."
+    traces:
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC6
+    criterion: "cmd/mkdir compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R3.4
+      - R4.1
+      - R4.2
+      - R4.3

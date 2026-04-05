@@ -11,15 +11,15 @@ overview:
   lifecycle: |
     For each utility a human operator clones the C source repository, analyzes flags and
     edge cases, and uses the make-work and do-work Claude Code skills to produce two
-    specification artifacts: a PRD (numbered requirements and acceptance criteria covering
+    specification artifacts: a SRD (numbered requirements and acceptance criteria covering
     all flags, exit codes, and stream behaviors) and a use case (concrete end-to-end
-    execution path through the system). The PRD is the primary input to code generation.
+    execution path through the system). The SRD is the primary input to code generation.
     Once the spec artifacts are complete, the human invokes the mage-claude-orchestrator
     via mage targets; the orchestrator drives a Claude agent to generate Go code in
     cmd/<utility>/ and runs the differential testing harness. If tests fail, the operator
-    refines the PRD and the orchestrator re-generates.
+    refines the SRD and the orchestrator re-generates.
 
-    Shared library components (pkg/sys, pkg/format, pkg/testutils) may also have PRDs
+    Shared library components (pkg/sys, pkg/format, pkg/testutils) may also have SRDs
     when their requirements are non-trivial and span multiple utilities.
   coordination_pattern: |
     The human operator owns the specification phase. The mage-claude-orchestrator owns
@@ -33,7 +33,7 @@ interfaces:
     summary: |
       Specification artifacts and runtime data structures used across the pipeline.
     data_structures:
-      - "PRD (prd[NNN]-<utility>.yaml): per-utility product requirements document with numbered goals, requirements, and acceptance criteria."
+      - "SRD (srd[NNN]-<utility>.yaml): per-utility software requirements document with numbered goals, requirements, and acceptance criteria."
       - "Use case (rel[NN].[N]-uc[NNN]-<utility>.yaml): per-utility use case describing a concrete end-to-end execution path through the system."
       - "DiffTest: Go struct in pkg/testutils/ defining a single differential test case with fields for input arguments, stdin, environment, expected exit code, and expected output."
       - "configuration.yaml: orchestrator configuration file at the project root consumed by magefiles/ to configure build, analysis, and generation targets."
@@ -41,7 +41,7 @@ interfaces:
       - "mage build: compiles all cmd/ binaries to bin/."
       - "mage lint: runs golangci-lint on all Go source under cmd/ and pkg/."
       - "mage stats:loc: prints Go lines of code (production and test) and documentation word counts."
-      - "mage analyze: runs cross-artifact consistency checks on docs/ (PRDs, use cases, test suites, roadmap)."
+      - "mage analyze: runs cross-artifact consistency checks on docs/ (SRDs, use cases, test suites, roadmap)."
       - "go test ./...: runs all tests including differential tests in each cmd/ package."
   - name: Events
     summary: |
@@ -54,9 +54,9 @@ components:
     responsibility: |
       Guides specification development for each utility. Clones the C source, analyzes
       flags and edge cases, and uses the make-work and do-work Claude Code skills to
-      produce a PRD and a use case. Decides when the spec artifacts are complete enough
-      to hand off to the orchestrator. Refines PRDs when orchestrator-generated code
-      fails differential tests. Also authors PRDs for shared pkg/ components when their
+      produce a SRD and a use case. Decides when the spec artifacts are complete enough
+      to hand off to the orchestrator. Refines SRDs when orchestrator-generated code
+      fails differential tests. Also authors SRDs for shared pkg/ components when their
       requirements warrant it.
     capabilities:
       - make-work skill breaks a utility into specification issues
@@ -67,11 +67,11 @@ components:
 
   - name: Specification Repository
     responsibility: |
-      Holds the formal per-utility PRDs and use cases alongside this documentation suite.
+      Holds the formal per-utility SRDs and use cases alongside this documentation suite.
       Serves as the source of truth for synthesis and verification. Shared library
-      components (pkg/) may also have PRDs.
+      components (pkg/) may also have SRDs.
     capabilities:
-      - One PRD per utility under docs/specs/product-requirements/ (plus PRDs for shared pkg/ components as needed)
+      - One SRD per utility under docs/specs/software-requirements/ (plus SRDs for shared pkg/ components as needed)
       - One use case per utility under docs/specs/use-cases/
       - VISION.yaml and ARCHITECTURE.yaml project-level docs
       - Test suites under docs/specs/test-suites/
@@ -207,10 +207,10 @@ design_decisions:
   - id: 5
     title: Human-guided specification, automated synthesis
     decision: |
-      We split responsibility at the spec boundary. The human operator owns the PRD
+      We split responsibility at the spec boundary. The human operator owns the SRD
       via make-work and do-work skills. The mage-claude-orchestrator owns code generation
       and testing from that point forward. The operator does not write Go; the orchestrator
-      does not write PRDs.
+      does not write SRDs.
     benefits:
       - Isolates the experiment variable so orchestrator quality is evaluated independently of spec quality
       - Human judgment is applied where it adds most value (behavioral analysis of C source)
@@ -228,7 +228,7 @@ design_decisions:
 
       magefiles/ -- provided by cobbler-scaffold's orchestrator library.
       orchestrator.go is auto-generated. The only code generation target in
-      prd011-magefiles is cmd/version, which lives in cmd/version/.
+      srd011-magefiles is cmd/version, which lives in cmd/version/.
 
       configuration.yaml -- consumed by cobbler-scaffold. Not a generation target.
 
@@ -247,7 +247,7 @@ design_decisions:
     alternatives_rejected:
       - "Per-component provided_by field: rejected by cobbler-scaffold ArchComponent schema (see cobbler-scaffold #430)"
       - "Top-level generation_non_goals field: rejected by cobbler-scaffold ArchitectureDoc schema"
-      - "Include all PRDs in measure context to let non_goals speak for themselves: increases prompt size"
+      - "Include all SRDs in measure context to let non_goals speak for themselves: increases prompt size"
 
   - id: 6
     title: Locale handling deferred; LC_ALL=C for the current roadmap
@@ -303,14 +303,14 @@ technology_choices:
     purpose: Source repositories for C implementations used as spec extraction input.
   - component: Code generation
     technology: mage-claude-orchestrator (mesh-intelligence)
-    purpose: Drives Claude agents for code generation from the PRD; provides the cobbler measure/stitch generation cycle.
+    purpose: Drives Claude agents for code generation from the SRD; provides the cobbler measure/stitch generation cycle.
   - component: Specification workflow
     technology: make-work / do-work (Claude Code skills)
     purpose: Human operator uses these skills to break utilities into specification issues and work through them systematically.
 
 project_structure:
   - path: docs/
-    role: Specification and documentation suite (VISION, ARCHITECTURE, PRDs, use cases, test suites)
+    role: Specification and documentation suite (VISION, ARCHITECTURE, SRDs, use cases, test suites)
   - path: docs/VISION.yaml
     role: Project goals, success criteria, risks, and explicit boundaries
   - path: docs/ARCHITECTURE.yaml
@@ -319,8 +319,8 @@ project_structure:
     role: Full catalog of 123 target utilities with difficulty, memory model, and implementation profiles
   - path: docs/road-map.yaml
     role: Release schedule; maps use cases to releases with status
-  - path: docs/specs/product-requirements/
-    role: Per-utility PRDs; also PRDs for shared pkg/ components
+  - path: docs/specs/software-requirements/
+    role: Per-utility SRDs; also SRDs for shared pkg/ components
   - path: docs/specs/use-cases/
     role: Per-utility use cases (concrete execution paths through the system)
   - path: docs/specs/test-suites/
@@ -379,16 +379,16 @@ shared_protocols:
       }
 
 component_dependencies:
-  - from: prd003-format
-    to: prd002-sys
-  - from: prd008-ls
-    to: prd002-sys
-  - from: prd008-ls
-    to: prd003-format
-  - from: prd009-du
-    to: prd002-sys
-  - from: prd009-du
-    to: prd003-format
+  - from: srd003-format
+    to: srd002-sys
+  - from: srd008-ls
+    to: srd002-sys
+  - from: srd008-ls
+    to: srd003-format
+  - from: srd009-du
+    to: srd002-sys
+  - from: srd009-du
+    to: srd003-format
 
 implementation_status:
   current_focus: |
@@ -399,9 +399,9 @@ implementation_status:
     cmd/ts, cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. No generated code is
     present on the working branch. See README Tagging Scheme and eng04 for details.
 
-    "spec complete" means PRD, use case, and code exist (code at v1 tag). "specs written"
-    means PRD, use case, and test suite exist but code generation has not run yet.
-    "pending" means no PRD yet. See road-map.yaml for the active release and
+    "spec complete" means SRD, use case, and code exist (code at v1 tag). "specs written"
+    means SRD, use case, and test suite exist but code generation has not run yet.
+    "pending" means no SRD yet. See road-map.yaml for the active release and
     docs/utilities.yaml for the full catalog.
   progress:
     - pkg/testutils: "spec complete (rel01.0), code at generation-merged tags"
@@ -411,8 +411,8 @@ implementation_status:
     - cmd/wc: "spec complete (rel01.1), code at generation-merged tags"
     - cmd/cat: "spec complete (rel01.1), code at generation-merged tags"
     - cmd/sponge: "spec complete (rel01.1), code at generation-merged tags"
-    - cmd/ls: "specs written (rel02.0 core / rel02.1 extended) — PRD, use case, and test suite complete; code generation pending"
-    - cmd/du: "specs written (rel02.0) — PRD, use case, and test suite complete; code generation pending"
+    - cmd/ls: "specs written (rel02.0 core / rel02.1 extended) — SRD, use case, and test suite complete; code generation pending"
+    - cmd/du: "specs written (rel02.0) — SRD, use case, and test suite complete; code generation pending"
     - cmd/grep: pending
     - cmd/find: pending
     - cmd/xargs: pending

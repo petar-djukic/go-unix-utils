@@ -24,7 +24,7 @@ flow:
       with garbage tolerance, and file input handling.
 
 touchpoints:
-  - T1: "pkg/encutil — encoding/decoding pipeline, wrap control, garbage handling (prd088-encutil R1, R2, R3)"
+  - T1: "pkg/encutil — encoding/decoding pipeline, wrap control, garbage handling (srd088-encutil R1, R2, R3)"
 
 success_criteria:
   - id: S1

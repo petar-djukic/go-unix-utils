@@ -1,0 +1,115 @@
+id: srd089-chmod
+title: "cmd/chmod: Change File Mode Bits"
+
+problem: |
+  macOS ships a BSD chmod that differs from GNU chmod in recursive behavior, verbose
+  output, and symbolic mode parsing edge cases. The Go implementation must match the
+  Homebrew GNU reference binary (gchmod, installed by coreutils) byte-for-byte on all
+  flag combinations, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Change file permission bits using octal or symbolic mode specifications.
+  - G2: Support recursive mode changes with -R.
+  - G3: Support verbose, changes-only, and silent output modes.
+  - G4: Verify functional parity against gchmod via differential testing.
+
+requirements:
+  R1:
+    title: Mode specification
+    items:
+      - R1.1:
+          text: Must accept an octal mode (e.g., 755, 0644) and set the file's permission bits to that value.
+          weight: 1
+      - R1.2:
+          text: "Must accept symbolic mode specifications: [ugoa][+-=][rwxXst] with comma-separated clauses (e.g., u+x, go-w, a=rw). Must support multiple comma-separated clauses (e.g., u=rwx,go=rx)."
+          weight: 4
+      - R1.3:
+          text: Must process multiple FILE arguments, applying the mode change to each.
+          weight: 1
+      - R1.4:
+          text: Must exit 1 when any file cannot be accessed, printing an error to stderr, and continue processing remaining files.
+          weight: 1
+
+  R2:
+    title: Recursive and output control
+    items:
+      - R2.1:
+          text: "-R or --recursive must change modes recursively for directories and their contents."
+          weight: 4
+      - R2.2:
+          text: "-v or --verbose must print a diagnostic for every file processed."
+          weight: 1
+      - R2.3:
+          text: "-c or --changes must print a diagnostic only for files whose mode actually changed."
+          weight: 1
+      - R2.4:
+          text: "-f or --silent or --quiet must suppress most error messages."
+          weight: 1
+
+  R3:
+    title: Special mode bits and reference
+    items:
+      - R3.1:
+          text: "Must support setuid (u+s), setgid (g+s), and sticky bit (o+t) in symbolic mode."
+          weight: 1
+      - R3.2:
+          text: "--reference=RFILE must set each FILE's mode to match RFILE's mode."
+          weight: 1
+
+  R4:
+    title: Exit codes and SIGPIPE
+    items:
+      - R4.1:
+          text: Must exit 0 when all files are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any file cannot be accessed or the mode specification is invalid.
+          weight: 1
+      - R4.3:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/chmod does not implement SELinux context changes.
+  - cmd/chmod does not implement --preserve-root (not applicable on macOS).
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "chmod 755 file sets permissions to rwxr-xr-x, matching gchmod."
+    traces:
+      - R1.1
+      - R1.3
+  - id: AC2
+    criterion: "chmod u+x,go-w file applies symbolic mode correctly, matching gchmod."
+    traces:
+      - R1.2
+  - id: AC3
+    criterion: "chmod -R 644 dir recursively changes all files, matching gchmod -R."
+    traces:
+      - R2.1
+  - id: AC4
+    criterion: "Differential test against gchmod passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R2.1
+  - id: AC5
+    criterion: "cmd/chmod compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R2.4
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

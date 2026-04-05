@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd046-nproc.yaml) and invokes do-work to
+  The operator has completed the PRD (srd046-nproc.yaml) and invokes do-work to
   produce a passing differential test for cmd/nproc.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       exit codes. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/nproc — processor count output (prd046-nproc R1, R2)"
+  - T1: "cmd/nproc — processor count output (srd046-nproc R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler"
 

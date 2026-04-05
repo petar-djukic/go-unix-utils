@@ -26,7 +26,7 @@ sections:
       | Generator orchestration | GH-168 body | Human tracks sequential generation steps as numbered sub-issues in prose | GH-149, GH-168 (cleanup, reset, config, per-release runs, eng report) |
 
       Neither hierarchy feeds into the measure/stitch pipeline. The measure agent proposes
-      tasks from PRD requirements; the stitch agent executes them. Both operate on their
+      tasks from SRD requirements; the stitch agent executes them. Both operate on their
       internal work queue (formerly beads, now GitHub issues created by the measure agent on
       the generation branch). The /git-issue-pop hierarchy and the generator orchestration
       hierarchy are human-facing tracking mechanisms that do not affect stitch session scope.
@@ -66,7 +66,7 @@ sections:
 
       | Parent | Sub-issues | True ordering dependency? | Reason |
       |--------|-----------|-------------------------|--------|
-      | GH-170 | #171 (trivial PRDs), #172 (stream PRDs) | No | PRD files are independent; neither references the other |
+      | GH-170 | #171 (trivial SRDs), #172 (stream SRDs) | No | SRD files are independent; neither references the other |
       | GH-174 | #175 (rel02.0 UCs), #176 (rel02.1-02.2 UCs), #177 (roadmap) | Partial | #177 depends on #175 and #176 (needs UC IDs for roadmap entries) |
       | GH-149 | Sub-issues 1-N (sequential generator steps) | Yes | Each release depends on previous release's generated code |
       | GH-168 | Sub-issues 1-N (sequential generator steps) | Yes | Same as GH-149 |
@@ -208,7 +208,7 @@ sections:
 
 references:
   - "docs/engineering/eng11-stitch-task-sizing.yaml -- Subsystem boundary rule and sizing guidance"
-  - "docs/engineering/eng13-stress-test-decomposition.yaml -- PRD decomposition validation"
+  - "docs/engineering/eng13-stress-test-decomposition.yaml -- SRD decomposition validation"
   - "docs/engineering/eng18-generation-run-11-results.yaml -- Run 11 task timing and failure data"
   - "docs/constitutions/planning.yaml -- Articles P2, P6, P8, P9 on task sizing"
   - "https://github.com/petar-djukic/go-unix-utils/issues/167 -- This evaluation issue"

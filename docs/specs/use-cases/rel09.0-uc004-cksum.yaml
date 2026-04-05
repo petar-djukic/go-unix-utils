@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd077-cksum.yaml) and invokes do-work to
+  The operator has completed the PRD (srd077-cksum.yaml) and invokes do-work to
   produce a passing differential test for cmd/cksum.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       (binary must be built).
 
 touchpoints:
-  - T1: "cmd/cksum — CRC-32 checksum, algorithm selection, output format control (prd077-cksum R1, R2, R3)"
+  - T1: "cmd/cksum — CRC-32 checksum, algorithm selection, output format control (srd077-cksum R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

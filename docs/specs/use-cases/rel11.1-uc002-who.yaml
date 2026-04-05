@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd097-who.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd097-who.yaml) and invokes do-work to produce
   a passing differential test for cmd/who.
 
 flow:
@@ -22,7 +22,7 @@ flow:
       gwho with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/who — who prints user, terminal, and time info (prd097-who R1, R2, R3)"
+  - T1: "cmd/who — who prints user, terminal, and time info (srd097-who R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

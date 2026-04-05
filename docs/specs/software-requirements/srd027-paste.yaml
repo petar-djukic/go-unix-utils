@@ -1,0 +1,125 @@
+id: srd027-paste
+title: "cmd/paste: Merge Lines of Files Side by Side"
+
+problem: |
+  macOS BSD paste is functionally equivalent to GNU paste for common usage, but there are
+  edge-case differences in delimiter cycling behavior and the treatment of exhausted files.
+  Scripts that merge columnar data from multiple files depend on byte-exact output. The Go
+  implementation must match the Homebrew GNU reference binary (gpaste, installed by
+  coreutils) byte-for-byte on all flag combinations, verified by differential testing via
+  pkg/testutils.
+
+goals:
+  - G1: Read one line from each file in turn and write them as a single output line separated by a delimiter, matching GNU paste behavior.
+  - G2: Support -d to configure the delimiter or delimiter list used between fields.
+  - G3: Support -s to paste one file at a time in serial mode (all lines of one file on one output line).
+
+requirements:
+  R1:
+    title: Default parallel merge
+    items:
+      - R1.1:
+          text: Must open all named files simultaneously and read one line from each per output line. Lines from files are joined with the delimiter and written to stdout, followed by a newline.
+          weight: 1
+      - R1.2:
+          text: When files have unequal line counts, the shorter files contribute empty fields (the delimiter is still written) until all files are exhausted. The final output line ends with a newline.
+          weight: 1
+      - R1.3:
+          text: stdin is used as an input when "-" is given as a filename. Multiple "-" arguments each refer to stdin read sequentially.
+          weight: 1
+      - R1.4:
+          text: When no files are given, must read from stdin and write each line followed by a newline (passthrough behavior matching gpaste with a single stdin source).
+          weight: 1
+
+  R2:
+    title: Delimiter configuration (-d)
+    items:
+      - R2.1:
+          text: -d DELIM must use DELIM as the separator between fields. DELIM may be a single character or a list; if a list is given, the delimiters are cycled in order across the fields of each output line.
+          weight: 1
+      - R2.2:
+          text: The escape sequences \\n (newline), \\t (tab), \\\\ (backslash), and \\0 (empty string, no delimiter) are recognized in DELIM.
+          weight: 1
+      - R2.3:
+          text: When DELIM cycles back to the start for a new output line, cycling resets from the first delimiter in the list.
+          weight: 1
+
+  R3:
+    title: Serial mode (-s)
+    items:
+      - R3.1:
+          text: -s must process files one at a time. All lines of the first file are joined with the delimiter and written as a single output line. Then all lines of the second file are written as a single output line, and so on.
+          weight: 1
+      - R3.2:
+          text: In serial mode, the delimiter list cycles across fields within the single output line for each file. The trailing newline is always written.
+          weight: 1
+      - R3.3:
+          text: -s and the default parallel mode are mutually exclusive; -s overrides parallel mode.
+          weight: 1
+
+  R4:
+    title: Exit codes and SIGPIPE
+    items:
+      - R4.1:
+          text: Must exit 0 when all inputs are processed successfully.
+          weight: 1
+      - R4.2:
+          text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing halts on the first error.
+          weight: 1
+      - R4.3:
+          text: Must exit 1 when a write error occurs on stdout.
+          weight: 1
+      - R4.4:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/paste does not buffer entire files in memory; it reads one line per file per output line in parallel mode.
+  - cmd/paste does not implement Unicode multi-byte delimiter expansion beyond the recognized escape sequences.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "paste with two files containing 'a\\nb\\n' and '1\\n2\\n' produces 'a\\t1\\nb\\t2\\n', matching gpaste."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC2
+    criterion: "paste -d: with the same files produces 'a:1\\nb:2\\n', matching gpaste -d:."
+    traces:
+      - R2.1
+  - id: AC3
+    criterion: "paste -s with a file containing 'a\\nb\\nc\\n' produces 'a\\tb\\tc\\n', matching gpaste -s."
+    traces:
+      - R3.1
+      - R3.3
+  - id: AC4
+    criterion: "paste with files of unequal length produces correct output with empty fields for exhausted files, matching gpaste."
+    traces:
+      - R1.2
+      - R2.2
+  - id: AC5
+    criterion: "Differential test against gpaste passes for all required test cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+  - id: AC6
+    criterion: "cmd/paste compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R2.3
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3
+      - R4.4

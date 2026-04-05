@@ -1,0 +1,107 @@
+id: srd012-yes
+title: "cmd/yes: Repeatedly Output a String"
+
+problem: |
+  Scripts and automation tools use yes to feed affirmative input to interactive programs
+  or to generate large volumes of repeated output for benchmarking. The macOS BSD yes
+  differs from GNU yes in argument handling and output buffering. The Go implementation
+  must match the Homebrew GNU reference binary (gyes, installed by coreutils) byte-for-byte
+  on all argument combinations and write-error behavior, verified by differential testing
+  via pkg/testutils.
+
+goals:
+  - G1: Output a string repeatedly until killed or a write error occurs, matching GNU yes behavior.
+  - G2: Support zero or more string arguments, joining them with spaces when multiple are given.
+  - G3: Achieve high throughput by buffering output, avoiding per-line syscall overhead.
+
+requirements:
+  R1:
+    title: Core output behavior
+    items:
+      - R1.1:
+          text: When no arguments are given, must output "y" followed by a newline, repeatedly, until the process is killed or a write error occurs on stdout.
+          weight: 1
+      - R1.2:
+          text: When one or more arguments are given, must join them with a single space character and output the resulting string followed by a newline, repeatedly.
+          weight: 1
+      - R1.3:
+          text: Arguments beginning with "-" must be passable using the "--" separator to prevent misinterpretation as flags (e.g., "yes -- --help" outputs "--help" repeatedly).
+          weight: 1
+      - R1.4:
+          text: Must not read from stdin. All output goes to stdout.
+          weight: 1
+
+  R2:
+    title: Output buffering and performance
+    items:
+      - R2.1:
+          text: Must buffer output to avoid per-line write syscalls. Use a bufio.Writer with a buffer of at least 8192 bytes or write in fixed-size blocks, matching the GNU implementation's approach of filling a large output buffer before calling write().
+          weight: 1
+      - R2.2:
+          text: Must flush the output buffer before exiting on a write error so that the last partial buffer is delivered to the pipe reader.
+          weight: 1
+
+  R3:
+    title: Exit codes and signal handling
+    items:
+      - R3.1:
+          text: Must exit 0 when terminated by SIGPIPE (the normal case when piped to a program that closes its stdin).
+          weight: 1
+      - R3.2:
+          text: Must exit 1 when a write error other than EPIPE occurs on stdout.
+          weight: 1
+      - R3.3:
+          text: Must handle SIGPIPE gracefully without printing an error message to stderr. The default Go SIGPIPE behavior (exit silently) is acceptable if it matches the reference binary's exit code.
+          weight: 1
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1:
+          text: Differential tests must pipe the output of both the Go binary and the reference binary through "head -n N" and compare the captured output byte-for-byte via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: no arguments (default 'y'), single argument, multiple arguments joined with spaces, arguments after '--' separator, and empty string argument."
+          weight: 1
+      - R4.3:
+          text: Tests must verify exit code behavior when stdout is closed early (SIGPIPE case).
+          weight: 1
+
+non_goals:
+  - cmd/yes does not implement any flags beyond --help and --version.
+  - cmd/yes does not read from stdin or accept input from any source other than command-line arguments.
+  - cmd/yes does not implement a line-count limit; it runs until killed or a write error occurs.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "yes | head -n 5 produces five lines of 'y', matching gyes | head -n 5 byte-for-byte."
+    traces:
+      - R4.1
+  - id: AC2
+    criterion: "yes hello world | head -n 3 produces three lines of 'hello world', matching gyes."
+    traces:
+      - R4.1
+  - id: AC3
+    criterion: "yes -- --help | head -n 1 produces '--help', matching gyes."
+    traces:
+      - R1.3
+      - R4.1
+  - id: AC4
+    criterion: "Differential test against gyes passes for default, single-arg, multi-arg, and '--' separator cases."
+    traces:
+      - R4.1
+  - id: AC5
+    criterion: "cmd/yes compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3
+      - R4.1
+      - R4.2
+      - R4.3

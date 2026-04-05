@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd014-false.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd014-false.yaml) and invokes do-work to produce
   a passing differential test for cmd/false.
 
 flow:
@@ -25,7 +25,7 @@ flow:
       Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/false — unconditional exit 1, argument ignoring (prd014-false R1, R2, R3)"
+  - T1: "cmd/false — unconditional exit 1, argument ignoring (srd014-false R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, exit code comparison"
 
 success_criteria:

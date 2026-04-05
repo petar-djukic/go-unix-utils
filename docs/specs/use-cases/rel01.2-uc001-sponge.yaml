@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd007-sponge.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd007-sponge.yaml) and invokes do-work to produce
   a passing differential test for cmd/sponge.
 
 flow:
@@ -39,10 +39,10 @@ flow:
     step: |
       The differential testing harness (pkg/testutils) executes both ./bin/sponge and the
       reference binary in isolated temp directories, then compares output file contents
-      byte-for-byte using file-state comparison (prd001-testutils R5).
+      byte-for-byte using file-state comparison (srd001-testutils R5).
 
 touchpoints:
-  - T1: "cmd/sponge — soak-before-write contract, atomic rename, append mode, passthrough (prd007-sponge R1, R2, R3, R4, R5)"
+  - T1: "cmd/sponge — soak-before-write contract, atomic rename, append mode, passthrough (srd007-sponge R1, R2, R3, R4, R5)"
   - T2: "pkg/testutils — RunDiffTests, file-state comparison"
 
 success_criteria:

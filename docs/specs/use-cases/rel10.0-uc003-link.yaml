@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd084-link.yaml) and invokes do-work to
+  The operator has completed the PRD (srd084-link.yaml) and invokes do-work to
   produce a passing differential test for cmd/link.
 
 flow:
@@ -28,7 +28,7 @@ flow:
       glink with the same inputs and compares exit codes and stderr.
 
 touchpoints:
-  - T1: "cmd/link — hard link creation via link(2) (prd084-link R1, R2)"
+  - T1: "cmd/link — hard link creation via link(2) (srd084-link R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd066-expr.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd066-expr.yaml) and invokes do-work to produce
   a passing differential test for cmd/expr.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       stdout byte-for-byte and exit codes.
 
 touchpoints:
-  - T1: "cmd/expr — arithmetic, comparisons, logical ops, string ops, precedence (prd066-expr R1, R2, R3, R4)"
+  - T1: "cmd/expr — arithmetic, comparisons, logical ops, string ops, precedence (srd066-expr R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
 
 success_criteria:

@@ -7,17 +7,17 @@ traces:
   - rel10.0-uc002-truncate
   - rel10.0-uc003-link
   - rel10.0-uc004-sync
-  - prd082-stat R1
-  - prd082-stat R2
-  - prd082-stat R3
-  - prd082-stat R4
-  - prd083-truncate R1
-  - prd083-truncate R2
-  - prd083-truncate R3
-  - prd084-link R1
-  - prd084-link R2
-  - prd085-sync R1
-  - prd085-sync R2
+  - srd082-stat R1
+  - srd082-stat R2
+  - srd082-stat R3
+  - srd082-stat R4
+  - srd083-truncate R1
+  - srd083-truncate R2
+  - srd083-truncate R3
+  - srd084-link R1
+  - srd084-link R2
+  - srd085-sync R1
+  - srd085-sync R2
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -40,8 +40,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd082-stat R1.1
-      - prd082-stat R1.2
+      - srd082-stat R1.1
+      - srd082-stat R1.2
 
   - name: stat_format_size_name
     description: "stat -c '%s %n' produces size and filename"
@@ -55,7 +55,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd082-stat R2.1
+      - srd082-stat R2.1
 
   - name: stat_terse
     description: "stat -t produces single-line terse output"
@@ -69,7 +69,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd082-stat R2.3
+      - srd082-stat R2.3
 
   - name: stat_filesystem
     description: "stat -f displays filesystem status"
@@ -83,7 +83,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd082-stat R3.1
+      - srd082-stat R3.1
 
   # ---- truncate ----
 
@@ -99,8 +99,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd083-truncate R1.1
-      - prd083-truncate R1.3
+      - srd083-truncate R1.1
+      - srd083-truncate R1.3
 
   - name: truncate_relative_grow
     description: "truncate -s +50 grows file by 50 bytes"
@@ -114,7 +114,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd083-truncate R1.2
+      - srd083-truncate R1.2
 
   - name: truncate_reference
     description: "truncate -r ref file sets file to ref's size"
@@ -128,7 +128,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd083-truncate R2.1
+      - srd083-truncate R2.1
 
   # ---- link ----
 
@@ -144,8 +144,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd084-link R1.1
-      - prd084-link R1.2
+      - srd084-link R1.1
+      - srd084-link R1.2
 
   - name: link_wrong_args
     description: "link with one argument exits 1"
@@ -159,7 +159,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd084-link R1.3
+      - srd084-link R1.3
 
   # ---- sync ----
 
@@ -175,7 +175,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd085-sync R1.1
+      - srd085-sync R1.1
 
   - name: sync_file
     description: "sync on a named file completes without error"
@@ -189,4 +189,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd085-sync R1.2
+      - srd085-sync R1.2

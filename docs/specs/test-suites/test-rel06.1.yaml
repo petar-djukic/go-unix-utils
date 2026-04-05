@@ -8,18 +8,18 @@ traces:
   - rel06.1-uc003-id
   - rel06.1-uc004-whoami
   - rel06.1-uc005-groups
-  - prd039-env R1
-  - prd039-env R2
-  - prd039-env R3
-  - prd040-printenv R1
-  - prd040-printenv R2
-  - prd041-id R1
-  - prd041-id R2
-  - prd041-id R3
-  - prd042-whoami R1
-  - prd042-whoami R2
-  - prd043-groups R1
-  - prd043-groups R2
+  - srd039-env R1
+  - srd039-env R2
+  - srd039-env R3
+  - srd040-printenv R1
+  - srd040-printenv R2
+  - srd041-id R1
+  - srd041-id R2
+  - srd041-id R3
+  - srd042-whoami R1
+  - srd042-whoami R2
+  - srd043-groups R1
+  - srd043-groups R2
 
 preconditions:
   - All binaries exist in ./bin/ (built via mage build).
@@ -41,7 +41,7 @@ test_cases:
       stdout: "all inherited environment variables, one per line"
       stderr: ""
     traces:
-      - prd039-env R1.1
+      - srd039-env R1.1
 
   - name: env_set_and_run
     description: "env NAME=VALUE command sets the variable for the child process."
@@ -55,7 +55,7 @@ test_cases:
       stdout: "hello\n"
       stderr: ""
     traces:
-      - prd039-env R2.1
+      - srd039-env R2.1
 
   - name: env_unset
     description: "env -u NAME removes the named variable from the environment."
@@ -69,7 +69,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd039-env R2.2
+      - srd039-env R2.2
 
   - name: env_ignore_inherited
     description: "env -i starts with an empty environment; only explicitly set variables appear."
@@ -83,7 +83,7 @@ test_cases:
       stdout: "MY_VAR=only\n"
       stderr: ""
     traces:
-      - prd039-env R3.1
+      - srd039-env R3.1
 
   # --- printenv ---
   - name: printenv_all
@@ -98,7 +98,7 @@ test_cases:
       stdout: "all inherited environment variables, one per line"
       stderr: ""
     traces:
-      - prd040-printenv R1.1
+      - srd040-printenv R1.1
 
   - name: printenv_specific
     description: "printenv HOME prints the value of the HOME variable."
@@ -112,7 +112,7 @@ test_cases:
       stdout: "value of HOME followed by newline"
       stderr: ""
     traces:
-      - prd040-printenv R1.2
+      - srd040-printenv R1.2
 
   - name: printenv_missing
     description: "printenv for a variable that does not exist exits with code 1."
@@ -126,7 +126,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd040-printenv R1.3
+      - srd040-printenv R1.3
 
   - name: printenv_null_delimited
     description: "printenv -0 uses NUL instead of newline as the delimiter."
@@ -140,7 +140,7 @@ test_cases:
       stdout: "value of HOME followed by NUL byte"
       stderr: ""
     traces:
-      - prd040-printenv R2.1
+      - srd040-printenv R2.1
 
   # --- id ---
   - name: id_default
@@ -155,7 +155,7 @@ test_cases:
       stdout: "uid=N(name) gid=N(name) groups=N(name),... followed by newline"
       stderr: ""
     traces:
-      - prd041-id R1.1
+      - srd041-id R1.1
 
   - name: id_user_only
     description: "id -u prints just the numeric user ID."
@@ -169,7 +169,7 @@ test_cases:
       stdout: "numeric UID followed by newline"
       stderr: ""
     traces:
-      - prd041-id R2.1
+      - srd041-id R2.1
 
   - name: id_user_name
     description: "id -un prints the username corresponding to the effective UID."
@@ -183,7 +183,7 @@ test_cases:
       stdout: "username followed by newline"
       stderr: ""
     traces:
-      - prd041-id R2.2
+      - srd041-id R2.2
 
   - name: id_groups
     description: "id -G prints space-separated supplementary group IDs."
@@ -197,7 +197,7 @@ test_cases:
       stdout: "space-separated numeric group IDs followed by newline"
       stderr: ""
     traces:
-      - prd041-id R3.1
+      - srd041-id R3.1
 
   # --- whoami ---
   - name: whoami_default
@@ -212,7 +212,7 @@ test_cases:
       stdout: "effective username followed by newline"
       stderr: ""
     traces:
-      - prd042-whoami R1.1
+      - srd042-whoami R1.1
 
   - name: whoami_matches_id
     description: "whoami output matches id -un output."
@@ -226,7 +226,7 @@ test_cases:
       stdout: "same output as id -un"
       stderr: ""
     traces:
-      - prd042-whoami R2.1
+      - srd042-whoami R2.1
 
   # --- groups ---
   - name: groups_default
@@ -241,7 +241,7 @@ test_cases:
       stdout: "space-separated group names followed by newline"
       stderr: ""
     traces:
-      - prd043-groups R1.1
+      - srd043-groups R1.1
 
   - name: groups_named_user
     description: "groups with a username argument prints groups for that user."
@@ -255,4 +255,4 @@ test_cases:
       stdout: "space-separated group names for root followed by newline"
       stderr: ""
     traces:
-      - prd043-groups R2.1
+      - srd043-groups R2.1

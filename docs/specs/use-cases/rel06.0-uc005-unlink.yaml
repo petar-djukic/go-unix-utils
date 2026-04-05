@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd038-unlink.yaml) and invokes do-work to
+  The operator has completed the PRD (srd038-unlink.yaml) and invokes do-work to
   produce a passing differential test for cmd/unlink.
 
 flow:
@@ -29,7 +29,7 @@ flow:
       and exit codes.
 
 touchpoints:
-  - T1: "cmd/unlink — single file removal, error on missing file, error on directory (prd038-unlink R1, R2)"
+  - T1: "cmd/unlink — single file removal, error on missing file, error on directory (srd038-unlink R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

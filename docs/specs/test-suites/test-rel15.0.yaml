@@ -4,26 +4,26 @@ release: rel15.0
 
 traces:
   - rel15.0-uc001-ts
-  - prd004-ts R1
-  - prd004-ts R2
-  - prd004-ts R3
-  - prd004-ts R4
-  - prd004-ts R5
-  - prd004-ts R6
-  - prd004-ts R7
-  - prd004-ts R10
+  - srd004-ts R1
+  - srd004-ts R2
+  - srd004-ts R3
+  - srd004-ts R4
+  - srd004-ts R5
+  - srd004-ts R6
+  - srd004-ts R7
+  - srd004-ts R10
   - rel15.0-uc002-stty
-  - prd105-stty R1
-  - prd105-stty R2
-  - prd105-stty R3
+  - srd105-stty R1
+  - srd105-stty R2
+  - srd105-stty R3
   - rel15.0-uc003-pr
-  - prd110-pr R1
-  - prd110-pr R2
-  - prd110-pr R3
+  - srd110-pr R1
+  - srd110-pr R2
+  - srd110-pr R3
   - rel15.0-uc004-ptx
-  - prd111-ptx R1
-  - prd111-ptx R2
-  - prd111-ptx R3
+  - srd111-ptx R1
+  - srd111-ptx R2
+  - srd111-ptx R3
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -47,9 +47,9 @@ test_cases:
       stdout_structure: three lines, each matching "TIMESTAMP line1", "TIMESTAMP line2", "TIMESTAMP line3"
       stderr: ""
     traces:
-      - prd004-ts R1.1
-      - prd004-ts R1.2
-      - prd004-ts R1.4
+      - srd004-ts R1.1
+      - srd004-ts R1.2
+      - srd004-ts R1.4
 
   - name: default_format_empty_stdin
     description: Empty stdin produces no output and exits 0.
@@ -63,7 +63,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd004-ts R1.6
+      - srd004-ts R1.6
 
   - name: default_format_partial_last_line
     description: Stdin with no trailing newline; partial line must be timestamped.
@@ -77,7 +77,7 @@ test_cases:
       stdout_structure: one line matching "TIMESTAMP partial" (no trailing newline added)
       stderr: ""
     traces:
-      - prd004-ts R1.5
+      - srd004-ts R1.5
 
   - name: custom_strftime_format
     description: Custom strftime format string "%Y-%m-%dT%H:%M:%S".
@@ -91,8 +91,8 @@ test_cases:
       stdout_structure: two lines matching "TIMESTAMP hello", "TIMESTAMP world"
       stderr: ""
     traces:
-      - prd004-ts R2.1
-      - prd004-ts R2.2
+      - srd004-ts R2.1
+      - srd004-ts R2.2
 
   - name: subsecond_format_dotS
     description: Subsecond extension %.S produces seconds with microsecond suffix.
@@ -106,8 +106,8 @@ test_cases:
       stdout_structure: one line matching "SECONDS.USEC test"
       stderr: ""
     traces:
-      - prd004-ts R2.3
-      - prd004-ts R2.4
+      - srd004-ts R2.3
+      - srd004-ts R2.4
 
   - name: elapsed_since_start_mode
     description: -s mode; timestamps show time elapsed since ts started, increasing monotonically.
@@ -121,8 +121,8 @@ test_cases:
       stdout_structure: three lines each matching "ELAPSED <letter>"; elapsed values non-negative
       stderr: ""
     traces:
-      - prd004-ts R4.1
-      - prd004-ts R4.2
+      - srd004-ts R4.1
+      - srd004-ts R4.2
 
   - name: incremental_mode
     description: -i mode; each timestamp shows time since the previous line.
@@ -136,8 +136,8 @@ test_cases:
       stdout_structure: three lines each matching "ELAPSED <word>"
       stderr: ""
     traces:
-      - prd004-ts R3.1
-      - prd004-ts R3.2
+      - srd004-ts R3.1
+      - srd004-ts R3.2
 
   - name: incremental_and_elapsed_mutually_exclusive
     description: Passing both -i and -s must produce a usage error and non-zero exit.
@@ -150,7 +150,7 @@ test_cases:
       exit_code: non-zero
       stderr_contains: "usage"
     traces:
-      - prd004-ts R3.4
+      - srd004-ts R3.4
 
   - name: monotonic_clock_mode
     description: -m mode with default format; output structure must match reference.
@@ -164,8 +164,8 @@ test_cases:
       stdout_structure: one line matching "TIMESTAMP tick"
       stderr: ""
     traces:
-      - prd004-ts R5.1
-      - prd004-ts R5.2
+      - srd004-ts R5.1
+      - srd004-ts R5.2
 
   - name: relative_mode_syslog_timestamp
     description: -r mode converts a syslog-format timestamp in stdin to relative age.
@@ -179,8 +179,8 @@ test_cases:
       stdout_structure: one line containing "AGO boot message"
       stderr: ""
     traces:
-      - prd004-ts R6.1
-      - prd004-ts R6.2
+      - srd004-ts R6.1
+      - srd004-ts R6.2
 
   - name: relative_mode_no_timestamp_passthrough
     description: -r mode passes through lines with no recognized timestamp unchanged.
@@ -194,7 +194,7 @@ test_cases:
       stdout: "no timestamp here\n"
       stderr: ""
     traces:
-      - prd004-ts R10.2
+      - srd004-ts R10.2
 
   - name: invalid_flag
     description: Unrecognized flag must produce a usage error and non-zero exit.
@@ -207,7 +207,7 @@ test_cases:
       exit_code: non-zero
       stderr_contains: "usage"
     traces:
-      - prd004-ts R7.2
+      - srd004-ts R7.2
 
   - name: tz_environment_respected
     description: TZ=UTC causes wall-clock timestamps to be in UTC.
@@ -221,7 +221,7 @@ test_cases:
       stdout_structure: one line matching "TIMESTAMP event"
       stderr: ""
     traces:
-      - prd004-ts R8.1
+      - srd004-ts R8.1
 
   # --- uc002-stty: change terminal settings ---
 
@@ -237,7 +237,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd105-stty R1.1
+      - srd105-stty R1.1
 
   - name: stty_all
     description: "stty -a prints all settings"
@@ -251,7 +251,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd105-stty R1.2
+      - srd105-stty R1.2
 
   # --- uc003-pr: paginate files for printing ---
 
@@ -267,8 +267,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd110-pr R1.1
-      - prd110-pr R1.4
+      - srd110-pr R1.1
+      - srd110-pr R1.4
 
   - name: pr_two_columns
     description: "pr -2 produces two-column output"
@@ -282,7 +282,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd110-pr R2.1
+      - srd110-pr R2.1
 
   # --- uc004-ptx: produce permuted index ---
 
@@ -298,5 +298,5 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd111-ptx R1.1
-      - prd111-ptx R1.4
+      - srd111-ptx R1.1
+      - srd111-ptx R1.4

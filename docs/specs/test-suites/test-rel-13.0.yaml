@@ -7,15 +7,15 @@ traces:
   - rel13.0-uc002-dir
   - rel13.0-uc003-vdir
   - rel13.0-uc004-dircolors
-  - prd106-df R1
-  - prd106-df R2
-  - prd106-df R3
-  - prd107-dir R1
-  - prd107-dir R2
-  - prd108-vdir R1
-  - prd108-vdir R2
-  - prd109-dircolors R1
-  - prd109-dircolors R2
+  - srd106-df R1
+  - srd106-df R2
+  - srd106-df R3
+  - srd107-dir R1
+  - srd107-dir R2
+  - srd108-vdir R1
+  - srd108-vdir R2
+  - srd109-dircolors R1
+  - srd109-dircolors R2
 
 preconditions:
   - "Go binary for each utility is built via go build -o bin/<name> ./cmd/<name>/"
@@ -36,7 +36,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd106-df R1.1
+      - srd106-df R1.1
 
   - name: df_human
     description: "df -h shows human-readable sizes"
@@ -50,7 +50,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd106-df R2.1
+      - srd106-df R2.1
 
   - name: dir_default
     description: "dir lists files in columns"
@@ -64,7 +64,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd107-dir R1.1
+      - srd107-dir R1.1
 
   - name: vdir_default
     description: "vdir lists files in long format"
@@ -78,7 +78,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd108-vdir R1.1
+      - srd108-vdir R1.1
 
   - name: dircolors_bourne
     description: "dircolors -b outputs Bourne shell LS_COLORS assignment"
@@ -92,7 +92,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd109-dircolors R1.1
+      - srd109-dircolors R1.1
 
   - name: dircolors_print_database
     description: "dircolors -p prints default color database"
@@ -106,4 +106,4 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd109-dircolors R1.3
+      - srd109-dircolors R1.3

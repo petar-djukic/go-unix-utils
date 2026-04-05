@@ -4,37 +4,37 @@ release: rel00.0
 
 traces:
   - rel00.0-uc001-magefiles
-  - prd059-version R1
-  - prd011-magefiles R1
-  - prd011-magefiles R2
-  - prd011-magefiles R3
-  - prd011-magefiles R4
+  - srd059-version R1
+  - srd011-magefiles R1
+  - srd011-magefiles R2
+  - srd011-magefiles R3
+  - srd011-magefiles R4
   - rel00.0-uc002-format
-  - prd003-format R1
-  - prd003-format R2
-  - prd003-format R3
+  - srd003-format R1
+  - srd003-format R2
+  - srd003-format R3
   - rel00.0-uc003-sys
-  - prd002-sys R1
-  - prd002-sys R2
-  - prd002-sys R3
+  - srd002-sys R1
+  - srd002-sys R2
+  - srd002-sys R3
   - rel00.0-uc004-testutils
-  - prd001-testutils R1
-  - prd001-testutils R2
-  - prd001-testutils R3
-  - prd001-testutils R4
-  - prd001-testutils R5
+  - srd001-testutils R1
+  - srd001-testutils R2
+  - srd001-testutils R3
+  - srd001-testutils R4
+  - srd001-testutils R5
   - rel00.0-uc005-hashutil
-  - prd086-hashutil R1
-  - prd086-hashutil R2
-  - prd086-hashutil R3
+  - srd086-hashutil R1
+  - srd086-hashutil R2
+  - srd086-hashutil R3
   - rel00.0-uc006-sizeparse
-  - prd087-sizeparse R1
-  - prd087-sizeparse R2
-  - prd087-sizeparse R3
+  - srd087-sizeparse R1
+  - srd087-sizeparse R2
+  - srd087-sizeparse R3
   - rel00.0-uc007-encutil
-  - prd088-encutil R1
-  - prd088-encutil R2
-  - prd088-encutil R3
+  - srd088-encutil R1
+  - srd088-encutil R2
+  - srd088-encutil R3
 
 preconditions:
   - A git repository with at least one tag matching v[0-9]*.
@@ -53,8 +53,8 @@ test_cases:
       exit_code: 0
       postcondition: bin/version exists and is executable
     traces:
-      - prd011-magefiles R1.1
-      - prd059-version R1.1
+      - srd011-magefiles R1.1
+      - srd059-version R1.1
 
   - name: version_prints_tag
     description: bin/version prints the latest version tag and exits 0.
@@ -65,9 +65,9 @@ test_cases:
       stdout_pattern: "v[0-9]+\\.[0-9]+\\.[0-9]+\n"
       stderr: ""
     traces:
-      - prd059-version R1.1
-      - prd059-version R1.2
-      - prd059-version R1.3
+      - srd059-version R1.1
+      - srd059-version R1.2
+      - srd059-version R1.3
 
   - name: version_flag_identical
     description: bin/version --version produces the same output as bin/version.
@@ -78,7 +78,7 @@ test_cases:
       stdout: same as bin/version with no arguments
       stderr: ""
     traces:
-      - prd059-version R1.4
+      - srd059-version R1.4
 
   - name: version_v_flag_identical
     description: bin/version -v produces the same output as bin/version.
@@ -89,7 +89,7 @@ test_cases:
       stdout: same as bin/version with no arguments
       stderr: ""
     traces:
-      - prd059-version R1.4
+      - srd059-version R1.4
 
   - name: version_unknown_flag
     description: bin/version --bogus prints usage to stderr and exits 2.
@@ -100,7 +100,7 @@ test_cases:
       stdout: ""
       stderr_contains: "usage"
     traces:
-      - prd059-version R1.4
+      - srd059-version R1.4
 
   - name: version_dev_build
     description: A build without ldflags prints "dev".
@@ -111,7 +111,7 @@ test_cases:
       stdout: "dev\n"
       stderr: ""
     traces:
-      - prd059-version R1.2
+      - srd059-version R1.2
 
   - name: lint_passes
     description: mage lint runs golangci-lint with no warnings.
@@ -120,7 +120,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd011-magefiles R2.1
+      - srd011-magefiles R2.1
 
   - name: clean_removes_bin
     description: mage clean removes the bin/ directory.
@@ -130,7 +130,7 @@ test_cases:
       exit_code: 0
       postcondition: bin/ does not exist
     traces:
-      - prd011-magefiles R3.1
+      - srd011-magefiles R3.1
 
   - name: clean_idempotent
     description: mage clean succeeds when bin/ does not exist.
@@ -139,7 +139,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd011-magefiles R3.1
+      - srd011-magefiles R3.1
 
   # --- uc002-format: pkg/format output formatting ---
 
@@ -151,8 +151,8 @@ test_cases:
     expected:
       postcondition: each row fits within 80 characters; column count is maximized
     traces:
-      - prd003-format R1.1
-      - prd003-format R1.4
+      - srd003-format R1.1
+      - srd003-format R1.4
 
   - name: columns_empty_input
     description: Columns returns nil for empty input.
@@ -161,7 +161,7 @@ test_cases:
     expected:
       result: nil
     traces:
-      - prd003-format R1.1
+      - srd003-format R1.1
 
   - name: pad_right
     description: PadRight pads a string with trailing spaces to the specified width.
@@ -170,7 +170,7 @@ test_cases:
     expected:
       result: '"abc       "  (abc + 7 spaces)'
     traces:
-      - prd003-format R1.2
+      - srd003-format R1.2
 
   - name: pad_left
     description: PadLeft pads a string with leading spaces to the specified width.
@@ -179,7 +179,7 @@ test_cases:
     expected:
       result: '"       abc"  (7 spaces + abc)'
     traces:
-      - prd003-format R1.2
+      - srd003-format R1.2
 
   - name: display_width_multibyte
     description: Column width uses rune count, not byte count, for multi-byte strings.
@@ -188,7 +188,7 @@ test_cases:
     expected:
       result: '"café      "  (café is 4 runes, padded to 10)'
     traces:
-      - prd003-format R1.3
+      - srd003-format R1.3
 
   - name: file_type_color_all_types
     description: FileTypeColor returns correct ANSI codes for all eight file types.
@@ -205,8 +205,8 @@ test_cases:
       pipe: '"\033[33m"'
       regular: '""'
     traces:
-      - prd003-format R2.1
-      - prd003-format R2.4
+      - srd003-format R2.1
+      - srd003-format R2.4
 
   - name: reset_color_enabled
     description: Reset returns ANSI reset sequence when color is enabled.
@@ -216,7 +216,7 @@ test_cases:
     expected:
       result: '"\033[0m"'
     traces:
-      - prd003-format R2.2
+      - srd003-format R2.2
 
   - name: color_disabled_suppresses_output
     description: SetColorEnabled(false) causes FileTypeColor and Reset to return empty strings.
@@ -227,7 +227,7 @@ test_cases:
       file_type_color: '""'
       reset: '""'
     traces:
-      - prd003-format R2.6
+      - srd003-format R2.6
 
   - name: reset_color_enabled_restores_auto
     description: ResetColorEnabled clears the override and reverts to TTY detection.
@@ -237,7 +237,7 @@ test_cases:
     expected:
       color_enabled_pipe: false
     traces:
-      - prd003-format R2.7
+      - srd003-format R2.7
 
   - name: color_enabled_pipe
     description: ColorEnabled returns false for an os.Pipe writer.
@@ -246,7 +246,7 @@ test_cases:
     expected:
       result: false
     traces:
-      - prd003-format R2.3
+      - srd003-format R2.3
 
   - name: color_enabled_non_file
     description: ColorEnabled returns false for a bytes.Buffer (non-*os.File).
@@ -255,7 +255,7 @@ test_cases:
     expected:
       result: false
     traces:
-      - prd003-format R2.3
+      - srd003-format R2.3
 
   - name: human_size_binary
     description: HumanSize converts bytes using 1024-based units.
@@ -264,9 +264,9 @@ test_cases:
     expected:
       result: '"1.5K"'
     traces:
-      - prd003-format R3.1
-      - prd003-format R3.2
-      - prd003-format R3.3
+      - srd003-format R3.1
+      - srd003-format R3.2
+      - srd003-format R3.3
 
   - name: human_size_si
     description: HumanSize converts bytes using 1000-based SI units.
@@ -275,8 +275,8 @@ test_cases:
     expected:
       result: '"1.0MB"'
     traces:
-      - prd003-format R3.1
-      - prd003-format R3.2
+      - srd003-format R3.1
+      - srd003-format R3.2
 
   - name: human_size_zero
     description: HumanSize returns "0" for zero bytes.
@@ -285,7 +285,7 @@ test_cases:
     expected:
       result: '"0"'
     traces:
-      - prd003-format R3.4
+      - srd003-format R3.4
 
   # --- uc003-sys: pkg/sys syscall abstractions ---
 
@@ -296,7 +296,7 @@ test_cases:
     expected:
       error: non-nil
     traces:
-      - prd002-sys R1.1
+      - srd002-sys R1.1
 
   - name: is_terminal_pipe_fd
     description: IsTerminal returns false for a pipe file descriptor.
@@ -305,7 +305,7 @@ test_cases:
     expected:
       result: false
     traces:
-      - prd002-sys R1.3
+      - srd002-sys R1.3
 
   - name: stat_known_file
     description: Stat returns correct extended metadata for a known file.
@@ -314,8 +314,8 @@ test_cases:
     expected:
       postcondition: Nlink, Uid, Gid, Dev, Ino, Blocks match stat(1) output
     traces:
-      - prd002-sys R2.1
-      - prd002-sys R2.2
+      - srd002-sys R2.1
+      - srd002-sys R2.2
 
   - name: lstat_symlink
     description: Lstat on a symlink returns symlink type bits, not target's mode.
@@ -324,7 +324,7 @@ test_cases:
     expected:
       postcondition: "Mode & os.ModeSymlink != 0"
     traces:
-      - prd002-sys R2.1
+      - srd002-sys R2.1
 
   - name: stat_modtime_populated
     description: Stat returns a non-zero ModTime from the platform-correct field.
@@ -333,7 +333,7 @@ test_cases:
     expected:
       postcondition: ModTime is non-zero and close to os.Stat(testFile).ModTime()
     traces:
-      - prd002-sys R2.3
+      - srd002-sys R2.3
 
   - name: stat_hard_link_count
     description: Stat returns correct Nlink for a file with multiple hard links.
@@ -343,7 +343,7 @@ test_cases:
     expected:
       postcondition: Nlink == 2
     traces:
-      - prd002-sys R2.2
+      - srd002-sys R2.2
 
   - name: sigpipe_handler_exit_zero
     description: InstallSIGPIPEHandler causes exit 0 on broken pipe.
@@ -352,7 +352,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd002-sys R1.5
+      - srd002-sys R1.5
 
   - name: on_terminal_resize_callback
     description: OnTerminalResize registers a callback invoked on SIGWINCH.
@@ -361,8 +361,8 @@ test_cases:
     expected:
       postcondition: callback was called with a positive width
     traces:
-      - prd002-sys R3.1
-      - prd002-sys R3.2
+      - srd002-sys R3.1
+      - srd002-sys R3.2
 
   - name: cross_platform_compile
     description: All pkg/sys code compiles on darwin/arm64 and linux/amd64.
@@ -371,7 +371,7 @@ test_cases:
     expected:
       exit_code: 0
     traces:
-      - prd002-sys R1.2
+      - srd002-sys R1.2
 
   # --- uc004-testutils: pkg/testutils differential testing harness ---
 
@@ -382,7 +382,7 @@ test_cases:
     expected:
       postcondition: test passes with no output
     traces:
-      - prd001-testutils R1.1
+      - srd001-testutils R1.1
 
   - name: rundifftests_matching_output
     description: RunDiffTests passes silently when both binaries produce identical output.
@@ -392,9 +392,9 @@ test_cases:
     expected:
       postcondition: test passes with no output to stdout or stderr
     traces:
-      - prd001-testutils R2.1
-      - prd001-testutils R2.4
-      - prd001-testutils R3.2
+      - srd001-testutils R2.1
+      - srd001-testutils R2.4
+      - srd001-testutils R3.2
 
   - name: rundifftests_divergent_stdout
     description: RunDiffTests reports failure when stdout differs between binaries.
@@ -404,8 +404,8 @@ test_cases:
     expected:
       postcondition: "test fails with message containing args, stdin, both stdouts, both stderrs, and both exit codes"
     traces:
-      - prd001-testutils R3.2
-      - prd001-testutils R3.5
+      - srd001-testutils R3.2
+      - srd001-testutils R3.5
 
   - name: rundifftests_divergent_exit_code
     description: RunDiffTests reports failure when exit codes differ.
@@ -415,8 +415,8 @@ test_cases:
     expected:
       postcondition: test fails with message showing both exit codes
     traces:
-      - prd001-testutils R3.4
-      - prd001-testutils R3.5
+      - srd001-testutils R3.4
+      - srd001-testutils R3.5
 
   - name: timestamp_normalizer
     description: TimestampNormalizer strips strftime timestamps so time-dependent outputs match.
@@ -426,8 +426,8 @@ test_cases:
     expected:
       postcondition: test passes after normalization strips timestamps
     traces:
-      - prd001-testutils R4.1
-      - prd001-testutils R4.2
+      - srd001-testutils R4.1
+      - srd001-testutils R4.2
 
   - name: compose_normalizers
     description: ComposeNormalizers chains multiple functions applied in order.
@@ -436,8 +436,8 @@ test_cases:
     expected:
       postcondition: "composed function applies fn1 then fn2; output matches fn2(fn1(input))"
     traces:
-      - prd001-testutils R4.3
-      - prd001-testutils R4.4
+      - srd001-testutils R4.3
+      - srd001-testutils R4.4
 
   - name: expected_files_match
     description: ExpectedFiles comparison passes when Go binary writes correct file content.
@@ -447,8 +447,8 @@ test_cases:
     expected:
       postcondition: test passes with no output
     traces:
-      - prd001-testutils R5.1
-      - prd001-testutils R5.2
+      - srd001-testutils R5.1
+      - srd001-testutils R5.2
 
   - name: expected_files_diverge
     description: ExpectedFiles comparison fails when Go binary writes wrong file content.
@@ -458,8 +458,8 @@ test_cases:
     expected:
       postcondition: test fails with message showing file path, expected content, actual content
     traces:
-      - prd001-testutils R5.1
-      - prd001-testutils R5.2
+      - srd001-testutils R5.1
+      - srd001-testutils R5.2
 
   - name: timeout_exceeded
     description: RunDiffTests fails with timeout message when binary exceeds timeout.
@@ -469,7 +469,7 @@ test_cases:
     expected:
       postcondition: test fails with clear timeout message, not a hang
     traces:
-      - prd001-testutils R2.3
+      - srd001-testutils R2.3
 
   - name: env_default_lc_all
     description: RunDiffTests sets LC_ALL=C by default when DiffTest.Env is nil.
@@ -479,7 +479,7 @@ test_cases:
     expected:
       postcondition: "binary receives LC_ALL=C"
     traces:
-      - prd001-testutils R2.6
+      - srd001-testutils R2.6
 
   - name: env_override_lc_all
     description: DiffTest.Env overrides the LC_ALL=C default.
@@ -489,8 +489,8 @@ test_cases:
     expected:
       postcondition: "binary receives LC_ALL=en_US.UTF-8"
     traces:
-      - prd001-testutils R1.3
-      - prd001-testutils R2.6
+      - srd001-testutils R1.3
+      - srd001-testutils R2.6
 
   - name: workdir_default_tempdir
     description: WorkDir defaults to t.TempDir() when empty.
@@ -500,4 +500,4 @@ test_cases:
     expected:
       postcondition: both binaries run in a temporary directory
     traces:
-      - prd001-testutils R2.5
+      - srd001-testutils R2.5

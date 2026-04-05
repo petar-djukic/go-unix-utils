@@ -1,0 +1,141 @@
+id: srd044-uname
+title: "cmd/uname: Print System Information"
+
+problem: |
+  Scripts use uname to detect the operating system, kernel version, and hardware architecture
+  at runtime. The utility supports individual flags for each information field and a combined
+  flag (-a) that prints all fields. The Go implementation must match the Homebrew GNU reference
+  binary (guname, installed by coreutils) byte-for-byte on stdout and exit code, verified by
+  differential testing via pkg/testutils.
+
+goals:
+  - G1: Print system information fields matching guname output for all supported flags.
+  - G2: Support the -a flag to print all fields in the canonical order.
+
+requirements:
+  R1:
+    title: Individual information flags
+    items:
+      - R1.1:
+          text: When invoked with no arguments, must print the kernel name (equivalent to -s) followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: "-s must print the kernel name (e.g., Darwin, Linux)."
+          weight: 1
+      - R1.3:
+          text: "-n must print the network node hostname."
+          weight: 1
+      - R1.4:
+          text: "-r must print the kernel release string."
+          weight: 1
+      - R1.5:
+          text: "-v must print the kernel version string."
+          weight: 1
+      - R1.6:
+          text: "-m must print the machine hardware name (e.g., x86_64, arm64)."
+          weight: 1
+      - R1.7:
+          text: "-p must print the processor type, or \"unknown\" if not determinable."
+          weight: 1
+      - R1.8:
+          text: "-i must print the hardware platform, or \"unknown\" if not determinable."
+          weight: 1
+      - R1.9:
+          text: "-o must print the operating system name."
+          weight: 1
+
+  R2:
+    title: Combined output
+    items:
+      - R2.1:
+          text: "-a must print all fields in the order: kernel name, node name, kernel release, kernel version, machine, processor, hardware platform, operating system, separated by single spaces."
+          weight: 1
+      - R2.2:
+          text: When multiple individual flags are specified (e.g., -sn), must print only the requested fields in the canonical order, space-separated, followed by a newline.
+          weight: 1
+
+  R3:
+    title: Error handling
+    items:
+      - R3.1:
+          text: Must not accept any positional operands. If an operand is provided, must print an error message to stderr and exit 1.
+          weight: 1
+      - R3.2:
+          text: Unknown flags must produce an error message to stderr and exit 1.
+          weight: 1
+
+  R4:
+    title: Differential testing
+    items:
+      - R4.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (guname) via pkg/testutils.
+          weight: 1
+      - R4.2:
+          text: "Tests must cover: default (no flags), each individual flag (-s, -n, -r, -v, -m, -p, -i, -o), -a, combinations of flags, and error cases."
+          weight: 1
+      - R4.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
+
+non_goals:
+  - cmd/uname does not set the hostname or any system information; it is read-only.
+  - cmd/uname does not support long-form flag names beyond --help and --version.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/uname prints the kernel name, matching guname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+  - id: AC2
+    criterion: "go run ./cmd/uname -a prints all fields in canonical order, matching guname."
+    traces:
+      - R2.1
+      - R4.2
+  - id: AC3
+    criterion: "Each individual flag (-s, -n, -r, -v, -m, -p, -i, -o) produces output matching guname."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R4.2
+  - id: AC4
+    criterion: "Differential test against guname passes for all flag combinations and error cases."
+    traces:
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3
+  - id: AC5
+    criterion: "cmd/uname compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R1.5
+      - R1.6
+      - R1.7
+      - R1.8
+      - R1.9
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R4.1
+      - R4.2
+      - R4.3

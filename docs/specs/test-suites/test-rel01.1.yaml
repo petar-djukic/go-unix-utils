@@ -4,11 +4,11 @@ release: rel01.1
 
 traces:
   - rel01.1-uc001-cat
-  - prd006-cat R1
-  - prd006-cat R2
-  - prd006-cat R3
-  - prd006-cat R4
-  - prd006-cat R5
+  - srd006-cat R1
+  - srd006-cat R2
+  - srd006-cat R3
+  - srd006-cat R4
+  - srd006-cat R5
 
 preconditions:
   - ./bin/cat exists (built via mage build).
@@ -30,8 +30,8 @@ test_cases:
       stdout: "hello\nworld\n"
       stderr: ""
     traces:
-      - prd006-cat R1.1
-      - prd006-cat R1.5
+      - srd006-cat R1.1
+      - srd006-cat R1.5
 
   - name: cat_binary_passthrough
     description: No flags, binary input (all byte values 0x00-0xFF) passes through without corruption.
@@ -45,7 +45,7 @@ test_cases:
       stdout: identical 256 bytes as input
       stderr: ""
     traces:
-      - prd006-cat R1.4
+      - srd006-cat R1.4
 
   - name: cat_line_numbering_n
     description: -n flag prepends line numbers to all lines including blank lines.
@@ -59,7 +59,7 @@ test_cases:
       stdout: "     1\talpha\n     2\t\n     3\tbeta\n"
       stderr: ""
     traces:
-      - prd006-cat R2.1
+      - srd006-cat R2.1
 
   - name: cat_line_numbering_b
     description: -b flag prepends line numbers only to non-blank lines.
@@ -73,8 +73,8 @@ test_cases:
       stdout: "     1\tfirst\n\n\n     2\tsecond\n"
       stderr: ""
     traces:
-      - prd006-cat R2.2
-      - prd006-cat R2.4
+      - srd006-cat R2.2
+      - srd006-cat R2.4
 
   - name: cat_squeeze_blanks
     description: -s collapses consecutive blank lines to one.
@@ -88,7 +88,7 @@ test_cases:
       stdout: "a\n\nb\n"
       stderr: ""
     traces:
-      - prd006-cat R3.1
+      - srd006-cat R3.1
 
   - name: cat_show_nonprinting
     description: -v displays non-printing characters with caret and M- notation.
@@ -102,8 +102,8 @@ test_cases:
       stdout: "^A\\x09^[^?M-^@M-^?"
       stderr: ""
     traces:
-      - prd006-cat R4.1
-      - prd006-cat R4.2
+      - srd006-cat R4.1
+      - srd006-cat R4.2
 
   - name: cat_show_ends
     description: -E appends "$" before each newline.
@@ -117,7 +117,7 @@ test_cases:
       stdout: "line one$\nline two$\n"
       stderr: ""
     traces:
-      - prd006-cat R4.3
+      - srd006-cat R4.3
 
   - name: cat_show_tabs
     description: -T displays tabs as "^I".
@@ -131,7 +131,7 @@ test_cases:
       stdout: "col1^Icol2^Icol3\n"
       stderr: ""
     traces:
-      - prd006-cat R4.4
+      - srd006-cat R4.4
 
   - name: cat_show_all
     description: -A is equivalent to -vET combined.
@@ -145,7 +145,7 @@ test_cases:
       stdout: "^A^Ihello$\n"
       stderr: ""
     traces:
-      - prd006-cat R4.5
+      - srd006-cat R4.5
 
   - name: cat_flag_e
     description: -e is equivalent to -vE (show non-printing and show ends).
@@ -159,7 +159,7 @@ test_cases:
       stdout: "^Ahello$\n"
       stderr: ""
     traces:
-      - prd006-cat R4.6
+      - srd006-cat R4.6
 
   - name: cat_flag_t
     description: -t is equivalent to -vT (show non-printing and show tabs).
@@ -173,7 +173,7 @@ test_cases:
       stdout: "^A^Ihello\n"
       stderr: ""
     traces:
-      - prd006-cat R4.7
+      - srd006-cat R4.7
 
   - name: cat_flag_u_accepted
     description: -u flag is accepted without error, output unchanged from default.
@@ -187,7 +187,7 @@ test_cases:
       stdout: "test\n"
       stderr: ""
     traces:
-      - prd006-cat R4.8
+      - srd006-cat R4.8
 
   - name: cat_combined_ns
     description: -n -s combined; squeeze applied before numbering.
@@ -201,8 +201,8 @@ test_cases:
       stdout: "     1\ta\n     2\t\n     3\tb\n"
       stderr: ""
     traces:
-      - prd006-cat R3.3
-      - prd006-cat R4.9
+      - srd006-cat R3.3
+      - srd006-cat R4.9
 
   - name: cat_multiple_files
     description: 'Two files concatenated with no separator between them. Setup: file1.txt contains "aaa\n", file2.txt contains "bbb\n"'
@@ -216,8 +216,8 @@ test_cases:
       stdout: "aaa\nbbb\n"
       stderr: ""
     traces:
-      - prd006-cat R1.1
-      - prd006-cat R1.3
+      - srd006-cat R1.1
+      - srd006-cat R1.3
 
   - name: cat_stdin_dash
     description: '"-" as a filename argument reads from stdin.'
@@ -231,7 +231,7 @@ test_cases:
       stdout: "from stdin\n"
       stderr: ""
     traces:
-      - prd006-cat R1.2
+      - srd006-cat R1.2
 
   - name: cat_missing_file
     description: 'Non-existent file prints error to stderr, exits 1, continues processing. Setup: real.txt contains "data\n", nonexistent.txt does not exist'
@@ -245,4 +245,4 @@ test_cases:
       stdout: "data\n"
       stderr_contains: "nonexistent.txt"
     traces:
-      - prd006-cat R5.2
+      - srd006-cat R5.2

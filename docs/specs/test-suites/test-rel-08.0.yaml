@@ -10,34 +10,34 @@ traces:
   - rel08.0-uc005-shuf
   - rel08.0-uc006-factor
   - rel08.0-uc007-expr
-  - prd060-date R1
-  - prd060-date R2
-  - prd060-date R3
-  - prd060-date R4
-  - prd061-sleep R1
-  - prd061-sleep R2
-  - prd061-sleep R3
-  - prd061-sleep R4
-  - prd062-touch R1
-  - prd062-touch R2
-  - prd062-touch R3
-  - prd062-touch R4
-  - prd063-timeout R1
-  - prd063-timeout R2
-  - prd063-timeout R3
-  - prd063-timeout R4
-  - prd064-shuf R1
-  - prd064-shuf R2
-  - prd064-shuf R3
-  - prd064-shuf R4
-  - prd065-factor R1
-  - prd065-factor R2
-  - prd065-factor R3
-  - prd065-factor R4
-  - prd066-expr R1
-  - prd066-expr R2
-  - prd066-expr R3
-  - prd066-expr R4
+  - srd060-date R1
+  - srd060-date R2
+  - srd060-date R3
+  - srd060-date R4
+  - srd061-sleep R1
+  - srd061-sleep R2
+  - srd061-sleep R3
+  - srd061-sleep R4
+  - srd062-touch R1
+  - srd062-touch R2
+  - srd062-touch R3
+  - srd062-touch R4
+  - srd063-timeout R1
+  - srd063-timeout R2
+  - srd063-timeout R3
+  - srd063-timeout R4
+  - srd064-shuf R1
+  - srd064-shuf R2
+  - srd064-shuf R3
+  - srd064-shuf R4
+  - srd065-factor R1
+  - srd065-factor R2
+  - srd065-factor R3
+  - srd065-factor R4
+  - srd066-expr R1
+  - srd066-expr R2
+  - srd066-expr R3
+  - srd066-expr R4
 
 preconditions:
   - ./bin/date, ./bin/sleep, ./bin/touch, ./bin/timeout, ./bin/shuf, ./bin/factor, and ./bin/expr exist (built via mage build).
@@ -65,9 +65,9 @@ test_cases:
       stdout: "1970-01-01 00:00:00\n"
       stderr: ""
     traces:
-      - prd060-date R1.2
-      - prd060-date R1.3
-      - prd060-date R2.2
+      - srd060-date R1.2
+      - srd060-date R1.3
+      - srd060-date R2.2
 
   - name: date_epoch_seconds
     description: "date -u -d @1700000000 '+%s'; expect '1700000000'."
@@ -81,9 +81,9 @@ test_cases:
       stdout: "1700000000\n"
       stderr: ""
     traces:
-      - prd060-date R1.3
-      - prd060-date R2.2
-      - prd060-date R3.1
+      - srd060-date R1.3
+      - srd060-date R2.2
+      - srd060-date R3.1
 
   - name: date_invalid_string
     description: "date -d 'invalid'; expect exit 1 with error on stderr."
@@ -97,8 +97,8 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd060-date R2.4
-      - prd060-date R4.2
+      - srd060-date R2.4
+      - srd060-date R4.2
 
   - name: date_weekday_format
     description: "date -d @0 '+%A' under TZ=UTC; expect 'Thursday'."
@@ -112,7 +112,7 @@ test_cases:
       stdout: "Thursday\n"
       stderr: ""
     traces:
-      - prd060-date R1.3
+      - srd060-date R1.3
 
   # --- sleep ---
   - name: sleep_zero
@@ -127,8 +127,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd061-sleep R1.1
-      - prd061-sleep R2.1
+      - srd061-sleep R1.1
+      - srd061-sleep R2.1
 
   - name: sleep_no_args
     description: "sleep with no arguments; expect exit 1 with error."
@@ -142,8 +142,8 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd061-sleep R2.2
-      - prd061-sleep R4.2
+      - srd061-sleep R2.2
+      - srd061-sleep R4.2
 
   - name: sleep_invalid_arg
     description: "sleep abc; expect exit 1 with error on stderr."
@@ -157,8 +157,8 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd061-sleep R2.3
-      - prd061-sleep R4.2
+      - srd061-sleep R2.3
+      - srd061-sleep R4.2
 
   - name: sleep_negative_arg
     description: "sleep -1; expect exit 1 with error on stderr."
@@ -172,8 +172,8 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd061-sleep R2.3
-      - prd061-sleep R4.2
+      - srd061-sleep R2.3
+      - srd061-sleep R4.2
 
   # --- touch ---
   - name: touch_create_file
@@ -188,8 +188,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd062-touch R1.1
-      - prd062-touch R1.2
+      - srd062-touch R1.1
+      - srd062-touch R1.2
 
   - name: touch_no_create
     description: "touch -c nonexistent does not create file, exits 0."
@@ -203,8 +203,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd062-touch R1.3
-      - prd062-touch R4.1
+      - srd062-touch R1.3
+      - srd062-touch R4.1
 
   - name: touch_explicit_timestamp
     description: "touch -t 202401151030.00 file sets explicit timestamp."
@@ -218,7 +218,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd062-touch R2.4
+      - srd062-touch R2.4
 
   - name: touch_reference_missing
     description: "touch -r /nonexistent /tmp/f; expect exit 1 with error."
@@ -232,8 +232,8 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd062-touch R3.3
-      - prd062-touch R4.2
+      - srd062-touch R3.3
+      - srd062-touch R4.2
 
   # --- timeout ---
   - name: timeout_command_succeeds
@@ -248,8 +248,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd063-timeout R1.1
-      - prd063-timeout R3.1
+      - srd063-timeout R1.1
+      - srd063-timeout R3.1
 
   - name: timeout_command_fails
     description: "timeout 10 false; expect exit 1 (command status)."
@@ -263,7 +263,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd063-timeout R3.1
+      - srd063-timeout R3.1
 
   - name: timeout_zero_duration
     description: "timeout 0 sleep 0; expect exit 0 (no time limit)."
@@ -277,8 +277,8 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd063-timeout R1.4
-      - prd063-timeout R3.1
+      - srd063-timeout R1.4
+      - srd063-timeout R3.1
 
   - name: timeout_no_args
     description: "timeout with no arguments; expect exit 125 with error."
@@ -292,7 +292,7 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd063-timeout R3.4
+      - srd063-timeout R3.4
 
   # --- shuf ---
   - name: shuf_stdin_three_lines
@@ -307,9 +307,9 @@ test_cases:
       stdout: "3 lines containing a, b, c in any order"
       stderr: ""
     traces:
-      - prd064-shuf R1.1
-      - prd064-shuf R1.2
-      - prd064-shuf R1.3
+      - srd064-shuf R1.1
+      - srd064-shuf R1.2
+      - srd064-shuf R1.3
 
   - name: shuf_range_mode
     description: "shuf -i 1-5; expect exactly 5 lines, distinct integers 1-5."
@@ -323,7 +323,7 @@ test_cases:
       stdout: "5 lines, each a distinct integer from 1 to 5"
       stderr: ""
     traces:
-      - prd064-shuf R2.1
+      - srd064-shuf R2.1
 
   - name: shuf_head_count
     description: "shuf -i 1-100 -n 3; expect exactly 3 lines, distinct integers 1-100."
@@ -337,8 +337,8 @@ test_cases:
       stdout: "3 lines, each a distinct integer from 1 to 100"
       stderr: ""
     traces:
-      - prd064-shuf R2.1
-      - prd064-shuf R2.2
+      - srd064-shuf R2.1
+      - srd064-shuf R2.2
 
   - name: shuf_echo_mode
     description: "shuf -e alpha beta gamma; expect 3 lines containing alpha, beta, gamma."
@@ -352,7 +352,7 @@ test_cases:
       stdout: "3 lines containing alpha, beta, gamma in any order"
       stderr: ""
     traces:
-      - prd064-shuf R3.3
+      - srd064-shuf R3.3
 
   - name: shuf_empty_input
     description: "shuf on empty stdin; expect no output."
@@ -366,7 +366,7 @@ test_cases:
       stdout: ""
       stderr: ""
     traces:
-      - prd064-shuf R3.4
+      - srd064-shuf R3.4
 
   # --- factor ---
   - name: factor_composite
@@ -381,7 +381,7 @@ test_cases:
       stdout: "12: 2 2 3\n"
       stderr: ""
     traces:
-      - prd065-factor R1.1
+      - srd065-factor R1.1
 
   - name: factor_one
     description: "factor 1; expect '1:'."
@@ -395,7 +395,7 @@ test_cases:
       stdout: "1:\n"
       stderr: ""
     traces:
-      - prd065-factor R1.2
+      - srd065-factor R1.2
 
   - name: factor_prime
     description: "factor 97; expect '97: 97'."
@@ -409,7 +409,7 @@ test_cases:
       stdout: "97: 97\n"
       stderr: ""
     traces:
-      - prd065-factor R1.3
+      - srd065-factor R1.3
 
   - name: factor_multiple_args
     description: "factor 6 15; expect '6: 2 3' and '15: 3 5'."
@@ -423,7 +423,7 @@ test_cases:
       stdout: "6: 2 3\n15: 3 5\n"
       stderr: ""
     traces:
-      - prd065-factor R1.4
+      - srd065-factor R1.4
 
   - name: factor_stdin_mode
     description: "echo 15 | factor; expect '15: 3 5'."
@@ -437,7 +437,7 @@ test_cases:
       stdout: "15: 3 5\n"
       stderr: ""
     traces:
-      - prd065-factor R2.1
+      - srd065-factor R2.1
 
   - name: factor_large_number
     description: "factor 999999937 (large prime); expect '999999937: 999999937'."
@@ -451,8 +451,8 @@ test_cases:
       stdout: "999999937: 999999937\n"
       stderr: ""
     traces:
-      - prd065-factor R1.3
-      - prd065-factor R2.2
+      - srd065-factor R1.3
+      - srd065-factor R2.2
 
   # --- expr ---
   - name: expr_addition
@@ -467,7 +467,7 @@ test_cases:
       stdout: "5\n"
       stderr: ""
     traces:
-      - prd066-expr R1.1
+      - srd066-expr R1.1
 
   - name: expr_multiplication
     description: "expr 4 '*' 5; expect '20'."
@@ -481,7 +481,7 @@ test_cases:
       stdout: "20\n"
       stderr: ""
     traces:
-      - prd066-expr R1.1
+      - srd066-expr R1.1
 
   - name: expr_comparison_less
     description: "expr 5 '<' 10; expect '1' (true)."
@@ -495,7 +495,7 @@ test_cases:
       stdout: "1\n"
       stderr: ""
     traces:
-      - prd066-expr R1.2
+      - srd066-expr R1.2
 
   - name: expr_string_length
     description: "expr length hello; expect '5'."
@@ -509,7 +509,7 @@ test_cases:
       stdout: "5\n"
       stderr: ""
     traces:
-      - prd066-expr R2.4
+      - srd066-expr R2.4
 
   - name: expr_substr
     description: "expr substr hello 2 3; expect 'ell'."
@@ -523,7 +523,7 @@ test_cases:
       stdout: "ell\n"
       stderr: ""
     traces:
-      - prd066-expr R2.2
+      - srd066-expr R2.2
 
   - name: expr_division_by_zero
     description: "expr 1 / 0; expect exit 2 with error on stderr."
@@ -537,8 +537,8 @@ test_cases:
       stdout: ""
       stderr: "non-empty error message"
     traces:
-      - prd066-expr R3.4
-      - prd066-expr R4.3
+      - srd066-expr R3.4
+      - srd066-expr R4.3
 
   - name: expr_zero_result_exit_code
     description: "expr 0 + 0; expect '0' and exit 1 (result is zero)."
@@ -552,8 +552,8 @@ test_cases:
       stdout: "0\n"
       stderr: ""
     traces:
-      - prd066-expr R1.1
-      - prd066-expr R4.2
+      - srd066-expr R1.1
+      - srd066-expr R4.2
 
   - name: expr_parentheses
     description: "expr '(' 2 + 3 ')' '*' 4; expect '20'."
@@ -567,5 +567,5 @@ test_cases:
       stdout: "20\n"
       stderr: ""
     traces:
-      - prd066-expr R1.4
-      - prd066-expr R3.2
+      - srd066-expr R1.4
+      - srd066-expr R3.2

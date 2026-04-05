@@ -12,7 +12,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd006-cat.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd006-cat.yaml) and invokes do-work to produce
   a passing differential test for cmd/cat.
 
 flow:
@@ -36,7 +36,7 @@ flow:
       deterministic). Divergence triggers failure reporting per pkg/testutils contract.
 
 touchpoints:
-  - T1: "cmd/cat — concatenation, line numbering, blank squeezing, non-printing display (prd006-cat R1, R2, R3, R4, R5)"
+  - T1: "cmd/cat — concatenation, line numbering, blank squeezing, non-printing display (srd006-cat R1, R2, R3, R4, R5)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
 
 success_criteria:

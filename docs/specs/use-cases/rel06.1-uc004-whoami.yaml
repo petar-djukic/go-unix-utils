@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd042-whoami.yaml) and invokes do-work to
+  The operator has completed the PRD (srd042-whoami.yaml) and invokes do-work to
   produce a passing differential test for cmd/whoami.
 
 flow:
@@ -26,7 +26,7 @@ flow:
       must be built). The harness compares stdout byte-for-byte and exit codes.
 
 touchpoints:
-  - T1: "cmd/whoami — effective username output (prd042-whoami R1, R2)"
+  - T1: "cmd/whoami — effective username output (srd042-whoami R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

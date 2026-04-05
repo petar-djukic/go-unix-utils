@@ -4,10 +4,10 @@ release: rel04.0
 
 traces:
   - rel04.0-uc002-ls-extended
-  - prd008-ls R1
-  - prd008-ls R2
-  - prd008-ls R3
-  - prd008-ls R4
+  - srd008-ls R1
+  - srd008-ls R2
+  - srd008-ls R3
+  - srd008-ls R4
 
 preconditions:
   - ./bin/ls exists (built via mage build).
@@ -33,8 +33,8 @@ test_cases:
       stdout_structure: entries in columns, fitting within 80 characters
       stderr: ""
     traces:
-      - prd008-ls R1.11
-      - prd008-ls R1.12
+      - srd008-ls R1.11
+      - srd008-ls R1.12
 
   - name: horizontal_layout
     description: -x sorts entries horizontally (across, then down).
@@ -48,7 +48,7 @@ test_cases:
       stdout_structure: entries arranged across rows first, then down
       stderr: ""
     traces:
-      - prd008-ls R1.13
+      - srd008-ls R1.13
 
   - name: sort_by_mtime
     description: '-t sorts by modification time, newest first. Fixture files have distinct mtimes set via os.Chtimes: newest_file (mtime = now), middle_file (mtime = now - 1h), oldest_file (mtime = now - 2h)'
@@ -62,7 +62,7 @@ test_cases:
       stdout_structure: entries ordered newest to oldest
       stderr: ""
     traces:
-      - prd008-ls R2.5
+      - srd008-ls R2.5
 
   - name: sort_by_size
     description: -S sorts by size, largest first.
@@ -76,7 +76,7 @@ test_cases:
       stdout_structure: entries ordered largest to smallest by file size
       stderr: ""
     traces:
-      - prd008-ls R2.6
+      - srd008-ls R2.6
 
   - name: sort_reverse
     description: -r reverses the default alphabetical sort order.
@@ -90,7 +90,7 @@ test_cases:
       stdout_structure: entries in reverse C locale alphabetical order
       stderr: ""
     traces:
-      - prd008-ls R2.7
+      - srd008-ls R2.7
 
   - name: sort_reverse_time
     description: -tr reverses time sort (oldest first).
@@ -104,8 +104,8 @@ test_cases:
       stdout_structure: entries ordered oldest to newest
       stderr: ""
     traces:
-      - prd008-ls R2.7
-      - prd008-ls R2.5
+      - srd008-ls R2.7
+      - srd008-ls R2.5
 
   - name: sort_unsorted
     description: -U disables sorting; entries in directory order.
@@ -119,7 +119,7 @@ test_cases:
       stdout_structure: entries in directory order (same for both binaries on same filesystem)
       stderr: ""
     traces:
-      - prd008-ls R2.8
+      - srd008-ls R2.8
 
   - name: version_sort
     description: -v sorts with numeric-aware version sort (file2 before file10).
@@ -133,7 +133,7 @@ test_cases:
       stdout_structure: file1, file2, file10, file20 (numeric sort, not lexicographic)
       stderr: ""
     traces:
-      - prd008-ls R2.9
+      - srd008-ls R2.9
 
   - name: inode_display
     description: -i prepends inode number to each entry.
@@ -147,7 +147,7 @@ test_cases:
       stdout_structure: each line has right-aligned inode number followed by entry name
       stderr: ""
     traces:
-      - prd008-ls R2.11
+      - srd008-ls R2.11
 
   - name: block_display
     description: -s prepends block count to each entry.
@@ -161,7 +161,7 @@ test_cases:
       stdout_structure: each line has right-aligned block count followed by entry name
       stderr: ""
     traces:
-      - prd008-ls R2.12
+      - srd008-ls R2.12
 
   - name: numeric_ids
     description: -n activates long format with numeric UID/GID instead of names.
@@ -175,8 +175,8 @@ test_cases:
       stdout_structure: long format with numeric owner and group IDs
       stderr: ""
     traces:
-      - prd008-ls R2.14
-      - prd008-ls R4.6
+      - srd008-ls R2.14
+      - srd008-ls R4.6
 
   - name: classify_indicator
     description: '-F appends type indicators to entry names. Fixture contains: a directory (gets /), an executable (gets *), a symlink (gets @), a named pipe (gets |), a regular file (no indicator).'
@@ -190,8 +190,8 @@ test_cases:
       stdout_structure: 'output contains "/", "*", and "@"'
       stderr: ""
     traces:
-      - prd008-ls R3.8
-      - prd008-ls R3.9
+      - srd008-ls R3.8
+      - srd008-ls R3.9
 
   - name: recursive
     description: -R recursively lists subdirectories with "path:" headers.
@@ -207,9 +207,9 @@ test_cases:
         and blank-line separators.
       stderr: ""
     traces:
-      - prd008-ls R3.11
-      - prd008-ls R3.13
-      - prd008-ls R3.14
+      - srd008-ls R3.11
+      - srd008-ls R3.13
+      - srd008-ls R3.14
 
   - name: recursive_long
     description: -Rl lists all subdirectories in long format with "total N" per directory.
@@ -225,5 +225,5 @@ test_cases:
         with MTIME placeholder.
       stderr: ""
     traces:
-      - prd008-ls R3.12
-      - prd008-ls R4.8
+      - srd008-ls R3.12
+      - srd008-ls R4.8

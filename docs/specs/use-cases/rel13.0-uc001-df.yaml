@@ -9,7 +9,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd106-df.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd106-df.yaml) and invokes do-work to produce
   a passing differential test for cmd/df.
 
 flow:
@@ -22,7 +22,7 @@ flow:
       gdf with the same inputs and compares stdout, stderr, and exit codes.
 
 touchpoints:
-  - T1: "cmd/df — df reports filesystem usage (prd106-df R1, R2, R3, R4)"
+  - T1: "cmd/df — df reports filesystem usage (srd106-df R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

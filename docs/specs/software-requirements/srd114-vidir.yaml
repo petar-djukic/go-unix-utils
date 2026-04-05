@@ -1,0 +1,67 @@
+id: srd114-vidir
+title: "cmd/vidir: Edit a Directory in a Text Editor"
+
+problem: |
+  vidir (from moreutils) allows batch renaming and deletion of files by editing a
+  directory listing in a text editor. The Go implementation must match the Homebrew
+  reference binary (vidir, installed by moreutils) in behavior, verified by differential
+  testing via pkg/testutils.
+
+goals:
+  - G1: List files in a directory, open the listing in an editor, and apply renames/deletions.
+  - G2: Verify functional parity against the reference vidir binary via differential testing.
+
+requirements:
+  R1:
+    title: Directory editing
+    items:
+      - R1.1:
+          text: Must list files from the specified directory (or current directory if none given), or from stdin if piped, with each line formatted as "NUMBER\tFILENAME". Must open this listing in the editor specified by $EDITOR (default vi).
+          weight: 4
+      - R1.2:
+          text: After the editor exits, must compare the edited listing with the original. Deleted lines cause the corresponding file to be removed. Changed filenames cause the file to be renamed.
+          weight: 4
+      - R1.3:
+          text: Must process renames before deletions to avoid conflicts. Must create parent directories for renames that move files to new paths.
+          weight: 1
+      - R1.4:
+          text: "-v or --verbose must print each action (rename, delete) to stderr."
+          weight: 1
+
+  R2:
+    title: Exit codes and SIGPIPE
+    items:
+      - R2.1:
+          text: Must exit 0 on success. Must exit 1 when the editor exits non-zero or a rename/delete fails.
+          weight: 1
+      - R2.2:
+          text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
+          weight: 1
+
+non_goals:
+  - cmd/vidir does not implement recursive directory editing.
+  - cmd/vidir does not support undo.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "vidir lists files with tab-separated numbers and names, matching reference."
+    traces:
+      - R1.1
+  - id: AC2
+    criterion: "vidir applies renames and deletions from edited listing, matching reference."
+    traces:
+      - R1.2
+      - R1.3
+  - id: AC3
+    criterion: "cmd/vidir compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R1.4
+      - R2.1
+      - R2.2
+
+package_contract:
+  imports:
+    - github.com/petar-djukic/go-unix-utils/pkg/sys

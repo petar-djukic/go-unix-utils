@@ -5,7 +5,7 @@ overview: |
   We map each of the 14 utilities to the shared pkg/ components they will need in
   their Go implementations. Dependencies are derived from C source analysis in
   sources.yaml. The map justifies the scope and required API of each shared component
-  PRD (pkg/testutils, pkg/sys, pkg/format). We list a utility under a component when
+  SRD (pkg/testutils, pkg/sys, pkg/format). We list a utility under a component when
   it requires behavior that would be duplicated across cmd/ packages without that component.
 
 components:
@@ -228,7 +228,7 @@ utilities_without_shared_components:
     package: findutils
     reason: |
       find is handled in a later phase (search utilities phase 4). pkg/sys dependency
-      is noted above but the PRD and use case are deferred.
+      is noted above but the SRD and use case are deferred.
 
   - utility: xargs
     package: findutils
@@ -239,7 +239,7 @@ notes:
   - |
     egrep and fgrep are shell script wrappers for grep -E and grep -F respectively.
     They do not require separate Go implementations; they are handled as flags of the
-    grep PRD.
+    grep SRD.
   - |
     The current batch (phase 1-2) focuses on ts, wc, cat, sponge from the dependency
     analysis. These four utilities share only pkg/testutils and require no pkg/sys or

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd047-hostname.yaml) and invokes do-work to
+  The operator has completed the PRD (srd047-hostname.yaml) and invokes do-work to
   produce a passing differential test for cmd/hostname.
 
 flow:
@@ -24,7 +24,7 @@ flow:
       byte-for-byte and exit codes. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/hostname — hostname output (prd047-hostname R1, R2)"
+  - T1: "cmd/hostname — hostname output (srd047-hostname R1, R2)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler"
 

@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd069-join.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd069-join.yaml) and invokes do-work to produce
   a passing differential test for cmd/join.
 
 flow:
@@ -27,7 +27,7 @@ flow:
       compare stdout and exit codes under LC_ALL=C.
 
 touchpoints:
-  - T1: "cmd/join — field join, separators, unpairable lines, header mode (prd069-join R1, R2, R3, R4)"
+  - T1: "cmd/join — field join, separators, unpairable lines, header mode (srd069-join R1, R2, R3, R4)"
   - T2: "pkg/testutils — RunDiffTests, stdout and exit code comparison"
 
 success_criteria:

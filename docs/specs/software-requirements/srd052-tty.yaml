@@ -1,0 +1,96 @@
+id: srd052-tty
+title: "cmd/tty: Print Terminal File Name"
+
+problem: |
+  Scripts use tty to determine whether stdin is connected to a terminal and to obtain the
+  terminal device name. The -s (silent) flag suppresses output and reports only via exit
+  code, which is useful in conditional expressions. The Go implementation must match the
+  Homebrew GNU reference binary (gtty, installed by coreutils) byte-for-byte on stdout
+  and exit code, verified by differential testing via pkg/testutils.
+
+goals:
+  - G1: Print the file name of the terminal connected to stdin.
+  - G2: Support the -s (silent) flag for exit-code-only operation.
+
+requirements:
+  R1:
+    title: Default behavior and silent mode
+    items:
+      - R1.1:
+          text: When invoked with no arguments and stdin is a terminal, must print the terminal device name (e.g., /dev/ttys000) followed by a newline and exit 0.
+          weight: 1
+      - R1.2:
+          text: When invoked with no arguments and stdin is not a terminal, must print "not a tty" followed by a newline and exit 1.
+          weight: 1
+      - R1.3:
+          text: "-s (--silent, --quiet) must suppress all output. The exit code is 0 if stdin is a terminal, 1 otherwise."
+          weight: 1
+
+  R2:
+    title: Error handling
+    items:
+      - R2.1:
+          text: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 2.
+          weight: 1
+      - R2.2:
+          text: Unknown flags must produce an error message to stderr and exit 2.
+          weight: 1
+
+  R3:
+    title: Differential testing
+    items:
+      - R3.1:
+          text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gtty) via pkg/testutils.
+          weight: 1
+      - R3.2:
+          text: "Tests must cover: stdin connected to a terminal (if available), stdin redirected from a file or pipe (not a tty), -s flag, and error cases."
+          weight: 1
+      - R3.3:
+          text: All differential tests must set LC_ALL=C in the environment.
+          weight: 1
+
+non_goals:
+  - cmd/tty does not configure terminal settings; use stty for that.
+  - cmd/tty does not check terminals connected to stdout or stderr; it checks stdin only.
+
+acceptance_criteria:
+  - id: AC1
+    criterion: "go run ./cmd/tty with stdin from a pipe prints \"not a tty\" and exits 1, matching gtty."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC2
+    criterion: "go run ./cmd/tty -s with stdin from a pipe produces no output and exits 1, matching gtty."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+  - id: AC3
+    criterion: "Differential test against gtty passes for piped and terminal stdin cases."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R3.1
+      - R3.2
+      - R3.3
+  - id: AC4
+    criterion: "cmd/tty compiles with no warnings under golangci-lint."
+    traces:
+      - R1.1
+      - R1.2
+      - R1.3
+      - R2.1
+      - R2.2
+      - R3.1
+      - R3.2
+      - R3.3

@@ -11,7 +11,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd023-fold.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd023-fold.yaml) and invokes do-work to produce
   a passing differential test for cmd/fold.
 
 flow:
@@ -31,7 +31,7 @@ flow:
       with the same stdin, args, and environment. Requires F1 (binary must be built).
 
 touchpoints:
-  - T1: "cmd/fold — line width measurement, newline insertion, tab column expansion, space-break mode (prd023-fold R1, R2, R3)"
+  - T1: "cmd/fold — line width measurement, newline insertion, tab column expansion, space-break mode (srd023-fold R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, binary execution and byte-for-byte comparison"
   - T3: "pkg/sys — InstallSIGPIPEHandler for graceful SIGPIPE handling"
 

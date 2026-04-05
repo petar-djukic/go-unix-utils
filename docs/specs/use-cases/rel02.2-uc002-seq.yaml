@@ -10,7 +10,7 @@ summary: |
 actor: Human Operator
 
 trigger: |
-  The operator has completed the PRD (prd019-seq.yaml) and invokes do-work to produce
+  The operator has completed the PRD (srd019-seq.yaml) and invokes do-work to produce
   a passing differential test for cmd/seq.
 
 flow:
@@ -30,7 +30,7 @@ flow:
       precision matching is validated by byte-for-byte comparison.
 
 touchpoints:
-  - T1: "cmd/seq — argument forms, sequence generation, formatting (prd019-seq R1, R2, R3)"
+  - T1: "cmd/seq — argument forms, sequence generation, formatting (srd019-seq R1, R2, R3)"
   - T2: "pkg/testutils — RunDiffTests, stdout comparison"
 
 success_criteria:

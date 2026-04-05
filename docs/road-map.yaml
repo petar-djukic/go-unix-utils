@@ -146,7 +146,7 @@ releases:
         Full ls implementation covering all flags: default, -1, -l, -a, -A, -d, --color, -h
         (core), plus -C, -x, sort flags (-t, -S, -r, -U, -v), metadata display (-i, -s, -n),
         -F classify, and -R recursive (extended). Previously split across rel04.0 and rel04.1;
-        merged after combining prd008-ls and prd010-ls-extended into a single PRD.
+        merged after combining srd008-ls and srd010-ls-extended into a single SRD.
       use_cases:
         - id: rel04.0-uc001-ls
           status: implemented
@@ -590,7 +590,7 @@ releases:
         algorithmic complexity. ts timestamps stdin lines with multiple modes including
         relative-time conversion. stty prints and changes terminal line settings via
         termios. pr paginates text files with headers, page numbers, and multi-column
-        layout. ptx produces a permuted keyword-in-context index. All PRDs have been
+        layout. ptx produces a permuted keyword-in-context index. All SRDs have been
         restructured so each weight-4 requirement is in its own group. All are verified
         by differential testing against reference binaries.
       use_cases:
