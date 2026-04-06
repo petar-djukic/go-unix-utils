@@ -254,23 +254,6 @@ func firstDiffPos(a, b []byte) int {
 	return n
 }
 
-// ComposeNormalizers returns a single NormalizeFunc that applies the given
-// functions in order. Returns an identity function when fns is empty.
-func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc {
-	return func(b []byte) []byte {
-		for _, fn := range fns {
-			b = fn(b)
-		}
-		return b
-	}
-}
-
-// TimestampNormalizer replaces common strftime timestamp patterns with a
-// fixed placeholder string. Used by cmd/ts tests.
-var TimestampNormalizer NormalizeFunc = func(b []byte) []byte {
-	return b
-}
-
 // BuildBinary compiles the cmd/ package at dir and returns the path to the
 // built binary. Calls t.Fatal on build failure.
 func BuildBinary(t *testing.T, dir string) string {
