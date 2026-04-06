@@ -253,10 +253,3 @@ func firstDiffPos(a, b []byte) int {
 	}
 	return n
 }
-
-// BuildBinary compiles the cmd/ package at dir and returns the path to the
-// built binary. Calls t.Fatal on build failure.
-func BuildBinary(t *testing.T, dir string) string {
-	t.Helper()
-	return ""
-}
