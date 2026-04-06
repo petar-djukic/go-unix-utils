@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -71,17 +72,20 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 			ref := runBinary(t, refBinary, tc.Args, tc.Stdin, env, workDir)
 			got := runBinary(t, goBinary, tc.Args, tc.Stdin, env, workDir)
 			compareResults(t, tc, ref, got)
+			verifyExpectedFiles(t, tc, workDir)
 		})
 	}
 }
 
 // buildEnv constructs the environment variable slice for binary execution.
-// R2.6: sets LC_ALL=C by default; testEnv entries override via append order.
+// R2.5/R2.6: when testEnv is nil, inherit os.Environ() with LC_ALL=C prepended.
+// When testEnv is non-nil, prepend LC_ALL=C to the provided slice only.
 func buildEnv(testEnv []string) []string {
-	env := os.Environ()
-	env = append(env, "LC_ALL=C")
-	env = append(env, testEnv...)
-	return env
+	if testEnv == nil {
+		env := append([]string{"LC_ALL=C"}, os.Environ()...)
+		return env
+	}
+	return append([]string{"LC_ALL=C"}, testEnv...)
 }
 
 // runBinary executes a binary and captures its stdout, stderr, and exit code.
@@ -195,6 +199,59 @@ func compareExitCode(t *testing.T, tc DiffTest, refCode, gotCode int) {
 		"expected (ref):  %d\n"+
 		"actual   (go):   %d",
 		tc.Args, refCode, gotCode)
+}
+
+// verifyExpectedFiles checks that files written by the Go binary match the
+// expected content from DiffTest.ExpectedFiles.
+// R3.1/R3.2: paths are relative to workDir; reports missing files and content mismatches.
+func verifyExpectedFiles(t *testing.T, tc DiffTest, workDir string) {
+	t.Helper()
+	if tc.ExpectedFiles == nil {
+		return
+	}
+	for relPath, expected := range tc.ExpectedFiles {
+		fullPath := filepath.Join(workDir, relPath)
+		verifyOneFile(t, tc, relPath, fullPath, expected)
+	}
+}
+
+// verifyOneFile checks a single expected file for existence and content match.
+// R3.2: reports missing file path or first differing byte position.
+func verifyOneFile(t *testing.T, tc DiffTest, relPath, fullPath string, expected []byte) {
+	t.Helper()
+	actual, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Errorf("expected file missing\n"+
+			"args: %v\n"+
+			"path: %s",
+			tc.Args, relPath)
+		return
+	}
+	if bytes.Equal(expected, actual) {
+		return
+	}
+	pos := firstDiffPos(expected, actual)
+	t.Errorf("expected file content mismatch\n"+
+		"args:              %v\n"+
+		"path:              %s\n"+
+		"expected (len):    %d\n"+
+		"actual   (len):    %d\n"+
+		"first diff at byte: %d",
+		tc.Args, relPath, len(expected), len(actual), pos)
+}
+
+// firstDiffPos returns the index of the first byte that differs between a and b.
+func firstDiffPos(a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return n
 }
 
 // ComposeNormalizers returns a single NormalizeFunc that applies the given
