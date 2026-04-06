@@ -18,33 +18,26 @@ requirements:
     items:
       - R1.1:
           text: When invoked with no arguments, must print the machine hardware name (e.g., x86_64, arm64) followed by a newline and exit 0.
-          weight: 1
       - R1.2:
           text: The output must be identical to guname -m on the same system.
-          weight: 1
 
   R2:
     title: Error handling
     items:
       - R2.1:
           text: If any extra operand is provided (beyond --help and --version), must print an error message to stderr and exit 1.
-          weight: 1
       - R2.2:
           text: Must not accept any flags other than --help and --version. Unknown flags must produce an error message to stderr and exit 1.
-          weight: 1
 
   R3:
     title: Differential testing
     items:
       - R3.1:
           text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (garch) via pkg/testutils.
-          weight: 1
       - R3.2:
           text: "Tests must cover: normal invocation (no arguments), extra operand error, and unknown flag error."
-          weight: 1
       - R3.3:
           text: All differential tests must set LC_ALL=C in the environment.
-          weight: 1
 
 non_goals:
   - cmd/arch does not accept any flags for selecting different information fields; use cmd/uname for that.

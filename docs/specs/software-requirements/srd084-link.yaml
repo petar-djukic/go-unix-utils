@@ -17,29 +17,22 @@ requirements:
     items:
       - R1.1:
           text: Must accept exactly two arguments FILE1 and FILE2 and create a hard link at FILE2 pointing to FILE1 using the link(2) system call.
-          weight: 1
       - R1.2:
           text: Must not follow symlinks, create symlinks, or handle directories specially — the raw link(2) semantics apply.
-          weight: 1
       - R1.3:
           text: Must exit 1 with an error to stderr if fewer or more than two arguments are given.
-          weight: 1
       - R1.4:
           text: Must exit 1 with an error to stderr if the link(2) call fails (e.g., FILE1 does not exist, FILE2 already exists, cross-device link).
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit 0 when the hard link is created successfully.
-          weight: 1
       - R2.2:
           text: Must exit 1 on any error.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/link does not support symbolic links; use ln -s for that.

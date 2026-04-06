@@ -21,73 +21,54 @@ requirements:
     items:
       - R1.1:
           text: When no flags are given, must sort all input lines lexicographically using byte values (LC_ALL=C).
-          weight: 4
       - R1.2:
           text: Must read from stdin when no file arguments are given or when a file argument is "-".
-          weight: 4
       - R1.3:
           text: Must accept multiple input files and sort their combined lines as a single stream.
-          weight: 4
       - R1.4:
           text: "-r or --reverse must reverse the sort order."
-          weight: 4
       - R1.5:
           text: "-u or --unique must output only the first of an equal run (based on the active sort key)."
-          weight: 4
       - R1.6:
           text: "-o FILE or --output=FILE must write output to FILE. FILE may be the same as an input file."
-          weight: 4
       - R1.7:
           text: "-s or --stable must preserve the input order of lines that compare equal."
-          weight: 4
 
   R2:
     title: Sort modes
     items:
       - R2.1:
           text: "-n or --numeric-sort must sort by numeric value, parsing leading whitespace and optional sign."
-          weight: 4
       - R2.2:
           text: "-h or --human-numeric-sort must sort by numeric value with SI suffixes (K, M, G, T, P, E, Z, Y)."
-          weight: 4
       - R2.3:
           text: "-M or --month-sort must sort by month name abbreviation (JAN < FEB < ... < DEC). Unknown strings sort before JAN."
-          weight: 4
       - R2.4:
           text: "-V or --version-sort must sort by version number segments (natural sort)."
-          weight: 4
 
   R3:
     title: Key fields and delimiters
     items:
       - R3.1:
           text: "-t CHAR or --field-separator=CHAR must use CHAR as the field delimiter instead of the default blank-to-non-blank transition."
-          weight: 4
       - R3.2:
           text: "-k KEYDEF or --key=KEYDEF must sort by the specified key field. KEYDEF format is F[.C][OPTS][,F[.C][OPTS]] where F is field number, C is character position, and OPTS are modifier letters (n, r, h, M, V, b, d, f, i)."
-          weight: 4
       - R3.3:
           text: Must support multiple -k options. Earlier keys take precedence; later keys break ties.
-          weight: 4
       - R3.4:
           text: "-b or --ignore-leading-blanks must ignore leading blanks when finding sort keys."
-          weight: 4
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when input is sorted successfully.
-          weight: 4
       - R4.2:
           text: "-c or --check must check whether input is sorted. Exit 0 if sorted, exit 1 if not. With -C or --check=quiet, suppress the diagnostic message."
-          weight: 4
       - R4.3:
           text: Must exit 2 on usage errors (invalid flags, conflicting options).
-          weight: 4
       - R4.4:
           text: "Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must cover: default sort, -r, -n, -h, -M, -V, -u, -s, -k with field specs, -t delimiter, -b, -c check mode, multi-file input, and stdin."
-          weight: 4
 
 non_goals:
   - cmd/sort does not implement --parallel (threaded merge sort). Single-threaded sorting is sufficient for correctness verification.

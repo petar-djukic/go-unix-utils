@@ -17,29 +17,22 @@ requirements:
     items:
       - R1.1:
           text: Must check each given pathname and print an error to stderr if the path is invalid on the current system (component too long, non-existent leading directory).
-          weight: 1
       - R1.2:
           text: "-p or --portability must check each pathname against POSIX portability rules: only portable filename characters (A-Z, a-z, 0-9, ., _, -), component length at most 14 characters, total path length at most 256 characters."
-          weight: 4
       - R1.3:
           text: "-P must check that the pathname does not contain a leading hyphen in any component."
-          weight: 1
       - R1.4:
           text: Must process multiple pathname arguments, checking each and printing errors for invalid ones.
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit 0 when all pathnames pass validation.
-          weight: 1
       - R2.2:
           text: Must exit 1 when any pathname fails validation.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/pathchk does not create or modify files.

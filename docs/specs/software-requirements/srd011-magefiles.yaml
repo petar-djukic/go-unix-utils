@@ -21,7 +21,6 @@ requirements:
             mage build compiles every package under cmd/ to a binary in the directory
             specified by configuration.yaml project.binary_dir (default: bin/). Provided
             by cobbler-scaffold orchestrator.
-          weight: 1
 
   R2:
     title: Lint target (scaffold-provided)
@@ -31,7 +30,6 @@ requirements:
             mage lint runs golangci-lint on all Go source directories listed in
             configuration.yaml project.go_source_dirs. Provided by cobbler-scaffold
             orchestrator.
-          weight: 1
 
   R3:
     title: Clean target (scaffold-provided)
@@ -41,7 +39,6 @@ requirements:
             mage clean removes the binary_dir and all its contents. If the directory
             does not exist, the target succeeds silently. Provided by cobbler-scaffold
             orchestrator.
-          weight: 1
 
   R4:
     title: Install target (scaffold-provided)
@@ -50,7 +47,6 @@ requirements:
           text: |
             mage install runs go install for every package under cmd/. Provided by
             cobbler-scaffold orchestrator.
-          weight: 1
 
   R5:
     title: Configuration contract (scaffold-provided)
@@ -59,7 +55,6 @@ requirements:
           text: |
             configuration.yaml project section must contain module_path, binary_dir,
             go_source_dirs, and magefiles_dir fields. Populated by mage scaffold:push.
-          weight: 1
 
 non_goals:
   - This SRD does not specify orchestrator, generator, scaffold, prompt, or stats targets. Those are provided by cobbler-scaffold.

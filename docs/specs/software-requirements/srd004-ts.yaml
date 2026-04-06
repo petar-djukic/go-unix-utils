@@ -23,126 +23,96 @@ requirements:
     items:
       - R1.1:
           text: Must read stdin line by line (newline-delimited). Each line must be written to stdout prefixed by a timestamp and a single space.
-          weight: 1
       - R1.2:
           text: The default timestamp format must be "%b %d %H:%M:%S" (strftime, e.g. "Feb 19 14:05:32"). The format must be evaluated at the time each line is received, not at startup.
-          weight: 1
       - R1.3:
           text: Must flush stdout after each line so that downstream consumers receive timestamps in real time.
-          weight: 1
       - R1.4:
           text: Must preserve the original newline at the end of each line; must not add an extra newline.
-          weight: 1
       - R1.5:
           text: Must pass through partial lines (lines not terminated by a newline at EOF) with a timestamp prefix.
-          weight: 1
       - R1.6:
           text: Exit code must be 0 after stdin is closed with EOF. Must not exit non-zero due to SIGPIPE when stdout is closed by a downstream consumer.
-          weight: 1
 
   R2:
     title: Custom format string
     items:
       - R2.1:
           text: Must accept an optional positional argument specifying a custom strftime format string, e.g. "ts '%Y-%m-%dT%H:%M:%S'".
-          weight: 1
       - R2.2:
           text: Must support all standard strftime(3) conversion specifications available on the target platform.
-          weight: 1
       - R2.3:
           text: 'Must support three ts-specific subsecond extensions: %.S (seconds with microsecond suffix, e.g. "32.001234"), %.s (Unix epoch with microsecond suffix, e.g. "1708358732.001234"), %.T (HH:MM:SS with microsecond suffix, e.g. "14:05:32.001234"). These extensions require Time::HiRes in the Perl reference; the Go implementation must use time.Now() sub-nanosecond precision formatted to six decimal places.'
-          weight: 1
       - R2.4:
           text: When a subsecond extension is used in the format string, must obtain both the second and microsecond components atomically from a single time sample per line.
-          weight: 1
 
   R3:
     title: Incremental mode (-i)
     items:
       - R3.1:
           text: -i must change the timestamp to the time elapsed since the previous line was received. The first line's timestamp is the time elapsed since ts started.
-          weight: 1
       - R3.2:
           text: The default format in -i mode must be "%H:%M:%S". The TZ environment must be set to GMT so that strftime on a delta-second value produces a correct elapsed string (e.g., 5 seconds since last line → "00:00:05").
-          weight: 1
       - R3.3:
           text: A custom format argument overrides the -i default format. The TZ=GMT behavior still applies.
-          weight: 1
       - R3.4:
           text: -i and -s are mutually exclusive; passing both must print a usage error to stderr and exit non-zero.
-          weight: 1
 
   R4:
     title: Elapsed-since-start mode (-s)
     items:
       - R4.1:
           text: -s must change the timestamp to the time elapsed since ts started, increasing monotonically across lines (unlike -i which resets per line).
-          weight: 1
       - R4.2:
           text: The default format in -s mode must be "%H:%M:%S" with TZ=GMT, same as -i.
-          weight: 1
       - R4.3:
           text: A custom format argument overrides the -s default format.
-          weight: 1
 
   R5:
     title: Monotonic clock mode (-m)
     items:
       - R5.1:
           text: -m must use the system's monotonic clock (CLOCK_MONOTONIC via time.Now() in Go, which automatically uses the monotonic reading) instead of the wall clock for timestamp sampling.
-          weight: 1
       - R5.2:
           text: -m is compatible with all format modes (-i, -s, default) and with custom format strings including subsecond extensions.
-          weight: 1
       - R5.3:
           text: When -m is active, the timestamp must not jump backwards or exhibit discontinuities if the wall clock is adjusted (e.g., by NTP) while ts is running.
-          weight: 1
 
   R6:
     title: Relative-time parsing and age output
     items:
       - R6.1:
           text: -r must scan each input line for known timestamp patterns and replace each match with a human-readable relative age string (e.g., "15m5s ago").
-          weight: 4
       - R6.2:
           text: 'Must recognize the following timestamp patterns from the Perl source regex: syslog format ("Jan  5 14:30:00"), ISO-8601 ("2024-01-05T14:30:00.000Z"), RFC 2822 with optional day ("16 Jun 94 07:29:35 GMT"), lastlog format ("Mon Jan  5 14:30").'
-          weight: 4
 
   R10:
     title: Relative-time format override and integration
     items:
       - R10.1:
           text: When -r and a format string are both given, must convert matched timestamps to the specified format via strftime rather than to a relative string.
-          weight: 4
       - R10.2:
           text: Lines with no recognizable timestamp must be passed through unchanged.
-          weight: 1
       - R10.3:
           text: -r is mutually exclusive with -i and -s; passing both must print a usage error to stderr and exit non-zero.
-          weight: 1
 
   R7:
     title: Exit codes and error handling
     items:
       - R7.1:
           text: Must exit 0 on clean EOF from stdin.
-          weight: 1
       - R7.2:
           text: Must exit non-zero and print a usage message to stderr when an unrecognized flag is given.
-          weight: 1
       - R7.3:
           text: Must exit non-zero when -r mode is requested but the timestamp parsing dependency (equivalent of Date::Parse) is unavailable. In the Go implementation this means the parsing library must be compiled in, so this condition cannot arise; document the invariant in the implementation.
-          weight: 1
 
   R8:
     title: Environment
     items:
       - R8.1:
           text: Must respect the TZ environment variable to determine the local time zone for wall-clock timestamps (non -i/-s modes). Setting TZ=UTC must cause timestamps to be in UTC.
-          weight: 1
       - R8.2:
           text: In -i and -s modes, must use TZ=GMT internally for elapsed-time formatting regardless of the user's TZ setting, matching the Perl source behavior.
-          weight: 1
 
   R9:
     title: Differential testing
@@ -150,10 +120,8 @@ requirements:
       - R9.1:
           text: |
             Differential tests must use testutils.TimestampNormalizer (type func([]byte) []byte, defined in pkg/testutils) to replace wall-clock timestamps in output with a fixed placeholder before comparing Go and reference binary outputs. Pass it in the DiffTest.Normalize slice. The normalizer matches strftime-formatted patterns such as "Feb 19 14:05:32" and replaces them with a fixed string so that wall-clock differences do not cause test failures.
-          weight: 1
       - R9.2:
           text: 'Tests must cover: default format, custom strftime format, -s mode, -i mode, -m mode (with monotonic normalization), multi-line stdin, empty stdin, and partial last line (no trailing newline).'
-          weight: 1
 
 non_goals:
   - cmd/ts does not implement egrep-style timestamp colorization.

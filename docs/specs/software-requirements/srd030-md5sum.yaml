@@ -20,58 +20,44 @@ requirements:
     items:
       - R1.1:
           text: Must compute the MD5 digest of each named file and write one line per file in the format "HASH  FILENAME" (two spaces for text mode, one space and asterisk "HASH *FILENAME" for binary mode). The default is text mode on non-Windows systems.
-          weight: 1
       - R1.2:
           text: Must read from stdin and print "HASH  -" when no file arguments are given or when "-" is provided as a filename.
-          weight: 1
       - R1.3:
           text: --tag must use BSD-style output format "MD5 (FILENAME) = HASH" instead of the default GNU format.
-          weight: 1
       - R1.4:
           text: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
-          weight: 1
 
   R2:
     title: Checksum verification (--check, -c)
     items:
       - R2.1:
           text: "--check FILE must read FILE line by line, parsing lines in GNU format (HASH  FILENAME or HASH *FILENAME) or BSD tag format, compute the digest for each named file, and compare it to the stored hash."
-          weight: 1
       - R2.2:
           text: 'For each verified file, must print "FILENAME: OK" or "FILENAME: FAILED" to stdout. After processing all entries, if any failed, must exit 1.'
-          weight: 1
       - R2.3:
           text: --warn (-w) must print a warning to stderr for each improperly formatted line in the checksum file; without --warn, malformed lines are silently skipped.
-          weight: 1
       - R2.4:
           text: --quiet suppresses the "OK" lines; only failures are printed. --status suppresses all output; exit code conveys success/failure.
-          weight: 1
 
   R3:
     title: Binary and text mode flags
     items:
       - R3.1:
           text: -b (--binary) marks the input as binary; the output line uses one space followed by an asterisk before the filename ("HASH *FILENAME"). On Linux/macOS there is no functional difference between binary and text mode for digest computation.
-          weight: 1
       - R3.2:
           text: -t (--text) is the default; the output line uses two spaces before the filename ("HASH  FILENAME").
-          weight: 1
       - R3.3:
           text: When --tag is given with -b, the output is BSD tag format; the mode flag has no effect on the tag format.
-          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
       - R4.1:
           text: Must exit 0 when all files are processed and all verified digests match.
-          weight: 1
       - R4.2:
           text: Must exit 1 when any file cannot be opened, any digest fails verification, or the checksum file is unreadable.
-          weight: 1
       - R4.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/md5sum does not implement HMAC-MD5 or keyed variants; it computes raw MD5 digests only.

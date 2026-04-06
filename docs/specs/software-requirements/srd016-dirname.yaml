@@ -19,55 +19,42 @@ requirements:
     items:
       - R1.1:
           text: Must strip trailing slashes from NAME, then remove the last component (everything after the final '/') and print the result.
-          weight: 1
       - R1.2:
           text: "When NAME contains no '/' after trailing-slash removal, must output '.' (the current directory)."
-          weight: 1
       - R1.3:
           text: "When NAME is '/' or consists entirely of slashes, must output '/'."
-          weight: 1
       - R1.4:
           text: Must strip trailing slashes from the result. If the result after stripping would be empty, output the root slash instead.
-          weight: 1
       - R1.5:
           text: Must process multiple NAME arguments, printing one result per argument.
-          weight: 1
 
   R2:
     title: Output formatting
     items:
       - R2.1:
           text: Each result must be followed by a newline character, or by a NUL byte (0x00) if -z or --zero is given.
-          weight: 1
       - R2.2:
           text: Results must be printed in the order the arguments are given, one per line.
-          weight: 1
 
   R3:
     title: Exit codes and error handling
     items:
       - R3.1:
           text: Must exit 0 on success.
-          weight: 1
       - R3.2:
           text: Must exit 1 when called with no arguments. Must print an error message to stderr.
-          weight: 1
       - R3.3:
           text: Must exit 1 when a write error occurs on stdout.
-          weight: 1
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary via pkg/testutils.
-          weight: 1
       - R4.2:
           text: "Tests must cover: simple path (dir/file), nested path (a/b/c), trailing slashes, root path (/), relative path with no directory (file.txt -> '.'), dot path (.), double-dot path (..), multiple arguments, and NUL-delimited output (-z)."
-          weight: 1
       - R4.3:
           text: Tests must verify error output and exit code when no arguments are given.
-          weight: 1
 
 non_goals:
   - cmd/dirname does not resolve symlinks or canonicalize paths; it operates on the string representation only.

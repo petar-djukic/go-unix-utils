@@ -28,13 +28,10 @@ requirements:
                   Encode   func(src []byte) string  // encoding function
                   WrapCol  int                       // wrap column (0 = no wrap, default 76)
               }
-          weight: 1
       - R1.2:
           text: Must provide func Encode(r io.Reader, w io.Writer, cfg EncoderConfig) error that reads all input from r, encodes it using cfg.Encode, wraps the output at cfg.WrapCol characters per line, and writes to w.
-          weight: 1
       - R1.3:
           text: When WrapCol is 0, must write the entire encoded output as a single line followed by a newline.
-          weight: 1
 
   R2:
     title: Decoding pipeline
@@ -47,23 +44,18 @@ requirements:
                   Decode        func(src string) ([]byte, error) // decoding function
                   IgnoreGarbage bool                              // ignore non-alphabet characters
               }
-          weight: 1
       - R2.2:
           text: Must provide func Decode(r io.Reader, w io.Writer, cfg DecoderConfig) error that reads all encoded input from r, strips whitespace, optionally strips non-alphabet characters (when IgnoreGarbage is true), decodes, and writes the binary result to w.
-          weight: 1
       - R2.3:
           text: Must return an error when the input contains invalid characters and IgnoreGarbage is false.
-          weight: 1
 
   R3:
     title: File handling
     items:
       - R3.1:
           text: Must provide func OpenInput(filename string) (io.ReadCloser, error) that opens the named file, or returns os.Stdin when filename is empty or "-".
-          weight: 1
       - R3.2:
           text: Must exit 1 when the input file cannot be opened, printing an error to stderr.
-          weight: 1
 
 non_goals:
   - pkg/encutil does not implement any specific encoding scheme; callers provide encode/decode functions.

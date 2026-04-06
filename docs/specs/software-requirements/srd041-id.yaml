@@ -21,55 +21,42 @@ requirements:
     items:
       - R1.1:
           text: "When invoked with no flags, must print a single line in the format: uid=N(name) gid=N(name) groups=N(name),N(name),... followed by a newline."
-          weight: 1
       - R1.2:
           text: The groups list must include all supplementary groups for the user, in the order returned by the system.
-          weight: 1
       - R1.3:
           text: Must exit 0 on success.
-          weight: 1
 
   R2:
     title: Selection flags
     items:
       - R2.1:
           text: -u or --user must print only the effective UID (numeric by default).
-          weight: 1
       - R2.2:
           text: -g or --group must print only the effective GID (numeric by default).
-          weight: 1
       - R2.3:
           text: -G or --groups must print all group IDs, space-separated, on a single line.
-          weight: 1
       - R2.4:
           text: Only one of -u, -g, -G may be specified at a time. If more than one is given, must print an error to stderr and exit 1.
-          weight: 1
 
   R3:
     title: Modifier flags and named user support
     items:
       - R3.1:
           text: -n or --name, combined with -u, -g, or -G, must print the name instead of the numeric ID. -n without a selection flag is an error.
-          weight: 1
       - R3.2:
           text: -r or --real, combined with -u or -g, must print the real UID or GID instead of the effective one. -r without -u or -g is an error.
-          weight: 1
       - R3.3:
           text: When a USER operand is given, must query that user's identity information from the system instead of the current process. If the user does not exist, must print an error to stderr and exit 1.
-          weight: 1
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gid) via pkg/testutils.
-          weight: 1
       - R4.2:
           text: "Tests must cover: default output (no flags), -u, -g, -G, -n combined with each selection flag, -r combined with -u and -g, named user lookup, and nonexistent user error."
-          weight: 1
       - R4.3:
           text: Tests must verify error output and exit code for conflicting flags and invalid users.
-          weight: 1
 
 non_goals:
   - cmd/id does not implement SELinux context output (-Z/--context).

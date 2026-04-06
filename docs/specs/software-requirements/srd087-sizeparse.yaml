@@ -26,22 +26,18 @@ requirements:
             Must provide func Parse(s string) (int64, error) that parses a size string
             consisting of an optional sign (+ or -), a decimal integer, and an optional
             unit suffix. Returns the size in bytes. Returns an error for invalid input.
-          weight: 1
       - R1.2:
           text: |
             Must support binary (IEC) suffixes: K or KiB (1024), M or MiB (1024^2),
             G or GiB (1024^3), T or TiB (1024^4), P or PiB (1024^5), E or EiB (1024^6),
             Z or ZiB (1024^7), Y or YiB (1024^8). Must also support b (512) for
             POSIX compatibility.
-          weight: 1
       - R1.3:
           text: |
             Must support decimal (SI) suffixes: KB (1000), MB (1000^2), GB (1000^3),
             TB (1000^4), PB (1000^5), EB (1000^6), ZB (1000^7), YB (1000^8).
-          weight: 1
       - R1.4:
           text: Must preserve the sign in the returned value. "+100K" returns +102400, "-50M" returns -52428800. No sign prefix means positive.
-          weight: 1
 
   R2:
     title: Extended parsing options
@@ -55,20 +51,16 @@ requirements:
                   AllowSign    bool // allow +/- prefix (default false for Parse)
                   DefaultUnit  int64 // multiplier when no suffix given (default 1)
               }
-          weight: 1
       - R2.2:
           text: "ParseWithOptions with DefaultUnit=1024 and input '5' returns 5120 (5 * 1024). This supports utilities like du where the default unit is blocks."
-          weight: 1
 
   R3:
     title: Constraints
     items:
       - R3.1:
           text: Must return an error when the numeric part overflows int64.
-          weight: 1
       - R3.2:
           text: Must return an error when the suffix is not recognized.
-          weight: 1
 
 non_goals:
   - pkg/sizeparse does not format sizes for output; use pkg/format.HumanSize for that.

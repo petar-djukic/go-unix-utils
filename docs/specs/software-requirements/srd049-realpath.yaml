@@ -19,58 +19,44 @@ requirements:
     items:
       - R1.1:
           text: When invoked with one or more path arguments and no flags, must resolve each path to its canonical absolute form (all symlinks resolved, no . or .. components) and print one per line, exiting 0.
-          weight: 1
       - R1.2:
           text: If the resolved path does not exist by default, must print an error to stderr and exit 1 for that operand.
-          weight: 1
       - R1.3:
           text: "-e (--canonicalize-existing) requires that every component of the path exists. If any component is missing, must print an error to stderr and exit 1."
-          weight: 1
       - R1.4:
           text: "-m (--canonicalize-missing) requires no component to exist. Must resolve as far as possible and construct the remainder without checking existence."
-          weight: 1
       - R1.5:
           text: "-s (--strip, --no-symlinks) must not resolve symlinks; only clean . and .. components and prepend the working directory for relative paths."
-          weight: 1
 
   R2:
     title: Relative path output
     items:
       - R2.1:
           text: "--relative-to=DIR must print each resolved path relative to DIR instead of as an absolute path."
-          weight: 1
       - R2.2:
           text: "--relative-base=DIR must print paths relative to DIR when the resolved path starts with DIR; otherwise print the absolute path."
-          weight: 1
       - R2.3:
           text: When both --relative-to and --relative-base are specified, --relative-to is applied only if the path starts with --relative-base.
-          weight: 1
 
   R3:
     title: Error handling
     items:
       - R3.1:
           text: If no operand is provided, must print a usage error to stderr and exit 1.
-          weight: 1
       - R3.2:
           text: Unknown flags must produce an error message to stderr and exit 1.
-          weight: 1
       - R3.3:
           text: When multiple paths are given and some fail, must print errors for the failing paths and exit 1 (but still print successful resolutions).
-          weight: 1
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (grealpath) via pkg/testutils.
-          weight: 1
       - R4.2:
           text: "Tests must cover: default resolution, -e with existing and missing paths, -m with missing paths, -s without symlink resolution, --relative-to, --relative-base, multiple operands with mixed success, and error cases."
-          weight: 1
       - R4.3:
           text: All differential tests must set LC_ALL=C in the environment.
-          weight: 1
 
 non_goals:
   - cmd/realpath does not create files or directories.

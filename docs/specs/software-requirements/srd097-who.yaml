@@ -18,45 +18,34 @@ requirements:
     items:
       - R1.1:
           text: Must read the utmpx database and print one line per logged-in user showing login name, terminal line, login time, and remote hostname (if available), matching GNU who output format.
-          weight: 4
       - R1.2:
           text: When given a FILE argument, must read that file as the utmpx database instead of the system default.
-          weight: 1
       - R1.3:
           text: "who am i (or who am I) must print only the entry for the current terminal."
-          weight: 1
       - R1.4:
           text: Must exit 1 when the utmpx database cannot be read.
-          weight: 1
 
   R2:
     title: Display options
     items:
       - R2.1:
           text: "-H or --heading must print a header line above the output."
-          weight: 1
       - R2.2:
           text: "-u or --users must show idle time for each user. Idle time is displayed as HH:MM, '.' for active (< 1 minute), or 'old' for > 24 hours."
-          weight: 4
       - R2.3:
           text: "-b or --boot must show the time of the last system boot."
-          weight: 1
       - R2.4:
           text: "-q or --count must print login names and a count of logged-in users, one name per column."
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 on success.
-          weight: 1
       - R3.2:
           text: Must exit 1 on any error.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/who does not implement -r (runlevel) or -d (dead processes) on macOS.

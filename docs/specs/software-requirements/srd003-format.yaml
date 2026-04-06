@@ -25,36 +25,27 @@ requirements:
     items:
       - R1.1:
           text: Must provide a Columns(entries []string, termWidth int) [][]string function that distributes entries into the maximum number of columns that fit within termWidth, using the longest entry in each column to determine column width.
-          weight: 1
       - R1.2:
           text: Must provide a PadRight(s string, width int) string and PadLeft(s string, width int) string function for left- and right-aligned field padding within a fixed-width column.
-          weight: 1
       - R1.3:
           text: 'Must treat multi-byte Unicode characters correctly: column width must be computed from display width (rune count via utf8.RuneCountInString), not byte count. East-asian full-width character handling is deferred; rune count is sufficient for ASCII-dominant utility output in the current roadmap.'
-          weight: 1
       - R1.4:
           text: 'Utility context — ls (ls.c multi-column layout): ls default output places filenames in as many columns as fit in the terminal width. Column widths are computed from the longest filename in each column, not the global maximum.'
-          weight: 1
 
   R2:
     title: ANSI color
     items:
       - R2.1:
           text: Must provide a FileTypeColor(mode os.FileMode) string function that returns the ANSI escape sequence for a file's type (directory, symlink, executable, block device, character device, socket, pipe, regular file).
-          weight: 1
       - R2.2:
           text: Must provide a Reset() string constant or function that returns the ANSI reset sequence ("\033[0m").
-          weight: 1
       - R2.3:
           text: |
             Must provide a ColorEnabled(w io.Writer) bool function that returns true only when w is a TTY. Implementation: attempt a type assertion to *os.File; if it fails return false; call pkg/sys.IsTerminal(f.Fd()) which returns true when the file descriptor is a terminal (detected via TIOCGWINSZ ioctl), and false for pipes, regular files, and non-terminal descriptors. When ColorEnabled returns false, FileTypeColor must return an empty string and Reset must return an empty string.
-          weight: 1
       - R2.4:
           text: 'Must use the same color assignments as GNU ls LS_COLORS defaults: directory=34 (blue), symlink=36 (cyan), executable=32 (green), block device=33;1 (yellow bold), character device=33;1 (yellow bold), socket=35 (magenta), pipe=33 (yellow), regular=0 (reset/default).'
-          weight: 1
       - R2.5:
           text: 'Utility context — ls (ls.c:103 includes dircolors.h, ls.c:273 get_color_indicator): ls outputs ANSI escapes before and after each filename in colorized mode. Color is suppressed when stdout is not a TTY or when --color=never is set.'
-          weight: 1
       - R2.6:
           text: |
             Must provide func SetColorEnabled(enabled bool) that overrides the automatic TTY
@@ -62,14 +53,12 @@ requirements:
             sequences regardless of whether stdout is a TTY. When set to false, they return
             empty strings regardless. This supports --color=always and --color=never flags in
             utilities like ls. The override is process-global.
-          weight: 1
       - R2.7:
           text: |
             Must provide func ResetColorEnabled() that clears any override set by
             SetColorEnabled, reverting to automatic TTY detection via ColorEnabled. Utilities
             must call ResetColorEnabled in deferred cleanup or test teardown to avoid leaking
             the override across test cases.
-          weight: 1
 
   R3:
     title: Human-readable size conversion
@@ -81,23 +70,17 @@ requirements:
               type HumanSizeOpts struct {
                   Binary bool // true = 1024-based with suffixes K/M/G/T/P/E (default); false = SI 1000-based with suffixes kB/MB/GB/TB
               }
-          weight: 1
       - R3.2:
           text: |
             When opts.Binary is true (the default zero value), use base 1024 and suffixes []string{"", "K", "M", "G", "T", "P", "E"}. When opts.Binary is false, use base 1000 and suffixes []string{"", "kB", "MB", "GB", "TB"}.
-          weight: 1
       - R3.3:
           text: Must format the output to at most one decimal place when the value is not an integer at the chosen unit (e.g., 1536 bytes must produce "1.5K", not "2K").
-          weight: 1
       - R3.4:
           text: Must return "0" for a zero byte count regardless of the unit mode.
-          weight: 1
       - R3.5:
           text: 'Utility context — ls (ls.c -h flag, human_output_opts): ls -h shows file sizes in human-readable form in -l output. The same conversion applies to ls -s (block counts).'
-          weight: 1
       - R3.6:
           text: 'Utility context — du (du.c:153 human_output_opts, du.c:442 human_readable()): du -h outputs directory sizes as human-readable strings. du uses the same binary/SI distinction as ls -h.'
-          weight: 1
 
 non_goals:
   - pkg/format does not read or parse LS_COLORS environment variables; it uses GNU ls defaults only.

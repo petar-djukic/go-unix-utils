@@ -17,47 +17,38 @@ requirements:
     items:
       - R1.1:
           text: Must read input lines and produce a permuted index where each significant word appears as a keyword in context, with the surrounding text shown on either side.
-          weight: 4
 
   R2:
     title: Index options
     items:
       - R2.1:
           text: "-w N or --width=N must set the output line width (default 72). -g N or --gap-size=N must set the minimum gap between columns (default 3)."
-          weight: 1
       - R2.2:
           text: "-f or --ignore-case must fold lowercase to uppercase for sorting purposes."
-          weight: 1
       - R2.3:
           text: Must read from FILE or stdin when no file or "-" is given.
-          weight: 1
 
   R3:
     title: Word regexp
     items:
       - R3.1:
           text: "-W REGEXP or --word-regexp=REGEXP must use REGEXP to define what constitutes a word."
-          weight: 4
 
   R4:
     title: Reference control
     items:
       - R4.1:
           text: "-A or --auto-reference must produce automatically generated references based on file name and line number."
-          weight: 1
       - R4.2:
           text: "-r or --references must treat the first field of each line as a reference and exclude it from the index."
-          weight: 1
 
   R5:
     title: Exit codes and SIGPIPE
     items:
       - R5.1:
           text: Must exit 0 on success. Must exit 1 on any error.
-          weight: 4
       - R5.2:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 4
 
 non_goals:
   - cmd/ptx does not implement TeX/roff output format in this release.

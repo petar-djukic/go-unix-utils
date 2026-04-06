@@ -22,64 +22,48 @@ requirements:
     items:
       - R1.1:
           text: When given one or more FILE arguments, must read all lines from each file, randomly permute them, and write the result to stdout.
-          weight: 1
       - R1.2:
           text: When no file arguments are given or when "-" is given as a filename, must read from stdin.
-          weight: 1
       - R1.3:
           text: Must output each input line exactly once in a random order (a permutation, not sampling with replacement) unless -r is given.
-          weight: 1
       - R1.4:
           text: Must treat each line as terminated by a newline. The last line need not end with a newline, but must be included in the shuffle.
-          weight: 1
 
   R2:
     title: Range mode and output control
     items:
       - R2.1:
           text: "-i LO-HI or --input-range=LO-HI must generate and shuffle integers from LO to HI inclusive, one per line. Must not be combined with file arguments."
-          weight: 1
       - R2.2:
           text: "-n COUNT or --head-count=COUNT must output at most COUNT lines."
-          weight: 1
       - R2.3:
           text: "-r or --repeat must allow output lines to repeat (sampling with replacement). Without -n, runs indefinitely."
-          weight: 1
       - R2.4:
           text: "-o FILE or --output=FILE must write output to FILE instead of stdout."
-          weight: 1
 
   R3:
     title: Random source and zero-delimiter
     items:
       - R3.1:
           text: "--random-source=FILE must read random bytes from FILE instead of the system random source."
-          weight: 1
       - R3.2:
           text: "-z or --zero-terminated must use NUL (\\0) as the line delimiter instead of newline, for both input and output."
-          weight: 1
       - R3.3:
           text: "-e or --echo must treat each ARG as an input line instead of reading from files."
-          weight: 1
       - R3.4:
           text: Must handle empty input (zero lines) by producing no output and exiting 0.
-          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 on successful operation.
-          weight: 1
       - R4.2:
           text: Must exit 1 on error (invalid range, conflicting options, write error).
-          weight: 1
       - R4.3:
           text: "Differential tests must verify structural properties rather than exact output: correct line count, values within range for -i, no duplicates without -r, duplicates allowed with -r."
-          weight: 1
       - R4.4:
           text: "Tests must cover: shuffle stdin lines, shuffle file lines, -i range mode, -n head count, -r repeat mode, -e echo mode, -z zero-terminated, empty input, and error cases (invalid range, -i with files)."
-          weight: 1
 
 non_goals:
   - cmd/shuf does not guarantee a specific PRNG algorithm or reproducible output for a given random seed.

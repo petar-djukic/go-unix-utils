@@ -19,58 +19,44 @@ requirements:
     items:
       - R1.1:
           text: Must remove a single empty directory when invoked as 'rmdir DIR'.
-          weight: 1
       - R1.2:
           text: Must remove multiple empty directories when invoked with multiple DIR arguments, processing each independently.
-          weight: 1
       - R1.3:
           text: Must exit with a non-zero status and print an error to stderr when a target directory is not empty.
-          weight: 1
       - R1.4:
           text: Must exit with a non-zero status and print an error to stderr when a target does not exist or is not a directory.
-          weight: 1
 
   R2:
     title: Parent removal (-p, --parents)
     items:
       - R2.1:
           text: -p or --parents must remove the target directory and then remove each successive empty parent component of the path, similar to 'rmdir -p a/b/c' removing c, then b, then a.
-          weight: 4
       - R2.2:
           text: Must stop ascending when a parent directory is not empty and report an error for that component.
-          weight: 1
       - R2.3:
           text: Must process each DIR argument independently when -p is combined with multiple arguments.
-          weight: 1
 
   R3:
     title: Error handling and verbosity
     items:
       - R3.1:
           text: --ignore-fail-on-non-empty must suppress error messages and the non-zero exit status caused by a directory not being empty.
-          weight: 1
       - R3.2:
           text: --ignore-fail-on-non-empty must not suppress errors for other failure reasons such as permission denied or non-existent target.
-          weight: 1
       - R3.3:
           text: -v or --verbose must print a message to stdout for each directory successfully removed.
-          weight: 1
       - R3.4:
           text: Must exit 0 when all requested directories are successfully removed, and exit non-zero when any removal fails (unless suppressed by --ignore-fail-on-non-empty).
-          weight: 1
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare stdout, stderr, and exit codes between the Go binary and grmdir via pkg/testutils.
-          weight: 1
       - R4.2:
           text: "Tests must cover: single empty directory removal, multiple directories, -p with nested empty directories, non-empty directory error, non-existent directory error, --ignore-fail-on-non-empty suppression, and -v verbose output."
-          weight: 1
       - R4.3:
           text: Tests must verify that -p stops ascending correctly when a parent is not empty, matching grmdir behavior.
-          weight: 1
 
 non_goals:
   - cmd/rmdir does not remove non-empty directories; that is the role of rm -r.

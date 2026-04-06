@@ -20,45 +20,34 @@ requirements:
     items:
       - R1.1:
           text: Must read from FILE or stdin (when no file or "-" is given) and encode the input using RFC 4648 Base32, writing the result to stdout.
-          weight: 1
       - R1.2:
           text: Must wrap encoded output at 76 characters per line by default.
-          weight: 1
       - R1.3:
           text: "-w COLS or --wrap=COLS must set the wrap column. -w 0 disables wrapping (single line output)."
-          weight: 1
       - R1.4:
           text: Must exit 1 when a named file cannot be opened, printing an error to stderr.
-          weight: 1
 
   R2:
     title: Decoding
     items:
       - R2.1:
           text: "-d or --decode must decode Base32 input from FILE or stdin and write the binary result to stdout."
-          weight: 1
       - R2.2:
           text: Must ignore whitespace (newlines, spaces) in the input during decoding.
-          weight: 1
       - R2.3:
           text: "-i or --ignore-garbage must ignore non-alphabet characters in the input during decoding."
-          weight: 1
       - R2.4:
           text: Must exit 1 with an error to stderr when the input contains invalid Base32 characters (without --ignore-garbage).
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 on successful encoding or decoding.
-          weight: 1
       - R3.2:
           text: Must exit 1 on any error (invalid input, missing file, invalid option).
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/base32 does not implement Base32hex (extended hex alphabet).

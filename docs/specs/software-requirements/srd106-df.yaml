@@ -28,32 +28,27 @@ requirements:
             pseudo-filesystems (those with 0 total blocks), displaying one line per filesystem.
             Default columns are: Filesystem, 1K-blocks, Used, Available, Use%, Mounted on.
             Sizes are reported in 1024-byte block units.
-          weight: 4
       - R1.2:
           text: |
             Must print a header line as the first line of output. Column headers must match
             GNU df exactly: "Filesystem", "1K-blocks", "Used", "Available", "Use%",
             "Mounted on". Numeric columns (1K-blocks, Used, Available, Use%) are right-aligned.
             Filesystem and Mounted on are left-aligned.
-          weight: 4
       - R1.3:
           text: |
             Use% is calculated as ceiling((total - available) * 100 / total) when total > 0.
             When total is 0, Use% is displayed as a dash "-". The percentage is followed by
             "%" with no space. Values are right-aligned in a column wide enough for "100%".
-          weight: 4
       - R1.4:
           text: |
             When one or more FILE arguments are given, must report the filesystem containing
             each FILE rather than all filesystems. If a FILE does not exist, must print a
             diagnostic to stderr and continue processing remaining arguments.
-          weight: 1
       - R1.5:
           text: |
             Column widths must be computed as per-column maxima of entry lengths across all
             rows including the header, matching GNU df alignment. Fields are separated by
             at least one space.
-          weight: 4
 
   R2:
     title: Human-readable and SI output
@@ -64,17 +59,14 @@ requirements:
             T, P, E) via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with
             opts.Binary = true. The column header changes from "1K-blocks" to "Size". -h
             applies to the Size, Used, and Available columns.
-          weight: 1
       - R2.2:
           text: |
             -H or --si must display sizes using SI units (1000-based: kB, MB, GB, TB, PB, EB)
             via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary =
             false. The column header changes from "1K-blocks" to "Size". -H applies to the
             Size, Used, and Available columns.
-          weight: 1
       - R2.3:
           text: -h and -H are mutually exclusive. The last one on the command line takes precedence.
-          weight: 1
 
   R3:
     title: Filesystem type, inode display, and column selection
@@ -83,35 +75,29 @@ requirements:
           text: |
             -T or --print-type must insert a "Type" column after the Filesystem column,
             showing the filesystem type (e.g., apfs, ext4, tmpfs) for each entry.
-          weight: 1
       - R3.2:
           text: |
             -i or --inodes must display inode information instead of block usage. Columns
             become: Filesystem, Inodes, IUsed, IFree, IUse%, Mounted on. IUse% is calculated
             the same way as Use% but using inode counts instead of block counts.
-          weight: 1
       - R3.3:
           text: |
             -a or --all must include pseudo-filesystems (those with 0 total blocks) in the
             output. Without -a, filesystems with 0 total blocks are excluded.
-          weight: 1
       - R3.4:
           text: |
             -l or --local must restrict output to local filesystems only, excluding network
             filesystems (NFS, SMB, CIFS, etc.).
-          weight: 1
       - R3.5:
           text: |
             -t TYPE or --type=TYPE must include only filesystems of the specified type.
             Multiple -t flags may be given to include multiple types. When -t is given,
             only filesystems matching at least one specified type are shown.
-          weight: 1
       - R3.6:
           text: |
             -x TYPE or --exclude-type=TYPE must exclude filesystems of the specified type.
             Multiple -x flags may be given. When both -t and -x are given, -t inclusion
             is applied first, then -x exclusion.
-          weight: 1
       - R3.7:
           text: |
             --output or --output=FIELD_LIST must select which columns to display. When
@@ -120,20 +106,16 @@ requirements:
             order. Available fields: source, fstype, itotal, iused, iavail, ipcent, size,
             used, avail, pcent, file, target. --output is incompatible with -i, -T, and -h;
             if combined, must print an error and exit 1.
-          weight: 4
 
   R4:
     title: Exit codes and signal handling
     items:
       - R4.1:
           text: Must exit 0 when all filesystems are reported successfully.
-          weight: 1
       - R4.2:
           text: Must exit 1 when any error occurs (inaccessible FILE argument, invalid option). Must print a diagnostic to stderr for each error.
-          weight: 1
       - R4.3:
           text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping df output to head or other truncating consumers does not produce a broken-pipe error message.
-          weight: 1
 
 non_goals:
   - --sync (invoke sync before getting usage info) is out of scope.

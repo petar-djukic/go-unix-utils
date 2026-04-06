@@ -17,26 +17,20 @@ requirements:
     items:
       - R1.1:
           text: Must list files from the specified directory (or current directory if none given), or from stdin if piped, with each line formatted as "NUMBER\tFILENAME". Must open this listing in the editor specified by $EDITOR (default vi).
-          weight: 4
       - R1.2:
           text: After the editor exits, must compare the edited listing with the original. Deleted lines cause the corresponding file to be removed. Changed filenames cause the file to be renamed.
-          weight: 4
       - R1.3:
           text: Must process renames before deletions to avoid conflicts. Must create parent directories for renames that move files to new paths.
-          weight: 1
       - R1.4:
           text: "-v or --verbose must print each action (rename, delete) to stderr."
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit 0 on success. Must exit 1 when the editor exits non-zero or a rename/delete fails.
-          weight: 1
       - R2.2:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/vidir does not implement recursive directory editing.

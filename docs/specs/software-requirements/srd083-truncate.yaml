@@ -19,39 +19,30 @@ requirements:
     items:
       - R1.1:
           text: "-s SIZE or --size=SIZE must set each FILE's size to SIZE bytes. SIZE may include unit suffixes (K, M, G, T, P, E, Z, Y for powers of 1024; KB, MB, GB for powers of 1000)."
-          weight: 1
       - R1.2:
           text: "SIZE may be prefixed with + or - for relative adjustment (grow or shrink), < to set at most SIZE, > to set at least SIZE, / to round down to multiple, % to round up to multiple."
-          weight: 4
       - R1.3:
           text: Must process multiple FILE arguments, applying the same size operation to each.
-          weight: 1
       - R1.4:
           text: "-c or --no-create must not create files that do not exist. Without -c, missing files are created."
-          weight: 1
 
   R2:
     title: Reference file
     items:
       - R2.1:
           text: "-r RFILE or --reference=RFILE must use the size of RFILE as the base size instead of an explicit SIZE. Can be combined with -s for relative adjustment from the reference size."
-          weight: 1
       - R2.2:
           text: Must exit 1 if the reference file cannot be accessed.
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 when all files are processed successfully.
-          weight: 1
       - R3.2:
           text: Must exit 1 when any file cannot be opened, created, or resized, or when SIZE is invalid.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/truncate does not implement sparse file optimization.

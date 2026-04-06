@@ -26,47 +26,37 @@ requirements:
             whether stdout is a TTY. This matches GNU vdir behavior where -l is the default
             format. Long format fields are: permissions (10 chars), nlink, owner, group, size,
             mtime, name — matching the layout specified in srd008-ls R1.6 through R1.10.
-          weight: 1
       - R1.2:
           text: |
             Must escape non-printable characters in filenames using C-style backslash
             sequences by default. This matches the -b (--escape) behavior of ls. Backslash,
             newline, tab, and other control characters are printed as \\, \n, \t, and \NNN
             (octal) respectively. Spaces in filenames are printed as \  (backslash space).
-          weight: 1
       - R1.3:
           text: |
             Must print a "total N" block count line before the directory listing, where
             N = sum(fi.Blocks for all listed entries) / 2. This matches the long-format
             total line behavior specified in srd008-ls R1.10.
-          weight: 1
       - R1.4:
           text: |
             Must sort entries in the C locale order (LC_COLLATE=C) by default. Entries whose
             names start with "." are excluded unless -a or -A is given.
-          weight: 1
       - R1.5:
           text: When no directory arguments are given, must default to the current directory (".").
-          weight: 1
       - R1.6:
           text: Must accept all flags that ls accepts. vdir is identical to ls except for the default format (-l) and default quoting style (-b). All other behavior is inherited from ls.
-          weight: 1
 
   R2:
     title: Exit codes and signal handling
     items:
       - R2.1:
           text: Must exit 0 when all listed paths are accessed and output is written successfully.
-          weight: 1
       - R2.2:
           text: Must exit 1 when a minor problem occurs (permission denied, file not found). Must print a diagnostic to stderr and continue processing remaining entries.
-          weight: 1
       - R2.3:
           text: Must exit 2 when a serious problem occurs such as an invalid command-line option, matching GNU vdir (and ls) exit-code contract.
-          weight: 1
       - R2.4:
           text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping vdir output to head or other truncating consumers does not produce a broken-pipe error message.
-          weight: 1
 
 non_goals:
   - vdir does not add any flags beyond what ls provides; it is strictly ls with different defaults.

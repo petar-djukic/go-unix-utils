@@ -30,26 +30,22 @@ requirements:
             export LS_COLORS
             where <value> is the colon-separated list of type=code pairs derived from the
             database.
-          weight: 1
       - R1.2:
           text: |
             When invoked with -c, --csh, or --c-shell, must output C shell commands to set
             LS_COLORS. The output format is:
             setenv LS_COLORS '<value>'
             where <value> is the colon-separated list of type=code pairs.
-          weight: 1
       - R1.3:
           text: |
             When neither -b nor -c is given, must auto-detect the shell from the SHELL
             environment variable. If SHELL ends with "csh" (e.g., /bin/tcsh, /bin/csh), use
             C shell format. Otherwise use Bourne shell format. This matches GNU dircolors
             auto-detection behavior.
-          weight: 1
       - R1.4:
           text: |
             -b and -c are mutually exclusive. The last one on the command line takes
             precedence.
-          weight: 1
 
   R2:
     title: Database parsing
@@ -61,14 +57,12 @@ requirements:
             KEYWORD is a file type name (e.g., DIR, LINK, EXEC, FIFO, SOCK, BLK, CHR, ORPHAN,
             SETUID, SETGID, STICKY, OTHER_WRITABLE, STICKY_OTHER_WRITABLE, CAPABILITY,
             MULTIHARDLINK) or a TERM entry, or a file extension (e.g., .tar, .gz, .jpg).
-          weight: 4
       - R2.2:
           text: |
             TERM lines specify terminal types for which the color database applies. If the
             current TERM environment variable does not match any TERM line in the database,
             must output an empty LS_COLORS value. When no TERM lines are present in the
             database, the database applies to all terminals.
-          weight: 1
       - R2.3:
           text: |
             File type keywords map to two-letter LS_COLORS codes: DIR=di, LINK=ln, EXEC=ex,
@@ -77,18 +71,15 @@ requirements:
             NORMAL=no, FILE=fi, RESET=rs, MISSING=mi, LEFT=lc, RIGHT=rc, END=ec.
             Extension entries (lines starting with . or *.) map to the full extension
             pattern in LS_COLORS (e.g., "*.tar=01;31").
-          weight: 4
       - R2.4:
           text: |
             When a filename argument is given, must read and parse that file as the color
             database. When no filename is given (and -p is not given), must use the built-in
             default database. The built-in defaults must match the output of
             gdircolors --print-database.
-          weight: 4
       - R2.5:
           text: |
             When "-" is given as the filename argument, must read the database from stdin.
-          weight: 1
 
   R3:
     title: Print database, exit codes, and signal handling
@@ -98,24 +89,19 @@ requirements:
             -p or --print-database must print the built-in default color database to stdout
             in the dircolors database format (comments, TERM lines, keywords, extensions).
             The output must match gdircolors --print-database byte-for-byte.
-          weight: 1
       - R3.2:
           text: |
             -p is incompatible with a filename argument. If both are given, must print an
             error to stderr and exit 1.
-          weight: 1
       - R3.3:
           text: Must exit 0 on success.
-          weight: 1
       - R3.4:
           text: |
             Must exit 1 on error (invalid database syntax, file not found, incompatible
             options). Must print a diagnostic to stderr for each error including the
             filename and line number of the offending line in the database.
-          weight: 1
       - R3.5:
           text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping dircolors output to head or other truncating consumers does not produce a broken-pipe error message.
-          weight: 1
 
 non_goals:
   - Custom color themes beyond the built-in GNU defaults are out of scope; dircolors reads whatever database is provided but ships only the GNU default.

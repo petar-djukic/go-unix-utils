@@ -19,39 +19,30 @@ requirements:
     items:
       - R1.1:
           text: Must compute the BSD checksum (16-bit rotating checksum) of each named file by default and print "CHECKSUM BLOCKS FILENAME". Block size is 1024 bytes.
-          weight: 4
       - R1.2:
           text: Must read from stdin when no file arguments are given. Stdin output omits the filename.
-          weight: 1
       - R1.3:
           text: Must process multiple files in argument order, printing one line per file.
-          weight: 1
       - R1.4:
           text: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
-          weight: 1
 
   R2:
     title: Algorithm selection
     items:
       - R2.1:
           text: -r selects the BSD checksum algorithm (default). The checksum is a 16-bit rotating checksum, block size 1024 bytes.
-          weight: 1
       - R2.2:
           text: -s selects the System V checksum algorithm. The checksum is a 16-bit sum of all bytes, block size 512 bytes. Output format is "CHECKSUM BLOCKS FILENAME".
-          weight: 4
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 when all files are processed successfully.
-          weight: 1
       - R3.2:
           text: Must exit 1 when any file cannot be opened.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/sum does not implement any modern hash algorithms; use sha256sum or cksum --algorithm for that.

@@ -22,64 +22,48 @@ requirements:
     items:
       - R1.1:
           text: "When given --to=UNIT, must convert each input number to a human-readable string with the appropriate suffix. UNIT is one of: si (powers of 1000), iec (powers of 1024), iec-i (powers of 1024 with 'i' suffix), or none."
-          weight: 4
       - R1.2:
           text: "When given --from=UNIT, must interpret each input number as a human-readable string with suffixes and convert to a raw number. UNIT values are the same as --to."
-          weight: 4
       - R1.3:
           text: When neither --from nor --to is given, must pass numbers through unchanged.
-          weight: 4
       - R1.4:
           text: Must read numbers from stdin (one per line) when no operands are given, or process command-line operands directly.
-          weight: 4
 
   R2:
     title: Format control
     items:
       - R2.1:
           text: "--format=FORMAT must use a printf-style format string for output (e.g., '%10f', '%.2f'). Must support width, precision, and left-alignment."
-          weight: 4
       - R2.2:
           text: "--padding=N must pad the output to N characters. Positive N right-aligns; negative N left-aligns."
-          weight: 4
       - R2.3:
           text: "--round=METHOD must control rounding: up (ceiling), down (floor), from-zero (away from zero), towards-zero (truncation), or nearest (default)."
-          weight: 4
       - R2.4:
           text: "--suffix=SUFFIX must append SUFFIX to the output after the numeric value and any unit suffix."
-          weight: 4
 
   R3:
     title: Field selection and header
     items:
       - R3.1:
           text: "--field=FIELDS must convert only the specified fields (1-indexed, comma-separated ranges like cut). Other fields are passed through unchanged."
-          weight: 4
       - R3.2:
           text: "-d DELIM or --delimiter=DELIM must use DELIM as the field delimiter for --field processing."
-          weight: 4
       - R3.3:
           text: "--header[=N] must pass through the first N lines (default 1) without conversion, treating them as headers."
-          weight: 4
       - R3.4:
           text: "--to-unit=N must scale the output by dividing by N before applying --to conversion. --from-unit=N must scale the input by multiplying by N before applying --from conversion."
-          weight: 4
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when all conversions complete successfully.
-          weight: 4
       - R4.2:
           text: Must exit 2 when an invalid number is encountered (unless --invalid=ignore or --invalid=warn is set).
-          weight: 4
       - R4.3:
           text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
-          weight: 4
       - R4.4:
           text: "Tests must cover: --to si/iec/iec-i, --from si/iec, --format with width and precision, --padding, --round modes, --suffix, --field selection, --delimiter, --header, --to-unit/--from-unit, stdin and operand input, and error cases (invalid number, unknown suffix)."
-          weight: 4
 
 non_goals:
   - cmd/numfmt does not implement locale-aware digit grouping (e.g., thousands separators).

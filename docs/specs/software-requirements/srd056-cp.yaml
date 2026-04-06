@@ -21,64 +21,48 @@ requirements:
     items:
       - R1.1:
           text: "When given SOURCE DEST, must copy SOURCE to DEST. When given multiple SOURCE arguments and a DEST directory, must copy each SOURCE into DEST."
-          weight: 4
       - R1.2:
           text: "-i or --interactive must prompt before overwriting an existing destination file."
-          weight: 4
       - R1.3:
           text: "-f or --force must remove an existing destination file if it cannot be opened for writing, then retry the copy."
-          weight: 4
       - R1.4:
           text: "-n or --no-clobber must not overwrite an existing destination file. When combined with -i, -n takes precedence."
-          weight: 4
 
   R2:
     title: Recursive copying and symlinks
     items:
       - R2.1:
           text: "-r or -R or --recursive must copy directories recursively, preserving the directory structure."
-          weight: 4
       - R2.2:
           text: "Without -r, must refuse to copy a directory and print an error to stderr."
-          weight: 4
       - R2.3:
           text: "-L or --dereference must follow symlinks in SOURCE, copying the file they point to."
-          weight: 4
       - R2.4:
           text: "-P or --no-dereference must preserve symlinks, copying them as symlinks rather than following them. This is the default with -r."
-          weight: 4
 
   R3:
     title: Attribute preservation
     items:
       - R3.1:
           text: "-p or --preserve=mode,ownership,timestamps must preserve file mode, ownership, and modification timestamps on the copy."
-          weight: 4
       - R3.2:
           text: "-a or --archive is equivalent to -dR --preserve=all. It preserves all attributes and copies recursively without following symlinks."
-          weight: 4
       - R3.3:
           text: "--preserve=ATTR_LIST must accept a comma-separated list of attributes to preserve. Supported attributes are mode, ownership, timestamps, and links."
-          weight: 4
       - R3.4:
           text: "-v or --verbose must print the name of each file as it is copied."
-          weight: 4
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when all files are copied successfully.
-          weight: 4
       - R4.2:
           text: Must exit 1 when any copy operation fails (permission denied, source not found, destination is a directory without -r).
-          weight: 4
       - R4.3:
           text: "-t DIRECTORY or --target-directory=DIRECTORY must copy all SOURCE arguments into DIRECTORY."
-          weight: 4
       - R4.4:
           text: "Differential tests must compare exit codes and resulting file system state between the Go binary and the reference binary via pkg/testutils. Tests must cover: single file copy, multi-file copy into directory, -r recursive, -i interactive (via stdin), -f force, -n no-clobber, -p preserve, -a archive, -v verbose, symlink handling, and error cases."
-          weight: 4
 
 non_goals:
   - "cmd/cp does not implement --reflink (copy-on-write clones). Reflink support is filesystem-dependent and not available on all platforms."

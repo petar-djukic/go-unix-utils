@@ -16,26 +16,20 @@ requirements:
     items:
       - R1.1:
           text: Must read the utmpx database (or equivalent on the target platform) and print the login names of all currently logged-in users on a single line, space-separated, sorted alphabetically.
-          weight: 4
       - R1.2:
           text: When given a FILE argument, must read that file as the utmpx database instead of the system default.
-          weight: 1
       - R1.3:
           text: Duplicate login names (same user logged in multiple times) must appear once per session, not deduplicated.
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit 0 on success.
-          weight: 1
       - R2.2:
           text: Must exit 1 on any error.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/users does not show idle time, terminal, or remote host information; use who for that.

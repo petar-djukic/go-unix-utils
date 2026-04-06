@@ -20,64 +20,48 @@ requirements:
     items:
       - R1.1:
           text: "When invoked with no type options, must display input in the default format: octal 2-byte words (equivalent to -t o2), with an octal address offset in the left column."
-          weight: 4
       - R1.2:
           text: "-t TYPE or --format=TYPE must display input in the given format. TYPE consists of a format letter (a for named characters, c for C-style characters, d for signed decimal, f for floating point, o for octal, u for unsigned decimal, x for hexadecimal) optionally followed by a size in bytes."
-          weight: 4
       - R1.3:
           text: Multiple -t options may be given; each produces an additional line of output per input block.
-          weight: 4
       - R1.4:
           text: Must read from FILE arguments in order, or from stdin when no file is given or "-" is specified.
-          weight: 4
 
   R2:
     title: Address format and byte range
     items:
       - R2.1:
           text: "-A RADIX or --address-radix=RADIX must set the address offset format. RADIX is d (decimal), o (octal), x (hexadecimal), or n (no addresses)."
-          weight: 1
       - R2.2:
           text: "-j BYTES or --skip-bytes=BYTES must skip BYTES input bytes before formatting. BYTES may have a multiplier suffix (b for 512, k for 1024, m for 1048576)."
-          weight: 1
       - R2.3:
           text: "-N BYTES or --read-bytes=BYTES must format at most BYTES input bytes."
-          weight: 1
       - R2.4:
           text: "Must display a final line containing only the address of the byte past the last byte read (the file size offset)."
-          weight: 1
 
   R3:
     title: Output width and traditional options
     items:
       - R3.1:
           text: "-w[N] or --width[=N] must set the number of input bytes per output line (default 16). When -w is given without a value, must use 32."
-          weight: 4
       - R3.2:
           text: Must support traditional short options as aliases for type specifiers. -b is equivalent to -t o1, -c is -t c, -d is -t u2, -o is -t o2, -s is -t d2, -x is -t x2.
-          weight: 4
       - R3.3:
           text: "Duplicate bytes in multi-line output must be replaced with '*' on a line by itself to indicate repetition, matching GNU od behavior."
-          weight: 4
       - R3.4:
           text: "-v or --output-duplicates must print all input data, disabling the '*' duplicate suppression."
-          weight: 4
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when the dump completes successfully.
-          weight: 1
       - R4.2:
           text: Must exit 1 when an invalid option is given or a file cannot be opened.
-          weight: 1
       - R4.3:
           text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils."
-          weight: 1
       - R4.4:
           text: "Tests must cover: default octal dump, -t with each format letter (a, c, d, f, o, u, x) and size variants, -A address radix modes, -j skip bytes, -N read bytes, -w output width, -v output duplicates, traditional short options (-b, -c, -d, -o, -s, -x), multiple -t options, duplicate suppression with '*', stdin input, multi-file input, and error cases (invalid type, missing file)."
-          weight: 1
 
 non_goals:
   - cmd/od does not implement --strings (-S) string extraction mode.

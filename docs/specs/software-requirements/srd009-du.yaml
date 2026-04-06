@@ -29,7 +29,6 @@ requirements:
     items:
       - R1.1:
           text: Must recurse into each directory argument and print the accumulated size and path for each subdirectory and the directory itself. When no arguments are given, must default to the current directory (".").
-          weight: 1
       - R1.2:
           text: |
             Must report sizes in 1024-byte (1K) block units by default. Each entry's size is fi.Blocks / 2 where fi.Blocks (int64) is the number of 512-byte blocks allocated (st_blocks from syscall.Stat_t). Obtain metadata via pkg/sys.Stat(path string) (*sys.FileInfo, error) — follows symbolic links. sys.FileInfo.Blocks int64 holds the 512-byte block count.
@@ -49,16 +48,12 @@ requirements:
                   ModTime time.Time   // modification time
                   Sys     os.FileInfo // underlying os.FileInfo
               }
-          weight: 1
       - R1.3:
           text: Must print one line per entry in the format "SIZE\tPATH\n" where SIZE is a right-aligned integer (no leading spaces) and PATH is the relative path as given by the directory traversal.
-          weight: 1
       - R1.4:
           text: Must not follow symbolic links during traversal. Use pkg/sys.Lstat(path string) (*sys.FileInfo, error) — does not follow symbolic links; returns the symlink's own metadata. pkg/sys.Lstat has the same return type as pkg/sys.Stat (see R1.2 for sys.FileInfo definition).
-          weight: 1
       - R1.5:
           text: Must process multiple directory arguments in the order given on the command line. Each argument is traversed independently.
-          weight: 1
 
   R2:
     title: Flag behavior
@@ -66,58 +61,44 @@ requirements:
       - R2.1:
           text: |
             -h must display sizes as human-readable strings using binary mode (1024-based) via pkg/format.HumanSize(bytes int64, opts HumanSizeOpts) string with opts.Binary = true (1024-base units, suffixes K/M/G/T/P/E). -h applies to all output lines including the grand total line when -c is also given.
-          weight: 1
       - R2.2:
           text: -s must print only one line per argument with the total size of that argument. When -s is given, subdirectory lines must not be printed. -s is equivalent to --max-depth=0.
-          weight: 1
       - R2.3:
           text: -a must print a size line for every file encountered during traversal, not just directories. Without -a, only directory entries are printed (the default).
-          weight: 1
       - R2.4:
           text: -d N (and the long form --max-depth=N) must limit the depth of reported entries. Depth 0 means only the argument itself (equivalent to -s). Depth 1 means the argument and its immediate children. Files and directories deeper than N are accumulated into their parent's total but not printed as separate lines.
-          weight: 4
       - R2.5:
           text: -k must report sizes in 1024-byte blocks. Since 1K is already the default, -k has no visible effect but must be accepted without error for compatibility.
-          weight: 1
       - R2.6:
           text: -m must report sizes in 1048576-byte (1M) blocks. Each entry's st_blocks value is converted from 512-byte blocks to 1M blocks, rounding up.
-          weight: 1
       - R2.7:
           text: -c must print a grand total line after all arguments are processed. The grand total line has the format "SIZE\ttotal\n" where SIZE is the sum of all argument totals.
-          weight: 1
       - R2.8:
           text: --apparent-size must report file sizes using st_size (the apparent file size in bytes) instead of st_blocks (the physical block allocation). The apparent size is then converted to the selected block unit (1K by default, or as overridden by -k, -m, or -h). Obtains st_size from the os.FileInfo.Size() method.
-          weight: 1
 
   R3:
     title: Hard-link deduplication
     items:
       - R3.1:
           text: Must track files by their device number (st_dev) and inode number (st_ino) across the entire du invocation. A file that has already been counted (same st_dev and st_ino) must not be counted again. This prevents double-counting hard-linked files, matching GNU du behavior (du.c:554 inode tracking via hash table).
-          weight: 1
       - R3.2:
           text: Must obtain dev and ino via pkg/sys.Stat or pkg/sys.Lstat (see R1.2 for sys.FileInfo). Use sys.FileInfo.Dev uint64 (device ID of the containing filesystem, st_dev) and sys.FileInfo.Ino uint64 (inode number, st_ino) as the deduplication key. The map is keyed by a struct{ Dev, Ino uint64 } pair.
-          weight: 1
       - R3.3:
           text: Hard-link deduplication applies per du invocation, not per argument. A hard-linked file counted under one argument must not be counted again under a subsequent argument.
-          weight: 1
 
   R4:
     title: Exit codes
     items:
       - R4.1:
           text: Must exit 0 when all arguments are traversed and reported successfully.
-          weight: 1
       - R4.2:
           text: Must exit 1 when any error occurs during traversal (cannot stat a file, cannot read a directory, permission denied). Must print a diagnostic to stderr for each error and continue processing remaining entries and arguments before exiting.
-          weight: 1
 
   R5:
     title: Signal handling
     items:
       - R5.1:
           text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping du output to head or other truncating consumers does not produce a broken-pipe error message. InstallSIGPIPEHandler uses signal.Notify(c, syscall.SIGPIPE) with a buffered channel; a goroutine calls os.Exit(0) on receipt. Must not use signal.Ignore.
-          weight: 1
 
 non_goals:
   - --si (1000-based units) is out of scope; we support only binary (1024-based) human-readable output.

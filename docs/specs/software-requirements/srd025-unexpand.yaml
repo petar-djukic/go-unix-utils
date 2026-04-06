@@ -20,58 +20,44 @@ requirements:
     items:
       - R1.1:
           text: By default, unexpand must replace leading spaces (and mixed leading spaces and tabs) with tabs only when doing so advances to the same column position. Tabs are preferred over spaces when a run of spaces reaches a tab stop exactly.
-          weight: 1
       - R1.2:
           text: Non-leading whitespace must be written unchanged in default mode. Characters after the first non-whitespace character on a line are not converted.
-          weight: 1
       - R1.3:
           text: A run of spaces that does not exactly reach a tab stop must be kept as spaces; unexpand must not insert a tab that would overshoot the column.
-          weight: 1
       - R1.4:
           text: Existing tab characters in leading whitespace count toward the column position as in expand; they do not prevent further tab substitution.
-          weight: 1
 
   R2:
     title: Convert all whitespace (-a)
     items:
       - R2.1:
           text: -a must convert all runs of spaces (not just leading) where replacement with tabs aligns to a tab stop. The rule is the same as R1.1 applied at every column position in the line, not only at the start.
-          weight: 1
       - R2.2:
           text: A single space that does not reach a tab stop must be kept as a space even with -a.
-          weight: 1
       - R2.3:
           text: The first non-space, non-tab character on the line does not stop the conversion; -a processes the entire line.
-          weight: 1
 
   R3:
     title: Custom tab stops (-t)
     items:
       - R3.1:
           text: -t N must set a uniform tab stop interval of N columns. -t LIST must set absolute tab stop positions. Behavior mirrors srd024-expand R2.1 and R2.2 for tab stop resolution.
-          weight: 1
       - R3.2:
           text: When past the last explicit tab stop in a LIST, remaining spaces are kept as-is (no tab can be inserted beyond the last defined stop).
-          weight: 1
       - R3.3:
           text: -t implies -a; when custom tab stops are given, all whitespace in the line is subject to conversion, not just leading whitespace.
-          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
       - R4.1:
           text: Must exit 0 when all inputs are processed successfully.
-          weight: 1
       - R4.2:
           text: Must exit 1 when any input file cannot be opened, printing the error to stderr. Processing continues for remaining files.
-          weight: 1
       - R4.3:
           text: Must exit 1 when a write error occurs on stdout.
-          weight: 1
       - R4.4:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/unexpand is not the exact inverse of expand for all inputs; the asymmetry (leading-only default, space-only conversion) is intentional and matches GNU behavior.
