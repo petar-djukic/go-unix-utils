@@ -131,46 +131,70 @@ func applyNormalizers(data []byte, fns []NormalizeFunc) []byte {
 	return data
 }
 
-// compareResults compares ref and got outputs, failing on divergence.
-// R3.1-R3.4: compare normalized stdout, stderr, and exit code.
+// compareResults compares ref and got outputs across all dimensions.
+// R2.1: stdout comparison after normalizers.
+// R2.2: stderr comparison after normalizers (independent of stdout).
+// R2.3: exit code comparison with sanity check.
+// R2.4: uses t.Errorf so all mismatches are reported, not just the first.
 func compareResults(t *testing.T, tc DiffTest, ref, got binResult) {
 	t.Helper()
 	refOut := applyNormalizers(ref.stdout, tc.Normalize)
 	gotOut := applyNormalizers(got.stdout, tc.Normalize)
 	refErr := applyNormalizers(ref.stderr, tc.Normalize)
 	gotErr := applyNormalizers(got.stderr, tc.Normalize)
-	if bytes.Equal(refOut, gotOut) && bytes.Equal(refErr, gotErr) &&
-		ref.exitCode == got.exitCode {
-		return
-	}
-	reportDivergence(t, tc, ref.exitCode, got.exitCode, refOut, gotOut, refErr, gotErr)
+	compareStdout(t, tc, refOut, gotOut)
+	compareStderr(t, tc, refErr, gotErr)
+	compareExitCode(t, tc, ref.exitCode, got.exitCode)
 }
 
-// maxStdinDisplay is the maximum stdin bytes shown in failure messages.
-const maxStdinDisplay = 256
-
-// reportDivergence formats and reports a test failure for mismatched outputs.
-// R3.5: includes args, stdin, both stdouts, both stderrs, both exit codes.
-func reportDivergence(
-	t *testing.T, tc DiffTest,
-	refCode, gotCode int,
-	refOut, gotOut, refErr, gotErr []byte,
-) {
+// compareStdout reports stdout divergence between reference and Go binary.
+// R2.1: includes test name, args, and both expected/actual with lengths.
+func compareStdout(t *testing.T, tc DiffTest, refOut, gotOut []byte) {
 	t.Helper()
-	stdinSnippet := tc.Stdin
-	if len(stdinSnippet) > maxStdinDisplay {
-		stdinSnippet = stdinSnippet[:maxStdinDisplay]
+	if bytes.Equal(refOut, gotOut) {
+		return
 	}
-	t.Errorf("output divergence\n"+
-		"args:       %v\n"+
-		"stdin:      %q\n"+
-		"ref stdout: %q\n"+
-		"go  stdout: %q\n"+
-		"ref stderr: %q\n"+
-		"go  stderr: %q\n"+
-		"ref exit:   %d\n"+
-		"go  exit:   %d",
-		tc.Args, stdinSnippet, refOut, gotOut, refErr, gotErr, refCode, gotCode)
+	t.Errorf("stdout mismatch\n"+
+		"args:            %v\n"+
+		"expected (ref):  %q (len=%d)\n"+
+		"actual   (go):   %q (len=%d)",
+		tc.Args, refOut, len(refOut), gotOut, len(gotOut))
+}
+
+// compareStderr reports stderr divergence between reference and Go binary.
+// R2.2: independent of stdout comparison; both are always checked.
+func compareStderr(t *testing.T, tc DiffTest, refErr, gotErr []byte) {
+	t.Helper()
+	if bytes.Equal(refErr, gotErr) {
+		return
+	}
+	t.Errorf("stderr mismatch\n"+
+		"args:            %v\n"+
+		"expected (ref):  %q (len=%d)\n"+
+		"actual   (go):   %q (len=%d)",
+		tc.Args, refErr, len(refErr), gotErr, len(gotErr))
+}
+
+// compareExitCode reports exit code divergence and sanity-checks the reference.
+// R2.3: when DiffTest.ExitCode is non-zero, verifies the reference binary
+// actually returned that code.
+func compareExitCode(t *testing.T, tc DiffTest, refCode, gotCode int) {
+	t.Helper()
+	if tc.ExitCode != 0 && refCode != tc.ExitCode {
+		t.Errorf("exit code sanity check failed\n"+
+			"args:              %v\n"+
+			"expected (DiffTest): %d\n"+
+			"actual   (ref):      %d",
+			tc.Args, tc.ExitCode, refCode)
+	}
+	if refCode == gotCode {
+		return
+	}
+	t.Errorf("exit code mismatch\n"+
+		"args:            %v\n"+
+		"expected (ref):  %d\n"+
+		"actual   (go):   %d",
+		tc.Args, refCode, gotCode)
 }
 
 // ComposeNormalizers returns a single NormalizeFunc that applies the given
