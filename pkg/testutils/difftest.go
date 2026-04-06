@@ -44,10 +44,14 @@ type DiffTest struct {
 	// ExpectedFiles maps relative paths to expected byte content
 	// after execution, for file-output utilities (sponge, cp).
 	ExpectedFiles map[string][]byte
+	// Timeout overrides the default per-binary execution timeout.
+	// R5.2: zero value = use defaultTimeout (30s).
+	Timeout time.Duration
 }
 
 // defaultTimeout is the maximum duration each binary invocation is allowed.
-const defaultTimeout = 10 * time.Second
+// R5.2: 30-second default for differential test execution.
+const defaultTimeout = 30 * time.Second
 
 // binResult holds captured output from a single binary execution.
 type binResult struct {
@@ -56,9 +60,20 @@ type binResult struct {
 	exitCode int
 }
 
+// resolveTimeout returns the per-test timeout or the default.
+// R5.2: zero Timeout means use defaultTimeout.
+func resolveTimeout(tc DiffTest) time.Duration {
+	if tc.Timeout > 0 {
+		return tc.Timeout
+	}
+	return defaultTimeout
+}
+
 // RunDiffTests runs each DiffTest as a named subtest, executing goBinary
 // and refBinary with identical inputs and comparing their outputs.
 // R1.3: iterates tests, runs t.Run for each, compares stdout/stderr/exit code.
+// R5.1: sets LC_ALL=C by default via buildEnv.
+// R5.2: enforces per-test timeout via resolveTimeout.
 func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 	t.Helper()
 	for _, tc := range tests {
@@ -69,8 +84,9 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 				workDir = t.TempDir()
 			}
 			env := buildEnv(tc.Env)
-			ref := runBinary(t, refBinary, tc.Args, tc.Stdin, env, workDir)
-			got := runBinary(t, goBinary, tc.Args, tc.Stdin, env, workDir)
+			timeout := resolveTimeout(tc)
+			ref := runBinary(t, refBinary, tc.Args, tc.Stdin, env, workDir, timeout)
+			got := runBinary(t, goBinary, tc.Args, tc.Stdin, env, workDir, timeout)
 			compareResults(t, tc, ref, got)
 			verifyExpectedFiles(t, tc, workDir)
 		})
@@ -78,7 +94,10 @@ func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) {
 }
 
 // buildEnv constructs the environment variable slice for binary execution.
-// R2.5/R2.6: when testEnv is nil, inherit os.Environ() with LC_ALL=C prepended.
+// R5.1/R2.6: prepends LC_ALL=C so it is the default locale. If DiffTest.Env
+// contains its own LC_ALL entry, last-wins semantics of os/exec.Cmd.Env
+// ensures the caller's value takes precedence.
+// When testEnv is nil, inherit os.Environ() with LC_ALL=C prepended.
 // When testEnv is non-nil, prepend LC_ALL=C to the provided slice only.
 func buildEnv(testEnv []string) []string {
 	if testEnv == nil {
@@ -90,9 +109,10 @@ func buildEnv(testEnv []string) []string {
 
 // runBinary executes a binary and captures its stdout, stderr, and exit code.
 // R1.4: uses os/exec.Command with Stdin, Env, Dir, and bytes.Buffer capture.
-func runBinary(t *testing.T, bin string, args []string, stdin []byte, env []string, workDir string) binResult {
+// R5.2: uses the provided timeout for context deadline.
+func runBinary(t *testing.T, bin string, args []string, stdin []byte, env []string, workDir string, timeout time.Duration) binResult {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	var outBuf, errBuf bytes.Buffer
@@ -103,13 +123,14 @@ func runBinary(t *testing.T, bin string, args []string, stdin []byte, env []stri
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
-	exitCode := executeAndExtractCode(t, cmd, ctx)
+	exitCode := executeAndExtractCode(t, cmd, ctx, timeout)
 	return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes(), exitCode: exitCode}
 }
 
 // executeAndExtractCode runs the command and extracts the exit code.
 // R1.4: nil error = code 0; *exec.ExitError = ExitCode(); other = fatal.
-func executeAndExtractCode(t *testing.T, cmd *exec.Cmd, ctx context.Context) int {
+// R5.2: reports timeout with the actual duration in the failure message.
+func executeAndExtractCode(t *testing.T, cmd *exec.Cmd, ctx context.Context, timeout time.Duration) int {
 	t.Helper()
 	err := cmd.Run()
 	if err == nil {
@@ -120,7 +141,7 @@ func executeAndExtractCode(t *testing.T, cmd *exec.Cmd, ctx context.Context) int
 		return exitErr.ExitCode()
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatalf("binary %s timed out after %v", cmd.Path, defaultTimeout)
+		t.Fatalf("binary %s timed out after %v", cmd.Path, timeout)
 	}
 	t.Fatalf("binary %s failed to execute: %v", cmd.Path, err)
 	return -1 // unreachable
