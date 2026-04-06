@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 // Package sizeparse parses size strings with unit suffixes (K, M, G, etc.)
-// into byte counts. Implements srd087-sizeparse R1.1, R1.2, R1.3, R1.4.
+// into byte counts. Implements srd087-sizeparse R1.1, R1.2, R1.3, R1.4,
+// R2.1, R2.2, R3.1, R3.2.
 package sizeparse
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
 
 // ParseOptions configures the behavior of ParseWithOptions.
+// R2.1: AllowSign permits +/- prefix on size strings.
+// R2.2: DefaultUnit is the multiplier when no suffix is given.
 type ParseOptions struct {
 	// AllowSign permits +/- prefix on size strings.
 	AllowSign bool
@@ -58,13 +62,14 @@ var suffixes = map[string]suffixDef{
 
 // Parse parses a size string consisting of a decimal integer and an optional
 // unit suffix, returning the size in bytes. Returns an error for invalid input.
-// R1.1: delegates to ParseWithOptions with default options (D2).
+// R1.1: delegates to ParseWithOptions with default options.
 func Parse(s string) (int64, error) {
 	return ParseWithOptions(s, ParseOptions{})
 }
 
 // ParseWithOptions parses a size string with configurable behavior controlled
-// by opts. See ParseOptions for available options.
+// by opts. R2.1: AllowSign controls whether +/- prefix is accepted.
+// R2.2: DefaultUnit provides the multiplier when no suffix is given.
 func ParseWithOptions(s string, opts ParseOptions) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -82,8 +87,10 @@ func ParseWithOptions(s string, opts ParseOptions) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid size %q: %w", s, err)
 	}
+	// R3.1: detect overflow before returning.
 	result, ok := checkedMul(num, multiplier)
 	if !ok {
+		// R3.2: include original input in error message.
 		return 0, fmt.Errorf("size %q overflows int64", s)
 	}
 	return sign * result, nil
@@ -91,11 +98,13 @@ func ParseWithOptions(s string, opts ParseOptions) (int64, error) {
 
 // extractSign checks for a leading +/- and returns the sign multiplier,
 // the remaining string, and an error if signs are not allowed.
+// R2.1: when AllowSign is false, reject signed input with an error.
 func extractSign(s string, allowSign bool) (int64, string, error) {
 	if s[0] != '+' && s[0] != '-' {
 		return 1, s, nil
 	}
 	if !allowSign {
+		// R3.2: error includes the original input string.
 		return 0, "", fmt.Errorf("invalid size %q: sign not allowed", s)
 	}
 	if s[0] == '-' {
@@ -111,6 +120,7 @@ func splitNumSuffix(s string) (int64, string, error) {
 		i++
 	}
 	if i == 0 {
+		// R3.2: describe what went wrong.
 		return 0, "", fmt.Errorf("no numeric value")
 	}
 	num, err := strconv.ParseInt(s[:i], 10, 64)
@@ -122,6 +132,8 @@ func splitNumSuffix(s string) (int64, string, error) {
 
 // resolveMultiplier returns the byte multiplier for a suffix, or the
 // default unit if the suffix is empty.
+// R2.2: when DefaultUnit is set and no suffix is given, use it.
+// R3.2: unknown suffix produces an error naming the suffix.
 func resolveMultiplier(suffix string, defaultUnit int64) (int64, error) {
 	if suffix == "" {
 		if defaultUnit <= 0 {
@@ -137,6 +149,7 @@ func resolveMultiplier(suffix string, defaultUnit int64) (int64, error) {
 }
 
 // checkedPow computes base^power with overflow detection.
+// R3.1: returns error if the result exceeds int64 range.
 func checkedPow(base int64, power int) (int64, error) {
 	result := int64(1)
 	for range power {
@@ -150,13 +163,18 @@ func checkedPow(base int64, power int) (int64, error) {
 }
 
 // checkedMul returns a*b and true, or 0 and false on int64 overflow.
+// R3.1: uses uint64 intermediate arithmetic to detect wrap-around (D2).
 func checkedMul(a, b int64) (int64, bool) {
 	if a == 0 || b == 0 {
 		return 0, true
 	}
-	result := a * b
-	if result/a != b {
+	ua, ub := uint64(a), uint64(b)
+	result := ua * ub
+	if result/ua != ub {
 		return 0, false
 	}
-	return result, true
+	if result > math.MaxInt64 {
+		return 0, false
+	}
+	return int64(result), true
 }
