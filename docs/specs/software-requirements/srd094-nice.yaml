@@ -18,29 +18,22 @@ requirements:
     items:
       - R1.1:
           text: Must run COMMAND with its scheduling priority adjusted by the given increment. Default increment is 10 (lower priority).
-          weight: 1
       - R1.2:
           text: "-n ADJUST or --adjustment=ADJUST must set the priority increment. ADJUST may be negative (requires privileges) or positive."
-          weight: 1
       - R1.3:
           text: When invoked with no COMMAND, must print the current nice value to stdout and exit 0.
-          weight: 1
       - R1.4:
           text: Must pass all remaining arguments after COMMAND as arguments to the executed command.
-          weight: 1
 
   R2:
     title: Exit codes
     items:
       - R2.1:
           text: Must exit with the exit status of COMMAND when COMMAND completes.
-          weight: 1
       - R2.2:
           text: Must exit 125 when the adjustment is invalid or nice(2) fails. Must exit 126 when COMMAND is found but cannot be invoked. Must exit 127 when COMMAND is not found.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/nice does not implement real-time scheduling priorities.

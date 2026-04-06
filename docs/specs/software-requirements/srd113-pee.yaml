@@ -17,23 +17,18 @@ requirements:
     items:
       - R1.1:
           text: Must accept one or more COMMAND arguments. Must read stdin and write the input to the stdin of each COMMAND in parallel. Each COMMAND is executed via the shell (sh -c COMMAND).
-          weight: 4
       - R1.2:
           text: Must wait for all commands to complete before exiting.
-          weight: 1
       - R1.3:
           text: Stdout of each COMMAND goes to stdout, interleaved.
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit 0 when all commands exit 0. Must exit 1 when any command exits non-zero.
-          weight: 1
       - R2.2:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/pee does not implement output ordering or serialization of command outputs.

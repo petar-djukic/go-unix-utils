@@ -18,26 +18,20 @@ requirements:
     items:
       - R1.1:
           text: Must call chroot(2) to change the root directory to NEWROOT, then execute COMMAND with any arguments. If no COMMAND is given, must execute ${SHELL} -i (default /bin/sh -i).
-          weight: 4
       - R1.2:
           text: "--userspec=USER:GROUP must set the UID and GID of the executed process. USER and GROUP may be names or numeric IDs."
-          weight: 1
       - R1.3:
           text: "--groups=G_LIST must set the supplementary groups of the executed process. G_LIST is a comma-separated list of group names or GIDs."
-          weight: 1
 
   R2:
     title: Exit codes
     items:
       - R2.1:
           text: Must exit with the exit status of COMMAND when COMMAND completes.
-          weight: 1
       - R2.2:
           text: Must exit 125 when chroot itself fails. Must exit 126 when COMMAND is found but cannot be invoked. Must exit 127 when COMMAND is not found.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/chroot does not set up the chroot filesystem; the caller must prepare NEWROOT.

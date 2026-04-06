@@ -18,39 +18,30 @@ requirements:
     items:
       - R1.1:
           text: When invoked with no arguments, must print the current working directory followed by a newline and exit 0. The default mode is -P (physical).
-          weight: 1
       - R1.2:
           text: "-L (--logical) must print the value of the PWD environment variable if it names the current directory and contains no . or .. components. If PWD is unset or invalid, must fall back to physical mode."
-          weight: 1
       - R1.3:
           text: "-P (--physical) must print the resolved physical path with all symlinks resolved."
-          weight: 1
       - R1.4:
           text: When both -L and -P are given, the last one specified takes precedence.
-          weight: 1
 
   R2:
     title: Error handling
     items:
       - R2.1:
           text: If any positional operand is provided, must print an error message to stderr and exit 1.
-          weight: 1
       - R2.2:
           text: Unknown flags must produce an error message to stderr and exit 1.
-          weight: 1
 
   R3:
     title: Differential testing
     items:
       - R3.1:
           text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gpwd) via pkg/testutils.
-          weight: 1
       - R3.2:
           text: "Tests must cover: default invocation, -L, -P, -L -P precedence, and error cases."
-          weight: 1
       - R3.3:
           text: All differential tests must set LC_ALL=C in the environment.
-          weight: 1
 
 non_goals:
   - cmd/pwd does not change the working directory.

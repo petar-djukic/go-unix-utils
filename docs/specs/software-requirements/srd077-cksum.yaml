@@ -20,42 +20,32 @@ requirements:
     items:
       - R1.1:
           text: Must compute the POSIX CRC-32 checksum of each named file and print one line per file in the format "CHECKSUM BYTES FILENAME".
-          weight: 4
       - R1.2:
           text: Must read from stdin when no file arguments are given. Stdin output omits the filename.
-          weight: 1
       - R1.3:
           text: Must process multiple files in argument order, printing one line per file.
-          weight: 1
       - R1.4:
           text: Must exit 1 when any named file cannot be opened, printing an error to stderr, and continue processing remaining files.
-          weight: 1
 
   R2:
     title: Algorithm selection and output format
     items:
       - R2.1:
           text: "--algorithm=ALG selects the digest algorithm. Supported values: crc (default), sm3, blake2b, sha1, sha224, sha256, sha384, sha512. Non-CRC algorithms produce tagged output by default (e.g., 'SHA256 (file) = HASH')."
-          weight: 4
       - R2.2:
           text: "--untagged produces traditional GNU hash output ('HASH  FILENAME') instead of tagged BSD format when used with non-CRC algorithms."
-          weight: 1
       - R2.3:
           text: "--raw outputs the raw binary digest instead of hex-encoded text. Only valid with non-CRC algorithms."
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 when all files are processed successfully.
-          weight: 1
       - R3.2:
           text: Must exit 1 when any file cannot be opened or an invalid algorithm is specified.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/cksum does not implement --check mode for CRC verification (GNU cksum supports --check only for non-CRC algorithms).

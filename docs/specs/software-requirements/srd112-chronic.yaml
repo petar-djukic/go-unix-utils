@@ -17,26 +17,20 @@ requirements:
     items:
       - R1.1:
           text: Must execute COMMAND with any arguments, capturing stdout and stderr. If COMMAND exits 0, suppress all output. If COMMAND exits non-zero, write the captured stdout to stdout and captured stderr to stderr.
-          weight: 4
       - R1.2:
           text: "-e or --stderr must also trigger output display when the command writes to stderr, even if it exits 0."
-          weight: 1
       - R1.3:
           text: "-v or --verbose must print the command being run to stderr before execution."
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit with the exit status of COMMAND.
-          weight: 1
       - R2.2:
           text: Must exit 100 when COMMAND cannot be found or executed.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/chronic does not implement timeout or resource limits on the executed command.

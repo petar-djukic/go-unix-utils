@@ -20,70 +20,52 @@ requirements:
     items:
       - R1.1:
           text: Must create a temporary file in the directory specified by the TMPDIR environment variable, or /tmp if TMPDIR is unset, and print the absolute path to stdout.
-          weight: 1
       - R1.2:
           text: Must use a template of 'tmp.XXXXXXXXXX' when no template argument is provided, where each X is replaced by a random alphanumeric character.
-          weight: 1
       - R1.3:
           text: When a TEMPLATE argument is provided, must replace the trailing sequence of X characters (minimum three) with random characters and create the file with that name.
-          weight: 1
       - R1.4:
           text: Must create the file with permission mode 0600 (owner read-write only).
-          weight: 1
       - R1.5:
           text: Must exit 0 on success and exit 1 on failure, printing an error to stderr on failure.
-          weight: 1
 
   R2:
     title: Directory mode (-d, --directory)
     items:
       - R2.1:
           text: -d or --directory must create a temporary directory instead of a file.
-          weight: 1
       - R2.2:
           text: Must create the directory with permission mode 0700 (owner read-write-execute only).
-          weight: 1
       - R2.3:
           text: Must print the absolute path of the created directory to stdout.
-          weight: 1
 
   R3:
     title: Template and location control
     items:
       - R3.1:
           text: -p DIR or --tmpdir=DIR must use DIR as the parent directory for the created file or directory, overriding TMPDIR.
-          weight: 1
       - R3.2:
           text: --tmpdir without a value must use TMPDIR or /tmp as the parent directory (same as default behavior), and interpret the next argument as a template.
-          weight: 1
       - R3.3:
           text: --suffix=SUFF must append SUFF after the random characters in the generated name. The template must not contain a slash after the X sequence when --suffix is used.
-          weight: 1
       - R3.4:
           text: -t must treat the template as a filename prefix in the TMPDIR directory, equivalent to legacy BSD compatibility mode in GNU mktemp.
-          weight: 1
       - R3.5:
           text: -u or --dry-run must print the name that would be created without actually creating it, and must print a warning that the option is discouraged.
-          weight: 1
       - R3.6:
           text: -q or --quiet must suppress error messages on failure.
-          weight: 1
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare exit codes and structural properties of output between the Go binary and gmktemp via pkg/testutils.
-          weight: 1
       - R4.2:
           text: "Tests must verify structural properties: output is a valid path in the expected directory, the file or directory exists after creation, the name matches the template pattern, and permission bits match the specification."
-          weight: 1
       - R4.3:
           text: "Tests must cover: default file creation, -d directory creation, custom template, --suffix, -p with explicit directory, -t legacy mode, -u dry-run, and error cases for invalid templates."
-          weight: 1
       - R4.4:
           text: Tests must not compare exact filenames between the Go binary and gmktemp, since random components will differ between invocations.
-          weight: 1
 
 non_goals:
   - cmd/mktemp does not manage the lifecycle of created files; deletion is the caller's responsibility.

@@ -20,45 +20,34 @@ requirements:
     items:
       - R1.1:
           text: Must copy SOURCE to DEST, setting permissions to 755 by default (or as specified by -m).
-          weight: 1
       - R1.2:
           text: "-m MODE or --mode=MODE must set the permission mode on the installed file (octal or symbolic)."
-          weight: 1
       - R1.3:
           text: "-o OWNER or --owner=OWNER must set the owner of the installed file."
-          weight: 1
       - R1.4:
           text: "-g GROUP or --group=GROUP must set the group of the installed file."
-          weight: 1
 
   R2:
     title: Directory creation and backup
     items:
       - R2.1:
           text: "-d or --directory must create each given directory and any missing parent directories, like mkdir -p. No file copying is performed in this mode."
-          weight: 1
       - R2.2:
           text: "-D must create all leading destination directory components, then copy SOURCE to DEST."
-          weight: 1
       - R2.3:
           text: "-b or --backup must make a backup of each existing destination file. --suffix=SUFFIX sets the backup suffix (default ~)."
-          weight: 1
       - R2.4:
           text: "-v or --verbose must print the name of each file as it is installed."
-          weight: 1
 
   R3:
     title: Comparison and exit codes
     items:
       - R3.1:
           text: "-C or --compare must not install if the source and destination are identical (same content and permissions). This avoids updating timestamps unnecessarily."
-          weight: 1
       - R3.2:
           text: Must exit 0 when all files are installed successfully. Must exit 1 on any error.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/install does not implement --strip (binary stripping requires external strip tool).

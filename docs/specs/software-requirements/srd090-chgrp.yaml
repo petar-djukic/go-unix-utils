@@ -18,42 +18,32 @@ requirements:
     items:
       - R1.1:
           text: Must accept a GROUP argument (name or numeric GID) and one or more FILE arguments, changing each file's group to GROUP.
-          weight: 1
       - R1.2:
           text: "--reference=RFILE must set each FILE's group to match RFILE's group."
-          weight: 1
       - R1.3:
           text: Must process multiple FILE arguments, applying the group change to each.
-          weight: 1
       - R1.4:
           text: Must exit 1 when any file cannot be accessed or the group is invalid, printing an error to stderr, and continue processing remaining files.
-          weight: 1
 
   R2:
     title: Recursive and symlink handling
     items:
       - R2.1:
           text: "-R or --recursive must change group ownership recursively for directories and their contents."
-          weight: 4
       - R2.2:
           text: "-h or --no-dereference must change the symlink itself rather than the target. Without -h, must change the target."
-          weight: 1
       - R2.3:
           text: "-H must follow symlinks given on the command line but not in recursive traversal. -L must follow all symlinks. -P must never follow symlinks (default with -R)."
-          weight: 4
 
   R3:
     title: Output control and exit codes
     items:
       - R3.1:
           text: "-v or --verbose must print a diagnostic for every file processed. -c or --changes must print only when changes are made. -f or --silent must suppress most errors."
-          weight: 1
       - R3.2:
           text: Must exit 0 when all files are processed successfully. Must exit 1 on any error.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/chgrp does not implement --preserve-root.

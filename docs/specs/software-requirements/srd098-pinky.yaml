@@ -18,39 +18,30 @@ requirements:
     items:
       - R1.1:
           text: Must display logged-in users in short format by default, showing login name, terminal, idle time, login time, and remote host, one line per user.
-          weight: 4
       - R1.2:
           text: When given USER arguments, must show information only for those users (from passwd and utmpx).
-          weight: 1
       - R1.3:
           text: "-s must force short format output (default behavior)."
-          weight: 1
 
   R2:
     title: Long format and field control
     items:
       - R2.1:
           text: "-l must display long format output showing login name, real name (from GECOS), terminal, idle time, login time, office location, and office phone from the passwd entry."
-          weight: 4
       - R2.2:
           text: "-f must suppress the header line in short format."
-          weight: 1
       - R2.3:
           text: "-b must suppress the home directory and shell in long format. -h must suppress the project file. -p must suppress the plan file."
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 on success.
-          weight: 1
       - R3.2:
           text: Must exit 1 on any error.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/pinky does not read .plan or .project files from user home directories on macOS (unlike full finger).

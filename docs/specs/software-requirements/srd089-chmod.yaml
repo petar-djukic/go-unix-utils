@@ -19,55 +19,42 @@ requirements:
     items:
       - R1.1:
           text: Must accept an octal mode (e.g., 755, 0644) and set the file's permission bits to that value.
-          weight: 1
       - R1.2:
           text: "Must accept symbolic mode specifications: [ugoa][+-=][rwxXst] with comma-separated clauses (e.g., u+x, go-w, a=rw). Must support multiple comma-separated clauses (e.g., u=rwx,go=rx)."
-          weight: 4
       - R1.3:
           text: Must process multiple FILE arguments, applying the mode change to each.
-          weight: 1
       - R1.4:
           text: Must exit 1 when any file cannot be accessed, printing an error to stderr, and continue processing remaining files.
-          weight: 1
 
   R2:
     title: Recursive and output control
     items:
       - R2.1:
           text: "-R or --recursive must change modes recursively for directories and their contents."
-          weight: 4
       - R2.2:
           text: "-v or --verbose must print a diagnostic for every file processed."
-          weight: 1
       - R2.3:
           text: "-c or --changes must print a diagnostic only for files whose mode actually changed."
-          weight: 1
       - R2.4:
           text: "-f or --silent or --quiet must suppress most error messages."
-          weight: 1
 
   R3:
     title: Special mode bits and reference
     items:
       - R3.1:
           text: "Must support setuid (u+s), setgid (g+s), and sticky bit (o+t) in symbolic mode."
-          weight: 1
       - R3.2:
           text: "--reference=RFILE must set each FILE's mode to match RFILE's mode."
-          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
       - R4.1:
           text: Must exit 0 when all files are processed successfully.
-          weight: 1
       - R4.2:
           text: Must exit 1 when any file cannot be accessed or the mode specification is invalid.
-          weight: 1
       - R4.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/chmod does not implement SELinux context changes.

@@ -27,42 +27,33 @@ requirements:
             format. When stdout is a TTY, terminal width is obtained by calling
             pkg/sys.TerminalWidth() (int, error). When stdout is not a TTY, must use a
             default width of 80 columns.
-          weight: 1
       - R1.2:
           text: |
             Must escape non-printable characters in filenames using C-style backslash
             sequences by default. This matches the -b (--escape) behavior of ls. Backslash,
             newline, tab, and other control characters are printed as \\, \n, \t, and \NNN
             (octal) respectively. Spaces in filenames are printed as \  (backslash space).
-          weight: 1
       - R1.3:
           text: |
             Must sort entries in the C locale order (LC_COLLATE=C) by default, matching
             ls default sort behavior. Entries whose names start with "." are excluded unless
             -a or -A is given.
-          weight: 1
       - R1.4:
           text: When no directory arguments are given, must default to the current directory (".").
-          weight: 1
       - R1.5:
           text: Must accept all flags that ls accepts. dir is identical to ls except for the default format (-C) and default quoting style (-b). All other behavior is inherited from ls.
-          weight: 1
 
   R2:
     title: Exit codes and signal handling
     items:
       - R2.1:
           text: Must exit 0 when all listed paths are accessed and output is written successfully.
-          weight: 1
       - R2.2:
           text: Must exit 1 when a minor problem occurs (permission denied, file not found). Must print a diagnostic to stderr and continue processing remaining entries.
-          weight: 1
       - R2.3:
           text: Must exit 2 when a serious problem occurs such as an invalid command-line option, matching GNU dir (and ls) exit-code contract.
-          weight: 1
       - R2.4:
           text: Must install a SIGPIPE handler at startup by calling pkg/sys.InstallSIGPIPEHandler() so that piping dir output to head or other truncating consumers does not produce a broken-pipe error message.
-          weight: 1
 
 non_goals:
   - dir does not add any flags beyond what ls provides; it is strictly ls with different defaults.

@@ -22,64 +22,48 @@ requirements:
     items:
       - R1.1:
           text: "Must read two sorted files and join lines where the join field (default: first field) matches. Must print one output line per matching pair."
-          weight: 1
       - R1.2:
           text: "Fields in each line are separated by whitespace (runs of blanks and tabs) by default. The output separator is a single space by default."
-          weight: 1
       - R1.3:
           text: "Lines that do not pair (present in one file but not the other) are suppressed by default."
-          weight: 1
       - R1.4:
           text: "When one of the file arguments is '-', must read that file from stdin."
-          weight: 1
 
   R2:
     title: Field selection and output format
     items:
       - R2.1:
           text: "-1 FIELD must join on field FIELD of file 1 (fields are numbered from 1). -2 FIELD must join on field FIELD of file 2."
-          weight: 1
       - R2.2:
           text: "-j FIELD must set the join field for both files simultaneously."
-          weight: 1
       - R2.3:
           text: "-o FORMAT must select and order output fields. FORMAT is a comma-separated or space-separated list of FILENUM.FIELDNUM specifiers (e.g., 1.2,2.1) or '0' for the join field."
-          weight: 1
       - R2.4:
           text: "-t CHAR must use CHAR as both the input and output field separator."
-          weight: 1
 
   R3:
     title: Unpairable lines and header mode
     items:
       - R3.1:
           text: "-a FILENUM must also print unpairable lines from file FILENUM (1 or 2). May be specified twice (-a 1 -a 2) to print unpairable lines from both files."
-          weight: 1
       - R3.2:
           text: "-v FILENUM must print only unpairable lines from file FILENUM, suppressing paired lines."
-          weight: 1
       - R3.3:
           text: "-e STRING must replace missing input fields with STRING in the output."
-          weight: 1
       - R3.4:
           text: "--header must treat the first line of each input file as a header line, joining them regardless of sort order and printing the result before data lines."
-          weight: 1
 
   R4:
     title: Exit codes and differential testing
     items:
       - R4.1:
           text: Must exit 0 when the join completes successfully.
-          weight: 1
       - R4.2:
           text: Must exit 1 when an invalid option is given or a file cannot be opened.
-          weight: 1
       - R4.3:
           text: "Differential tests must compare stdout and exit codes between the Go binary and the reference binary via pkg/testutils. Tests must use LC_ALL=C for deterministic collation."
-          weight: 1
       - R4.4:
           text: "Tests must cover: default join on first field, -1/-2 field selection, -j combined field, -t custom separator, -o output format, -a unpairable lines, -v unpairable only, -e empty replacement, --header, stdin as one input, and error cases (unsorted input with --check-order, missing file)."
-          weight: 1
 
 non_goals:
   - cmd/join does not implement locale-aware collation beyond LC_ALL=C behavior.

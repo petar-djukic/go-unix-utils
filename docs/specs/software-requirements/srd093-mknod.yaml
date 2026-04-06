@@ -18,26 +18,20 @@ requirements:
     items:
       - R1.1:
           text: "Must accept NAME TYPE [MAJOR MINOR] arguments. TYPE is b (block special), c or u (character special), or p (FIFO). Block and character types require MAJOR and MINOR device numbers."
-          weight: 4
       - R1.2:
           text: "-m MODE or --mode=MODE must set the file's permission bits to MODE (octal or symbolic). Default is 0666 modified by umask for FIFOs, 0660 for device files."
-          weight: 1
       - R1.3:
           text: Must exit 1 with an error when arguments are invalid (wrong count, non-numeric device numbers, FIFO with device numbers given).
-          weight: 1
 
   R2:
     title: Exit codes and SIGPIPE
     items:
       - R2.1:
           text: Must exit 0 when the special file is created successfully.
-          weight: 1
       - R2.2:
           text: Must exit 1 when creation fails or arguments are invalid.
-          weight: 1
       - R2.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/mknod does not implement SELinux context setting.

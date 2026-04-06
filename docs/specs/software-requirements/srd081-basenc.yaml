@@ -19,48 +19,36 @@ requirements:
     items:
       - R1.1:
           text: "--base64 must encode/decode using RFC 4648 Base64 (same as base64 utility)."
-          weight: 1
       - R1.2:
           text: "--base64url must encode/decode using RFC 4648 Base64 with URL-safe alphabet (+ and / replaced by - and _)."
-          weight: 1
       - R1.3:
           text: "--base32 must encode/decode using RFC 4648 Base32 (same as base32 utility)."
-          weight: 1
       - R1.4:
           text: "--base32hex must encode/decode using RFC 4648 Base32 with extended hex alphabet."
-          weight: 1
 
   R2:
     title: Additional encodings and options
     items:
       - R2.1:
           text: "--base16 must encode/decode using hexadecimal (Base16). Output is uppercase hex characters."
-          weight: 1
       - R2.2:
           text: "--z85 must encode/decode using ZeroMQ Z85 encoding. Input length must be a multiple of 4 bytes for encoding."
-          weight: 4
       - R2.3:
           text: "-d or --decode must decode the input using the selected encoding scheme."
-          weight: 1
       - R2.4:
           text: "-w COLS or --wrap=COLS must set the wrap column (default 76). -w 0 disables wrapping."
-          weight: 1
 
   R3:
     title: Input handling and error cases
     items:
       - R3.1:
           text: "-i or --ignore-garbage must ignore non-alphabet characters during decoding."
-          weight: 1
       - R3.2:
           text: Must read from FILE or stdin (when no file or "-" is given).
-          weight: 1
       - R3.3:
           text: Must exit 1 when no encoding scheme is specified, when the file cannot be opened, or when decode input is invalid.
-          weight: 1
       - R3.4:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/basenc does not implement Base2 (binary) encoding.

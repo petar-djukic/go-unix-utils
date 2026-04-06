@@ -22,32 +22,27 @@ requirements:
             Must provide a cmd/version/ package that compiles to a standalone binary. When
             invoked with no arguments, the binary prints the version string to stdout followed
             by a newline and exits 0.
-          weight: 1
       - R1.2:
           text: |
             The version string must be set at build time via -ldflags "-X main.version=<tag>".
             When the linker variable is not set (development builds), the binary must print
             "dev" as the version string.
-          weight: 1
       - R1.3:
           text: |
             The mage build target must resolve the version tag by running
             git describe --tags --abbrev=0 --match "v[0-9]*" and passing the result to the
             linker. If the git command fails (no tags, not a git repository), the build must
             succeed with the version set to "dev".
-          weight: 1
       - R1.4:
           text: |
             When invoked with --version or -v, the binary must print the same version string
             as the no-argument invocation. Any other flag must cause the binary to print a
             usage message to stderr and exit 2.
-          weight: 1
       - R1.5:
           text: |
             The version package must export a variable or function so that other cmd/ packages
             can import and report the same version string without duplicating the ldflags
             mechanism.
-          weight: 1
 
 non_goals:
   - cmd/version does not parse LS_COLORS, handle signals, or do anything beyond printing a version string.

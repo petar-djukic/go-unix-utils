@@ -21,42 +21,32 @@ requirements:
     items:
       - R1.1:
           text: When invoked with no arguments, must print every environment variable on its own line in NAME=VALUE format and exit 0.
-          weight: 1
       - R1.2:
           text: When invoked with one or more VARIABLE arguments, must print only the value (not the name or '=') of each named variable, one per line, in the order given.
-          weight: 1
       - R1.3:
           text: If a named VARIABLE is not set in the environment, must produce no output for that variable and must not print an error message.
-          weight: 1
 
   R2:
     title: Output formatting and exit codes
     items:
       - R2.1:
           text: -0 or --null must terminate each output line with a NUL byte (0x00) instead of a newline.
-          weight: 1
       - R2.2:
           text: Must exit 0 if all requested VARIABLE arguments are found in the environment.
-          weight: 1
       - R2.3:
           text: Must exit 1 if any requested VARIABLE argument is not found in the environment.
-          weight: 1
       - R2.4:
           text: When no VARIABLE arguments are given, must always exit 0 (the dump of all variables cannot fail).
-          weight: 1
 
   R3:
     title: Differential testing
     items:
       - R3.1:
           text: Differential tests must compare stdout output and exit codes between the Go binary and the reference binary (gprintenv) via pkg/testutils.
-          weight: 1
       - R3.2:
           text: "Tests must cover: no-argument full dump, single existing variable, multiple existing variables, missing variable (exit 1), mix of existing and missing variables, and -0 NUL-delimited output."
-          weight: 1
       - R3.3:
           text: Tests must verify that no error message is printed to stderr for missing variables.
-          weight: 1
 
 non_goals:
   - cmd/printenv does not support setting or modifying variables; it is read-only.

@@ -64,10 +64,8 @@ requirements:
                   Normalize     []func([]byte) []byte  // applied in order to stdout and stderr of both binaries before comparison; nil or empty = no normalization
                   ExpectedFiles map[string][]byte      // optional: path -> expected byte content after execution, for file-output utilities (sponge, cp)
               }
-          weight: 1
       - R1.2:
           text: DiffTest.Stdin nil means both binaries receive EOF immediately on stdin. An empty non-nil slice ([]byte{}) also produces no bytes but is semantically distinct (open stdin that is immediately closed).
-          weight: 1
       - R1.3:
           text: |
             DiffTest.Env nil means both binaries inherit the test process environment with
@@ -76,10 +74,8 @@ requirements:
             keys are added. This merge behavior matches the struct comment ("override or
             extend") and avoids requiring callers to replicate the full environment for a
             single override.
-          weight: 1
       - R1.4:
           text: Must define type NormalizeFunc = func([]byte) []byte as a named type alias in package testutils. The Normalize field in DiffTest uses this element type. When the slice is nil or empty, no normalization is applied to stdout or stderr.
-          weight: 1
 
   R2:
     title: Binary execution
@@ -87,16 +83,12 @@ requirements:
       - R2.1:
           text: |
             Must provide func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) that accepts the path to the Go binary under test (goBinary) and the GNU reference binary (refBinary), then runs each DiffTest as a named subtest via t.Run(test.Name, ...). Both binaries are invoked with identical Args, Stdin, and Env for each test case.
-          weight: 1
       - R2.2:
           text: Must capture stdout, stderr, and exit code from each binary independently.
-          weight: 1
       - R2.3:
           text: Must impose a configurable timeout on each binary invocation. The default timeout must be 10 seconds. The test fails if either binary exceeds the timeout.
-          weight: 1
       - R2.4:
           text: Must not write any output to the test process stdout or stderr during a passing test run.
-          weight: 1
       - R2.5:
           text: |
             Must support passing a working directory to each binary invocation via a WorkDir
@@ -105,51 +97,40 @@ requirements:
             working directory for both binaries in a given test case. The DiffTest struct gains:
 
               WorkDir string // empty = per-test t.TempDir(); non-empty = use this directory for both binaries
-          weight: 1
       - R2.6:
           text: |
             Must set LC_ALL=C in the environment for both binaries unless the DiffTest.Env
             explicitly overrides LC_ALL. This ensures deterministic sort order and formatting
             across locales. The harness applies this default before merging DiffTest.Env.
-          weight: 1
 
   R3:
     title: Comparison and reporting
     items:
       - R3.1:
           text: Must apply the DiffTest.Normalize function (if non-nil) to both binaries' stdout and stderr before comparison.
-          weight: 1
       - R3.2:
           text: Must compare normalized stdout byte-for-byte. Any difference must be reported as a test failure.
-          weight: 1
       - R3.3:
           text: Must compare normalized stderr byte-for-byte. Any difference must be reported as a test failure.
-          weight: 1
       - R3.4:
           text: Must compare exit codes exactly. A difference must be reported as a test failure.
-          weight: 1
       - R3.5:
           text: 'Must report divergence with the following information in the failure message: the DiffTest args, the stdin content (truncated to 256 bytes if longer), the reference binary stdout, the Go binary stdout, the reference stderr, the Go stderr, and both exit codes.'
-          weight: 1
       - R3.6:
           text: Must run each DiffTest as a named subtest (t.Run) so individual test case failures are identifiable in go test output.
-          weight: 1
 
   R4:
     title: Normalization hooks
     items:
       - R4.1:
           text: Must allow per-DiffTest normalization via the Normalize field. The function receives the raw output bytes and returns the normalized bytes.
-          weight: 1
       - R4.2:
           text: Must provide a built-in TimestampNormalizer that replaces common strftime timestamp patterns with a fixed placeholder string. This normalizer is used by cmd/ts tests.
-          weight: 1
       - R4.3:
           text: |
             Must allow normalizers to be composed: the harness must accept a slice of Normalize
             functions applied in order, not a single function. When the slice is nil or empty,
             no normalization is applied.
-          weight: 1
       - R4.4:
           text: |
             Must provide func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc that returns
@@ -160,7 +141,6 @@ requirements:
                   testutils.TimestampNormalizer,
                   customNormalizer,
               )
-          weight: 1
 
   R5:
     title: File-state comparison
@@ -172,14 +152,12 @@ requirements:
             relative to the working directory and values are the expected byte content after
             execution. When ExpectedFiles is non-nil, the harness checks each entry after both
             binaries complete.
-          weight: 1
       - R5.2:
           text: |
             Must compare each ExpectedFiles entry byte-for-byte against the file produced by
             the Go binary. Any difference must be reported as a test failure with the same
             format as stdout divergence: file path, expected content (from reference), actual
             content (from Go binary). Missing files must also be reported as failures.
-          weight: 1
 
 non_goals:
   - pkg/testutils does not build or compile the Go binaries under test.

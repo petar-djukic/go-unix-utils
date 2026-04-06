@@ -20,61 +20,46 @@ requirements:
     items:
       - R1.1:
           text: Must read the entire input into memory, split it into records on the separator (default newline), and write the records in reverse order to stdout.
-          weight: 1
       - R1.2:
           text: Must treat a trailing separator at the end of input as the terminator of the last record, not as a separator before an empty record. This matches gtac behavior where "a\nb\n" reversed produces "b\na\n" not "\nb\na".
-          weight: 1
       - R1.3:
           text: Must read from stdin when no file arguments are given, or when "-" appears as a filename.
-          weight: 1
       - R1.4:
           text: When multiple files are given, must process each file independently and write them in argument order (each file's records reversed, files not merged before reversal).
-          weight: 1
 
   R2:
     title: Separator options (-s, -b, -r)
     items:
       - R2.1:
           text: -s SEP must use SEP as the record separator instead of newline. SEP may be any string.
-          weight: 1
       - R2.2:
           text: By default the separator follows each record. -b must place the separator before each record instead of after it.
-          weight: 1
       - R2.3:
           text: -r must interpret the -s SEP argument as a regular expression (Go regexp syntax). Each match of the pattern becomes a record boundary.
-          weight: 1
       - R2.4:
           text: When -s and -r are combined, the separator is a regex; records are the text between consecutive matches.
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 when all inputs are processed successfully.
-          weight: 1
       - R3.2:
           text: Must exit 1 when any input file cannot be opened or read, printing the error to stderr. Processing continues for remaining files.
-          weight: 1
       - R3.3:
           text: Must exit 1 when a write error occurs on stdout.
-          weight: 1
       - R3.4:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
   R4:
     title: Differential testing
     items:
       - R4.1:
           text: Differential tests must compare Go tac output against gtac byte-for-byte via pkg/testutils.RunDiffTests.
-          weight: 1
       - R4.2:
           text: "Tests must cover: single-file reversal, stdin reversal, multi-file reversal, -s with a custom separator, -b flag, and a file with no trailing newline."
-          weight: 1
       - R4.3:
           text: Tests must use LC_ALL=C to eliminate locale-dependent divergence.
-          weight: 1
 
 non_goals:
   - cmd/tac does not implement the block-level backward seek optimization from the C source; it buffers the full input in memory.

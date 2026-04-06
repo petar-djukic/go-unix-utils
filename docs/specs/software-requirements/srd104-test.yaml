@@ -19,40 +19,32 @@ requirements:
     items:
       - R1.1:
           text: "Must support file test operators: -e (exists), -f (regular file), -d (directory), -s (non-empty), -r (readable), -w (writable), -x (executable), -L or -h (symlink), -b (block special), -c (character special), -p (named pipe), -S (socket), -g (setgid), -u (setuid), -k (sticky), -G (owned by effective GID), -O (owned by effective UID), -t FD (terminal)."
-          weight: 4
       - R1.2:
           text: "Must support file comparison operators: FILE1 -nt FILE2 (newer than), FILE1 -ot FILE2 (older than), FILE1 -ef FILE2 (same device and inode)."
-          weight: 1
 
   R2:
     title: String and integer tests
     items:
       - R2.1:
           text: "Must support string operators: -z STRING (zero length), -n STRING (non-zero length), STRING1 = STRING2 (equal), STRING1 != STRING2 (not equal), STRING (non-empty)."
-          weight: 1
       - R2.2:
           text: "Must support integer comparison operators: INT1 -eq INT2, -ne, -lt, -le, -gt, -ge."
-          weight: 1
 
   R3:
     title: Logical operators
     items:
       - R3.1:
           text: "Must support logical operators: ! EXPR (not), EXPR1 -a EXPR2 (and), EXPR1 -o EXPR2 (or), ( EXPR ) (grouping). Parentheses must be escaped or quoted by the shell."
-          weight: 4
       - R3.2:
           text: Must exit 0 when the expression evaluates to true, 1 when false, and 2 on syntax errors.
-          weight: 1
 
   R4:
     title: Exit codes and SIGPIPE
     items:
       - R4.1:
           text: Must exit 0 (true), 1 (false), or 2 (error).
-          weight: 1
       - R4.2:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/test does not implement == (use = for string equality, matching POSIX).

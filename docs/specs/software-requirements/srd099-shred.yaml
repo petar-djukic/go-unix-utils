@@ -18,45 +18,34 @@ requirements:
     items:
       - R1.1:
           text: Must overwrite each FILE with random data for 3 iterations by default, then optionally remove the file.
-          weight: 4
       - R1.2:
           text: "-n N or --iterations=N must set the number of overwrite passes to N."
-          weight: 1
       - R1.3:
           text: "-z or --zero must add a final overwrite pass with zeros to hide the shredding."
-          weight: 1
       - R1.4:
           text: "-u or --remove must truncate and remove the file after overwriting. Without -u, the file is overwritten but not deleted."
-          weight: 1
 
   R2:
     title: Output and size control
     items:
       - R2.1:
           text: "-v or --verbose must print progress information to stderr for each overwrite pass."
-          weight: 1
       - R2.2:
           text: "-s N or --size=N must shred only the first N bytes. N may use unit suffixes (K, M, G)."
-          weight: 1
       - R2.3:
           text: Must process multiple FILE arguments, shredding each in order.
-          weight: 1
       - R2.4:
           text: Must exit 1 when any file cannot be opened or overwritten, printing an error to stderr, and continue processing remaining files.
-          weight: 1
 
   R3:
     title: Exit codes and SIGPIPE
     items:
       - R3.1:
           text: Must exit 0 when all files are processed successfully.
-          weight: 1
       - R3.2:
           text: Must exit 1 on any error.
-          weight: 1
       - R3.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/shred does not guarantee unrecoverability on journaled or log-structured filesystems.

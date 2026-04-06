@@ -18,61 +18,50 @@ requirements:
     items:
       - R1.1:
           text: When invoked with no arguments, must print a summary of current terminal settings (speed, line discipline, changed-from-default settings) matching GNU stty output format.
-          weight: 4
 
   R2:
     title: All settings display
     items:
       - R2.1:
           text: "-a or --all must print all current terminal settings in a human-readable format."
-          weight: 4
 
   R3:
     title: Save/restore and device
     items:
       - R3.1:
           text: "-g or --save must print all current terminal settings in a machine-readable format (stty-readable) that can be passed back as arguments to restore settings."
-          weight: 1
       - R3.2:
           text: "-F DEVICE or --file=DEVICE must operate on the specified terminal device instead of stdin."
-          weight: 1
 
   R4:
     title: Change settings
     items:
       - R4.1:
           text: "Must accept setting names as arguments to enable them, and names prefixed with - to disable them (e.g., stty -echo disables echo, stty echo enables it)."
-          weight: 4
 
   R5:
     title: Special characters
     items:
       - R5.1:
           text: "Must support special characters: intr, quit, erase, kill, eof, eol, eol2, swtch, start, stop, susp, rprnt, werase, lnext, discard, min, time."
-          weight: 4
 
   R6:
     title: Combination and speed settings
     items:
       - R6.1:
           text: "Must support combination settings: sane (reset to reasonable defaults), cooked (same as -raw), raw (set raw mode), evenp/parity (set even parity), oddp (set odd parity)."
-          weight: 1
       - R6.2:
           text: "Must support speed setting: ispeed N, ospeed N, or N alone to set both input and output speed."
-          weight: 1
 
   R7:
     title: Exit codes and SIGPIPE
     items:
       - R7.1:
           text: Must exit 0 on success.
-          weight: 1
       - R7.2:
           text: Must exit 1 on any error (invalid setting, cannot open device).
-          weight: 1
       - R7.3:
           text: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-          weight: 1
 
 non_goals:
   - cmd/stty does not implement all obscure termios flags; it covers the commonly used set matching GNU stty output.

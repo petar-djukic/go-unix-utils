@@ -18,42 +18,32 @@ requirements:
     items:
       - R1.1:
           text: Must call unlink(2) on exactly one FILE argument provided on the command line.
-          weight: 1
       - R1.2:
           text: Must produce no output on stdout when the operation succeeds.
-          weight: 1
       - R1.3:
           text: Must exit 0 on success.
-          weight: 1
 
   R2:
     title: Error handling
     items:
       - R2.1:
           text: Must exit with a non-zero status and print an error to stderr when called with zero arguments.
-          weight: 1
       - R2.2:
           text: Must exit with a non-zero status and print an error to stderr when called with more than one argument.
-          weight: 1
       - R2.3:
           text: Must exit with a non-zero status and print an error to stderr when the specified FILE does not exist.
-          weight: 1
       - R2.4:
           text: Must exit with a non-zero status and print an error to stderr when the specified FILE is a directory, since unlink(2) does not remove directories on standard systems.
-          weight: 1
 
   R3:
     title: Differential testing
     items:
       - R3.1:
           text: Differential tests must compare stdout, stderr, and exit codes between the Go binary and gunlink via pkg/testutils.
-          weight: 1
       - R3.2:
           text: "Tests must cover: successful removal of a regular file, successful removal of a symbolic link, zero-argument error, multi-argument error, non-existent file error, and directory argument error."
-          weight: 1
       - R3.3:
           text: Tests must verify that the target file no longer exists after a successful invocation, matching gunlink behavior.
-          weight: 1
 
 non_goals:
   - cmd/unlink does not support any flags; it accepts exactly one positional argument.
