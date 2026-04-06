@@ -7,6 +7,7 @@ package sys
 
 import (
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -33,12 +34,34 @@ type FileInfo struct {
 // Equivalent to os.Stat but populates all FileInfo fields from syscall.Stat_t.
 // See srd002-sys R2.1.
 func Stat(path string) (*FileInfo, error) {
-	panic("not implemented")
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileInfoFromOS(info), nil
 }
 
 // Lstat returns extended file metadata for path without following symbolic links.
 // Equivalent to os.Lstat but populates all FileInfo fields from syscall.Stat_t.
 // See srd002-sys R2.1.
 func Lstat(path string) (*FileInfo, error) {
-	panic("not implemented")
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileInfoFromOS(info), nil
+}
+
+// fileInfoFromOS builds a FileInfo from an os.FileInfo, extracting
+// extended fields from the underlying syscall.Stat_t.
+func fileInfoFromOS(info os.FileInfo) *FileInfo {
+	fi := &FileInfo{
+		Mode: info.Mode(),
+		Size: info.Size(),
+		Info: info,
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		populateFromStat(fi, stat)
+	}
+	return fi
 }
