@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/basename: strip directory and suffix from filenames.
-// Implements srd015-basename R1.1, R1.2, R1.3, R1.4.
+// Implements srd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -19,23 +19,143 @@ const progName = "basename"
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	args := os.Args[1:]
-	if len(args) == 0 || len(args) > 2 {
-		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
-		if len(args) > 2 {
-			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", progName, args[2])
-		}
+	opts, names, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	name := args[0]
-	suffix := ""
-	if len(args) == 2 {
-		suffix = args[1]
+	terminator := "\n"
+	if opts.zero {
+		terminator = "\x00"
 	}
 
-	result := basename(name, suffix)
-	fmt.Println(result)
+	suffix := opts.suffix
+	// R1.2: in single-argument mode, second positional arg is the suffix.
+	if !opts.multiple && len(names) == 2 {
+		suffix = names[1]
+		names = names[:1]
+	}
+
+	for _, name := range names {
+		result := basename(name, suffix)
+		fmt.Print(result + terminator)
+	}
+}
+
+// options holds parsed command-line flags.
+type options struct {
+	multiple bool
+	suffix   string
+	zero     bool
+}
+
+// parseArgs parses flags and positional arguments.
+// Returns options, the list of NAME arguments, and any error.
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
+	var names []string
+	skipNext := false
+
+	for i := range len(args) {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		arg := args[i]
+		if arg == "--" {
+			names = append(names, args[i+1:]...)
+			break
+		}
+		if parsed, skip := parseLongFlag(arg, args, i, &opts); parsed {
+			skipNext = skip
+			continue
+		}
+		if parsed, skip := parseShortFlags(arg, args, i, &opts); parsed {
+			skipNext = skip
+			continue
+		}
+		names = append(names, args[i:]...)
+		break
+	}
+
+	return opts, names, validateArgs(opts, names)
+}
+
+// parseLongFlag handles --multiple, --suffix=SUFFIX, --suffix SUFFIX, --zero.
+// Returns (handled, skipNext).
+func parseLongFlag(
+	arg string, args []string, i int, opts *options,
+) (bool, bool) {
+	switch {
+	case arg == "--multiple":
+		opts.multiple = true
+		return true, false
+	case arg == "--zero":
+		opts.zero = true
+		return true, false
+	case arg == "--suffix":
+		if i+1 < len(args) {
+			opts.suffix = args[i+1]
+			opts.multiple = true
+			return true, true
+		}
+		return true, false
+	case strings.HasPrefix(arg, "--suffix="):
+		opts.suffix = arg[len("--suffix="):]
+		opts.multiple = true
+		return true, false
+	default:
+		return false, false
+	}
+}
+
+// parseShortFlags handles -a, -s SUFFIX, -z, and combined short flags.
+// Returns (handled, skipNext).
+func parseShortFlags(
+	arg string, args []string, i int, opts *options,
+) (bool, bool) {
+	if len(arg) < 2 || arg[0] != '-' {
+		return false, false
+	}
+	skipNext := false
+	for j := 1; j < len(arg); j++ {
+		switch arg[j] {
+		case 'a':
+			opts.multiple = true
+		case 'z':
+			opts.zero = true
+		case 's':
+			opts.multiple = true
+			// Remainder of this arg or next arg is the suffix value.
+			if j+1 < len(arg) {
+				opts.suffix = arg[j+1:]
+			} else if i+1 < len(args) {
+				opts.suffix = args[i+1]
+				skipNext = true
+			}
+			return true, skipNext
+		default:
+			return false, false
+		}
+	}
+	return true, skipNext
+}
+
+// validateArgs checks positional argument count against the mode.
+func validateArgs(opts options, names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("%s: missing operand", progName)
+	}
+	// R2.1/R2.2: multi-argument mode accepts any count >= 1.
+	if opts.multiple {
+		return nil
+	}
+	// Single-argument mode: 1 NAME or 1 NAME + 1 SUFFIX.
+	if len(names) > 2 {
+		return fmt.Errorf("%s: extra operand '%s'", progName, names[2])
+	}
+	return nil
 }
 
 // basename strips the directory prefix and optional suffix from name.
@@ -43,8 +163,8 @@ func main() {
 // R1.4: a name consisting entirely of slashes returns "/".
 // R1.1: the longest prefix ending in '/' is stripped.
 // R1.2: suffix is removed from the end if it matches (literal).
+// R1.5: empty string produces empty output.
 func basename(name, suffix string) string {
-	// R1.5: empty string produces empty output.
 	if name == "" {
 		return ""
 	}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/basename.
-// Tests cover srd015-basename R1.1, R1.2, R1.3, R1.4.
+// Tests cover srd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -82,7 +82,7 @@ func TestDiff(t *testing.T) {
 			Args: []string{"/home/user/file.tar.gz", ".tar.gz"},
 		},
 
-		// Empty string input (R1.5 behavior, handled naturally).
+		// R1.5: empty string produces empty line.
 		{
 			Name: "empty_string",
 			Args: []string{""},
@@ -90,8 +90,73 @@ func TestDiff(t *testing.T) {
 
 		// Error: no arguments.
 		{
-			Name: "no_args",
+			Name:      "no_args",
 			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrDropNormalizer},
+		},
+
+		// R2.1: -a flag processes multiple NAME arguments.
+		{
+			Name: "multi_arg_a_flag",
+			Args: []string{"-a", "/usr/bin/sort", "/usr/bin/cat"},
+		},
+		{
+			Name: "multi_arg_long_flag",
+			Args: []string{"--multiple", "/usr/bin/sort", "/usr/bin/cat"},
+		},
+		{
+			Name: "multi_arg_single",
+			Args: []string{"-a", "/usr/bin/sort"},
+		},
+
+		// R2.2: -s SUFFIX removes suffix and implies -a.
+		{
+			Name: "suffix_s_flag",
+			Args: []string{"-s", ".h", "include/stdio.h", "include/stdlib.h"},
+		},
+		{
+			Name: "suffix_long_flag",
+			Args: []string{"--suffix=.h", "include/stdio.h", "include/stdlib.h"},
+		},
+		{
+			Name: "suffix_s_single_file",
+			Args: []string{"-s", ".txt", "readme.txt"},
+		},
+		// R2.2: with -s, second positional is a NAME not a SUFFIX.
+		{
+			Name: "suffix_s_treats_second_as_name",
+			Args: []string{"-s", ".h", "stdio.h", ".h"},
+		},
+
+		// R2.3: multi-argument mode without -s does no suffix removal.
+		{
+			Name: "multi_arg_no_suffix",
+			Args: []string{"-a", "file.txt", "data.csv"},
+		},
+
+		// R2.1 + R1.5: multi-arg with empty string.
+		{
+			Name: "multi_arg_empty_string",
+			Args: []string{"-a", "", "file.txt"},
+		},
+
+		// R2.1 + R1.4: multi-arg with root path.
+		{
+			Name: "multi_arg_root",
+			Args: []string{"-a", "/", "/usr/bin/sort"},
+		},
+
+		// Combined: -az flags.
+		{
+			Name: "combined_az_flags",
+			Args: []string{"-az", "/usr/bin/sort", "/usr/bin/cat"},
+		},
+
+		// Error: too many args without -a.
+		{
+			Name:      "extra_operand",
+			Args:      []string{"a", "b", "c"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrDropNormalizer},
 		},
