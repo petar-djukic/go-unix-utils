@@ -41,6 +41,13 @@ func main() {
 	os.Exit(2)
 }
 
+// GetVersion returns the version string. R1.5: exported so that other cmd/
+// packages can call this function to report the same version without
+// duplicating the ldflags mechanism.
+func GetVersion() string {
+	return Version
+}
+
 // printVersion writes the version string followed by a newline to stdout.
 func printVersion() {
 	fmt.Println(Version)

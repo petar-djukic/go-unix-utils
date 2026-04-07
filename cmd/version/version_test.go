@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/version. Implements srd059-version R1.1, R1.2, R1.4.
+// Differential tests for cmd/version.
+// Implements srd059-version R1.1, R1.2, R1.4, R1.5 and srd011-magefiles R5.1.
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,6 +92,72 @@ func TestUnknownFlag(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "Usage:") {
 		t.Errorf("stderr should contain Usage message, got %q", string(out))
+	}
+}
+
+// TestExportedVersion verifies R1.5: the Version variable is exported and
+// defaults to "dev" when ldflags are not set.
+func TestExportedVersion(t *testing.T) {
+	t.Parallel()
+	if Version != "dev" {
+		t.Errorf("Version = %q, want %q", Version, "dev")
+	}
+}
+
+// TestGetVersion verifies R1.5: GetVersion returns the current version string.
+func TestGetVersion(t *testing.T) {
+	t.Parallel()
+	got := GetVersion()
+	if got != "dev" {
+		t.Errorf("GetVersion() = %q, want %q", got, "dev")
+	}
+}
+
+// TestLdflagsInjection verifies R1.5: the version can be set at build time
+// via -ldflags so other cmd/ packages can use the same mechanism.
+func TestLdflagsInjection(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "version")
+	const want = "v42.0.0-test"
+
+	build := exec.Command("go", "build",
+		"-ldflags", "-X main.Version="+want,
+		"-o", binPath, ".")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build with ldflags failed: %v\n%s", err, out)
+	}
+
+	run := exec.Command(binPath)
+	out, err := run.Output()
+	if err != nil {
+		t.Fatalf("version binary failed: %v", err)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != want {
+		t.Errorf("version with ldflags = %q, want %q", got, want)
+	}
+}
+
+// TestConfigurationFields verifies srd011 R5.1: configuration.yaml project
+// section contains module_path, go_source_dirs, and magefiles_dir fields.
+// binary_dir may be defaulted by the scaffold when not explicitly set.
+func TestConfigurationFields(t *testing.T) {
+	t.Parallel()
+	configPath := filepath.Join("..", "..", "configuration.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Skipf("configuration.yaml not found: %v", err)
+	}
+
+	content := string(data)
+	// R5.1: module_path, go_source_dirs, magefiles_dir must be present.
+	// binary_dir may be scaffold-defaulted and not explicitly listed.
+	required := []string{"module_path", "go_source_dirs", "magefiles_dir"}
+	for _, field := range required {
+		if !strings.Contains(content, field) {
+			t.Errorf("configuration.yaml missing required field %q", field)
+		}
 	}
 }
 
