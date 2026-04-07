@@ -46,6 +46,7 @@ func run(args []string) int {
 }
 
 // runWithConfig validates options, parses args, and prints the sequence.
+// R3.4: -f and -w are mutually exclusive; error when both are given.
 func runWithConfig(cfg seqConfig) int {
 	if cfg.format != "" && cfg.equalWidth {
 		fmt.Fprintf(os.Stderr, "%s: format string may not be specified"+

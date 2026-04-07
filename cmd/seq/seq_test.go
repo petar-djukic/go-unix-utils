@@ -97,9 +97,31 @@ func TestDiff(t *testing.T) {
 		{Name: "ew_neg5_5", Args: []string{"-w", "-5", "5"}},
 		{Name: "ew_long_flag", Args: []string{"--equal-width", "8", "12"}},
 
-		// R3.4: -f and -w together is an error.
+		// R3.4: -f and -w together is an error (GNU behavior).
 		{Name: "fmt_and_ew_error", Args: []string{"-w", "-f", "%.2f", "1", "5"},
 			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_and_ew_error_g", Args: []string{"-w", "-f", "%g", "1", "10"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R4.1: non-numeric arguments exit 1.
+		{Name: "invalid_arg_abc", Args: []string{"abc"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "invalid_arg_first", Args: []string{"foo", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "invalid_arg_incr", Args: []string{"1", "bar", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "invalid_arg_last", Args: []string{"1", "1", "baz"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R4.2: zero increment exits 1.
+		{Name: "zero_step_int", Args: []string{"1", "0", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "zero_step_float", Args: []string{"1", "0.0", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R4.3: empty sequence from direction conflict exits 0.
+		{Name: "empty_two_arg", Args: []string{"5", "1"}},
+		{Name: "empty_neg_first_gt_last", Args: []string{"1", "-1", "5"}},
 
 		// R2.4: large integers.
 		{Name: "large_int", Args: []string{"9999999999", "1", "9999999999"}},
