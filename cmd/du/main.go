@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements du: recursive directory disk usage reporting.
-// Implements srd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3.
+// Implements srd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1, R4.2, R5.1.
 package main
 
 import (
@@ -44,12 +44,14 @@ type walker struct {
 	hasError bool           // R4.2: set when any error occurs
 }
 
+// R5.1: install SIGPIPE handler at startup.
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run())
 }
 
 // run parses arguments, walks each path, and returns an exit code.
+// R4.1: returns 0 on success. R4.2: returns 1 on any error.
 func run() int {
 	opts, paths := parseArgs()
 	if len(paths) == 0 {
@@ -197,7 +199,7 @@ func parseCombinedDepth(remainder string, opts *options, rest []string) (bool, i
 func (w *walker) processArg(path string) int64 {
 	fi, err := sys.Lstat(path)
 	if err != nil {
-		w.reportError(path, err)
+		w.reportAccessError(path, err)
 		return 0
 	}
 	if fi.Mode.IsDir() {
@@ -217,7 +219,8 @@ func (w *walker) walkDir(path string, fi *sys.FileInfo, depth int) int64 {
 	total := fi.Blocks * 512
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		w.reportError(path, err)
+		// R4.2: report ReadDir failure with GNU du-compatible message.
+		w.reportReadDirError(path, err)
 		if w.shouldPrintDir(depth) {
 			w.printEntry(total, path)
 		}
@@ -246,7 +249,7 @@ func (w *walker) shouldPrintDir(depth int) bool {
 func (w *walker) walkChild(path string, depth int) int64 {
 	fi, err := sys.Lstat(path)
 	if err != nil {
-		w.reportError(path, err)
+		w.reportAccessError(path, err)
 		return 0
 	}
 	if fi.Mode.IsDir() {
@@ -329,9 +332,17 @@ func joinPath(parent, child string) string {
 	return parent + "/" + child
 }
 
-// reportError prints a diagnostic to stderr and sets the error flag (R4.2).
-func (w *walker) reportError(path string, err error) {
+// reportAccessError prints a stat/access diagnostic to stderr and sets
+// the error flag. R4.2: matches GNU du "cannot access" format.
+func (w *walker) reportAccessError(path string, err error) {
 	fmt.Fprintf(os.Stderr, "du: cannot access '%s': %s\n", path, osErrorMessage(err))
+	w.hasError = true
+}
+
+// reportReadDirError prints a directory-read diagnostic to stderr and sets
+// the error flag. R4.2: matches GNU du "cannot read directory" format.
+func (w *walker) reportReadDirError(path string, err error) {
+	fmt.Fprintf(os.Stderr, "du: cannot read directory '%s': %s\n", path, osErrorMessage(err))
 	w.hasError = true
 }
 
