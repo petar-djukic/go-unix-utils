@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.9.
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
@@ -582,16 +583,36 @@ func computePrefixWidths(entries []lsEntry, opts *options) (int, int) {
 	return inodeW, blocksW
 }
 
+// --- Terminal width and SIGWINCH (R4.5) ---
+
+// storedTermWidth holds the current terminal width, updated by SIGWINCH.
+var storedTermWidth atomic.Int32
+
+// initTermWidth queries the initial terminal width and installs a
+// SIGWINCH handler via pkg/sys.OnTerminalResize.
+// R4.5: allows ls to adapt column layout if terminal is resized.
+func initTermWidth() {
+	w := 80
+	if sys.IsTerminal(os.Stdout.Fd()) {
+		if tw, err := sys.TerminalWidth(); err == nil && tw > 0 {
+			w = tw
+		}
+	}
+	storedTermWidth.Store(int32(w))
+	sys.OnTerminalResize(func(width int) {
+		storedTermWidth.Store(int32(width))
+	})
+}
+
 // --- Non-long format output ---
 
 // resolveWidth returns the column width for multi-column layout.
 // R1.11: when -C or -x forces multi-column on non-TTY, uses 80.
+// R4.5: uses the stored terminal width updated by SIGWINCH handler.
 func resolveWidth() int {
-	if sys.IsTerminal(os.Stdout.Fd()) {
-		w, err := sys.TerminalWidth()
-		if err == nil && w > 0 {
-			return w
-		}
+	w := int(storedTermWidth.Load())
+	if w > 0 {
+		return w
 	}
 	return 80
 }
@@ -1274,6 +1295,9 @@ func needsHeader(totalArgs int, opts *options) bool {
 func main() {
 	// R4.4: install SIGPIPE handler.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.5: query terminal width and install SIGWINCH handler.
+	initTermWidth()
 
 	opts, paths := parseArgs(os.Args[1:])
 

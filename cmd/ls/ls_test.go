@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.9.
 package main
 
 import (
@@ -951,6 +951,96 @@ func TestDiffExitCodes(t *testing.T) {
 			Args: []string{"-z"},
 			Env:  []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffNImpliesLong tests -n implies -l (R4.6).
+func TestDiffNImpliesLong(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R4.6: -n alone produces long format with numeric UID/GID.
+		{
+			Name: "n_implies_long",
+			Args: []string{"-n", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.6: -n with -l is redundant but valid.
+		{
+			Name: "nl_redundant",
+			Args: []string{"-nl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFormatMutex tests format flag mutual exclusivity (R4.7).
+func TestDiffFormatMutex(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R4.7: -l after -C overrides to long format.
+		{
+			Name: "l_overrides_C",
+			Args: []string{"-C", "-l", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -1 after -x overrides to single-column.
+		{
+			Name: "1_overrides_x",
+			Args: []string{"-x", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -C after -1 overrides to multi-column.
+		{
+			Name: "C_overrides_1",
+			Args: []string{"-1", "-C", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.7: -x after -l overrides to horizontal multi-column.
+		{
+			Name: "x_overrides_l",
+			Args: []string{"-l", "-x", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveLongTotal tests -R with -l total block line (R4.8).
+func TestDiffRecursiveLongTotal(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createRecursiveFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R4.8: -Rl produces total block line for each subdirectory.
+		{
+			Name: "Rl_subdir_totals",
+			Args: []string{"-Rl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.8: -Rls combines recursive long format with block counts.
+		{
+			Name: "Rls_subdir_block_totals",
+			Args: []string{"-Rls", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
