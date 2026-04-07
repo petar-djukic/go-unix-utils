@@ -77,15 +77,21 @@ func writeWrapped(w io.Writer, s string, wrapCol int) error {
 
 // Decode reads from r, decodes the data using cfg, and writes the
 // decoded output to w. Newlines and carriage returns are stripped
-// before decoding. The caller's Decode function handles alphabet
-// validation; IgnoreGarbage controls tolerance via the caller.
-// R2.2, R2.3: full decode pipeline with whitespace stripping.
+// before decoding. When IgnoreGarbage is true, all non-alphabet
+// characters (outside A-Z, a-z, 0-9, +, /, =) are also stripped.
+// When IgnoreGarbage is false, invalid characters cause the caller's
+// Decode function to return an error.
+// R2.1, R2.2, R2.3: full decode pipeline with whitespace stripping
+// and garbage handling.
 func Decode(r io.Reader, w io.Writer, cfg DecoderConfig) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
 	cleaned := stripWhitespace(string(data))
+	if cfg.IgnoreGarbage {
+		cleaned = stripGarbage(cleaned)
+	}
 	decoded, err := cfg.Decode(cleaned)
 	if err != nil {
 		return err
@@ -99,6 +105,29 @@ func stripWhitespace(s string) string {
 	s = strings.ReplaceAll(s, "\n", "")
 	s = strings.ReplaceAll(s, "\r", "")
 	return s
+}
+
+// stripGarbage removes all characters that are not part of a base
+// encoding alphabet (A-Z, a-z, 0-9, +, /, =) from s.
+// R2.2: when IgnoreGarbage is true, non-alphabet characters are stripped.
+func stripGarbage(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if isBaseAlphabet(s[i]) {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+// isBaseAlphabet reports whether c is a character that could appear in
+// a base encoding alphabet (A-Z, a-z, 0-9, +, /, =).
+func isBaseAlphabet(c byte) bool {
+	return (c >= 'A' && c <= 'Z') ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= '0' && c <= '9') ||
+		c == '+' || c == '/' || c == '='
 }
 
 // OpenInput opens a file for reading, or returns os.Stdin wrapped in a
