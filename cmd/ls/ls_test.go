@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.15.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -878,6 +879,78 @@ func TestDiffRecursiveSort(t *testing.T) {
 			Name: "R_name_order",
 			Args: []string{"-R", "-1", "--color=never", dir},
 			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// stderrNormalizer normalizes stderr for differential testing of error cases.
+// R4.2/R4.3: normalizes binary name in error messages and removes the
+// "Try '...' --help" advice line that GNU ls appends after errors.
+func stderrNormalizer(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	var result [][]byte
+	for _, line := range lines {
+		if bytes.HasPrefix(line, []byte("Try ")) {
+			continue
+		}
+		line = normalizeBinaryName(line)
+		result = append(result, line)
+	}
+	return bytes.Join(result, []byte("\n"))
+}
+
+// normalizeBinaryName replaces binary path/name prefix with "ls" in
+// error lines. Handles full paths (/opt/homebrew/bin/gls:) and bare
+// names (gls:, ls:) by checking the base name of the prefix.
+func normalizeBinaryName(line []byte) []byte {
+	idx := bytes.Index(line, []byte(": "))
+	if idx <= 0 {
+		return line
+	}
+	base := filepath.Base(string(line[:idx]))
+	if base == "ls" || base == "gls" {
+		return append([]byte("ls"), line[idx:]...)
+	}
+	return line
+}
+
+// TestDiffExitCodes tests exit code behavior (R4.1, R4.2, R4.3).
+func TestDiffExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 on successful listing.
+		{
+			Name: "exit_0_success",
+			Args: []string{"-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.2: exit 1 on nonexistent path, diagnostic on stderr.
+		{
+			Name: "exit_1_nonexistent",
+			Args: []string{"--color=never", "/nonexistent_path_4556"},
+			Env:  []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: exit 1 with mixed valid/invalid, remaining listed.
+		{
+			Name: "exit_1_mixed_paths",
+			Args: []string{"-1", "--color=never", "/nonexistent_path_4556", dir},
+			Env:  []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3: exit 2 on invalid option.
+		{
+			Name: "exit_2_invalid_option",
+			Args: []string{"-z"},
+			Env:  []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

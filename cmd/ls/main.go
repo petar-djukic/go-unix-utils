@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.4.
 package main
 
 import (
@@ -1164,6 +1164,8 @@ func listRecursive(subdirs []string, opts *options, exitCode *int) {
 // --- Multi-argument handling ---
 
 // classifyArgs separates paths into files and directories.
+// R4.2: sets exitCode to 2 for command-line argument access failures,
+// matching GNU ls behavior (LS_FAILURE for command_line_arg=true).
 func classifyArgs(paths []string, opts *options, files, dirs *[]string, exitCode *int) {
 	for _, p := range paths {
 		if opts.dirOnly {
@@ -1173,7 +1175,7 @@ func classifyArgs(paths []string, opts *options, files, dirs *[]string, exitCode
 		info, err := os.Stat(p)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, formatError(p, err))
-			*exitCode = 1
+			*exitCode = 2
 			continue
 		}
 		if info.IsDir() {
@@ -1209,12 +1211,25 @@ func listFileArgs(files []string, opts *options, exitCode *int) {
 
 // --- Error formatting ---
 
+// capitalizeErr returns the error string with the first letter uppercased.
+// R4.2: Go syscall returns lowercase error strings ("no such file or
+// directory") while GNU ls uses strerror() which capitalizes ("No such
+// file or directory"). This ensures differential test parity.
+func capitalizeErr(err error) string {
+	s := err.Error()
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 // formatError produces GNU ls-compatible error messages.
+// R4.2: prints diagnostic to stderr matching GNU ls format.
 func formatError(path string, err error) string {
 	if pe, ok := err.(*os.PathError); ok {
-		return fmt.Sprintf("ls: cannot access '%s': %s", pe.Path, pe.Err)
+		return fmt.Sprintf("ls: cannot access '%s': %s", pe.Path, capitalizeErr(pe.Err))
 	}
-	return fmt.Sprintf("ls: cannot access '%s': %s", path, err)
+	return fmt.Sprintf("ls: cannot access '%s': %s", path, capitalizeErr(err))
 }
 
 // --- Entry point ---
@@ -1224,7 +1239,7 @@ func run(paths []string, opts *options) int {
 	exitCode := 0
 	var files, dirs []string
 	classifyArgs(paths, opts, &files, &dirs, &exitCode)
-	showHeader := needsHeader(files, dirs, opts)
+	showHeader := needsHeader(len(paths), opts)
 	needBlank := false
 	if len(files) > 0 {
 		listFileArgs(files, opts, &exitCode)
@@ -1240,7 +1255,7 @@ func run(paths []string, opts *options) int {
 		children, err := listDir(d, opts)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, formatError(d, err))
-			exitCode = 1
+			exitCode = 2 // R4.2: command-line dir access failure
 		} else if opts.recursive {
 			listRecursive(children, opts, &exitCode)
 		}
@@ -1250,14 +1265,10 @@ func run(paths []string, opts *options) int {
 }
 
 // needsHeader returns true when directory headers should be printed.
-func needsHeader(files, dirs []string, opts *options) bool {
-	if opts.recursive {
-		return true
-	}
-	if len(dirs) > 1 {
-		return true
-	}
-	return len(files) > 0 && len(dirs) > 0
+// R4.2: uses total argument count (including failed paths) so that
+// headers appear when multiple arguments are given, matching GNU ls.
+func needsHeader(totalArgs int, opts *options) bool {
+	return opts.recursive || totalArgs > 1
 }
 
 func main() {
