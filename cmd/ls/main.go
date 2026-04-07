@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.12, R2.1-R2.4, R3.1-R3.6, R3.11-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.4, R3.1-R3.6, R3.11-R3.14.
 package main
 
 import (
@@ -23,9 +23,9 @@ import (
 type filterMode int
 
 const (
-	filterDefault filterMode = iota // skip dot-files
-	filterAlmostAll                 // -A: show dot-files except . and ..
-	filterAll                       // -a: show all including . and ..
+	filterDefault   filterMode = iota // skip dot-files
+	filterAlmostAll                   // -A: show dot-files except . and ..
+	filterAll                         // -a: show all including . and ..
 )
 
 // colorMode controls ANSI color output.
@@ -37,10 +37,21 @@ const (
 	colorNever                   // --color=never
 )
 
+// formatMode controls output format.
+// R1.14: -C, -x, -l, -1 are mutually exclusive; last flag wins.
+type formatMode int
+
+const (
+	fmtDefault formatMode = iota // auto-detect based on TTY
+	fmtOnePer                    // -1: single column
+	fmtLong                      // -l: long format
+	fmtColumns                   // -C: multi-column, column-down
+	fmtAcross                    // -x: multi-column, row-across
+)
+
 // options holds parsed command-line flags.
 type options struct {
-	onePerLine    bool       // -1: force single-column output
-	longFormat    bool       // -l: long listing format
+	format        formatMode // -1, -l, -C, -x (last wins per R1.14)
 	dirOnly       bool       // -d: list directories themselves
 	humanReadable bool       // -h: human-readable sizes
 	recursive     bool       // -R: recursive listing
@@ -142,14 +153,17 @@ func parseFlags(opts *options, flags string) error {
 }
 
 // applyFlag applies a single flag character to options.
+// R1.14: -C, -x, -l, -1 are mutually exclusive; last wins.
 func applyFlag(opts *options, ch rune) error {
 	switch ch {
 	case '1':
-		opts.onePerLine = true
-		opts.longFormat = false
+		opts.format = fmtOnePer
 	case 'l':
-		opts.longFormat = true
-		opts.onePerLine = false
+		opts.format = fmtLong
+	case 'C':
+		opts.format = fmtColumns
+	case 'x':
+		opts.format = fmtAcross
 	case 'a':
 		opts.filter = filterAll
 	case 'A':
@@ -182,7 +196,7 @@ func setupColor(opts *options) {
 
 // needsInfo returns true when file metadata is required for output.
 func needsInfo(opts *options) bool {
-	return opts.longFormat || opts.color != colorNever
+	return opts.format == fmtLong || opts.color != colorNever
 }
 
 // --- Entry filtering and resolution ---
@@ -248,19 +262,42 @@ func colorName(name string, mode os.FileMode) string {
 
 // --- Non-long format output ---
 
+// resolveWidth returns the column width for multi-column layout.
+// R1.11: when -C or -x forces multi-column on non-TTY, uses 80.
+func resolveWidth() int {
+	if sys.IsTerminal(os.Stdout.Fd()) {
+		w, err := sys.TerminalWidth()
+		if err == nil && w > 0 {
+			return w
+		}
+	}
+	return 80
+}
+
 // printEntries outputs entries in the appropriate non-long format.
-// R1.2: single-column when stdout is not a TTY.
+// R1.2: single-column when stdout is not a TTY (default mode).
 // R1.5: -1 forces single-column.
+// R1.11: -C forces vertical multi-column.
+// R1.13: -x forces horizontal multi-column.
 func printEntries(entries []lsEntry, opts *options) {
 	if len(entries) == 0 {
 		return
 	}
 	names := displayNames(entries)
-	if opts.onePerLine || !sys.IsTerminal(os.Stdout.Fd()) {
+	switch opts.format {
+	case fmtOnePer:
 		printOnePerLine(names)
-		return
+	case fmtColumns:
+		printColumnsVertical(names, resolveWidth())
+	case fmtAcross:
+		printColumnsHorizontal(names, resolveWidth())
+	default:
+		if sys.IsTerminal(os.Stdout.Fd()) {
+			printColumnsVertical(names, resolveWidth())
+		} else {
+			printOnePerLine(names)
+		}
 	}
-	printColumns(names)
 }
 
 // printOnePerLine writes one entry per line.
@@ -270,46 +307,42 @@ func printOnePerLine(names []string) {
 	}
 }
 
-// printColumns formats entries in multi-column layout.
-// R1.1: uses terminal width for column fitting.
-func printColumns(names []string) {
-	width, err := sys.TerminalWidth()
-	if err != nil || width <= 0 {
-		width = 80
-	}
-	rows := columnLayout(names, width)
+// --- Vertical column layout (R1.1, R1.11, R1.12) ---
+
+// printColumnsVertical formats entries in vertical multi-column layout.
+// Entries are sorted down columns, then across.
+func printColumnsVertical(names []string, width int) {
+	rows := verticalLayout(names, width)
 	for _, row := range rows {
 		printRow(row, names, width)
 	}
 }
 
-// --- Column layout ---
-
-// columnLayout computes multi-column layout for entries.
+// verticalLayout computes multi-column layout for entries.
 // Returns row slices of entry names, sorted column-down.
-func columnLayout(names []string, termWidth int) [][]string {
+func verticalLayout(names []string, termWidth int) [][]string {
 	n := len(names)
 	if n == 0 {
 		return nil
 	}
 	bestCols := findMaxCols(names, n, termWidth)
-	return buildRows(names, bestCols, n)
+	return buildVerticalRows(names, bestCols, n)
 }
 
 // findMaxCols determines the maximum number of columns that fit.
 func findMaxCols(names []string, n, termWidth int) int {
 	for numCols := n; numCols > 1; numCols-- {
 		numRows := (n + numCols - 1) / numCols
-		if totalWidth(names, numCols, numRows, n) <= termWidth {
+		if verticalTotalWidth(names, numCols, numRows, n) <= termWidth {
 			return numCols
 		}
 	}
 	return 1
 }
 
-// totalWidth computes the display width for a given column layout.
+// verticalTotalWidth computes the display width for a vertical layout.
 // Uses 2-space gap between columns.
-func totalWidth(names []string, numCols, numRows, n int) int {
+func verticalTotalWidth(names []string, numCols, numRows, n int) int {
 	total := 0
 	for col := range numCols {
 		maxW := 0
@@ -318,8 +351,7 @@ func totalWidth(names []string, numCols, numRows, n int) int {
 			if idx >= n {
 				break
 			}
-			w := len(names[idx])
-			if w > maxW {
+			if w := len(names[idx]); w > maxW {
 				maxW = w
 			}
 		}
@@ -331,8 +363,8 @@ func totalWidth(names []string, numCols, numRows, n int) int {
 	return total
 }
 
-// buildRows arranges entries into rows for column-down layout.
-func buildRows(names []string, numCols, n int) [][]string {
+// buildVerticalRows arranges entries into rows for column-down layout.
+func buildVerticalRows(names []string, numCols, n int) [][]string {
 	numRows := (n + numCols - 1) / numCols
 	rows := make([][]string, numRows)
 	for row := range numRows {
@@ -349,12 +381,12 @@ func buildRows(names []string, numCols, n int) [][]string {
 	return rows
 }
 
-// printRow prints a single row with per-column padding.
+// printRow prints a single row with per-column padding (vertical layout).
 func printRow(row []string, allNames []string, termWidth int) {
 	n := len(allNames)
 	numCols := findMaxCols(allNames, n, termWidth)
 	numRows := (n + numCols - 1) / numCols
-	colWidths := computeColWidths(allNames, numCols, numRows, n)
+	colWidths := verticalColWidths(allNames, numCols, numRows, n)
 
 	for i, name := range row {
 		if i > 0 {
@@ -369,8 +401,8 @@ func printRow(row []string, allNames []string, termWidth int) {
 	fmt.Println()
 }
 
-// computeColWidths returns the max width for each column.
-func computeColWidths(names []string, numCols, numRows, n int) []int {
+// verticalColWidths returns the max width for each column (vertical).
+func verticalColWidths(names []string, numCols, numRows, n int) []int {
 	widths := make([]int, numCols)
 	for col := range numCols {
 		for row := range numRows {
@@ -378,8 +410,7 @@ func computeColWidths(names []string, numCols, numRows, n int) []int {
 			if idx >= n {
 				break
 			}
-			w := len(names[idx])
-			if w > widths[col] {
+			if w := len(names[idx]); w > widths[col] {
 				widths[col] = w
 			}
 		}
@@ -393,6 +424,95 @@ func padRight(s string, width int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", width-len(s))
+}
+
+// --- Horizontal column layout (R1.13) ---
+
+// printColumnsHorizontal formats entries across rows, then down.
+// R1.13: -x sorts entries horizontally (left-to-right, top-to-bottom).
+func printColumnsHorizontal(names []string, width int) {
+	n := len(names)
+	if n == 0 {
+		return
+	}
+	numCols := findMaxColsHoriz(names, n, width)
+	numRows := (n + numCols - 1) / numCols
+	colWidths := horizColWidths(names, numCols, numRows, n)
+	for row := range numRows {
+		printHorizRow(names, row, numCols, n, colWidths)
+	}
+}
+
+// findMaxColsHoriz finds the max columns for horizontal layout.
+func findMaxColsHoriz(names []string, n, termWidth int) int {
+	for numCols := n; numCols > 1; numCols-- {
+		numRows := (n + numCols - 1) / numCols
+		if horizTotalWidth(names, numCols, numRows, n) <= termWidth {
+			return numCols
+		}
+	}
+	return 1
+}
+
+// horizTotalWidth computes width for a horizontal column layout.
+func horizTotalWidth(names []string, numCols, numRows, n int) int {
+	total := 0
+	for col := range numCols {
+		maxW := 0
+		for row := range numRows {
+			idx := row*numCols + col
+			if idx >= n {
+				break
+			}
+			if w := len(names[idx]); w > maxW {
+				maxW = w
+			}
+		}
+		total += maxW
+		if col < numCols-1 {
+			total += 2
+		}
+	}
+	return total
+}
+
+// horizColWidths computes per-column max widths for horizontal layout.
+func horizColWidths(names []string, numCols, numRows, n int) []int {
+	widths := make([]int, numCols)
+	for col := range numCols {
+		for row := range numRows {
+			idx := row*numCols + col
+			if idx >= n {
+				break
+			}
+			if w := len(names[idx]); w > widths[col] {
+				widths[col] = w
+			}
+		}
+	}
+	return widths
+}
+
+// printHorizRow prints a single row of horizontal layout.
+func printHorizRow(names []string, row, numCols, n int, colWidths []int) {
+	first := true
+	for col := range numCols {
+		idx := row*numCols + col
+		if idx >= n {
+			break
+		}
+		if !first {
+			fmt.Print("  ")
+		}
+		first = false
+		isLast := col == numCols-1 || idx+1 >= n
+		if !isLast {
+			fmt.Print(padRight(names[idx], colWidths[col]))
+		} else {
+			fmt.Print(names[idx])
+		}
+	}
+	fmt.Println()
 }
 
 // --- Long format (R1.6-R1.10) ---
@@ -436,7 +556,7 @@ func toLongEntry(e lsEntry, dir string, opts *options) longEntry {
 }
 
 // longDisplayName builds the name field for long format including
-// color and symlink target. R1.11: appends " -> target" for symlinks.
+// color and symlink target. R1.10: appends " -> target" for symlinks.
 func longDisplayName(e lsEntry, dir string) string {
 	name := colorName(e.name, e.fi.Mode)
 	if e.fi.Mode&os.ModeSymlink != 0 {
@@ -612,7 +732,7 @@ func listDir(path string, opts *options) ([]string, error) {
 	// R1.3: sort in C locale byte order.
 	sort.Strings(names)
 	lsEntries := resolveEntries(path, names, needsInfo(opts))
-	if opts.longFormat {
+	if opts.format == fmtLong {
 		printLong(lsEntries, path, opts, true)
 	} else {
 		printEntries(lsEntries, opts)
@@ -657,10 +777,9 @@ func listRecursive(subdirs []string, opts *options, exitCode *int) {
 	}
 }
 
-// --- Multi-argument handling (R1.9 multi-arg headers) ---
+// --- Multi-argument handling ---
 
 // classifyArgs separates paths into files and directories.
-// R1.12: prints error for inaccessible entries and sets exit code.
 func classifyArgs(paths []string, opts *options, files, dirs *[]string, exitCode *int) {
 	for _, p := range paths {
 		if opts.dirOnly {
@@ -697,14 +816,14 @@ func listFileArgs(files []string, opts *options, exitCode *int) {
 	if len(entries) == 0 {
 		return
 	}
-	if opts.longFormat {
+	if opts.format == fmtLong {
 		printLong(entries, ".", opts, false)
 	} else {
 		printEntries(entries, opts)
 	}
 }
 
-// --- Error formatting (R1.12) ---
+// --- Error formatting ---
 
 // formatError produces GNU ls-compatible error messages.
 func formatError(path string, err error) string {
@@ -717,8 +836,6 @@ func formatError(path string, err error) string {
 // --- Entry point ---
 
 // run executes the ls command and returns the exit code.
-// R1.9: prints headers when listing multiple directories.
-// R1.10: -R recursively lists subdirectories.
 func run(paths []string, opts *options) int {
 	exitCode := 0
 	var files, dirs []string
