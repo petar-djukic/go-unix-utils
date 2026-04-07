@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/basename: strip directory and suffix from filenames.
-// Implements srd015-basename R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
+// Implements srd015-basename R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
@@ -16,8 +16,18 @@ import (
 // progName is used in error messages.
 const progName = "basename"
 
+// versionText is printed when --version is passed.
+// R4.1: prints version information and exits 0.
+const versionText = progName + " (go-unix-utils) dev"
+
 func main() {
+	// R4.3: install SIGPIPE handler to exit cleanly when piped to head, etc.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.1/R4.2: handle --version and --help before argument parsing.
+	if handleInfoFlags(os.Args[1:]) {
+		return
+	}
 
 	opts, names, err := parseArgs(os.Args[1:])
 	if err != nil {
@@ -43,6 +53,47 @@ func main() {
 		result := basename(name, suffix)
 		fmt.Print(result + terminator)
 	}
+}
+
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+// Returns true if a flag was handled (caller should return).
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			printHelp()
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
+}
+
+// printHelp writes usage information to stdout and exits 0.
+// R4.2: matches GNU basename --help structure.
+func printHelp() {
+	fmt.Print(`Usage: basename NAME [SUFFIX]
+  or:  basename OPTION... NAME...
+Print NAME with any leading directory components removed.
+If specified, also remove a trailing SUFFIX.
+
+Mandatory arguments to long options are mandatory for short options too.
+  -a, --multiple       support multiple arguments and treat each as a NAME
+  -s, --suffix=SUFFIX  remove a trailing SUFFIX; implies -a
+  -z, --zero           end each output line with NUL, not newline
+      --help        display this help and exit
+      --version     output version information and exit
+
+Examples:
+  basename /usr/bin/sort          -> "sort"
+  basename include/stdio.h .h     -> "stdio"
+  basename -s .h include/stdio.h  -> "stdio"
+  basename -a any/str1 any/str2   -> "str1" followed by "str2"
+`)
 }
 
 // options holds parsed command-line flags.

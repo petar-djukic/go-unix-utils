@@ -31,6 +31,13 @@ func stderrNormalizer(b []byte) []byte {
 	return b
 }
 
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
+	return nil
+}
+
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
@@ -194,6 +201,20 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"a", "b", "c"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+
+		// R4.1: --version prints version info and exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// R4.2: --help prints usage info and exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
 	}
 
