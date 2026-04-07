@@ -3,7 +3,7 @@
 
 // Package main implements cmd/wc: count lines, words, and bytes.
 // Implements srd005-wc: R1.1-R1.4, R2.1-R2.6, R3.1-R3.3,
-// R4.1-R4.4, R5.1-R5.2, R6.1.
+// R4.1-R4.4, R5.1-R5.2, R6.1-R6.3.
 package main
 
 import (
@@ -404,14 +404,24 @@ func processFiles(files []string, cfg config) int {
 	return processNamedFiles(files, cfg)
 }
 
+// writeOutput writes a formatted line to stdout and returns any write error.
+// R6.3: detects stdout write errors for exit code reporting.
+func writeOutput(line string) error {
+	_, err := fmt.Fprintln(os.Stdout, line)
+	return err
+}
+
 // processStdin handles the no-arguments case: read from stdin.
+// R6.3: returns 1 when stdout write fails.
 func processStdin(cfg config) int {
 	r, err := countStdin()
 	if err != nil {
 		reportError("", err)
 		return 1
 	}
-	fmt.Fprintln(os.Stdout, formatOutput(r, "", cfg, numberWidth(0)))
+	if err := writeOutput(formatOutput(r, "", cfg, numberWidth(0))); err != nil {
+		return 1
+	}
 	return 0
 }
 
@@ -421,6 +431,8 @@ func processStdin(cfg config) int {
 // R3.2: returns exit code 1 if any file produced an error.
 // R3.3: respects --total mode for total line control.
 // R6.1: returns 0 when all files are processed successfully.
+// R6.2: exits 1 on file errors, still processes remaining files.
+// R6.3: exits 1 on stdout write errors.
 func processNamedFiles(files []string, cfg config) int {
 	width := numberWidth(len(files))
 	exitCode := 0
@@ -436,12 +448,16 @@ func processNamedFiles(files []string, cfg config) int {
 		}
 		addResult(&total, r)
 		if printPerFile {
-			fmt.Fprintln(os.Stdout, formatOutput(r, name, cfg, width))
+			if err := writeOutput(formatOutput(r, name, cfg, width)); err != nil {
+				exitCode = 1
+			}
 		}
 	}
 
 	if shouldPrintTotal(cfg.total, len(files)) {
-		fmt.Fprintln(os.Stdout, formatOutput(total, "total", cfg, width))
+		if err := writeOutput(formatOutput(total, "total", cfg, width)); err != nil {
+			exitCode = 1
+		}
 	}
 	return exitCode
 }
