@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/seq.
-// Tests cover srd019-seq R1.1-R1.5, R2.1-R2.3.
+// Tests cover srd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -11,6 +11,11 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// dropStderr discards stderr entirely for tests where error messages differ.
+func dropStderr(data []byte) []byte {
+	return nil
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -59,12 +64,45 @@ func TestDiff(t *testing.T) {
 		{Name: "descend_neg_incr_float", Args: []string{"2.0", "-0.5", "0.0"}},
 		{Name: "descend_large_step", Args: []string{"100", "-25", "0"}},
 
-		// R2.1: custom separator (-s).
+		// R2.2: custom separator (-s).
 		{Name: "sep_comma", Args: []string{"-s", ", ", "3"}},
 		{Name: "sep_colon", Args: []string{"-s", ":", "1", "4"}},
 		{Name: "sep_empty", Args: []string{"-s", "", "3"}},
 		{Name: "sep_long_flag", Args: []string{"--separator=, ", "3"}},
 		{Name: "sep_tab", Args: []string{"-s", "\t", "1", "3"}},
+
+		// R3.1: format string (-f).
+		{Name: "fmt_2f", Args: []string{"-f", "%.2f", "1", "3"}},
+		{Name: "fmt_05_2f", Args: []string{"-f", "%05.2f", "1", "3"}},
+		{Name: "fmt_e", Args: []string{"-f", "%e", "1", "3"}},
+		{Name: "fmt_g", Args: []string{"-f", "%g", "1", "5"}},
+		{Name: "fmt_long_flag", Args: []string{"--format=%.1f", "1", "3"}},
+		{Name: "fmt_prefix_suffix", Args: []string{"-f", "num:%g:", "1", "3"}},
+
+		// R3.2: invalid format strings exit 1.
+		// Stderr wording differs between gseq and seq; drop stderr for comparison.
+		{Name: "fmt_invalid_d", Args: []string{"-f", "%d", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_invalid_two", Args: []string{"-f", "%f %f", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_no_conv", Args: []string{"-f", "hello", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_invalid_s", Args: []string{"-f", "%s", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R3.3: equal-width (-w).
+		{Name: "ew_8_12", Args: []string{"-w", "8", "12"}},
+		{Name: "ew_1_10", Args: []string{"-w", "1", "10"}},
+		{Name: "ew_1_100", Args: []string{"-w", "1", "100"}},
+		{Name: "ew_neg5_5", Args: []string{"-w", "-5", "5"}},
+		{Name: "ew_long_flag", Args: []string{"--equal-width", "8", "12"}},
+
+		// R3.4: -f and -w together is an error.
+		{Name: "fmt_and_ew_error", Args: []string{"-w", "-f", "%.2f", "1", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R2.4: large integers.
+		{Name: "large_int", Args: []string{"9999999999", "1", "9999999999"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -82,7 +120,6 @@ func TestZeroStep(t *testing.T) {
 }
 
 // TestVersion verifies --version prints output and exits 0.
-// R2.2: --version flag.
 func TestVersion(t *testing.T) {
 	t.Parallel()
 	bin := testutils.BuildBinary(t, ".")
@@ -97,7 +134,6 @@ func TestVersion(t *testing.T) {
 }
 
 // TestHelp verifies --help prints output and exits 0.
-// R2.3: --help flag.
 func TestHelp(t *testing.T) {
 	t.Parallel()
 	bin := testutils.BuildBinary(t, ".")

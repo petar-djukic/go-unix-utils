@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/seq: print a sequence of numbers.
-// Implements srd019-seq R1.1-R1.5, R2.1-R2.3.
+// Implements srd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -19,6 +19,9 @@ import (
 // progName is used in diagnostic messages.
 const progName = "seq"
 
+// allowedConversions lists the valid floating-point conversion specifiers.
+const allowedConversions = "aefgAEFG"
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -26,29 +29,47 @@ func main() {
 
 // seqConfig holds parsed option flags for the seq command.
 type seqConfig struct {
-	separator string
-	args      []string
+	separator  string
+	format     string
+	equalWidth bool
+	args       []string
 }
 
 // run executes the seq logic and returns the exit code.
-// R1.1-R1.5, R2.1-R2.3: parse flags and arguments, generate sequence.
+// R1.1-R1.5, R2.1-R2.4, R3.1-R3.4.
 func run(args []string) int {
 	cfg, code, done := parseFlags(args)
 	if done {
 		return code
+	}
+	return runWithConfig(cfg)
+}
+
+// runWithConfig validates options, parses args, and prints the sequence.
+func runWithConfig(cfg seqConfig) int {
+	if cfg.format != "" && cfg.equalWidth {
+		fmt.Fprintf(os.Stderr, "%s: format string may not be specified"+
+			" when printing equal width strings\n", progName)
+		return 1
+	}
+	if cfg.format != "" {
+		if err := validateFormat(cfg.format); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+			return 1
+		}
 	}
 	first, incr, last, prec, err := parseArgs(cfg.args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		return 1
 	}
-	format := buildFormat(prec)
+	format := resolveFormat(cfg, prec, first, last)
 	printSequence(first, incr, last, format, cfg.separator)
 	return 0
 }
 
 // parseFlags extracts option flags and returns remaining positional args.
-// R2.2: -s/--separator, R2.2/R2.3: --version/--help.
+// R2.2: -s/--separator, R3.1: -f/--format, R3.3: -w/--equal-width.
 func parseFlags(args []string) (seqConfig, int, bool) {
 	cfg := seqConfig{separator: "\n"}
 	for i := 0; i < len(args); i++ {
@@ -57,34 +78,57 @@ func parseFlags(args []string) (seqConfig, int, bool) {
 			cfg.args = append(cfg.args, args[i+1:]...)
 			return cfg, 0, false
 		}
-		switch {
-		case a == "--version":
+		if a == "--version" {
 			fmt.Println("seq (go-unix-utils)")
 			return cfg, 0, true
-		case a == "--help":
+		}
+		if a == "--help" {
 			printHelp()
 			return cfg, 0, true
-		case a == "--separator":
-			if i+1 >= len(args) {
-				printOptErr("--separator")
-				return cfg, 1, true
-			}
-			i++
-			cfg.separator = args[i]
-		case strings.HasPrefix(a, "--separator="):
-			cfg.separator = a[len("--separator="):]
-		case a == "-s":
-			if i+1 >= len(args) {
-				printOptErr("-s")
-				return cfg, 1, true
-			}
-			i++
-			cfg.separator = args[i]
-		default:
-			cfg.args = append(cfg.args, a)
 		}
+		if a == "--equal-width" || a == "-w" {
+			cfg.equalWidth = true
+			continue
+		}
+		handled, skip, hadErr := parseFlagWithArg(&cfg, args, i, a)
+		if hadErr {
+			return cfg, 1, true
+		}
+		if handled {
+			i += skip
+			continue
+		}
+		cfg.args = append(cfg.args, a)
 	}
 	return cfg, 0, false
+}
+
+// parseFlagWithArg handles flags that take a value argument.
+// Returns (handled, extra args consumed, had error).
+func parseFlagWithArg(cfg *seqConfig, args []string, i int, a string) (bool, int, bool) {
+	switch {
+	case a == "-s" || a == "--separator":
+		if i+1 >= len(args) {
+			printOptErr(a)
+			return true, 0, true
+		}
+		cfg.separator = args[i+1]
+		return true, 1, false
+	case strings.HasPrefix(a, "--separator="):
+		cfg.separator = a[len("--separator="):]
+		return true, 0, false
+	case a == "-f" || a == "--format":
+		if i+1 >= len(args) {
+			printOptErr(a)
+			return true, 0, true
+		}
+		cfg.format = args[i+1]
+		return true, 1, false
+	case strings.HasPrefix(a, "--format="):
+		cfg.format = a[len("--format="):]
+		return true, 0, false
+	}
+	return false, 0, false
 }
 
 // printOptErr prints a missing-argument error for the given option.
@@ -93,17 +137,94 @@ func printOptErr(opt string) {
 }
 
 // printHelp writes usage information to stdout.
-// R2.3: --help prints usage and exits 0.
 func printHelp() {
 	fmt.Print(`Usage: seq [OPTION]... LAST
   or:  seq [OPTION]... FIRST LAST
   or:  seq [OPTION]... FIRST INCREMENT LAST
 Print numbers from FIRST to LAST, in steps of INCREMENT.
 
+  -f, --format=FORMAT  use printf style floating-point FORMAT
   -s, --separator=STRING  use STRING to separate numbers (default: \n)
+  -w, --equal-width    equalize width by padding with leading zeroes
       --help     display this help and exit
       --version  output version information and exit
 `)
+}
+
+// validateFormat checks that the format string contains exactly one
+// valid floating-point conversion specifier.
+// R3.2: reject zero, multiple, or non-float conversions.
+func validateFormat(format string) error {
+	count := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(format) {
+			break
+		}
+		if format[i] == '%' {
+			continue // literal %%
+		}
+		// R3.1: skip flags, width, precision
+		i = skipFlagsWidthPrec(format, i)
+		if i >= len(format) {
+			return fmtErr(format)
+		}
+		if !strings.ContainsRune(allowedConversions, rune(format[i])) {
+			return fmtErr(format)
+		}
+		count++
+	}
+	if count != 1 {
+		return fmtErr(format)
+	}
+	return nil
+}
+
+// skipFlagsWidthPrec advances past flags, width, and precision fields.
+func skipFlagsWidthPrec(format string, i int) int {
+	for i < len(format) && strings.ContainsRune("-+ #0", rune(format[i])) {
+		i++
+	}
+	for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+		i++
+	}
+	if i < len(format) && format[i] == '.' {
+		i++
+		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+			i++
+		}
+	}
+	return i
+}
+
+// fmtErr returns a format-error for an invalid format string.
+func fmtErr(format string) error {
+	return fmt.Errorf("format '%s' has no valid floating point conversion", format)
+}
+
+// resolveFormat determines the output format string.
+// R3.4: -f takes precedence over -w.
+func resolveFormat(cfg seqConfig, prec int, first, last float64) string {
+	if cfg.format != "" {
+		return cfg.format
+	}
+	if cfg.equalWidth {
+		return equalWidthFormat(prec, first, last)
+	}
+	return buildFormat(prec)
+}
+
+// equalWidthFormat computes a zero-padded format string for -w.
+// R3.3: width is the widest of FIRST and LAST with default format.
+func equalWidthFormat(prec int, first, last float64) string {
+	dfmt := buildFormat(prec)
+	w1 := len(fmt.Sprintf(dfmt, first))
+	w2 := len(fmt.Sprintf(dfmt, last))
+	width := maxInt(w1, w2)
+	return fmt.Sprintf("%%0%d.%df", width, prec)
 }
 
 // parseArgs dispatches to the correct argument form parser.
