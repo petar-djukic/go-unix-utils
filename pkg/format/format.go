@@ -255,7 +255,80 @@ func skipCSI(s string, i int) int {
 	return i
 }
 
-// Columns arranges entries into columns that fit within termWidth.
+// Columns arranges entries into rows for a column-down layout fitting within
+// termWidth. R1.1: Uses the maximum number of columns that fit. R1.4: Each
+// column's width is the longest entry in that column, not the global maximum.
 func Columns(entries []string, termWidth int) [][]string {
-	return nil
+	n := len(entries)
+	if n == 0 {
+		return nil
+	}
+	widths := precomputeWidths(entries)
+	bestCols := findMaxColumns(widths, n, termWidth)
+	return buildColumnRows(entries, bestCols, n)
+}
+
+// precomputeWidths returns the visible width of each entry.
+// R3.3: Strips ANSI escapes before measuring via visibleWidth.
+func precomputeWidths(entries []string) []int {
+	widths := make([]int, len(entries))
+	for i, e := range entries {
+		widths[i] = visibleWidth(e)
+	}
+	return widths
+}
+
+// findMaxColumns tries column counts from n down to 1, returning the maximum
+// that fits within termWidth. Uses 2-space gaps between columns.
+func findMaxColumns(widths []int, n, termWidth int) int {
+	for numCols := n; numCols > 1; numCols-- {
+		numRows := (n + numCols - 1) / numCols
+		if columnsTotalWidth(widths, numCols, numRows, n) <= termWidth {
+			return numCols
+		}
+	}
+	return 1
+}
+
+// columnsTotalWidth computes the total display width for a column layout.
+// Each column's width is the max visible width of its entries plus a 2-space
+// gap between columns.
+func columnsTotalWidth(widths []int, numCols, numRows, n int) int {
+	total := 0
+	for col := range numCols {
+		maxW := 0
+		for row := range numRows {
+			idx := col*numRows + row
+			if idx >= n {
+				break
+			}
+			if widths[idx] > maxW {
+				maxW = widths[idx]
+			}
+		}
+		total += maxW
+		if col < numCols-1 {
+			total += 2
+		}
+	}
+	return total
+}
+
+// buildColumnRows arranges entries into rows for column-down (top-to-bottom)
+// layout matching GNU ls default behavior.
+func buildColumnRows(entries []string, numCols, n int) [][]string {
+	numRows := (n + numCols - 1) / numCols
+	rows := make([][]string, numRows)
+	for row := range numRows {
+		var r []string
+		for col := range numCols {
+			idx := col*numRows + row
+			if idx >= n {
+				break
+			}
+			r = append(r, entries[idx])
+		}
+		rows[row] = r
+	}
+	return rows
 }
