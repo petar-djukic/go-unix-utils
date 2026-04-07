@@ -51,6 +51,15 @@ func TestDiff(t *testing.T) {
 	writeFixture(t, fixtureDir, "bytes.txt", "abcdefgh")
 	writeFixture(t, fixtureDir, "1k.txt", strings.Repeat("a", 2048))
 
+	writeFixture(t, fixtureDir, "empty.txt", "")
+	writeFixture(t, fixtureDir, "binary.bin", "\x00\x01\x02\xff\xfe\x80hello\x00world\n")
+	writeFixture(t, fixtureDir, "noeof.txt", "no trailing newline")
+
+	// Create an unreadable file for permission-denied testing.
+	unreadablePath := filepath.Join(fixtureDir, "noperm.txt")
+	writeFixture(t, fixtureDir, "noperm.txt", "secret\n")
+	os.Chmod(unreadablePath, 0o000) //nolint:errcheck // best-effort for test setup
+
 	file1 := filepath.Join(fixtureDir, "file1.txt")
 	file2 := filepath.Join(fixtureDir, "file2.txt")
 	dataFile := filepath.Join(fixtureDir, "data.txt")
@@ -60,6 +69,9 @@ func TestDiff(t *testing.T) {
 	shortFile := filepath.Join(fixtureDir, "short.txt")
 	bytesFile := filepath.Join(fixtureDir, "bytes.txt")
 	oneKFile := filepath.Join(fixtureDir, "1k.txt")
+	emptyFile := filepath.Join(fixtureDir, "empty.txt")
+	binaryFile := filepath.Join(fixtureDir, "binary.bin")
+	noeofFile := filepath.Join(fixtureDir, "noeof.txt")
 	missingFile := filepath.Join(fixtureDir, "missing.txt")
 
 	tests := []testutils.DiffTest{
@@ -232,6 +244,98 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "quiet_negative_n",
 			Args: []string{"-q", "-n", "-2", tenFile, shortFile},
+		},
+		// R4.1: -n 0 outputs nothing.
+		{
+			Name:  "n_zero",
+			Args:  []string{"-n", "0"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R4.1: -c 0 outputs nothing.
+		{
+			Name:  "c_zero",
+			Args:  []string{"-c", "0"},
+			Stdin: []byte("abcdefgh"),
+		},
+		// R4.1: -n 0 with file.
+		{
+			Name: "n_zero_file",
+			Args: []string{"-n", "0", threeFile},
+		},
+		// R4.1: -c 0 with file.
+		{
+			Name: "c_zero_file",
+			Args: []string{"-c", "0", bytesFile},
+		},
+		// R4.2: binary file, byte-identical output.
+		{
+			Name: "binary_file",
+			Args: []string{binaryFile},
+		},
+		// R4.2: binary file with -c byte mode.
+		{
+			Name: "binary_file_c5",
+			Args: []string{"-c", "5", binaryFile},
+		},
+		// R4.3: empty file produces no output.
+		{
+			Name: "empty_file",
+			Args: []string{emptyFile},
+		},
+		// R4.3: empty file with -c.
+		{
+			Name: "empty_file_c10",
+			Args: []string{"-c", "10", emptyFile},
+		},
+		// R4.3: empty file with verbose header.
+		{
+			Name: "empty_file_verbose",
+			Args: []string{"-v", emptyFile},
+		},
+		// R4.3: file shorter than requested line count.
+		{
+			Name: "file_shorter_than_n",
+			Args: []string{"-n", "100", shortFile},
+		},
+		// R4.3: file shorter than requested byte count.
+		{
+			Name: "file_shorter_than_c",
+			Args: []string{"-c", "1000", bytesFile},
+		},
+		// R4.2: file without trailing newline.
+		{
+			Name: "file_no_trailing_newline",
+			Args: []string{noeofFile},
+		},
+		// R4.2: file without trailing newline in byte mode.
+		{
+			Name: "file_no_trailing_newline_c5",
+			Args: []string{"-c", "5", noeofFile},
+		},
+		// R3.5, R4.2: permission denied continues with next file.
+		{
+			Name:      "permission_denied_continues",
+			Args:      []string{unreadablePath, dataFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.5: missing file between two valid files.
+		{
+			Name:      "missing_between_valid",
+			Args:      []string{file1, missingFile, file2},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R3.1: verbose stdin header shows "standard input".
+		{
+			Name:  "verbose_stdin_header",
+			Args:  []string{"-v", "-n", "1", "-"},
+			Stdin: []byte("hello\n"),
+		},
+		// R4.3: multi-file with empty file.
+		{
+			Name: "multi_file_with_empty",
+			Args: []string{file1, emptyFile, file2},
 		},
 	}
 

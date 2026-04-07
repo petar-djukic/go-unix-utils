@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/head: print the first lines or bytes of files.
-// Implements srd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
+// Implements srd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.5, R4.1-R4.3.
 package main
 
 import (
@@ -82,13 +82,22 @@ func shouldShowHeader(cfg *config) bool {
 	return len(cfg.files) > 1
 }
 
+// displayName returns the user-visible name for a file argument.
+// R3.1: stdin ("-") is displayed as "standard input" to match GNU head.
+func displayName(name string) string {
+	if name == "-" {
+		return "standard input"
+	}
+	return name
+}
+
 // printHeader writes the GNU head-format header for a file.
 // R3.1: format is "==> FILENAME <==" with blank line between files.
 func printHeader(name string, first bool) {
 	if !first {
 		fmt.Fprintln(os.Stdout)
 	}
-	fmt.Fprintf(os.Stdout, "==> %s <==\n", name)
+	fmt.Fprintf(os.Stdout, "==> %s <==\n", displayName(name))
 }
 
 // processOneFile opens a file, prints a header if needed, then outputs content.
@@ -344,11 +353,12 @@ func printAllButLastNBytes(r io.Reader, n int64) error {
 // reportError prints a GNU-compatible diagnostic to stderr.
 // R3.5: prints error and continues with remaining files.
 func reportError(name string, err error) {
+	dname := displayName(name)
 	var pe *os.PathError
 	if errors.As(err, &pe) {
 		fmt.Fprintf(os.Stderr, "%s: cannot open '%s' for reading: %s\n",
-			progName, name, pe.Err)
+			progName, dname, pe.Err)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, name, err)
+	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, dname, err)
 }
