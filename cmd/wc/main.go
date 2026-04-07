@@ -3,17 +3,23 @@
 
 // Package main implements cmd/wc: count lines, words, and bytes.
 // Implements srd005-wc: R1.1 (line count), R1.2 (word count),
-// R1.3 (byte count), R1.4 (character count).
+// R1.3 (byte count), R1.4 (character count),
+// R2.1 (-l flag), R2.2 (-w flag), R2.3 (-c flag), R2.4 (-m flag).
 package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// progName is used in diagnostic messages.
+const progName = "wc"
 
 // bufSize is the read buffer size for counting operations.
 const bufSize = 32 * 1024
@@ -21,11 +27,11 @@ const bufSize = 32 * 1024
 // countResult holds per-file or aggregate counting results.
 // R1, R2: fields correspond to wc output columns.
 type countResult struct {
-	lines         int64 // R2: -l newline count
-	words         int64 // R2: -w word count
-	bytes         int64 // R2: -c byte count
-	chars         int64 // R2: -m character count
-	maxLineLength int64 // R2: -L longest line length
+	lines         int64 // R2.1: -l newline count
+	words         int64 // R2.2: -w word count
+	bytes         int64 // R2.3: -c byte count
+	chars         int64 // R2.4: -m character count
+	maxLineLength int64 // R2.5: -L longest line length
 }
 
 // config captures all parsed flag states for wc invocation.
@@ -39,10 +45,95 @@ type config struct {
 	files0From  string // --files0-from=FILE
 }
 
+// defaultConfig returns true when no selection flags were specified.
+// R1.1: default is lines, words, bytes.
+func defaultConfig(cfg *config) bool {
+	return !cfg.showLines && !cfg.showWords && !cfg.showBytes &&
+		!cfg.showChars && !cfg.showMaxLine
+}
+
+// applyDefaults sets the default output columns when no flags are given.
+// R1.1: default is lines, words, bytes.
+func applyDefaults(cfg *config) {
+	if defaultConfig(cfg) {
+		cfg.showLines = true
+		cfg.showWords = true
+		cfg.showBytes = true
+	}
+}
+
 // parseArgs parses command-line arguments and returns a config and file list.
-// R2: maps flag package results to config struct.
+// R2.1-R2.4: maps flag arguments to config struct.
+// R2.3/R2.4: -c and -m are mutually exclusive; last flag wins.
 func parseArgs() (config, []string) {
-	return config{}, nil
+	var cfg config
+	var files []string
+	args := os.Args[1:]
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			files = append(files, args[i+1:]...)
+			break
+		}
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			files = append(files, arg)
+			continue
+		}
+		parseFlag(&cfg, arg)
+	}
+	applyDefaults(&cfg)
+	return cfg, files
+}
+
+// parseFlag handles a single flag argument, setting config fields.
+// R2.3/R2.4: -c and -m are mutually exclusive; last wins.
+func parseFlag(cfg *config, arg string) {
+	// Handle long flags.
+	if strings.HasPrefix(arg, "--") {
+		parseLongFlag(cfg, arg)
+		return
+	}
+	// Short flags: iterate over each character after '-'.
+	for _, ch := range arg[1:] {
+		parseShortFlag(cfg, ch)
+	}
+}
+
+// parseLongFlag handles --lines, --words, --bytes, --chars flags.
+func parseLongFlag(cfg *config, arg string) {
+	switch arg {
+	case "--lines":
+		cfg.showLines = true
+	case "--words":
+		cfg.showWords = true
+	case "--bytes":
+		cfg.showBytes = true
+		cfg.showChars = false // R2.3: -c and -m mutually exclusive
+	case "--chars":
+		cfg.showChars = true
+		cfg.showBytes = false // R2.4: -m and -c mutually exclusive
+	case "--max-line-length":
+		cfg.showMaxLine = true
+	}
+}
+
+// parseShortFlag handles -l, -w, -c, -m, -L short flags.
+func parseShortFlag(cfg *config, ch rune) {
+	switch ch {
+	case 'l':
+		cfg.showLines = true
+	case 'w':
+		cfg.showWords = true
+	case 'c':
+		cfg.showBytes = true
+		cfg.showChars = false // R2.3: last wins
+	case 'm':
+		cfg.showChars = true
+		cfg.showBytes = false // R2.4: last wins
+	case 'L':
+		cfg.showMaxLine = true
+	}
 }
 
 // countReader counts lines, words, bytes, and chars from r in a single pass.
@@ -142,16 +233,148 @@ func countStdin(_ config) (countResult, error) {
 	return countReader(os.Stdin)
 }
 
+// selectedValues returns the values to display based on config flags.
+// R2.6: output order is lines, words, chars-or-bytes, max-line-length.
+func selectedValues(r countResult, cfg config) []int64 {
+	var vals []int64
+	if cfg.showLines {
+		vals = append(vals, r.lines)
+	}
+	if cfg.showWords {
+		vals = append(vals, r.words)
+	}
+	if cfg.showChars {
+		vals = append(vals, r.chars)
+	} else if cfg.showBytes {
+		vals = append(vals, r.bytes)
+	}
+	if cfg.showMaxLine {
+		vals = append(vals, r.maxLineLength)
+	}
+	return vals
+}
+
+// maxFieldWidth returns the number of digits needed for the largest value.
+// R3.1: column width is determined by the widest count.
+func maxFieldWidth(val int64) int {
+	width := 1
+	for v := val; v >= 10; v /= 10 {
+		width++
+	}
+	return width
+}
+
+// findMaxValues finds the maximum value for each selected column across results.
+func findMaxValues(results []countResult, cfg config) int64 {
+	var maxVal int64
+	for _, r := range results {
+		for _, v := range selectedValues(r, cfg) {
+			if v > maxVal {
+				maxVal = v
+			}
+		}
+	}
+	return maxVal
+}
+
 // formatOutput formats a countResult as a display line.
-// R3: right-aligns counts and appends the filename.
-func formatOutput(_ countResult, _ string, _ config, _ int) string {
-	return ""
+// R3.1: right-aligns counts and appends the filename.
+func formatOutput(r countResult, name string, cfg config, width int) string {
+	vals := selectedValues(r, cfg)
+	var sb strings.Builder
+	for i, v := range vals {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		fmt.Fprintf(&sb, "%*d", width, v)
+	}
+	if name != "" {
+		sb.WriteByte(' ')
+		sb.WriteString(name)
+	}
+	return sb.String()
+}
+
+// addResult accumulates r into total.
+func addResult(total *countResult, r countResult) {
+	total.lines += r.lines
+	total.words += r.words
+	total.bytes += r.bytes
+	total.chars += r.chars
+	if r.maxLineLength > total.maxLineLength {
+		total.maxLineLength = r.maxLineLength
+	}
 }
 
 // processFiles iterates over file arguments and accumulates results.
 // R1, R3, R6: processes each file, prints output, and returns exit code.
-func processFiles(_ []string, _ config) int {
+func processFiles(files []string, cfg config) int {
+	if len(files) == 0 {
+		return processStdin(cfg)
+	}
+	return processNamedFiles(files, cfg)
+}
+
+// processStdin handles the no-arguments case: read from stdin.
+func processStdin(cfg config) int {
+	r, err := countStdin(cfg)
+	if err != nil {
+		reportError("", err)
+		return 1
+	}
+	width := maxFieldWidth(findMaxValues([]countResult{r}, cfg))
+	fmt.Fprintln(os.Stdout, formatOutput(r, "", cfg, width))
 	return 0
+}
+
+// processNamedFiles processes a list of named file arguments.
+func processNamedFiles(files []string, cfg config) int {
+	results := make([]countResult, 0, len(files))
+	names := make([]string, 0, len(files))
+	exitCode := 0
+	var total countResult
+
+	for _, name := range files {
+		r, err := countOneFile(name, cfg)
+		if err != nil {
+			reportError(name, err)
+			exitCode = 1
+			continue
+		}
+		results = append(results, r)
+		names = append(names, name)
+		addResult(&total, r)
+	}
+
+	if len(files) > 1 {
+		results = append(results, total)
+		names = append(names, "total")
+	}
+
+	width := maxFieldWidth(findMaxValues(results, cfg))
+	for i, r := range results {
+		fmt.Fprintln(os.Stdout, formatOutput(r, names[i], cfg, width))
+	}
+	return exitCode
+}
+
+// countOneFile counts a single file, handling "-" as stdin.
+// R4.1: "-" means stdin.
+func countOneFile(name string, cfg config) (countResult, error) {
+	if name == "-" {
+		return countStdin(cfg)
+	}
+	return countFile(name, cfg)
+}
+
+// reportError prints a GNU-compatible diagnostic to stderr.
+// R6.2: prints error and continues with remaining files.
+func reportError(name string, err error) {
+	if name == "" {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 }
 
 func main() {
