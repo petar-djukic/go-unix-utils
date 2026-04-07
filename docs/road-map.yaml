@@ -135,7 +135,7 @@ releases:
         - id: rel03.1-uc003-nproc
           status: implemented
         - id: rel03.1-uc004-hostname
-          status: spec_complete
+          status: implemented
         - id: rel03.1-uc005-hostid
           status: implemented
     - version: "04.0"
