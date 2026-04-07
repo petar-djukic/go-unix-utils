@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.3.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.7.
 package main
 
 import (
@@ -502,6 +502,100 @@ func TestDiffColor(t *testing.T) {
 			Name: "color_always_long",
 			Args: []string{"--color=always", "-l", dir},
 			Env:  []string{"LC_ALL=C", "TERM=xterm-256color"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffColorNever tests --color=never suppresses all ANSI (R3.4).
+func TestDiffColorNever(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createColorFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.4: --color=never with long format produces no ANSI.
+		{
+			Name: "color_never_long",
+			Args: []string{"--color=never", "-l", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.4: --color=auto piped (non-TTY) suppresses ANSI.
+		{
+			Name: "color_auto_piped_long",
+			Args: []string{"--color=auto", "-l", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createHumanFixture creates files with varying sizes for -h testing.
+func createHumanFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "small"), 100)
+	writeFixtureFile(t, filepath.Join(dir, "medium"), 5000)
+	writeFixtureFile(t, filepath.Join(dir, "large"), 50000)
+	return dir
+}
+
+// TestDiffHumanReadable tests -h flag behavior (R3.5, R3.6).
+func TestDiffHumanReadable(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createHumanFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.5: -lh shows human-readable file sizes.
+		{
+			Name: "lh_human_sizes",
+			Args: []string{"-lh", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.5: -h without -l has no visible effect.
+		{
+			Name: "h_without_l",
+			Args: []string{"-h", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.6: -lh total line is human-readable.
+		{
+			Name: "lh_total_line",
+			Args: []string{"-lh", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHumanBlocks tests -h with -s block counts (R3.7).
+func TestDiffHumanBlocks(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createHumanFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.7: -sh shows human-readable block counts.
+		{
+			Name: "sh_human_blocks",
+			Args: []string{"-sh", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.7: -slh combines long format with human block counts.
+		{
+			Name: "slh_long_human_blocks",
+			Args: []string{"-slh", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
