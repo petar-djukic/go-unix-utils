@@ -100,7 +100,7 @@ releases:
         forms, format strings (-f), equal-width padding (-w), and custom separators (-s).
       use_cases:
         - id: rel02.2-uc001-head
-          status: spec_complete
+          status: implemented
         - id: rel02.2-uc002-seq
           status: spec_complete
     - version: "03.0"
