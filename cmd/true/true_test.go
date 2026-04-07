@@ -30,22 +30,26 @@ func TestDiff(t *testing.T) {
 			// R4.2, R4.3: no arguments — exit 0, no output.
 			Name: "no_args",
 			Args: []string{},
+			Env:  []string{"LC_ALL=C"},
 		},
 		{
 			// R4.2: arbitrary arguments are ignored, exit 0.
 			Name: "ignored_args",
 			Args: []string{"foo", "bar", "--baz"},
+			Env:  []string{"LC_ALL=C"},
 		},
 		{
 			// R4.2, R4.3: single arbitrary argument, no output.
 			Name: "single_arg",
 			Args: []string{"hello"},
+			Env:  []string{"LC_ALL=C"},
 		},
 		{
 			// R4.2: --help prints usage to stdout, exit 0.
 			// Normalize stdout because GNU help includes binary path and ANSI formatting.
 			Name:      "help_flag",
 			Args:      []string{"--help"},
+			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
 		{
@@ -53,19 +57,22 @@ func TestDiff(t *testing.T) {
 			// Normalize stdout because version strings differ between Go and GNU.
 			Name:      "version_flag",
 			Args:      []string{"--version"},
+			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
 		{
 			// R3.1, R3.2: --version with trailing args still exits 0.
 			// GNU true treats only the first arg for --version.
-			Name: "version_with_extra_args",
-			Args: []string{"--version", "extra"},
+			Name:      "version_with_extra_args",
+			Args:      []string{"--version", "extra"},
+			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
 		{
 			// R2.3, R3.1: unrecognized flags still exit 0 with no output.
 			Name: "unrecognized_double_dash_flag",
 			Args: []string{"--unknown"},
+			Env:  []string{"LC_ALL=C"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

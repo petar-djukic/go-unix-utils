@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/true: exit successfully.
-// Implements srd013-true R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2.
+// Implements srd013-true R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R4.1, R4.2, R4.3.
 package main
 
 import (
