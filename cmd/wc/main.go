@@ -4,11 +4,14 @@
 // Package main implements cmd/wc: count lines, words, and bytes.
 // Implements srd005-wc: R1.1 (line count), R1.2 (word count),
 // R1.3 (byte count), R1.4 (character count),
-// R2.1 (-l flag), R2.2 (-w flag), R2.3 (-c flag), R2.4 (-m flag).
+// R2.1 (-l flag), R2.2 (-w flag), R2.3 (-c flag), R2.4 (-m flag),
+// R2.5 (total line), R2.6 (stdin fallback),
+// R3.1 (error handling), R3.2 (exit codes).
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -70,7 +73,7 @@ func parseArgs() (config, []string) {
 	var files []string
 	args := os.Args[1:]
 
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		arg := args[i]
 		if arg == "--" {
 			files = append(files, args[i+1:]...)
@@ -218,7 +221,7 @@ func isWSByte(b byte) bool {
 
 // countFile counts lines, words, bytes, chars, and max line length for a file.
 // R1, R2: delegates to countReader for counting logic.
-func countFile(name string, _ config) (countResult, error) {
+func countFile(name string) (countResult, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return countResult{}, err
@@ -228,8 +231,8 @@ func countFile(name string, _ config) (countResult, error) {
 }
 
 // countStdin counts lines, words, bytes, chars, and max line length from stdin.
-// R4: handles stdin as an unnamed input source.
-func countStdin(_ config) (countResult, error) {
+// R2.6: handles stdin as an unnamed input source.
+func countStdin() (countResult, error) {
 	return countReader(os.Stdin)
 }
 
@@ -254,27 +257,13 @@ func selectedValues(r countResult, cfg config) []int64 {
 	return vals
 }
 
-// maxFieldWidth returns the number of digits needed for the largest value.
-// R3.1: column width is determined by the widest count.
-func maxFieldWidth(val int64) int {
-	width := 1
-	for v := val; v >= 10; v /= 10 {
-		width++
+// numberWidth returns the minimum column width for count fields.
+// R3.1: GNU wc uses width 7 for multi-file output, 1 otherwise.
+func numberWidth(nfiles int) int {
+	if nfiles > 1 {
+		return 7
 	}
-	return width
-}
-
-// findMaxValues finds the maximum value for each selected column across results.
-func findMaxValues(results []countResult, cfg config) int64 {
-	var maxVal int64
-	for _, r := range results {
-		for _, v := range selectedValues(r, cfg) {
-			if v > maxVal {
-				maxVal = v
-			}
-		}
-	}
-	return maxVal
+	return 1
 }
 
 // formatOutput formats a countResult as a display line.
@@ -307,7 +296,7 @@ func addResult(total *countResult, r countResult) {
 }
 
 // processFiles iterates over file arguments and accumulates results.
-// R1, R3, R6: processes each file, prints output, and returns exit code.
+// R2.6: when no file arguments are given, reads from stdin.
 func processFiles(files []string, cfg config) int {
 	if len(files) == 0 {
 		return processStdin(cfg)
@@ -317,59 +306,59 @@ func processFiles(files []string, cfg config) int {
 
 // processStdin handles the no-arguments case: read from stdin.
 func processStdin(cfg config) int {
-	r, err := countStdin(cfg)
+	r, err := countStdin()
 	if err != nil {
 		reportError("", err)
 		return 1
 	}
-	width := maxFieldWidth(findMaxValues([]countResult{r}, cfg))
-	fmt.Fprintln(os.Stdout, formatOutput(r, "", cfg, width))
+	fmt.Fprintln(os.Stdout, formatOutput(r, "", cfg, numberWidth(0)))
 	return 0
 }
 
 // processNamedFiles processes a list of named file arguments.
+// R2.5: prints a total line when two or more files are given.
+// R3.1: prints errors to stderr and continues processing.
+// R3.2: returns exit code 1 if any file produced an error.
 func processNamedFiles(files []string, cfg config) int {
-	results := make([]countResult, 0, len(files))
-	names := make([]string, 0, len(files))
+	width := numberWidth(len(files))
 	exitCode := 0
 	var total countResult
 
 	for _, name := range files {
-		r, err := countOneFile(name, cfg)
+		r, err := countOneFile(name)
 		if err != nil {
 			reportError(name, err)
 			exitCode = 1
 			continue
 		}
-		results = append(results, r)
-		names = append(names, name)
 		addResult(&total, r)
+		fmt.Fprintln(os.Stdout, formatOutput(r, name, cfg, width))
 	}
 
 	if len(files) > 1 {
-		results = append(results, total)
-		names = append(names, "total")
-	}
-
-	width := maxFieldWidth(findMaxValues(results, cfg))
-	for i, r := range results {
-		fmt.Fprintln(os.Stdout, formatOutput(r, names[i], cfg, width))
+		fmt.Fprintln(os.Stdout, formatOutput(total, "total", cfg, width))
 	}
 	return exitCode
 }
 
 // countOneFile counts a single file, handling "-" as stdin.
-// R4.1: "-" means stdin.
-func countOneFile(name string, cfg config) (countResult, error) {
+// R2.6: "-" means stdin.
+func countOneFile(name string) (countResult, error) {
 	if name == "-" {
-		return countStdin(cfg)
+		return countStdin()
 	}
-	return countFile(name, cfg)
+	return countFile(name)
 }
 
 // reportError prints a GNU-compatible diagnostic to stderr.
-// R6.2: prints error and continues with remaining files.
+// R3.1: format is "wc: FILENAME: REASON" using the OS error message.
 func reportError(name string, err error) {
+	// Unwrap os.PathError to get the underlying OS error message,
+	// matching GNU wc format (e.g., "No such file or directory").
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
 	if name == "" {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return
