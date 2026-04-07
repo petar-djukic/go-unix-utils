@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/uname: print system information.
-// Implements srd044-uname R1.1, R1.2, R1.3, R1.4.
+// Implements srd044-uname R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8.
 package main
 
 import (
@@ -28,15 +28,23 @@ Print certain system information.  With no OPTION, same as -s.
   -s, --kernel-name        print the kernel name
   -n, --nodename           print the network node hostname
   -r, --kernel-release     print the kernel release
+  -v, --kernel-version     print the kernel version
+  -m, --machine            print the machine hardware name
+  -p, --processor          print the processor type or "unknown"
+  -i, --hardware-platform  print the hardware platform or "unknown"
       --help        display this help and exit
       --version     output version information and exit
 `
 
 // flags tracks which information fields the user requested.
 type flags struct {
-	sysName bool // -s: kernel name
+	sysName  bool // -s: kernel name
 	nodeName bool // -n: network node hostname
 	release  bool // -r: kernel release
+	version  bool // -v: kernel version
+	machine  bool // -m: machine hardware name
+	proc     bool // -p: processor type
+	hwPlat   bool // -i: hardware platform
 }
 
 func main() {
@@ -82,7 +90,7 @@ func parseFlags(args []string) (flags, error) {
 	return f, nil
 }
 
-// setShortFlags parses a group of short flag characters (e.g., "snr").
+// setShortFlags parses a group of short flag characters (e.g., "snrvm").
 func setShortFlags(f *flags, chars string) error {
 	for _, c := range chars {
 		switch c {
@@ -92,6 +100,14 @@ func setShortFlags(f *flags, chars string) error {
 			f.nodeName = true
 		case 'r':
 			f.release = true
+		case 'v':
+			f.version = true
+		case 'm':
+			f.machine = true
+		case 'p':
+			f.proc = true
+		case 'i':
+			f.hwPlat = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", c)
 		}
@@ -104,6 +120,10 @@ func setShortFlags(f *flags, chars string) error {
 // R1.2: -s prints kernel name.
 // R1.3: -n prints network node hostname.
 // R1.4: -r prints kernel release string.
+// R1.5: -v prints kernel version string.
+// R1.6: -m prints machine hardware name.
+// R1.7: -p prints processor type or "unknown".
+// R1.8: -i prints hardware platform or "unknown".
 func printFields(f flags) {
 	var utsname unix.Utsname
 	if err := unix.Uname(&utsname); err != nil {
@@ -121,8 +141,42 @@ func printFields(f flags) {
 	if f.release {
 		parts = append(parts, bytesToString(utsname.Release[:]))
 	}
+	if f.version {
+		parts = append(parts, bytesToString(utsname.Version[:]))
+	}
+	if f.machine {
+		parts = append(parts, bytesToString(utsname.Machine[:]))
+	}
+	if f.proc {
+		parts = append(parts, processorType(utsname))
+	}
+	if f.hwPlat {
+		parts = append(parts, hardwarePlatform(utsname))
+	}
 
 	fmt.Println(strings.Join(parts, " "))
+}
+
+// processorType returns the processor type.
+// R1.7: On most systems this matches the machine field; returns "unknown"
+// if the information is not determinable.
+func processorType(uts unix.Utsname) string {
+	m := bytesToString(uts.Machine[:])
+	if m == "" {
+		return "unknown"
+	}
+	return m
+}
+
+// hardwarePlatform returns the hardware platform.
+// R1.8: On most systems this matches the machine field; returns "unknown"
+// if the information is not determinable.
+func hardwarePlatform(uts unix.Utsname) string {
+	m := bytesToString(uts.Machine[:])
+	if m == "" {
+		return "unknown"
+	}
+	return m
 }
 
 // bytesToString converts a null-terminated byte array to a Go string.
