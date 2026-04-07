@@ -74,7 +74,7 @@ releases:
         - id: rel02.0-uc003-yes
           status: implemented
         - id: rel02.0-uc004-basename
-          status: spec_complete
+          status: implemented
         - id: rel02.0-uc005-dirname
           status: spec_complete
     - version: "02.1"
