@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15.
 package main
 
 import (

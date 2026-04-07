@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.11.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.15.
 package main
 
 import (
@@ -702,6 +702,181 @@ func TestDiffRecursive(t *testing.T) {
 		{
 			Name: "RF_classify_recursive",
 			Args: []string{"-RF", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRecursiveFormat tests -R respects format mode (R3.12).
+func TestDiffRecursiveFormat(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createRecursiveFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.12: -R with -C multi-column layout in subdirectories.
+		{
+			Name: "RC_columns",
+			Args: []string{"-RC", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.12: -R with -x horizontal layout in subdirectories.
+		{
+			Name: "Rx_horizontal",
+			Args: []string{"-Rx", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.12: -R with -l includes total line in subdirectories.
+		{
+			Name: "Rl_total_line",
+			Args: []string{"-Rl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createSymlinkDirFixture creates a fixture with a symlink to a directory.
+// R3.13: -R must not follow symlinks to directories.
+func createSymlinkDirFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "file.txt"), 5)
+	sub := filepath.Join(dir, "realdir")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, filepath.Join(sub, "child.txt"), 10)
+	if err := os.Symlink("realdir", filepath.Join(dir, "linkdir")); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestDiffRecursiveSymlink tests -R does not follow symlinks (R3.13).
+func TestDiffRecursiveSymlink(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createSymlinkDirFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.13: -R must not recurse into symlink-to-directory.
+		{
+			Name: "R_no_follow_symlink",
+			Args: []string{"-R", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.13: -R with -l does not follow symlink dirs.
+		{
+			Name: "Rl_no_follow_symlink",
+			Args: []string{"-Rl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createRecursiveDotFixture creates a fixture with dotfiles in subdirs.
+// R3.14: -R applies filter flags to each subdirectory.
+func createRecursiveDotFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "visible.txt"), 5)
+	writeFixtureFile(t, filepath.Join(dir, ".hidden"), 3)
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, filepath.Join(sub, "shown.txt"), 8)
+	writeFixtureFile(t, filepath.Join(sub, ".dotfile"), 4)
+	return dir
+}
+
+// TestDiffRecursiveFilter tests -R with filter flags (R3.14).
+func TestDiffRecursiveFilter(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createRecursiveDotFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.14: -R default hides dotfiles in subdirectories.
+		{
+			Name: "R_default_no_dots",
+			Args: []string{"-R", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -Ra shows dotfiles including . and .. in subdirs.
+		{
+			Name: "Ra_all_in_subdirs",
+			Args: []string{"-Ra", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.14: -RA shows dotfiles except . and .. in subdirs.
+		{
+			Name: "RA_almost_all_in_subdirs",
+			Args: []string{"-RA", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createRecursiveSortFixture creates subdirectories with distinct mtimes.
+// R3.15: -R lists subdirs in the same sort order as entries.
+func createRecursiveSortFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "file.txt"), 5)
+	dirs := []string{"zzz", "aaa", "mmm"}
+	now := time.Now()
+	for i, name := range dirs {
+		sub := filepath.Join(dir, name)
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFixtureFile(t, filepath.Join(sub, "child.txt"), 10)
+		// zzz newest (1h), mmm middle (2h), aaa oldest (3h)
+		setMtime(t, sub, now.Add(-time.Duration(i+1)*time.Hour))
+	}
+	return dir
+}
+
+// TestDiffRecursiveSort tests -R sort order (R3.15).
+func TestDiffRecursiveSort(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createRecursiveSortFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.15: -Rt subdirectories recursed in time order.
+		{
+			Name: "Rt_time_order",
+			Args: []string{"-Rt", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -Rtr reverse time order for subdirectories.
+		{
+			Name: "Rtr_reverse_time",
+			Args: []string{"-Rtr", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.15: -R default (name sort) for subdirectories.
+		{
+			Name: "R_name_order",
+			Args: []string{"-R", "-1", "--color=never", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
