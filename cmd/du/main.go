@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements du: recursive directory disk usage reporting.
-// Implements srd009-du R1.1, R1.2, R1.3, R1.4.
+// Implements srd009-du R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"syscall"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -46,14 +50,15 @@ func main() {
 
 // run parses arguments, walks each path, and returns an exit code.
 // R1.1: defaults to "." when no arguments given.
+// R1.5: processes multiple arguments in order, each independently.
 // R4.1: exits 0 on success. R4.2: exits 1 on any error.
 func run() int {
-	paths := parseArgs()
+	opts, paths := parseArgs()
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
 	w := &walker{
-		opts: options{useKBlocks: true, maxDepth: -1},
+		opts: opts,
 		seen: make(map[inode]bool),
 	}
 	for _, p := range paths {
@@ -65,21 +70,63 @@ func run() int {
 	return 0
 }
 
-// parseArgs extracts paths from command-line arguments.
-// R2.5: accepts -k as a no-op (1K blocks is the default).
-func parseArgs() []string {
+// parseArgs extracts flags and paths from command-line arguments.
+// R2.1: -h for human-readable. R2.2: -s for summary.
+// R2.3: -a for all files. R2.5: -k accepted as no-op.
+func parseArgs() (options, []string) {
+	opts := options{useKBlocks: true, maxDepth: -1}
 	var paths []string
 	for _, arg := range os.Args[1:] {
-		if arg == "-k" {
+		if parseFlag(arg, &opts) {
 			continue
 		}
 		paths = append(paths, arg)
 	}
-	return paths
+	return opts, paths
+}
+
+// parseFlag handles a single flag argument. Returns true if consumed.
+func parseFlag(arg string, opts *options) bool {
+	switch {
+	case arg == "-k":
+		return true
+	case arg == "-h" || arg == "--human-readable":
+		opts.humanReadable = true
+		return true
+	case arg == "-s" || arg == "--summarize":
+		opts.summary = true
+		return true
+	case arg == "-a" || arg == "--all":
+		opts.allFiles = true
+		return true
+	case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--"):
+		return parseCombinedFlags(arg[1:], opts)
+	}
+	return false
+}
+
+// parseCombinedFlags handles combined short flags like -hs, -ak.
+func parseCombinedFlags(flags string, opts *options) bool {
+	for _, c := range flags {
+		switch c {
+		case 'k':
+			// no-op
+		case 'h':
+			opts.humanReadable = true
+		case 's':
+			opts.summary = true
+		case 'a':
+			opts.allFiles = true
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // processArg handles a single command-line argument.
 // R1.2: reports disk usage for each path argument.
+// R1.5: each argument is traversed independently.
 func (w *walker) processArg(path string) {
 	fi, err := sys.Lstat(path)
 	if err != nil {
@@ -96,24 +143,39 @@ func (w *walker) processArg(path string) {
 // walkDir reads a directory, recurses into children, and prints the
 // accumulated size. R1.1: prints one line per subdirectory.
 // R1.3: format is "SIZE\tPATH\n".
+// R2.2: when -s, only the top-level (depth 0) entry is printed.
 func (w *walker) walkDir(path string, fi *sys.FileInfo, depth int) int64 {
 	total := fi.Blocks
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		w.reportError(path, err)
-		w.printEntry(total, path)
+		if !w.opts.summary || depth == 0 {
+			w.printEntry(total, path)
+		}
 		return total
 	}
 	for _, e := range entries {
 		childPath := joinPath(path, e.Name())
 		total += w.walkChild(childPath, depth+1)
 	}
-	w.printEntry(total, path)
+	if w.shouldPrintDir(depth) {
+		w.printEntry(total, path)
+	}
 	return total
+}
+
+// shouldPrintDir decides whether to print a directory entry.
+// R2.2: -s suppresses all output except top-level (depth 0).
+func (w *walker) shouldPrintDir(depth int) bool {
+	if w.opts.summary {
+		return depth == 0
+	}
+	return true
 }
 
 // walkChild processes a single entry during directory traversal.
 // R1.4: uses Lstat so symbolic links are not followed.
+// R2.3: -a prints a line for every file, not just directories.
 func (w *walker) walkChild(path string, depth int) int64 {
 	fi, err := sys.Lstat(path)
 	if err != nil {
@@ -123,7 +185,11 @@ func (w *walker) walkChild(path string, depth int) int64 {
 	if fi.Mode.IsDir() {
 		return w.walkDir(path, fi, depth)
 	}
-	return w.fileBlocks(fi)
+	blocks := w.fileBlocks(fi)
+	if w.opts.allFiles && !w.opts.summary {
+		w.printEntry(blocks, path)
+	}
+	return blocks
 }
 
 // fileBlocks returns the 512-byte block count for a file, applying
@@ -142,7 +208,13 @@ func (w *walker) fileBlocks(fi *sys.FileInfo) int64 {
 
 // formatSize converts a 512-byte block count to the display unit.
 // R1.2: default is 1024-byte (1K) blocks = ceil(blocks512 / 2).
+// R2.1: -h uses pkg/format.HumanSize with binary units.
 func (w *walker) formatSize(blocks512 int64) string {
+	if w.opts.humanReadable {
+		// R2.1: convert 512-byte blocks to bytes for HumanSize.
+		bytes := blocks512 * 512
+		return format.HumanSize(bytes, format.HumanSizeOpts{Binary: true})
+	}
 	kblocks := (blocks512 + 1) / 2
 	return fmt.Sprintf("%d", kblocks)
 }
@@ -163,6 +235,28 @@ func joinPath(parent, child string) string {
 // reportError prints a diagnostic to stderr and sets the error flag.
 // R4.2: prints a diagnostic for each error and continues processing.
 func (w *walker) reportError(path string, err error) {
-	fmt.Fprintf(os.Stderr, "du: cannot access '%s': %v\n", path, err)
+	fmt.Fprintf(os.Stderr, "du: cannot access '%s': %s\n", path, osErrorMessage(err))
 	w.hasError = true
+}
+
+// osErrorMessage extracts the underlying OS error message from a Go
+// error, matching GNU coreutils strerror(errno) output style.
+func osErrorMessage(err error) string {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return capitalizeFirst(errno.Error())
+	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return capitalizeFirst(pathErr.Err.Error())
+	}
+	return err.Error()
+}
+
+// capitalizeFirst returns s with the first rune uppercased.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
