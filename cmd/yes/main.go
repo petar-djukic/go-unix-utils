@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/yes: repeatedly output a string.
-// Implements srd012-yes R1.1, R1.2, R1.3, R1.4.
+// Implements srd012-yes R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2.
 package main
 
 import (
@@ -13,9 +13,15 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// defaultOutput is the string printed when no arguments are given.
-// R1.1: output "y" followed by a newline.
-const defaultOutput = "y"
+const (
+	// defaultOutput is the string printed when no arguments are given.
+	// R1.1: output "y" followed by a newline.
+	defaultOutput = "y"
+
+	// outputBufSize is the minimum buffer size for buffered output.
+	// R2.1: at least 8192 bytes to match GNU yes's large-buffer approach.
+	outputBufSize = 8192
+)
 
 func main() {
 	// R1.4, R3.1: install SIGPIPE handler so yes exits 0 when pipe closes.
@@ -23,8 +29,8 @@ func main() {
 
 	line := buildLine(os.Args[1:])
 
-	// R2.1: buffer output to avoid per-line write syscalls.
-	w := bufio.NewWriter(os.Stdout)
+	// R2.1: buffer output with at least 8192 bytes to avoid per-line write syscalls.
+	w := bufio.NewWriterSize(os.Stdout, outputBufSize)
 
 	writeLoop(w, line)
 }
