@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements the sponge utility.
-// Implements srd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
+// Implements srd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4.
 package main
 
 import (
@@ -33,6 +33,10 @@ var tempMu sync.Mutex
 // tempFilePath tracks the current temp file for signal cleanup.
 var tempFilePath string
 
+// R5.1: exits 0 on success (implicit Go behavior when main returns).
+// R5.2: exits 1 with descriptive stderr message on any error.
+// R5.3: recovers from allocation panics and exits 1 instead of crashing.
+// R5.4: cleans up temp file on all exit paths.
 func main() {
 	sys.InstallSIGPIPEHandler()
 	installCleanupHandler()
@@ -45,7 +49,16 @@ func main() {
 }
 
 // run executes the sponge logic, returning any error.
-func run() error {
+// R5.3: deferred recover converts allocation panics to errors.
+// R5.4: deferred cleanupTempFile ensures temp file removal on all paths.
+func run() (retErr error) {
+	// R5.3: recover from memory allocation panics.
+	defer func() {
+		if r := recover(); r != nil {
+			retErr = fmt.Errorf("memory allocation failed: %v", r)
+		}
+	}()
+
 	appendMode, outFile := parseArgs()
 
 	data, tmpPath, err := readAllStdin()
