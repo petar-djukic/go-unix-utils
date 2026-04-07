@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.14, R3.1-R3.6, R3.11-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.6, R3.11-R3.14.
 package main
 
 import (
@@ -467,13 +467,25 @@ func displayNames(entries []lsEntry) []string {
 	return names
 }
 
+// colorUsed tracks whether any color code has been emitted.
+// R3.3: GNU ls outputs a NORM reset before the first colored entry.
+var colorUsed bool
+
 // colorName wraps a filename in ANSI color codes based on file mode.
+// R3.3: wraps colored entries as colorCode + name + resetCode.
+// Regular files get no wrapping (FileTypeColor returns reset for them).
+// First colored entry is prefixed with a reset (matching GNU ls NORM).
 func colorName(name string, mode os.FileMode) string {
 	c := format.FileTypeColor(mode)
-	if c == "" {
+	r := format.Reset()
+	if c == "" || c == r {
 		return name
 	}
-	return c + name + format.Reset()
+	if !colorUsed {
+		colorUsed = true
+		return r + c + name + r
+	}
+	return c + name + r
 }
 
 // --- Prefix display for -i and -s (R2.11, R2.12, R2.15) ---

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.14.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.3.
 package main
 
 import (
@@ -438,6 +438,70 @@ func TestDiffSortPrecedence(t *testing.T) {
 			Name: "tU_unsorted_wins",
 			Args: []string{"-tU", "-1", "--color=never", dir},
 			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createColorFixture creates a directory with different file types for color testing.
+// Includes a regular file, executable, subdirectory, and symlink.
+func createColorFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "plain.txt"), 5)
+	writeFixtureFile(t, filepath.Join(dir, "run.sh"), 10)
+	if err := os.Chmod(filepath.Join(dir, "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("plain.txt", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestDiffColor tests --color flag behavior (R3.1, R3.2, R3.3).
+func TestDiffColor(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createColorFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.1: --color=always forces ANSI color output.
+		// TERM must be set for gls to initialize its color database.
+		{
+			Name: "color_always_single",
+			Args: []string{"--color=always", "-1", dir},
+			Env:  []string{"LC_ALL=C", "TERM=xterm-256color"},
+		},
+		// R3.2: --color=auto produces no ANSI when stdout is piped.
+		{
+			Name: "color_auto_piped",
+			Args: []string{"--color=auto", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: --color=never suppresses all color output.
+		{
+			Name: "color_never_single",
+			Args: []string{"--color=never", "-1", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.1: bare --color defaults to "always".
+		{
+			Name: "color_bare_flag",
+			Args: []string{"--color", "-1", dir},
+			Env:  []string{"LC_ALL=C", "TERM=xterm-256color"},
+		},
+		// R3.3: color with long format shows colored names.
+		{
+			Name: "color_always_long",
+			Args: []string{"--color=always", "-l", dir},
+			Env:  []string{"LC_ALL=C", "TERM=xterm-256color"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
