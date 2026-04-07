@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.4, R3.1-R3.6, R3.11-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.6, R3.1-R3.6, R3.11-R3.14.
 package main
 
 import (
@@ -49,6 +49,16 @@ const (
 	fmtAcross                    // -x: multi-column, row-across
 )
 
+// sortMode controls entry sort order.
+// R2.5: -t sorts by mtime. R2.6: -S sorts by size.
+type sortMode int
+
+const (
+	sortName sortMode = iota // default: C locale name
+	sortTime                 // -t: mtime newest first
+	sortSize                 // -S: size largest first
+)
+
 // options holds parsed command-line flags.
 type options struct {
 	format        formatMode // -1, -l, -C, -x (last wins per R1.14)
@@ -57,6 +67,7 @@ type options struct {
 	recursive     bool       // -R: recursive listing
 	filter        filterMode // -a / -A
 	color         colorMode  // --color
+	sortBy        sortMode   // -t, -S (R2.5, R2.6)
 }
 
 // lsEntry holds a directory entry name and optional metadata.
@@ -154,6 +165,7 @@ func parseFlags(opts *options, flags string) error {
 
 // applyFlag applies a single flag character to options.
 // R1.14: -C, -x, -l, -1 are mutually exclusive; last wins.
+// R2.5: -t sort by mtime. R2.6: -S sort by size.
 func applyFlag(opts *options, ch rune) error {
 	switch ch {
 	case '1':
@@ -174,6 +186,10 @@ func applyFlag(opts *options, ch rune) error {
 		opts.humanReadable = true
 	case 'R':
 		opts.recursive = true
+	case 't':
+		opts.sortBy = sortTime
+	case 'S':
+		opts.sortBy = sortSize
 	default:
 		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
@@ -195,8 +211,53 @@ func setupColor(opts *options) {
 }
 
 // needsInfo returns true when file metadata is required for output.
+// R2.5, R2.6: time and size sorts require metadata.
 func needsInfo(opts *options) bool {
-	return opts.format == fmtLong || opts.color != colorNever
+	return opts.format == fmtLong ||
+		opts.color != colorNever ||
+		opts.sortBy != sortName
+}
+
+// --- Entry sorting (R2.5, R2.6) ---
+
+// sortEntries sorts entries according to the active sort mode.
+func sortEntries(entries []lsEntry, opts *options) {
+	switch opts.sortBy {
+	case sortTime:
+		sort.SliceStable(entries, func(i, j int) bool {
+			return timeBeforeName(entries[i], entries[j])
+		})
+	case sortSize:
+		sort.SliceStable(entries, func(i, j int) bool {
+			return sizeBeforeName(entries[i], entries[j])
+		})
+	default:
+		sort.SliceStable(entries, func(i, j int) bool {
+			return entries[i].name < entries[j].name
+		})
+	}
+}
+
+// timeBeforeName returns true when a should appear before b in time sort.
+// R2.5: newest first, with C locale name as tiebreaker.
+func timeBeforeName(a, b lsEntry) bool {
+	if a.fi != nil && b.fi != nil {
+		if !a.fi.ModTime.Equal(b.fi.ModTime) {
+			return a.fi.ModTime.After(b.fi.ModTime)
+		}
+	}
+	return a.name < b.name
+}
+
+// sizeBeforeName returns true when a should appear before b in size sort.
+// R2.6: largest first, with C locale name as tiebreaker.
+func sizeBeforeName(a, b lsEntry) bool {
+	if a.fi != nil && b.fi != nil {
+		if a.fi.Size != b.fi.Size {
+			return a.fi.Size > b.fi.Size
+		}
+	}
+	return a.name < b.name
 }
 
 // --- Entry filtering and resolution ---
@@ -729,9 +790,8 @@ func listDir(path string, opts *options) ([]string, error) {
 		return nil, err
 	}
 	names := filterEntries(entries, opts.filter)
-	// R1.3: sort in C locale byte order.
-	sort.Strings(names)
 	lsEntries := resolveEntries(path, names, needsInfo(opts))
+	sortEntries(lsEntries, opts)
 	if opts.format == fmtLong {
 		printLong(lsEntries, path, opts, true)
 	} else {
@@ -740,18 +800,25 @@ func listDir(path string, opts *options) ([]string, error) {
 	if !opts.recursive {
 		return nil, nil
 	}
-	return collectSubdirs(path, names), nil
+	return collectSubdirsFromEntries(path, lsEntries), nil
 }
 
-// collectSubdirs returns subdirectory paths from a sorted name list.
-// R3.13: uses os.Lstat so symlinks to directories are not followed.
-func collectSubdirs(dir string, names []string) []string {
+// collectSubdirsFromEntries returns subdirectory paths from sorted entries.
+// R3.13: uses Lstat metadata so symlinks to directories are not followed.
+// R3.15: preserves the sort order of entries.
+func collectSubdirsFromEntries(dir string, entries []lsEntry) []string {
 	var dirs []string
-	for _, name := range names {
-		if name == "." || name == ".." {
+	for _, e := range entries {
+		if e.name == "." || e.name == ".." {
 			continue
 		}
-		full := filepath.Join(dir, name)
+		full := filepath.Join(dir, e.name)
+		if e.fi != nil {
+			if e.fi.Mode.IsDir() {
+				dirs = append(dirs, full)
+			}
+			continue
+		}
 		info, err := os.Lstat(full)
 		if err != nil || !info.IsDir() {
 			continue
@@ -802,7 +869,6 @@ func classifyArgs(paths []string, opts *options, files, dirs *[]string, exitCode
 
 // listFileArgs lists file arguments (non-directories) as entries.
 func listFileArgs(files []string, opts *options, exitCode *int) {
-	sort.Strings(files)
 	entries := make([]lsEntry, 0, len(files))
 	for _, f := range files {
 		fi, err := sys.Lstat(f)
@@ -813,6 +879,7 @@ func listFileArgs(files []string, opts *options, exitCode *int) {
 		}
 		entries = append(entries, lsEntry{name: f, fi: fi})
 	}
+	sortEntries(entries, opts)
 	if len(entries) == 0 {
 		return
 	}
