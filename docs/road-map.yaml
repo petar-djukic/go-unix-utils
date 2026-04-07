@@ -76,7 +76,7 @@ releases:
         - id: rel02.0-uc004-basename
           status: implemented
         - id: rel02.0-uc005-dirname
-          status: spec_complete
+          status: implemented
     - version: "02.1"
       name: "Batch 2.1 — tee specification and differential test"
       status: spec_complete
