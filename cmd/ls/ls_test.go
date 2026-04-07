@@ -1020,6 +1020,50 @@ func TestDiffFormatMutex(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffRecursiveCombined tests -R combined with -i, -s, -F (R4.9).
+func TestDiffRecursiveCombined(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createRecursiveFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R4.9: -Ri shows inode numbers in each subdirectory.
+		{
+			Name: "Ri_inode_recursive",
+			Args: []string{"-Ri", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -Rs shows block counts in each subdirectory.
+		{
+			Name: "Rs_blocks_recursive",
+			Args: []string{"-Rs", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -RisF combines inode, blocks, and classify in recursive.
+		{
+			Name: "RisF_all_combined",
+			Args: []string{"-RisF", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -Ril combines inode with long format in recursive.
+		{
+			Name: "Ril_inode_long_recursive",
+			Args: []string{"-Ril", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.9: -Rsl combines blocks with long format in recursive.
+		{
+			Name: "Rsl_blocks_long_recursive",
+			Args: []string{"-Rsl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffRecursiveLongTotal tests -R with -l total block line (R4.8).
 func TestDiffRecursiveLongTotal(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
