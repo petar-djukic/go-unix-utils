@@ -6,7 +6,9 @@
 // R1.3 (byte count), R1.4 (character count),
 // R2.1 (-l flag), R2.2 (-w flag), R2.3 (-c flag), R2.4 (-m flag),
 // R2.5 (total line), R2.6 (stdin fallback),
-// R3.1 (error handling), R3.2 (exit codes).
+// R3.1 (error handling), R3.2 (exit codes),
+// R3.3 (--total mode), R4.1 ("-" as stdin), R4.2 (binary input),
+// R4.3 (empty input).
 package main
 
 import (
@@ -27,8 +29,21 @@ const progName = "wc"
 // bufSize is the read buffer size for counting operations.
 const bufSize = 32 * 1024
 
+// totalMode controls when the "total" summary line is printed.
+// R3.3: --total=auto|always|only|never.
+type totalMode int
+
+const (
+	totalAuto   totalMode = iota // print total when >1 file (default)
+	totalAlways                  // print total even for 1 file
+	totalOnly                    // print only total, no per-file lines
+	totalNever                   // never print total
+)
+
 // countResult holds per-file or aggregate counting results.
 // R1, R2: fields correspond to wc output columns.
+// R4.2: binary input is handled safely by byte-level processing.
+// R4.3: zero-value countResult produces correct "0" counts for empty input.
 type countResult struct {
 	lines         int64 // R2.1: -l newline count
 	words         int64 // R2.2: -w word count
@@ -40,12 +55,13 @@ type countResult struct {
 // config captures all parsed flag states for wc invocation.
 // R2, R4: maps CLI flags to runtime configuration.
 type config struct {
-	showLines   bool   // -l
-	showWords   bool   // -w
-	showBytes   bool   // -c
-	showChars   bool   // -m
-	showMaxLine bool   // -L
-	files0From  string // --files0-from=FILE
+	showLines   bool      // -l
+	showWords   bool      // -w
+	showBytes   bool      // -c
+	showChars   bool      // -m
+	showMaxLine bool      // -L
+	files0From  string    // --files0-from=FILE
+	total       totalMode // R3.3: --total=auto|always|only|never
 }
 
 // defaultConfig returns true when no selection flags were specified.
@@ -68,6 +84,7 @@ func applyDefaults(cfg *config) {
 // parseArgs parses command-line arguments and returns a config and file list.
 // R2.1-R2.4: maps flag arguments to config struct.
 // R2.3/R2.4: -c and -m are mutually exclusive; last flag wins.
+// R4.1: "-" is treated as a filename argument meaning stdin.
 func parseArgs() (config, []string) {
 	var cfg config
 	var files []string
@@ -79,6 +96,7 @@ func parseArgs() (config, []string) {
 			files = append(files, args[i+1:]...)
 			break
 		}
+		// R4.1: "-" is a filename meaning stdin, not a flag.
 		if arg == "-" || !strings.HasPrefix(arg, "-") {
 			files = append(files, arg)
 			continue
@@ -103,8 +121,14 @@ func parseFlag(cfg *config, arg string) {
 	}
 }
 
-// parseLongFlag handles --lines, --words, --bytes, --chars flags.
+// parseLongFlag handles --lines, --words, --bytes, --chars, --total flags.
+// R3.3: --total=auto|always|only|never.
 func parseLongFlag(cfg *config, arg string) {
+	// R3.3: handle --total=VALUE.
+	if strings.HasPrefix(arg, "--total") {
+		parseTotalFlag(cfg, arg)
+		return
+	}
 	switch arg {
 	case "--lines":
 		cfg.showLines = true
@@ -118,6 +142,30 @@ func parseLongFlag(cfg *config, arg string) {
 		cfg.showBytes = false // R2.4: -m and -c mutually exclusive
 	case "--max-line-length":
 		cfg.showMaxLine = true
+	}
+}
+
+// parseTotalFlag parses --total and --total=VALUE flags.
+// R3.3: auto (default), always, only, never.
+func parseTotalFlag(cfg *config, arg string) {
+	// --total without =VALUE is equivalent to --total=always.
+	if arg == "--total" {
+		cfg.total = totalAlways
+		return
+	}
+	_, value, found := strings.Cut(arg, "=")
+	if !found {
+		return
+	}
+	switch value {
+	case "auto":
+		cfg.total = totalAuto
+	case "always":
+		cfg.total = totalAlways
+	case "only":
+		cfg.total = totalOnly
+	case "never":
+		cfg.total = totalNever
 	}
 }
 
@@ -144,6 +192,8 @@ func parseShortFlag(cfg *config, ch rune) {
 // R1.2: words are maximal sequences of non-whitespace characters.
 // R1.3: bytes are total bytes read.
 // R1.4: chars are UTF-8 code points; invalid bytes each count as one character.
+// R4.2: handles binary input safely via byte-level processing.
+// R4.3: returns zero-value countResult for empty input.
 func countReader(r io.Reader) (countResult, error) {
 	reader := bufio.NewReaderSize(r, bufSize)
 	var result countResult
@@ -295,6 +345,26 @@ func addResult(total *countResult, r countResult) {
 	}
 }
 
+// shouldPrintTotal returns whether the total line should be printed.
+// R3.3: respects --total mode.
+func shouldPrintTotal(mode totalMode, nfiles int) bool {
+	switch mode {
+	case totalAlways, totalOnly:
+		return true
+	case totalNever:
+		return false
+	default:
+		// totalAuto: print total when >1 file.
+		return nfiles > 1
+	}
+}
+
+// shouldPrintPerFile returns whether per-file lines should be printed.
+// R3.3: --total=only suppresses per-file output.
+func shouldPrintPerFile(mode totalMode) bool {
+	return mode != totalOnly
+}
+
 // processFiles iterates over file arguments and accumulates results.
 // R2.6: when no file arguments are given, reads from stdin.
 func processFiles(files []string, cfg config) int {
@@ -319,10 +389,12 @@ func processStdin(cfg config) int {
 // R2.5: prints a total line when two or more files are given.
 // R3.1: prints errors to stderr and continues processing.
 // R3.2: returns exit code 1 if any file produced an error.
+// R3.3: respects --total mode for total line control.
 func processNamedFiles(files []string, cfg config) int {
 	width := numberWidth(len(files))
 	exitCode := 0
 	var total countResult
+	printPerFile := shouldPrintPerFile(cfg.total)
 
 	for _, name := range files {
 		r, err := countOneFile(name)
@@ -332,17 +404,19 @@ func processNamedFiles(files []string, cfg config) int {
 			continue
 		}
 		addResult(&total, r)
-		fmt.Fprintln(os.Stdout, formatOutput(r, name, cfg, width))
+		if printPerFile {
+			fmt.Fprintln(os.Stdout, formatOutput(r, name, cfg, width))
+		}
 	}
 
-	if len(files) > 1 {
+	if shouldPrintTotal(cfg.total, len(files)) {
 		fmt.Fprintln(os.Stdout, formatOutput(total, "total", cfg, width))
 	}
 	return exitCode
 }
 
 // countOneFile counts a single file, handling "-" as stdin.
-// R2.6: "-" means stdin.
+// R4.1: "-" means stdin, consistent with POSIX convention.
 func countOneFile(name string) (countResult, error) {
 	if name == "-" {
 		return countStdin()
