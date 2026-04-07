@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package main implements cmd/head: print the first lines of files.
-// Implements srd018-head R1.1, R1.2, R1.3, R1.4.
+// Package main implements cmd/head: print the first lines or bytes of files.
+// Implements srd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
 package main
 
 import (
@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -22,7 +23,25 @@ const progName = "head"
 
 // defaultLines is the number of lines printed when no -n flag is given.
 // R1.1: default is 10 lines.
-const defaultLines = 10
+const defaultLines int64 = 10
+
+// countMode distinguishes line-count from byte-count mode.
+type countMode int
+
+const (
+	modeLines countMode = iota
+	modeBytes
+)
+
+// config holds parsed command-line options.
+type config struct {
+	mode     countMode
+	count    int64
+	negative bool
+	quiet    bool
+	verbose  bool
+	files    []string
+}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -33,16 +52,17 @@ func main() {
 // R4.1: returns 0 when all files processed successfully.
 // R4.2: returns 1 when any file cannot be opened or read.
 func run(args []string) int {
-	lineCount, negative, fileArgs := parseArgs(args)
-
-	// R1.4: read from stdin when no file arguments given.
-	if len(fileArgs) == 0 {
-		fileArgs = []string{"-"}
+	cfg := parseArgs(args)
+	if len(cfg.files) == 0 {
+		cfg.files = []string{"-"}
 	}
-
+	showHeader := shouldShowHeader(&cfg)
 	exitCode := 0
-	for _, name := range fileArgs {
-		if err := processFile(name, lineCount, negative); err != nil {
+	for i, name := range cfg.files {
+		if showHeader {
+			printHeader(name, i == 0)
+		}
+		if err := processFile(name, &cfg); err != nil {
 			reportError(name, err)
 			exitCode = 1
 		}
@@ -50,18 +70,58 @@ func run(args []string) int {
 	return exitCode
 }
 
+// shouldShowHeader determines whether file headers should be printed.
+// R3.2: no header for single file by default.
+// R3.3: -q suppresses all headers.
+// R3.4: -v forces headers even for single file.
+func shouldShowHeader(cfg *config) bool {
+	if cfg.quiet {
+		return false
+	}
+	if cfg.verbose {
+		return true
+	}
+	return len(cfg.files) > 1
+}
+
+// printHeader writes the GNU head-format header for a file.
+// R3.1: format is "==> FILENAME <==" with blank line between files.
+func printHeader(name string, first bool) {
+	if !first {
+		fmt.Fprintln(os.Stdout)
+	}
+	fmt.Fprintf(os.Stdout, "==> %s <==\n", name)
+}
+
 // processFile opens and processes a single file or stdin.
-func processFile(name string, lineCount int, negative bool) error {
+func processFile(name string, cfg *config) error {
 	r, closer, err := openInput(name)
 	if err != nil {
 		return err
 	}
 	defer closer()
-
-	if negative {
-		return printAllButLastN(r, lineCount)
+	if cfg.mode == modeBytes {
+		return processByteMode(r, cfg.count, cfg.negative)
 	}
-	return printFirstN(r, lineCount)
+	return processLineMode(r, cfg.count, cfg.negative)
+}
+
+// processLineMode handles line-count output.
+func processLineMode(r io.Reader, count int64, negative bool) error {
+	if negative {
+		return printAllButLastNLines(r, count)
+	}
+	return printFirstNLines(r, count)
+}
+
+// processByteMode handles byte-count output.
+// R2.1: -c NUM prints first NUM bytes.
+// R2.2: -c -NUM prints all except last NUM bytes.
+func processByteMode(r io.Reader, count int64, negative bool) error {
+	if negative {
+		return printAllButLastNBytes(r, count)
+	}
+	return printFirstNBytes(r, count)
 }
 
 // openInput opens a file for reading, or returns stdin for "-".
@@ -77,51 +137,96 @@ func openInput(name string) (io.Reader, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-// parseArgs extracts -n/--lines flag and file arguments.
-// R1.1: defaults to 10 lines.
-// R1.2: -n NUM sets line count.
-// R1.3: negative NUM (prefixed with '-') sets negative mode.
-func parseArgs(args []string) (lineCount int, negative bool, fileArgs []string) {
-	lineCount = defaultLines
+// parseArgs extracts flags and file arguments.
+// R2.1: -c and -n are mutually exclusive; the last one given wins.
+func parseArgs(args []string) config {
+	cfg := config{count: defaultLines}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
-			fileArgs = append(fileArgs, args[i+1:]...)
-			return
+			cfg.files = append(cfg.files, args[i+1:]...)
+			return cfg
 		}
-		var numStr string
-		switch {
-		case arg == "--lines" || arg == "-n":
-			if i+1 < len(args) {
-				i++
-				numStr = args[i]
-			}
-		case strings.HasPrefix(arg, "--lines="):
-			numStr = arg[len("--lines="):]
-		case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
-			numStr = arg[2:]
-		default:
-			fileArgs = append(fileArgs, arg)
+		if consumed := parseHeaderFlag(&cfg, arg); consumed > 0 {
 			continue
 		}
-		if numStr != "" {
-			lineCount, negative = parseLineCount(numStr)
+		if consumed := parseCountFlag(&cfg, args, i); consumed > 0 {
+			i += consumed - 1
+			continue
 		}
+		cfg.files = append(cfg.files, arg)
 	}
-	return
+	return cfg
+}
+
+// parseHeaderFlag handles -q/--quiet/--silent and -v/--verbose flags.
+// R3.3: -q suppresses headers.
+// R3.4: -v forces headers.
+func parseHeaderFlag(cfg *config, arg string) int {
+	switch {
+	case arg == "-q" || arg == "--quiet" || arg == "--silent":
+		cfg.quiet = true
+		cfg.verbose = false
+		return 1
+	case arg == "-v" || arg == "--verbose":
+		cfg.verbose = true
+		cfg.quiet = false
+		return 1
+	}
+	return 0
+}
+
+// parseCountFlag handles -n/--lines and -c/--bytes flags.
+func parseCountFlag(cfg *config, args []string, i int) int {
+	mode, numStr, consumed := matchCountFlag(args[i], args, i)
+	if consumed == 0 {
+		return 0
+	}
+	cfg.mode = mode
+	if mode == modeBytes {
+		cfg.count, cfg.negative = parseByteCount(numStr)
+	} else {
+		cfg.count, cfg.negative = parseLineCount(numStr)
+	}
+	return consumed
+}
+
+// matchCountFlag identifies -n/-c flags and extracts the numeric string.
+func matchCountFlag(arg string, args []string, i int) (countMode, string, int) {
+	switch {
+	case arg == "-n" || arg == "--lines":
+		if i+1 < len(args) {
+			return modeLines, args[i+1], 2
+		}
+		return modeLines, "", 1
+	case strings.HasPrefix(arg, "--lines="):
+		return modeLines, arg[len("--lines="):], 1
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
+		return modeLines, arg[2:], 1
+	case arg == "-c" || arg == "--bytes":
+		if i+1 < len(args) {
+			return modeBytes, args[i+1], 2
+		}
+		return modeBytes, "", 1
+	case strings.HasPrefix(arg, "--bytes="):
+		return modeBytes, arg[len("--bytes="):], 1
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'c':
+		return modeBytes, arg[2:], 1
+	}
+	return 0, "", 0
 }
 
 // parseLineCount parses a line count string, detecting negative prefix.
 // R1.2: NUM is a positive integer.
 // R1.3: NUM prefixed with '-' enables negative mode.
-func parseLineCount(s string) (int, bool) {
+func parseLineCount(s string) (int64, bool) {
 	neg := false
 	raw := s
 	if strings.HasPrefix(s, "-") {
 		neg = true
 		raw = s[1:]
 	}
-	n, err := strconv.Atoi(raw)
+	n, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || n < 0 {
 		fmt.Fprintf(os.Stderr, "%s: invalid number of lines: %q\n", progName, s)
 		return defaultLines, false
@@ -129,12 +234,29 @@ func parseLineCount(s string) (int, bool) {
 	return n, neg
 }
 
-// printFirstN writes the first n lines from r to stdout.
+// parseByteCount parses a byte count string with optional suffix.
+// R2.3: supports b, K/KiB, M/MiB, G/GiB suffixes via sizeparse.
+func parseByteCount(s string) (int64, bool) {
+	neg := false
+	raw := s
+	if strings.HasPrefix(s, "-") {
+		neg = true
+		raw = s[1:]
+	}
+	n, err := sizeparse.Parse(raw)
+	if err != nil || n < 0 {
+		fmt.Fprintf(os.Stderr, "%s: invalid number of bytes: %q\n", progName, s)
+		return defaultLines, false
+	}
+	return n, neg
+}
+
+// printFirstNLines writes the first n lines from r to stdout.
 // R1.1, R1.2: output first N lines.
 // R1.5: a line without a trailing newline is still counted.
-func printFirstN(r io.Reader, n int) error {
+func printFirstNLines(r io.Reader, n int64) error {
 	br := bufio.NewReader(r)
-	for i := 0; i < n; i++ {
+	for i := int64(0); i < n; i++ {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
 			if _, werr := os.Stdout.Write(line); werr != nil {
@@ -142,7 +264,7 @@ func printFirstN(r io.Reader, n int) error {
 			}
 		}
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
@@ -151,19 +273,28 @@ func printFirstN(r io.Reader, n int) error {
 	return nil
 }
 
-// printAllButLastN writes all lines except the last n from r to stdout.
+// printFirstNBytes writes the first n bytes from r to stdout.
+// R2.1: -c NUM prints the first NUM bytes.
+func printFirstNBytes(r io.Reader, n int64) error {
+	_, err := io.CopyN(os.Stdout, r, n)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
+}
+
+// printAllButLastNLines writes all lines except the last n.
 // R1.3: requires buffering input in a ring buffer.
-func printAllButLastN(r io.Reader, n int) error {
+func printAllButLastNLines(r io.Reader, n int64) error {
 	if n <= 0 {
 		_, err := io.Copy(os.Stdout, r)
 		return err
 	}
-	return drainRingBuffer(bufio.NewReader(r), n)
+	return drainLineRing(bufio.NewReader(r), int(n))
 }
 
-// drainRingBuffer reads lines into a ring buffer of size n, outputting
-// evicted lines as new ones arrive.
-func drainRingBuffer(br *bufio.Reader, n int) error {
+// drainLineRing reads lines into a ring buffer, outputting evicted lines.
+func drainLineRing(br *bufio.Reader, n int) error {
 	ring := make([][]byte, n)
 	idx := 0
 	total := 0
@@ -180,7 +311,7 @@ func drainRingBuffer(br *bufio.Reader, n int) error {
 			total++
 		}
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
@@ -188,7 +319,27 @@ func drainRingBuffer(br *bufio.Reader, n int) error {
 	}
 }
 
+// printAllButLastNBytes writes all bytes except the last n.
+// R2.2: -c -N prints all bytes except the last N.
+func printAllButLastNBytes(r io.Reader, n int64) error {
+	if n <= 0 {
+		_, err := io.Copy(os.Stdout, r)
+		return err
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	end := int64(len(data)) - n
+	if end <= 0 {
+		return nil
+	}
+	_, werr := os.Stdout.Write(data[:end])
+	return werr
+}
+
 // reportError prints a GNU-compatible diagnostic to stderr.
+// R3.5: prints error and continues with remaining files.
 func reportError(name string, err error) {
 	var pe *os.PathError
 	if errors.As(err, &pe) {
