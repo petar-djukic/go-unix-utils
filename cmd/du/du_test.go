@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -283,7 +284,8 @@ func TestDiffMBlocks(t *testing.T) {
 }
 
 // TestDiffErrorPaths verifies exit code and error handling.
-// R4.2: prints diagnostic to stderr.
+// R4.1: exit 0 on success. R4.2: exit 1 on error, diagnostic to stderr,
+// continue processing remaining arguments.
 func TestDiffErrorPaths(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -296,17 +298,66 @@ func TestDiffErrorPaths(t *testing.T) {
 
 	tests := []testutils.DiffTest{
 		{
+			// R4.2: nonexistent path produces exit 1 and diagnostic.
 			Name:      "nonexistent_path",
 			Args:      []string{"/nonexistent/path/xyz_du_test"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrProgramNameNormalizer},
 		},
 		{
+			// R4.2: continue processing after error; exit 1.
 			Name: "mixed_valid_and_invalid",
 			Args: []string{
 				filepath.Join(basic, "sub1"),
 				"/nonexistent/path/xyz_du_test",
 			},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrProgramNameNormalizer},
+		},
+		{
+			// R4.1: successful traversal exits 0. ExitCode defaults to 0.
+			Name: "success_exits_zero",
+			Args: []string{"-k", filepath.Join(basic, "sub1")},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffPermissionDenied verifies that a permission-denied directory
+// produces exit 1 with a "cannot read directory" diagnostic. R4.2.
+func TestDiffPermissionDenied(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("permission test requires unix")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("test requires non-root user")
+	}
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	noRead := filepath.Join(dir, "noperm")
+	if err := os.Mkdir(noRead, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, filepath.Join(noRead, "secret.txt"), "hidden\n")
+	// Remove read permission so ReadDir fails.
+	if err := os.Chmod(noRead, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		// Restore permission so TempDir cleanup can remove it.
+		os.Chmod(noRead, 0o755) // best-effort cleanup
+	})
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "permission_denied_dir",
+			Args:      []string{noRead},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrProgramNameNormalizer},
 		},
