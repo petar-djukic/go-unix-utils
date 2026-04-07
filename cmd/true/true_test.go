@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/true. Implements srd013-true R4.1, R4.2, R4.3.
+// Differential tests for cmd/true. Implements srd013-true R4.1, R4.2, R4.3 (R2.2, R2.3, R3.1, R3.2).
 package main
 
 import (
@@ -47,6 +47,25 @@ func TestDiff(t *testing.T) {
 			Name:      "help_flag",
 			Args:      []string{"--help"},
 			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			// R2.2, R4.2: --version prints version info to stdout, exit 0.
+			// Normalize stdout because version strings differ between Go and GNU.
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			// R3.1, R3.2: --version with trailing args still exits 0.
+			// GNU true treats only the first arg for --version.
+			Name: "version_with_extra_args",
+			Args: []string{"--version", "extra"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			// R2.3, R3.1: unrecognized flags still exit 0 with no output.
+			Name: "unrecognized_double_dash_flag",
+			Args: []string{"--unknown"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
