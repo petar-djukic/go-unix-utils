@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/nproc: print number of available processing units.
-// Implements srd046-nproc R1.1, R1.2, R1.3, R1.4.
+// Implements srd046-nproc R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -49,6 +49,9 @@ func main() {
 // R1.2: --ignore=N subtracts N, clamping to 1.
 // R1.3: --all prints installed count.
 // R1.4: --all and --ignore=N may be combined.
+// R2.1: positional operands produce an error.
+// R2.2: non-numeric --ignore produces an error.
+// R2.3: unknown flags produce an error.
 func run(args []string) (int, error) {
 	allFlag := false
 	ignoreVal := 0
@@ -66,14 +69,18 @@ func run(args []string) (int, error) {
 			allFlag = true
 			continue
 		}
-		n, ok := parseIgnore(arg)
+		n, ok, err := parseIgnore(arg)
+		if err != nil {
+			return 0, err
+		}
 		if ok {
 			ignoreVal = n
 			continue
 		}
-		if strings.HasPrefix(arg, "--") {
+		if strings.HasPrefix(arg, "--") || strings.HasPrefix(arg, "-") {
 			return 0, fmt.Errorf("unrecognized option '%s'", arg)
 		}
+		// R2.1: positional operands are rejected.
 		return 0, fmt.Errorf("extra operand '%s'", arg)
 	}
 
@@ -85,24 +92,37 @@ func run(args []string) (int, error) {
 	return count, nil
 }
 
-// parseIgnore checks if arg is --ignore=N and returns (N, true) if so.
-func parseIgnore(arg string) (int, bool) {
+// parseIgnore checks if arg is --ignore=N and returns (N, true, nil) if so.
+// R2.2: returns an error if the value is not a valid number.
+func parseIgnore(arg string) (int, bool, error) {
 	val, found := strings.CutPrefix(arg, "--ignore=")
 	if !found {
-		return 0, false
+		return 0, false, nil
 	}
 	n, err := strconv.Atoi(val)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s: invalid number to ignore\n", progName, val)
-		os.Exit(1)
+		return 0, false, fmt.Errorf("invalid number: '%s'", val)
 	}
-	return n, true
+	return n, true, nil
 }
 
 // processorCount returns the CPU count based on the --all flag.
+// When OMP_NUM_THREADS is set and valid, it is used as the base count
+// instead of runtime.NumCPU() (unless --all is specified).
 // R1.1: available count via runtime.NumCPU().
 // R1.3: --all also uses runtime.NumCPU() since Go does not distinguish
 // installed vs available on macOS (per srd046 non_goals).
-func processorCount(_ bool) int {
+func processorCount(all bool) int {
+	if all {
+		return runtime.NumCPU()
+	}
+	// OMP_NUM_THREADS overrides the available count when not using --all.
+	if env := os.Getenv("OMP_NUM_THREADS"); env != "" {
+		// OMP_NUM_THREADS may contain a comma-separated list; use first value.
+		parts := strings.SplitN(env, ",", 2)
+		if n, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil && n > 0 {
+			return n
+		}
+	}
 	return runtime.NumCPU()
 }
