@@ -2,20 +2,33 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/basename.
-// Tests cover srd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Tests cover srd015-basename R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// stderrDropNormalizer drops stderr content so only exit code is compared
-// for error cases where the binary name in the message differs.
-func stderrDropNormalizer(b []byte) []byte {
-	return nil
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.4/R4.3: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
 }
 
 func TestDiff(t *testing.T) {
@@ -88,14 +101,6 @@ func TestDiff(t *testing.T) {
 			Args: []string{""},
 		},
 
-		// Error: no arguments.
-		{
-			Name:      "no_args",
-			Args:      []string{},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrDropNormalizer},
-		},
-
 		// R2.1: -a flag processes multiple NAME arguments.
 		{
 			Name: "multi_arg_a_flag",
@@ -153,12 +158,42 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-az", "/usr/bin/sort", "/usr/bin/cat"},
 		},
 
-		// Error: too many args without -a.
+		// R3.1: -z flag produces NUL-delimited output.
+		{
+			Name: "zero_flag_single",
+			Args: []string{"-z", "/usr/bin/sort"},
+		},
+		{
+			Name: "zero_long_flag",
+			Args: []string{"--zero", "/usr/bin/sort"},
+		},
+		{
+			Name: "zero_flag_with_suffix",
+			Args: []string{"-z", "file.txt", ".txt"},
+		},
+		{
+			Name: "zero_flag_multi_arg",
+			Args: []string{"-az", "/usr/bin/sort", "/usr/bin/cat", "/usr/bin/ls"},
+		},
+		{
+			Name: "zero_flag_with_s_suffix",
+			Args: []string{"-zs", ".h", "stdio.h", "stdlib.h"},
+		},
+
+		// R3.3/R3.4: error for missing operand.
+		{
+			Name:      "no_args",
+			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+
+		// R3.3/R3.4: error for extra operand without -a.
 		{
 			Name:      "extra_operand",
 			Args:      []string{"a", "b", "c"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrDropNormalizer},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
 
