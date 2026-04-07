@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/head: print the first lines or bytes of files.
-// Implements srd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.5, R4.1-R4.3.
+// Implements srd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.5, R4.1-R4.4.
 package main
 
 import (
@@ -41,6 +41,7 @@ type config struct {
 	quiet    bool
 	verbose  bool
 	files    []string
+	err      bool // R4.4: set when a parse error occurs
 }
 
 func main() {
@@ -51,8 +52,12 @@ func main() {
 // run executes the head logic and returns the exit code.
 // R4.1: returns 0 when all files processed successfully.
 // R4.2: returns 1 when any file cannot be opened or read.
+// R4.4: returns 1 when a non-numeric argument is given for -n or -c.
 func run(args []string) int {
 	cfg := parseArgs(args)
+	if cfg.err {
+		return 1
+	}
 	if len(cfg.files) == 0 {
 		cfg.files = []string{"-"}
 	}
@@ -196,9 +201,9 @@ func parseCountFlag(cfg *config, args []string, i int) int {
 	}
 	cfg.mode = mode
 	if mode == modeBytes {
-		cfg.count, cfg.negative = parseByteCount(numStr)
+		cfg.count, cfg.negative, cfg.err = parseByteCount(numStr)
 	} else {
-		cfg.count, cfg.negative = parseLineCount(numStr)
+		cfg.count, cfg.negative, cfg.err = parseLineCount(numStr)
 	}
 	return consumed
 }
@@ -231,7 +236,8 @@ func matchCountFlag(arg string, args []string, i int) (countMode, string, int) {
 // parseLineCount parses a line count string, detecting negative prefix.
 // R1.2: NUM is a positive integer.
 // R1.3: NUM prefixed with '-' enables negative mode.
-func parseLineCount(s string) (int64, bool) {
+// R4.4: returns err=true for non-numeric input.
+func parseLineCount(s string) (int64, bool, bool) {
 	neg := false
 	raw := s
 	if strings.HasPrefix(s, "-") {
@@ -240,15 +246,16 @@ func parseLineCount(s string) (int64, bool) {
 	}
 	n, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || n < 0 {
-		fmt.Fprintf(os.Stderr, "%s: invalid number of lines: %q\n", progName, s)
-		return defaultLines, false
+		fmt.Fprintf(os.Stderr, "%s: invalid number of lines: '%s'\n", progName, s)
+		return 0, false, true
 	}
-	return n, neg
+	return n, neg, false
 }
 
 // parseByteCount parses a byte count string with optional suffix.
 // R2.3: supports b, K/KiB, M/MiB, G/GiB suffixes via sizeparse.
-func parseByteCount(s string) (int64, bool) {
+// R4.4: returns err=true for non-numeric input.
+func parseByteCount(s string) (int64, bool, bool) {
 	neg := false
 	raw := s
 	if strings.HasPrefix(s, "-") {
@@ -257,10 +264,10 @@ func parseByteCount(s string) (int64, bool) {
 	}
 	n, err := sizeparse.Parse(raw)
 	if err != nil || n < 0 {
-		fmt.Fprintf(os.Stderr, "%s: invalid number of bytes: %q\n", progName, s)
-		return defaultLines, false
+		fmt.Fprintf(os.Stderr, "%s: invalid number of bytes: '%s'\n", progName, s)
+		return 0, false, true
 	}
-	return n, neg
+	return n, neg, false
 }
 
 // printFirstNLines writes the first n lines from r to stdout.

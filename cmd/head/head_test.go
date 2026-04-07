@@ -337,6 +337,20 @@ func TestDiff(t *testing.T) {
 			Name: "multi_file_with_empty",
 			Args: []string{file1, emptyFile, file2},
 		},
+		// R4.4: non-numeric -n argument.
+		{
+			Name:      "invalid_n_nonnumeric",
+			Args:      []string{"-n", "abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.4: non-numeric -c argument.
+		{
+			Name:      "invalid_c_nonnumeric",
+			Args:      []string{"-c", "xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
