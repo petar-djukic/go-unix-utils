@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.7.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.15, R3.1-R3.11.
 package main
 
 import (
@@ -595,6 +595,113 @@ func TestDiffHumanBlocks(t *testing.T) {
 		{
 			Name: "slh_long_human_blocks",
 			Args: []string{"-slh", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createClassifyFixture creates a directory with different file types for -F testing.
+// Includes a regular file, executable, subdirectory, symlink, and FIFO.
+func createClassifyFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "plain.txt"), 5)
+	writeFixtureFile(t, filepath.Join(dir, "run.sh"), 10)
+	if err := os.Chmod(filepath.Join(dir, "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("plain.txt", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestDiffClassify tests -F type indicator flag (R3.8, R3.9, R3.10).
+func TestDiffClassify(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createClassifyFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.8: -F with single-column output.
+		{
+			Name: "F_single_column",
+			Args: []string{"-F", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.10: -F with long format.
+		{
+			Name: "F_long_format",
+			Args: []string{"-Fl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.10: -F with color output.
+		{
+			Name: "F_color_always",
+			Args: []string{"-F", "-1", "--color=always", dir},
+			Env:  []string{"LC_ALL=C", "TERM=xterm-256color"},
+		},
+		// R3.10: -F with -C multi-column.
+		{
+			Name: "F_columns",
+			Args: []string{"-FC", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createRecursiveFixture creates nested directories for -R testing.
+func createRecursiveFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixtureFile(t, filepath.Join(dir, "top.txt"), 5)
+	sub := filepath.Join(dir, "subA")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, filepath.Join(sub, "child.txt"), 10)
+	sub2 := filepath.Join(dir, "subB")
+	if err := os.Mkdir(sub2, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, filepath.Join(sub2, "other.txt"), 15)
+	return dir
+}
+
+// TestDiffRecursive tests -R recursive listing (R3.11).
+func TestDiffRecursive(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createRecursiveFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R3.11: -R with single-column.
+		{
+			Name: "R_single_column",
+			Args: []string{"-R", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.11: -R with long format.
+		{
+			Name: "R_long_format",
+			Args: []string{"-Rl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.11+R3.8: -R with -F classify.
+		{
+			Name: "RF_classify_recursive",
+			Args: []string{"-RF", "-1", "--color=never", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}

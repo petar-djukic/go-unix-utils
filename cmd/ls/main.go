@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.7, R3.11-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.14.
 package main
 
 import (
@@ -73,6 +73,7 @@ type options struct {
 	showInode     bool // R2.11: -i
 	showBlocks    bool // R2.12: -s
 	numericIDs    bool // R2.14: -n
+	classify      bool // R3.8: -F
 }
 
 // lsEntry holds a directory entry name and optional metadata.
@@ -212,6 +213,8 @@ func applyFlag(opts *options, ch rune) error {
 	case 'n':
 		opts.numericIDs = true
 		opts.format = fmtLong
+	case 'F':
+		opts.classify = true
 	default:
 		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
@@ -238,7 +241,8 @@ func needsInfo(opts *options) bool {
 		opts.color != colorNever ||
 		opts.sortBy != sortName ||
 		opts.showInode ||
-		opts.showBlocks
+		opts.showBlocks ||
+		opts.classify
 }
 
 // --- Entry sorting (R2.5, R2.6, R2.7, R2.8, R2.9, R2.10) ---
@@ -452,14 +456,38 @@ func resolveEntries(dir string, names []string, info bool) []lsEntry {
 	return entries
 }
 
-// --- Display names and colors (R3.3) ---
+// --- Display names and colors (R3.3, R3.8) ---
+
+// classifyIndicator returns the -F type indicator for a file mode.
+// R3.8: / for dir, * for executable regular, @ for symlink,
+// | for FIFO, = for socket. R3.9: executable = any execute bit set.
+func classifyIndicator(mode os.FileMode) string {
+	switch {
+	case mode&os.ModeDir != 0:
+		return "/"
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.IsRegular() && mode&0o111 != 0:
+		return "*"
+	default:
+		return ""
+	}
+}
 
 // displayNames returns display strings for entries, colorized if enabled.
-func displayNames(entries []lsEntry) []string {
+// R3.10: when classify is true, indicator is appended after ANSI reset.
+func displayNames(entries []lsEntry, classify bool) []string {
 	names := make([]string, len(entries))
 	for i, e := range entries {
 		if e.fi != nil {
 			names[i] = colorName(e.name, e.fi.Mode)
+			if classify {
+				names[i] += classifyIndicator(e.fi.Mode)
+			}
 		} else {
 			names[i] = e.name
 		}
@@ -493,7 +521,7 @@ func colorName(name string, mode os.FileMode) string {
 // buildPrefixedNames builds display names with optional inode/block prefixes.
 // R2.15: when both -i and -s are given, inode is printed first.
 func buildPrefixedNames(entries []lsEntry, opts *options) []string {
-	names := displayNames(entries)
+	names := displayNames(entries, opts.classify)
 	if !opts.showInode && !opts.showBlocks {
 		return names
 	}
@@ -848,7 +876,7 @@ func toLongEntry(e lsEntry, dir string, opts *options) longEntry {
 		group: resolveGroupField(e.fi.Gid, opts.numericIDs),
 		size:  formatSize(e.fi.Size, opts),
 		mtime: formatTime(e.fi.ModTime),
-		disp:  longDisplayName(e, dir),
+		disp:  longDisplayName(e, dir, opts.classify),
 	}
 	if opts.showInode {
 		le.inode = strconv.FormatUint(e.fi.Ino, 10)
@@ -860,10 +888,16 @@ func toLongEntry(e lsEntry, dir string, opts *options) longEntry {
 }
 
 // longDisplayName builds the name field for long format including
-// color and symlink target. R1.10: appends " -> target" for symlinks.
-func longDisplayName(e lsEntry, dir string) string {
+// color, classify indicator, and symlink target.
+// R1.10: appends " -> target" for symlinks.
+// R3.10: classify indicator goes after ANSI reset, before symlink arrow.
+func longDisplayName(e lsEntry, dir string, classify bool) string {
 	name := colorName(e.name, e.fi.Mode)
-	if e.fi.Mode&os.ModeSymlink != 0 {
+	isSymlink := e.fi.Mode&os.ModeSymlink != 0
+	if classify && !isSymlink {
+		name += classifyIndicator(e.fi.Mode)
+	}
+	if isSymlink {
 		target, err := os.Readlink(filepath.Join(dir, e.name))
 		if err == nil {
 			name = name + " -> " + target
