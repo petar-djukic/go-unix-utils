@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements the sponge utility.
-// Implements srd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2.
+// Implements srd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -167,6 +167,7 @@ func spillAndContinue(buf *bytes.Buffer, remaining io.Reader) ([]byte, string, e
 }
 
 // writeOutput dispatches to stdout or file output.
+// R4.1: when no output filename is given, writes buffered stdin to stdout.
 func writeOutput(outFile string, data []byte, tmpPath string, appendMode bool) error {
 	if outFile == "" {
 		return writeToStdout(data, tmpPath)
@@ -175,6 +176,8 @@ func writeOutput(outFile string, data []byte, tmpPath string, appendMode bool) e
 }
 
 // writeToStdout writes buffered content to stdout.
+// R4.2: for large input (temp file spill), copies temp file content to stdout.
+// R4.3: for small input (in-memory), writes buffer directly to stdout.
 func writeToStdout(data []byte, tmpPath string) error {
 	if tmpPath != "" {
 		return copyFileToWriter(tmpPath, os.Stdout)
