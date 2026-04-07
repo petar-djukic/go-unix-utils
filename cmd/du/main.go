@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements du: recursive directory disk usage reporting.
-// Implements srd009-du R1.1-R1.5, R2.1-R2.8.
+// Implements srd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3.
 package main
 
 import (
@@ -211,8 +211,9 @@ func (w *walker) processArg(path string) int64 {
 // walkDir reads a directory, recurses into children, and prints the
 // accumulated size. R1.1, R1.3: format is "SIZE\tPATH\n".
 func (w *walker) walkDir(path string, fi *sys.FileInfo, depth int) int64 {
-	// Use block-based size for the directory entry itself, matching
-	// GNU du behavior across filesystem types.
+	// Directory entry size uses block-based accounting. R2.8 (--apparent-size)
+	// applies to regular files via fileSize/rawSize; directories use blocks
+	// to match GNU du behavior on APFS and other filesystems.
 	total := fi.Blocks * 512
 	entries, err := os.ReadDir(path)
 	if err != nil {
