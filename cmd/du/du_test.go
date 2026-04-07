@@ -149,8 +149,140 @@ func TestDiffAllFiles(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffGrandTotal verifies -c flag produces a grand total line.
+// R2.7: prints "SIZE\ttotal\n" after all arguments.
+func TestDiffGrandTotal(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	basic := createBasicFixture(t)
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "grand_total_single_arg",
+			Args: []string{"-c", filepath.Join(basic, "sub1")},
+		},
+		{
+			Name: "grand_total_multiple_args",
+			Args: []string{"-c",
+				filepath.Join(basic, "sub1"),
+				filepath.Join(basic, "sub2")},
+		},
+		{
+			Name: "grand_total_with_human",
+			Args: []string{"-ch", filepath.Join(basic, "sub1")},
+		},
+		{
+			Name: "grand_total_with_summary",
+			Args: []string{"-cs",
+				filepath.Join(basic, "sub1"),
+				filepath.Join(basic, "sub2")},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffMaxDepth verifies -d/--max-depth flag limits output depth.
+// R2.4: only entries at depth <= N are printed.
+func TestDiffMaxDepth(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	dir := createNestedFixture(t)
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "max_depth_0",
+			Args: []string{"-d", "0", dir},
+		},
+		{
+			Name: "max_depth_1",
+			Args: []string{"-d", "1", dir},
+		},
+		{
+			Name: "max_depth_2",
+			Args: []string{"-d", "2", dir},
+		},
+		{
+			Name: "max_depth_long_form",
+			Args: []string{"--max-depth=1", dir},
+		},
+		{
+			Name: "max_depth_with_all",
+			Args: []string{"-d", "1", "-a", dir},
+		},
+		{
+			Name: "max_depth_with_total",
+			Args: []string{"-d", "1", "-c", dir},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffBytes verifies -b flag shows apparent size in bytes.
+func TestDiffBytes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	basic := createBasicFixture(t)
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "bytes_dir",
+			Args: []string{"-b", filepath.Join(basic, "sub1")},
+		},
+		{
+			Name: "bytes_all_files",
+			Args: []string{"-ba", filepath.Join(basic, "sub1")},
+		},
+		{
+			Name: "bytes_with_total",
+			Args: []string{"-bc",
+				filepath.Join(basic, "sub1"),
+				filepath.Join(basic, "sub2")},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffMBlocks verifies -m flag shows sizes in 1M blocks.
+// R2.6: each size is converted to 1048576-byte blocks, rounding up.
+func TestDiffMBlocks(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	basic := createBasicFixture(t)
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "mblocks_dir",
+			Args: []string{"-m", filepath.Join(basic, "sub1")},
+		},
+		{
+			Name: "mblocks_summary",
+			Args: []string{"-ms", filepath.Join(basic, "sub1")},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffErrorPaths verifies exit code and error handling.
-// R1.5: exits 1 when a path does not exist, continues processing.
 // R4.2: prints diagnostic to stderr.
 func TestDiffErrorPaths(t *testing.T) {
 	t.Parallel()
@@ -212,6 +344,39 @@ func TestDiffHardLinks(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffFlagCombinations verifies combined flags work correctly.
+func TestDiffFlagCombinations(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdu")
+	if err != nil {
+		t.Skipf("reference binary gdu not in PATH: %v", err)
+	}
+
+	basic := createBasicFixture(t)
+	nested := createNestedFixture(t)
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "combined_bytes_total",
+			Args: []string{"-bc",
+				filepath.Join(basic, "sub1"),
+				filepath.Join(basic, "sub2")},
+		},
+		{
+			Name: "depth_total_combined",
+			Args: []string{"-cd", "1", nested},
+		},
+		{
+			Name: "combined_short_flags_ack",
+			Args: []string{"-ack",
+				filepath.Join(basic, "sub1"),
+				filepath.Join(basic, "sub2")},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // createBasicFixture creates a test directory with subdirectories and files.
 func createBasicFixture(t *testing.T) string {
 	t.Helper()
@@ -226,6 +391,22 @@ func createBasicFixture(t *testing.T) string {
 	}
 	writeFixtureFile(t, filepath.Join(sub1, "file1.txt"), "hello world\n")
 	writeFixtureFile(t, filepath.Join(sub2, "file2.txt"), "foo bar baz\n")
+	return dir
+}
+
+// createNestedFixture creates a deeply nested directory for max-depth tests.
+func createNestedFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a")
+	ab := filepath.Join(a, "b")
+	abc := filepath.Join(ab, "c")
+	if err := os.MkdirAll(abc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, filepath.Join(a, "f1.txt"), "level one\n")
+	writeFixtureFile(t, filepath.Join(ab, "f2.txt"), "level two\n")
+	writeFixtureFile(t, filepath.Join(abc, "f3.txt"), "level three\n")
 	return dir
 }
 
