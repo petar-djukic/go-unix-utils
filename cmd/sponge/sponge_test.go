@@ -84,6 +84,16 @@ func TestDiff(t *testing.T) {
 	t.Run("overwrite_existing", func(t *testing.T) {
 		testOverwriteExisting(t, goBin, refBin)
 	})
+
+	// R6.2: large stdin forces temp file spill (>1 MB).
+	t.Run("large_stdin", func(t *testing.T) {
+		testLargeStdin(t, goBin, refBin)
+	})
+
+	// R6.2: cross-device rename fallback (TMPDIR on different filesystem from output).
+	t.Run("cross_device_fallback", func(t *testing.T) {
+		testCrossDeviceFallback(t, goBin, refBin)
+	})
 }
 
 // compareFileOutput runs both binaries with file output and compares results.
@@ -375,5 +385,88 @@ func testOverwriteExisting(t *testing.T, goBin, refBin string) {
 	if !bytes.Equal(refContent, goContent) {
 		t.Errorf("overwrite content mismatch\n"+
 			"expected: %q\nactual:   %q", refContent, goContent)
+	}
+}
+
+// testLargeStdin verifies sponge handles input larger than 1 MB,
+// which forces temp file spill when it exceeds the spill threshold.
+// R6.2: large stdin test case.
+func testLargeStdin(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	// Generate >1 MB of input data.
+	size := 1024*1024 + 512
+	stdin := make([]byte, size)
+	for i := range stdin {
+		stdin[i] = byte('A' + (i % 26))
+	}
+	stdin[len(stdin)-1] = '\n'
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	runSponge(t, refBin, refOut, stdin)
+	runSponge(t, goBin, goOut, stdin)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("large stdin content mismatch: ref=%d bytes, go=%d bytes",
+			len(refContent), len(goContent))
+	}
+}
+
+// testCrossDeviceFallback exercises the rename fallback path by
+// placing TMPDIR on a different directory from the output file.
+// R6.2: cross-device rename fallback test.
+// R2.2: byte-for-byte copy when rename fails.
+func testCrossDeviceFallback(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("cross device content\n")
+
+	// Use separate TMPDIR from output directory to exercise
+	// the fallback path if they happen to be on different devices.
+	tmpDir := t.TempDir()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	runSpongeWithEnv(t, refBin, []string{refOut}, stdin, tmpDir)
+	runSpongeWithEnv(t, goBin, []string{goOut}, stdin, tmpDir)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("cross-device content mismatch\n"+
+			"expected: %q\nactual:   %q", refContent, goContent)
+	}
+}
+
+// runSpongeWithEnv executes a sponge binary with custom TMPDIR.
+func runSpongeWithEnv(t *testing.T, bin string, args []string, stdin []byte, tmpDir string) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Env = append(
+		[]string{"LC_ALL=C", "TMPDIR=" + tmpDir},
+		os.Environ()...,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v failed: %v\noutput: %s", bin, args, err, out)
 	}
 }
