@@ -30,9 +30,3 @@ func IsTerminal(fd uintptr) bool {
 	return err == nil
 }
 
-// OnTerminalResize registers a callback that is invoked with the new terminal
-// width whenever SIGWINCH is received. Multiple callbacks may be registered;
-// they are called in registration order. See srd002-sys R3.1, R3.2.
-func OnTerminalResize(callback func(width int)) {
-	panic("not implemented")
-}
