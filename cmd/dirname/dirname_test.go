@@ -40,12 +40,22 @@ func TestDiff(t *testing.T) {
 		{Name: "dot", Args: []string{"."}},
 		// R1.2: double-dot path.
 		{Name: "double_dot", Args: []string{".."}},
-		// R1.1: multiple arguments.
+		// R1.5: multiple arguments produce one result per line.
 		{Name: "multiple_args", Args: []string{"/usr/bin", "/etc/passwd"}},
 		// R1.1: relative path with directory.
 		{Name: "relative_path", Args: []string{"dir/file"}},
 		// R1.3+R1.4: single slash in middle.
 		{Name: "root_file", Args: []string{"/file"}},
+		// R1.5: multiple arguments with mixed types.
+		{Name: "multiple_mixed", Args: []string{"/usr/lib", "file.txt", "/", "a/b/c"}},
+		// R2.1: -z flag outputs NUL instead of newline.
+		{Name: "zero_single", Args: []string{"-z", "/usr/bin/sort"}},
+		// R2.2: -z with multiple arguments, NUL-terminated in order.
+		{Name: "zero_multiple", Args: []string{"-z", "/usr/bin", "/etc/passwd"}},
+		// R2.1: --zero long flag form.
+		{Name: "zero_long_flag", Args: []string{"--zero", "/usr/lib"}},
+		// R2.2: -z with various path types.
+		{Name: "zero_mixed", Args: []string{"-z", "/", "file.txt", "a/b/c"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
