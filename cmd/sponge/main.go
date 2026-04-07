@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements the sponge utility.
-// Implements srd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements srd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2.
 package main
 
 import (
@@ -46,7 +46,7 @@ func main() {
 
 // run executes the sponge logic, returning any error.
 func run() error {
-	_, outFile := parseArgs()
+	appendMode, outFile := parseArgs()
 
 	data, tmpPath, err := readAllStdin()
 	setTempFile(tmpPath)
@@ -55,7 +55,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return writeOutput(outFile, data, tmpPath)
+	return writeOutput(outFile, data, tmpPath, appendMode)
 }
 
 // parseArgs parses command-line arguments for flags and output filename.
@@ -167,11 +167,11 @@ func spillAndContinue(buf *bytes.Buffer, remaining io.Reader) ([]byte, string, e
 }
 
 // writeOutput dispatches to stdout or file output.
-func writeOutput(outFile string, data []byte, tmpPath string) error {
+func writeOutput(outFile string, data []byte, tmpPath string, appendMode bool) error {
 	if outFile == "" {
 		return writeToStdout(data, tmpPath)
 	}
-	return writeToFile(outFile, data, tmpPath)
+	return writeToFile(outFile, data, tmpPath, appendMode)
 }
 
 // writeToStdout writes buffered content to stdout.
@@ -185,19 +185,28 @@ func writeToStdout(data []byte, tmpPath string) error {
 
 // writeToFile writes buffered content to the named output file.
 // R2.1: attempts atomic rename of temp file to output path.
-// R2.2: falls back to byte-for-byte copy when rename fails.
+// R2.2: falls back to atomic copy via temp-in-output-dir when rename fails.
 // R2.3: preserves file mode of existing output file.
-func writeToFile(outFile string, data []byte, tmpPath string) error {
-	mode := getFileMode(outFile)
+// R2.4: uses lstat to check output path type.
+// R2.5: ensures output is never in a partially-written state.
+// R3.1/R3.2: prepends existing content in append mode for regular files.
+func writeToFile(outFile string, data []byte, tmpPath string, appendMode bool) error {
+	// R2.4: use lstat to determine file type and mode.
+	mode, isRegular := getFileModeAndType(outFile)
 	tmpPath, err := ensureTempFile(data, tmpPath, outFile)
 	if err != nil {
 		return err
 	}
-	// R2.3: apply target mode to temp file before rename.
+	// R3.1/R3.2: prepend existing file content in append mode.
+	if appendMode && isRegular {
+		tmpPath, err = prependExistingContent(outFile, tmpPath)
+		if err != nil {
+			return err
+		}
+	}
 	if err := os.Chmod(tmpPath, mode); err != nil {
 		return fmt.Errorf("setting permissions: %w", err)
 	}
-	// R2.1: attempt atomic rename.
 	if err := os.Rename(tmpPath, outFile); err != nil {
 		return fallbackCopy(tmpPath, outFile, mode)
 	}
@@ -205,14 +214,15 @@ func writeToFile(outFile string, data []byte, tmpPath string) error {
 	return nil
 }
 
-// getFileMode returns the permission bits of an existing file, or 0666 for new files.
-// R2.3: uses Lstat to read mode without following symlinks.
-func getFileMode(path string) os.FileMode {
+// getFileModeAndType returns the permission bits and whether the path
+// is a regular file. Returns (0666, false) for nonexistent paths.
+// R2.4: uses lstat to avoid following symlinks.
+func getFileModeAndType(path string) (os.FileMode, bool) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return 0o666
+		return 0o666, false
 	}
-	return info.Mode().Perm()
+	return info.Mode().Perm(), info.Mode().IsRegular()
 }
 
 // ensureTempFile creates a temp file from in-memory data if needed.
@@ -241,19 +251,65 @@ func ensureTempFile(data []byte, tmpPath, outFile string) (string, error) {
 	return p, nil
 }
 
-// fallbackCopy copies temp file to output when rename fails.
-// R2.2: used for cross-device moves or other rename failures.
-// R2.3: applies the specified mode to the output file.
-func fallbackCopy(tmpPath, outFile string, mode os.FileMode) error {
-	f, err := os.OpenFile(outFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+// prependExistingContent creates a new temp file with the existing
+// output file content followed by the stdin content from the old temp file.
+// R3.1: result is [original file content][stdin content].
+// R3.3: original file is read before temp file is renamed.
+func prependExistingContent(outFile, tmpPath string) (string, error) {
+	dir := filepath.Dir(tmpPath)
+	combined, err := os.CreateTemp(dir, "sponge.")
 	if err != nil {
-		return fmt.Errorf("opening %s: %w", outFile, err)
+		return "", fmt.Errorf("creating temp file: %w", err)
 	}
-	defer f.Close()
-	if err := copyFileToWriter(tmpPath, f); err != nil {
+	combinedPath := combined.Name()
+	if err := copyFileToWriter(outFile, combined); err != nil {
+		combined.Close()
+		os.Remove(combinedPath)
+		return "", fmt.Errorf("reading original file: %w", err)
+	}
+	if err := copyFileToWriter(tmpPath, combined); err != nil {
+		combined.Close()
+		os.Remove(combinedPath)
+		return "", err
+	}
+	if err := combined.Close(); err != nil {
+		os.Remove(combinedPath)
+		return "", fmt.Errorf("closing temp file: %w", err)
+	}
+	os.Remove(tmpPath) // best-effort cleanup of old temp
+	setTempFile(combinedPath)
+	return combinedPath, nil
+}
+
+// fallbackCopy creates a temp file in the output directory, copies content
+// to it, then renames atomically. Used when direct rename fails (cross-device).
+// R2.2: byte-for-byte copy when rename fails.
+// R2.5: output file is never in a partially-written state.
+func fallbackCopy(tmpPath, outFile string, mode os.FileMode) error {
+	dir := filepath.Dir(outFile)
+	localTmp, err := os.CreateTemp(dir, "sponge.")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	localPath := localTmp.Name()
+	if err := copyFileToWriter(tmpPath, localTmp); err != nil {
+		localTmp.Close()
+		os.Remove(localPath)
 		return err
 	}
-	os.Remove(tmpPath) // best-effort cleanup after successful copy
+	if err := localTmp.Close(); err != nil {
+		os.Remove(localPath)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Chmod(localPath, mode); err != nil {
+		os.Remove(localPath)
+		return fmt.Errorf("setting permissions: %w", err)
+	}
+	if err := os.Rename(localPath, outFile); err != nil {
+		os.Remove(localPath)
+		return fmt.Errorf("renaming to %s: %w", outFile, err)
+	}
+	os.Remove(tmpPath) // best-effort cleanup of original temp
 	clearTempFile()
 	return nil
 }

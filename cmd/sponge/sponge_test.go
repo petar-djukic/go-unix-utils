@@ -64,6 +64,26 @@ func TestDiff(t *testing.T) {
 	t.Run("new_file_atomic", func(t *testing.T) {
 		compareFileOutput(t, goBin, refBin, []byte("atomic write test\n"))
 	})
+
+	// R3.1: append mode with existing file.
+	t.Run("append_existing", func(t *testing.T) {
+		testAppendMode(t, goBin, refBin, true)
+	})
+
+	// R3.2: append mode with non-existing file.
+	t.Run("append_new", func(t *testing.T) {
+		testAppendMode(t, goBin, refBin, false)
+	})
+
+	// R2.4: symlink output path uses lstat.
+	t.Run("symlink_output", func(t *testing.T) {
+		testSymlinkOutput(t, goBin, refBin)
+	})
+
+	// R2.5: output file content is correct after write (atomicity).
+	t.Run("overwrite_existing", func(t *testing.T) {
+		testOverwriteExisting(t, goBin, refBin)
+	})
 }
 
 // compareFileOutput runs both binaries with file output and compares results.
@@ -101,6 +121,18 @@ func runSponge(t *testing.T, bin, outFile string, stdin []byte) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s failed: %v\noutput: %s", bin, err, out)
+	}
+}
+
+// runSpongeWithArgs executes a sponge binary with the given args and stdin.
+func runSpongeWithArgs(t *testing.T, bin string, args []string, stdin []byte) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v failed: %v\noutput: %s", bin, args, err, out)
 	}
 }
 
@@ -212,5 +244,136 @@ func checkNoTempFiles(t *testing.T, dir, label string) {
 		if strings.HasPrefix(e.Name(), "sponge.") {
 			t.Errorf("temp file not cleaned up in %s: %s", label, e.Name())
 		}
+	}
+}
+
+// testAppendMode verifies -a flag behavior.
+// R3.1: existing file content is prepended before stdin content.
+// R3.2: non-existing file gets just stdin content.
+func testAppendMode(t *testing.T, goBin, refBin string, existing bool) {
+	t.Helper()
+	stdin := []byte("appended\n")
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	if existing {
+		original := []byte("original\n")
+		if err := os.WriteFile(refOut, original, 0o644); err != nil {
+			t.Fatalf("writing ref file: %v", err)
+		}
+		if err := os.WriteFile(goOut, original, 0o644); err != nil {
+			t.Fatalf("writing go file: %v", err)
+		}
+	}
+
+	runSpongeWithArgs(t, refBin, []string{"-a", refOut}, stdin)
+	runSpongeWithArgs(t, goBin, []string{"-a", goOut}, stdin)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("file content mismatch\nexpected: %q\nactual:   %q",
+			refContent, goContent)
+	}
+}
+
+// testSymlinkOutput verifies sponge behavior with a symlink output path.
+// R2.4: lstat detects symlinks; sponge operates on the path as given.
+func testSymlinkOutput(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("through symlink\n")
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+
+	refTarget := filepath.Join(refDir, "target.txt")
+	goTarget := filepath.Join(goDir, "target.txt")
+	if err := os.WriteFile(refTarget, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("writing ref target: %v", err)
+	}
+	if err := os.WriteFile(goTarget, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("writing go target: %v", err)
+	}
+
+	refLink := filepath.Join(refDir, "link.txt")
+	goLink := filepath.Join(goDir, "link.txt")
+	if err := os.Symlink(refTarget, refLink); err != nil {
+		t.Fatalf("creating ref symlink: %v", err)
+	}
+	if err := os.Symlink(goTarget, goLink); err != nil {
+		t.Fatalf("creating go symlink: %v", err)
+	}
+
+	runSponge(t, refBin, refLink, stdin)
+	runSponge(t, goBin, goLink, stdin)
+
+	compareSymlinkResult(t, refDir, goDir)
+}
+
+// compareSymlinkResult compares the state of link and target files
+// between ref and go directories after sponge writes to a symlink.
+func compareSymlinkResult(t *testing.T, refDir, goDir string) {
+	t.Helper()
+	refLink := filepath.Join(refDir, "link.txt")
+	goLink := filepath.Join(goDir, "link.txt")
+
+	// Read content via the link path (follows symlink if still exists).
+	refContent, err := os.ReadFile(refLink)
+	if err != nil {
+		t.Fatalf("reading ref link: %v", err)
+	}
+	goContent, err := os.ReadFile(goLink)
+	if err != nil {
+		t.Fatalf("reading go link: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("symlink output content mismatch\n"+
+			"expected: %q\nactual:   %q", refContent, goContent)
+	}
+}
+
+// testOverwriteExisting verifies that overwriting an existing file
+// produces correct content, confirming atomicity guarantees.
+// R2.5: output file is never in a partially-written state.
+func testOverwriteExisting(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("replacement content\n")
+	original := []byte("original longer content that gets replaced\n")
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	if err := os.WriteFile(refOut, original, 0o644); err != nil {
+		t.Fatalf("writing ref file: %v", err)
+	}
+	if err := os.WriteFile(goOut, original, 0o644); err != nil {
+		t.Fatalf("writing go file: %v", err)
+	}
+
+	runSponge(t, refBin, refOut, stdin)
+	runSponge(t, goBin, goOut, stdin)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("overwrite content mismatch\n"+
+			"expected: %q\nactual:   %q", refContent, goContent)
 	}
 }
