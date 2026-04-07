@@ -9,8 +9,13 @@
 package hashutil
 
 import (
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"hash"
 	"io"
+	"regexp"
+	"strings"
 )
 
 // HashConfig parameterizes a hash utility with its algorithm name, hash
@@ -32,25 +37,41 @@ type CheckOptions struct {
 	Status bool
 }
 
+// bsdTagRe matches BSD tag format: "ALGORITHM (FILENAME) = HASH".
+var bsdTagRe = regexp.MustCompile(`^(\S+) \((.+)\) = ([0-9a-fA-F]+)$`)
+
+// gnuRe matches GNU format: "HASH  FILENAME" (text) or "HASH *FILENAME" (binary).
+var gnuRe = regexp.MustCompile(`^([0-9a-fA-F]+) ([ *])(.+)$`)
+
+// errMalformedLine is returned when a checksum line cannot be parsed.
+var errMalformedLine = errors.New("malformed checksum line")
+
 // FormatGNU returns a GNU-format checksum line: "HASH  FILENAME" for text
 // mode or "HASH *FILENAME" for binary mode.
 // R1.2: two-space separator for text mode, space-asterisk for binary mode.
 func FormatGNU(digest, filename string, binary bool) string {
-	panic("hashutil.FormatGNU: not yet implemented")
+	if binary {
+		return digest + " *" + filename
+	}
+	return digest + "  " + filename
 }
 
 // FormatBSDTag returns a BSD tag-format checksum line:
 // "ALGORITHM (FILENAME) = HASH".
 // R1.3: uses the algorithm name, parenthesized filename, and digest.
 func FormatBSDTag(algorithm, filename, digest string) string {
-	panic("hashutil.FormatBSDTag: not yet implemented")
+	return algorithm + " (" + filename + ") = " + digest
 }
 
 // ComputeDigest reads all bytes from r, computes the hash using cfg, and
 // returns the lowercase hex-encoded digest string.
 // R1.4: delegates to cfg.NewHash for the hash instance.
 func ComputeDigest(r io.Reader, cfg HashConfig) (string, error) {
-	panic("hashutil.ComputeDigest: not yet implemented")
+	h := cfg.NewHash()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", fmt.Errorf("computing digest: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // ParseChecksumLine parses a single checksum line in GNU format
@@ -59,7 +80,14 @@ func ComputeDigest(r io.Reader, cfg HashConfig) (string, error) {
 // malformed lines.
 // R2.1: supports both GNU and BSD tag format detection.
 func ParseChecksumLine(line string, cfg HashConfig) (filename, expectedDigest string, binary bool, err error) {
-	panic("hashutil.ParseChecksumLine: not yet implemented")
+	line = strings.TrimRight(line, "\r\n")
+	if m := bsdTagRe.FindStringSubmatch(line); m != nil {
+		return m[2], strings.ToLower(m[3]), false, nil
+	}
+	if m := gnuRe.FindStringSubmatch(line); m != nil {
+		return m[3], strings.ToLower(m[1]), m[2] == "*", nil
+	}
+	return "", "", false, errMalformedLine
 }
 
 // VerifyChecksums reads a checksum file, verifies each entry against the
