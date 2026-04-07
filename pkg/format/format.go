@@ -13,7 +13,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -194,14 +196,63 @@ func ResetColorEnabled() {
 	colorOverride = nil
 }
 
-// PadRight pads s on the right with spaces to the given width.
+// PadRight pads s on the right with spaces to reach the target visible width.
+// R1.2: Right-aligned field padding within a fixed-width column.
+// R2.6/D3: Uses visible width (ANSI escapes excluded) for correct column alignment.
 func PadRight(s string, width int) string {
-	return ""
+	vw := visibleWidth(s)
+	if vw >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-vw)
 }
 
-// PadLeft pads s on the left with spaces to the given width.
+// PadLeft pads s on the left with spaces to reach the target visible width.
+// R1.2: Left-aligned field padding within a fixed-width column.
 func PadLeft(s string, width int) string {
-	return ""
+	vw := visibleWidth(s)
+	if vw >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-vw) + s
+}
+
+// visibleWidth returns the display width of s, excluding ANSI CSI escape
+// sequences (ESC[ ... final_byte). R1.3: uses rune count for display width.
+func visibleWidth(s string) int {
+	return utf8.RuneCountInString(stripANSI(s))
+}
+
+// stripANSI removes all ANSI CSI sequences (ESC[ params final_byte) from s.
+// D2: Strips sequences matching ESC[ followed by parameter bytes (0x30-0x3F),
+// intermediate bytes (0x20-0x2F), and a final byte (0x40-0x7E).
+func stripANSI(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
+			i = skipCSI(s, i+2)
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// skipCSI advances past a CSI sequence starting at position i (after ESC[).
+// Returns the index of the first byte after the final byte of the sequence.
+func skipCSI(s string, i int) int {
+	for i < len(s) {
+		c := s[i]
+		i++
+		// Final byte of a CSI sequence is in range 0x40-0x7E.
+		if c >= 0x40 && c <= 0x7E {
+			return i
+		}
+	}
+	return i
 }
 
 // Columns arranges entries into columns that fit within termWidth.
