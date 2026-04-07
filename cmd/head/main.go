@@ -58,11 +58,9 @@ func run(args []string) int {
 	}
 	showHeader := shouldShowHeader(&cfg)
 	exitCode := 0
-	for i, name := range cfg.files {
-		if showHeader {
-			printHeader(name, i == 0)
-		}
-		if err := processFile(name, &cfg); err != nil {
+	printed := 0
+	for _, name := range cfg.files {
+		if err := processOneFile(name, &cfg, showHeader, &printed); err != nil {
 			reportError(name, err)
 			exitCode = 1
 		}
@@ -93,13 +91,18 @@ func printHeader(name string, first bool) {
 	fmt.Fprintf(os.Stdout, "==> %s <==\n", name)
 }
 
-// processFile opens and processes a single file or stdin.
-func processFile(name string, cfg *config) error {
+// processOneFile opens a file, prints a header if needed, then outputs content.
+// R3.5: prints error and continues; header is printed only on successful open.
+func processOneFile(name string, cfg *config, showHeader bool, printed *int) error {
 	r, closer, err := openInput(name)
 	if err != nil {
 		return err
 	}
 	defer closer()
+	if showHeader {
+		printHeader(name, *printed == 0)
+	}
+	*printed++
 	if cfg.mode == modeBytes {
 		return processByteMode(r, cfg.count, cfg.negative)
 	}
