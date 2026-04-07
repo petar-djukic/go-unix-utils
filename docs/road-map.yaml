@@ -102,7 +102,7 @@ releases:
         - id: rel02.2-uc001-head
           status: implemented
         - id: rel02.2-uc002-seq
-          status: spec_complete
+          status: implemented
     - version: "03.0"
       name: "Batch 3 — wc specification and differential test"
       status: spec_complete
