@@ -70,7 +70,7 @@ releases:
         - id: rel02.0-uc001-true
           status: implemented
         - id: rel02.0-uc002-false
-          status: spec_complete
+          status: implemented
         - id: rel02.0-uc003-yes
           status: spec_complete
         - id: rel02.0-uc004-basename
