@@ -9,11 +9,13 @@
 package hashutil
 
 import (
+	"bufio"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -77,17 +79,26 @@ func ComputeDigest(r io.Reader, cfg HashConfig) (string, error) {
 // ParseChecksumLine parses a single checksum line in GNU format
 // ("HASH [ *]FILENAME") or BSD tag format ("ALGORITHM (FILENAME) = HASH").
 // Returns the filename, expected digest, binary flag, and an error for
-// malformed lines.
+// malformed lines or digest length mismatch.
 // R2.1: supports both GNU and BSD tag format detection.
 func ParseChecksumLine(line string, cfg HashConfig) (filename, expectedDigest string, binary bool, err error) {
 	line = strings.TrimRight(line, "\r\n")
 	if m := bsdTagRe.FindStringSubmatch(line); m != nil {
-		return m[2], strings.ToLower(m[3]), false, nil
+		return parsedWithLenCheck(m[2], m[3], false, cfg)
 	}
 	if m := gnuRe.FindStringSubmatch(line); m != nil {
-		return m[3], strings.ToLower(m[1]), m[2] == "*", nil
+		return parsedWithLenCheck(m[3], m[1], m[2] == "*", cfg)
 	}
 	return "", "", false, errMalformedLine
+}
+
+// parsedWithLenCheck validates digest length and returns parsed fields.
+func parsedWithLenCheck(name, digest string, bin bool, cfg HashConfig) (string, string, bool, error) {
+	d := strings.ToLower(digest)
+	if cfg.DigestLen > 0 && len(d) != cfg.DigestLen {
+		return "", "", false, errMalformedLine
+	}
+	return name, d, bin, nil
 }
 
 // VerifyChecksums reads a checksum file, verifies each entry against the
@@ -95,7 +106,90 @@ func ParseChecksumLine(line string, cfg HashConfig) (filename, expectedDigest st
 // whether all checks passed.
 // R2.3: respects CheckOptions for output control.
 func VerifyChecksums(checksumFile string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) (bool, error) {
-	panic("hashutil.VerifyChecksums: not yet implemented")
+	f, err := os.Open(checksumFile)
+	if err != nil {
+		return false, fmt.Errorf("opening checksum file: %w", err)
+	}
+	defer f.Close() // best-effort close on read-only file
+
+	allOK := true
+	failures := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if isSkippableLine(line) {
+			continue
+		}
+		ok := verifyOneLine(line, cfg, opts, stdout, stderr)
+		if !ok {
+			allOK = false
+			failures++
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return false, fmt.Errorf("reading checksum file: %w", err)
+	}
+	if failures > 0 && !opts.Status {
+		fmt.Fprintf(stderr, "WARNING: %d computed checksum did NOT match\n", failures)
+	}
+	return allOK, nil
+}
+
+// isSkippableLine returns true for blank lines and comment lines.
+// R2.3: skip blank lines and lines starting with #.
+func isSkippableLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed == "" || strings.HasPrefix(trimmed, "#")
+}
+
+// verifyOneLine parses, computes, and compares one checksum line.
+// Returns true if the digest matches.
+func verifyOneLine(line string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) bool {
+	name, expected, _, err := ParseChecksumLine(line, cfg)
+	if err != nil {
+		if opts.Warn {
+			fmt.Fprintf(stderr, "WARNING: %d line is improperly formatted\n", 1)
+		}
+		return false
+	}
+	return verifyFile(name, expected, cfg, opts, stdout, stderr)
+}
+
+// verifyFile opens a file, computes its digest, and reports the result.
+func verifyFile(name, expected string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) bool {
+	actual, err := computeFileDigest(name, cfg)
+	if err != nil {
+		if !opts.Status {
+			fmt.Fprintf(stderr, "%s: FAILED open or read\n", name)
+		}
+		return false
+	}
+	matched := actual == expected
+	if !opts.Status {
+		reportMatch(name, matched, opts, stdout)
+	}
+	return matched
+}
+
+// computeFileDigest opens a file and computes its digest.
+func computeFileDigest(name string, cfg HashConfig) (string, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close() // best-effort close on read-only file
+	return ComputeDigest(f, cfg)
+}
+
+// reportMatch writes the OK or FAILED line for a verified file.
+func reportMatch(name string, matched bool, opts CheckOptions, stdout io.Writer) {
+	if matched {
+		if !opts.Quiet {
+			fmt.Fprintf(stdout, "%s: OK\n", name)
+		}
+		return
+	}
+	fmt.Fprintf(stdout, "%s: FAILED\n", name)
 }
 
 // DigestFiles computes and prints digests for each file in files (or stdin
