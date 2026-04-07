@@ -32,19 +32,11 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--help":
-			// R2.1: print usage to stdout and exit 0.
-			// R2.3: exit 1 on write error.
-			if _, err := fmt.Fprint(os.Stdout, helpText); err != nil {
-				os.Exit(1)
-			}
-			os.Exit(0)
+			// R2.1: print usage to stdout. GNU gfalse still exits 1.
+			fmt.Fprint(os.Stdout, helpText) //nolint:errcheck // best-effort output; exit 1 regardless
 		case "--version":
-			// R2.2: print version information to stdout and exit 0.
-			// R2.3: exit 1 on write error.
-			if _, err := fmt.Fprintln(os.Stdout, versionText); err != nil {
-				os.Exit(1)
-			}
-			os.Exit(0)
+			// R2.2: print version information to stdout. GNU gfalse still exits 1.
+			fmt.Fprintln(os.Stdout, versionText) //nolint:errcheck // best-effort output; exit 1 regardless
 		}
 	}
 
