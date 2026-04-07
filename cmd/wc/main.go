@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/wc: count lines, words, and bytes.
-// Implements srd005-wc: R1.1 (line count), R1.2 (word count),
-// R1.3 (byte count), R1.4 (character count),
-// R2.1 (-l flag), R2.2 (-w flag), R2.3 (-c flag), R2.4 (-m flag),
-// R2.5 (total line), R2.6 (stdin fallback),
-// R3.1 (error handling), R3.2 (exit codes),
-// R3.3 (--total mode), R4.1 ("-" as stdin), R4.2 (binary input),
-// R4.3 (empty input).
+// Implements srd005-wc: R1.1-R1.4, R2.1-R2.6, R3.1-R3.3,
+// R4.1-R4.4, R5.1-R5.2, R6.1.
 package main
 
 import (
@@ -28,6 +23,17 @@ const progName = "wc"
 
 // bufSize is the read buffer size for counting operations.
 const bufSize = 32 * 1024
+
+// cLocaleMode is true when LC_ALL indicates C or POSIX locale.
+// R5.1/R5.2: platform locale context from OS environment.
+var cLocaleMode = checkCLocale()
+
+// checkCLocale returns true when LC_ALL is "C" or "POSIX".
+// R5.2: Under LC_ALL=C, -m and -c produce identical counts.
+func checkCLocale() bool {
+	lc := os.Getenv("LC_ALL")
+	return lc == "C" || lc == "POSIX"
+}
 
 // totalMode controls when the "total" summary line is printed.
 // R3.3: --total=auto|always|only|never.
@@ -60,7 +66,7 @@ type config struct {
 	showBytes   bool      // -c
 	showChars   bool      // -m
 	showMaxLine bool      // -L
-	files0From  string    // --files0-from=FILE
+	files0From  string    // R4.4: --files0-from=FILE
 	total       totalMode // R3.3: --total=auto|always|only|never
 }
 
@@ -121,12 +127,18 @@ func parseFlag(cfg *config, arg string) {
 	}
 }
 
-// parseLongFlag handles --lines, --words, --bytes, --chars, --total flags.
+// parseLongFlag handles --lines, --words, --bytes, --chars, --total,
+// --files0-from flags.
 // R3.3: --total=auto|always|only|never.
+// R4.4: --files0-from=FILE.
 func parseLongFlag(cfg *config, arg string) {
-	// R3.3: handle --total=VALUE.
 	if strings.HasPrefix(arg, "--total") {
 		parseTotalFlag(cfg, arg)
+		return
+	}
+	// R4.4: --files0-from=FILE reads NUL-delimited filenames.
+	if strings.HasPrefix(arg, "--files0-from") {
+		parseFiles0FromFlag(cfg, arg)
 		return
 	}
 	switch arg {
@@ -169,6 +181,15 @@ func parseTotalFlag(cfg *config, arg string) {
 	}
 }
 
+// parseFiles0FromFlag parses --files0-from=FILE.
+// R4.4: reads NUL-delimited filenames from FILE.
+func parseFiles0FromFlag(cfg *config, arg string) {
+	_, value, found := strings.Cut(arg, "=")
+	if found {
+		cfg.files0From = value
+	}
+}
+
 // parseShortFlag handles -l, -w, -c, -m, -L short flags.
 func parseShortFlag(cfg *config, ch rune) {
 	switch ch {
@@ -194,6 +215,7 @@ func parseShortFlag(cfg *config, ch rune) {
 // R1.4: chars are UTF-8 code points; invalid bytes each count as one character.
 // R4.2: handles binary input safely via byte-level processing.
 // R4.3: returns zero-value countResult for empty input.
+// R5.2: under C/POSIX locale, chars are set equal to bytes.
 func countReader(r io.Reader) (countResult, error) {
 	reader := bufio.NewReaderSize(r, bufSize)
 	var result countResult
@@ -217,6 +239,10 @@ func countReader(r io.Reader) (countResult, error) {
 		if err == io.EOF {
 			break
 		}
+	}
+	// R5.2: under C/POSIX locale, -m and -c produce identical counts.
+	if cLocaleMode {
+		result.chars = result.bytes
 	}
 	return result, nil
 }
@@ -365,9 +391,13 @@ func shouldPrintPerFile(mode totalMode) bool {
 	return mode != totalOnly
 }
 
-// processFiles iterates over file arguments and accumulates results.
-// R2.6: when no file arguments are given, reads from stdin.
+// processFiles dispatches to the appropriate processing function.
+// R4.4: when --files0-from is set, reads filenames from a file.
+// R6.1: returns 0 when all inputs are processed successfully.
 func processFiles(files []string, cfg config) int {
+	if cfg.files0From != "" {
+		return processFiles0From(files, cfg)
+	}
 	if len(files) == 0 {
 		return processStdin(cfg)
 	}
@@ -390,6 +420,7 @@ func processStdin(cfg config) int {
 // R3.1: prints errors to stderr and continues processing.
 // R3.2: returns exit code 1 if any file produced an error.
 // R3.3: respects --total mode for total line control.
+// R6.1: returns 0 when all files are processed successfully.
 func processNamedFiles(files []string, cfg config) int {
 	width := numberWidth(len(files))
 	exitCode := 0
@@ -413,6 +444,60 @@ func processNamedFiles(files []string, cfg config) int {
 		fmt.Fprintln(os.Stdout, formatOutput(total, "total", cfg, width))
 	}
 	return exitCode
+}
+
+// processFiles0From handles --files0-from=FILE.
+// R4.4: reads NUL-delimited filenames from FILE and processes each.
+// When FILE is "-", filenames are read from stdin.
+func processFiles0From(files []string, cfg config) int {
+	if len(files) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"%s: extra operand %q\n", progName, files[0])
+		fmt.Fprintf(os.Stderr,
+			"file operands cannot be combined with --files0-from\n")
+		return 1
+	}
+	names, err := readFiles0From(cfg.files0From)
+	if err != nil {
+		reportError(cfg.files0From, err)
+		return 1
+	}
+	if len(names) == 0 {
+		return 0
+	}
+	return processNamedFiles(names, cfg)
+}
+
+// readFiles0From reads NUL-delimited filenames from path.
+// R4.4: when path is "-", filenames are read from stdin.
+func readFiles0From(path string) ([]string, error) {
+	var r io.ReadCloser
+	if path == "-" {
+		r = io.NopCloser(os.Stdin)
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		r = f
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return splitNulNames(string(data)), nil
+}
+
+// splitNulNames splits a NUL-delimited string into non-empty filenames.
+func splitNulNames(s string) []string {
+	var names []string
+	for _, part := range strings.Split(s, "\x00") {
+		if part != "" {
+			names = append(names, part)
+		}
+	}
+	return names
 }
 
 // countOneFile counts a single file, handling "-" as stdin.
