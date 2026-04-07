@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.10, R2.1-R2.4, R3.1-R3.6.
+// Implements srd008-ls R1.1-R1.12, R2.1-R2.4, R3.1-R3.6, R3.11-R3.14.
 package main
 
 import (
@@ -43,6 +43,7 @@ type options struct {
 	longFormat    bool       // -l: long listing format
 	dirOnly       bool       // -d: list directories themselves
 	humanReadable bool       // -h: human-readable sizes
+	recursive     bool       // -R: recursive listing
 	filter        filterMode // -a / -A
 	color         colorMode  // --color
 }
@@ -72,8 +73,9 @@ type longWidths struct {
 	size  int
 }
 
+// --- Flag parsing (R4.3) ---
+
 // parseArgs separates flags from path arguments.
-// R4.3: invalid option exits 2.
 func parseArgs(args []string) (options, []string) {
 	var opts options
 	var paths []string
@@ -156,14 +158,17 @@ func applyFlag(opts *options, ch rune) error {
 		opts.dirOnly = true
 	case 'h':
 		opts.humanReadable = true
+	case 'R':
+		opts.recursive = true
 	default:
 		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
 	return nil
 }
 
+// --- Color setup (R3.1-R3.4) ---
+
 // setupColor configures the global color mode based on --color flag.
-// R3.2: auto uses TTY detection. R3.3: calls format.SetColorEnabled.
 func setupColor(opts *options) {
 	switch opts.color {
 	case colorAlways:
@@ -180,23 +185,7 @@ func needsInfo(opts *options) bool {
 	return opts.longFormat || opts.color != colorNever
 }
 
-// listDir reads and prints the contents of a single directory.
-func listDir(path string, opts *options) error {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-	names := filterEntries(entries, opts.filter)
-	// R1.3: sort in C locale byte order.
-	sort.Strings(names)
-	lsEntries := resolveEntries(path, names, needsInfo(opts))
-	if opts.longFormat {
-		printLong(lsEntries, path, opts)
-		return nil
-	}
-	printEntries(lsEntries, opts)
-	return nil
-}
+// --- Entry filtering and resolution ---
 
 // filterEntries extracts entry names and applies the filter mode.
 // R1.4: default hides dot-files. R2.1: -a includes . and ..
@@ -233,20 +222,7 @@ func resolveEntries(dir string, names []string, info bool) []lsEntry {
 	return entries
 }
 
-// printEntries outputs entries in the appropriate non-long format.
-// R1.2: single-column when stdout is not a TTY.
-// R1.5: -1 forces single-column.
-func printEntries(entries []lsEntry, opts *options) {
-	if len(entries) == 0 {
-		return
-	}
-	names := displayNames(entries)
-	if opts.onePerLine || !sys.IsTerminal(os.Stdout.Fd()) {
-		printOnePerLine(names)
-		return
-	}
-	printColumns(names)
-}
+// --- Display names and colors (R3.3) ---
 
 // displayNames returns display strings for entries, colorized if enabled.
 func displayNames(entries []lsEntry) []string {
@@ -262,13 +238,29 @@ func displayNames(entries []lsEntry) []string {
 }
 
 // colorName wraps a filename in ANSI color codes based on file mode.
-// R3.3: uses format.FileTypeColor and format.Reset.
 func colorName(name string, mode os.FileMode) string {
 	c := format.FileTypeColor(mode)
 	if c == "" {
 		return name
 	}
 	return c + name + format.Reset()
+}
+
+// --- Non-long format output ---
+
+// printEntries outputs entries in the appropriate non-long format.
+// R1.2: single-column when stdout is not a TTY.
+// R1.5: -1 forces single-column.
+func printEntries(entries []lsEntry, opts *options) {
+	if len(entries) == 0 {
+		return
+	}
+	names := displayNames(entries)
+	if opts.onePerLine || !sys.IsTerminal(os.Stdout.Fd()) {
+		printOnePerLine(names)
+		return
+	}
+	printColumns(names)
 }
 
 // printOnePerLine writes one entry per line.
@@ -290,6 +282,8 @@ func printColumns(names []string) {
 		printRow(row, names, width)
 	}
 }
+
+// --- Column layout ---
 
 // columnLayout computes multi-column layout for entries.
 // Returns row slices of entry names, sorted column-down.
@@ -404,11 +398,13 @@ func padRight(s string, width int) string {
 // --- Long format (R1.6-R1.10) ---
 
 // printLong outputs entries in long format with aligned columns.
-// R1.10: prints "total N" line before entries.
-func printLong(entries []lsEntry, dir string, opts *options) {
+// R1.10: prints "total N" line before entries when showTotal is true.
+func printLong(entries []lsEntry, dir string, opts *options, showTotal bool) {
 	long := buildLongEntries(entries, dir, opts)
 	cols := computeLongWidths(long)
-	printTotalLine(entries, opts)
+	if showTotal {
+		printTotalLine(entries, opts)
+	}
 	for _, le := range long {
 		printLongLine(le, cols)
 	}
@@ -440,7 +436,7 @@ func toLongEntry(e lsEntry, dir string, opts *options) longEntry {
 }
 
 // longDisplayName builds the name field for long format including
-// color and symlink target. R1.10: appends " -> target" for symlinks.
+// color and symlink target. R1.11: appends " -> target" for symlinks.
 func longDisplayName(e lsEntry, dir string) string {
 	name := colorName(e.name, e.fi.Mode)
 	if e.fi.Mode&os.ModeSymlink != 0 {
@@ -453,7 +449,6 @@ func longDisplayName(e lsEntry, dir string) string {
 }
 
 // computeLongWidths scans all entries to find maximum column widths.
-// D2: numeric fields right-aligned, name fields left-aligned.
 func computeLongWidths(entries []longEntry) longWidths {
 	var w longWidths
 	for _, e := range entries {
@@ -507,7 +502,6 @@ func printTotalLine(entries []lsEntry, opts *options) {
 // --- Permission string (R1.6) ---
 
 // permString builds a 10-character permission string from a file mode.
-// R1.6: type char + owner rwx + group rwx + other rwx with setuid/setgid/sticky.
 func permString(mode os.FileMode) string {
 	var buf [10]byte
 	buf[0] = fileTypeChar(mode)
@@ -566,7 +560,6 @@ func permBit(mode os.FileMode, bit os.FileMode, ch byte) byte {
 // --- Owner/group resolution (R1.8) ---
 
 // resolveOwner maps a UID to a username, falling back to numeric.
-// R1.8: uses os/user.LookupId; on failure uses numeric string.
 func resolveOwner(uid uint32) string {
 	u, err := user.LookupId(strconv.Itoa(int(uid)))
 	if err != nil {
@@ -576,7 +569,6 @@ func resolveOwner(uid uint32) string {
 }
 
 // resolveGroup maps a GID to a group name, falling back to numeric.
-// R1.8: uses os/user.LookupGroupId; on failure uses numeric string.
 func resolveGroup(gid uint32) string {
 	g, err := user.LookupGroupId(strconv.Itoa(int(gid)))
 	if err != nil {
@@ -588,7 +580,6 @@ func resolveGroup(gid uint32) string {
 // --- Size and time formatting (R1.9, R3.5) ---
 
 // formatSize formats a file size for long format display.
-// R3.5: when -h is active, uses pkg/format.HumanSize with binary units.
 func formatSize(size int64, opts *options) string {
 	if opts.humanReadable {
 		return format.HumanSize(size, format.HumanSizeOpts{Binary: true})
@@ -608,40 +599,112 @@ func formatTime(t time.Time) string {
 	return t.Format("Jan _2  2006")
 }
 
-// --- Path handling ---
+// --- Directory listing ---
 
-// listPath handles a single argument: file or directory.
-// R2.3: -d lists directories themselves rather than contents.
-func listPath(path string, opts *options) error {
-	if opts.dirOnly {
-		return listSingleEntry(path, opts)
-	}
-	info, err := os.Lstat(path)
+// listDir reads and prints the contents of a single directory.
+// Returns subdirectory paths when opts.recursive is true.
+func listDir(path string, opts *options) ([]string, error) {
+	entries, err := os.ReadDir(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !info.IsDir() {
-		return listSingleEntry(path, opts)
-	}
-	return listDir(path, opts)
-}
-
-// listSingleEntry prints one entry (file or directory with -d).
-func listSingleEntry(path string, opts *options) error {
-	fi, err := sys.Lstat(path)
-	if err != nil {
-		return err
-	}
-	e := lsEntry{name: path, fi: fi}
+	names := filterEntries(entries, opts.filter)
+	// R1.3: sort in C locale byte order.
+	sort.Strings(names)
+	lsEntries := resolveEntries(path, names, needsInfo(opts))
 	if opts.longFormat {
-		le := toLongEntry(e, ".", opts)
-		w := computeLongWidths([]longEntry{le})
-		printLongLine(le, w)
-		return nil
+		printLong(lsEntries, path, opts, true)
+	} else {
+		printEntries(lsEntries, opts)
 	}
-	fmt.Println(colorName(e.name, e.fi.Mode))
-	return nil
+	if !opts.recursive {
+		return nil, nil
+	}
+	return collectSubdirs(path, names), nil
 }
+
+// collectSubdirs returns subdirectory paths from a sorted name list.
+// R3.13: uses os.Lstat so symlinks to directories are not followed.
+func collectSubdirs(dir string, names []string) []string {
+	var dirs []string
+	for _, name := range names {
+		if name == "." || name == ".." {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		info, err := os.Lstat(full)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		dirs = append(dirs, full)
+	}
+	return dirs
+}
+
+// listRecursive descends into subdirectories and lists each.
+// R3.11: prints path header and blank line before each subdirectory.
+func listRecursive(subdirs []string, opts *options, exitCode *int) {
+	for _, d := range subdirs {
+		fmt.Println()
+		fmt.Printf("%s:\n", d)
+		children, err := listDir(d, opts)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, formatError(d, err))
+			*exitCode = 1
+			continue
+		}
+		listRecursive(children, opts, exitCode)
+	}
+}
+
+// --- Multi-argument handling (R1.9 multi-arg headers) ---
+
+// classifyArgs separates paths into files and directories.
+// R1.12: prints error for inaccessible entries and sets exit code.
+func classifyArgs(paths []string, opts *options, files, dirs *[]string, exitCode *int) {
+	for _, p := range paths {
+		if opts.dirOnly {
+			*files = append(*files, p)
+			continue
+		}
+		info, err := os.Stat(p)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, formatError(p, err))
+			*exitCode = 1
+			continue
+		}
+		if info.IsDir() {
+			*dirs = append(*dirs, p)
+		} else {
+			*files = append(*files, p)
+		}
+	}
+}
+
+// listFileArgs lists file arguments (non-directories) as entries.
+func listFileArgs(files []string, opts *options, exitCode *int) {
+	sort.Strings(files)
+	entries := make([]lsEntry, 0, len(files))
+	for _, f := range files {
+		fi, err := sys.Lstat(f)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, formatError(f, err))
+			*exitCode = 1
+			continue
+		}
+		entries = append(entries, lsEntry{name: f, fi: fi})
+	}
+	if len(entries) == 0 {
+		return
+	}
+	if opts.longFormat {
+		printLong(entries, ".", opts, false)
+	} else {
+		printEntries(entries, opts)
+	}
+}
+
+// --- Error formatting (R1.12) ---
 
 // formatError produces GNU ls-compatible error messages.
 func formatError(path string, err error) string {
@@ -649,6 +712,51 @@ func formatError(path string, err error) string {
 		return fmt.Sprintf("ls: cannot access '%s': %s", pe.Path, pe.Err)
 	}
 	return fmt.Sprintf("ls: cannot access '%s': %s", path, err)
+}
+
+// --- Entry point ---
+
+// run executes the ls command and returns the exit code.
+// R1.9: prints headers when listing multiple directories.
+// R1.10: -R recursively lists subdirectories.
+func run(paths []string, opts *options) int {
+	exitCode := 0
+	var files, dirs []string
+	classifyArgs(paths, opts, &files, &dirs, &exitCode)
+	showHeader := needsHeader(files, dirs, opts)
+	needBlank := false
+	if len(files) > 0 {
+		listFileArgs(files, opts, &exitCode)
+		needBlank = true
+	}
+	for _, d := range dirs {
+		if needBlank {
+			fmt.Println()
+		}
+		if showHeader {
+			fmt.Printf("%s:\n", d)
+		}
+		children, err := listDir(d, opts)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, formatError(d, err))
+			exitCode = 1
+		} else if opts.recursive {
+			listRecursive(children, opts, &exitCode)
+		}
+		needBlank = true
+	}
+	return exitCode
+}
+
+// needsHeader returns true when directory headers should be printed.
+func needsHeader(files, dirs []string, opts *options) bool {
+	if opts.recursive {
+		return true
+	}
+	if len(dirs) > 1 {
+		return true
+	}
+	return len(files) > 0 && len(dirs) > 0
 }
 
 func main() {
@@ -665,13 +773,6 @@ func main() {
 		paths = []string{"."}
 	}
 
-	exitCode := 0
-	for _, path := range paths {
-		if err := listPath(path, &opts); err != nil {
-			fmt.Fprintln(os.Stderr, formatError(path, err))
-			exitCode = 1
-		}
-	}
 	// R4.1: exit 0 on success. R4.2: exit 1 on minor error.
-	os.Exit(exitCode)
+	os.Exit(run(paths, &opts))
 }
