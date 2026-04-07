@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/seq.
-// Tests cover srd019-seq R1.1-R1.4.
+// Tests cover srd019-seq R1.1-R1.5, R2.1-R2.3.
 package main
 
 import (
@@ -53,7 +53,60 @@ func TestDiff(t *testing.T) {
 		{Name: "float_half_step", Args: []string{"0.5", "0.5", "2.5"}},
 		{Name: "float_first_last", Args: []string{"1.5", "3.5"}},
 		{Name: "float_quarter", Args: []string{"0.25", "0.25", "1.0"}},
+
+		// R1.5: descending sequences.
+		{Name: "descend_neg_incr", Args: []string{"5", "-1", "1"}},
+		{Name: "descend_neg_incr_float", Args: []string{"2.0", "-0.5", "0.0"}},
+		{Name: "descend_large_step", Args: []string{"100", "-25", "0"}},
+
+		// R2.1: custom separator (-s).
+		{Name: "sep_comma", Args: []string{"-s", ", ", "3"}},
+		{Name: "sep_colon", Args: []string{"-s", ":", "1", "4"}},
+		{Name: "sep_empty", Args: []string{"-s", "", "3"}},
+		{Name: "sep_long_flag", Args: []string{"--separator=, ", "3"}},
+		{Name: "sep_tab", Args: []string{"-s", "\t", "1", "3"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestZeroStep verifies that zero increment exits non-zero.
+// R1.5: STEP must not be zero.
+func TestZeroStep(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(bin, "1", "0", "5")
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected non-zero exit for zero step")
+	}
+}
+
+// TestVersion verifies --version prints output and exits 0.
+// R2.2: --version flag.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(bin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("--version produced no output")
+	}
+}
+
+// TestHelp verifies --help prints output and exits 0.
+// R2.3: --help flag.
+func TestHelp(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(bin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("--help produced no output")
+	}
 }

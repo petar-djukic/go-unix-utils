@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/seq: print a sequence of numbers.
-// Implements srd019-seq R1.1-R1.4.
+// Implements srd019-seq R1.1-R1.5, R2.1-R2.3.
 package main
 
 import (
@@ -24,17 +24,86 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
+// seqConfig holds parsed option flags for the seq command.
+type seqConfig struct {
+	separator string
+	args      []string
+}
+
 // run executes the seq logic and returns the exit code.
-// R1.1-R1.4: parse arguments and generate sequence.
+// R1.1-R1.5, R2.1-R2.3: parse flags and arguments, generate sequence.
 func run(args []string) int {
-	first, incr, last, prec, err := parseArgs(args)
+	cfg, code, done := parseFlags(args)
+	if done {
+		return code
+	}
+	first, incr, last, prec, err := parseArgs(cfg.args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		return 1
 	}
 	format := buildFormat(prec)
-	printSequence(first, incr, last, format)
+	printSequence(first, incr, last, format, cfg.separator)
 	return 0
+}
+
+// parseFlags extracts option flags and returns remaining positional args.
+// R2.2: -s/--separator, R2.2/R2.3: --version/--help.
+func parseFlags(args []string) (seqConfig, int, bool) {
+	cfg := seqConfig{separator: "\n"}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			cfg.args = append(cfg.args, args[i+1:]...)
+			return cfg, 0, false
+		}
+		switch {
+		case a == "--version":
+			fmt.Println("seq (go-unix-utils)")
+			return cfg, 0, true
+		case a == "--help":
+			printHelp()
+			return cfg, 0, true
+		case a == "--separator":
+			if i+1 >= len(args) {
+				printOptErr("--separator")
+				return cfg, 1, true
+			}
+			i++
+			cfg.separator = args[i]
+		case strings.HasPrefix(a, "--separator="):
+			cfg.separator = a[len("--separator="):]
+		case a == "-s":
+			if i+1 >= len(args) {
+				printOptErr("-s")
+				return cfg, 1, true
+			}
+			i++
+			cfg.separator = args[i]
+		default:
+			cfg.args = append(cfg.args, a)
+		}
+	}
+	return cfg, 0, false
+}
+
+// printOptErr prints a missing-argument error for the given option.
+func printOptErr(opt string) {
+	fmt.Fprintf(os.Stderr, "%s: option '%s' requires an argument\n", progName, opt)
+}
+
+// printHelp writes usage information to stdout.
+// R2.3: --help prints usage and exits 0.
+func printHelp() {
+	fmt.Print(`Usage: seq [OPTION]... LAST
+  or:  seq [OPTION]... FIRST LAST
+  or:  seq [OPTION]... FIRST INCREMENT LAST
+Print numbers from FIRST to LAST, in steps of INCREMENT.
+
+  -s, --separator=STRING  use STRING to separate numbers (default: \n)
+      --help     display this help and exit
+      --version  output version information and exit
+`)
 }
 
 // parseArgs dispatches to the correct argument form parser.
@@ -78,6 +147,7 @@ func parseTwoArgs(args []string) (float64, float64, float64, int, error) {
 }
 
 // parseThreeArgs handles seq FIRST STEP LAST.
+// R1.5: zero increment produces an error.
 func parseThreeArgs(args []string) (float64, float64, float64, int, error) {
 	first, err := strconv.ParseFloat(args[0], 64)
 	if err != nil {
@@ -86,6 +156,9 @@ func parseThreeArgs(args []string) (float64, float64, float64, int, error) {
 	incr, err := strconv.ParseFloat(args[1], 64)
 	if err != nil {
 		return 0, 0, 0, 0, invalidArg(args[1])
+	}
+	if incr == 0 {
+		return 0, 0, 0, 0, zeroIncrErr(args[1])
 	}
 	last, err := strconv.ParseFloat(args[2], 64)
 	if err != nil {
@@ -99,6 +172,11 @@ func parseThreeArgs(args []string) (float64, float64, float64, int, error) {
 // invalidArg returns a formatted error for a non-numeric argument.
 func invalidArg(s string) error {
 	return fmt.Errorf("invalid floating point argument: %s", s)
+}
+
+// zeroIncrErr returns a formatted error for a zero increment.
+func zeroIncrErr(s string) error {
+	return fmt.Errorf("invalid Zero increment value: '%s'", s)
 }
 
 // decimalPrecision returns the number of digits after the decimal point.
@@ -128,7 +206,8 @@ func buildFormat(prec int) string {
 // printSequence outputs the number sequence to stdout.
 // R1.2: generates from FIRST to LAST by STEP.
 // R1.4: produces no output when the sequence is empty.
-func printSequence(first, incr, last float64, format string) {
+// R2.1: separator between numbers, trailing newline after last.
+func printSequence(first, incr, last float64, format, sep string) {
 	n := numSteps(first, incr, last)
 	if n < 0 {
 		return
@@ -137,7 +216,7 @@ func printSequence(first, incr, last float64, format string) {
 	defer w.Flush() // best-effort flush; SIGPIPE handler manages pipe errors
 	for i := 0; i <= n; i++ {
 		if i > 0 {
-			w.WriteByte('\n') //nolint:errcheck // buffered; checked at flush
+			w.WriteString(sep) //nolint:errcheck // buffered; checked at flush
 		}
 		val := first + float64(i)*incr
 		fmt.Fprintf(w, format, val)
