@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/seq.
-// Tests cover srd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4.
+// Tests cover srd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4, R4.4.
 package main
 
 import (
@@ -125,6 +125,15 @@ func TestDiff(t *testing.T) {
 
 		// R2.4: large integers.
 		{Name: "large_int", Args: []string{"9999999999", "1", "9999999999"}},
+
+		// R4.4: floating-point precision edge cases.
+		{Name: "fp_0_01_1", Args: []string{"0", "0.1", "1"}},
+		{Name: "fp_1_03_2", Args: []string{"1", "0.3", "2"}},
+		{Name: "fp_01_01_05", Args: []string{"0.1", "0.1", "0.5"}},
+		{Name: "fp_0_01_03", Args: []string{"0", "0.1", "0.3"}},
+		{Name: "fp_neg_step_fp", Args: []string{"1.0", "-0.1", "0.0"}},
+		{Name: "fp_third_step", Args: []string{"0", "0.333333333", "1"}},
+		{Name: "fp_07_step", Args: []string{"0", "0.7", "2.1"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
