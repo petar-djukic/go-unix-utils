@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/uname: print system information.
-// Implements srd044-uname R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8.
+// Implements srd044-uname R1.1-R1.9, R2.1, R2.2, R3.1, R3.2.
 package main
 
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -25,6 +26,8 @@ const versionText = progName + " (go-unix-utils)"
 const helpText = `Usage: uname [OPTION]...
 Print certain system information.  With no OPTION, same as -s.
 
+  -a, --all                print all information, in the following order,
+                             except omit -p and -i if unknown:
   -s, --kernel-name        print the kernel name
   -n, --nodename           print the network node hostname
   -r, --kernel-release     print the kernel release
@@ -32,6 +35,7 @@ Print certain system information.  With no OPTION, same as -s.
   -m, --machine            print the machine hardware name
   -p, --processor          print the processor type or "unknown"
   -i, --hardware-platform  print the hardware platform or "unknown"
+  -o, --operating-system   print the operating system
       --help        display this help and exit
       --version     output version information and exit
 `
@@ -45,6 +49,7 @@ type flags struct {
 	machine  bool // -m: machine hardware name
 	proc     bool // -p: processor type
 	hwPlat   bool // -i: hardware platform
+	osName   bool // -o: operating system
 }
 
 func main() {
@@ -91,9 +96,12 @@ func parseFlags(args []string) (flags, error) {
 }
 
 // setShortFlags parses a group of short flag characters (e.g., "snrvm").
+// R2.1: 'a' enables all fields.
 func setShortFlags(f *flags, chars string) error {
 	for _, c := range chars {
 		switch c {
+		case 'a':
+			setAllFlags(f)
 		case 's':
 			f.sysName = true
 		case 'n':
@@ -108,6 +116,8 @@ func setShortFlags(f *flags, chars string) error {
 			f.proc = true
 		case 'i':
 			f.hwPlat = true
+		case 'o':
+			f.osName = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", c)
 		}
@@ -115,15 +125,22 @@ func setShortFlags(f *flags, chars string) error {
 	return nil
 }
 
+// setAllFlags enables all information fields.
+// R2.1: -a is equivalent to -snrvmpio.
+func setAllFlags(f *flags) {
+	f.sysName = true
+	f.nodeName = true
+	f.release = true
+	f.version = true
+	f.machine = true
+	f.proc = true
+	f.hwPlat = true
+	f.osName = true
+}
+
 // printFields retrieves system info and prints the selected fields
 // space-separated on a single line.
-// R1.2: -s prints kernel name.
-// R1.3: -n prints network node hostname.
-// R1.4: -r prints kernel release string.
-// R1.5: -v prints kernel version string.
-// R1.6: -m prints machine hardware name.
-// R1.7: -p prints processor type or "unknown".
-// R1.8: -i prints hardware platform or "unknown".
+// R2.2: fields are printed in canonical order regardless of flag order.
 func printFields(f flags) {
 	var utsname unix.Utsname
 	if err := unix.Uname(&utsname); err != nil {
@@ -153,6 +170,9 @@ func printFields(f flags) {
 	if f.hwPlat {
 		parts = append(parts, hardwarePlatform(utsname))
 	}
+	if f.osName {
+		parts = append(parts, operatingSystem())
+	}
 
 	fmt.Println(strings.Join(parts, " "))
 }
@@ -177,6 +197,19 @@ func hardwarePlatform(uts unix.Utsname) string {
 		return "unknown"
 	}
 	return m
+}
+
+// operatingSystem returns the operating system name.
+// R1.9: On Darwin returns "Darwin"; on Linux returns "GNU/Linux".
+func operatingSystem() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "Darwin"
+	case "linux":
+		return "GNU/Linux"
+	default:
+		return runtime.GOOS
+	}
 }
 
 // bytesToString converts a null-terminated byte array to a Go string.
