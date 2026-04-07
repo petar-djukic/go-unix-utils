@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -32,12 +33,23 @@ which may be less than the number of online processors.
       --version  output version information and exit
 `
 
+// usageError indicates an error that should include a "Try --help" hint.
+type usageError struct {
+	msg string
+}
+
+func (e *usageError) Error() string { return e.msg }
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	count, err := run(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		var ue *usageError
+		if errors.As(err, &ue) {
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		}
 		os.Exit(1)
 	}
 
@@ -78,10 +90,10 @@ func run(args []string) (int, error) {
 			continue
 		}
 		if strings.HasPrefix(arg, "--") || strings.HasPrefix(arg, "-") {
-			return 0, fmt.Errorf("unrecognized option '%s'", arg)
+			return 0, &usageError{msg: fmt.Sprintf("unrecognized option '%s'", arg)}
 		}
 		// R2.1: positional operands are rejected.
-		return 0, fmt.Errorf("extra operand '%s'", arg)
+		return 0, &usageError{msg: fmt.Sprintf("extra operand '%s'", arg)}
 	}
 
 	count := processorCount(allFlag)
