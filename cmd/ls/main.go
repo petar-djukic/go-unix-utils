@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.6, R3.1-R3.6, R3.11-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.10, R3.1-R3.6, R3.11-R3.14.
 package main
 
 import (
@@ -51,12 +51,15 @@ const (
 
 // sortMode controls entry sort order.
 // R2.5: -t sorts by mtime. R2.6: -S sorts by size.
+// R2.8: -U disables sorting. R2.9: -v version sort.
 type sortMode int
 
 const (
-	sortName sortMode = iota // default: C locale name
-	sortTime                 // -t: mtime newest first
-	sortSize                 // -S: size largest first
+	sortName    sortMode = iota // default: C locale name
+	sortTime                    // -t: mtime newest first
+	sortSize                    // -S: size largest first
+	sortNone                    // -U: directory order (no sorting)
+	sortVersion                 // -v: natural version sort
 )
 
 // options holds parsed command-line flags.
@@ -65,9 +68,10 @@ type options struct {
 	dirOnly       bool       // -d: list directories themselves
 	humanReadable bool       // -h: human-readable sizes
 	recursive     bool       // -R: recursive listing
+	reverse       bool       // -r: reverse sort order (R2.7)
 	filter        filterMode // -a / -A
 	color         colorMode  // --color
-	sortBy        sortMode   // -t, -S (R2.5, R2.6)
+	sortBy        sortMode   // -t, -S, -U, -v (R2.5, R2.6, R2.8, R2.9, R2.10)
 }
 
 // lsEntry holds a directory entry name and optional metadata.
@@ -186,10 +190,16 @@ func applyFlag(opts *options, ch rune) error {
 		opts.humanReadable = true
 	case 'R':
 		opts.recursive = true
+	case 'r':
+		opts.reverse = true
 	case 't':
 		opts.sortBy = sortTime
 	case 'S':
 		opts.sortBy = sortSize
+	case 'U':
+		opts.sortBy = sortNone
+	case 'v':
+		opts.sortBy = sortVersion
 	default:
 		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
@@ -218,23 +228,42 @@ func needsInfo(opts *options) bool {
 		opts.sortBy != sortName
 }
 
-// --- Entry sorting (R2.5, R2.6) ---
+// --- Entry sorting (R2.5, R2.6, R2.7, R2.8, R2.9, R2.10) ---
 
 // sortEntries sorts entries according to the active sort mode.
+// R2.8: sortNone skips sorting entirely.
+// R2.7: when reverse is true, the comparison is inverted.
 func sortEntries(entries []lsEntry, opts *options) {
-	switch opts.sortBy {
+	if opts.sortBy == sortNone {
+		return
+	}
+	less := selectLess(entries, opts.sortBy)
+	if opts.reverse {
+		fwd := less
+		less = func(i, j int) bool { return fwd(j, i) }
+	}
+	sort.SliceStable(entries, less)
+}
+
+// selectLess returns the comparison function for the given sort mode.
+func selectLess(entries []lsEntry, mode sortMode) func(i, j int) bool {
+	switch mode {
 	case sortTime:
-		sort.SliceStable(entries, func(i, j int) bool {
+		return func(i, j int) bool {
 			return timeBeforeName(entries[i], entries[j])
-		})
+		}
 	case sortSize:
-		sort.SliceStable(entries, func(i, j int) bool {
+		return func(i, j int) bool {
 			return sizeBeforeName(entries[i], entries[j])
-		})
+		}
+	case sortVersion:
+		return func(i, j int) bool {
+			return versionLess(entries[i].name, entries[j].name)
+		}
 	default:
-		sort.SliceStable(entries, func(i, j int) bool {
+		return func(i, j int) bool {
 			return entries[i].name < entries[j].name
-		})
+		}
 	}
 }
 
@@ -260,7 +289,104 @@ func sizeBeforeName(a, b lsEntry) bool {
 	return a.name < b.name
 }
 
+// --- Version sort (R2.9) ---
+
+// versionLess returns true when a sorts before b using strverscmp semantics.
+// Digit runs are compared numerically so "file2" < "file10".
+func versionLess(a, b string) bool {
+	return strverscmp(a, b) < 0
+}
+
+// strverscmp compares two strings with natural version ordering.
+// Returns negative if a < b, 0 if equal, positive if a > b.
+func strverscmp(a, b string) int {
+	i := 0
+	for i < len(a) && i < len(b) {
+		ca, cb := a[i], b[i]
+		if isDigit(ca) && isDigit(cb) {
+			if cmp := compareDigitRuns(a[i:], b[i:]); cmp != 0 {
+				return cmp
+			}
+			i += digitRunLen(a[i:])
+			continue
+		}
+		if ca != cb {
+			return int(ca) - int(cb)
+		}
+		i++
+	}
+	return len(a) - len(b)
+}
+
+// compareDigitRuns compares two strings that start with digit runs.
+// Leading zeros make a run sort before shorter-or-equal numeric value.
+func compareDigitRuns(a, b string) int {
+	la, lb := digitRunLen(a), digitRunLen(b)
+	na, nb := trimLeadingZeros(a[:la]), trimLeadingZeros(b[:lb])
+	if len(na) != len(nb) {
+		return len(na) - len(nb)
+	}
+	for k := range len(na) {
+		if na[k] != nb[k] {
+			return int(na[k]) - int(nb[k])
+		}
+	}
+	// Equal numeric value: more leading zeros sorts first.
+	return la - lb
+}
+
+// digitRunLen returns the length of the leading digit run in s.
+func digitRunLen(s string) int {
+	i := 0
+	for i < len(s) && isDigit(s[i]) {
+		i++
+	}
+	return i
+}
+
+// trimLeadingZeros strips leading '0' characters from a digit string.
+func trimLeadingZeros(s string) string {
+	i := 0
+	for i < len(s)-1 && s[i] == '0' {
+		i++
+	}
+	return s[i:]
+}
+
+// isDigit returns true when c is an ASCII digit.
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
 // --- Entry filtering and resolution ---
+
+// readDirEntryNames returns filtered entry names from a directory.
+// R2.8: when sort mode is sortNone, returns names in filesystem order.
+func readDirEntryNames(path string, opts *options) ([]string, error) {
+	if opts.sortBy == sortNone {
+		return readDirNamesUnsorted(path, opts.filter)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	return filterEntries(entries, opts.filter), nil
+}
+
+// readDirNamesUnsorted reads directory names in filesystem order.
+// R2.8: -U requires directory order, which os.ReadDir does not provide.
+func readDirNamesUnsorted(path string, mode filterMode) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := f.Readdirnames(-1)
+	f.Close() // best-effort close after reading
+	if err != nil {
+		return nil, err
+	}
+	return filterNames(raw, mode), nil
+}
 
 // filterEntries extracts entry names and applies the filter mode.
 // R1.4: default hides dot-files. R2.1: -a includes . and ..
@@ -272,6 +398,22 @@ func filterEntries(entries []os.DirEntry, mode filterMode) []string {
 	}
 	for _, e := range entries {
 		name := e.Name()
+		if mode == filterDefault && strings.HasPrefix(name, ".") {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+// filterNames applies the filter mode to raw name strings.
+// Used when reading with readDirNames (unsorted) for -U.
+func filterNames(rawNames []string, mode filterMode) []string {
+	var names []string
+	if mode == filterAll {
+		names = append(names, ".", "..")
+	}
+	for _, name := range rawNames {
 		if mode == filterDefault && strings.HasPrefix(name, ".") {
 			continue
 		}
@@ -784,12 +926,12 @@ func formatTime(t time.Time) string {
 
 // listDir reads and prints the contents of a single directory.
 // Returns subdirectory paths when opts.recursive is true.
+// R2.8: when sortBy is sortNone, reads entries in directory order.
 func listDir(path string, opts *options) ([]string, error) {
-	entries, err := os.ReadDir(path)
+	names, err := readDirEntryNames(path, opts)
 	if err != nil {
 		return nil, err
 	}
-	names := filterEntries(entries, opts.filter)
 	lsEntries := resolveEntries(path, names, needsInfo(opts))
 	sortEntries(lsEntries, opts)
 	if opts.format == fmtLong {

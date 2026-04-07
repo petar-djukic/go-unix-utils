@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.6.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.10.
 package main
 
 import (
@@ -206,6 +206,139 @@ func TestDiffSort(t *testing.T) {
 		{
 			Name: "S_long_format",
 			Args: []string{"-S", "-l", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createVersionFixture creates files for version sort testing.
+// R2.9: "file2" must sort before "file10" in version sort.
+func createVersionFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	files := []string{
+		"file1", "file2", "file10", "file20", "file100",
+		"abc", "xyz",
+	}
+	for _, f := range files {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(f), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// TestDiffReverse tests -r reverse sort flag (R2.7).
+func TestDiffReverse(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createSortFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.7: -r reverses default alphabetical sort.
+		{
+			Name: "r_reverse_alpha",
+			Args: []string{"-r", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.7: -tr reverses time sort.
+		{
+			Name: "tr_reverse_time",
+			Args: []string{"-tr", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.7: -Sr reverses size sort.
+		{
+			Name: "Sr_reverse_size",
+			Args: []string{"-Sr", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffUnsorted tests -U unsorted flag (R2.8).
+func TestDiffUnsorted(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createSortFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.8: -U lists in directory order (no sorting).
+		{
+			Name: "U_unsorted",
+			Args: []string{"-U", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.8: -rU accepted without error.
+		{
+			Name: "rU_accepted",
+			Args: []string{"-rU", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffVersionSort tests -v version sort flag (R2.9).
+func TestDiffVersionSort(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createVersionFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.9: -v sorts with natural version semantics.
+		{
+			Name: "v_version_sort",
+			Args: []string{"-v", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.7+R2.9: -vr reverses version sort.
+		{
+			Name: "vr_reverse_version",
+			Args: []string{"-vr", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSortPrecedence tests last sort flag wins (R2.10).
+func TestDiffSortPrecedence(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createSortFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.10: -tS, -S wins (last sort flag).
+		{
+			Name: "tS_size_wins",
+			Args: []string{"-tS", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.10: -St, -t wins (last sort flag).
+		{
+			Name: "St_time_wins",
+			Args: []string{"-St", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.10: -tU, -U wins (unsorted overrides time).
+		{
+			Name: "tU_unsorted_wins",
+			Args: []string{"-tU", "-1", "--color=never", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}
