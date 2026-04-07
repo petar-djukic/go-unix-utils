@@ -149,9 +149,9 @@ releases:
         merged after combining srd008-ls and srd010-ls-extended into a single SRD.
       use_cases:
         - id: rel04.0-uc001-ls
-          status: spec_complete
+          status: implemented
         - id: rel04.0-uc002-ls-extended
-          status: spec_complete
+          status: implemented
     - version: "04.1"
       name: "Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)"
       status: spec_complete
