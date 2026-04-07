@@ -3,7 +3,8 @@
 
 // Package main implements cmd/cat: concatenate and display files.
 // Implements srd006-cat R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4,
-// R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R5.1, R5.2, R5.4.
+// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9,
+// R5.1, R5.2, R5.3, R5.4.
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 type options struct {
 	numberAll       bool // -n: number all output lines
 	numberNonBlank  bool // -b: number non-blank lines only
+	squeezeBlanks   bool // -s: R3.1, R3.2, R3.3
 	showNonPrinting bool // -v: R4.1, R4.2
 	showEnds        bool // -E: R4.3
 	showTabs        bool // -T: R4.4
@@ -27,7 +29,7 @@ type options struct {
 
 // needsLineProcessing returns true when flags require line-by-line processing.
 func (o *options) needsLineProcessing() bool {
-	return o.numberAll || o.numberNonBlank ||
+	return o.numberAll || o.numberNonBlank || o.squeezeBlanks ||
 		o.showNonPrinting || o.showEnds || o.showTabs
 }
 
@@ -62,6 +64,9 @@ func parseFlags(opts *options, flags string) error {
 			opts.numberAll = true
 		case 'b':
 			opts.numberNonBlank = true
+		case 's':
+			// R3.1: squeeze repeated blank lines.
+			opts.squeezeBlanks = true
 		case 'v':
 			opts.showNonPrinting = true
 		case 'E':
@@ -90,6 +95,12 @@ func parseFlags(opts *options, flags string) error {
 	return nil
 }
 
+// catState tracks state that persists across files during line processing.
+type catState struct {
+	lineNum  int
+	wasBlank bool // R3.2: squeeze tracks across file boundaries
+}
+
 // catPassthrough copies file contents verbatim to stdout.
 // R1.1: writes contents verbatim. R1.4, R1.5: preserves all bytes and newlines.
 func catPassthrough(name string, w io.Writer) error {
@@ -105,7 +116,7 @@ func catPassthrough(name string, w io.Writer) error {
 }
 
 // catLines processes a file with line-by-line transformations.
-func catLines(name string, w io.Writer, opts *options, lineNum *int) error {
+func catLines(name string, w io.Writer, opts *options, state *catState) error {
 	r, err := openInput(name)
 	if err != nil {
 		return err
@@ -113,18 +124,18 @@ func catLines(name string, w io.Writer, opts *options, lineNum *int) error {
 	if r != os.Stdin {
 		defer r.Close()
 	}
-	return processLines(r, w, opts, lineNum)
+	return processLines(r, w, opts, state)
 }
 
 // processLines reads from r line by line and applies transformations to w.
-// R4.9 order: -v/-T, then -E, then -n/-b.
-func processLines(r io.Reader, w io.Writer, opts *options, lineNum *int) error {
+// R4.9 order: squeeze (-s), then -v/-T, then -E, then -n/-b.
+func processLines(r io.Reader, w io.Writer, opts *options, state *catState) error {
 	reader := bufio.NewReader(r)
 	bw := bufio.NewWriter(w)
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
-			if werr := writeTransformedLine(bw, line, opts, lineNum); werr != nil {
+			if werr := writeTransformedLine(bw, line, opts, state); werr != nil {
 				return werr
 			}
 		}
@@ -132,7 +143,6 @@ func processLines(r io.Reader, w io.Writer, opts *options, lineNum *int) error {
 			return bw.Flush()
 		}
 		if err != nil {
-			// Flush what we have before returning.
 			_ = bw.Flush() // best-effort flush
 			return err
 		}
@@ -140,12 +150,23 @@ func processLines(r io.Reader, w io.Writer, opts *options, lineNum *int) error {
 }
 
 // writeTransformedLine writes a single line with display transformations and numbering.
-func writeTransformedLine(w *bufio.Writer, line []byte, opts *options, lineNum *int) error {
+// R4.9 order: squeeze blanks (-s), then -v/-T, then -E, then -n/-b.
+func writeTransformedLine(w *bufio.Writer, line []byte, opts *options, state *catState) error {
 	// R2.4: blank = line containing only a newline character.
 	isBlank := len(line) == 1 && line[0] == '\n'
 
+	// R3.1: squeeze repeated blank lines (applied first per R4.9).
+	if opts.squeezeBlanks && isBlank {
+		if state.wasBlank {
+			return nil
+		}
+		state.wasBlank = true
+	} else {
+		state.wasBlank = false
+	}
+
 	// R4.9: prepend line number last in application order.
-	if err := writeNumberPrefix(w, opts, lineNum, isBlank); err != nil {
+	if err := writeNumberPrefix(w, opts, state, isBlank); err != nil {
 		return err
 	}
 
@@ -159,7 +180,7 @@ func writeTransformedLine(w *bufio.Writer, line []byte, opts *options, lineNum *
 // writeNumberPrefix writes the line number prefix if numbering is active.
 // R2.1: format "%6d\t" for numbered lines.
 // R2.2: blank lines get no prefix when numberNonBlank is set.
-func writeNumberPrefix(w *bufio.Writer, opts *options, lineNum *int, isBlank bool) error {
+func writeNumberPrefix(w *bufio.Writer, opts *options, state *catState, isBlank bool) error {
 	if !opts.numberAll && !opts.numberNonBlank {
 		return nil
 	}
@@ -167,10 +188,10 @@ func writeNumberPrefix(w *bufio.Writer, opts *options, lineNum *int, isBlank boo
 	if opts.numberNonBlank && isBlank {
 		return nil
 	}
-	if _, err := fmt.Fprintf(w, "%6d\t", *lineNum); err != nil {
+	if _, err := fmt.Fprintf(w, "%6d\t", state.lineNum); err != nil {
 		return err
 	}
-	*lineNum++
+	state.lineNum++
 	return nil
 }
 
@@ -272,18 +293,21 @@ func main() {
 	}
 
 	exitCode := 0
-	lineNum := 1
+	state := catState{lineNum: 1}
 	for _, name := range args {
 		var err error
 		if opts.needsLineProcessing() {
-			err = catLines(name, os.Stdout, &opts, &lineNum)
+			err = catLines(name, os.Stdout, &opts, &state)
 		} else {
 			err = catPassthrough(name, os.Stdout)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cat: %s\n", err)
+			// R5.2: continue processing remaining files.
+			// R5.3: write errors also cause exit 1.
 			exitCode = 1
 		}
 	}
+	// R5.1: exit 0 on success. R5.2, R5.3: exit 1 on any error.
 	os.Exit(exitCode)
 }
