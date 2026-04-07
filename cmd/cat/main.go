@@ -3,7 +3,7 @@
 
 // Package main implements cmd/cat: concatenate and display files.
 // Implements srd006-cat R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4,
-// R4.1, R4.2, R4.3, R4.4, R5.1, R5.2, R5.4.
+// R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R5.1, R5.2, R5.4.
 package main
 
 import (
@@ -67,6 +67,19 @@ func parseFlags(opts *options, flags string) error {
 		case 'E':
 			opts.showEnds = true
 		case 'T':
+			opts.showTabs = true
+		case 'A':
+			// R4.5: -A is equivalent to -v -E -T combined.
+			opts.showNonPrinting = true
+			opts.showEnds = true
+			opts.showTabs = true
+		case 'e':
+			// R4.6: -e is equivalent to -v -E combined.
+			opts.showNonPrinting = true
+			opts.showEnds = true
+		case 't':
+			// R4.7: -t is equivalent to -v -T combined.
+			opts.showNonPrinting = true
 			opts.showTabs = true
 		case 'u':
 			// R4.8: accepted but ignored.
