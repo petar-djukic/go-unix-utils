@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/tee: read stdin and write to stdout and files.
-// Implements srd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
+// Implements srd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
@@ -19,14 +19,55 @@ import (
 // progName is used in diagnostic messages.
 const progName = "tee"
 
+// versionText is printed when --version is passed.
+// R4.1: prints version information and exits 0.
+const versionText = progName + " (go-unix-utils) dev"
+
 // TODO: -p flag and --output-error=MODE (warn, warn-nopipe, exit, exit-nopipe)
 // are listed in srd017 non_goals. Skipped per execution constitution E6.
 
 func main() {
+	// R4.3: install SIGPIPE handler to exit cleanly when piped to head, etc.
 	sys.InstallSIGPIPEHandler()
+
+	// R4.1/R4.2: handle --version and --help before argument parsing.
+	if handleInfoFlags(os.Args[1:]) {
+		return
+	}
 
 	exitCode := run(os.Args[1:])
 	os.Exit(exitCode)
+}
+
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+// Returns true if a flag was handled (caller should return).
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			printHelp()
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
+}
+
+// printHelp writes usage information to stdout.
+// R4.2: matches GNU tee --help structure.
+func printHelp() {
+	fmt.Print(`Usage: tee [OPTION]... [FILE]...
+Copy standard input to each FILE, and also to standard output.
+
+  -a, --append              append to the given FILEs, do not overwrite
+  -i, --ignore-interrupts   ignore interrupt signals
+      --help     display this help and exit
+      --version  output version information and exit
+`)
 }
 
 // run executes the tee logic and returns the exit code.
