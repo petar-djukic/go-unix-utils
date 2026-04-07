@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/ls via differential testing against gls.
-// Tests srd008-ls R1.13, R1.14, R2.1-R2.10.
+// Tests srd008-ls R1.13, R1.14, R2.1-R2.14.
 package main
 
 import (
@@ -307,6 +307,104 @@ func TestDiffVersionSort(t *testing.T) {
 		{
 			Name: "vr_reverse_version",
 			Args: []string{"-vr", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInode tests -i inode display (R2.11).
+func TestDiffInode(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.11: -i with single-column output.
+		{
+			Name: "i_single_column",
+			Args: []string{"-i", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.11: -i with long format.
+		{
+			Name: "i_long_format",
+			Args: []string{"-il", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffBlocks tests -s block count display (R2.12, R2.13).
+func TestDiffBlocks(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.12: -s with single-column output.
+		{
+			Name: "s_single_column",
+			Args: []string{"-s", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.12/R2.13: -s with long format (includes total line).
+		{
+			Name: "s_long_format",
+			Args: []string{"-sl", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffNumericIDs tests -n numeric UID/GID display (R2.14).
+func TestDiffNumericIDs(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.14: -n shows numeric UID/GID in long format.
+		{
+			Name: "n_numeric_ids",
+			Args: []string{"-n", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffInodeBlocks tests -i and -s combined (R2.15).
+func TestDiffInodeBlocks(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gls")
+	if err != nil {
+		t.Skipf("reference binary gls not in PATH: %v", err)
+	}
+	dir := createFixture(t)
+
+	tests := []testutils.DiffTest{
+		// R2.15: -i and -s combined, single column.
+		{
+			Name: "is_single_column",
+			Args: []string{"-is", "-1", "--color=never", dir},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R2.15: -i and -s combined, long format.
+		{
+			Name: "is_long_format",
+			Args: []string{"-isl", "--color=never", dir},
 			Env:  []string{"LC_ALL=C"},
 		},
 	}

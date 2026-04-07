@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ls: list directory contents.
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.10, R3.1-R3.6, R3.11-R3.14.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.14, R3.1-R3.6, R3.11-R3.14.
 package main
 
 import (
@@ -50,8 +50,6 @@ const (
 )
 
 // sortMode controls entry sort order.
-// R2.5: -t sorts by mtime. R2.6: -S sorts by size.
-// R2.8: -U disables sorting. R2.9: -v version sort.
 type sortMode int
 
 const (
@@ -64,14 +62,17 @@ const (
 
 // options holds parsed command-line flags.
 type options struct {
-	format        formatMode // -1, -l, -C, -x (last wins per R1.14)
-	dirOnly       bool       // -d: list directories themselves
-	humanReadable bool       // -h: human-readable sizes
-	recursive     bool       // -R: recursive listing
-	reverse       bool       // -r: reverse sort order (R2.7)
-	filter        filterMode // -a / -A
-	color         colorMode  // --color
-	sortBy        sortMode   // -t, -S, -U, -v (R2.5, R2.6, R2.8, R2.9, R2.10)
+	format        formatMode
+	dirOnly       bool
+	humanReadable bool
+	recursive     bool
+	reverse       bool
+	filter        filterMode
+	color         colorMode
+	sortBy        sortMode
+	showInode     bool // R2.11: -i
+	showBlocks    bool // R2.12: -s
+	numericIDs    bool // R2.14: -n
 }
 
 // lsEntry holds a directory entry name and optional metadata.
@@ -82,21 +83,25 @@ type lsEntry struct {
 
 // longEntry holds pre-formatted fields for a long-format line.
 type longEntry struct {
-	perm  string
-	nlink string
-	owner string
-	group string
-	size  string
-	mtime string
-	disp  string // display name (colorized, with symlink target)
+	inode  string // R2.11: inode number (empty when -i not given)
+	blocks string // R2.12: block count (empty when -s not given)
+	perm   string
+	nlink  string
+	owner  string
+	group  string
+	size   string
+	mtime  string
+	disp   string // display name (colorized, with symlink target)
 }
 
 // longWidths holds maximum column widths for long format alignment.
 type longWidths struct {
-	nlink int
-	owner int
-	group int
-	size  int
+	inode  int // R2.11
+	blocks int // R2.12
+	nlink  int
+	owner  int
+	group  int
+	size   int
 }
 
 // --- Flag parsing (R4.3) ---
@@ -169,7 +174,7 @@ func parseFlags(opts *options, flags string) error {
 
 // applyFlag applies a single flag character to options.
 // R1.14: -C, -x, -l, -1 are mutually exclusive; last wins.
-// R2.5: -t sort by mtime. R2.6: -S sort by size.
+// R2.14/R4.6: -n implies -l.
 func applyFlag(opts *options, ch rune) error {
 	switch ch {
 	case '1':
@@ -200,6 +205,13 @@ func applyFlag(opts *options, ch rune) error {
 		opts.sortBy = sortNone
 	case 'v':
 		opts.sortBy = sortVersion
+	case 'i':
+		opts.showInode = true
+	case 's':
+		opts.showBlocks = true
+	case 'n':
+		opts.numericIDs = true
+		opts.format = fmtLong
 	default:
 		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
@@ -221,11 +233,12 @@ func setupColor(opts *options) {
 }
 
 // needsInfo returns true when file metadata is required for output.
-// R2.5, R2.6: time and size sorts require metadata.
 func needsInfo(opts *options) bool {
 	return opts.format == fmtLong ||
 		opts.color != colorNever ||
-		opts.sortBy != sortName
+		opts.sortBy != sortName ||
+		opts.showInode ||
+		opts.showBlocks
 }
 
 // --- Entry sorting (R2.5, R2.6, R2.7, R2.8, R2.9, R2.10) ---
@@ -463,6 +476,72 @@ func colorName(name string, mode os.FileMode) string {
 	return c + name + format.Reset()
 }
 
+// --- Prefix display for -i and -s (R2.11, R2.12, R2.15) ---
+
+// buildPrefixedNames builds display names with optional inode/block prefixes.
+// R2.15: when both -i and -s are given, inode is printed first.
+func buildPrefixedNames(entries []lsEntry, opts *options) []string {
+	names := displayNames(entries)
+	if !opts.showInode && !opts.showBlocks {
+		return names
+	}
+	inodeW, blocksW := computePrefixWidths(entries, opts)
+	result := make([]string, len(names))
+	for i, e := range entries {
+		result[i] = entryPrefix(e, opts, inodeW, blocksW) + names[i]
+	}
+	return result
+}
+
+// entryPrefix builds the inode/blocks prefix string for one entry.
+func entryPrefix(e lsEntry, opts *options, inodeW, blocksW int) string {
+	var prefix string
+	if opts.showInode {
+		ino := "0"
+		if e.fi != nil {
+			ino = strconv.FormatUint(e.fi.Ino, 10)
+		}
+		prefix += fmt.Sprintf("%*s ", inodeW, ino)
+	}
+	if opts.showBlocks {
+		blk := "0"
+		if e.fi != nil {
+			blk = formatBlockCount(e.fi.Blocks, opts)
+		}
+		prefix += fmt.Sprintf("%*s ", blocksW, blk)
+	}
+	return prefix
+}
+
+// formatBlockCount converts 512-byte blocks to display string.
+// R2.12: report in 1024-byte block units (fi.Blocks / 2).
+func formatBlockCount(blocks int64, opts *options) string {
+	kblocks := blocks / 2
+	if opts.humanReadable {
+		return format.HumanSize(kblocks*1024, format.HumanSizeOpts{Binary: true})
+	}
+	return strconv.FormatInt(kblocks, 10)
+}
+
+// computePrefixWidths returns max widths for inode and block columns.
+func computePrefixWidths(entries []lsEntry, opts *options) (int, int) {
+	inodeW, blocksW := 0, 0
+	for _, e := range entries {
+		if e.fi == nil {
+			continue
+		}
+		if opts.showInode {
+			w := len(strconv.FormatUint(e.fi.Ino, 10))
+			inodeW = maxInt(inodeW, w)
+		}
+		if opts.showBlocks {
+			w := len(formatBlockCount(e.fi.Blocks, opts))
+			blocksW = maxInt(blocksW, w)
+		}
+	}
+	return inodeW, blocksW
+}
+
 // --- Non-long format output ---
 
 // resolveWidth returns the column width for multi-column layout.
@@ -486,7 +565,7 @@ func printEntries(entries []lsEntry, opts *options) {
 	if len(entries) == 0 {
 		return
 	}
-	names := displayNames(entries)
+	names := buildPrefixedNames(entries, opts)
 	switch opts.format {
 	case fmtOnePer:
 		printOnePerLine(names)
@@ -718,7 +797,7 @@ func printHorizRow(names []string, row, numCols, n int, colWidths []int) {
 	fmt.Println()
 }
 
-// --- Long format (R1.6-R1.10) ---
+// --- Long format (R1.6-R1.10, R2.11-R2.14) ---
 
 // printLong outputs entries in long format with aligned columns.
 // R1.10: prints "total N" line before entries when showTotal is true.
@@ -746,16 +825,26 @@ func buildLongEntries(entries []lsEntry, dir string, opts *options) []longEntry 
 }
 
 // toLongEntry converts one lsEntry to a formatted longEntry.
+// R2.11: populates inode when -i is set.
+// R2.12: populates blocks when -s is set.
+// R2.14: uses numeric UID/GID when -n is set.
 func toLongEntry(e lsEntry, dir string, opts *options) longEntry {
-	return longEntry{
+	le := longEntry{
 		perm:  permString(e.fi.Mode),
 		nlink: strconv.FormatUint(e.fi.Nlink, 10),
-		owner: resolveOwner(e.fi.Uid),
-		group: resolveGroup(e.fi.Gid),
+		owner: resolveOwnerField(e.fi.Uid, opts.numericIDs),
+		group: resolveGroupField(e.fi.Gid, opts.numericIDs),
 		size:  formatSize(e.fi.Size, opts),
 		mtime: formatTime(e.fi.ModTime),
 		disp:  longDisplayName(e, dir),
 	}
+	if opts.showInode {
+		le.inode = strconv.FormatUint(e.fi.Ino, 10)
+	}
+	if opts.showBlocks {
+		le.blocks = formatBlockCount(e.fi.Blocks, opts)
+	}
+	return le
 }
 
 // longDisplayName builds the name field for long format including
@@ -775,6 +864,8 @@ func longDisplayName(e lsEntry, dir string) string {
 func computeLongWidths(entries []longEntry) longWidths {
 	var w longWidths
 	for _, e := range entries {
+		w.inode = maxInt(w.inode, len(e.inode))
+		w.blocks = maxInt(w.blocks, len(e.blocks))
 		w.nlink = maxInt(w.nlink, len(e.nlink))
 		w.owner = maxInt(w.owner, len(e.owner))
 		w.group = maxInt(w.group, len(e.group))
@@ -791,8 +882,12 @@ func maxInt(a, b int) int {
 }
 
 // printLongLine outputs a single long-format line with proper alignment.
+// R2.11: prints inode prefix. R2.12: prints blocks prefix.
+// R2.15: inode before blocks when both are present.
 func printLongLine(e longEntry, w longWidths) {
-	fmt.Printf("%s %s %s %s %s %s %s\n",
+	prefix := longLinePrefix(e, w)
+	fmt.Printf("%s%s %s %s %s %s %s %s\n",
+		prefix,
 		e.perm,
 		format.PadLeft(e.nlink, w.nlink),
 		format.PadRight(e.owner, w.owner),
@@ -803,8 +898,21 @@ func printLongLine(e longEntry, w longWidths) {
 	)
 }
 
-// printTotalLine prints the "total N" line for long format.
+// longLinePrefix builds the inode/blocks prefix for a long-format line.
+func longLinePrefix(e longEntry, w longWidths) string {
+	var prefix string
+	if w.inode > 0 {
+		prefix += format.PadLeft(e.inode, w.inode) + " "
+	}
+	if w.blocks > 0 {
+		prefix += format.PadLeft(e.blocks, w.blocks) + " "
+	}
+	return prefix
+}
+
+// printTotalLine prints the "total N" line for long format and -s.
 // R1.10: N = sum(fi.Blocks) / 2 (converts 512-byte to 1K units).
+// R2.13: -s with -l uses the same total line.
 // R3.6: when -h is active, format total as human-readable.
 func printTotalLine(entries []lsEntry, opts *options) {
 	var total int64
@@ -880,7 +988,25 @@ func permBit(mode os.FileMode, bit os.FileMode, ch byte) byte {
 	return '-'
 }
 
-// --- Owner/group resolution (R1.8) ---
+// --- Owner/group resolution (R1.8, R2.14) ---
+
+// resolveOwnerField returns the owner display string.
+// R2.14: numeric mode skips name lookup.
+func resolveOwnerField(uid uint32, numeric bool) string {
+	if numeric {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return resolveOwner(uid)
+}
+
+// resolveGroupField returns the group display string.
+// R2.14: numeric mode skips name lookup.
+func resolveGroupField(gid uint32, numeric bool) string {
+	if numeric {
+		return strconv.FormatUint(uint64(gid), 10)
+	}
+	return resolveGroup(gid)
+}
 
 // resolveOwner maps a UID to a username, falling back to numeric.
 func resolveOwner(uid uint32) string {
@@ -937,6 +1063,9 @@ func listDir(path string, opts *options) ([]string, error) {
 	if opts.format == fmtLong {
 		printLong(lsEntries, path, opts, true)
 	} else {
+		if opts.showBlocks {
+			printTotalLine(lsEntries, opts)
+		}
 		printEntries(lsEntries, opts)
 	}
 	if !opts.recursive {
