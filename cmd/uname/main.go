@@ -50,6 +50,7 @@ type flags struct {
 	proc     bool // -p: processor type
 	hwPlat   bool // -i: hardware platform
 	osName   bool // -o: operating system
+	allMode  bool // -a: omit unknown -p and -i
 }
 
 func main() {
@@ -83,6 +84,10 @@ func parseFlags(args []string) (flags, error) {
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			return f, fmt.Errorf("extra operand '%s'", arg)
 		}
+		// R3.2: unrecognized long options are reported as such.
+		if strings.HasPrefix(arg, "--") {
+			return f, fmt.Errorf("unrecognized option '%s'", arg)
+		}
 		if err := setShortFlags(&f, arg[1:]); err != nil {
 			return f, err
 		}
@@ -101,6 +106,7 @@ func setShortFlags(f *flags, chars string) error {
 	for _, c := range chars {
 		switch c {
 		case 'a':
+			f.allMode = true
 			setAllFlags(f)
 		case 's':
 			f.sysName = true
@@ -165,10 +171,18 @@ func printFields(f flags) {
 		parts = append(parts, bytesToString(utsname.Machine[:]))
 	}
 	if f.proc {
-		parts = append(parts, processorType(utsname))
+		p := processorType(utsname)
+		// R2.1: -a omits processor if "unknown".
+		if !f.allMode || p != "unknown" {
+			parts = append(parts, p)
+		}
 	}
 	if f.hwPlat {
-		parts = append(parts, hardwarePlatform(utsname))
+		h := hardwarePlatform(utsname)
+		// R2.1: -a omits hardware platform if "unknown".
+		if !f.allMode || h != "unknown" {
+			parts = append(parts, h)
+		}
 	}
 	if f.osName {
 		parts = append(parts, operatingSystem())
@@ -178,9 +192,13 @@ func printFields(f flags) {
 }
 
 // processorType returns the processor type.
-// R1.7: On most systems this matches the machine field; returns "unknown"
-// if the information is not determinable.
+// R1.7: On Darwin, returns the CPU architecture name matching GNU coreutils
+// behavior (e.g., "arm" on ARM64). On Linux, matches the machine field.
+// Returns "unknown" if the information is not determinable.
 func processorType(uts unix.Utsname) string {
+	if runtime.GOOS == "darwin" {
+		return darwinProcessorType()
+	}
 	m := bytesToString(uts.Machine[:])
 	if m == "" {
 		return "unknown"
@@ -188,10 +206,29 @@ func processorType(uts unix.Utsname) string {
 	return m
 }
 
+// darwinProcessorType returns the processor type on Darwin.
+// GNU coreutils on macOS returns the CPU architecture name (e.g., "arm")
+// which differs from the machine name (e.g., "arm64").
+func darwinProcessorType() string {
+	p, err := unix.Sysctl("hw.machine")
+	if err != nil || p == "" {
+		return "unknown"
+	}
+	// hw.machine returns "arm64" on Apple Silicon; GNU coreutils
+	// reports "arm" to match the base architecture family.
+	if base, found := strings.CutSuffix(p, "64"); found {
+		return base
+	}
+	return p
+}
+
 // hardwarePlatform returns the hardware platform.
-// R1.8: On most systems this matches the machine field; returns "unknown"
-// if the information is not determinable.
+// R1.8: On Darwin, hardware platform is not determinable; returns "unknown"
+// matching GNU coreutils behavior. On Linux, matches the machine field.
 func hardwarePlatform(uts unix.Utsname) string {
+	if runtime.GOOS == "darwin" {
+		return "unknown"
+	}
 	m := bytesToString(uts.Machine[:])
 	if m == "" {
 		return "unknown"
