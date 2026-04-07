@@ -61,6 +61,11 @@ func usage() {
 // R1.3: if the name is entirely slashes, return "/".
 // R1.4: strip trailing slashes from the result; if empty, return "/".
 func dirname(name string) string {
+	// R1.2: empty string has no slash, return ".".
+	if name == "" {
+		return "."
+	}
+
 	// R1.3: name consisting entirely of slashes returns "/".
 	trimmed := strings.TrimRight(name, "/")
 	if trimmed == "" {

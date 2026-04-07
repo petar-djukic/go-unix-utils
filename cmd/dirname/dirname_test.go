@@ -1,14 +1,35 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Package main provides differential tests for cmd/dirname.
+// Tests cover srd016-dirname R3.1, R3.2, R3.3, R4.1-R4.3.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.2/R4.3: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -56,6 +77,25 @@ func TestDiff(t *testing.T) {
 		{Name: "zero_long_flag", Args: []string{"--zero", "/usr/lib"}},
 		// R2.2: -z with various path types.
 		{Name: "zero_mixed", Args: []string{"-z", "/", "file.txt", "a/b/c"}},
+
+		// R3.3: edge case — empty string argument.
+		{Name: "empty_string", Args: []string{""}},
+		// R3.3: edge case — multiple trailing slashes on dir portion.
+		{Name: "dir_trailing_slashes", Args: []string{"/usr///lib"}},
+		// R3.3: edge case — path that is just a filename with dots.
+		{Name: "dotfile", Args: []string{".bashrc"}},
+		// R3.3: edge case — relative path with dot-dot.
+		{Name: "relative_dotdot", Args: []string{"../foo/bar"}},
+		// R3.3: edge case — path ending with dot-dot.
+		{Name: "path_ending_dotdot", Args: []string{"/foo/.."}},
+
+		// R3.2: error case — no arguments exits 1 with stderr message.
+		{
+			Name:      "no_args",
+			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
