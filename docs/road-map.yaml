@@ -131,7 +131,7 @@ releases:
         - id: rel03.1-uc001-uname
           status: spec_complete
         - id: rel03.1-uc002-arch
-          status: spec_complete
+          status: implemented
         - id: rel03.1-uc003-nproc
           status: spec_complete
         - id: rel03.1-uc004-hostname
