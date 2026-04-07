@@ -198,5 +198,41 @@ func reportMatch(name string, matched bool, opts CheckOptions, stdout io.Writer)
 // R3.1: formats output as GNU or BSD tag depending on the tag flag.
 // R3.2: continues processing remaining files on error.
 func DigestFiles(files []string, cfg HashConfig, binary, tag bool, stdout, stderr io.Writer) int {
-	panic("hashutil.DigestFiles: not yet implemented")
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+	exitCode := 0
+	for _, name := range files {
+		if err := digestOneFile(name, cfg, binary, tag, stdout); err != nil {
+			fmt.Fprintf(stderr, "%s: %s: %v\n", cfg.Algorithm, name, err)
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+// digestOneFile computes and prints the digest for a single file or stdin.
+func digestOneFile(name string, cfg HashConfig, binary, tag bool, stdout io.Writer) error {
+	digest, err := readAndDigest(name, cfg)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, formatDigestLine(name, digest, cfg, binary, tag))
+	return nil
+}
+
+// readAndDigest opens a file (or stdin for "-") and computes its digest.
+func readAndDigest(name string, cfg HashConfig) (string, error) {
+	if name == "-" {
+		return ComputeDigest(os.Stdin, cfg)
+	}
+	return computeFileDigest(name, cfg)
+}
+
+// formatDigestLine formats a digest as GNU or BSD tag format.
+func formatDigestLine(name, digest string, cfg HashConfig, binary, tag bool) string {
+	if tag {
+		return FormatBSDTag(cfg.Algorithm, name, digest)
+	}
+	return FormatGNU(digest, name, binary)
 }
