@@ -13,7 +13,35 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// ANSI SGR escape codes matching GNU ls LS_COLORS defaults.
+// R2.4: directory=34, symlink=36, executable=32, block=33;1,
+// char=33;1, socket=35, pipe=33, regular=0.
+const (
+	ansiReset   = "\033[0m"
+	ansiDir     = "\033[01;34m" // bold blue
+	ansiSymlink = "\033[01;36m" // bold cyan
+	ansiExec    = "\033[01;32m" // bold green
+	ansiBlock   = "\033[33;1m"  // yellow bold
+	ansiChar    = "\033[33;1m"  // yellow bold
+	ansiSocket  = "\033[35m"    // magenta
+	ansiPipe    = "\033[33m"    // yellow
+	ansiSetuid  = "\033[37;41m" // white on red
+	ansiSetgid  = "\033[30;43m" // black on yellow
+	ansiSticky  = "\033[37;44m" // white on blue
+	ansiOWrit   = "\033[30;42m" // black on green (other-writable)
+)
+
+// colorMu protects colorOverride.
+var colorMu sync.RWMutex
+
+// colorOverride is nil when no override is set (auto-detect mode).
+// When non-nil, its value forces color on or off.
+var colorOverride *bool
 
 // HumanSizeOpts configures human-readable size formatting.
 type HumanSizeOpts struct {
@@ -75,27 +103,95 @@ func abs64(v int64) int64 {
 	return v
 }
 
-// FileTypeColor returns the ANSI color escape sequence for the given file mode.
-func FileTypeColor(mode os.FileMode) string {
-	return ""
-}
-
-// Reset returns the ANSI reset escape sequence.
-func Reset() string {
-	return ""
-}
-
-// ColorEnabled reports whether color output is enabled for the given writer.
-func ColorEnabled(w io.Writer) bool {
+// colorActive returns whether color output is currently active,
+// considering the package-level override.
+func colorActive() bool {
+	colorMu.RLock()
+	defer colorMu.RUnlock()
+	if colorOverride != nil {
+		return *colorOverride
+	}
 	return false
 }
 
+// FileTypeColor returns the ANSI color escape sequence for the given file mode.
+// R2.1: Returns the escape sequence matching the file type.
+// R2.3: Returns empty string when color is not enabled.
+// R2.4: Uses GNU ls LS_COLORS default color assignments.
+func FileTypeColor(mode os.FileMode) string {
+	if !colorActive() {
+		return ""
+	}
+	return fileTypeCode(mode)
+}
+
+// fileTypeCode returns the ANSI code for the file type, checking special
+// permission bits (setuid, setgid, sticky, other-writable) before type.
+func fileTypeCode(mode os.FileMode) string {
+	switch {
+	case mode&os.ModeDir != 0 && mode&os.ModeSticky != 0:
+		return ansiSticky
+	case mode&os.ModeDir != 0 && mode&0o002 != 0:
+		return ansiOWrit
+	case mode&os.ModeDir != 0:
+		return ansiDir
+	case mode&os.ModeSymlink != 0:
+		return ansiSymlink
+	case mode&os.ModeSetuid != 0:
+		return ansiSetuid
+	case mode&os.ModeSetgid != 0:
+		return ansiSetgid
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
+		return ansiChar
+	case mode&os.ModeDevice != 0:
+		return ansiBlock
+	case mode&os.ModeSocket != 0:
+		return ansiSocket
+	case mode&os.ModeNamedPipe != 0:
+		return ansiPipe
+	case mode&0o111 != 0:
+		return ansiExec
+	default:
+		return ansiReset
+	}
+}
+
+// Reset returns the ANSI reset escape sequence.
+// R2.2: Returns "\033[0m".
+// R2.3: Returns empty string when color is not enabled.
+func Reset() string {
+	if !colorActive() {
+		return ""
+	}
+	return ansiReset
+}
+
+// ColorEnabled reports whether color output is enabled for the given writer.
+// R2.3: Attempts type assertion to *os.File; if successful, calls
+// sys.IsTerminal on the file descriptor. Returns false for non-terminal writers.
+func ColorEnabled(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	return sys.IsTerminal(f.Fd())
+}
+
 // SetColorEnabled overrides the automatic color detection with the given value.
+// R2.6: When true, FileTypeColor and Reset return ANSI sequences regardless of TTY.
+// When false, they return empty strings regardless.
 func SetColorEnabled(enabled bool) {
+	colorMu.Lock()
+	defer colorMu.Unlock()
+	colorOverride = &enabled
 }
 
 // ResetColorEnabled clears any manual color override, restoring automatic detection.
+// R2.7: Reverts to auto-detect mode where color is off unless explicitly enabled.
 func ResetColorEnabled() {
+	colorMu.Lock()
+	defer colorMu.Unlock()
+	colorOverride = nil
 }
 
 // PadRight pads s on the right with spaces to the given width.
