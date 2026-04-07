@@ -59,7 +59,7 @@ releases:
           status: implemented
     - version: "02.0"
       name: "Batch 2 — trivial utilities (true, false, yes, basename, dirname)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement five trivial utilities that require minimal logic and no shared library
