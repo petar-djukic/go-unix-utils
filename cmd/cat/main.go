@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/cat: concatenate and display files.
-// Implements srd006-cat R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements srd006-cat R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4,
+// R5.1, R5.2, R5.4 (error handling, stdin, mixed file/stdin).
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -130,11 +132,26 @@ func writeLine(w io.Writer, line []byte, lineNum *int, nonBlankOnly bool) error 
 
 // openInput returns os.Stdin for "-", otherwise opens the named file.
 // R1.2: stdin when filename is "-".
+// R5.2: on failure, returns error formatted as "<name>: <reason>" for GNU-compatible stderr output.
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
 	}
-	return os.Open(name)
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, formatOpenError(name, err)
+	}
+	return f, nil
+}
+
+// formatOpenError extracts the underlying error from os.PathError to produce
+// GNU-compatible error messages: "<name>: <reason>" instead of "open <name>: <reason>".
+func formatOpenError(name string, err error) error {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return fmt.Errorf("%s: %s", name, pe.Err)
+	}
+	return fmt.Errorf("%s: %s", name, err)
 }
 
 func main() {
