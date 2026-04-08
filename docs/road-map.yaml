@@ -197,7 +197,7 @@ releases:
           status: implemented
     - version: "05.1"
       name: "Batch 5.1 — tab conversion pair (expand, unexpand)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement expand (tabs to spaces) and unexpand (spaces to tabs). Both utilities share
