@@ -300,7 +300,7 @@ releases:
         - id: rel06.1-uc001-env
           status: implemented
         - id: rel06.1-uc002-printenv
-          status: spec_complete
+          status: implemented
         - id: rel06.1-uc003-id
           status: spec_complete
         - id: rel06.1-uc004-whoami
