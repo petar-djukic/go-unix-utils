@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sha256sum: compute and check SHA-256 message digests.
-// Implements srd032-sha256sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd032-sha256sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2,
+// R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -31,6 +32,7 @@ type config struct {
 	warn   bool // -w, --warn
 	quiet  bool // --quiet
 	status bool // --status
+	strict bool // --strict
 	files  []string
 }
 
@@ -66,9 +68,11 @@ func run(cfg config) int {
 }
 
 // runCheck verifies checksums from each file argument.
+// R3.1: --check reads a checksum file and reports OK or FAILED.
+// R3.2: --strict makes malformed lines cause exit code 1.
 func runCheck(cfg config, hcfg hashutil.HashConfig) int {
 	opts := hashutil.CheckOptions{
-		Warn:   cfg.warn,
+		Warn:   cfg.warn || cfg.strict,
 		Quiet:  cfg.quiet,
 		Status: cfg.status,
 	}
@@ -91,7 +95,7 @@ func runCheck(cfg config, hcfg hashutil.HashConfig) int {
 }
 
 // parseArgs parses command-line arguments into config.
-// R1.3: supports -b, -t, --tag, -c, -w, --quiet, --status.
+// R1.3: supports -b, -t, --tag, -c, -w, --quiet, --status, --strict.
 func parseArgs(args []string) (config, error) {
 	cfg := config{}
 	flagsDone := false
@@ -148,6 +152,8 @@ func parseLongFlag(cfg *config, arg string) (int, error) {
 		cfg.quiet = true
 	case "--status":
 		cfg.status = true
+	case "--strict":
+		cfg.strict = true
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", arg)
 	}
