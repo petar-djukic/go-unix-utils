@@ -91,17 +91,21 @@ func reverseString(data []byte, cfg config, w io.Writer) error {
 
 // writeAfterString writes records in reverse with separator after each.
 // R1.1, R1.2, R2.1: split on separator, reverse, trailing sep preserved.
+// When input lacks a trailing separator, the incomplete last record is
+// concatenated with the preceding record in the reversed output (GNU tac
+// behavior: "a\nb\nc" → "cb\na\n").
 func writeAfterString(data, sep []byte, w io.Writer) error {
 	hasSuffix := bytes.HasSuffix(data, sep)
 	parts := bytes.Split(data, sep)
 	if hasSuffix && len(parts) > 0 && len(parts[len(parts)-1]) == 0 {
 		parts = parts[:len(parts)-1]
 	}
-	for i := len(parts) - 1; i >= 0; i-- {
+	n := len(parts)
+	for i := n - 1; i >= 0; i-- {
 		if _, err := w.Write(parts[i]); err != nil {
 			return err
 		}
-		if i > 0 || hasSuffix {
+		if hasSuffix || (n > 1 && i != n-1) {
 			if _, err := w.Write(sep); err != nil {
 				return err
 			}
