@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/cut: remove sections from lines.
-// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -131,10 +132,13 @@ const (
 
 // config holds the parsed command-line options.
 type config struct {
-	mode       cutMode
-	ranges     []cutRange
-	complement bool
-	files      []string
+	mode          cutMode
+	ranges        []cutRange
+	complement    bool
+	delimiter     byte
+	delimSet      bool
+	onlyDelimited bool
+	files         []string
 }
 
 // extractByteFlag tries to extract -b LIST from the current argument.
@@ -145,6 +149,11 @@ func extractByteFlag(arg string, args []string, i int) (string, int, error) {
 // extractCharFlag tries to extract -c LIST from the current argument.
 func extractCharFlag(arg string, args []string, i int) (string, int, error) {
 	return extractListFlag(arg, args, i, "-c", "--characters")
+}
+
+// extractFieldFlag tries to extract -f LIST from the current argument.
+func extractFieldFlag(arg string, args []string, i int) (string, int, error) {
+	return extractListFlag(arg, args, i, "-f", "--fields")
 }
 
 // extractListFlag is a helper for extracting -X LIST or --long=LIST.
@@ -171,6 +180,31 @@ func extractListFlag(arg string, args []string, i int, short, long string) (stri
 	return "", 0, nil
 }
 
+// extractDelimFlag tries to extract -d DELIM from the current argument.
+// R2.2: delimiter must be exactly one byte.
+func extractDelimFlag(arg string, args []string, i int) (string, int, error) {
+	if strings.HasPrefix(arg, "--delimiter=") {
+		return arg[len("--delimiter="):], 0, nil
+	}
+	if arg == "--delimiter" {
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option '--delimiter' requires an argument")
+		}
+		return args[i+1], 1, nil
+	}
+	if strings.HasPrefix(arg, "-d") {
+		rest := arg[2:]
+		if rest != "" {
+			return rest, 0, nil
+		}
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option requires an argument -- 'd'")
+		}
+		return args[i+1], 1, nil
+	}
+	return "", 0, nil
+}
+
 // setMode sets the selection mode, returning an error on conflict.
 func setMode(cfg *config, m cutMode, list string) error {
 	if cfg.mode != modeNone {
@@ -187,7 +221,7 @@ func setMode(cfg *config, m cutMode, list string) error {
 
 // parseArgs parses command-line arguments into a config.
 func parseArgs(args []string) (config, error) {
-	var cfg config
+	cfg := config{delimiter: '\t'}
 	flagsDone := false
 
 	for i := 0; i < len(args); i++ {
@@ -210,8 +244,19 @@ func parseArgs(args []string) (config, error) {
 		}
 		i += skip
 	}
+	return validateConfig(cfg)
+}
+
+// validateConfig checks for conflicting or missing flags.
+func validateConfig(cfg config) (config, error) {
 	if cfg.mode == modeNone {
 		return config{}, fmt.Errorf("you must specify a list of bytes, characters, or fields")
+	}
+	if cfg.delimSet && cfg.mode != modeField {
+		return config{}, fmt.Errorf("an input delimiter may be specified only when operating on fields")
+	}
+	if cfg.onlyDelimited && cfg.mode != modeField {
+		return config{}, fmt.Errorf("suppressing non-delimited lines makes sense\n\tonly when operating on fields")
 	}
 	if len(cfg.files) == 0 {
 		cfg.files = []string{"-"}
@@ -221,11 +266,36 @@ func parseArgs(args []string) (config, error) {
 
 // parseFlag handles a single flag argument, returning extra args consumed.
 func parseFlag(cfg *config, arg string, args []string, i int) (int, error) {
-	// R2.3: --complement inverts the selection
 	if arg == "--complement" {
 		cfg.complement = true
 		return 0, nil
 	}
+	if arg == "-s" || arg == "--only-delimited" {
+		cfg.onlyDelimited = true
+		return 0, nil
+	}
+	return parseModeOrDelimFlag(cfg, arg, args, i)
+}
+
+// parseModeOrDelimFlag handles -d, -b, -c, and -f flags.
+func parseModeOrDelimFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	val, skip, err := extractDelimFlag(arg, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if val != "" {
+		if len(val) != 1 {
+			return 0, fmt.Errorf("the delimiter must be a single character")
+		}
+		cfg.delimiter = val[0]
+		cfg.delimSet = true
+		return skip, nil
+	}
+	return parseModeFlag(cfg, arg, args, i)
+}
+
+// parseModeFlag handles the selection mode flags -b, -c, -f.
+func parseModeFlag(cfg *config, arg string, args []string, i int) (int, error) {
 	val, skip, err := extractByteFlag(arg, args, i)
 	if err != nil {
 		return 0, err
@@ -239,6 +309,13 @@ func parseFlag(cfg *config, arg string, args []string, i int) (int, error) {
 	}
 	if val != "" {
 		return skip, setMode(cfg, modeChar, val)
+	}
+	val, skip, err = extractFieldFlag(arg, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if val != "" {
+		return skip, setMode(cfg, modeField, val)
 	}
 	return 0, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
 }
@@ -265,7 +342,7 @@ func formatOpenError(name string, err error) error {
 
 // isSelected returns whether a 1-indexed position is selected,
 // accounting for the complement flag.
-// R2.4: --complement inverts the selected positions.
+// R3.1: --complement inverts the selected positions.
 func isSelected(pos int, ranges []cutRange, complement bool) bool {
 	sel := byteSelected(pos, ranges)
 	if complement {
@@ -300,12 +377,8 @@ func cutBytes(r io.Reader, w *bufio.Writer, cfg config) error {
 // writeByteLine writes the selected bytes from a single line.
 // R1.3: newline is stripped before selection and always re-added in output.
 // R1.4: positions beyond line length produce nothing.
-// R2.4: complement inverts the selection.
 func writeByteLine(w *bufio.Writer, line []byte, cfg config) error {
-	content := line
-	if len(content) > 0 && content[len(content)-1] == '\n' {
-		content = content[:len(content)-1]
-	}
+	content, _ := stripNewline(line)
 	for pos := 1; pos <= len(content); pos++ {
 		if isSelected(pos, cfg.ranges, cfg.complement) {
 			if err := w.WriteByte(content[pos-1]); err != nil {
@@ -316,6 +389,84 @@ func writeByteLine(w *bufio.Writer, line []byte, cfg config) error {
 	return w.WriteByte('\n')
 }
 
+// cutFields processes a single reader in field mode.
+// R2.1: extract fields delimited by the delimiter character.
+func cutFields(r io.Reader, w *bufio.Writer, cfg config) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if werr := writeFieldLine(w, line, cfg); werr != nil {
+				return werr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeFieldLine writes the selected fields from a single line.
+// R2.3: lines without the delimiter are printed unchanged unless -s is set.
+func writeFieldLine(w *bufio.Writer, line []byte, cfg config) error {
+	content, hasNewline := stripNewline(line)
+	if bytes.IndexByte(content, cfg.delimiter) < 0 {
+		if cfg.onlyDelimited {
+			return nil
+		}
+		if _, err := w.Write(content); err != nil {
+			return err
+		}
+		return writeNewlineIf(w, hasNewline)
+	}
+	return writeSelectedFields(w, content, cfg, hasNewline)
+}
+
+// stripNewline removes a trailing newline and reports whether one was present.
+func stripNewline(line []byte) ([]byte, bool) {
+	if len(line) > 0 && line[len(line)-1] == '\n' {
+		return line[:len(line)-1], true
+	}
+	return line, false
+}
+
+// writeNewlineIf writes a newline byte if cond is true.
+func writeNewlineIf(w *bufio.Writer, cond bool) error {
+	if cond {
+		return w.WriteByte('\n')
+	}
+	return nil
+}
+
+// writeSelectedFields writes the fields matching the range selection.
+// R2.2: output delimiter defaults to the input delimiter.
+// R3.3: complement with -f outputs fields not in the list.
+func writeSelectedFields(w *bufio.Writer, content []byte, cfg config, hasNewline bool) error {
+	fields := bytes.Split(content, []byte{cfg.delimiter})
+	outDelim := []byte{cfg.delimiter}
+	first := true
+	for i, field := range fields {
+		pos := i + 1
+		if !isSelected(pos, cfg.ranges, cfg.complement) {
+			continue
+		}
+		if !first {
+			if _, err := w.Write(outDelim); err != nil {
+				return err
+			}
+		}
+		if _, err := w.Write(field); err != nil {
+			return err
+		}
+		first = false
+	}
+	return writeNewlineIf(w, hasNewline)
+}
+
 // cutFile processes a single file.
 func cutFile(name string, w *bufio.Writer, cfg config) error {
 	r, err := openInput(name)
@@ -324,6 +475,9 @@ func cutFile(name string, w *bufio.Writer, cfg config) error {
 	}
 	if r != os.Stdin {
 		defer r.Close()
+	}
+	if cfg.mode == modeField {
+		return cutFields(r, w, cfg)
 	}
 	// R1.2: -c is equivalent to -b under LC_ALL=C
 	return cutBytes(r, w, cfg)
