@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/paste: merge lines of files side by side.
-// Implements srd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Implements srd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -178,6 +178,10 @@ func openFileReader(name string) (*fileReader, error) {
 	} else {
 		f, err := os.Open(name)
 		if err != nil {
+			// R4.2: extract the underlying error message to match GNU paste format.
+			if pe, ok := err.(*os.PathError); ok {
+				return nil, fmt.Errorf("%s: %s", name, pe.Err)
+			}
 			return nil, fmt.Errorf("%s: %s", name, err)
 		}
 		fr.file = f

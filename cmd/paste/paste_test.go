@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/paste: differential testing against gpaste.
-// Implements srd027-paste R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Implements srd027-paste R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,9 +54,13 @@ func TestDiffParallel(t *testing.T) {
 		{Name: "three_files_tab", Args: []string{file1, file2, file3}},
 		// R2.1: delimiter list cycles across fields (R2.3: resets per line)
 		{Name: "delim_list_cycle", Args: []string{"-d", ":,", file1, file2, file3}},
+		// R2.1: comma delimiter (AC1)
+		{Name: "custom_delim_comma", Args: []string{"-d", ",", file1, file2}},
+		// R2.1: comma-semicolon cycling (AC2)
+		{Name: "delim_comma_semi", Args: []string{"-d", ",;", file1, file2, file3}},
 		// R2.2: escape sequence \t (explicit tab)
 		{Name: "escape_tab", Args: []string{"-d", `\t`, file1, file2}},
-		// R2.2: escape sequence \n (newline as delimiter)
+		// R2.2: escape sequence \n (newline as delimiter, AC3)
 		{Name: "escape_newline", Args: []string{"-d", `\n`, file1, file2}},
 		// R2.2: escape sequence \\ (literal backslash)
 		{Name: "escape_backslash", Args: []string{"-d", `\\`, file1, file2}},
@@ -184,4 +189,76 @@ func TestDiffDelimLong(t *testing.T) {
 		{Name: "long_delimiters_sep", Args: []string{"--delimiters", "|", file1, file2}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// normalizeStderr replaces binary name prefixes and lowercases stderr so
+// program name ("gpaste" vs "paste") and error message capitalization
+// differences do not cause mismatches in differential tests.
+func normalizeStderr(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("gpaste:"), []byte("PROG:"))
+	data = bytes.ReplaceAll(data, []byte("paste:"), []byte("PROG:"))
+	return bytes.ToLower(data)
+}
+
+// TestDiffExitCodes tests exit code behavior for success and error cases.
+// R4.1: exit 0 on successful processing.
+// R4.2: exit 1 when a file cannot be opened; error printed to stderr.
+func TestDiffExitCodes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gpaste")
+	if err != nil {
+		t.Skipf("reference binary gpaste not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "f1.txt")
+	writeTestFile(t, file1, "a\nb\n")
+	noSuchFile := filepath.Join(dir, "nonexistent.txt")
+
+	normalize := []testutils.NormalizeFunc{normalizeStderr}
+
+	tests := []testutils.DiffTest{
+		// R4.1: exit 0 on successful processing
+		{Name: "success_exit_0", Args: []string{file1}},
+		// R4.2: exit 1 when file cannot be opened
+		{Name: "nonexistent_file", Args: []string{noSuchFile}, ExitCode: 1, Normalize: normalize},
+		// R4.2: error on first file, second file not processed
+		{Name: "nonexistent_first", Args: []string{noSuchFile, file1}, ExitCode: 1, Normalize: normalize},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffVersionHelp tests --version and --help flags.
+// R4.3 (task): --version prints version and exits 0.
+// R4.4 (task): --help prints usage and exits 0.
+func TestDiffVersionHelp(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R4.3 (task): --version exits 0 and produces output on stdout.
+	t.Run("version_exits_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--version")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--version failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Error("--version produced no output")
+		}
+	})
+
+	// R4.4 (task): --help exits 0 and produces output on stdout.
+	t.Run("help_exits_0", func(t *testing.T) {
+		t.Parallel()
+		cmd := exec.Command(goBin, "--help")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("--help failed: %v", err)
+		}
+		if len(out) == 0 {
+			t.Error("--help produced no output")
+		}
+	})
 }
