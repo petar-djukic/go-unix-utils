@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ln: create links between files.
-// Implements srd037 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2.
-// TODO: R2.4 (-t/--target-directory) skipped — listed in srd037 non_goals.
+// Implements srd037 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3,
+// R3.1 (-f/--force), R3.2 (-n/--no-dereference), R3.3 (-i/--interactive).
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,12 +17,17 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// errDeclined indicates the user declined an interactive prompt.
+// This is not printed but causes a non-zero exit code.
+var errDeclined = errors.New("declined")
+
 const programName = "ln"
 
 // options holds parsed command-line flags for ln.
 type options struct {
 	symbolic      bool // R2.1: -s/--symbolic
 	force         bool // R3.1: -f/--force
+	interactive   bool // R3.3: -i/--interactive
 	noDereference bool // R3.2: -n/--no-dereference
 }
 
@@ -40,7 +47,8 @@ func main() {
 }
 
 // parseArgs separates flags from positional arguments.
-// Supports -s, -f, -n, combined short flags (-sf), and long forms.
+// Supports -s, -f, -i, -n, combined short flags (-sf), and long forms.
+// R3.3: when -f and -i both appear, the last one on the command line wins.
 func parseArgs(rawArgs []string) (options, []string) {
 	var opts options
 	var positional []string
@@ -64,19 +72,25 @@ func parseArgs(rawArgs []string) (options, []string) {
 	return opts, positional
 }
 
-// parseLongFlag handles --symbolic, --force, --no-dereference.
+// parseLongFlag handles --symbolic, --force, --interactive, --no-dereference.
+// R3.3: --force and --interactive are mutually exclusive; last wins.
 func parseLongFlag(opts *options, flag string) {
 	switch flag {
 	case "--symbolic":
 		opts.symbolic = true
 	case "--force":
 		opts.force = true
+		opts.interactive = false
+	case "--interactive":
+		opts.interactive = true
+		opts.force = false
 	case "--no-dereference":
 		opts.noDereference = true
 	}
 }
 
 // parseShortFlags handles combined short flags like -sf.
+// R3.3: -f and -i are mutually exclusive; the rightmost character wins.
 func parseShortFlags(opts *options, chars string) {
 	for _, c := range chars {
 		switch c {
@@ -84,6 +98,10 @@ func parseShortFlags(opts *options, chars string) {
 			opts.symbolic = true
 		case 'f':
 			opts.force = true
+			opts.interactive = false
+		case 'i':
+			opts.interactive = true
+			opts.force = false
 		case 'n':
 			opts.noDereference = true
 		}
@@ -106,11 +124,7 @@ func run(opts options, args []string) int {
 // R1.4: creates a link in the current directory with the same basename.
 func linkSingleArg(opts options, target string) int {
 	linkName := filepath.Base(target)
-	if err := createLink(opts, target, linkName); err != nil {
-		printError(err)
-		return 1
-	}
-	return 0
+	return handleLinkResult(createLink(opts, target, linkName))
 }
 
 // linkTwoArgs implements the two-argument form: ln TARGET LINK_NAME.
@@ -120,11 +134,7 @@ func linkTwoArgs(opts options, target, linkName string) int {
 	if isDirDest(opts, linkName) {
 		linkName = filepath.Join(linkName, filepath.Base(target))
 	}
-	if err := createLink(opts, target, linkName); err != nil {
-		printError(err)
-		return 1
-	}
-	return 0
+	return handleLinkResult(createLink(opts, target, linkName))
 }
 
 // linkMultiArgs implements the multi-argument form: ln TARGET... DIRECTORY.
@@ -142,12 +152,24 @@ func linkMultiArgs(opts options, args []string) int {
 	exitCode := 0
 	for _, target := range targets {
 		linkName := filepath.Join(dir, filepath.Base(target))
-		if err := createLink(opts, target, linkName); err != nil {
-			printError(err)
-			exitCode = 1
+		if rc := handleLinkResult(createLink(opts, target, linkName)); rc != 0 {
+			exitCode = rc
 		}
 	}
 	return exitCode
+}
+
+// handleLinkResult converts a createLink error to an exit code.
+// R3.3: errDeclined causes exit code 1 without printing an error message.
+func handleLinkResult(err error) int {
+	if err == nil {
+		return 0
+	}
+	if errors.Is(err, errDeclined) {
+		return 1
+	}
+	printError(err)
+	return 1
 }
 
 // createLink creates a hard or symbolic link from target to linkName.
@@ -155,14 +177,51 @@ func linkMultiArgs(opts options, args []string) int {
 // R2.2: symbolic links to directories are allowed.
 // R2.3: stores the target string as-is in the symlink.
 // R3.1: removes existing destination when force is true.
+// R3.3: prompts before removing when interactive is true.
 func createLink(opts options, target, linkName string) error {
-	if opts.force {
-		removeExisting(linkName)
+	if err := handleExisting(opts, linkName); err != nil {
+		return err
 	}
 	if opts.symbolic {
 		return createSymLink(target, linkName)
 	}
 	return createHardLink(target, linkName)
+}
+
+// handleExisting handles pre-existing destination files.
+// R3.1: force removes unconditionally.
+// R3.3: interactive prompts before removing. Returns errDeclined if user says no.
+func handleExisting(opts options, linkName string) error {
+	if opts.force {
+		removeExisting(linkName)
+		return nil
+	}
+	if opts.interactive && pathExists(linkName) {
+		if !promptReplace(linkName) {
+			return errDeclined
+		}
+		removeExisting(linkName)
+	}
+	return nil
+}
+
+// promptReplace prompts the user on stderr before removing a destination.
+// R3.3: format is "ln: replace 'DEST'? ". Reads one line from stdin.
+// Proceeds if response starts with 'y' or 'Y'; declines otherwise.
+func promptReplace(dest string) bool {
+	fmt.Fprintf(os.Stderr, "%s: replace '%s'? ", programName, dest)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		return false
+	}
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
+}
+
+// pathExists checks whether a path exists using Lstat (does not follow symlinks).
+func pathExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 // removeExisting removes the destination file if it exists.
