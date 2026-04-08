@@ -154,7 +154,7 @@ releases:
           status: implemented
     - version: "04.1"
       name: "Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement five path resolution and terminal utilities. realpath prints the resolved
