@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/uniq: report or filter adjacent duplicate lines.
-// Implements srd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
+// Implements srd028-uniq R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -19,15 +19,26 @@ import (
 
 // config holds parsed command-line options for uniq.
 type config struct {
-	count       bool   // -c: prefix lines with occurrence count
-	repeated    bool   // -d: only print duplicate lines
-	allRepeated string // -D/--all-repeated[=METHOD]: print all duplicate lines
-	unique      bool   // -u: only print unique lines
-	ignoreCase  bool   // -i: case-insensitive comparison
-	skipFields  int    // -f N: skip first N fields before comparing
-	skipChars   int    // -s N: skip first N chars before comparing
-	checkChars  int    // -w N: compare at most N chars (-1 = unlimited)
-	files       []string // 0..2 positional args: [input [output]]
+	count          bool   // -c: prefix lines with occurrence count
+	repeated       bool   // -d: only print duplicate lines
+	allRepeated    string // -D/--all-repeated[=METHOD]: print all duplicate lines
+	unique         bool   // -u: only print unique lines
+	ignoreCase     bool   // -i: case-insensitive comparison
+	skipFields     int    // -f N: skip first N fields before comparing
+	skipChars      int    // -s N: skip first N chars before comparing
+	checkChars     int    // -w N: compare at most N chars (-1 = unlimited)
+	zeroTerminated bool   // -z: NUL-delimited lines
+	group          string // --group[=METHOD]: group output with separators
+	files          []string
+}
+
+// lineSep returns the line delimiter byte.
+// R4.2: NUL when -z is set, newline otherwise.
+func (c config) lineSep() byte {
+	if c.zeroTerminated {
+		return 0
+	}
+	return '\n'
 }
 
 // lineProcessor tracks state for adjacent-duplicate detection.
@@ -35,12 +46,12 @@ type config struct {
 type lineProcessor struct {
 	w         *bufio.Writer
 	cfg       config
-	prev      string   // first line of current group (with newline)
+	prev      string   // first line of current group (with terminator)
 	prevKey   string   // comparison key of current group
 	count     int      // number of lines in current group
-	group     []string // all lines in current group (for -D)
+	group     []string // all lines in current group (for -D and --group)
 	started   bool
-	outGroups int // number of duplicate groups output (for --all-repeated separator)
+	outGroups int // number of groups output (for separator logic)
 }
 
 // R4.4: SIGPIPE handler installed at start.
@@ -54,15 +65,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	// R4.4: validate incompatible flag combinations.
+	if err := validateFlags(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "uniq: %s\n", err)
+		os.Exit(1)
+	}
+
 	if err := run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "uniq: %s\n", err)
 		os.Exit(1)
 	}
 }
 
+// validateFlags checks for incompatible flag combinations.
+// R4.4: --group is incompatible with -c, -d, -D, and -u.
+func validateFlags(cfg config) error {
+	if cfg.group == "" {
+		return nil
+	}
+	if cfg.count || cfg.repeated || cfg.allRepeated != "" || cfg.unique {
+		return fmt.Errorf("--group is mutually exclusive with -c/-d/-D/-u")
+	}
+	return nil
+}
+
 // run opens input/output and processes lines.
 // R1.3: reads stdin when no file; writes to output file when specified.
-// R4.1: returns nil on success (exit 0).
 func run(cfg config) error {
 	r, err := openInput(cfg)
 	if err != nil {
@@ -110,7 +138,6 @@ func openOutput(cfg config) (io.Writer, func(), error) {
 }
 
 // formatFileError extracts the underlying system error for GNU-compatible messages.
-// R4.2: error messages use the format "filename: system error".
 func formatFileError(name string, err error) error {
 	if pe, ok := errors.AsType[*os.PathError](err); ok {
 		return fmt.Errorf("%s: %s", name, pe.Err)
@@ -121,7 +148,7 @@ func formatFileError(name string, err error) error {
 // --- Flag parsing ---
 
 // parseArgs parses command-line arguments into config.
-// R1.1: parses -c, -d, -D, -u, -i, -f, -s, -w and long equivalents.
+// R1.1: parses -c, -d, -D, -u, -i, -f, -s, -w, -z and long equivalents.
 func parseArgs(args []string) (config, error) {
 	cfg := config{checkChars: -1}
 	flagsDone := false
@@ -186,17 +213,21 @@ func parseLongFlag(cfg *config, arg string, args []string, i int) (int, error) {
 	case "--ignore-case":
 		cfg.ignoreCase = true
 		return 0, nil
+	case "--zero-terminated":
+		cfg.zeroTerminated = true
+		return 0, nil
 	default:
 		return parseLongFlagWithArg(cfg, arg, args, i)
 	}
 }
 
 // parseLongFlagWithArg handles long flags that take arguments.
-// TODO: E6 — --group is a non-goal per srd028-uniq non_goals; not parsed.
 func parseLongFlagWithArg(cfg *config, arg string, args []string, i int) (int, error) {
 	switch {
 	case arg == "--all-repeated" || strings.HasPrefix(arg, "--all-repeated="):
 		return parseAllRepeated(cfg, arg)
+	case arg == "--group" || strings.HasPrefix(arg, "--group="):
+		return parseGroup(cfg, arg)
 	case arg == "--skip-fields" || strings.HasPrefix(arg, "--skip-fields="):
 		return parseLongIntFlag(arg, args, i, "--skip-fields", &cfg.skipFields)
 	case arg == "--skip-chars" || strings.HasPrefix(arg, "--skip-chars="):
@@ -222,6 +253,23 @@ func parseAllRepeated(cfg *config, arg string) (int, error) {
 		return 0, nil
 	default:
 		return 0, fmt.Errorf("invalid argument '%s' for '--all-repeated'", method)
+	}
+}
+
+// parseGroup parses --group[=METHOD].
+// R4.3: METHOD is prepend, append, separate (default), or both.
+func parseGroup(cfg *config, arg string) (int, error) {
+	if arg == "--group" {
+		cfg.group = "separate"
+		return 0, nil
+	}
+	method := arg[len("--group="):]
+	switch method {
+	case "prepend", "append", "separate", "both":
+		cfg.group = method
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("invalid argument '%s' for '--group'", method)
 	}
 }
 
@@ -263,6 +311,8 @@ func parseShortFlags(cfg *config, flags string, args []string, i int) (int, erro
 			cfg.unique = true
 		case 'i':
 			cfg.ignoreCase = true
+		case 'z':
+			cfg.zeroTerminated = true
 		case 'f', 's', 'w':
 			return parseShortIntFlag(cfg, flags[j], flags[j+1:], args, i)
 		default:
@@ -317,11 +367,12 @@ func intFlagDesc(flag byte) string {
 
 // processLines reads input and applies adjacent-duplicate logic.
 // R1.1: suppresses adjacent duplicates by default.
-// R1.2: non-adjacent duplicates are unaffected.
+// R4.2: uses NUL delimiter when -z is set.
 func processLines(r *bufio.Reader, w *bufio.Writer, cfg config) error {
 	p := &lineProcessor{w: w, cfg: cfg}
+	sep := cfg.lineSep()
 	for {
-		line, err := r.ReadString('\n')
+		line, err := r.ReadString(sep)
 		if len(line) > 0 {
 			if werr := p.handle(line); werr != nil {
 				return werr
@@ -376,6 +427,9 @@ func (p *lineProcessor) finish() error {
 
 // flush writes the current group based on configured output mode.
 func (p *lineProcessor) flush() error {
+	if p.cfg.group != "" {
+		return p.flushGroup()
+	}
 	if p.cfg.allRepeated != "" {
 		return p.flushAllRepeated()
 	}
@@ -402,11 +456,12 @@ func (p *lineProcessor) flushAllRepeated() error {
 	if p.count < 2 {
 		return nil
 	}
-	if err := p.writeGroupSep(); err != nil {
+	if err := p.writeMethodSep(p.cfg.allRepeated); err != nil {
 		return err
 	}
+	sep := p.cfg.lineSep()
 	for _, line := range p.group {
-		if _, err := p.w.WriteString(ensureNewline(line)); err != nil {
+		if _, err := p.w.WriteString(ensureTerminator(line, sep)); err != nil {
 			return err
 		}
 	}
@@ -414,31 +469,59 @@ func (p *lineProcessor) flushAllRepeated() error {
 	return nil
 }
 
-// writeGroupSep writes a blank line separator for --all-repeated method.
-func (p *lineProcessor) writeGroupSep() error {
-	m := p.cfg.allRepeated
-	if m == "prepend" || (m == "separate" && p.outGroups > 0) {
-		_, err := p.w.WriteString("\n")
+// flushGroup writes all lines of a group with blank-line separators.
+// R4.3: --group outputs all input lines grouped by equality.
+func (p *lineProcessor) flushGroup() error {
+	method := p.cfg.group
+	sep := string(p.cfg.lineSep())
+	needBefore := method == "prepend" ||
+		(method == "both" && p.outGroups == 0) ||
+		(method == "separate" && p.outGroups > 0)
+	if needBefore {
+		if _, err := p.w.WriteString(sep); err != nil {
+			return err
+		}
+	}
+	for _, line := range p.group {
+		if _, err := p.w.WriteString(ensureTerminator(line, p.cfg.lineSep())); err != nil {
+			return err
+		}
+	}
+	if method == "append" || method == "both" {
+		if _, err := p.w.WriteString(sep); err != nil {
+			return err
+		}
+	}
+	p.outGroups++
+	return nil
+}
+
+// writeMethodSep writes a blank line separator for --all-repeated method.
+func (p *lineProcessor) writeMethodSep(method string) error {
+	sep := string(p.cfg.lineSep())
+	if method == "prepend" || (method == "separate" && p.outGroups > 0) {
+		_, err := p.w.WriteString(sep)
 		return err
 	}
 	return nil
 }
 
 // writeLine writes a single line with optional count prefix.
-// GNU uniq always terminates output lines with a newline.
+// GNU uniq always terminates output lines with the line separator.
 func (p *lineProcessor) writeLine(line string, count int) error {
+	sep := p.cfg.lineSep()
 	if p.cfg.count {
-		_, err := fmt.Fprintf(p.w, "%7d %s", count, ensureNewline(line))
+		_, err := fmt.Fprintf(p.w, "%7d %s", count, ensureTerminator(line, sep))
 		return err
 	}
-	_, err := p.w.WriteString(ensureNewline(line))
+	_, err := p.w.WriteString(ensureTerminator(line, sep))
 	return err
 }
 
-// ensureNewline appends a newline if the line does not end with one.
-func ensureNewline(s string) string {
-	if len(s) > 0 && s[len(s)-1] != '\n' {
-		return s + "\n"
+// ensureTerminator appends the separator if the line does not end with it.
+func ensureTerminator(s string, sep byte) string {
+	if len(s) > 0 && s[len(s)-1] != sep {
+		return s + string(sep)
 	}
 	return s
 }
@@ -446,9 +529,10 @@ func ensureNewline(s string) string {
 // --- Comparison helpers ---
 
 // extractKey returns the comparison portion of a line.
-// R1.4: strips newline, applies skip-fields, skip-chars, check-chars.
+// R1.4: strips terminator, applies skip-fields, skip-chars, check-chars.
+// R4.1: -w limits comparison to first N characters after skipping.
 func extractKey(line string, cfg config) string {
-	s := strings.TrimRight(line, "\n")
+	s := strings.TrimRight(line, string(cfg.lineSep()))
 	s = skipFields(s, cfg.skipFields)
 	if cfg.skipChars > 0 {
 		if cfg.skipChars >= len(s) {
