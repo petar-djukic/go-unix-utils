@@ -5,10 +5,19 @@ package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeStderr handles program name and error message case differences
+// between the Go binary ("unexpand") and the GNU reference ("gunexpand").
+func normalizeStderr(data []byte) []byte {
+	s := strings.ToLower(string(data))
+	s = strings.ReplaceAll(s, "gunexpand:", "unexpand:")
+	return []byte(s)
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -215,6 +224,30 @@ func TestDiff(t *testing.T) {
 			Name:  "t_list_implies_a",
 			Args:  []string{"-t", "4,8,12"},
 			Stdin: []byte("a   b       c\n"),
+		},
+		// R4.1: exit 0 on successful processing.
+		{
+			Name:  "exit_0_on_success",
+			Stdin: []byte("hello\n"),
+		},
+		{
+			Name:  "exit_0_stdin_dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\n"),
+		},
+		// R4.2: exit 1 when input file cannot be opened, processing continues.
+		{
+			Name:      "exit_1_nonexistent_file",
+			Args:      []string{"nonexistent_file_xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		{
+			Name:      "exit_1_nonexistent_continues",
+			Args:      []string{"nonexistent_file_xyz", "-"},
+			Stdin:     []byte("hello\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
