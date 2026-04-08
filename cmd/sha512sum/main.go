@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sha512sum: compute and check SHA-512 message digests.
-// Implements srd033-sha512sum R1.1, R1.2, R1.3, R1.4.
+// Implements srd033-sha512sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -100,7 +100,9 @@ func run(cfg config) int {
 }
 
 // runCheck verifies checksums from each file argument.
-// R1.4: --check dispatches to hashutil.VerifyChecksums.
+// R2.1: reads checksum file, parses lines, recomputes and compares digests.
+// R2.2: prints "FILENAME: OK" or "FILENAME: FAILED" per entry via hashutil.
+// R2.3: --warn, --quiet, --status control verification output.
 func runCheck(cfg config, hcfg hashutil.HashConfig) int {
 	opts := hashutil.CheckOptions{
 		Warn:   cfg.warn || cfg.strict,
