@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ln against gln (GNU coreutils).
-// Implements srd037 R4.1 (compare stdout/stderr/exit codes),
-// R4.2 (test coverage for R3.1-R3.6), R4.3 (link verification).
+// Implements srd037 R4.1 (compare stdout/stderr/exit codes and filesystem state),
+// R4.2 (test coverage for all flag combinations and error cases),
+// R4.3 (link type and target verification).
 package main
 
 import (
@@ -52,7 +53,8 @@ func normalizeSyscallErrors(b []byte) []byte {
 
 // TestDiff runs differential tests comparing cmd/ln against gln.
 // R4.1: compare stdout, stderr, exit codes.
-// R4.2: covers hard links, symlinks, -f, -n, -i, -v, -b, -S, and error cases.
+// R4.2: covers hard links, symlinks, -f, -n, -i, -v, -b, -S, -r, multi-target, and error cases.
+// R4.3: verifies link type and target correctness.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -62,6 +64,10 @@ func TestDiff(t *testing.T) {
 	}
 	norm := makeNormalizer(refBin)
 
+	t.Run("basic", func(t *testing.T) {
+		t.Parallel()
+		runBasicTests(t, goBin, refBin, norm)
+	})
 	t.Run("errors", func(t *testing.T) {
 		t.Parallel()
 		runErrorTests(t, goBin, refBin, norm)
@@ -90,10 +96,57 @@ func TestDiff(t *testing.T) {
 		t.Parallel()
 		runSuffixTests(t, goBin, refBin, norm)
 	})
+	t.Run("multi_target", func(t *testing.T) {
+		t.Parallel()
+		runMultiTargetTests(t, goBin, refBin, norm)
+	})
+	t.Run("relative", func(t *testing.T) {
+		t.Parallel()
+		runRelativeTests(t, goBin, refBin, norm)
+	})
+}
+
+// runBasicTests covers R4.2: basic hard link and symbolic link creation.
+// R4.3: verifies link type and target.
+func runBasicTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []isolatedCase{
+		{
+			name: "hard_link_two_args",
+			args: []string{"target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+			},
+			verify: verifyHardLink("target", "link"),
+		},
+		{
+			name: "symlink_two_args",
+			args: []string{"-s", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+			},
+			verify: verifySymLink("link", "target"),
+		},
+		{
+			name: "symlink_to_directory",
+			args: []string{"-s", "mydir", "dirlink"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.Mkdir(filepath.Join(dir, "mydir"), 0o755); err != nil {
+					t.Fatalf("setup: %v", err)
+				}
+			},
+			verify: verifySymLink("dirlink", "mydir"),
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
 }
 
 // runErrorTests uses RunDiffTests for error cases where both binaries
 // see the same filesystem state and neither mutates it.
+// R4.2: covers missing operand, hard link to directory, existing destination.
 func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
 	t.Helper()
 	norms := []testutils.NormalizeFunc{norm}
@@ -104,6 +157,32 @@ func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeF
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+
+	// Isolated error cases that need filesystem setup.
+	cases := []isolatedCase{
+		{
+			name: "hard_link_to_directory",
+			args: []string{"mydir", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.Mkdir(filepath.Join(dir, "mydir"), 0o755); err != nil {
+					t.Fatalf("setup: %v", err)
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "existing_destination_no_force",
+			args: []string{"target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			wantErr: true,
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
 }
 
 // isolatedCase defines a test that runs each binary in its own directory.
@@ -406,6 +485,98 @@ func runSuffixTests(t *testing.T, goBin, refBin string, norm testutils.Normalize
 	runIsolatedCases(t, goBin, refBin, norm, cases)
 }
 
+// runMultiTargetTests tests R4.2: multiple targets linked into a directory.
+// R4.3: verifies each link type and target.
+func runMultiTargetTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []isolatedCase{
+		{
+			name: "multi_hard_links_into_dir",
+			args: []string{"a", "b", "dest"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "a"), "aaa")
+				writeFile(t, filepath.Join(dir, "b"), "bbb")
+				if err := os.Mkdir(filepath.Join(dir, "dest"), 0o755); err != nil {
+					t.Fatalf("setup: %v", err)
+				}
+			},
+			verify: combineVerifiers(
+				verifyHardLink("a", filepath.Join("dest", "a")),
+				verifyHardLink("b", filepath.Join("dest", "b")),
+			),
+		},
+		{
+			name: "multi_symlinks_into_dir",
+			args: []string{"-s", "a", "b", "dest"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "a"), "aaa")
+				writeFile(t, filepath.Join(dir, "b"), "bbb")
+				if err := os.Mkdir(filepath.Join(dir, "dest"), 0o755); err != nil {
+					t.Fatalf("setup: %v", err)
+				}
+			},
+			verify: combineVerifiers(
+				verifySymLink(filepath.Join("dest", "a"), "a"),
+				verifySymLink(filepath.Join("dest", "b"), "b"),
+			),
+		},
+		{
+			name: "multi_target_not_a_directory",
+			args: []string{"a", "b", "notadir"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "a"), "aaa")
+				writeFile(t, filepath.Join(dir, "b"), "bbb")
+				writeFile(t, filepath.Join(dir, "notadir"), "file")
+			},
+			wantErr: true,
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
+}
+
+// runRelativeTests tests R2.4: -r creates relative symlinks.
+// R4.3: verifies the symlink target is a relative path.
+func runRelativeTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []isolatedCase{
+		{
+			name: "relative_symlink_same_dir",
+			args: []string{"-sr", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+			},
+			verify: verifySymLink("link", "target"),
+		},
+		{
+			name: "relative_symlink_subdir",
+			args: []string{"-sr", "target", "sub/link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+					t.Fatalf("setup: %v", err)
+				}
+			},
+			verify: verifySymLink(filepath.Join("sub", "link"), "../target"),
+		},
+		{
+			name: "relative_symlink_force_overwrite",
+			args: []string{"-srf", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: verifySymLink("link", "target"),
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
+}
+
 // runIsolatedCases runs each test case with both binaries in separate dirs.
 func runIsolatedCases(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, cases []isolatedCase) {
 	t.Helper()
@@ -528,6 +699,7 @@ func combineVerifiers(fns ...func(t *testing.T, refDir, goDir string)) func(t *t
 
 // verifyHardLink returns a verify function that checks both dirs have
 // a hard link where target and link share the same inode.
+// R4.3: verifies hard link type.
 func verifyHardLink(target, link string) func(t *testing.T, refDir, goDir string) {
 	return func(t *testing.T, refDir, goDir string) {
 		t.Helper()
@@ -555,6 +727,7 @@ func checkHardLink(t *testing.T, label, target, link string) {
 
 // verifySymLink returns a verify function that checks the go dir has
 // a symlink at linkName pointing to expectedTarget.
+// R4.3: verifies symbolic link type and target.
 func verifySymLink(linkName, expectedTarget string) func(t *testing.T, refDir, goDir string) {
 	return func(t *testing.T, refDir, goDir string) {
 		t.Helper()

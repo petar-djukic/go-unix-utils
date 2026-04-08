@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ln: create links between files.
-// Implements srd037 R1.1-R1.4, R2.1-R2.3,
+// Implements srd037 R1.1-R1.4, R2.1-R2.4,
 // R3.1 (-f/--force), R3.2 (-n/--no-dereference), R3.3 (-i/--interactive),
-// R3.4 (-v/--verbose), R3.5 (-b/--backup), R3.6 (-S/--suffix).
+// R3.4 (-v/--verbose), R3.5 (-b/--backup), R3.6 (-S/--suffix),
+// R4.1-R4.3 (differential testing).
 package main
 
 import (
@@ -28,6 +29,7 @@ const defaultBackupSuffix = "~"
 // options holds parsed command-line flags for ln.
 type options struct {
 	symbolic      bool   // R2.1: -s/--symbolic
+	relative      bool   // R2.4: -r/--relative
 	force         bool   // R3.1: -f/--force
 	interactive   bool   // R3.3: -i/--interactive
 	noDereference bool   // R3.2: -n/--no-dereference
@@ -53,9 +55,9 @@ func main() {
 }
 
 // parseArgs separates flags from positional arguments.
-// Supports short flags (-s, -f, -i, -n, -v, -b, -S), combined short flags,
+// Supports short flags (-s, -f, -i, -n, -v, -b, -r, -S), combined short flags,
 // and long forms (--symbolic, --force, --interactive, --no-dereference,
-// --verbose, --backup, --backup=METHOD, --suffix=SUFFIX).
+// --verbose, --backup, --backup=METHOD, --suffix=SUFFIX, --relative).
 // R3.3: when -f and -i both appear, the last one on the command line wins.
 func parseArgs(rawArgs []string) (options, []string) {
 	opts := options{
@@ -90,6 +92,8 @@ func parseLongFlag(opts *options, flag string) {
 	switch {
 	case flag == "--symbolic":
 		opts.symbolic = true
+	case flag == "--relative":
+		opts.relative = true
 	case flag == "--force":
 		opts.force = true
 		opts.interactive = false
@@ -119,6 +123,8 @@ func parseShortFlags(opts *options, rawArgs []string, idx int) int {
 		switch chars[j] {
 		case 's':
 			opts.symbolic = true
+		case 'r':
+			opts.relative = true
 		case 'f':
 			opts.force = true
 			opts.interactive = false
@@ -181,7 +187,7 @@ func linkMultiArgs(opts options, args []string) int {
 	targets := args[:len(args)-1]
 
 	if !isDirDest(opts, dir) {
-		fmt.Fprintf(os.Stderr, "%s: target '%s' is not a directory\n",
+		fmt.Fprintf(os.Stderr, "%s: target '%s': Not a directory\n",
 			programName, dir)
 		return 1
 	}
@@ -210,13 +216,22 @@ func handleLinkResult(err error) int {
 }
 
 // createLink creates a hard or symbolic link from target to linkName.
+// R2.4: computes relative path when --relative is set.
 // R3.4: prints verbose output after successful link creation.
 func createLink(opts options, target, linkName string) error {
 	if err := handleExisting(opts, linkName); err != nil {
 		return err
 	}
+	effectiveTarget := target
+	if opts.symbolic && opts.relative {
+		rel, err := computeRelativePath(target, linkName)
+		if err != nil {
+			return err
+		}
+		effectiveTarget = rel
+	}
 	if opts.symbolic {
-		if err := createSymLink(target, linkName); err != nil {
+		if err := createSymLink(effectiveTarget, linkName); err != nil {
 			return err
 		}
 	} else {
@@ -225,9 +240,30 @@ func createLink(opts options, target, linkName string) error {
 		}
 	}
 	if opts.verbose {
-		printVerbose(opts, target, linkName)
+		printVerbose(opts, effectiveTarget, linkName)
 	}
 	return nil
+}
+
+// computeRelativePath computes the relative path from the link directory
+// to the target, matching GNU ln -r behavior.
+// R2.4: resolves both paths to absolute form before computing rel path.
+func computeRelativePath(target, linkName string) (string, error) {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve target '%s': %s",
+			target, err)
+	}
+	absLinkDir, err := filepath.Abs(filepath.Dir(linkName))
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve link directory '%s': %s",
+			linkName, err)
+	}
+	rel, err := filepath.Rel(absLinkDir, absTarget)
+	if err != nil {
+		return "", fmt.Errorf("cannot compute relative path: %s", err)
+	}
+	return rel, nil
 }
 
 // handleExisting handles pre-existing destination files.
@@ -376,10 +412,21 @@ func createSymLink(target, linkName string) error {
 // R1.4: returns error when linkName already exists.
 func createHardLink(target, linkName string) error {
 	if err := os.Link(target, linkName); err != nil {
+		if isHardLinkDirError(target) {
+			return fmt.Errorf("%s: hard link not allowed for directory",
+				target)
+		}
 		return fmt.Errorf("failed to create hard link '%s': %s",
 			linkName, unwrapOSError(err))
 	}
 	return nil
+}
+
+// isHardLinkDirError checks if target is a directory, indicating the
+// link failure is due to hard-linking a directory (R1.3).
+func isHardLinkDirError(target string) bool {
+	fi, err := os.Stat(target)
+	return err == nil && fi.IsDir()
 }
 
 // unwrapOSError extracts the underlying message from an *os.PathError or
