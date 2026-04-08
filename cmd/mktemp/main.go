@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mktemp: create temporary files or directories.
-// Implements srd036 R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
+// Implements srd036 R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -161,6 +161,11 @@ func createEntry(path string, isDir bool) error {
 
 // resolveDir determines the parent directory for temp entry creation.
 func resolveDir(cfg config) string {
+	// R3.4: -t uses TMPDIR first, then -p dir, then /tmp.
+	if cfg.legacyT {
+		return resolveLegacyT(cfg)
+	}
+
 	// R3.1: -p DIR or --tmpdir=DIR overrides TMPDIR.
 	if cfg.tmpdirSet && cfg.tmpdir != "" {
 		return cfg.tmpdir
@@ -172,8 +177,8 @@ func resolveDir(cfg config) string {
 		return dir
 	}
 
-	// R3.2/R3.4: --tmpdir without value or -t uses TMPDIR or /tmp.
-	if cfg.tmpdirSet || cfg.legacyT {
+	// R3.2: --tmpdir without value uses TMPDIR or /tmp.
+	if cfg.tmpdirSet {
 		return envTmpDir()
 	}
 
@@ -184,6 +189,18 @@ func resolveDir(cfg config) string {
 
 	// Custom template with no dir flags: current directory.
 	return "."
+}
+
+// resolveLegacyT resolves the directory for -t mode.
+// R3.4: precedence is TMPDIR > -p dir > /tmp.
+func resolveLegacyT(cfg config) string {
+	if d := os.Getenv("TMPDIR"); d != "" {
+		return d
+	}
+	if cfg.tmpdirSet && cfg.tmpdir != "" {
+		return cfg.tmpdir
+	}
+	return "/tmp"
 }
 
 // envTmpDir returns TMPDIR if set, otherwise /tmp.
