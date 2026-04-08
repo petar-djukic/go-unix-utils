@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/groups: print group memberships.
-// Implements srd043-groups R1.1, R1.2, R1.3, R2.1.
+// Implements srd043-groups R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -100,13 +100,13 @@ func printNamedUserGroups(users []string) int {
 	for _, name := range users {
 		u, err := user.Lookup(name)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: '%s': no such user\n", progName, name)
+			fmt.Fprintf(os.Stderr, "%s: %s: no such user\n", progName, name)
 			exitCode = 1
 			continue
 		}
 		groups, err := groupNamesForUser(u)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: '%s': %v\n", progName, name, err)
+			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 			exitCode = 1
 			continue
 		}
