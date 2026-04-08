@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/cut: remove sections from lines.
-// Implements srd026-cut R1.1, R1.2, R1.3, R1.4.
+// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -131,9 +131,10 @@ const (
 
 // config holds the parsed command-line options.
 type config struct {
-	mode   cutMode
-	ranges []cutRange
-	files  []string
+	mode       cutMode
+	ranges     []cutRange
+	complement bool
+	files      []string
 }
 
 // extractByteFlag tries to extract -b LIST from the current argument.
@@ -220,6 +221,11 @@ func parseArgs(args []string) (config, error) {
 
 // parseFlag handles a single flag argument, returning extra args consumed.
 func parseFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	// R2.3: --complement inverts the selection
+	if arg == "--complement" {
+		cfg.complement = true
+		return 0, nil
+	}
 	val, skip, err := extractByteFlag(arg, args, i)
 	if err != nil {
 		return 0, err
@@ -257,16 +263,27 @@ func formatOpenError(name string, err error) error {
 	return fmt.Errorf("%s: %s", name, err)
 }
 
+// isSelected returns whether a 1-indexed position is selected,
+// accounting for the complement flag.
+// R2.4: --complement inverts the selected positions.
+func isSelected(pos int, ranges []cutRange, complement bool) bool {
+	sel := byteSelected(pos, ranges)
+	if complement {
+		return !sel
+	}
+	return sel
+}
+
 // cutBytes processes a single reader in byte/character mode.
 // R1.1: extract specified byte positions.
 // R1.3: newlines pass through; not counted as part of line.
 // R1.4: short lines produce only existing bytes.
-func cutBytes(r io.Reader, w *bufio.Writer, ranges []cutRange) error {
+func cutBytes(r io.Reader, w *bufio.Writer, cfg config) error {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
-			if werr := writeByteLine(w, line, ranges); werr != nil {
+			if werr := writeByteLine(w, line, cfg); werr != nil {
 				return werr
 			}
 		}
@@ -283,13 +300,14 @@ func cutBytes(r io.Reader, w *bufio.Writer, ranges []cutRange) error {
 // writeByteLine writes the selected bytes from a single line.
 // R1.3: newline is stripped before selection and always re-added in output.
 // R1.4: positions beyond line length produce nothing.
-func writeByteLine(w *bufio.Writer, line []byte, ranges []cutRange) error {
+// R2.4: complement inverts the selection.
+func writeByteLine(w *bufio.Writer, line []byte, cfg config) error {
 	content := line
 	if len(content) > 0 && content[len(content)-1] == '\n' {
 		content = content[:len(content)-1]
 	}
 	for pos := 1; pos <= len(content); pos++ {
-		if byteSelected(pos, ranges) {
+		if isSelected(pos, cfg.ranges, cfg.complement) {
 			if err := w.WriteByte(content[pos-1]); err != nil {
 				return err
 			}
@@ -308,7 +326,7 @@ func cutFile(name string, w *bufio.Writer, cfg config) error {
 		defer r.Close()
 	}
 	// R1.2: -c is equivalent to -b under LC_ALL=C
-	return cutBytes(r, w, cfg.ranges)
+	return cutBytes(r, w, cfg)
 }
 
 func main() {
