@@ -298,7 +298,7 @@ releases:
         GNU coreutils reference binaries.
       use_cases:
         - id: rel06.1-uc001-env
-          status: spec_complete
+          status: implemented
         - id: rel06.1-uc002-printenv
           status: spec_complete
         - id: rel06.1-uc003-id
