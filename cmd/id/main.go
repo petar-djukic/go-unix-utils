@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"sort"
 	"strings"
 	"syscall"
 
@@ -68,8 +67,8 @@ func run(args []string) int {
 	}
 
 	if err := validateFlags(o); err != nil {
+		// R2.4/R3.1/R3.2: GNU id does not print "Try" hint for validation errors.
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		return 1
 	}
 
@@ -96,21 +95,26 @@ func parseArgs(args []string) (*opts, error) {
 		if err := parseLongFlag(o, arg); err == nil {
 			continue
 		}
-		if strings.HasPrefix(arg, "-") && arg != "-" && !strings.HasPrefix(arg, "--") {
-			if err := parseShortFlags(o, arg[1:]); err != nil {
-				return nil, err
-			}
-			continue
+		if err := parseNonLongArg(o, arg); err != nil {
+			return nil, err
 		}
-		if strings.HasPrefix(arg, "--") {
-			return nil, fmt.Errorf("unrecognized option '%s'", arg)
-		}
-		if o.user != "" {
-			return nil, fmt.Errorf("extra operand '%s'", arg)
-		}
-		o.user = arg
 	}
 	return o, nil
+}
+
+// parseNonLongArg handles short flags, unknown long flags, and operands.
+func parseNonLongArg(o *opts, arg string) error {
+	if strings.HasPrefix(arg, "-") && arg != "-" && !strings.HasPrefix(arg, "--") {
+		return parseShortFlags(o, arg[1:])
+	}
+	if strings.HasPrefix(arg, "--") {
+		return fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	if o.user != "" {
+		return fmt.Errorf("extra operand '%s'", arg)
+	}
+	o.user = arg
+	return nil
 }
 
 // parseLongFlag handles --user, --group, --groups, --name, --real, --zero.
@@ -160,25 +164,32 @@ func parseShortFlags(o *opts, flags string) error {
 // validateFlags checks for conflicting flag combinations.
 // R2.4: only one of -u, -g, -G may be specified.
 // R3.1: -n requires -u, -g, or -G.
-// R3.2: -r requires -u or -g.
+// R3.2: -r requires -u or -g (GNU ignores -r with -G).
 func validateFlags(o *opts) error {
 	selCount := boolCount(o.flagU, o.flagG, o.flagBigG)
 	if selCount > 1 {
 		return fmt.Errorf("cannot print \"only\" of more than one choice")
 	}
 	if o.flagN && selCount == 0 {
-		return fmt.Errorf("cannot print only names or real IDs in default format")
+		return errNamesOrRealRequiresSelection()
 	}
-	if o.flagR && selCount == 0 {
-		return fmt.Errorf("cannot print only names or real IDs in default format")
-	}
-	if o.flagR && o.flagBigG {
-		return fmt.Errorf("cannot print only names or real IDs in default format")
+	if o.flagR && !o.flagU && !o.flagG {
+		// R3.2: -r without -u or -g is an error, unless -G is present
+		// (GNU ignores -r with -G silently).
+		if !o.flagBigG {
+			return errNamesOrRealRequiresSelection()
+		}
 	}
 	if o.flagZero && selCount == 0 {
 		return fmt.Errorf("option --zero not permitted in default format")
 	}
 	return nil
+}
+
+// errNamesOrRealRequiresSelection returns the GNU-matching error message
+// for -n or -r without a selection flag.
+func errNamesOrRealRequiresSelection() error {
+	return fmt.Errorf("printing only names or real IDs requires -u, -g, or -G")
 }
 
 // boolCount returns the number of true values.
@@ -277,13 +288,12 @@ func printGroups(o *opts) error {
 }
 
 // printCurrentGroups prints groups for the current process.
-// R3.3: groups are sorted numerically to match GNU id output order.
+// R1.2: groups are in the order returned by the system.
 func printCurrentGroups(o *opts) error {
 	gids, err := syscall.Getgroups()
 	if err != nil {
 		return fmt.Errorf("cannot get groups: %v", err)
 	}
-	sort.Ints(gids)
 	parts := make([]string, 0, len(gids))
 	for _, gid := range gids {
 		parts = append(parts, formatGID(gid, o.flagN))
@@ -293,7 +303,7 @@ func printCurrentGroups(o *opts) error {
 }
 
 // printNamedUserGroups prints groups for a named user.
-// R3.3: groups are sorted numerically to match GNU id output order.
+// R1.2: groups are in the order returned by the system.
 func printNamedUserGroups(o *opts) error {
 	u, err := lookupUser(o.user)
 	if err != nil {
@@ -303,14 +313,9 @@ func printNamedUserGroups(o *opts) error {
 	if err != nil {
 		return fmt.Errorf("failed to get group IDs: %v", err)
 	}
-	gids := make([]int, 0, len(gidStrs))
+	parts := make([]string, 0, len(gidStrs))
 	for _, s := range gidStrs {
-		gids = append(gids, parseInt(s))
-	}
-	sort.Ints(gids)
-	parts := make([]string, 0, len(gids))
-	for _, gid := range gids {
-		parts = append(parts, formatGID(gid, o.flagN))
+		parts = append(parts, formatGID(parseInt(s), o.flagN))
 	}
 	printGroupList(parts, o.flagZero)
 	return nil
