@@ -3,7 +3,7 @@
 
 // Package main implements cmd/nl: number lines of files.
 // Implements srd022-nl R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -18,6 +18,19 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// sectionKind represents which logical page section is active.
+// R4.1: header, body, footer sections delimited by special lines.
+type sectionKind int
+
+const (
+	sectionBody   sectionKind = iota
+	sectionHeader
+	sectionFooter
+)
+
+// delimiter is the default two-character section delimiter pair.
+const delimiter = `\:`
 
 // numberStyle represents a line numbering style for a section.
 // R2.1: styles are a (all), t (non-empty), n (none), p RE (regex match).
@@ -36,12 +49,18 @@ type config struct {
 	bodyStyle   numberStyle // R2.1: -b STYLE (default t)
 	headerStyle numberStyle // R2.2: -h STYLE (default n)
 	footerStyle numberStyle // R2.3: -f STYLE (default n)
+	noReset     bool        // R4.3: -p flag
+	joinBlank   int         // R4.4: -l N (default 1)
+}
+
+// nlState tracks numbering state across lines.
+type nlState struct {
+	lineNum    int
+	section    sectionKind
+	emptyCount int // consecutive empty lines for -l
 }
 
 // defaultConfig returns the default nl configuration.
-// R1.1: width 6, tab separator, start at 1, increment by 1.
-// R2.1: body defaults to t. R2.2: header defaults to n. R2.3: footer defaults to n.
-// R3.1: default format is rn (right-justified, no leading zeros).
 func defaultConfig() config {
 	return config{
 		numFormat:   "rn",
@@ -52,6 +71,7 @@ func defaultConfig() config {
 		bodyStyle:   numberStyle{kind: 't'},
 		headerStyle: numberStyle{kind: 'n'},
 		footerStyle: numberStyle{kind: 'n'},
+		joinBlank:   1,
 	}
 }
 
@@ -86,15 +106,13 @@ func parseFlags() (config, []string) {
 	bodyStr := fs.String("b", "t", "body numbering style")
 	headerStr := fs.String("h", "n", "header numbering style")
 	footerStr := fs.String("f", "n", "footer numbering style")
-	// R3.1: -n FORMAT (ln, rn, rz)
 	numFmt := fs.String("n", "rn", "line number format")
-	// R3.2: -w N
 	width := fs.Int("w", 6, "line number field width")
-	// R3.3: -s SEP
 	sep := fs.String("s", "\t", "separator between number and line")
-	// R3.4: -v N and -i N
 	startVal := fs.Int("v", 1, "initial line number")
 	increment := fs.Int("i", 1, "line number increment")
+	noReset := fs.Bool("p", false, "do not reset line counter at logical pages")
+	joinBlank := fs.Int("l", 1, "group N consecutive empty lines as one")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(1)
@@ -110,11 +128,13 @@ func parseFlags() (config, []string) {
 		os.Exit(1)
 	}
 
+	cfg.noReset = *noReset
+	cfg.joinBlank = *joinBlank
+
 	return cfg, fs.Args()
 }
 
 // applyFormatFlags validates and applies -n, -w, -s, -v, -i flag values to cfg.
-// R3.1: numFmt must be ln, rn, or rz. R3.2: width. R3.3: sep. R3.4: startVal, increment.
 func applyFormatFlags(cfg *config, numFmt string, width int, sep string, startVal, increment int) error {
 	if numFmt != "ln" && numFmt != "rn" && numFmt != "rz" {
 		return fmt.Errorf("invalid line numbering format: %q (must be ln, rn, or rz)", numFmt)
@@ -143,7 +163,6 @@ func applyStyleFlags(cfg *config, body, header, footer string) error {
 }
 
 // openInput returns os.Stdin for "-", otherwise opens the named file.
-// R1.3: stdin when filename is "-".
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
@@ -155,8 +174,7 @@ func openInput(name string) (*os.File, error) {
 	return f, nil
 }
 
-// formatOpenError extracts the underlying error to produce GNU-compatible
-// error messages: "<name>: <reason>".
+// formatOpenError extracts the underlying error for GNU-compatible messages.
 func formatOpenError(name string, err error) error {
 	var pe *os.PathError
 	if errors.As(err, &pe) {
@@ -165,19 +183,13 @@ func formatOpenError(name string, err error) error {
 	return fmt.Errorf("%s: %s", name, err)
 }
 
-// emptyPrefix returns spaces matching the width of a numbered line prefix.
-// GNU nl pads unnumbered lines with spaces equal to width + len(sep).
-func emptyPrefix(cfg config) string {
-	return strings.Repeat(" ", cfg.width+len(cfg.sep))
-}
-
 // isEmptyLine reports whether line contains only a newline.
 func isEmptyLine(line string) bool {
 	return line == "\n"
 }
 
-// shouldNumber reports whether a line should be numbered given the style.
-// R2.1: a=all, t=non-empty, n=none, p=regex match. R2.4: n means no numbering.
+// shouldNumber reports whether a non-empty line should be numbered given the style.
+// R2.1: a=all, t=non-empty, n=none, p=regex match.
 func shouldNumber(line string, style numberStyle) bool {
 	switch style.kind {
 	case 'a':
@@ -207,7 +219,6 @@ func formatLineNumber(lineNum, width int, numFormat string) string {
 }
 
 // writeNumberedLine writes a line with its line number prefix.
-// R3.1: format per -n. R3.2: width per -w. R3.3: separator per -s.
 func writeNumberedLine(w *bufio.Writer, line string, cfg config, lineNum int) error {
 	numStr := formatLineNumber(lineNum, cfg.width, cfg.numFormat)
 	_, err := fmt.Fprintf(w, "%s%s%s", numStr, cfg.sep, line)
@@ -215,64 +226,144 @@ func writeNumberedLine(w *bufio.Writer, line string, cfg config, lineNum int) er
 }
 
 // writeUnnumberedLine writes a line with blank padding instead of a number.
-// R1.2, R2.4: unnumbered lines pass through with padding matching the number field.
-func writeUnnumberedLine(w *bufio.Writer, line, padding string) error {
+// R2.4: unnumbered lines pass through with padding matching the number field.
+func writeUnnumberedLine(w *bufio.Writer, line string, cfg config) error {
+	padding := strings.Repeat(" ", cfg.width+len(cfg.sep))
 	_, err := fmt.Fprintf(w, "%s%s", padding, line)
 	return err
 }
 
+// detectDelimiter checks if a line is a section delimiter.
+// R4.1: \:\:\: = header, \:\: = body, \: = footer.
+func detectDelimiter(line string) (sectionKind, bool) {
+	content := strings.TrimSuffix(line, "\n")
+	switch content {
+	case delimiter + delimiter + delimiter:
+		return sectionHeader, true
+	case delimiter + delimiter:
+		return sectionBody, true
+	case delimiter:
+		return sectionFooter, true
+	}
+	return 0, false
+}
+
+// sectionStyle returns the numbering style for the given section.
+func sectionStyle(cfg config, section sectionKind) numberStyle {
+	switch section {
+	case sectionHeader:
+		return cfg.headerStyle
+	case sectionFooter:
+		return cfg.footerStyle
+	default:
+		return cfg.bodyStyle
+	}
+}
+
 // numberLines reads lines from r and writes numbered output to w.
-// R1.1, R1.2, R2.1-R2.4: numbers lines according to the body style.
-// Returns the next line number for continuous numbering across files.
-func numberLines(r io.Reader, cfg config, lineNum int, w *bufio.Writer) (int, error) {
+func numberLines(r io.Reader, cfg config, state nlState, w *bufio.Writer) (nlState, error) {
 	br := bufio.NewReader(r)
-	padding := emptyPrefix(cfg)
 	for {
 		line, err := br.ReadString('\n')
 		if len(line) > 0 {
-			// GNU nl appends a newline to the last line if missing.
 			if !strings.HasSuffix(line, "\n") {
 				line += "\n"
 			}
-			if writeErr := processLine(w, line, cfg, padding, &lineNum); writeErr != nil {
-				return lineNum, writeErr
+			var writeErr error
+			state, writeErr = processLine(w, line, cfg, state)
+			if writeErr != nil {
+				return state, writeErr
 			}
 		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return lineNum, err
+			return state, err
 		}
 	}
-	return lineNum, nil
+	return state, nil
 }
 
-// processLine decides whether to number or pad a line and writes it.
-// Uses bodyStyle since section delimiters are not yet implemented (R4).
-func processLine(w *bufio.Writer, line string, cfg config, padding string, lineNum *int) error {
-	if shouldNumber(line, cfg.bodyStyle) {
-		err := writeNumberedLine(w, line, cfg, *lineNum)
-		if err == nil {
-			*lineNum += cfg.increment
-		}
-		return err
+// processLine handles one line: delimiter detection, numbering, or padding.
+// R4.1: delimiter lines are replaced with a bare newline in output.
+func processLine(w *bufio.Writer, line string, cfg config, state nlState) (nlState, error) {
+	if newSection, ok := detectDelimiter(line); ok {
+		return handleDelimiter(w, cfg, state, newSection)
 	}
-	return writeUnnumberedLine(w, line, padding)
+	style := sectionStyle(cfg, state.section)
+	if isEmptyLine(line) {
+		return processEmptyLine(w, line, cfg, style, state)
+	}
+	return processNonEmptyLine(w, line, cfg, style, state)
+}
+
+// handleDelimiter updates state for a section delimiter line.
+// R4.1: delimiter lines are replaced with a bare newline.
+// R4.2: section delimiters reset counter unless -p (R4.3).
+func handleDelimiter(w *bufio.Writer, cfg config, state nlState, newSection sectionKind) (nlState, error) {
+	_, err := w.WriteString("\n")
+	if !cfg.noReset {
+		state.lineNum = cfg.startVal
+	}
+	state.section = newSection
+	state.emptyCount = 0
+	return state, err
+}
+
+// processNonEmptyLine handles numbering for a non-empty content line.
+func processNonEmptyLine(w *bufio.Writer, line string, cfg config, style numberStyle, state nlState) (nlState, error) {
+	state.emptyCount = 0
+	if shouldNumber(line, style) {
+		err := writeNumberedLine(w, line, cfg, state.lineNum)
+		if err == nil {
+			state.lineNum += cfg.increment
+		}
+		return state, err
+	}
+	return state, writeUnnumberedLine(w, line, cfg)
+}
+
+// shouldNumberEmpty reports whether a blank line should be numbered
+// based on the section style and the join-blank counter.
+// R4.4: with joinBlank > 1, number every Nth consecutive empty line (style 'a' only).
+func shouldNumberEmpty(cfg config, style numberStyle, emptyCount int) bool {
+	if style.kind != 'a' {
+		return false
+	}
+	if cfg.joinBlank > 1 {
+		return emptyCount >= cfg.joinBlank
+	}
+	return true
+}
+
+// processEmptyLine handles blank line numbering with -l join-blank logic.
+// R4.4: -l N groups N consecutive empty lines for numbering with style 'a'.
+func processEmptyLine(w *bufio.Writer, line string, cfg config, style numberStyle, state nlState) (nlState, error) {
+	state.emptyCount++
+	if shouldNumberEmpty(cfg, style, state.emptyCount) {
+		state.emptyCount = 0
+		err := writeNumberedLine(w, line, cfg, state.lineNum)
+		if err == nil {
+			state.lineNum += cfg.increment
+		}
+		return state, err
+	}
+	return state, writeUnnumberedLine(w, line, cfg)
 }
 
 // nlFile reads the named file and writes numbered lines to w.
 // R1.3: stdin for "-", otherwise open named file.
-// R1.4: lineNum carries across files for continuous numbering.
-func nlFile(name string, cfg config, lineNum int, w *bufio.Writer) (int, error) {
+// R1.4: state carries across files for continuous numbering.
+func nlFile(name string, cfg config, state nlState, w *bufio.Writer) (nlState, error) {
 	r, err := openInput(name)
 	if err != nil {
-		return lineNum, err
+		return state, err
 	}
 	if r != os.Stdin {
 		defer r.Close()
 	}
-	return numberLines(r, cfg, lineNum, w)
+	return numberLines(r, cfg, state, w)
 }
 
 func main() {
@@ -286,12 +377,12 @@ func main() {
 
 	w := bufio.NewWriter(os.Stdout)
 	exitCode := 0
-	lineNum := cfg.startVal
+	state := nlState{lineNum: cfg.startVal, section: sectionBody}
 
 	// R1.4: continuous numbering across files.
 	for _, name := range args {
 		var err error
-		lineNum, err = nlFile(name, cfg, lineNum, w)
+		state, err = nlFile(name, cfg, state, w)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "nl: %s\n", err)
 			exitCode = 1
