@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -61,7 +62,13 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 2
 	}
-	// TODO: sorting logic not yet implemented — passthrough stub.
+	// R1.1: sort lexicographically in LC_ALL=C byte order.
+	// R1.2: -r reverses the sort order.
+	sortLines(lines, cfg.reverse)
+	// R1.3: -u suppresses duplicate lines.
+	if cfg.unique {
+		lines = dedup(lines)
+	}
 	return writeOutput(&cfg, lines)
 }
 
@@ -171,6 +178,32 @@ func writeLines(w io.Writer, lines []string, terminator string) error {
 		}
 	}
 	return bw.Flush()
+}
+
+// sortLines sorts lines in-place using stable sort with LC_ALL=C byte order.
+// R1.1: default lexicographic sort. R1.2: -r reverses the result.
+func sortLines(lines []string, reverse bool) {
+	sort.SliceStable(lines, func(i, j int) bool {
+		if reverse {
+			return lines[i] > lines[j]
+		}
+		return lines[i] < lines[j]
+	})
+}
+
+// dedup removes consecutive duplicate lines, keeping only the first of each run.
+// R1.3: -u outputs only the first of an equal run.
+func dedup(lines []string) []string {
+	if len(lines) == 0 {
+		return lines
+	}
+	out := lines[:1]
+	for _, line := range lines[1:] {
+		if line != out[len(out)-1] {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // parseArgs extracts flags and file arguments from the command line.
