@@ -15,7 +15,6 @@ project:
         docs/prompts/
         cmd/
     releases:
-        - "05.2"
         - "05.3"
         - "05.4"
         - "06.0"
