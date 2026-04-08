@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sha512sum: compute and check SHA-512 message digests.
-// Implements srd033-sha512sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd033-sha512sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2.
 package main
 
 import (
