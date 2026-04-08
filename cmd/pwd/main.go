@@ -126,7 +126,8 @@ func parseArgs(args []string) (mode, error) {
 			if strings.HasPrefix(arg, "-") && arg != "-" {
 				return 0, fmt.Errorf("unrecognized option '%s'", arg)
 			}
-			return 0, fmt.Errorf("extra operand '%s'", arg)
+			// R2.1: GNU pwd ignores non-option arguments with a warning.
+			fmt.Fprintf(os.Stderr, "%s: ignoring non-option arguments\n", progName)
 		}
 	}
 	return m, nil
