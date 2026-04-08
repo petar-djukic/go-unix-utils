@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/fold: wrap long lines to a specified width.
-// Implements srd023-fold R1.1, R1.2, R1.3, R1.4.
+// Implements srd023-fold R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
