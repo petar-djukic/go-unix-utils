@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/printenv: print environment variables.
-// Implements srd040-printenv R1.1, R1.2, R1.3, R2.1.
+// Implements srd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
