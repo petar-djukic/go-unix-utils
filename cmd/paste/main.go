@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/paste: merge lines of files side by side.
-// Implements srd027-paste R1.1, R1.2, R1.3, R1.4.
+// Implements srd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -214,57 +214,86 @@ func (fr *fileReader) readLine() (string, bool) {
 // pasteParallel merges lines from all files in parallel mode.
 // R1.1: read one line from each file per output line, joined by delimiter.
 // R1.2: shorter files contribute empty fields until all are exhausted.
-// TODO: full implementation in a subsequent task.
+// R2.1: delimiter character (or cycling list) separates fields.
+// R2.3: delimiter cycling resets from the first delimiter each output line.
 func pasteParallel(cfg config, w *bufio.Writer) int {
-	readers := make([]*fileReader, 0, len(cfg.files))
-	for _, name := range cfg.files {
-		fr, err := openFileReader(name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "paste: %s\n", err)
-			return 1
-		}
-		readers = append(readers, fr)
+	readers, err := openAllReaders(cfg.files)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "paste: %s\n", err)
+		return 1
 	}
-	defer func() {
-		for _, fr := range readers {
-			fr.close()
-		}
-	}()
+	defer closeAllReaders(readers)
 
+	lines := make([]string, len(readers))
 	for {
-		allDone := true
-		for idx, fr := range readers {
-			if idx > 0 {
-				delimIdx := (idx - 1) % len(cfg.delimiters)
-				d := cfg.delimiters[delimIdx]
-				if d != 0 {
-					if _, err := w.WriteRune(d); err != nil {
-						fmt.Fprintf(os.Stderr, "paste: write error\n")
-						return 1
-					}
-				}
-			}
-			line, ok := fr.readLine()
-			if ok {
-				allDone = false
-				if _, err := w.WriteString(line); err != nil {
-					fmt.Fprintf(os.Stderr, "paste: write error\n")
-					return 1
-				}
-			} else if !fr.done {
-				allDone = false
-			}
-		}
-		if allDone {
+		anyData := readAllLines(readers, lines)
+		if !anyData {
 			break
 		}
-		if err := w.WriteByte('\n'); err != nil {
+		if err := writeParallelLine(w, lines, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "paste: write error\n")
 			return 1
 		}
 	}
-
 	return 0
+}
+
+// openAllReaders opens all file readers for the given names.
+func openAllReaders(files []string) ([]*fileReader, error) {
+	readers := make([]*fileReader, 0, len(files))
+	for _, name := range files {
+		fr, err := openFileReader(name)
+		if err != nil {
+			for _, r := range readers {
+				r.close()
+			}
+			return nil, err
+		}
+		readers = append(readers, fr)
+	}
+	return readers, nil
+}
+
+// closeAllReaders closes all file readers.
+func closeAllReaders(readers []*fileReader) {
+	for _, fr := range readers {
+		fr.close()
+	}
+}
+
+// readAllLines reads one line from each reader into lines.
+// Returns true if at least one reader produced data.
+func readAllLines(readers []*fileReader, lines []string) bool {
+	anyData := false
+	for i, fr := range readers {
+		line, ok := fr.readLine()
+		lines[i] = line
+		if ok {
+			anyData = true
+		}
+	}
+	return anyData
+}
+
+// writeParallelLine writes a single output line from collected fields.
+// R2.1: joins fields with the delimiter character or cycling list.
+// R2.3: cycling resets from the first delimiter for each output line.
+func writeParallelLine(w *bufio.Writer, lines []string, cfg config) error {
+	for idx, line := range lines {
+		if idx > 0 {
+			delimIdx := (idx - 1) % len(cfg.delimiters)
+			d := cfg.delimiters[delimIdx]
+			if d != 0 {
+				if _, err := w.WriteRune(d); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err := w.WriteString(line); err != nil {
+			return err
+		}
+	}
+	return w.WriteByte('\n')
 }
 
 // pasteSerial processes files one at a time in serial mode.
