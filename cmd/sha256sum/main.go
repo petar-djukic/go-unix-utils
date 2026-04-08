@@ -23,17 +23,45 @@ const (
 	sha256DigestLen = 64
 )
 
+// usageText is the --help output printed to stdout.
+// R4.2: --help prints usage to stdout and exits 0.
+const usageText = `Usage: sha256sum [OPTION]... [FILE]...
+Print or check SHA256 (256-bit) checksums.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -b, --binary   read in binary mode
+  -c, --check    read checksums from the FILEs and check them
+      --tag      create a BSD-style checksum
+  -t, --text     read in text mode (default)
+
+The following five options are useful only when verifying checksums:
+      --quiet    don't print OK for each successfully verified file
+      --status   don't output anything, status code shows success
+      --strict   exit non-zero for improperly formatted checksum lines
+  -w, --warn     warn about improperly formatted checksum lines
+
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+// versionText is the --version output printed to stdout.
+// R4.2: --version prints version info to stdout and exits 0.
+const versionText = "sha256sum (go-unix-utils) 0.1.0\n"
+
 // config holds parsed command-line options for sha256sum.
 type config struct {
-	binary bool // -b, --binary
-	text   bool // -t, --text
-	tag    bool // --tag
-	check  bool // -c, --check
-	warn   bool // -w, --warn
-	quiet  bool // --quiet
-	status bool // --status
-	strict bool // --strict
-	files  []string
+	binary  bool // -b, --binary
+	text    bool // -t, --text
+	tag     bool // --tag
+	check   bool // -c, --check
+	warn    bool // -w, --warn
+	quiet   bool // --quiet
+	status  bool // --status
+	strict  bool // --strict
+	help    bool // --help
+	version bool // --version
+	files   []string
 }
 
 // R1.1: main entry with SIGPIPE handler and flag parsing.
@@ -52,8 +80,18 @@ func main() {
 }
 
 // run executes the sha256sum logic and returns the exit code.
+// R4.2: --help and --version print to stdout and exit 0.
 // R1.4: in digest mode, delegates to hashutil.DigestFiles.
 func run(cfg config) int {
+	if cfg.help {
+		fmt.Fprint(os.Stdout, usageText)
+		return 0
+	}
+	if cfg.version {
+		fmt.Fprint(os.Stdout, versionText)
+		return 0
+	}
+
 	// R1.2: configure HashConfig with SHA256 algorithm.
 	hcfg := hashutil.HashConfig{
 		Algorithm: algorithmName,
@@ -96,6 +134,7 @@ func runCheck(cfg config, hcfg hashutil.HashConfig) int {
 
 // parseArgs parses command-line arguments into config.
 // R1.3: supports -b, -t, --tag, -c, -w, --quiet, --status, --strict.
+// R4.2: supports --help and --version.
 func parseArgs(args []string) (config, error) {
 	cfg := config{}
 	flagsDone := false
@@ -115,6 +154,10 @@ func parseArgs(args []string) (config, error) {
 			return config{}, err
 		}
 		i += skip
+	}
+	// R4.2: --help and --version skip validation.
+	if cfg.help || cfg.version {
+		return cfg, nil
 	}
 	return cfg, validateArgs(cfg)
 }
@@ -154,6 +197,10 @@ func parseLongFlag(cfg *config, arg string) (int, error) {
 		cfg.status = true
 	case "--strict":
 		cfg.strict = true
+	case "--help":
+		cfg.help = true
+	case "--version":
+		cfg.version = true
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", arg)
 	}
