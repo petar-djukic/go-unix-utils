@@ -188,7 +188,7 @@ releases:
         All are verified by differential testing against GNU coreutils reference binaries.
       use_cases:
         - id: rel05.0-uc001-echo
-          status: spec_complete
+          status: implemented
         - id: rel05.0-uc002-tac
           status: spec_complete
         - id: rel05.0-uc003-nl
