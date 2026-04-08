@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/echo: display a line of text.
-// Implements srd020-echo R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd020-echo R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -20,6 +20,8 @@ func main() {
 
 	output := buildOutput(args, noNewline, escapes)
 
+	// R3.2: exit 1 when a write error occurs on stdout.
+	// R3.1: exit 0 on successful output (implicit when main returns).
 	if _, err := os.Stdout.WriteString(output); err != nil {
 		os.Exit(1)
 	}
