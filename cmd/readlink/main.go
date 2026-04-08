@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/readlink: print symlink target or canonical path.
-// Implements srd050-readlink R1.1, R1.2, R1.3, R1.4, R1.5.
+// Implements srd050-readlink R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2.
 package main
 
 import (
@@ -78,7 +78,7 @@ func main() {
 // run processes each operand and returns the exit code.
 func run(opts options, operands []string) int {
 	exitCode := 0
-	for i, op := range operands {
+	for _, op := range operands {
 		result, err := processOperand(opts.mode, op)
 		if err != nil {
 			// R1.2: default mode prints nothing on failure.
@@ -88,7 +88,8 @@ func run(opts options, operands []string) int {
 			exitCode = 1
 			continue
 		}
-		suppressNL := opts.noNewline && i == len(operands)-1
+		// R2.2: -n is ignored when multiple operands are given.
+		suppressNL := opts.noNewline && len(operands) == 1
 		printResult(result, suppressNL)
 	}
 	return exitCode
