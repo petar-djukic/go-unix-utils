@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mkdir: create directories.
-// Implements srd034 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd034 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -30,6 +32,14 @@ Mandatory arguments to long options are mandatory for short options too.
 
 // versionText is the --version output printed to stdout.
 const versionText = "mkdir (go-unix-utils) 0.1.0\n"
+
+// defaultDirMode is the base mode for new directories before umask.
+// R3.2: 0777 modified by umask when -m is not given.
+const defaultDirMode = os.FileMode(0o777)
+
+// TODO: Task R3 requests -Z/--context flag (SELinux context), but srd034
+// non_goals explicitly excludes it: "cmd/mkdir does not implement SELinux
+// context options (-Z, --context)." Per constitution E6, skipping.
 
 // config holds parsed command-line options for mkdir.
 type config struct {
@@ -74,6 +84,14 @@ func run(cfg config) int {
 		return 1
 	}
 
+	// R3.1: validate mode upfront before creating any directories.
+	if cfg.mode != "" {
+		if _, err := parseMode(cfg.mode); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: invalid mode '%s'\n", programName, cfg.mode)
+			return 1
+		}
+	}
+
 	exitCode := 0
 	for _, dir := range cfg.dirs {
 		if err := createDir(cfg, dir); err != nil {
@@ -92,45 +110,100 @@ func createDir(cfg config, dir string) error {
 	if cfg.parents {
 		return createWithParents(cfg, dir)
 	}
-	if err := os.Mkdir(dir, 0o777); err != nil {
+	if err := os.Mkdir(dir, defaultDirMode); err != nil {
 		return formatMkdirError(dir, err)
 	}
-	applyModeIfSet(cfg, dir)
-	if cfg.verbose {
-		fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", programName, dir)
+	if err := applyModeIfSet(cfg, dir); err != nil {
+		return err
 	}
+	printVerbose(cfg, dir)
 	return nil
 }
 
 // createWithParents creates a directory and its parents using -p semantics.
-// R2.1: creates intermediate parent directories as needed via os.MkdirAll.
+// R2.1: creates intermediate parent directories as needed.
 // R2.2: no error when the target directory already exists.
 // R2.3: no error when intermediate directories already exist.
-// R3.3: when -m is given, applies mode only to the leaf directory;
-// intermediates use the default permissions (0o777 modified by umask).
+// R3.3: applies -m mode only to the final target directory.
+// R3.4: prints verbose message for each directory actually created.
 func createWithParents(cfg config, dir string) error {
-	if err := os.MkdirAll(dir, 0o777); err != nil {
-		return formatMkdirError(dir, err)
+	toCreate := collectMissingDirs(dir)
+	for _, d := range toCreate {
+		err := os.Mkdir(d, defaultDirMode)
+		if err != nil && !os.IsExist(err) {
+			return formatMkdirError(dir, err)
+		}
+		if err == nil {
+			printVerbose(cfg, d)
+		}
 	}
-	applyModeIfSet(cfg, dir)
-	if cfg.verbose {
-		fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", programName, dir)
+	// R3.3: apply mode only to the leaf, only if newly created.
+	if len(toCreate) > 0 {
+		return applyModeIfSet(cfg, dir)
 	}
 	return nil
 }
 
+// collectMissingDirs returns the chain of directories that need to be
+// created, ordered from shallowest to deepest.
+func collectMissingDirs(path string) []string {
+	var missing []string
+	cur := filepath.Clean(path)
+	for cur != "." && cur != "/" {
+		if isDir(cur) {
+			break
+		}
+		missing = append(missing, cur)
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	reverseStrings(missing)
+	return missing
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}
+
+func reverseStrings(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
 // applyModeIfSet applies the -m mode to dir when cfg.mode is non-empty.
-// R3.3: used after directory creation to set the leaf directory's mode
-// without affecting intermediate directories.
-func applyModeIfSet(cfg config, dir string) {
+// R3.1: parses octal and symbolic modes, then applies via os.Chmod.
+// R3.3: called only on the leaf directory, not intermediates.
+func applyModeIfSet(cfg config, dir string) error {
 	if cfg.mode == "" {
-		return
+		return nil
 	}
-	perm, err := parseOctalMode(cfg.mode)
+	perm, err := parseMode(cfg.mode)
 	if err != nil {
-		return
+		return fmt.Errorf("invalid mode '%s'", cfg.mode)
 	}
-	os.Chmod(dir, perm) // best-effort chmod; errors reported elsewhere
+	return os.Chmod(dir, perm)
+}
+
+// printVerbose prints a diagnostic message when verbose mode is enabled.
+// R3.4: format matches GNU mkdir: "mkdir: created directory 'NAME'".
+func printVerbose(cfg config, dir string) {
+	if cfg.verbose {
+		fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", programName, dir)
+	}
+}
+
+// parseMode parses a mode string as either octal or symbolic.
+// R3.1: supports both octal (0755, 755) and symbolic (u=rwx,go=rx) forms.
+func parseMode(mode string) (os.FileMode, error) {
+	if len(mode) > 0 && mode[0] >= '0' && mode[0] <= '9' {
+		return parseOctalMode(mode)
+	}
+	return parseSymbolicMode(mode, defaultDirMode)
 }
 
 // parseOctalMode parses an octal permission string like "0755" or "755".
@@ -140,6 +213,118 @@ func parseOctalMode(mode string) (os.FileMode, error) {
 		return 0, fmt.Errorf("invalid mode '%s'", mode)
 	}
 	return os.FileMode(val), nil
+}
+
+// parseSymbolicMode parses a symbolic mode string like "u=rwx,go=rx"
+// and applies it to the base mode.
+// R3.1: format is [ugoa...][+-=][rwxXst...] clauses separated by commas.
+func parseSymbolicMode(mode string, base os.FileMode) (os.FileMode, error) {
+	result := base
+	for _, clause := range strings.Split(mode, ",") {
+		var err error
+		result, err = applySymbolicClause(clause, result)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return result, nil
+}
+
+// applySymbolicClause applies one clause like "u=rwx" or "go-w".
+func applySymbolicClause(clause string, perm os.FileMode) (os.FileMode, error) {
+	if clause == "" {
+		return 0, fmt.Errorf("invalid mode clause")
+	}
+	who, rest := parseWho(clause)
+	if len(rest) == 0 {
+		return 0, fmt.Errorf("invalid mode clause '%s'", clause)
+	}
+	return applyPermOps(who, rest, perm)
+}
+
+// parseWho extracts the ugoa prefix from a symbolic clause, returning
+// a bitmask and the remaining string after the who characters.
+func parseWho(clause string) (uint, string) {
+	var who uint
+	i := 0
+	for i < len(clause) {
+		switch clause[i] {
+		case 'u':
+			who |= 0o700
+		case 'g':
+			who |= 0o070
+		case 'o':
+			who |= 0o007
+		case 'a':
+			who |= 0o777
+		default:
+			if who == 0 {
+				who = 0o777 // default to all when no who specified
+			}
+			return who, clause[i:]
+		}
+		i++
+	}
+	if who == 0 {
+		who = 0o777
+	}
+	return who, clause[i:]
+}
+
+// applyPermOps processes operator+permissions pairs in a clause.
+func applyPermOps(who uint, rest string, perm os.FileMode) (os.FileMode, error) {
+	for len(rest) > 0 {
+		if rest[0] != '+' && rest[0] != '-' && rest[0] != '=' {
+			return 0, fmt.Errorf("invalid operator '%c'", rest[0])
+		}
+		op := rest[0]
+		rest = rest[1:]
+		var bits os.FileMode
+		rest, bits = parsePermBits(rest)
+		perm = applyOp(perm, op, who, bits)
+	}
+	return perm, nil
+}
+
+// parsePermBits reads rwxXst characters and returns remaining string and bits.
+func parsePermBits(s string) (string, os.FileMode) {
+	var bits os.FileMode
+	i := 0
+	for i < len(s) {
+		switch s[i] {
+		case 'r':
+			bits |= 0o444
+		case 'w':
+			bits |= 0o222
+		case 'x', 'X':
+			// R3.1: X acts as x for directories (mkdir always creates dirs).
+			bits |= 0o111
+		case 's':
+			bits |= os.ModeSetuid | os.ModeSetgid
+		case 't':
+			bits |= os.ModeSticky
+		default:
+			return s[i:], bits
+		}
+		i++
+	}
+	return s[i:], bits
+}
+
+// applyOp applies a single +, -, or = operation with who mask.
+func applyOp(perm os.FileMode, op byte, who uint, bits os.FileMode) os.FileMode {
+	// Mask standard rwx bits by who; special bits pass through.
+	masked := (bits & os.FileMode(who)) |
+		(bits & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky))
+	switch op {
+	case '+':
+		perm |= masked
+	case '-':
+		perm &^= masked
+	case '=':
+		perm = (perm &^ os.FileMode(who)) | masked
+	}
+	return perm
 }
 
 // formatMkdirError wraps a mkdir error to match GNU mkdir output format.
