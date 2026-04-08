@@ -24,6 +24,30 @@ const progName = "tail"
 // R1.1: default is 10 lines.
 const defaultLines int64 = 10
 
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils)"
+
+// helpText is the usage message printed when --help is passed.
+const helpText = `Usage: tail [OPTION]... [FILE]...
+Print the last 10 lines of each FILE to standard output.
+With more than one FILE, precede each with a header giving the file name.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -c, --bytes=[+]NUM       output the last NUM bytes; or use -c +NUM to
+                             output starting with byte NUM of each file
+  -n, --lines=[+]NUM       output the last NUM lines, instead of the last 10;
+                             or use -n +NUM to output starting with line NUM
+  -q, --quiet, --silent    never output headers giving file names
+  -v, --verbose            always output headers giving file names
+      --help     display this help and exit
+      --version  output version information and exit
+
+NUM may have a multiplier suffix:
+b 512, kB 1000, K 1024, MB 1000*1000, M 1024*1024,
+GB 1000*1000*1000, G 1024*1024*1024, and so on for T, P, E, Z, Y.
+`
+
 // countMode distinguishes line-count from byte-count mode.
 type countMode int
 
@@ -45,7 +69,31 @@ type config struct {
 
 func main() {
 	sys.InstallSIGPIPEHandler()
+
+	// R3.2: handle --version and --help before argument parsing.
+	if handleInfoFlags(os.Args[1:]) {
+		return
+	}
+
 	os.Exit(run(os.Args[1:]))
+}
+
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+// Returns true if a flag was handled (caller should return).
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			fmt.Print(helpText)
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
 }
 
 // run executes the tail logic and returns the exit code.
@@ -249,6 +297,7 @@ func printFromByteN(r io.Reader, n int64) error {
 }
 
 // parseArgs extracts flags and file arguments.
+// R3.4: unrecognized options print error to stderr and set err=true.
 func parseArgs(args []string) config {
 	cfg := config{count: defaultLines}
 	for i := 0; i < len(args); i++ {
@@ -264,9 +313,40 @@ func parseArgs(args []string) config {
 			i += consumed - 1
 			continue
 		}
+		if isUnrecognizedFlag(arg) {
+			reportUnrecognized(arg)
+			cfg.err = true
+			return cfg
+		}
 		cfg.files = append(cfg.files, arg)
 	}
 	return cfg
+}
+
+// isUnrecognizedFlag returns true if arg looks like an unrecognized option.
+// R3.4: flags start with "-" but are not "-" (stdin) or a numeric legacy arg.
+func isUnrecognizedFlag(arg string) bool {
+	if !strings.HasPrefix(arg, "-") || arg == "-" {
+		return false
+	}
+	// Legacy GNU tail allows plain -NUM as shorthand for -n NUM.
+	if len(arg) > 1 && arg[1] >= '0' && arg[1] <= '9' {
+		return false
+	}
+	return true
+}
+
+// reportUnrecognized prints a GNU-compatible error for unrecognized options.
+// R3.4: format matches GNU tail unrecognized option output.
+func reportUnrecognized(arg string) {
+	if strings.HasPrefix(arg, "--") {
+		fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
+	} else {
+		// Short option: extract the invalid character.
+		invalid := arg[1:]
+		fmt.Fprintf(os.Stderr, "%s: invalid option -- '%s'\n", progName, invalid)
+	}
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 }
 
 // parseHeaderFlag handles -q/--quiet/--silent and -v/--verbose flags.
@@ -331,6 +411,7 @@ func matchCountFlagPrefix(arg string) (countMode, string, int) {
 }
 
 // parseCount parses a count string, detecting the + prefix for from-position mode.
+// R3.1: suffix multipliers supported via sizeparse.Parse for both modes.
 func parseCount(s string, mode countMode) (int64, bool, bool) {
 	fromPos := false
 	raw := s
@@ -338,13 +419,7 @@ func parseCount(s string, mode countMode) (int64, bool, bool) {
 		fromPos = true
 		raw = s[1:]
 	}
-	var n int64
-	var err error
-	if mode == modeBytes {
-		n, err = sizeparse.Parse(raw)
-	} else {
-		n, err = parseLineCountValue(raw)
-	}
+	n, err := sizeparse.Parse(raw)
 	if err != nil {
 		label := "lines"
 		if mode == modeBytes {
@@ -355,23 +430,6 @@ func parseCount(s string, mode countMode) (int64, bool, bool) {
 		return 0, false, true
 	}
 	return n, fromPos, false
-}
-
-// parseLineCountValue parses a plain integer for line count.
-func parseLineCountValue(s string) (int64, error) {
-	if s == "" {
-		return 0, fmt.Errorf("empty")
-	}
-	n, err := fmt.Sscanf(s, "%d", new(int64))
-	if err != nil || n != 1 {
-		return 0, fmt.Errorf("invalid")
-	}
-	var val int64
-	fmt.Sscanf(s, "%d", &val)
-	if val < 0 {
-		return 0, fmt.Errorf("negative")
-	}
-	return val, nil
 }
 
 // reportError prints a GNU-compatible diagnostic to stderr.
