@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/nl: number lines of files.
-// Implements srd022-nl R1.1, R1.2, R1.3, R1.4.
+// Implements srd022-nl R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -12,27 +12,63 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// numberStyle represents a line numbering style for a section.
+// R2.1: styles are a (all), t (non-empty), n (none), p RE (regex match).
+type numberStyle struct {
+	kind  byte           // 'a', 't', 'n', 'p'
+	regex *regexp.Regexp // non-nil only when kind == 'p'
+}
+
 // config holds nl command-line options.
 type config struct {
-	width     int
-	sep       string
-	startVal  int
-	increment int
+	width       int
+	sep         string
+	startVal    int
+	increment   int
+	bodyStyle   numberStyle // R2.1: -b STYLE (default t)
+	headerStyle numberStyle // R2.2: -h STYLE (default n)
+	footerStyle numberStyle // R2.3: -f STYLE (default n)
 }
 
 // defaultConfig returns the default nl configuration.
 // R1.1: width 6, tab separator, start at 1, increment by 1.
+// R2.1: body defaults to t. R2.2: header defaults to n. R2.3: footer defaults to n.
 func defaultConfig() config {
 	return config{
-		width:     6,
-		sep:       "\t",
-		startVal:  1,
-		increment: 1,
+		width:       6,
+		sep:         "\t",
+		startVal:    1,
+		increment:   1,
+		bodyStyle:   numberStyle{kind: 't'},
+		headerStyle: numberStyle{kind: 'n'},
+		footerStyle: numberStyle{kind: 'n'},
+	}
+}
+
+// parseStyle parses a numbering style string into a numberStyle.
+// R2.1: a (all), t (non-empty), n (none), pRE (regex match).
+func parseStyle(s string) (numberStyle, error) {
+	switch {
+	case s == "a":
+		return numberStyle{kind: 'a'}, nil
+	case s == "t":
+		return numberStyle{kind: 't'}, nil
+	case s == "n":
+		return numberStyle{kind: 'n'}, nil
+	case strings.HasPrefix(s, "p"):
+		re, err := regexp.Compile(s[1:])
+		if err != nil {
+			return numberStyle{}, fmt.Errorf("invalid regular expression: %s", s[1:])
+		}
+		return numberStyle{kind: 'p', regex: re}, nil
+	default:
+		return numberStyle{}, fmt.Errorf("invalid numbering style: %q", s)
 	}
 }
 
@@ -42,10 +78,36 @@ func parseFlags() (config, []string) {
 	fs := flag.NewFlagSet("nl", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	fs.Usage = func() {}
+
+	bodyStr := fs.String("b", "t", "body numbering style")
+	headerStr := fs.String("h", "n", "header numbering style")
+	footerStr := fs.String("f", "n", "footer numbering style")
+
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(1)
 	}
+
+	if err := applyStyleFlags(&cfg, *bodyStr, *headerStr, *footerStr); err != nil {
+		fmt.Fprintf(os.Stderr, "nl: %s\n", err)
+		os.Exit(1)
+	}
+
 	return cfg, fs.Args()
+}
+
+// applyStyleFlags parses and applies the -b, -h, -f style flag values to cfg.
+func applyStyleFlags(cfg *config, body, header, footer string) error {
+	var err error
+	if cfg.bodyStyle, err = parseStyle(body); err != nil {
+		return fmt.Errorf("invalid body numbering style: %s", body)
+	}
+	if cfg.headerStyle, err = parseStyle(header); err != nil {
+		return fmt.Errorf("invalid header numbering style: %s", header)
+	}
+	if cfg.footerStyle, err = parseStyle(footer); err != nil {
+		return fmt.Errorf("invalid footer numbering style: %s", footer)
+	}
+	return nil
 }
 
 // openInput returns os.Stdin for "-", otherwise opens the named file.
@@ -82,6 +144,23 @@ func isEmptyLine(line string) bool {
 	return line == "\n"
 }
 
+// shouldNumber reports whether a line should be numbered given the style.
+// R2.1: a=all, t=non-empty, n=none, p=regex match. R2.4: n means no numbering.
+func shouldNumber(line string, style numberStyle) bool {
+	switch style.kind {
+	case 'a':
+		return true
+	case 't':
+		return !isEmptyLine(line)
+	case 'n':
+		return false
+	case 'p':
+		content := strings.TrimSuffix(line, "\n")
+		return style.regex.MatchString(content)
+	}
+	return false
+}
+
 // writeNumberedLine writes a line with its line number prefix.
 // R1.1: right-justified number in field of width, separator, then content.
 func writeNumberedLine(w *bufio.Writer, line string, cfg config, lineNum int) error {
@@ -90,14 +169,14 @@ func writeNumberedLine(w *bufio.Writer, line string, cfg config, lineNum int) er
 }
 
 // writeUnnumberedLine writes a line with blank padding instead of a number.
-// R1.2: empty lines pass through with padding matching the number field width.
+// R1.2, R2.4: unnumbered lines pass through with padding matching the number field.
 func writeUnnumberedLine(w *bufio.Writer, line, padding string) error {
 	_, err := fmt.Fprintf(w, "%s%s", padding, line)
 	return err
 }
 
 // numberLines reads lines from r and writes numbered output to w.
-// R1.1, R1.2: numbers non-empty lines, pads empty lines with spaces.
+// R1.1, R1.2, R2.1-R2.4: numbers lines according to the body style.
 // Returns the next line number for continuous numbering across files.
 func numberLines(r io.Reader, cfg config, lineNum int, w *bufio.Writer) (int, error) {
 	br := bufio.NewReader(r)
@@ -124,15 +203,16 @@ func numberLines(r io.Reader, cfg config, lineNum int, w *bufio.Writer) (int, er
 }
 
 // processLine decides whether to number or pad a line and writes it.
+// Uses bodyStyle since section delimiters are not yet implemented (R4).
 func processLine(w *bufio.Writer, line string, cfg config, padding string, lineNum *int) error {
-	if isEmptyLine(line) {
-		return writeUnnumberedLine(w, line, padding)
+	if shouldNumber(line, cfg.bodyStyle) {
+		err := writeNumberedLine(w, line, cfg, *lineNum)
+		if err == nil {
+			*lineNum += cfg.increment
+		}
+		return err
 	}
-	err := writeNumberedLine(w, line, cfg, *lineNum)
-	if err == nil {
-		*lineNum += cfg.increment
-	}
-	return err
+	return writeUnnumberedLine(w, line, padding)
 }
 
 // nlFile reads the named file and writes numbered lines to w.
