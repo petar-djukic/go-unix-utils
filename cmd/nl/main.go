@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/nl: number lines of files.
-// Implements srd022-nl R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd022-nl R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -27,10 +28,11 @@ type numberStyle struct {
 
 // config holds nl command-line options.
 type config struct {
-	width       int
-	sep         string
-	startVal    int
-	increment   int
+	numFormat   string      // R3.1: ln, rn, rz (default rn)
+	width       int         // R3.2: -w N (default 6)
+	sep         string      // R3.3: -s SEP (default tab)
+	startVal    int         // R3.4: -v N (default 1)
+	increment   int         // R3.4: -i N (default 1)
 	bodyStyle   numberStyle // R2.1: -b STYLE (default t)
 	headerStyle numberStyle // R2.2: -h STYLE (default n)
 	footerStyle numberStyle // R2.3: -f STYLE (default n)
@@ -39,8 +41,10 @@ type config struct {
 // defaultConfig returns the default nl configuration.
 // R1.1: width 6, tab separator, start at 1, increment by 1.
 // R2.1: body defaults to t. R2.2: header defaults to n. R2.3: footer defaults to n.
+// R3.1: default format is rn (right-justified, no leading zeros).
 func defaultConfig() config {
 	return config{
+		numFormat:   "rn",
 		width:       6,
 		sep:         "\t",
 		startVal:    1,
@@ -82,8 +86,22 @@ func parseFlags() (config, []string) {
 	bodyStr := fs.String("b", "t", "body numbering style")
 	headerStr := fs.String("h", "n", "header numbering style")
 	footerStr := fs.String("f", "n", "footer numbering style")
+	// R3.1: -n FORMAT (ln, rn, rz)
+	numFmt := fs.String("n", "rn", "line number format")
+	// R3.2: -w N
+	width := fs.Int("w", 6, "line number field width")
+	// R3.3: -s SEP
+	sep := fs.String("s", "\t", "separator between number and line")
+	// R3.4: -v N and -i N
+	startVal := fs.Int("v", 1, "initial line number")
+	increment := fs.Int("i", 1, "line number increment")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
+		os.Exit(1)
+	}
+
+	if err := applyFormatFlags(&cfg, *numFmt, *width, *sep, *startVal, *increment); err != nil {
+		fmt.Fprintf(os.Stderr, "nl: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -93,6 +111,20 @@ func parseFlags() (config, []string) {
 	}
 
 	return cfg, fs.Args()
+}
+
+// applyFormatFlags validates and applies -n, -w, -s, -v, -i flag values to cfg.
+// R3.1: numFmt must be ln, rn, or rz. R3.2: width. R3.3: sep. R3.4: startVal, increment.
+func applyFormatFlags(cfg *config, numFmt string, width int, sep string, startVal, increment int) error {
+	if numFmt != "ln" && numFmt != "rn" && numFmt != "rz" {
+		return fmt.Errorf("invalid line numbering format: %q (must be ln, rn, or rz)", numFmt)
+	}
+	cfg.numFormat = numFmt
+	cfg.width = width
+	cfg.sep = sep
+	cfg.startVal = startVal
+	cfg.increment = increment
+	return nil
 }
 
 // applyStyleFlags parses and applies the -b, -h, -f style flag values to cfg.
@@ -161,10 +193,24 @@ func shouldNumber(line string, style numberStyle) bool {
 	return false
 }
 
+// formatLineNumber formats a line number according to the configured format.
+// R3.1: ln=left-justified, rn=right-justified, rz=right-justified with leading zeros.
+func formatLineNumber(lineNum, width int, numFormat string) string {
+	switch numFormat {
+	case "ln":
+		return fmt.Sprintf("%-*d", width, lineNum)
+	case "rz":
+		return fmt.Sprintf("%0*d", width, lineNum)
+	default:
+		return fmt.Sprintf("%*d", width, lineNum)
+	}
+}
+
 // writeNumberedLine writes a line with its line number prefix.
-// R1.1: right-justified number in field of width, separator, then content.
+// R3.1: format per -n. R3.2: width per -w. R3.3: separator per -s.
 func writeNumberedLine(w *bufio.Writer, line string, cfg config, lineNum int) error {
-	_, err := fmt.Fprintf(w, "%*d%s%s", cfg.width, lineNum, cfg.sep, line)
+	numStr := formatLineNumber(lineNum, cfg.width, cfg.numFormat)
+	_, err := fmt.Fprintf(w, "%s%s%s", numStr, cfg.sep, line)
 	return err
 }
 
