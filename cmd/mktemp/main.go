@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mktemp: create temporary files or directories.
-// Implements srd036 R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
+// Implements srd036 R1.1-R1.5, R2.1-R2.3, R3.1-R3.6.
 package main
 
 import (
@@ -98,6 +98,11 @@ func run(cfg config) int {
 		return 0
 	}
 
+	// R3.5: warn that -u/--dry-run is discouraged.
+	if cfg.dryRun {
+		fmt.Fprintf(os.Stderr, "%s: warning: remember to delete the file when you are done\n", programName)
+	}
+
 	if err := validateTemplate(cfg.template, cfg.suffix); err != nil {
 		if !cfg.quiet {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
@@ -148,13 +153,17 @@ func createTemp(cfg config) (string, error) {
 
 // createEntry creates a file (mode 0600) or directory (mode 0700) at path.
 // R1.4: file mode 0600. R2.1/R2.2: directory mode 0700.
+// R3.6: returns wrapped errors for diagnostic messages.
 func createEntry(path string, isDir bool) error {
 	if isDir {
-		return os.Mkdir(path, 0o700)
+		if err := os.Mkdir(path, 0o700); err != nil {
+			return fmt.Errorf("failed to create directory via template '%s': %w", path, err)
+		}
+		return nil
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file via template '%s': %w", path, err)
 	}
 	return f.Close()
 }
