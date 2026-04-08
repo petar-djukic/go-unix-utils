@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/fold: wrap long lines to a specified width.
-// Implements srd023-fold R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd023-fold R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -127,7 +127,10 @@ func foldLineHard(w *bufio.Writer, line []byte, cfg config, hasNewline bool) err
 }
 
 // foldLineSpace wraps a line at the last space at or before the wrap column.
-// R3.1, R3.2, R3.3: -s flag support (included here for completeness).
+// R3.1: break at last space at or before wrap column.
+// R3.2: fall back to hard break when no space is found within W columns.
+// R3.3: space is written as last char before the inserted newline.
+// R3.4: compatible with -b; space detection uses byte positions when -b is active.
 func foldLineSpace(w *bufio.Writer, line []byte, cfg config, hasNewline bool) error {
 	col := 0
 	lastSpace := -1
