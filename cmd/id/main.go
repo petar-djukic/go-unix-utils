@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/id: print user and group information.
-// Implements srd041-id R1.1, R1.2, R1.3, R2.1.
+// Implements srd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
+// NOTE: -Z/--context (SELinux) is a non_goal per srd041 and is not implemented.
 package main
 
 import (
@@ -31,6 +32,7 @@ or (when USER omitted) for the current process.
   -G, --groups   print all group IDs
   -n, --name     print a name instead of a number, for -ugG
   -r, --real     print the real ID instead of the effective ID, for -ug
+  -z, --zero     delimit entries with NUL characters, not whitespace
       --help     display this help and exit
       --version  output version information and exit
 `
@@ -51,6 +53,7 @@ type opts struct {
 	flagBigG bool
 	flagN    bool
 	flagR    bool
+	flagZero bool
 	user     string
 }
 
@@ -109,7 +112,7 @@ func parseArgs(args []string) (*opts, error) {
 	return o, nil
 }
 
-// parseLongFlag handles --user, --group, --groups, --name, --real.
+// parseLongFlag handles --user, --group, --groups, --name, --real, --zero.
 func parseLongFlag(o *opts, arg string) error {
 	switch arg {
 	case "--user":
@@ -122,13 +125,15 @@ func parseLongFlag(o *opts, arg string) error {
 		o.flagN = true
 	case "--real":
 		o.flagR = true
+	case "--zero":
+		o.flagZero = true
 	default:
 		return fmt.Errorf("not a long flag")
 	}
 	return nil
 }
 
-// parseShortFlags handles combined short flags like -ugGnr.
+// parseShortFlags handles combined short flags like -ugGnrz.
 func parseShortFlags(o *opts, flags string) error {
 	for _, c := range flags {
 		switch c {
@@ -142,6 +147,8 @@ func parseShortFlags(o *opts, flags string) error {
 			o.flagN = true
 		case 'r':
 			o.flagR = true
+		case 'z':
+			o.flagZero = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", c)
 		}
@@ -166,6 +173,9 @@ func validateFlags(o *opts) error {
 	}
 	if o.flagR && o.flagBigG {
 		return fmt.Errorf("cannot print only names or real IDs in default format")
+	}
+	if o.flagZero && selCount == 0 {
+		return fmt.Errorf("option --zero not permitted in default format")
 	}
 	return nil
 }
@@ -214,10 +224,10 @@ func printUID(o *opts) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(name)
+		printValue(name, o.flagZero)
 		return nil
 	}
-	fmt.Println(uid)
+	printValue(fmt.Sprintf("%d", uid), o.flagZero)
 	return nil
 }
 
@@ -240,11 +250,20 @@ func printGID(o *opts) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(name)
+		printValue(name, o.flagZero)
 		return nil
 	}
-	fmt.Println(gid)
+	printValue(fmt.Sprintf("%d", gid), o.flagZero)
 	return nil
+}
+
+// printValue prints a value followed by newline or NUL depending on --zero.
+func printValue(val string, zero bool) {
+	if zero {
+		fmt.Printf("%s\x00", val)
+	} else {
+		fmt.Println(val)
+	}
 }
 
 // printGroups prints all group IDs (or names with -n).
@@ -266,7 +285,7 @@ func printCurrentGroups(o *opts) error {
 	for _, gid := range gids {
 		parts = append(parts, formatGID(gid, o.flagN))
 	}
-	fmt.Println(strings.Join(parts, " "))
+	printGroupList(parts, o.flagZero)
 	return nil
 }
 
@@ -285,8 +304,19 @@ func printNamedUserGroups(o *opts) error {
 		gid := parseInt(gidStr)
 		parts = append(parts, formatGID(gid, o.flagN))
 	}
-	fmt.Println(strings.Join(parts, " "))
+	printGroupList(parts, o.flagZero)
 	return nil
+}
+
+// printGroupList outputs group entries separated by space or NUL.
+func printGroupList(parts []string, zero bool) {
+	if zero {
+		for _, p := range parts {
+			fmt.Printf("%s\x00", p)
+		}
+	} else {
+		fmt.Println(strings.Join(parts, " "))
+	}
 }
 
 // printDefault prints the full uid=N(name) gid=N(name) groups=... line.
