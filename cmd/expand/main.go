@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/expand: convert tabs to spaces.
-// Implements srd024-expand R1.1, R1.2, R1.3, R1.4.
+// Implements srd024-expand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -37,12 +39,117 @@ func formatOpenError(name string, err error) error {
 	return fmt.Errorf("%s: %s", name, err)
 }
 
+// parseTabValue parses a tab stop specification string into a slice of stops.
+// R2.1: single number = uniform interval.
+// R2.2: comma/space-separated list = absolute positions in strictly increasing order.
+// R2.4: single-element list behaves identically to uniform interval.
+func parseTabValue(s string) ([]int, error) {
+	s = strings.ReplaceAll(s, ",", " ")
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("tab size cannot be 0")
+	}
+	stops := make([]int, 0, len(fields))
+	for _, f := range fields {
+		n, err := strconv.Atoi(f)
+		if err != nil {
+			return nil, fmt.Errorf("tab size contains invalid character(s): %q", f)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("tab sizes must be ascending")
+		}
+		if len(stops) > 0 && n <= stops[len(stops)-1] {
+			return nil, fmt.Errorf("tab sizes must be ascending")
+		}
+		stops = append(stops, n)
+	}
+	return stops, nil
+}
+
+// extractTabFlag extracts the -t/--tabs value from the current arg.
+// Returns the value string, number of extra args consumed, and any error.
+func extractTabFlag(arg string, args []string, i int) (string, int, error) {
+	if strings.HasPrefix(arg, "--tabs=") {
+		return arg[len("--tabs="):], 0, nil
+	}
+	if arg == "--tabs" {
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option '--tabs' requires an argument")
+		}
+		return args[i+1], 1, nil
+	}
+	if strings.HasPrefix(arg, "-t") {
+		rest := arg[2:]
+		if rest != "" {
+			return rest, 0, nil
+		}
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option requires an argument -- 't'")
+		}
+		return args[i+1], 1, nil
+	}
+	return "", 0, nil
+}
+
+// parseArgs parses command-line arguments into tab stops and file names.
+// R2.3: last -t value takes effect when given multiple times.
+func parseArgs(args []string) ([]int, []string, error) {
+	stops := []int{defaultTabStop}
+	var files []string
+	flagsDone := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if flagsDone || arg == "-" || !strings.HasPrefix(arg, "-") {
+			files = append(files, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		val, skip, err := extractTabFlag(arg, args, i)
+		if err != nil {
+			return nil, nil, err
+		}
+		if val == "" {
+			return nil, nil, fmt.Errorf("invalid option -- '%s'", arg[1:])
+		}
+		parsed, err := parseTabValue(val)
+		if err != nil {
+			return nil, nil, err
+		}
+		stops = parsed
+		i += skip
+	}
+
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+	return stops, files, nil
+}
+
+// tabSpaces returns the number of spaces for a tab at 0-indexed column col.
+// R2.1/R2.4: single stop = uniform interval.
+// R2.2: multiple stops = absolute 1-indexed positions; past last stop → 1 space.
+func tabSpaces(col int, stops []int) int {
+	if len(stops) == 1 {
+		return stops[0] - (col % stops[0])
+	}
+	for _, s := range stops {
+		if s > col {
+			return s - col
+		}
+	}
+	return 1
+}
+
 // expandReader reads from r, expands tabs to spaces, and writes to w.
 // R1.1: tabs are replaced with spaces to reach the next tab stop.
 // R1.2: consecutive tabs each advance independently.
 // R1.3: non-tab characters pass through unchanged.
 // R1.4: newlines reset column position to 0.
-func expandReader(r io.Reader, w *bufio.Writer) error {
+func expandReader(r io.Reader, w *bufio.Writer, stops []int) error {
 	br := bufio.NewReader(r)
 	col := 0
 	for {
@@ -53,7 +160,7 @@ func expandReader(r io.Reader, w *bufio.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := expandByte(w, b, &col); err != nil {
+		if err := expandByte(w, b, &col, stops); err != nil {
 			return err
 		}
 	}
@@ -61,10 +168,10 @@ func expandReader(r io.Reader, w *bufio.Writer) error {
 }
 
 // expandByte processes a single byte, expanding tabs to spaces.
-func expandByte(w *bufio.Writer, b byte, col *int) error {
+func expandByte(w *bufio.Writer, b byte, col *int, stops []int) error {
 	switch b {
 	case '\t':
-		spaces := defaultTabStop - (*col % defaultTabStop)
+		spaces := tabSpaces(*col, stops)
 		for range spaces {
 			if err := w.WriteByte(' '); err != nil {
 				return err
@@ -86,7 +193,7 @@ func expandByte(w *bufio.Writer, b byte, col *int) error {
 }
 
 // expandFile opens and expands tabs in a named file.
-func expandFile(name string, w *bufio.Writer) error {
+func expandFile(name string, w *bufio.Writer, stops []int) error {
 	r, err := openInput(name)
 	if err != nil {
 		return err
@@ -94,22 +201,23 @@ func expandFile(name string, w *bufio.Writer) error {
 	if r != os.Stdin {
 		defer r.Close()
 	}
-	return expandReader(r, w)
+	return expandReader(r, w, stops)
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	args := os.Args[1:]
-	if len(args) == 0 {
-		args = []string{"-"}
+	stops, files, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "expand: %s\n", err)
+		os.Exit(1)
 	}
 
 	w := bufio.NewWriter(os.Stdout)
 	exitCode := 0
 
-	for _, name := range args {
-		if err := expandFile(name, w); err != nil {
+	for _, name := range files {
+		if err := expandFile(name, w, stops); err != nil {
 			fmt.Fprintf(os.Stderr, "expand: %s\n", err)
 			exitCode = 1
 		}
