@@ -304,7 +304,7 @@ releases:
         - id: rel06.1-uc003-id
           status: spec_complete
         - id: rel06.1-uc004-whoami
-          status: spec_complete
+          status: implemented
         - id: rel06.1-uc005-groups
           status: implemented
     - version: "07.0"
