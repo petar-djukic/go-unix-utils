@@ -2,15 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/expand: differential testing against gexpand.
-// Implements srd024-expand R4.1, R4.2, R4.3.
+// Implements srd024-expand R4.1, R4.2, R4.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeStderr handles program name and error message case differences
+// between the Go binary ("expand") and the GNU reference ("gexpand").
+func normalizeStderr(data []byte) []byte {
+	s := strings.ToLower(string(data))
+	s = strings.ReplaceAll(s, "gexpand:", "expand:")
+	return []byte(s)
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -99,6 +108,26 @@ func TestDiff(t *testing.T) {
 			Name:  "interval_one",
 			Args:  []string{"-t", "1"},
 			Stdin: []byte("a\tb\tc\n"),
+		},
+		// R3.1: exit 0 on successful processing (explicit verification)
+		{
+			Name:  "exit_0_on_success",
+			Stdin: []byte("no\ttabs\there\n"),
+		},
+		// R3.2: nonexistent file exits 1, error to stderr
+		{
+			Name:      "nonexistent_file_exit_1",
+			Args:      []string{"nonexistent_file_xyz_42"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
+		},
+		// R3.2: nonexistent file with valid stdin continues processing
+		{
+			Name:      "nonexistent_then_stdin",
+			Args:      []string{"nonexistent_file_xyz_42", "-"},
+			Stdin:     []byte("a\tb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeStderr},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
