@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/comm: compare two sorted files line by line.
-// Implements srd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -22,24 +23,25 @@ const (
 
 // config holds parsed command-line options for comm.
 type config struct {
-	suppress1   bool   // -1: suppress column 1
-	suppress2   bool   // -2: suppress column 2
-	suppress3   bool   // -3: suppress column 3
-	checkOrder  int    // 0=default(warn), 1=fatal, -1=nocheck
-	outputDelim string // --output-delimiter
-	total       bool   // --total
-	zeroTerm    bool   // --zero-terminated
-	showHelp    bool
-	showVersion bool
-	files       []string
+	suppress1     bool   // -1: suppress column 1
+	suppress2     bool   // -2: suppress column 2
+	suppress3     bool   // -3: suppress column 3
+	checkOrder    int    // 0=default(warn), 1=fatal, -1=nocheck
+	outputDelim   string // --output-delimiter
+	hasOutputDelim bool  // R3.4: true when --output-delimiter was explicitly set
+	total         bool   // --total
+	zeroTerm      bool   // --zero-terminated
+	showHelp      bool
+	showVersion   bool
+	files         []string
 }
 
 // lineReader wraps a bufio.Scanner with a "peek" line buffer so
 // the merge loop can test the current line without consuming it.
 type lineReader struct {
-	sc      *bufio.Scanner
-	line    string
-	valid   bool
+	sc       *bufio.Scanner
+	line     string
+	valid    bool
 	prevLine string // for order checking
 }
 
@@ -128,9 +130,9 @@ func run(cfg config) error {
 }
 
 // resolveDelim returns the column delimiter string.
-// R3.4: --output-delimiter replaces the default tab.
+// R3.4: --output-delimiter replaces the default tab, even if empty.
 func resolveDelim(cfg config) string {
-	if cfg.outputDelim != "" {
+	if cfg.hasOutputDelim {
 		return cfg.outputDelim
 	}
 	return defaultDelim
@@ -174,13 +176,14 @@ func unwrapPathErr(err error) error {
 
 // compareState tracks the state of the two-file comparison.
 type compareState struct {
-	w          *bufio.Writer
-	cfg        config
-	delim      string
-	terminator byte
-	total1     int
-	total2     int
-	total3     int
+	w              *bufio.Writer
+	cfg            config
+	delim          string
+	terminator     byte
+	total1         int
+	total2         int
+	total3         int
+	orderViolated  bool // R3.1: tracks if any order violation was detected
 }
 
 // compareFiles performs the merge-like comparison of two sorted readers.
@@ -214,7 +217,14 @@ func compareFiles(r1, r2 io.ReadCloser, w *bufio.Writer, cfg config, delim strin
 	if err := lr2.sc.Err(); err != nil {
 		return err
 	}
-	return s.writeTotal()
+	if err := s.writeTotal(); err != nil {
+		return err
+	}
+	// R3.1: default mode exits non-zero after all processing if violations found
+	if s.orderViolated {
+		return fmt.Errorf("input is not in sorted order")
+	}
+	return nil
 }
 
 // newLineReader creates a lineReader with the appropriate split function.
@@ -256,7 +266,9 @@ func (s *compareState) mergePair(lr1, lr2 *lineReader) error {
 }
 
 // checkOrders validates sort order for both files.
-// R3.1: default warns on out-of-order. R3.2: --check-order is fatal.
+// R3.3: --nocheck-order disables checking entirely.
+// R3.1: default warns on out-of-order.
+// R3.2: --check-order is fatal.
 func (s *compareState) checkOrders(lr1, lr2 *lineReader) error {
 	if s.cfg.checkOrder == -1 {
 		return nil
@@ -276,8 +288,9 @@ func (s *compareState) checkOneOrder(lr *lineReader, fileNum int) error {
 	if s.cfg.checkOrder == 1 {
 		return fmt.Errorf("%s", msg)
 	}
-	// R3.1: default mode prints warning to stderr
+	// R3.1: default mode prints warning to stderr, continues, exits non-zero at end
 	fmt.Fprintf(os.Stderr, "%s: %s\n", programName, msg)
+	s.orderViolated = true
 	return nil
 }
 
@@ -456,12 +469,14 @@ func parseLongFlag(cfg *config, arg string, args []string, i int) (int, error) {
 func parseOutputDelim(cfg *config, arg string, args []string, i int) (int, error) {
 	if strings.HasPrefix(arg, "--output-delimiter=") {
 		cfg.outputDelim = arg[len("--output-delimiter="):]
+		cfg.hasOutputDelim = true
 		return 0, nil
 	}
 	if i+1 >= len(args) {
 		return 0, fmt.Errorf("option '--output-delimiter' requires an argument")
 	}
 	cfg.outputDelim = args[i+1]
+	cfg.hasOutputDelim = true
 	return 1, nil
 }
 

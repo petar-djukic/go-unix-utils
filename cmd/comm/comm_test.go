@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/comm against gcomm.
-// Implements srd029-comm R2.1, R2.2, R2.3, R2.4 acceptance criteria via testutils.RunDiffTests.
+// Implements srd029-comm R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
+// acceptance criteria via testutils.RunDiffTests.
 package main
 
 import (
@@ -65,6 +66,13 @@ func TestDiff(t *testing.T) {
 	empty := writeTestFile(t, dir, "empty.txt", "")
 	same := writeTestFile(t, dir, "same.txt", "a\nb\nc\n")
 
+	// R3.1/R3.2: unsorted input for order-checking tests.
+	// file1 unsorted: "a\nc\nb\nd\n" has c before b (out of order).
+	// file2 sorted: "a\nb\nc\nd\n" triggers comparison deep enough
+	// that the merge loop detects file1's disorder.
+	unsorted1 := writeTestFile(t, dir, "unsorted1.txt", "a\nc\nb\nd\n")
+	sorted2 := writeTestFile(t, dir, "sorted2.txt", "a\nb\nc\nd\n")
+
 	stderrNorm := []testutils.NormalizeFunc{normalizeStderr, normalizeStderrHint}
 
 	tests := []testutils.DiffTest{
@@ -99,7 +107,7 @@ func TestDiff(t *testing.T) {
 			Args: []string{"-123", f1, f2},
 		},
 		{
-			// AC4: custom output delimiter
+			// AC4: R3.4 custom output delimiter
 			Name: "output_delimiter",
 			Args: []string{"--output-delimiter=|", f1, f2},
 		},
@@ -163,6 +171,35 @@ func TestDiff(t *testing.T) {
 			// R2.3 + R2.2: suppress col2 and col3, only col1 remains
 			Name: "suppress_col2_col3",
 			Args: []string{"-23", f1, f2},
+		},
+		// --- R3 order-checking and delimiter tests ---
+		{
+			// AC5/R3.2: --check-order with unsorted file1 produces error
+			Name:      "check_order_unsorted",
+			Args:      []string{"--check-order", unsorted1, sorted2},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		{
+			// R3.3: --nocheck-order with unsorted input succeeds
+			Name: "nocheck_order_unsorted",
+			Args: []string{"--nocheck-order", unsorted1, sorted2},
+		},
+		{
+			// R3.1: default behavior with unsorted input warns but continues
+			Name:      "default_order_unsorted",
+			Args:      []string{unsorted1, sorted2},
+			Normalize: stderrNorm,
+		},
+		{
+			// R3.4: --output-delimiter with multi-char string
+			Name: "output_delimiter_multi_char",
+			Args: []string{"--output-delimiter=<=>", f1, f2},
+		},
+		{
+			// R3.4: --output-delimiter combined with column suppression
+			Name: "output_delimiter_with_suppress",
+			Args: []string{"--output-delimiter=,", "-1", f1, f2},
 		},
 	}
 
