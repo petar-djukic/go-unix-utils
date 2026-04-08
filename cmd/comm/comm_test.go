@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/comm against gcomm.
-// Implements srd029-comm acceptance criteria via testutils.RunDiffTests.
+// Implements srd029-comm R2.1, R2.2, R2.3, R2.4 acceptance criteria via testutils.RunDiffTests.
 package main
 
 import (
@@ -131,6 +131,38 @@ func TestDiff(t *testing.T) {
 			Args:      []string{},
 			ExitCode:  1,
 			Normalize: stderrNorm,
+		},
+		{
+			// AC6: reading file2 from stdin via '-'
+			Name:  "stdin_as_file2",
+			Args:  []string{f1, "-"},
+			Stdin: []byte("b\nc\nd\n"),
+		},
+		{
+			// AC6: reading file1 from stdin via '-'
+			Name:  "stdin_as_file1",
+			Args:  []string{"-", f2},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R2.1 + R2.4: suppress col1, col2 shifts left (no indent)
+			Name: "suppress_col1_indentation",
+			Args: []string{"-1", f1, f2},
+		},
+		{
+			// R2.2 + R2.4: suppress col2, col3 shifts left (one tab)
+			Name: "suppress_col2_indentation",
+			Args: []string{"-2", f1, f2},
+		},
+		{
+			// R2.3 + R2.1: suppress col1 and col3, only col2 remains
+			Name: "suppress_col1_col3",
+			Args: []string{"-13", f1, f2},
+		},
+		{
+			// R2.3 + R2.2: suppress col2 and col3, only col1 remains
+			Name: "suppress_col2_col3",
+			Args: []string{"-23", f1, f2},
 		},
 	}
 

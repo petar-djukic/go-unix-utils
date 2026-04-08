@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/comm: compare two sorted files line by line.
-// Implements srd029-comm R1.1, R1.2, R1.3, R1.4.
+// Implements srd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
