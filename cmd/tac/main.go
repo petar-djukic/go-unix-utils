@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/tac: concatenate and print files in reverse.
-// Implements srd021-tac R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd021-tac R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -217,8 +218,16 @@ func writeBeforeRegex(records, seps [][]byte, w io.Writer) error {
 	return nil
 }
 
+// writeError wraps a stdout write failure for distinguishing from read errors.
+// R3.3: write errors produce "tac: write error" on stderr.
+type writeError struct{ err error }
+
+func (e *writeError) Error() string { return "write error" }
+
 // tacFile reads the named file and writes its records in reverse to w.
 // R1.4: each file is processed independently.
+// R3.2: file open/read errors returned with filename context.
+// R3.3: stdout write errors wrapped as writeError.
 func tacFile(name string, cfg config, w io.Writer) error {
 	r, err := openInput(name)
 	if err != nil {
@@ -231,7 +240,10 @@ func tacFile(name string, cfg config, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("%s: %s", name, err)
 	}
-	return reverseRecords(data, cfg, w)
+	if err := reverseRecords(data, cfg, w); err != nil {
+		return &writeError{err: err}
+	}
+	return nil
 }
 
 func main() {
@@ -253,11 +265,19 @@ func main() {
 		args = []string{"-"}
 	}
 
+	// R3.1: exit 0 when all inputs processed successfully.
 	exitCode := 0
 	// R1.4: process each file independently in argument order.
 	for _, name := range args {
 		if err := tacFile(name, cfg, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "tac: %s\n", err)
+			// R3.3: write errors produce "tac: write error".
+			// R3.2: file errors include filename context.
+			var we *writeError
+			if errors.As(err, &we) {
+				fmt.Fprintf(os.Stderr, "tac: write error\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "tac: %s\n", err)
+			}
 			exitCode = 1
 		}
 	}
