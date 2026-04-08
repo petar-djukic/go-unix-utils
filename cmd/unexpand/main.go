@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/unexpand: convert spaces to tabs.
-// Implements srd025-unexpand R1.1, R1.2, R1.3, R1.4.
+// Implements srd025-unexpand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (

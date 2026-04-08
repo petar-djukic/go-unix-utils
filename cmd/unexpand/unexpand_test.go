@@ -74,6 +74,59 @@ func TestDiff(t *testing.T) {
 			Name:  "mixed_leading_tab_then_spaces",
 			Stdin: []byte("\t    text\n"),
 		},
+		// R2.1: -a converts all runs of spaces, not just leading.
+		{
+			Name:  "a_flag_leading_spaces",
+			Args:  []string{"-a"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "a_flag_non_leading_spaces_to_tab",
+			Args:  []string{"-a"},
+			Stdin: []byte("a       b\n"),
+		},
+		{
+			Name:  "a_flag_multiple_groups",
+			Args:  []string{"-a"},
+			Stdin: []byte("a       b       c\n"),
+		},
+		{
+			Name:  "a_flag_mid_line_8_spaces",
+			Args:  []string{"-a"},
+			Stdin: []byte("ab      c\n"),
+		},
+		// R2.2: single space stays as space with -a.
+		{
+			Name:  "a_flag_single_space_preserved",
+			Args:  []string{"-a"},
+			Stdin: []byte("a b\n"),
+		},
+		{
+			Name:  "a_flag_single_space_mid_line",
+			Args:  []string{"-a"},
+			Stdin: []byte("hello world\n"),
+		},
+		// R2.3: first non-whitespace does not stop conversion; -a processes entire line.
+		{
+			Name:  "a_flag_entire_line_processed",
+			Args:  []string{"-a"},
+			Stdin: []byte("x               y               z\n"),
+		},
+		{
+			Name:  "a_flag_trailing_spaces",
+			Args:  []string{"-a"},
+			Stdin: []byte("text        \n"),
+		},
+		{
+			Name:  "a_flag_mixed_runs",
+			Args:  []string{"-a"},
+			Stdin: []byte("  a     b  c       d\n"),
+		},
+		{
+			Name:  "a_flag_all_flag_long",
+			Args:  []string{"--all"},
+			Stdin: []byte("a       b\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
