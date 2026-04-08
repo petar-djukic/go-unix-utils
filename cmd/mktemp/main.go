@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mktemp: create temporary files or directories.
-// Implements srd036 R1.1, R1.2, R1.3, R1.4.
+// Implements srd036 R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -22,6 +25,12 @@ const defaultTemplate = "tmp.XXXXXXXXXX"
 // minXCount is the minimum number of trailing X characters required.
 // R1.3: template must contain at least 3 consecutive trailing X characters.
 const minXCount = 3
+
+// randChars is the alphanumeric character set for X replacement.
+const randChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// maxAttempts is the retry limit for name collision avoidance.
+const maxAttempts = 100
 
 // usageText is the --help output printed to stdout.
 const usageText = `Usage: mktemp [OPTION]... [TEMPLATE]
@@ -62,7 +71,7 @@ type config struct {
 	template  string // positional TEMPLATE argument
 }
 
-// R1.1: main entry with SIGPIPE handler and flag parsing.
+// R1.5: main entry with SIGPIPE handler and flag parsing.
 func main() {
 	sys.InstallSIGPIPEHandler()
 
@@ -78,6 +87,7 @@ func main() {
 }
 
 // run executes the mktemp logic and returns the exit code.
+// R1.5: returns 0 on success, 1 on failure.
 func run(cfg config) int {
 	if cfg.help {
 		fmt.Fprint(os.Stdout, usageText)
@@ -88,7 +98,6 @@ func run(cfg config) int {
 		return 0
 	}
 
-	// R1.3: validate that template has at least minXCount trailing X characters.
 	if err := validateTemplate(cfg.template, cfg.suffix); err != nil {
 		if !cfg.quiet {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
@@ -96,17 +105,119 @@ func run(cfg config) int {
 		return 1
 	}
 
-	// TODO: R2, R3 — actual file/directory creation will be implemented
-	// in subsequent tasks.
+	path, err := createTemp(cfg)
+	if err != nil {
+		if !cfg.quiet {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		}
+		return 1
+	}
+
+	// R2.3: print the resulting path to stdout followed by a newline.
+	fmt.Fprintln(os.Stdout, path)
 	return 0
+}
+
+// createTemp resolves the directory, expands the template, and creates
+// the temporary file or directory.
+func createTemp(cfg config) (string, error) {
+	dir := resolveDir(cfg)
+	base := filepath.Base(cfg.template)
+
+	for range maxAttempts {
+		name, err := expandXs(base)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate random name: %w", err)
+		}
+		path := filepath.Join(dir, name+cfg.suffix)
+
+		if cfg.dryRun {
+			return path, nil
+		}
+
+		err = createEntry(path, cfg.directory)
+		if err == nil {
+			return path, nil
+		}
+		if !os.IsExist(err) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("too many attempts; giving up")
+}
+
+// createEntry creates a file (mode 0600) or directory (mode 0700) at path.
+// R1.4: file mode 0600. R2.1/R2.2: directory mode 0700.
+func createEntry(path string, isDir bool) error {
+	if isDir {
+		return os.Mkdir(path, 0o700)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// resolveDir determines the parent directory for temp entry creation.
+func resolveDir(cfg config) string {
+	// R3.1: -p DIR or --tmpdir=DIR overrides TMPDIR.
+	if cfg.tmpdirSet && cfg.tmpdir != "" {
+		return cfg.tmpdir
+	}
+
+	// If template has a directory component, use it.
+	dir := filepath.Dir(cfg.template)
+	if dir != "." {
+		return dir
+	}
+
+	// R3.2/R3.4: --tmpdir without value or -t uses TMPDIR or /tmp.
+	if cfg.tmpdirSet || cfg.legacyT {
+		return envTmpDir()
+	}
+
+	// R1.1: default template implies --tmpdir (TMPDIR or /tmp).
+	if cfg.template == defaultTemplate {
+		return envTmpDir()
+	}
+
+	// Custom template with no dir flags: current directory.
+	return "."
+}
+
+// envTmpDir returns TMPDIR if set, otherwise /tmp.
+func envTmpDir() string {
+	if d := os.Getenv("TMPDIR"); d != "" {
+		return d
+	}
+	return "/tmp"
+}
+
+// expandXs replaces trailing X characters in tmpl with random alphanumeric
+// characters. R1.3/R2.2: X-suffix expansion.
+func expandXs(tmpl string) (string, error) {
+	xCount := countTrailingX(tmpl)
+	prefix := tmpl[:len(tmpl)-xCount]
+
+	suffix := make([]byte, xCount)
+	max := big.NewInt(int64(len(randChars)))
+	for i := range suffix {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		suffix[i] = randChars[n.Int64()]
+	}
+	return prefix + string(suffix), nil
 }
 
 // validateTemplate checks that the template contains at least minXCount
 // consecutive trailing X characters, accounting for any --suffix.
 // R1.3: minimum three consecutive trailing X characters required.
 func validateTemplate(tmpl, suffix string) error {
-	// The X sequence is at the end of the template, before any suffix.
-	xCount := countTrailingX(tmpl)
+	base := filepath.Base(tmpl)
+	xCount := countTrailingX(base)
 	if xCount < minXCount {
 		return fmt.Errorf("too few X's in template '%s%s'", tmpl, suffix)
 	}
@@ -178,13 +289,11 @@ func parseFlag(cfg *config, args []string, idx int) (int, error) {
 func parseLongFlag(cfg *config, args []string, idx int) (int, error) {
 	arg := args[idx]
 
-	// Handle --suffix=VALUE form.
 	if strings.HasPrefix(arg, "--suffix=") {
 		cfg.suffix = arg[len("--suffix="):]
 		return 0, nil
 	}
 
-	// Handle --tmpdir=VALUE form.
 	if strings.HasPrefix(arg, "--tmpdir=") {
 		cfg.tmpdir = arg[len("--tmpdir="):]
 		cfg.tmpdirSet = true
@@ -199,7 +308,6 @@ func parseLongFlag(cfg *config, args []string, idx int) (int, error) {
 	case "--quiet":
 		cfg.quiet = true
 	case "--tmpdir":
-		// R3.2: --tmpdir without a value uses TMPDIR or /tmp.
 		cfg.tmpdirSet = true
 	case "--suffix":
 		if idx+1 >= len(args) {
@@ -231,7 +339,6 @@ func parseShortFlags(cfg *config, args []string, idx int) (int, error) {
 		case 't':
 			cfg.legacyT = true
 		case 'p':
-			// -p requires a value: rest of this arg or next arg.
 			rest := flags[i+1:]
 			if len(rest) > 0 {
 				cfg.tmpdir = rest
