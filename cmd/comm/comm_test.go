@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/comm against gcomm.
-// Implements srd029-comm R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4
-// acceptance criteria via testutils.RunDiffTests.
+// Implements srd029-comm R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4,
+// R4.1, R4.2, R4.3, R4.4 acceptance criteria via testutils.RunDiffTests.
 package main
 
 import (
@@ -18,8 +18,28 @@ import (
 
 // normalizeStderr replaces the reference binary name and normalizes
 // error message casing so differential comparison succeeds.
+// Handles both "gcomm:" and full path forms like "/opt/homebrew/bin/comm:".
 func normalizeStderr(data []byte) []byte {
 	data = bytes.ReplaceAll(data, []byte("gcomm:"), []byte("comm:"))
+	// GNU comm uses its resolved binary path in some error messages.
+	idx := bytes.Index(data, []byte("/comm:"))
+	for idx >= 0 {
+		start := bytes.LastIndex(data[:idx], []byte("\n"))
+		if start == -1 {
+			start = 0
+		} else {
+			start++ // skip past the newline
+		}
+		// Only replace if the line starts with a path (/) before /comm:
+		if data[start] == '/' {
+			data = append(data[:start], append([]byte("comm:"), data[idx+len("/comm:"):]...)...)
+		}
+		next := bytes.Index(data[start+5:], []byte("/comm:"))
+		if next == -1 {
+			break
+		}
+		idx = start + 5 + next
+	}
 	data = bytes.ReplaceAll(data,
 		[]byte("No such file or directory"),
 		[]byte("no such file or directory"))
@@ -38,6 +58,12 @@ func normalizeStderrHint(data []byte) []byte {
 		out = append(out, l)
 	}
 	return bytes.Join(out, []byte("\n"))
+}
+
+// clearOutput returns an empty byte slice, used to ignore stdout/stderr
+// content and compare only exit codes (e.g., for --help/--version).
+func clearOutput(data []byte) []byte {
+	return nil
 }
 
 // writeTestFile creates a file with the given content in dir.
@@ -65,6 +91,14 @@ func TestDiff(t *testing.T) {
 	f2 := writeTestFile(t, dir, "file2.txt", "b\nc\nd\n")
 	empty := writeTestFile(t, dir, "empty.txt", "")
 	same := writeTestFile(t, dir, "same.txt", "a\nb\nc\n")
+
+	// R4.4: files with no trailing newline.
+	noNL1 := writeTestFile(t, dir, "nonl1.txt", "a\nb\nc")
+	noNL2 := writeTestFile(t, dir, "nonl2.txt", "b\nc\nd")
+
+	// R4.4: all lines unique (no overlap between files).
+	unique1 := writeTestFile(t, dir, "unique1.txt", "a\nc\ne\n")
+	unique2 := writeTestFile(t, dir, "unique2.txt", "b\nd\nf\n")
 
 	// R3.1/R3.2: unsorted input for order-checking tests.
 	// file1 unsorted: "a\nc\nb\nd\n" has c before b (out of order).
@@ -200,6 +234,63 @@ func TestDiff(t *testing.T) {
 			// R3.4: --output-delimiter combined with column suppression
 			Name: "output_delimiter_with_suppress",
 			Args: []string{"--output-delimiter=,", "-1", f1, f2},
+		},
+		// --- R4 exit codes, edge cases, --help, --version ---
+		{
+			// AC5/R4.3: --help prints usage and exits 0
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			// AC5/R4.3: --version prints version info and exits 0
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			// AC4/R4.4: both files have no trailing newline
+			Name: "no_trailing_newline_both",
+			Args: []string{noNL1, noNL2},
+		},
+		{
+			// AC4/R4.4: file1 has trailing newline, file2 does not
+			Name: "no_trailing_newline_file2",
+			Args: []string{f1, noNL2},
+		},
+		{
+			// AC4/R4.4: file1 has no trailing newline, file2 does
+			Name: "no_trailing_newline_file1",
+			Args: []string{noNL1, f2},
+		},
+		{
+			// AC4/R4.4: both files empty
+			Name: "both_empty",
+			Args: []string{empty, empty},
+		},
+		{
+			// R4.4: all lines are unique (no common lines)
+			Name: "all_unique",
+			Args: []string{unique1, unique2},
+		},
+		{
+			// R4.4: all lines are common (identical sorted files)
+			Name: "all_common",
+			Args: []string{f1, same},
+		},
+		{
+			// R4.2: unrecognized option produces exit 1 and stderr
+			Name:      "unrecognized_option",
+			Args:      []string{"--bogus", f1, f2},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		{
+			// R4.2: missing operand after one file
+			Name:      "missing_second_operand",
+			Args:      []string{f1},
+			ExitCode:  1,
+			Normalize: stderrNorm,
 		},
 	}
 
