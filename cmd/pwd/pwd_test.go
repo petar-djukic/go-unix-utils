@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/pwd.
-// Tests cover srd051-pwd R2.1, R2.2, R3.1, R3.2.
+// Tests cover srd051-pwd R2.1, R2.2, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -110,6 +110,27 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--bogus"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+
+		// R3.3: explicit LC_ALL=C environment verifies locale-independent output.
+		{
+			Name: "explicit_lc_all_c",
+			Args: []string{},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// R3.3: explicit LC_ALL=C with -P flag.
+		{
+			Name: "explicit_lc_all_c_physical",
+			Args: []string{"-P"},
+			Env:  []string{"LC_ALL=C"},
+		},
+
+		// R3.3: explicit LC_ALL=C with -L flag.
+		{
+			Name: "explicit_lc_all_c_logical",
+			Args: []string{"-L"},
+			Env:  []string{"LC_ALL=C"},
 		},
 
 		// R2.1: extra operand — gpwd ignores non-option arguments with a
