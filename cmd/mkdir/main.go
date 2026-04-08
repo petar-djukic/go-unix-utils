@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mkdir: create directories.
-// Implements srd034 R1.1, R1.2, R1.3, R1.4.
+// Implements srd034 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -94,22 +95,51 @@ func createDir(cfg config, dir string) error {
 	if err := os.Mkdir(dir, 0o777); err != nil {
 		return formatMkdirError(dir, err)
 	}
+	applyModeIfSet(cfg, dir)
 	if cfg.verbose {
 		fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", programName, dir)
 	}
 	return nil
 }
 
-// createWithParents creates a directory and its parents.
-// Stub for future R2 implementation.
+// createWithParents creates a directory and its parents using -p semantics.
+// R2.1: creates intermediate parent directories as needed via os.MkdirAll.
+// R2.2: no error when the target directory already exists.
+// R2.3: no error when intermediate directories already exist.
+// R3.3: when -m is given, applies mode only to the leaf directory;
+// intermediates use the default permissions (0o777 modified by umask).
 func createWithParents(cfg config, dir string) error {
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		return formatMkdirError(dir, err)
 	}
+	applyModeIfSet(cfg, dir)
 	if cfg.verbose {
 		fmt.Fprintf(os.Stdout, "%s: created directory '%s'\n", programName, dir)
 	}
 	return nil
+}
+
+// applyModeIfSet applies the -m mode to dir when cfg.mode is non-empty.
+// R3.3: used after directory creation to set the leaf directory's mode
+// without affecting intermediate directories.
+func applyModeIfSet(cfg config, dir string) {
+	if cfg.mode == "" {
+		return
+	}
+	perm, err := parseOctalMode(cfg.mode)
+	if err != nil {
+		return
+	}
+	os.Chmod(dir, perm) // best-effort chmod; errors reported elsewhere
+}
+
+// parseOctalMode parses an octal permission string like "0755" or "755".
+func parseOctalMode(mode string) (os.FileMode, error) {
+	val, err := strconv.ParseUint(mode, 8, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid mode '%s'", mode)
+	}
+	return os.FileMode(val), nil
 }
 
 // formatMkdirError wraps a mkdir error to match GNU mkdir output format.
