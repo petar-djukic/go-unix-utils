@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/ln against gln (GNU coreutils).
 // Implements srd037 R4.1 (compare stdout/stderr/exit codes),
-// R4.2 (test coverage for R3.1, R3.2, R3.3), R4.3 (link verification).
+// R4.2 (test coverage for R3.1-R3.6), R4.3 (link verification).
 package main
 
 import (
@@ -52,7 +52,7 @@ func normalizeSyscallErrors(b []byte) []byte {
 
 // TestDiff runs differential tests comparing cmd/ln against gln.
 // R4.1: compare stdout, stderr, exit codes.
-// R4.2: covers hard links, symlinks, -f, -n, -i, and error cases.
+// R4.2: covers hard links, symlinks, -f, -n, -i, -v, -b, -S, and error cases.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -77,6 +77,18 @@ func TestDiff(t *testing.T) {
 	t.Run("interactive", func(t *testing.T) {
 		t.Parallel()
 		runInteractiveTests(t, goBin, refBin, norm)
+	})
+	t.Run("verbose", func(t *testing.T) {
+		t.Parallel()
+		runVerboseTests(t, goBin, refBin, norm)
+	})
+	t.Run("backup", func(t *testing.T) {
+		t.Parallel()
+		runBackupTests(t, goBin, refBin, norm)
+	})
+	t.Run("suffix", func(t *testing.T) {
+		t.Parallel()
+		runSuffixTests(t, goBin, refBin, norm)
 	})
 }
 
@@ -249,6 +261,151 @@ func runInteractiveTests(t *testing.T, goBin, refBin string, norm testutils.Norm
 	runIsolatedCases(t, goBin, refBin, norm, cases)
 }
 
+// runVerboseTests tests R3.4: -v prints link name to stdout.
+func runVerboseTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []isolatedCase{
+		{
+			name: "verbose_hard_link",
+			args: []string{"-v", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+			},
+			verify: verifyHardLink("target", "link"),
+		},
+		{
+			name: "verbose_symlink",
+			args: []string{"-sv", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+			},
+			verify: verifySymLink("link", "target"),
+		},
+		{
+			name: "verbose_force_overwrite",
+			args: []string{"-vf", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: verifyHardLink("target", "link"),
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
+}
+
+// runBackupTests tests R3.5: -b and --backup create backups before removal.
+func runBackupTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []isolatedCase{
+		{
+			name: "backup_default_force",
+			args: []string{"-b", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileContent("link~", "old"),
+			),
+		},
+		{
+			name: "backup_numbered_force",
+			args: []string{"--backup=numbered", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileContent("link.~1~", "old"),
+			),
+		},
+		{
+			name: "backup_simple_force",
+			args: []string{"--backup=simple", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileContent("link~", "old"),
+			),
+		},
+		{
+			name: "backup_none_force",
+			args: []string{"--backup=none", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileAbsent("link~"),
+			),
+		},
+		{
+			name: "backup_existing_with_numbered",
+			args: []string{"-b", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+				// pre-existing numbered backup triggers numbered mode
+				writeFile(t, filepath.Join(dir, "link.~1~"), "older")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileContent("link.~2~", "old"),
+			),
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
+}
+
+// runSuffixTests tests R3.6: -S/--suffix overrides the default backup suffix.
+func runSuffixTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []isolatedCase{
+		{
+			name: "suffix_short_flag",
+			args: []string{"-S", ".bak", "-b", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileContent("link.bak", "old"),
+			),
+		},
+		{
+			name: "suffix_long_flag",
+			args: []string{"--suffix=.orig", "-b", "-f", "target", "link"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, filepath.Join(dir, "target"), "content")
+				writeFile(t, filepath.Join(dir, "link"), "old")
+			},
+			verify: combineVerifiers(
+				verifyHardLink("target", "link"),
+				verifyFileContent("link.orig", "old"),
+			),
+		},
+	}
+	runIsolatedCases(t, goBin, refBin, norm, cases)
+}
+
 // runIsolatedCases runs each test case with both binaries in separate dirs.
 func runIsolatedCases(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, cases []isolatedCase) {
 	t.Helper()
@@ -359,6 +516,16 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+// combineVerifiers merges multiple verify functions into one.
+func combineVerifiers(fns ...func(t *testing.T, refDir, goDir string)) func(t *testing.T, refDir, goDir string) {
+	return func(t *testing.T, refDir, goDir string) {
+		t.Helper()
+		for _, fn := range fns {
+			fn(t, refDir, goDir)
+		}
+	}
+}
+
 // verifyHardLink returns a verify function that checks both dirs have
 // a hard link where target and link share the same inode.
 func verifyHardLink(target, link string) func(t *testing.T, refDir, goDir string) {
@@ -410,11 +577,23 @@ func checkSymLink(t *testing.T, label, linkPath, expectedTarget string) {
 }
 
 // verifyFileContent returns a verify function that checks file content
-// is unchanged (for decline cases).
+// matches in the go dir.
 func verifyFileContent(name, expected string) func(t *testing.T, refDir, goDir string) {
 	return func(t *testing.T, refDir, goDir string) {
 		t.Helper()
 		checkFileContent(t, "go", filepath.Join(goDir, name), expected)
+	}
+}
+
+// verifyFileAbsent returns a verify function that checks a file does not
+// exist in the go dir.
+func verifyFileAbsent(name string) func(t *testing.T, refDir, goDir string) {
+	return func(t *testing.T, refDir, goDir string) {
+		t.Helper()
+		path := filepath.Join(goDir, name)
+		if _, err := os.Lstat(path); err == nil {
+			t.Errorf("go: expected %s to be absent but it exists", name)
+		}
 	}
 }
 

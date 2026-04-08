@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ln: create links between files.
-// Implements srd037 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3,
-// R3.1 (-f/--force), R3.2 (-n/--no-dereference), R3.3 (-i/--interactive).
+// Implements srd037 R1.1-R1.4, R2.1-R2.3,
+// R3.1 (-f/--force), R3.2 (-n/--no-dereference), R3.3 (-i/--interactive),
+// R3.4 (-v/--verbose), R3.5 (-b/--backup), R3.6 (-S/--suffix).
 package main
 
 import (
@@ -22,13 +23,18 @@ import (
 var errDeclined = errors.New("declined")
 
 const programName = "ln"
+const defaultBackupSuffix = "~"
 
 // options holds parsed command-line flags for ln.
 type options struct {
-	symbolic      bool // R2.1: -s/--symbolic
-	force         bool // R3.1: -f/--force
-	interactive   bool // R3.3: -i/--interactive
-	noDereference bool // R3.2: -n/--no-dereference
+	symbolic      bool   // R2.1: -s/--symbolic
+	force         bool   // R3.1: -f/--force
+	interactive   bool   // R3.3: -i/--interactive
+	noDereference bool   // R3.2: -n/--no-dereference
+	verbose       bool   // R3.4: -v/--verbose
+	backup        bool   // R3.5: -b/--backup
+	backupMethod  string // R3.5: numbered, existing, simple, none
+	suffix        string // R3.6: -S/--suffix
 }
 
 // R1.1: main entry with SIGPIPE handler and argument dispatch.
@@ -47,13 +53,18 @@ func main() {
 }
 
 // parseArgs separates flags from positional arguments.
-// Supports -s, -f, -i, -n, combined short flags (-sf), and long forms.
+// Supports short flags (-s, -f, -i, -n, -v, -b, -S), combined short flags,
+// and long forms (--symbolic, --force, --interactive, --no-dereference,
+// --verbose, --backup, --backup=METHOD, --suffix=SUFFIX).
 // R3.3: when -f and -i both appear, the last one on the command line wins.
 func parseArgs(rawArgs []string) (options, []string) {
-	var opts options
+	opts := options{
+		suffix:       defaultBackupSuffix,
+		backupMethod: "existing",
+	}
 	var positional []string
 
-	for i := range len(rawArgs) {
+	for i := 0; i < len(rawArgs); i++ {
 		arg := rawArgs[i]
 		if arg == "--" {
 			positional = append(positional, rawArgs[i+1:]...)
@@ -64,7 +75,7 @@ func parseArgs(rawArgs []string) (options, []string) {
 			continue
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			parseShortFlags(&opts, arg[1:])
+			i = parseShortFlags(&opts, rawArgs, i)
 			continue
 		}
 		positional = append(positional, arg)
@@ -72,28 +83,40 @@ func parseArgs(rawArgs []string) (options, []string) {
 	return opts, positional
 }
 
-// parseLongFlag handles --symbolic, --force, --interactive, --no-dereference.
+// parseLongFlag handles long-form flags.
 // R3.3: --force and --interactive are mutually exclusive; last wins.
+// R3.5: --backup without =METHOD uses the default method (existing).
 func parseLongFlag(opts *options, flag string) {
-	switch flag {
-	case "--symbolic":
+	switch {
+	case flag == "--symbolic":
 		opts.symbolic = true
-	case "--force":
+	case flag == "--force":
 		opts.force = true
 		opts.interactive = false
-	case "--interactive":
+	case flag == "--interactive":
 		opts.interactive = true
 		opts.force = false
-	case "--no-dereference":
+	case flag == "--no-dereference":
 		opts.noDereference = true
+	case flag == "--verbose":
+		opts.verbose = true
+	case flag == "--backup":
+		opts.backup = true
+	case strings.HasPrefix(flag, "--backup="):
+		opts.backup = true
+		opts.backupMethod = strings.TrimPrefix(flag, "--backup=")
+	case strings.HasPrefix(flag, "--suffix="):
+		opts.suffix = strings.TrimPrefix(flag, "--suffix=")
 	}
 }
 
 // parseShortFlags handles combined short flags like -sf.
 // R3.3: -f and -i are mutually exclusive; the rightmost character wins.
-func parseShortFlags(opts *options, chars string) {
-	for _, c := range chars {
-		switch c {
+// R3.6: -S consumes the remainder of the flag or the next argument as suffix.
+func parseShortFlags(opts *options, rawArgs []string, idx int) int {
+	chars := rawArgs[idx][1:]
+	for j := 0; j < len(chars); j++ {
+		switch chars[j] {
 		case 's':
 			opts.symbolic = true
 		case 'f':
@@ -104,8 +127,22 @@ func parseShortFlags(opts *options, chars string) {
 			opts.force = false
 		case 'n':
 			opts.noDereference = true
+		case 'v':
+			opts.verbose = true
+		case 'b':
+			opts.backup = true
+		case 'S':
+			rest := chars[j+1:]
+			if len(rest) > 0 {
+				opts.suffix = rest
+			} else if idx+1 < len(rawArgs) {
+				idx++
+				opts.suffix = rawArgs[idx]
+			}
+			return idx
 		}
 	}
+	return idx
 }
 
 // run dispatches to the correct link form based on argument count.
@@ -173,36 +210,128 @@ func handleLinkResult(err error) int {
 }
 
 // createLink creates a hard or symbolic link from target to linkName.
-// R2.1: uses os.Symlink when symbolic is true.
-// R2.2: symbolic links to directories are allowed.
-// R2.3: stores the target string as-is in the symlink.
-// R3.1: removes existing destination when force is true.
-// R3.3: prompts before removing when interactive is true.
+// R3.4: prints verbose output after successful link creation.
 func createLink(opts options, target, linkName string) error {
 	if err := handleExisting(opts, linkName); err != nil {
 		return err
 	}
 	if opts.symbolic {
-		return createSymLink(target, linkName)
+		if err := createSymLink(target, linkName); err != nil {
+			return err
+		}
+	} else {
+		if err := createHardLink(target, linkName); err != nil {
+			return err
+		}
 	}
-	return createHardLink(target, linkName)
+	if opts.verbose {
+		printVerbose(opts, target, linkName)
+	}
+	return nil
 }
 
 // handleExisting handles pre-existing destination files.
-// R3.1: force removes unconditionally.
-// R3.3: interactive prompts before removing. Returns errDeclined if user says no.
+// R3.1: force removes unconditionally (with optional backup).
+// R3.3: interactive prompts before removing (with optional backup).
 func handleExisting(opts options, linkName string) error {
-	if opts.force {
-		removeExisting(linkName)
+	if !pathExists(linkName) {
 		return nil
 	}
-	if opts.interactive && pathExists(linkName) {
+	if opts.force {
+		return backupAndRemove(opts, linkName)
+	}
+	if opts.interactive {
 		if !promptReplace(linkName) {
 			return errDeclined
 		}
-		removeExisting(linkName)
+		return backupAndRemove(opts, linkName)
 	}
 	return nil
+}
+
+// backupAndRemove creates a backup (if enabled) then removes the file.
+// R3.5: backup is created before removal when -b or --backup is active.
+func backupAndRemove(opts options, path string) error {
+	if needsBackup(opts) {
+		if err := createBackup(opts, path); err != nil {
+			return err
+		}
+	}
+	removeExisting(path)
+	return nil
+}
+
+// needsBackup returns true when backup is enabled and method is not "none".
+func needsBackup(opts options) bool {
+	m := opts.backupMethod
+	return opts.backup && m != "none" && m != "off"
+}
+
+// createBackup renames path to its computed backup name.
+// R3.5: supports numbered, existing, simple, and none methods.
+func createBackup(opts options, path string) error {
+	bp := computeBackupPath(opts, path)
+	if err := os.Rename(path, bp); err != nil {
+		return fmt.Errorf("cannot backup '%s': %s",
+			path, unwrapOSError(err))
+	}
+	return nil
+}
+
+// computeBackupPath determines the backup filename for path.
+// R3.5: numbered → path.~N~, existing → numbered if any exist else simple,
+// simple → path + suffix.
+func computeBackupPath(opts options, path string) string {
+	switch opts.backupMethod {
+	case "numbered", "t":
+		return nextNumberedBackup(path)
+	case "existing", "nil":
+		if hasNumberedBackup(path) {
+			return nextNumberedBackup(path)
+		}
+		return path + opts.suffix
+	default: // "simple", "never", or unrecognized
+		return path + opts.suffix
+	}
+}
+
+// nextNumberedBackup returns the next available path.~N~ name.
+func nextNumberedBackup(path string) string {
+	for i := 1; ; i++ {
+		bp := fmt.Sprintf("%s.~%d~", path, i)
+		if !pathExists(bp) {
+			return bp
+		}
+	}
+}
+
+// hasNumberedBackup checks if any path.~N~ backup file exists.
+func hasNumberedBackup(path string) bool {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	prefix := base + ".~"
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasPrefix(n, prefix) && strings.HasSuffix(n, "~") {
+			return true
+		}
+	}
+	return false
+}
+
+// printVerbose prints the link creation to stdout.
+// R3.4: format is 'LINK' -> 'TARGET' for symlinks,
+// 'LINK' => 'TARGET' for hard links.
+func printVerbose(opts options, target, linkName string) {
+	arrow := "=>"
+	if opts.symbolic {
+		arrow = "->"
+	}
+	fmt.Printf("'%s' %s '%s'\n", linkName, arrow, target)
 }
 
 // promptReplace prompts the user on stderr before removing a destination.
