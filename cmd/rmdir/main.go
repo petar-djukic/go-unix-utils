@@ -98,7 +98,7 @@ func removeDirEntry(dir string, cfg config) error {
 		if cfg.ignoreFail && isNonEmptyError(err) {
 			return nil
 		}
-		return formatRmdirError(dir, err)
+		return formatRemoveError(dir, err)
 	}
 	// R3.3: print verbose message for successful removal.
 	if cfg.verbose {
@@ -122,7 +122,7 @@ func removeParents(dir string, cfg config) error {
 			if cfg.ignoreFail && isNonEmptyError(err) {
 				return nil
 			}
-			return formatRmdirError(parent, err)
+			return formatParentError(parent, err)
 		}
 		// R3.3: verbose message for each parent removed.
 		if cfg.verbose {
@@ -150,10 +150,16 @@ func printVerbose(dir string) {
 	fmt.Fprintf(os.Stdout, "%s: removing directory, '%s'\n", programName, dir)
 }
 
-// formatRmdirError wraps a remove error to match GNU rmdir output format.
+// formatRemoveError wraps a remove error to match GNU rmdir output format.
 // R1.4: "rmdir: failed to remove 'NAME': REASON"
-func formatRmdirError(dir string, err error) error {
+func formatRemoveError(dir string, err error) error {
 	return fmt.Errorf("failed to remove '%s': %s", dir, unwrapOSError(err))
+}
+
+// formatParentError wraps a parent-removal error to match GNU rmdir -p format.
+// GNU rmdir uses "failed to remove directory" when ascending parents.
+func formatParentError(dir string, err error) error {
+	return fmt.Errorf("failed to remove directory '%s': %s", dir, unwrapOSError(err))
 }
 
 // unwrapOSError extracts the underlying message from an *os.PathError.
