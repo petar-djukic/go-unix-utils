@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/cut: remove sections from lines.
-// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -132,13 +132,15 @@ const (
 
 // config holds the parsed command-line options.
 type config struct {
-	mode          cutMode
-	ranges        []cutRange
-	complement    bool
-	delimiter     byte
-	delimSet      bool
-	onlyDelimited bool
-	files         []string
+	mode           cutMode
+	ranges         []cutRange
+	complement     bool
+	delimiter      byte
+	delimSet       bool
+	onlyDelimited  bool
+	outputDelim    string
+	outputDelimSet bool
+	files          []string
 }
 
 // extractByteFlag tries to extract -b LIST from the current argument.
@@ -208,7 +210,7 @@ func extractDelimFlag(arg string, args []string, i int) (string, int, error) {
 // setMode sets the selection mode, returning an error on conflict.
 func setMode(cfg *config, m cutMode, list string) error {
 	if cfg.mode != modeNone {
-		return fmt.Errorf("only one type of list may be specified")
+		return fmt.Errorf("only one list may be specified")
 	}
 	cfg.mode = m
 	ranges, err := parseRangeList(list)
@@ -274,7 +276,30 @@ func parseFlag(cfg *config, arg string, args []string, i int) (int, error) {
 		cfg.onlyDelimited = true
 		return 0, nil
 	}
+	if strings.HasPrefix(arg, "--output-delimiter") {
+		return parseOutputDelimFlag(cfg, arg, args, i)
+	}
 	return parseModeOrDelimFlag(cfg, arg, args, i)
+}
+
+// parseOutputDelimFlag handles --output-delimiter=STRING and --output-delimiter STRING.
+// R2.4: sets the output delimiter for all modes.
+func parseOutputDelimFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	const prefix = "--output-delimiter="
+	if strings.HasPrefix(arg, prefix) {
+		cfg.outputDelim = arg[len(prefix):]
+		cfg.outputDelimSet = true
+		return 0, nil
+	}
+	if arg == "--output-delimiter" {
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("option '--output-delimiter' requires an argument")
+		}
+		cfg.outputDelim = args[i+1]
+		cfg.outputDelimSet = true
+		return 1, nil
+	}
+	return 0, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
 }
 
 // parseModeOrDelimFlag handles -d, -b, -c, and -f flags.
@@ -321,6 +346,7 @@ func parseModeFlag(cfg *config, arg string, args []string, i int) (int, error) {
 }
 
 // openInput returns os.Stdin for "-", otherwise opens the named file.
+// R4.2: file open failures return an error; processing continues for remaining files.
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
@@ -333,11 +359,20 @@ func openInput(name string) (*os.File, error) {
 }
 
 // formatOpenError extracts the underlying error for GNU-compatible messages.
+// Capitalizes the first letter to match GNU coreutils formatting.
 func formatOpenError(name string, err error) error {
 	if pe, ok := errors.AsType[*os.PathError](err); ok {
-		return fmt.Errorf("%s: %s", name, pe.Err)
+		return fmt.Errorf("%s: %s", name, capitalizeFirst(pe.Err.Error()))
 	}
 	return fmt.Errorf("%s: %s", name, err)
+}
+
+// capitalizeFirst uppercases the first byte of s for GNU-compatible messages.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // isSelected returns whether a 1-indexed position is selected,
@@ -375,16 +410,45 @@ func cutBytes(r io.Reader, w *bufio.Writer, cfg config) error {
 }
 
 // writeByteLine writes the selected bytes from a single line.
-// R1.3: newline is stripped before selection and always re-added in output.
-// R1.4: positions beyond line length produce nothing.
+// R2.4: when outputDelimSet, inserts output delimiter between disjoint groups.
 func writeByteLine(w *bufio.Writer, line []byte, cfg config) error {
 	content, _ := stripNewline(line)
+	if cfg.outputDelimSet {
+		return writeByteLineDelim(w, content, cfg)
+	}
+	return writeByteLineRaw(w, content, cfg)
+}
+
+// writeByteLineRaw writes selected bytes with no separator.
+func writeByteLineRaw(w *bufio.Writer, content []byte, cfg config) error {
 	for pos := 1; pos <= len(content); pos++ {
 		if isSelected(pos, cfg.ranges, cfg.complement) {
 			if err := w.WriteByte(content[pos-1]); err != nil {
 				return err
 			}
 		}
+	}
+	return w.WriteByte('\n')
+}
+
+// writeByteLineDelim writes selected bytes with output delimiter between groups.
+func writeByteLineDelim(w *bufio.Writer, content []byte, cfg config) error {
+	firstGroup := true
+	prevSelected := false
+	for pos := 1; pos <= len(content); pos++ {
+		sel := isSelected(pos, cfg.ranges, cfg.complement)
+		if sel {
+			if !prevSelected && !firstGroup {
+				if _, err := w.WriteString(cfg.outputDelim); err != nil {
+					return err
+				}
+			}
+			if err := w.WriteByte(content[pos-1]); err != nil {
+				return err
+			}
+			firstGroup = false
+		}
+		prevSelected = sel
 	}
 	return w.WriteByte('\n')
 }
@@ -444,10 +508,14 @@ func writeNewlineIf(w *bufio.Writer, cond bool) error {
 
 // writeSelectedFields writes the fields matching the range selection.
 // R2.2: output delimiter defaults to the input delimiter.
+// R2.4: uses outputDelim when explicitly set via --output-delimiter.
 // R3.3: complement with -f outputs fields not in the list.
 func writeSelectedFields(w *bufio.Writer, content []byte, cfg config, hasNewline bool) error {
 	fields := bytes.Split(content, []byte{cfg.delimiter})
-	outDelim := []byte{cfg.delimiter}
+	outDelim := string(cfg.delimiter)
+	if cfg.outputDelimSet {
+		outDelim = cfg.outputDelim
+	}
 	first := true
 	for i, field := range fields {
 		pos := i + 1
@@ -455,7 +523,7 @@ func writeSelectedFields(w *bufio.Writer, content []byte, cfg config, hasNewline
 			continue
 		}
 		if !first {
-			if _, err := w.Write(outDelim); err != nil {
+			if _, err := w.WriteString(outDelim); err != nil {
 				return err
 			}
 		}
@@ -468,6 +536,7 @@ func writeSelectedFields(w *bufio.Writer, content []byte, cfg config, hasNewline
 }
 
 // cutFile processes a single file.
+// R4.2: returns error on file open failure; caller continues with remaining files.
 func cutFile(name string, w *bufio.Writer, cfg config) error {
 	r, err := openInput(name)
 	if err != nil {
@@ -483,12 +552,17 @@ func cutFile(name string, w *bufio.Writer, cfg config) error {
 	return cutBytes(r, w, cfg)
 }
 
+// R4.4: SIGPIPE handler installed at start.
+// R4.1: exit 0 on success.
+// R4.2: exit 1 on file open failure, processing continues for remaining files.
+// R4.3: exit 1 on write error.
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	cfg, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cut: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Try 'cut --help' for more information.\n")
 		os.Exit(1)
 	}
 
