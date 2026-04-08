@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/env: run a command in a modified environment.
-// Implements srd039-env R1.1, R1.2, R1.3, R2.1.
+// Implements srd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R3.1.
 package main
 
 import (
@@ -24,6 +24,8 @@ const helpText = `Usage: env [OPTION]... [-] [NAME=VALUE]... [COMMAND [ARG]...]
 Set each NAME to VALUE in the environment and run COMMAND.
 
   -i, --ignore-environment  start with an empty environment
+  -0, --null                end each output line with NUL, not newline
+  -u, --unset=NAME          remove variable from the environment
       --help                display this help and exit
       --version             output version information and exit
 
@@ -46,32 +48,64 @@ func main() {
 	os.Exit(code)
 }
 
+// envOptions holds parsed flag state for env.
+type envOptions struct {
+	ignoreEnv  bool
+	nullTerm   bool
+	unsetNames []string
+	pairs      []string
+	cmdArgs    []string
+}
+
 // run parses arguments, modifies the environment, and either prints it or
 // executes the command. Returns the exit code.
 func run(args []string) int {
-	ignoreEnv, envPairs, cmdArgs, err := parseArgs(args)
+	opts, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		return exitCodeInvalidOption
 	}
 
-	env := buildEnv(ignoreEnv, envPairs)
+	env := buildEnv(opts)
 
-	if len(cmdArgs) == 0 {
-		return printEnv(env)
+	if len(opts.cmdArgs) == 0 {
+		return printEnv(env, opts.nullTerm)
 	}
-	return executeCommand(cmdArgs, env)
+	return executeCommand(opts.cmdArgs, env)
 }
 
 // buildEnv constructs the environment slice.
 // R2.1: when ignoreEnv is true, start from empty; otherwise inherit.
-func buildEnv(ignoreEnv bool, pairs []string) []string {
+// R2.2: unset names are removed before NAME=VALUE pairs are applied.
+func buildEnv(opts envOptions) []string {
 	var env []string
-	if !ignoreEnv {
+	if !opts.ignoreEnv {
 		env = os.Environ()
 	}
-	return applyPairs(env, pairs)
+	env = applyUnsets(env, opts.unsetNames)
+	return applyPairs(env, opts.pairs)
+}
+
+// applyUnsets removes named variables from the environment. R2.2.
+func applyUnsets(env []string, names []string) []string {
+	for _, name := range names {
+		env = removeEnvVar(env, name)
+	}
+	return env
+}
+
+// removeEnvVar removes a variable by name from the environment slice.
+func removeEnvVar(env []string, name string) []string {
+	prefix := name + "="
+	n := 0
+	for _, e := range env {
+		if !strings.HasPrefix(e, prefix) {
+			env[n] = e
+			n++
+		}
+	}
+	return env[:n]
 }
 
 // applyPairs sets or overrides NAME=VALUE entries in the environment.
@@ -95,10 +129,14 @@ func setEnvVar(env []string, name, pair string) []string {
 	return append(env, pair)
 }
 
-// printEnv writes each environment variable to stdout. R1.1.
-func printEnv(env []string) int {
+// printEnv writes each environment variable to stdout. R1.1, R3.1.
+func printEnv(env []string, nullTerm bool) int {
+	sep := "\n"
+	if nullTerm {
+		sep = "\x00"
+	}
 	for _, e := range env {
-		fmt.Println(e)
+		fmt.Print(e + sep)
 	}
 	return 0
 }
@@ -152,29 +190,24 @@ func isPermissionError(err error) bool {
 // parseArgs separates flags, NAME=VALUE pairs, and command arguments.
 // R1.1: NAME=VALUE pairs before COMMAND set environment variables.
 // R2.1: -i / --ignore-environment starts with empty environment.
-func parseArgs(args []string) (ignoreEnv bool, pairs []string, cmdArgs []string, err error) {
+// R2.2: -u NAME / --unset=NAME removes variables.
+// R3.1: -0 / --null enables NUL-terminated output.
+func parseArgs(args []string) (envOptions, error) {
+	var opts envOptions
 	i := 0
 	for i < len(args) {
 		arg := args[i]
-		if arg == "--help" {
-			fmt.Print(helpText)
-			os.Exit(0)
+		done, advance, err := parseFlag(arg, args, i, &opts)
+		if err != nil {
+			return envOptions{}, err
 		}
-		if arg == "--version" {
-			fmt.Println(versionText)
-			os.Exit(0)
-		}
-		if arg == "-i" || arg == "--ignore-environment" || arg == "-" {
-			ignoreEnv = true
-			i++
-			continue
-		}
-		if arg == "--" {
-			i++
+		if done {
+			i += advance
 			break
 		}
-		if strings.HasPrefix(arg, "-") && !strings.Contains(arg, "=") {
-			return false, nil, nil, fmt.Errorf("unrecognized option '%s'", arg)
+		if advance > 0 {
+			i += advance
+			continue
 		}
 		break
 	}
@@ -182,13 +215,58 @@ func parseArgs(args []string) (ignoreEnv bool, pairs []string, cmdArgs []string,
 	// Remaining args: NAME=VALUE pairs followed by COMMAND [ARG ...]
 	for i < len(args) {
 		if strings.Contains(args[i], "=") {
-			pairs = append(pairs, args[i])
+			opts.pairs = append(opts.pairs, args[i])
 			i++
 			continue
 		}
 		break
 	}
 
-	cmdArgs = args[i:]
-	return ignoreEnv, pairs, cmdArgs, nil
+	opts.cmdArgs = args[i:]
+	return opts, nil
+}
+
+// parseFlag handles a single flag argument. Returns (done, advance, err)
+// where done=true means stop flag parsing, advance is how many args consumed.
+func parseFlag(arg string, args []string, i int, opts *envOptions) (bool, int, error) {
+	if arg == "--help" {
+		fmt.Print(helpText)
+		os.Exit(0)
+	}
+	if arg == "--version" {
+		fmt.Println(versionText)
+		os.Exit(0)
+	}
+	if arg == "-i" || arg == "--ignore-environment" || arg == "-" {
+		opts.ignoreEnv = true
+		return false, 1, nil
+	}
+	if arg == "-0" || arg == "--null" {
+		opts.nullTerm = true
+		return false, 1, nil
+	}
+	if arg == "--" {
+		return true, 1, nil
+	}
+	// R2.2: --unset=NAME form.
+	if strings.HasPrefix(arg, "--unset=") {
+		opts.unsetNames = append(opts.unsetNames, arg[len("--unset="):])
+		return false, 1, nil
+	}
+	// R2.2: -u NAME (separate argument) or -uNAME (attached).
+	if arg == "-u" {
+		if i+1 >= len(args) {
+			return false, 0, fmt.Errorf("option requires an argument -- 'u'")
+		}
+		opts.unsetNames = append(opts.unsetNames, args[i+1])
+		return false, 2, nil
+	}
+	if strings.HasPrefix(arg, "-u") {
+		opts.unsetNames = append(opts.unsetNames, arg[2:])
+		return false, 1, nil
+	}
+	if strings.HasPrefix(arg, "-") && !strings.Contains(arg, "=") {
+		return false, 0, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return true, 0, nil
 }
