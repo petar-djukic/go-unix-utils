@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sha256sum: compute and check SHA-256 message digests.
-// Implements srd032-sha256sum R1.1, R1.2, R1.3, R1.4.
+// Implements srd032-sha256sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
