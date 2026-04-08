@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for cmd/paste: differential testing against gpaste.
-// Implements srd027-paste R2.1, R2.2, R2.3.
+// Implements srd027-paste R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -116,6 +116,49 @@ func TestDiffStdin(t *testing.T) {
 		{Name: "stdin_only", Args: []string{"-"}, Stdin: []byte("hello\nworld\n")},
 		// no args defaults to stdin
 		{Name: "no_args_stdin", Stdin: []byte("hello\nworld\n")},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSerial tests serial mode (-s) where each file produces one output line.
+// R3.1: all lines of one file joined with delimiter on a single output line.
+// R3.2: delimiter list cycles across fields within the output line.
+// R3.3: -s overrides parallel mode.
+func TestDiffSerial(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gpaste")
+	if err != nil {
+		t.Skipf("reference binary gpaste not in PATH: %v", err)
+	}
+
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "f1.txt")
+	file2 := filepath.Join(dir, "f2.txt")
+	file3 := filepath.Join(dir, "f3.txt")
+	writeTestFile(t, file1, "a\nb\nc\n")
+	writeTestFile(t, file2, "1\n2\n3\n")
+	writeTestFile(t, file3, "x\ny\n")
+
+	tests := []testutils.DiffTest{
+		// R3.1: single file, all lines joined with tab
+		{Name: "serial_one_file", Args: []string{"-s", file1}},
+		// R3.1: two files, each produces one output line
+		{Name: "serial_two_files", Args: []string{"-s", file1, file2}},
+		// R3.1: three files with default tab delimiter
+		{Name: "serial_three_files", Args: []string{"-s", file1, file2, file3}},
+		// R3.2: custom delimiter in serial mode
+		{Name: "serial_custom_delim", Args: []string{"-s", "-d", ":", file1, file2}},
+		// R3.2: delimiter list cycles in serial mode
+		{Name: "serial_delim_cycle", Args: []string{"-s", "-d", ":,", file1}},
+		// R3.1: serial mode with stdin via '-'
+		{Name: "serial_stdin", Args: []string{"-s", "-"}, Stdin: []byte("a\nb\nc\n")},
+		// R3.3: --serial long form
+		{Name: "serial_long_flag", Args: []string{"--serial", file1}},
+		// R3.1: serial mode with unequal-length files
+		{Name: "serial_unequal", Args: []string{"-s", file1, file3}},
+		// R3.2: escape sequence delimiter in serial mode
+		{Name: "serial_escape_null", Args: []string{"-s", "-d", `\0`, file1}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

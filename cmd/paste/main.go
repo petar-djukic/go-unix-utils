@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/paste: merge lines of files side by side.
-// Implements srd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -299,7 +299,6 @@ func writeParallelLine(w *bufio.Writer, lines []string, cfg config) error {
 // pasteSerial processes files one at a time in serial mode.
 // R3.1: all lines of one file joined with delimiter on a single output line.
 // R3.2: delimiter list cycles across fields within the output line.
-// TODO: full implementation in a subsequent task.
 func pasteSerial(cfg config, w *bufio.Writer) int {
 	for _, name := range cfg.files {
 		fr, err := openFileReader(name)
