@@ -284,7 +284,7 @@ releases:
         - id: rel06.0-uc004-ln
           status: spec_complete
         - id: rel06.0-uc005-unlink
-          status: spec_complete
+          status: implemented
     - version: "06.1"
       name: "Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)"
       status: spec_complete
