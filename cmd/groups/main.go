@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -46,6 +47,7 @@ func run(args []string) int {
 	users, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		return 1
 	}
 
@@ -76,21 +78,32 @@ func parseArgs(args []string) ([]string, error) {
 	return users, nil
 }
 
-// printCurrentUserGroups prints groups for the current user with no prefix.
-// R1.1, R2.1: space-separated group names on a single line.
+// printCurrentUserGroups prints groups for the current process with no prefix.
+// R1.1, R2.1: uses getgroups() syscall to match GNU groups behavior.
 func printCurrentUserGroups() int {
-	u, err := user.Current()
+	gids, err := syscall.Getgroups()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: cannot find current user: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "%s: cannot get groups: %v\n", progName, err)
 		return 1
 	}
-	groups, err := groupNamesForUser(u)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		return 1
-	}
-	fmt.Println(strings.Join(groups, " "))
+	names := gidSliceToNames(gids)
+	fmt.Println(strings.Join(names, " "))
 	return 0
+}
+
+// gidSliceToNames converts numeric GIDs to group names.
+// Falls back to the numeric string if lookup fails.
+func gidSliceToNames(gids []int) []string {
+	names := make([]string, 0, len(gids))
+	for _, gid := range gids {
+		g, err := user.LookupGroupId(fmt.Sprintf("%d", gid))
+		if err != nil {
+			names = append(names, fmt.Sprintf("%d", gid))
+			continue
+		}
+		names = append(names, g.Name)
+	}
+	return names
 }
 
 // printNamedUserGroups prints groups for each named user with "user : " prefix.
@@ -100,13 +113,13 @@ func printNamedUserGroups(users []string) int {
 	for _, name := range users {
 		u, err := user.Lookup(name)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s: no such user\n", progName, name)
+			fmt.Fprintf(os.Stderr, "%s: '%s': no such user\n", progName, name)
 			exitCode = 1
 			continue
 		}
 		groups, err := groupNamesForUser(u)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
+			fmt.Fprintf(os.Stderr, "%s: '%s': %v\n", progName, name, err)
 			exitCode = 1
 			continue
 		}
@@ -116,7 +129,7 @@ func printNamedUserGroups(users []string) int {
 }
 
 // groupNamesForUser returns group names for the given user.
-// R1.3: uses os/user package for group lookups.
+// R2.3: uses os/user package for group lookups.
 func groupNamesForUser(u *user.User) ([]string, error) {
 	gids, err := u.GroupIds()
 	if err != nil {
