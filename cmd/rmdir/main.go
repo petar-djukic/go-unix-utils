@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/rmdir: remove empty directories.
-// Implements srd035 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd035 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -35,12 +38,12 @@ const versionText = "rmdir (go-unix-utils) 0.1.0\n"
 
 // config holds parsed command-line options for rmdir.
 type config struct {
-	parents              bool // -p, --parents (stub, implemented in later task)
-	ignoreFail           bool // --ignore-fail-on-non-empty (stub)
-	verbose              bool // -v, --verbose (stub)
-	help                 bool // --help
-	version              bool // --version
-	dirs                 []string
+	parents    bool // -p, --parents
+	ignoreFail bool // --ignore-fail-on-non-empty
+	verbose    bool // -v, --verbose
+	help       bool // --help
+	version    bool // --version
+	dirs       []string
 }
 
 // R1.1: main entry with SIGPIPE handler and flag parsing.
@@ -59,6 +62,7 @@ func main() {
 
 // run executes the rmdir logic and returns the exit code.
 // R1.2: processes each directory argument independently.
+// R3.4: exits 0 when all removals succeed or are suppressed.
 func run(cfg config) int {
 	if cfg.help {
 		fmt.Fprint(os.Stdout, usageText)
@@ -77,7 +81,7 @@ func run(cfg config) int {
 
 	exitCode := 0
 	for _, dir := range cfg.dirs {
-		if err := removeDirEntry(dir, cfg.parents); err != nil {
+		if err := removeDirEntry(dir, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			exitCode = 1
 		}
@@ -86,15 +90,22 @@ func run(cfg config) int {
 }
 
 // removeDirEntry removes a directory, optionally ascending through parents.
-// R1.1, R2.1: uses os.Remove which calls rmdir(2) for directories.
-// R2.2: stops ascending when a parent removal fails.
+// R2.1: uses os.Remove which calls rmdir(2) for directories.
 // R2.3: each DIR argument is processed independently via the caller loop.
-func removeDirEntry(dir string, parents bool) error {
+func removeDirEntry(dir string, cfg config) error {
 	if err := os.Remove(dir); err != nil {
+		// R3.1, R3.2: suppress only non-empty errors when configured.
+		if cfg.ignoreFail && isNonEmptyError(err) {
+			return nil
+		}
 		return formatRmdirError(dir, err)
 	}
-	if parents {
-		return removeParents(dir)
+	// R3.3: print verbose message for successful removal.
+	if cfg.verbose {
+		printVerbose(dir)
+	}
+	if cfg.parents {
+		return removeParents(dir, cfg)
 	}
 	return nil
 }
@@ -103,15 +114,40 @@ func removeDirEntry(dir string, parents bool) error {
 // empty directory until a removal fails or the path is exhausted.
 // R2.1: removes successive parent components after the target.
 // R2.2: stops and reports error when a parent is not empty.
-func removeParents(dir string) error {
+func removeParents(dir string, cfg config) error {
 	parent := filepath.Dir(dir)
 	for parent != "." && parent != "/" {
 		if err := os.Remove(parent); err != nil {
+			// R3.1, R3.2: suppress only non-empty errors.
+			if cfg.ignoreFail && isNonEmptyError(err) {
+				return nil
+			}
 			return formatRmdirError(parent, err)
+		}
+		// R3.3: verbose message for each parent removed.
+		if cfg.verbose {
+			printVerbose(parent)
 		}
 		parent = filepath.Dir(parent)
 	}
 	return nil
+}
+
+// isNonEmptyError returns true if the error is caused by a non-empty directory.
+// R3.1: identifies ENOTEMPTY so --ignore-fail-on-non-empty can suppress it.
+// R3.2: returns false for all other errors (permission denied, not found, etc.).
+func isNonEmptyError(err error) bool {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.ENOTEMPTY
+	}
+	return false
+}
+
+// printVerbose prints a verbose diagnostic for a successfully removed directory.
+// R3.3: output matches GNU rmdir -v format.
+func printVerbose(dir string) {
+	fmt.Fprintf(os.Stdout, "%s: removing directory, '%s'\n", programName, dir)
 }
 
 // formatRmdirError wraps a remove error to match GNU rmdir output format.
@@ -162,7 +198,6 @@ func parseFlag(cfg *config, args []string, idx int) (int, error) {
 }
 
 // parseLongFlag handles --name flags.
-// R1.3: defines -p, --ignore-fail-on-non-empty, --verbose as stubs (D4).
 func parseLongFlag(cfg *config, arg string) (int, error) {
 	switch arg {
 	case "--parents":
@@ -182,7 +217,6 @@ func parseLongFlag(cfg *config, arg string) (int, error) {
 }
 
 // parseShortFlags processes bundled short flags like -pv.
-// R1.3: defines -p and -v as stubs (D4).
 func parseShortFlags(cfg *config, arg string) (int, error) {
 	flags := arg[1:]
 	for _, ch := range flags {
