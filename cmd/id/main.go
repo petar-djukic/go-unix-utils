@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -276,11 +277,13 @@ func printGroups(o *opts) error {
 }
 
 // printCurrentGroups prints groups for the current process.
+// R3.3: groups are sorted numerically to match GNU id output order.
 func printCurrentGroups(o *opts) error {
 	gids, err := syscall.Getgroups()
 	if err != nil {
 		return fmt.Errorf("cannot get groups: %v", err)
 	}
+	sort.Ints(gids)
 	parts := make([]string, 0, len(gids))
 	for _, gid := range gids {
 		parts = append(parts, formatGID(gid, o.flagN))
@@ -290,18 +293,23 @@ func printCurrentGroups(o *opts) error {
 }
 
 // printNamedUserGroups prints groups for a named user.
+// R3.3: groups are sorted numerically to match GNU id output order.
 func printNamedUserGroups(o *opts) error {
 	u, err := lookupUser(o.user)
 	if err != nil {
 		return err
 	}
-	gids, err := u.GroupIds()
+	gidStrs, err := u.GroupIds()
 	if err != nil {
 		return fmt.Errorf("failed to get group IDs: %v", err)
 	}
+	gids := make([]int, 0, len(gidStrs))
+	for _, s := range gidStrs {
+		gids = append(gids, parseInt(s))
+	}
+	sort.Ints(gids)
 	parts := make([]string, 0, len(gids))
-	for _, gidStr := range gids {
-		gid := parseInt(gidStr)
+	for _, gid := range gids {
 		parts = append(parts, formatGID(gid, o.flagN))
 	}
 	printGroupList(parts, o.flagZero)
