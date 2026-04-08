@@ -260,7 +260,7 @@ releases:
         - id: rel05.4-uc002-sha1sum
           status: implemented
         - id: rel05.4-uc003-sha256sum
-          status: spec_complete
+          status: implemented
         - id: rel05.4-uc004-sha512sum
           status: spec_complete
     - version: "06.0"
