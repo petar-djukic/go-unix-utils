@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/readlink: print symlink target or canonical path.
-// Implements srd050-readlink R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2.
+// Implements srd050-readlink R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R3.1, R3.2.
 package main
 
 import (
@@ -66,6 +66,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// R3.1: no operand provided must print usage error to stderr and exit 1.
 	if len(operands) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
 		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
@@ -192,6 +193,7 @@ func resolvePartial(abs string) string {
 }
 
 // parseArgs processes command-line arguments into options and operands.
+// R3.2: unknown flags produce an error.
 func parseArgs(args []string) (options, []string, error) {
 	var opts options
 	var operands []string
@@ -214,15 +216,25 @@ func parseArgs(args []string) (options, []string, error) {
 }
 
 // handleFlag processes a single flag argument, updating options.
+// Supports long flags and bundled short flags (e.g., -fn).
+// R3.2: unknown flags produce an error matching GNU format.
 func handleFlag(arg string, opts *options) error {
+	if strings.HasPrefix(arg, "--") {
+		return handleLongFlag(arg, opts)
+	}
+	return handleShortFlags(arg, opts)
+}
+
+// handleLongFlag processes a long flag (--name).
+func handleLongFlag(arg string, opts *options) error {
 	switch arg {
-	case "-f", "--canonicalize":
+	case "--canonicalize":
 		opts.mode = modeCanon
-	case "-e", "--canonicalize-existing":
+	case "--canonicalize-existing":
 		opts.mode = modeExisting
-	case "-m", "--canonicalize-missing":
+	case "--canonicalize-missing":
 		opts.mode = modeMissing
-	case "-n", "--no-newline":
+	case "--no-newline":
 		opts.noNewline = true
 	case "--help":
 		fmt.Print(helpText)
@@ -232,6 +244,33 @@ func handleFlag(arg string, opts *options) error {
 		os.Exit(0)
 	default:
 		return fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return nil
+}
+
+// handleShortFlags processes bundled short flags (e.g., -fn parses as -f -n).
+func handleShortFlags(arg string, opts *options) error {
+	for _, ch := range arg[1:] {
+		if err := applyShortFlag(ch, opts); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyShortFlag applies a single short flag character to options.
+func applyShortFlag(ch rune, opts *options) error {
+	switch ch {
+	case 'f':
+		opts.mode = modeCanon
+	case 'e':
+		opts.mode = modeExisting
+	case 'm':
+		opts.mode = modeMissing
+	case 'n':
+		opts.noNewline = true
+	default:
+		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
 	return nil
 }
