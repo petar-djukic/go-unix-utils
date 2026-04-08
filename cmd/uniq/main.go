@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/uniq: report or filter adjacent duplicate lines.
-// Implements srd028-uniq R1.1, R1.2, R1.3, R1.4.
+// Implements srd028-uniq R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -406,7 +406,7 @@ func (p *lineProcessor) flushAllRepeated() error {
 		return err
 	}
 	for _, line := range p.group {
-		if _, err := p.w.WriteString(line); err != nil {
+		if _, err := p.w.WriteString(ensureNewline(line)); err != nil {
 			return err
 		}
 	}
@@ -425,13 +425,22 @@ func (p *lineProcessor) writeGroupSep() error {
 }
 
 // writeLine writes a single line with optional count prefix.
+// GNU uniq always terminates output lines with a newline.
 func (p *lineProcessor) writeLine(line string, count int) error {
 	if p.cfg.count {
-		_, err := fmt.Fprintf(p.w, "%7d %s", count, line)
+		_, err := fmt.Fprintf(p.w, "%7d %s", count, ensureNewline(line))
 		return err
 	}
-	_, err := p.w.WriteString(line)
+	_, err := p.w.WriteString(ensureNewline(line))
 	return err
+}
+
+// ensureNewline appends a newline if the line does not end with one.
+func ensureNewline(s string) string {
+	if len(s) > 0 && s[len(s)-1] != '\n' {
+		return s + "\n"
+	}
+	return s
 }
 
 // --- Comparison helpers ---
