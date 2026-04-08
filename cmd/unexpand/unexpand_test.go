@@ -127,6 +127,95 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--all"},
 			Stdin: []byte("a       b\n"),
 		},
+		// R3.1: -t N sets uniform tab stop interval.
+		{
+			Name:  "t_uniform_4_leading",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    text\n"),
+		},
+		{
+			Name:  "t_uniform_4_mid_line",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b\n"),
+		},
+		{
+			Name:  "t_uniform_4_multiple_stops",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "t_uniform_4_partial_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("  text\n"),
+		},
+		{
+			Name:  "t_uniform_3",
+			Args:  []string{"-t3"},
+			Stdin: []byte("   x   y\n"),
+		},
+		{
+			Name:  "t_tabs_equals_form",
+			Args:  []string{"--tabs=4"},
+			Stdin: []byte("    text\n"),
+		},
+		// R3.1: -t LIST sets absolute tab stop positions.
+		{
+			Name:  "t_list_4_8",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("    text\n"),
+		},
+		{
+			Name:  "t_list_4_8_both_stops",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "t_list_3_6_9",
+			Args:  []string{"-t", "3,6,9"},
+			Stdin: []byte("   text\n"),
+		},
+		{
+			Name:  "t_list_mid_line",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a   b   c\n"),
+		},
+		// R3.2: past last explicit stop in LIST, spaces kept as-is.
+		{
+			Name:  "t_list_past_last_stop_spaces_kept",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("        x        y\n"),
+		},
+		{
+			Name:  "t_list_past_last_stop_no_conversion",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b   c   d\n"),
+		},
+		{
+			Name:  "t_list_single_stop_past",
+			Args:  []string{"-t", "3"},
+			Stdin: []byte("            text\n"),
+		},
+		// R3.3: -t implies -a; all whitespace subject to conversion.
+		{
+			Name:  "t_implies_a_non_leading",
+			Args:  []string{"-t", "8"},
+			Stdin: []byte("text        more\n"),
+		},
+		{
+			Name:  "t_implies_a_entire_line",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b   c   d\n"),
+		},
+		{
+			Name:  "t_first_only_overrides_t",
+			Args:  []string{"-t", "4", "--first-only"},
+			Stdin: []byte("    a   b\n"),
+		},
+		{
+			Name:  "t_list_implies_a",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("a   b       c\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
