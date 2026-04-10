@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sleep: pause for a specified duration.
-// Implements srd061-sleep R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd061-sleep R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -18,6 +19,21 @@ import (
 const progName = "sleep"
 
 const tryHelp = "Try 'sleep --help' for more information."
+
+// helpText is the usage message printed for --help. R3.3.
+const helpText = `Usage: sleep NUMBER[SUFFIX]...
+  or:  sleep OPTION
+Pause for NUMBER seconds.  SUFFIX may be 's' for seconds (the default),
+'m' for minutes, 'h' for hours or 'd' for days.  NUMBER need not be an
+integer.  Given two or more arguments, pause for the amount of time
+specified by the sum of their values.
+
+      --help        display this help and exit
+      --version     output version information and exit
+`
+
+// versionText is the version string printed for --version. R3.4.
+const versionText = "sleep (go-unix-utils) 1.0\n"
 
 // suffixMultipliers maps duration suffix characters to their
 // multiplier in seconds. R1.3: s, m, h, d suffixes.
@@ -35,10 +51,21 @@ func main() {
 
 // run executes the sleep logic and returns the exit code.
 // R1.1: pause for NUMBER seconds. R1.4: sum multiple arguments.
+// R3.3: --help. R3.4: --version.
 func run(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n%s\n", progName, tryHelp)
 		return 1
+	}
+	// R3.3: --help prints usage to stdout and exits 0.
+	if args[0] == "--help" {
+		fmt.Fprint(os.Stdout, helpText)
+		return 0
+	}
+	// R3.4: --version prints version info to stdout and exits 0.
+	if args[0] == "--version" {
+		fmt.Fprint(os.Stdout, versionText)
+		return 0
 	}
 	if err := checkOptions(args); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n%s\n", progName, err, tryHelp)

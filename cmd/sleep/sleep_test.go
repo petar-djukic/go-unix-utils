@@ -19,6 +19,8 @@ import (
 // R1.1: single numeric argument. R1.2: fractional seconds.
 // R1.3: suffix multipliers. R1.4: multiple arguments summed.
 // R2.1: zero duration. R2.2: no args error. R2.3: invalid/negative error.
+// R3.1: no output under normal operation. R3.2: no stdin reading.
+// R3.3: --help exits 0. R3.4: --version exits 0.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsleep")
@@ -27,6 +29,9 @@ func TestDiff(t *testing.T) {
 	}
 	stderrNorm := makeBinaryNameNormalizer(refBin)
 	errNorms := []testutils.NormalizeFunc{stderrNorm}
+	// For --help and --version, stdout content differs between binaries.
+	// Normalize stdout to a fixed marker so only exit code is compared.
+	stdoutBlank := []testutils.NormalizeFunc{replaceNonEmpty}
 
 	tests := []testutils.DiffTest{
 		// R1.1: zero duration exits immediately with 0.
@@ -100,6 +105,25 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorms,
 		},
+		// R3.1: no stdout under normal operation (verified by zero-duration
+		// test above producing empty stdout). Adding explicit stdin test for R3.2.
+		{
+			Name:  "no-stdin-read",
+			Args:  []string{"0"},
+			Stdin: []byte("this should be ignored\n"),
+		},
+		// R3.3: --help prints usage to stdout and exits 0.
+		{
+			Name:      "help-flag",
+			Args:      []string{"--help"},
+			Normalize: stdoutBlank,
+		},
+		// R3.4: --version prints version info to stdout and exits 0.
+		{
+			Name:      "version-flag",
+			Args:      []string{"--version"},
+			Normalize: stdoutBlank,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -122,6 +146,37 @@ func TestInfinity(t *testing.T) {
 			t.Parallel()
 			assertSleepsIndefinitely(t, goBin, tc.arg)
 		})
+	}
+}
+
+// TestHelpContent verifies that --help produces a usage message containing
+// expected keywords. R3.3.
+func TestHelpContent(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help exited with error: %v", err)
+	}
+	if !bytes.Contains(out, []byte("Usage:")) {
+		t.Errorf("--help output missing 'Usage:': %q", out)
+	}
+	if !bytes.Contains(out, []byte("NUMBER")) {
+		t.Errorf("--help output missing 'NUMBER': %q", out)
+	}
+}
+
+// TestVersionContent verifies that --version produces version information
+// containing the program name. R3.4.
+func TestVersionContent(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version exited with error: %v", err)
+	}
+	if !bytes.Contains(out, []byte("sleep")) {
+		t.Errorf("--version output missing 'sleep': %q", out)
 	}
 }
 
@@ -149,4 +204,15 @@ func makeBinaryNameNormalizer(refBin string) testutils.NormalizeFunc {
 		b = bytes.ReplaceAll(b, []byte(refBase), []byte(progName))
 		return b
 	}
+}
+
+// replaceNonEmpty replaces any non-empty output with a fixed marker.
+// Used for --help and --version diff tests where stdout content differs
+// between the Go binary and the reference binary, but both should produce
+// non-empty output and exit 0.
+func replaceNonEmpty(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("OK\n")
+	}
+	return b
 }
