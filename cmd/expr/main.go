@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/expr: evaluate expressions.
-// Implements srd066-expr R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3.
+// Implements srd066-expr R1.1, R1.2, R1.3, R1.4.
 package main
 
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -15,75 +16,433 @@ import (
 // progName is used in diagnostic messages.
 const progName = "expr"
 
+// helpText is printed when --help is given as the sole argument.
+const helpText = `Usage: expr EXPRESSION
+  or:  expr OPTION
+
+      --help        display this help and exit
+      --version     output version information and exit
+
+Print the value of EXPRESSION to standard output.  A blank line below
+separates increasing precedence groups.  EXPRESSION may be:
+
+  ARG1 | ARG2       ARG1 if it is neither null nor 0, otherwise ARG2
+
+  ARG1 & ARG2       ARG1 if neither argument is null or 0, otherwise 0
+
+  ARG1 < ARG2       ARG1 is less than ARG2
+  ARG1 <= ARG2      ARG1 is less than or equal to ARG2
+  ARG1 = ARG2       ARG1 is equal to ARG2
+  ARG1 != ARG2      ARG1 is not equal to ARG2
+  ARG1 >= ARG2      ARG1 is greater than or equal to ARG2
+  ARG1 > ARG2       ARG1 is greater than ARG2
+
+  ARG1 + ARG2       arithmetic sum of ARG1 and ARG2
+  ARG1 - ARG2       arithmetic difference of ARG1 and ARG2
+
+  ARG1 * ARG2       arithmetic product of ARG1 and ARG2
+  ARG1 / ARG2       arithmetic quotient of ARG1 divided by ARG2
+  ARG1 %% ARG2       arithmetic remainder of ARG1 divided by ARG2
+
+  ( EXPRESSION )    value of EXPRESSION
+`
+
+// versionText is printed when --version is given as the sole argument.
+const versionText = "expr (go-unix-utils) 1.0\n"
+
 // R1: Token types covering all expr operators and value types.
 // R3.2: Precedence from lowest to highest: |, &, comparisons, +/-, */%.
 type tokenType int
 
 const (
-	// Values
 	tokNumber tokenType = iota
 	tokString
-
-	// Logical operators (lowest precedence)
 	tokOr  // |
 	tokAnd // &
-
-	// Comparison operators
 	tokLT  // <
 	tokLE  // <=
 	tokEQ  // =
 	tokNE  // !=
 	tokGE  // >=
 	tokGT  // >
-
-	// Additive operators
 	tokAdd // +
 	tokSub // -
-
-	// Multiplicative operators
 	tokMul // *
 	tokDiv // /
 	tokMod // %
-
-	// String operation keywords
 	tokMatch  // match
 	tokSubstr // substr
 	tokIndex  // index
 	tokLength // length
 	tokColon  // :
-
-	// Grouping
 	tokLParen // (
 	tokRParen // )
-
-	// R3.1: + TOKEN escaping
-	tokPlus // + (escape prefix, consumed by tokenizer)
-
 	tokEOF
 )
 
-// R2: token holds a token type and its string value.
+// token holds a classified token type and its original string value.
 type token struct {
 	typ tokenType
 	val string
 }
 
-// R3: tokenize converts command-line arguments into a token slice.
-// D2: All values are strings internally, coerced to integers only when needed.
+// parser holds the token stream and current read position.
+type parser struct {
+	tokens []token
+	pos    int
+}
+
+// R1.1-R1.4: tokenize converts command-line arguments into typed tokens.
+// D1: Each argument becomes exactly one token.
 func tokenize(args []string) []token {
-	panic("not implemented")
+	tokens := make([]token, 0, len(args)+1)
+	for _, arg := range args {
+		tokens = append(tokens, classifyToken(arg))
+	}
+	tokens = append(tokens, token{typ: tokEOF})
+	return tokens
 }
 
-// parseExpr is the recursive-descent parser entry point.
-// D1: Uses recursive descent with operator precedence levels matching GNU expr.
-func parseExpr(tokens []token, pos int) (string, int) {
-	panic("not implemented")
+// classifyToken maps a single argument string to its token type.
+func classifyToken(arg string) token {
+	switch arg {
+	case "|":
+		return token{tokOr, arg}
+	case "&":
+		return token{tokAnd, arg}
+	case "<":
+		return token{tokLT, arg}
+	case "<=":
+		return token{tokLE, arg}
+	case "=":
+		return token{tokEQ, arg}
+	case "!=":
+		return token{tokNE, arg}
+	case ">=":
+		return token{tokGE, arg}
+	case ">":
+		return token{tokGT, arg}
+	case "+":
+		return token{tokAdd, arg}
+	case "-":
+		return token{tokSub, arg}
+	case "*":
+		return token{tokMul, arg}
+	case "/":
+		return token{tokDiv, arg}
+	case "%":
+		return token{tokMod, arg}
+	case "(":
+		return token{tokLParen, arg}
+	case ")":
+		return token{tokRParen, arg}
+	case ":":
+		return token{tokColon, arg}
+	case "match":
+		return token{tokMatch, arg}
+	case "substr":
+		return token{tokSubstr, arg}
+	case "index":
+		return token{tokIndex, arg}
+	case "length":
+		return token{tokLength, arg}
+	}
+	if isIntegerLiteral(arg) {
+		return token{tokNumber, arg}
+	}
+	return token{tokString, arg}
 }
 
-// evaluate dispatches evaluation of the full expression from args.
-// Returns the result string and an error if the expression is invalid.
+// isIntegerLiteral returns true if s represents an integer (digits with
+// optional leading minus).
+func isIntegerLiteral(s string) bool {
+	if s == "" {
+		return false
+	}
+	start := 0
+	if s[0] == '-' {
+		start = 1
+	}
+	if start >= len(s) {
+		return false
+	}
+	for i := start; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// toInt converts a string to int64. Returns (0, false) if not an integer.
+func toInt(s string) (int64, bool) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	return n, err == nil
+}
+
+func (p *parser) peek() token {
+	if p.pos < len(p.tokens) {
+		return p.tokens[p.pos]
+	}
+	return token{typ: tokEOF}
+}
+
+func (p *parser) advance() token {
+	tok := p.peek()
+	if p.pos < len(p.tokens) {
+		p.pos++
+	}
+	return tok
+}
+
+// R1.3: | returns first arg if non-null/non-zero, else second.
+func (p *parser) parseOr() (string, error) {
+	left, err := p.parseAnd()
+	if err != nil {
+		return "", err
+	}
+	for p.peek().typ == tokOr {
+		p.advance()
+		right, err := p.parseAnd()
+		if err != nil {
+			return "", err
+		}
+		if isNullOrZero(left) {
+			left = right
+		}
+	}
+	return left, nil
+}
+
+// R1.3: & returns first arg if both non-null/non-zero, else 0.
+func (p *parser) parseAnd() (string, error) {
+	left, err := p.parseComparison()
+	if err != nil {
+		return "", err
+	}
+	for p.peek().typ == tokAnd {
+		p.advance()
+		right, err := p.parseComparison()
+		if err != nil {
+			return "", err
+		}
+		if isNullOrZero(left) || isNullOrZero(right) {
+			left = "0"
+		}
+	}
+	return left, nil
+}
+
+func isComparisonOp(t tokenType) bool {
+	return t >= tokLT && t <= tokGT
+}
+
+// R1.2: comparison operators. Numeric if both are integers, else lexicographic.
+func (p *parser) parseComparison() (string, error) {
+	left, err := p.parseAddSub()
+	if err != nil {
+		return "", err
+	}
+	for isComparisonOp(p.peek().typ) {
+		op := p.advance()
+		right, err := p.parseAddSub()
+		if err != nil {
+			return "", err
+		}
+		left = evalCompare(left, op.typ, right)
+	}
+	return left, nil
+}
+
+// R1.1: additive arithmetic operators (+ -).
+func (p *parser) parseAddSub() (string, error) {
+	left, err := p.parseMulDiv()
+	if err != nil {
+		return "", err
+	}
+	for p.peek().typ == tokAdd || p.peek().typ == tokSub {
+		op := p.advance()
+		right, err := p.parseMulDiv()
+		if err != nil {
+			return "", err
+		}
+		left, err = evalArithmetic(left, op.typ, right)
+		if err != nil {
+			return "", err
+		}
+	}
+	return left, nil
+}
+
+// R1.1: multiplicative arithmetic operators (* / %).
+func (p *parser) parseMulDiv() (string, error) {
+	left, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	for isMulDivOp(p.peek().typ) {
+		op := p.advance()
+		right, err := p.parsePrimary()
+		if err != nil {
+			return "", err
+		}
+		left, err = evalArithmetic(left, op.typ, right)
+		if err != nil {
+			return "", err
+		}
+	}
+	return left, nil
+}
+
+func isMulDivOp(t tokenType) bool {
+	return t == tokMul || t == tokDiv || t == tokMod
+}
+
+// R1.4: parse primary values — numbers, strings, and parenthesized expressions.
+func (p *parser) parsePrimary() (string, error) {
+	tok := p.peek()
+	switch tok.typ {
+	case tokLParen:
+		return p.parseParenExpr()
+	case tokNumber, tokString:
+		p.advance()
+		return tok.val, nil
+	case tokMatch:
+		// TODO: srd066 R2.1 — match operation, not in R1.x scope
+		return "", fmt.Errorf("syntax error")
+	case tokSubstr:
+		// TODO: srd066 R2.2 — substr operation, not in R1.x scope
+		return "", fmt.Errorf("syntax error")
+	case tokIndex:
+		// TODO: srd066 R2.3 — index operation, not in R1.x scope
+		return "", fmt.Errorf("syntax error")
+	case tokLength:
+		// TODO: srd066 R2.4 — length operation, not in R1.x scope
+		return "", fmt.Errorf("syntax error")
+	case tokEOF:
+		return "", fmt.Errorf("syntax error")
+	default:
+		return "", fmt.Errorf("syntax error")
+	}
+}
+
+// R1.4: parse a parenthesized sub-expression.
+func (p *parser) parseParenExpr() (string, error) {
+	p.advance() // consume (
+	result, err := p.parseOr()
+	if err != nil {
+		return "", err
+	}
+	if p.peek().typ != tokRParen {
+		return "", fmt.Errorf("syntax error")
+	}
+	p.advance() // consume )
+	return result, nil
+}
+
+// R1.2: evalCompare compares two values. Uses numeric comparison when
+// both are integers, otherwise lexicographic comparison.
+func evalCompare(left string, op tokenType, right string) string {
+	var result bool
+	li, lok := toInt(left)
+	ri, rok := toInt(right)
+	if lok && rok {
+		result = compareInts(li, op, ri)
+	} else {
+		result = compareStrings(left, op, right)
+	}
+	if result {
+		return "1"
+	}
+	return "0"
+}
+
+func compareInts(l int64, op tokenType, r int64) bool {
+	switch op {
+	case tokLT:
+		return l < r
+	case tokLE:
+		return l <= r
+	case tokEQ:
+		return l == r
+	case tokNE:
+		return l != r
+	case tokGE:
+		return l >= r
+	case tokGT:
+		return l > r
+	}
+	return false
+}
+
+func compareStrings(l string, op tokenType, r string) bool {
+	switch op {
+	case tokLT:
+		return l < r
+	case tokLE:
+		return l <= r
+	case tokEQ:
+		return l == r
+	case tokNE:
+		return l != r
+	case tokGE:
+		return l >= r
+	case tokGT:
+		return l > r
+	}
+	return false
+}
+
+// R1.1: evalArithmetic evaluates a binary arithmetic operation.
+// Returns error for non-integer operands or division by zero.
+func evalArithmetic(left string, op tokenType, right string) (string, error) {
+	l, ok := toInt(left)
+	if !ok {
+		return "", fmt.Errorf("non-integer argument")
+	}
+	r, ok := toInt(right)
+	if !ok {
+		return "", fmt.Errorf("non-integer argument")
+	}
+	return computeArithmetic(l, op, r)
+}
+
+// computeArithmetic performs the actual integer operation.
+// R3.4: division by zero prints error and exits 2.
+func computeArithmetic(l int64, op tokenType, r int64) (string, error) {
+	switch op {
+	case tokAdd:
+		return strconv.FormatInt(l+r, 10), nil
+	case tokSub:
+		return strconv.FormatInt(l-r, 10), nil
+	case tokMul:
+		return strconv.FormatInt(l*r, 10), nil
+	case tokDiv:
+		if r == 0 {
+			return "", fmt.Errorf("division by zero")
+		}
+		return strconv.FormatInt(l/r, 10), nil
+	case tokMod:
+		if r == 0 {
+			return "", fmt.Errorf("division by zero")
+		}
+		return strconv.FormatInt(l%r, 10), nil
+	}
+	return "", fmt.Errorf("syntax error")
+}
+
+// evaluate tokenizes and parses the argument list, returning the result.
 func evaluate(args []string) (string, error) {
-	panic("not implemented")
+	tokens := tokenize(args)
+	p := &parser{tokens: tokens}
+	result, err := p.parseOr()
+	if err != nil {
+		return "", err
+	}
+	if p.peek().typ != tokEOF {
+		return "", fmt.Errorf("syntax error")
+	}
+	return result, nil
 }
 
 // isNullOrZero returns true if the result is null (empty string) or "0".
@@ -96,22 +455,44 @@ func isNullOrZero(result string) bool {
 // R4: Exit 0 for non-null/non-zero, 1 for null/zero, 2 for syntax error.
 func main() {
 	sys.InstallSIGPIPEHandler()
+	os.Exit(run(os.Args[1:]))
+}
 
-	if len(os.Args) < 2 {
+// run executes the expr logic and returns the exit code.
+func run(args []string) int {
+	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
 		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
-		os.Exit(2)
+		return 2
 	}
-
-	result, err := evaluate(os.Args[1:])
+	if code := handleOption(args); code >= 0 {
+		return code
+	}
+	result, err := evaluate(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		os.Exit(2)
+		return 2
 	}
-
 	fmt.Println(result)
 	if isNullOrZero(result) {
-		os.Exit(1)
+		return 1
 	}
-	os.Exit(0)
+	return 0
+}
+
+// handleOption checks for --help/--version as the sole argument.
+// Returns exit code >= 0 if handled, -1 to continue normal evaluation.
+func handleOption(args []string) int {
+	if len(args) != 1 {
+		return -1
+	}
+	switch args[0] {
+	case "--help":
+		fmt.Print(helpText)
+		return 0
+	case "--version":
+		fmt.Print(versionText)
+		return 0
+	}
+	return -1
 }
