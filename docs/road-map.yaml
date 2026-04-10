@@ -322,7 +322,7 @@ releases:
         - id: rel07.0-uc001-sort
           status: spec_complete
         - id: rel07.0-uc002-tr
-          status: spec_complete
+          status: implemented
         - id: rel07.0-uc003-tail
           status: implemented
     - version: "07.1"
