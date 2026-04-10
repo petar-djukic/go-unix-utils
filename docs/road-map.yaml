@@ -339,7 +339,7 @@ releases:
         - id: rel07.1-uc001-cp
           status: implemented
         - id: rel07.1-uc002-mv
-          status: spec_complete
+          status: implemented
         - id: rel07.1-uc003-rm
           status: spec_complete
     - version: "08.0"
