@@ -27,6 +27,10 @@ var stdinReader = bufio.NewReader(os.Stdin)
 // Not printed to stderr, but causes exit code 1.
 var errDeclined = errors.New("declined")
 
+// errPartialCopy indicates some entries in a recursive copy failed.
+// Errors were already printed; the caller should set exit code 1.
+var errPartialCopy = errors.New("partial copy")
+
 // options holds parsed command-line flags for cp.
 type options struct {
 	interactive   bool   // R1.2: -i/--interactive
@@ -96,13 +100,20 @@ func copyFiles(opts options, args []string) int {
 	for _, src := range sources {
 		target := resolveTarget(dest, src, destIsDir)
 		if err := copySingle(opts, src, target); err != nil {
-			if !errors.Is(err, errDeclined) {
-				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
-			}
+			reportErr(err)
 			exitCode = 1
 		}
 	}
 	return exitCode
+}
+
+// reportErr prints err to stderr unless it is a sentinel that was already
+// handled (errDeclined, errPartialCopy).
+func reportErr(err error) {
+	if errors.Is(err, errDeclined) || errors.Is(err, errPartialCopy) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 }
 
 // splitSourcesDest separates sources from destination based on -t flag.
@@ -127,21 +138,42 @@ func resolveTarget(dest, src string, destIsDir bool) string {
 	return dest
 }
 
+// shouldDeref returns true when symlinks should be followed.
+// R2.3: -L forces dereference. R2.4: -P forces no-dereference.
+// Default with -r is -P (no dereference); without -r, follow symlinks.
+func shouldDeref(opts options) bool {
+	if opts.dereference {
+		return true
+	}
+	if opts.noDereference {
+		return false
+	}
+	return !opts.recursive
+}
+
+// statSource returns file info, following symlinks only when deref is true.
+func statSource(path string, deref bool) (os.FileInfo, error) {
+	if deref {
+		return os.Stat(path)
+	}
+	return os.Lstat(path)
+}
+
 // copySingle copies a single source to destination, applying -n, -i, -f.
 // R1.1: basic copy, R1.2: interactive, R1.3: force, R1.4: no-clobber.
+// R2.1: recursive dirs, R2.2: refuse dirs without -r, R2.3/R2.4: symlinks.
 func copySingle(opts options, src, dest string) error {
-	srcInfo, err := os.Stat(src)
+	deref := shouldDeref(opts)
+	srcInfo, err := statSource(src, deref)
 	if err != nil {
 		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
 	}
+	// R2.4: check symlink before directory (lstat sets ModeSymlink, not ModeDir)
+	if srcInfo.Mode()&os.ModeSymlink != 0 {
+		return copySymlink(opts, src, dest)
+	}
 	if srcInfo.IsDir() {
-		if !opts.recursive {
-			return fmt.Errorf(
-				"-r not specified; omitting directory '%s'", src)
-		}
-		// TODO: implement recursive copy (srd056 R2.1)
-		return fmt.Errorf(
-			"-r not specified; omitting directory '%s'", src)
+		return copyDirOrRefuse(opts, src, dest)
 	}
 	if skipForNoClobber(opts, dest) {
 		return nil
@@ -150,6 +182,76 @@ func copySingle(opts options, src, dest string) error {
 		return errDeclined
 	}
 	return copyRegularFile(src, dest, opts)
+}
+
+// copyDirOrRefuse copies a directory recursively or returns an error.
+// R2.1: recursive copy when -r is set. R2.2: error without -r.
+func copyDirOrRefuse(opts options, src, dest string) error {
+	if !opts.recursive {
+		return fmt.Errorf(
+			"-r not specified; omitting directory '%s'", src)
+	}
+	return copyDir(opts, src, dest)
+}
+
+// copyDir creates the destination directory and copies entries recursively.
+// R2.1: preserves directory structure.
+func copyDir(opts options, src, dest string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
+	}
+	if err := os.Mkdir(dest, srcInfo.Mode().Perm()); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("cannot create directory '%s': %s",
+			dest, sysErrMsg(err))
+	}
+	return copyDirEntries(opts, src, dest)
+}
+
+// copyDirEntries reads and copies each entry from src to dest.
+// Prints errors for individual entries and returns errPartialCopy on failure.
+func copyDirEntries(opts options, src, dest string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("cannot open directory '%s' for reading: %s",
+			src, sysErrMsg(err))
+	}
+	hadErr := false
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+		if err := copySingle(opts, srcPath, destPath); err != nil {
+			reportErr(err)
+			hadErr = true
+		}
+	}
+	if hadErr {
+		return errPartialCopy
+	}
+	return nil
+}
+
+// copySymlink copies a symbolic link, preserving it as a symlink.
+// R2.4: reads the link target and creates a new symlink at dest.
+func copySymlink(opts options, src, dest string) error {
+	if skipForNoClobber(opts, dest) {
+		return nil
+	}
+	if skipForInteractive(opts, dest) {
+		return errDeclined
+	}
+	target, err := os.Readlink(src)
+	if err != nil {
+		return fmt.Errorf("cannot read symlink '%s': %s",
+			src, sysErrMsg(err))
+	}
+	// Remove existing dest to avoid EEXIST from Symlink.
+	os.Remove(dest) // best-effort removal
+	if err := os.Symlink(target, dest); err != nil {
+		return fmt.Errorf("cannot create symlink '%s': %s",
+			dest, sysErrMsg(err))
+	}
+	return nil
 }
 
 // skipForNoClobber returns true if -n is set and dest exists.
