@@ -162,6 +162,44 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--elide-empty-files", "-", "/^b/"},
 			Stdin: []byte("b\nc\nd\n"),
 		},
+		{
+			// R4.1: exit 0 when input is split successfully.
+			Name:  "R4.1_exit_0_success",
+			Args:  []string{"-", "3"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			// R4.2: exit 1 when a pattern fails to match.
+			Name:      "R4.2_exit_1_no_match",
+			Args:      []string{"-", "/zzz/"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgName},
+		},
+		{
+			// R4.2: exit 1 for invalid option.
+			Name:     "R4.2_exit_1_invalid_option",
+			Args:     []string{"--bogus-flag", "-", "/a/"},
+			Stdin:    []byte("a\nb\n"),
+			ExitCode: 1,
+			// Stderr format differs between GNU (includes "Try --help") and Go.
+			Normalize: []testutils.NormalizeFunc{func(b []byte) []byte { return nil }},
+		},
+		{
+			// R4.4: invalid regex produces an error and exits 1.
+			Name:     "R4.4_invalid_regex_error",
+			Args:     []string{"-", "/[invalid/"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 1,
+			// Stderr format differs between GNU regex and Go regexp engines.
+			Normalize: []testutils.NormalizeFunc{func(b []byte) []byte { return nil }},
+		},
+		{
+			// R4.4: quiet mode suppresses byte count output.
+			Name:  "R4.4_quiet_mode",
+			Args:  []string{"-s", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
