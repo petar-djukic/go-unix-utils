@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/expr: evaluate expressions.
-// Implements srd066-expr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd066-expr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -92,15 +95,29 @@ type parser struct {
 	pos    int
 }
 
-// R1.1-R1.4: tokenize converts command-line arguments into typed tokens.
-// D1: Each argument becomes exactly one token.
+// R1.1-R1.4, R3.1: tokenize converts command-line arguments into typed tokens.
+// R3.1: + TOKEN consumes + and treats TOKEN as a literal string.
 func tokenize(args []string) []token {
 	tokens := make([]token, 0, len(args)+1)
-	for _, arg := range args {
-		tokens = append(tokens, classifyToken(arg))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "+" && i+1 < len(args) {
+			i++
+			tokens = append(tokens, classifyLiteral(args[i]))
+		} else {
+			tokens = append(tokens, classifyToken(args[i]))
+		}
 	}
 	tokens = append(tokens, token{typ: tokEOF})
 	return tokens
+}
+
+// classifyLiteral classifies an argument as a number or string literal,
+// bypassing keyword and operator recognition. R3.1: + escaping.
+func classifyLiteral(arg string) token {
+	if isIntegerLiteral(arg) {
+		return token{tokNumber, arg}
+	}
+	return token{tokString, arg}
 }
 
 // classifyToken maps a single argument string to its token type.
@@ -276,13 +293,13 @@ func (p *parser) parseAddSub() (string, error) {
 
 // R1.1: multiplicative arithmetic operators (* / %).
 func (p *parser) parseMulDiv() (string, error) {
-	left, err := p.parsePrimary()
+	left, err := p.parseColonMatch()
 	if err != nil {
 		return "", err
 	}
 	for isMulDivOp(p.peek().typ) {
 		op := p.advance()
-		right, err := p.parsePrimary()
+		right, err := p.parseColonMatch()
 		if err != nil {
 			return "", err
 		}
@@ -298,7 +315,28 @@ func isMulDivOp(t tokenType) bool {
 	return t == tokMul || t == tokDiv || t == tokMod
 }
 
-// R1.4: parse primary values — numbers, strings, and parenthesized expressions.
+// R2.1: STRING : REGEXP — infix match operator, higher precedence than * / %.
+func (p *parser) parseColonMatch() (string, error) {
+	left, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	for p.peek().typ == tokColon {
+		p.advance()
+		right, err := p.parsePrimary()
+		if err != nil {
+			return "", err
+		}
+		left, err = evalMatch(left, right)
+		if err != nil {
+			return "", err
+		}
+	}
+	return left, nil
+}
+
+// R1.4, R2.1-R2.4: parse primary values — numbers, strings, parenthesized
+// expressions, and string keyword operations.
 func (p *parser) parsePrimary() (string, error) {
 	tok := p.peek()
 	switch tok.typ {
@@ -308,17 +346,13 @@ func (p *parser) parsePrimary() (string, error) {
 		p.advance()
 		return tok.val, nil
 	case tokMatch:
-		// TODO: srd066 R2.1 — match operation, not in R1.x scope
-		return "", fmt.Errorf("syntax error")
+		return p.parseMatchKeyword()
 	case tokSubstr:
-		// TODO: srd066 R2.2 — substr operation, not in R1.x scope
-		return "", fmt.Errorf("syntax error")
+		return p.parseSubstr()
 	case tokIndex:
-		// TODO: srd066 R2.3 — index operation, not in R1.x scope
-		return "", fmt.Errorf("syntax error")
+		return p.parseIndex()
 	case tokLength:
-		// TODO: srd066 R2.4 — length operation, not in R1.x scope
-		return "", fmt.Errorf("syntax error")
+		return p.parseLength()
 	case tokEOF:
 		return "", fmt.Errorf("syntax error")
 	default:
@@ -338,6 +372,139 @@ func (p *parser) parseParenExpr() (string, error) {
 	}
 	p.advance() // consume )
 	return result, nil
+}
+
+// R2.1: match STRING REGEXP — keyword form of match operator.
+func (p *parser) parseMatchKeyword() (string, error) {
+	p.advance() // consume "match"
+	str, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	pattern, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	return evalMatch(str, pattern)
+}
+
+// R2.1: evalMatch anchors REGEXP at start, converts BRE groups to RE2,
+// and returns matched group or character count.
+func evalMatch(str, pattern string) (string, error) {
+	goPattern, hasGroup := breToRE2(pattern)
+	anchored := "^(?:" + goPattern + ")"
+	re, err := regexp.Compile(anchored)
+	if err != nil {
+		if hasGroup {
+			return "", nil
+		}
+		return "0", nil
+	}
+	m := re.FindStringSubmatch(str)
+	if m == nil {
+		if hasGroup {
+			return "", nil
+		}
+		return "0", nil
+	}
+	if hasGroup {
+		return m[1], nil
+	}
+	return strconv.Itoa(len(m[0])), nil
+}
+
+// breToRE2 converts POSIX BRE \( \) groups to RE2 ( ) groups.
+// Returns the converted pattern and whether any group was found.
+func breToRE2(pattern string) (string, bool) {
+	var b strings.Builder
+	hasGroup := false
+	for i := 0; i < len(pattern); i++ {
+		if i+1 < len(pattern) && pattern[i] == '\\' {
+			next := pattern[i+1]
+			if next == '(' || next == ')' {
+				b.WriteByte(next)
+				if next == '(' {
+					hasGroup = true
+				}
+				i++
+				continue
+			}
+		}
+		b.WriteByte(pattern[i])
+	}
+	return b.String(), hasGroup
+}
+
+// R2.2: substr STRING POS LENGTH — extract substring with 1-based indexing.
+func (p *parser) parseSubstr() (string, error) {
+	p.advance() // consume "substr"
+	str, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	posStr, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	lenStr, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	return evalSubstr(str, posStr, lenStr), nil
+}
+
+// evalSubstr returns the substring at 1-based position with given length.
+// Returns empty string if pos or length is non-positive or pos exceeds length.
+func evalSubstr(str, posStr, lenStr string) string {
+	pos, ok := toInt(posStr)
+	if !ok || pos <= 0 {
+		return ""
+	}
+	length, ok := toInt(lenStr)
+	if !ok || length <= 0 {
+		return ""
+	}
+	if int(pos) > len(str) {
+		return ""
+	}
+	start := int(pos) - 1
+	end := min(start+int(length), len(str))
+	return str[start:end]
+}
+
+// R2.3: index STRING CHARS — return 1-based position of first match.
+func (p *parser) parseIndex() (string, error) {
+	p.advance() // consume "index"
+	str, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	chars, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	return evalIndex(str, chars), nil
+}
+
+// evalIndex finds the first character in str that appears in chars.
+// Returns 1-based position or "0" if not found.
+func evalIndex(str, chars string) string {
+	for i, ch := range str {
+		if strings.ContainsRune(chars, ch) {
+			return strconv.Itoa(i + 1)
+		}
+	}
+	return "0"
+}
+
+// R2.4: length STRING — return character count.
+func (p *parser) parseLength() (string, error) {
+	p.advance() // consume "length"
+	str, err := p.parsePrimary()
+	if err != nil {
+		return "", err
+	}
+	return strconv.Itoa(len(str)), nil
 }
 
 // R1.2: evalCompare compares two values. Uses numeric comparison when
@@ -462,7 +629,8 @@ func main() {
 func run(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		fmt.Fprintf(os.Stderr,
+			"Try '%s --help' for more information.\n", progName)
 		return 2
 	}
 	if code := handleOption(args); code >= 0 {
