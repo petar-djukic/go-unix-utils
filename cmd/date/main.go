@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/date: display and format date and time.
-// Implements srd060-date R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd060-date R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -25,6 +25,7 @@ const defaultFormat = "%a %b %e %H:%M:%S %Z %Y"
 type config struct {
 	format  string
 	dateStr string
+	refFile string
 	utc     bool
 	err     bool
 }
@@ -78,6 +79,16 @@ func parseFlag(cfg *config, args []string, i int) int {
 		cfg.err = true
 	case strings.HasPrefix(arg, "--date="):
 		cfg.dateStr = arg[len("--date="):]
+	case arg == "-r" || arg == "--reference":
+		// R3.2: display modification time of FILE.
+		if i+1 < len(args) {
+			cfg.refFile = args[i+1]
+			return i + 1
+		}
+		fmt.Fprintf(os.Stderr, "%s: option requires an argument -- 'r'\n", progName)
+		cfg.err = true
+	case strings.HasPrefix(arg, "--reference="):
+		cfg.refFile = arg[len("--reference="):]
 	case arg == "-u" || arg == "--utc" || arg == "--universal":
 		cfg.utc = true
 	default:
@@ -88,10 +99,14 @@ func parseFlag(cfg *config, args []string, i int) int {
 }
 
 // resolveTime determines the time to display based on config.
+// R3.1: UTC mode. R3.2: reference file. R3.3: missing file error.
 func resolveTime(cfg config) (time.Time, error) {
 	loc := time.Local
 	if cfg.utc {
 		loc = time.UTC
+	}
+	if cfg.refFile != "" {
+		return resolveRefFile(cfg.refFile, loc)
 	}
 	if cfg.dateStr == "" {
 		return time.Now().In(loc), nil
@@ -101,6 +116,29 @@ func resolveTime(cfg config) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return t.In(loc), nil
+}
+
+// resolveRefFile returns the modification time of the named file.
+// R3.2: -r FILE support. R3.3: error on missing file.
+func resolveRefFile(path string, loc *time.Location) (time.Time, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s: %s", path, extractSysError(err))
+	}
+	return fi.ModTime().In(loc), nil
+}
+
+// extractSysError extracts the underlying OS error message from a PathError.
+// GNU date prints "date: /path: No such file or directory" — capitalize to match.
+func extractSysError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		msg := pe.Err.Error()
+		if len(msg) > 0 && msg[0] >= 'a' && msg[0] <= 'z' {
+			return strings.ToUpper(msg[:1]) + msg[1:]
+		}
+		return msg
+	}
+	return err.Error()
 }
 
 // parseDateString parses a date string from the -d flag.

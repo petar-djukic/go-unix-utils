@@ -5,9 +5,11 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -16,6 +18,7 @@ import (
 // Uses -d @EPOCH for deterministic output across both binaries.
 // R1.1: default format. R1.2: +FORMAT. R1.3: strftime specs. R1.4: GNU extensions.
 // R2.1: -d/--date string parsing. R2.2: epoch @timestamps. R2.3: ISO 8601. R2.4: invalid date errors.
+// R3.1: -u/--utc/--universal UTC mode. R3.2: -r/--reference file. R3.3: missing file error. R3.4: stdout only.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gdate")
@@ -26,6 +29,10 @@ func TestDiff(t *testing.T) {
 	// messages match between gdate and our binary.
 	stderrNorm := makeBinaryNameNormalizer(refBin)
 	errNorms := []testutils.NormalizeFunc{stderrNorm}
+
+	// Create a temp file with known modification time for -r tests.
+	refFile := createRefFile(t)
+
 	tests := []testutils.DiffTest{
 		// R1.1: default format with fixed epoch.
 		{
@@ -277,8 +284,87 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C", "TZ=UTC"},
 			Normalize: errNorms,
 		},
+		// R3.1: -u/--utc/--universal display in UTC.
+		{
+			Name: "utc-short-flag",
+			Args: []string{"-u", "-d", "@1700000000", "+%Z"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "utc-long-flag",
+			Args: []string{"--utc", "-d", "@1700000000", "+%Z"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "utc-universal-flag",
+			Args: []string{"--universal", "-d", "@1700000000", "+%Z"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "utc-epoch-seconds",
+			Args: []string{"-u", "-d", "@1700000000", "+%s"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "utc-full-datetime",
+			Args: []string{"-u", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R3.2: -r FILE / --reference=FILE display modification time.
+		{
+			Name: "ref-file-short-flag",
+			Args: []string{"-r", refFile, "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "ref-file-long-flag",
+			Args: []string{"--reference=" + refFile, "+%Y-%m-%d %H:%M:%S"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "ref-file-with-utc",
+			Args: []string{"-u", "-r", refFile, "+%Y-%m-%d %H:%M:%S %Z"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		{
+			Name: "ref-file-epoch-format",
+			Args: []string{"-r", refFile, "+%s"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R3.3: missing reference file produces error and exit 1.
+		{
+			Name:      "ref-file-missing",
+			Args:      []string{"-r", "/nonexistent/file/path"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: errNorms,
+		},
+		{
+			Name:      "ref-file-missing-long-flag",
+			Args:      []string{"--reference=/nonexistent/file/path"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: errNorms,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// createRefFile creates a temporary file with a fixed modification time
+// for -r/--reference differential tests.
+func createRefFile(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "reffile")
+	if err := os.WriteFile(p, []byte("test"), 0o644); err != nil {
+		t.Fatalf("creating ref file: %v", err)
+	}
+	// Set a fixed mtime so both binaries produce the same output.
+	mtime := time.Date(2024, 6, 15, 12, 30, 45, 0, time.UTC)
+	if err := os.Chtimes(p, mtime, mtime); err != nil {
+		t.Fatalf("setting ref file mtime: %v", err)
+	}
+	return p
 }
 
 // makeBinaryNameNormalizer returns a NormalizeFunc that replaces the reference
