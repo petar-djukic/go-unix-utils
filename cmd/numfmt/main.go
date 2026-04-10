@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/numfmt: convert numbers from/to human-readable strings.
-// Implements srd071-numfmt R1.1 (input/output conversion), R1.2 (--from/--to with
-// SI and IEC suffixes), R1.3 (passthrough), R1.4 (stdin/operand input),
-// R3.4 (--from-unit/--to-unit multipliers).
+// Implements srd071-numfmt R1.1-R1.4 (core conversion), R2.1 (--format),
+// R2.2 (--padding), R3.1 (--field), R3.2 (--delimiter), R3.4 (--from-unit/--to-unit).
 package main
 
 import (
@@ -19,11 +18,8 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// progName is used in diagnostic messages.
 const progName = "numfmt"
 
-// unitMode represents the --from/--to unit scaling type.
-// R1.2: none, auto, si, iec, iec-i.
 type unitMode int
 
 const (
@@ -34,33 +30,41 @@ const (
 	unitIECI
 )
 
-// Base values for SI and IEC scaling.
 const (
 	siBase  = 1000.0
 	iecBase = 1024.0
 )
 
-// Suffix tables for output formatting.
-// R1.1: SI uses base 1000, IEC/IEC-I use base 1024.
 var (
 	siSuffixes   = []string{"", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 	iecSuffixes  = []string{"", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 	ieciSuffixes = []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi", "Yi"}
+	suffixPower  = map[byte]int{
+		'K': 1, 'k': 1, 'M': 2, 'G': 3, 'T': 4,
+		'P': 5, 'E': 6, 'Z': 7, 'Y': 8,
+	}
 )
 
-// suffixPower maps suffix first-letter to its power index (1-based).
-// R1.2: K=1, M=2, G=3, T=4, P=5, E=6, Z=7, Y=8.
-var suffixPower = map[byte]int{
-	'K': 1, 'k': 1, 'M': 2, 'G': 3, 'T': 4,
-	'P': 5, 'E': 6, 'Z': 7, 'Y': 8,
+// formatSpec holds parsed --format directive components. R2.1.
+type formatSpec struct {
+	prefix    string
+	suffix    string
+	leftAlign bool
+	width     int
+	precision int // -1 = use default
 }
 
 // config holds parsed command-line options.
 type config struct {
-	from     unitMode
-	to       unitMode
-	fromUnit float64 // R3.4: --from-unit multiplier (default 1)
-	toUnit   float64 // R3.4: --to-unit divisor (default 1)
+	from      unitMode
+	to        unitMode
+	fromUnit  float64    // R3.4: --from-unit multiplier (default 1)
+	toUnit    float64    // R3.4: --to-unit divisor (default 1)
+	fmtSpec   formatSpec // R2.1: --format
+	hasFormat bool
+	field     int    // R3.1: 1-indexed field to convert (default 1)
+	delimiter string // R3.2: field delimiter (empty = whitespace)
+	padding   int    // R2.2: output padding width
 }
 
 func main() {
@@ -68,8 +72,6 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-// run executes the numfmt logic and returns the exit code.
-// R1.4: reads from stdin when no operands are given.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	cfg, operands, code := parseArgs(args, stdout, stderr)
 	if code >= 0 {
@@ -81,11 +83,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return processStdin(stdin, cfg, stdout, stderr)
 }
 
-// parseArgs parses command-line arguments. Returns config, operands, and
-// exit code (-1 means continue processing).
-// R1.4: --help and --version exit 0.
 func parseArgs(args []string, stdout, stderr io.Writer) (config, []string, int) {
-	cfg := config{fromUnit: 1, toUnit: 1}
+	cfg := config{fromUnit: 1, toUnit: 1, field: 1}
 	var operands []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -96,11 +95,16 @@ func parseArgs(args []string, stdout, stderr io.Writer) (config, []string, int) 
 		if code := handleInfoFlags(arg, stdout); code >= 0 {
 			return cfg, nil, code
 		}
-		if !strings.HasPrefix(arg, "--") {
+		var err error
+		if strings.HasPrefix(arg, "--") {
+			err = handleLongFlag(arg, args, &i, &cfg)
+		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			err = handleShortFlag(arg, args, &i, &cfg)
+		} else {
 			operands = append(operands, arg)
 			continue
 		}
-		if err := handleLongFlag(arg, args, &i, &cfg); err != nil {
+		if err != nil {
 			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
 			fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName)
 			return cfg, nil, 1
@@ -109,7 +113,6 @@ func parseArgs(args []string, stdout, stderr io.Writer) (config, []string, int) 
 	return cfg, operands, -1
 }
 
-// handleInfoFlags handles --help and --version. Returns exit code or -1.
 func handleInfoFlags(arg string, stdout io.Writer) int {
 	switch arg {
 	case "--help":
@@ -122,29 +125,46 @@ func handleInfoFlags(arg string, stdout io.Writer) int {
 	return -1
 }
 
-// handleLongFlag dispatches a long flag to the appropriate handler.
+// handleLongFlag dispatches long flags using a table-driven approach.
 func handleLongFlag(arg string, args []string, i *int, cfg *config) error {
-	if v, ok := extractFlagValue(arg, args, i, "--from-unit"); ok {
-		return parseFromUnit(v, cfg)
+	type entry struct {
+		name    string
+		handler func(string, *config) error
 	}
-	if v, ok := extractFlagValue(arg, args, i, "--to-unit"); ok {
-		return parseToUnit(v, cfg)
+	table := []entry{
+		{"--from-unit", parseFromUnit}, {"--to-unit", parseToUnit},
+		{"--from", parseFromMode}, {"--to", parseToMode},
+		{"--format", parseFormat}, {"--field", parseField},
+		{"--delimiter", parseDelimiter}, {"--padding", parsePadding},
 	}
-	if v, ok := extractFlagValue(arg, args, i, "--from"); ok {
-		return parseFromMode(v, cfg)
-	}
-	if v, ok := extractFlagValue(arg, args, i, "--to"); ok {
-		return parseToMode(v, cfg)
+	for _, e := range table {
+		if v, ok := extractFlagValue(arg, args, i, e.name); ok {
+			return e.handler(v, cfg)
+		}
 	}
 	return fmt.Errorf("unrecognized option '%s'", arg)
 }
 
-// extractFlagValue extracts the value from --flag=VALUE or --flag VALUE form.
-// Returns ("", false) when arg does not match the flag name.
+// handleShortFlag handles -d (delimiter). R3.2.
+func handleShortFlag(arg string, args []string, i *int, cfg *config) error {
+	if len(arg) >= 2 && arg[1] == 'd' {
+		var val string
+		if len(arg) > 2 {
+			val = arg[2:]
+		} else if *i+1 < len(args) {
+			*i++
+			val = args[*i]
+		} else {
+			return fmt.Errorf("option '-d' requires an argument")
+		}
+		return parseDelimiter(val, cfg)
+	}
+	return fmt.Errorf("unrecognized option '%s'", arg)
+}
+
 func extractFlagValue(arg string, args []string, i *int, flag string) (string, bool) {
-	prefix := flag + "="
-	if strings.HasPrefix(arg, prefix) {
-		return arg[len(prefix):], true
+	if p := flag + "="; strings.HasPrefix(arg, p) {
+		return arg[len(p):], true
 	}
 	if arg == flag {
 		if *i+1 < len(args) {
@@ -156,27 +176,26 @@ func extractFlagValue(arg string, args []string, i *int, flag string) (string, b
 	return "", false
 }
 
-// parseFromMode sets cfg.from from a string value.
+// --- Flag value parsers ---
+
 func parseFromMode(v string, cfg *config) error {
-	mode, err := parseUnitMode(v)
+	m, err := parseUnitMode(v)
 	if err != nil {
 		return fmt.Errorf("invalid --from argument '%s'", v)
 	}
-	cfg.from = mode
+	cfg.from = m
 	return nil
 }
 
-// parseToMode sets cfg.to from a string value.
 func parseToMode(v string, cfg *config) error {
-	mode, err := parseUnitMode(v)
+	m, err := parseUnitMode(v)
 	if err != nil {
 		return fmt.Errorf("invalid --to argument '%s'", v)
 	}
-	cfg.to = mode
+	cfg.to = m
 	return nil
 }
 
-// parseFromUnit sets cfg.fromUnit from a string value.
 func parseFromUnit(v string, cfg *config) error {
 	n, err := strconv.ParseFloat(v, 64)
 	if err != nil || n <= 0 {
@@ -186,7 +205,6 @@ func parseFromUnit(v string, cfg *config) error {
 	return nil
 }
 
-// parseToUnit sets cfg.toUnit from a string value.
 func parseToUnit(v string, cfg *config) error {
 	n, err := strconv.ParseFloat(v, 64)
 	if err != nil || n <= 0 {
@@ -196,8 +214,42 @@ func parseToUnit(v string, cfg *config) error {
 	return nil
 }
 
-// parseUnitMode converts a string to a unitMode.
-// R1.2: recognizes none, auto, si, iec, iec-i.
+func parseFormat(v string, cfg *config) error {
+	spec, err := parseFormatSpec(v)
+	if err != nil {
+		return err
+	}
+	cfg.fmtSpec = spec
+	cfg.hasFormat = true
+	return nil
+}
+
+func parseField(v string, cfg *config) error {
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return fmt.Errorf("invalid --field argument '%s'", v)
+	}
+	cfg.field = n
+	return nil
+}
+
+func parseDelimiter(v string, cfg *config) error {
+	if len(v) != 1 {
+		return fmt.Errorf("the delimiter must be a single character")
+	}
+	cfg.delimiter = v
+	return nil
+}
+
+func parsePadding(v string, cfg *config) error {
+	n, err := strconv.Atoi(v)
+	if err != nil || n == 0 {
+		return fmt.Errorf("invalid --padding argument '%s'", v)
+	}
+	cfg.padding = n
+	return nil
+}
+
 func parseUnitMode(s string) (unitMode, error) {
 	switch s {
 	case "none":
@@ -214,52 +266,193 @@ func parseUnitMode(s string) (unitMode, error) {
 	return unitNone, fmt.Errorf("unknown unit: %s", s)
 }
 
-// processOperands converts command-line operands and prints results.
-// R1.4: processes operands directly.
+// --- Format spec parsing (R2.1) ---
+
+// parseFormatSpec parses a printf-style format string: prefix%[-][width][.prec]fsuffix.
+func parseFormatSpec(f string) (formatSpec, error) {
+	pctIdx := strings.Index(f, "%")
+	if pctIdx < 0 {
+		return formatSpec{}, fmt.Errorf("format '%s' has no %% directive", f)
+	}
+	spec := formatSpec{prefix: f[:pctIdx], precision: -1}
+	rest := f[pctIdx+1:]
+	pos := 0
+	for pos < len(rest) && (rest[pos] == '-' || rest[pos] == ' ') {
+		if rest[pos] == '-' {
+			spec.leftAlign = true
+		}
+		pos++
+	}
+	pos = parseDigits(rest, pos, &spec.width)
+	if pos < len(rest) && rest[pos] == '.' {
+		pos++
+		spec.precision = 0
+		pos = parseDigits(rest, pos, &spec.precision)
+	}
+	if pos >= len(rest) || rest[pos] != 'f' {
+		return formatSpec{}, fmt.Errorf("format '%s' missing 'f' conversion", f)
+	}
+	spec.suffix = rest[pos+1:]
+	return spec, nil
+}
+
+// parseDigits reads decimal digits into *out and returns the new position.
+func parseDigits(s string, pos int, out *int) int {
+	for pos < len(s) && s[pos] >= '0' && s[pos] <= '9' {
+		*out = *out*10 + int(s[pos]-'0')
+		pos++
+	}
+	return pos
+}
+
+// --- Processing ---
+
 func processOperands(operands []string, cfg config, stdout, stderr io.Writer) int {
 	exitCode := 0
 	for _, op := range operands {
-		if err := convertAndPrint(op, cfg, stdout); err != nil {
+		result, err := convertNumber(op, cfg)
+		if err != nil {
 			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
 			exitCode = 2
+			continue
 		}
+		fmt.Fprintln(stdout, result)
 	}
 	return exitCode
 }
 
-// processStdin reads lines from stdin and converts each.
-// R1.4: reads one number per line.
 func processStdin(stdin io.Reader, cfg config, stdout, stderr io.Writer) int {
 	scanner := bufio.NewScanner(stdin)
 	exitCode := 0
 	for scanner.Scan() {
-		line := scanner.Text()
-		if err := convertAndPrint(line, cfg, stdout); err != nil {
+		result, err := processLine(scanner.Text(), cfg)
+		if err != nil {
 			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
 			exitCode = 2
+			continue
 		}
+		fmt.Fprintln(stdout, result)
 	}
 	return exitCode
 }
 
-// convertAndPrint converts a single input string and prints the result.
-// R1.1, R1.2, R1.3, R3.4: parse → scale → format pipeline.
-func convertAndPrint(input string, cfg config, w io.Writer) error {
-	input = strings.TrimSpace(input)
-	val, err := parseInputNumber(input, cfg.from)
+// processLine handles field selection within a line. R3.1, R3.2.
+func processLine(line string, cfg config) (string, error) {
+	if cfg.delimiter != "" {
+		return processDelimitedLine(line, cfg)
+	}
+	return processWhitespaceLine(line, cfg)
+}
+
+func processWhitespaceLine(line string, cfg config) (string, error) {
+	start, end, found := findFieldBounds(line, cfg.field)
+	if !found {
+		return line, nil
+	}
+	converted, err := convertNumber(line[start:end], cfg)
 	if err != nil {
-		return err
+		return "", err
+	}
+	return line[:start] + converted + line[end:], nil
+}
+
+func processDelimitedLine(line string, cfg config) (string, error) {
+	parts := strings.Split(line, cfg.delimiter)
+	idx := cfg.field - 1
+	if idx >= len(parts) {
+		return line, nil
+	}
+	converted, err := convertNumber(parts[idx], cfg)
+	if err != nil {
+		return "", err
+	}
+	parts[idx] = converted
+	return strings.Join(parts, cfg.delimiter), nil
+}
+
+// findFieldBounds returns byte positions of the n-th whitespace-delimited field.
+func findFieldBounds(line string, n int) (int, int, bool) {
+	pos, num := 0, 0
+	for pos < len(line) {
+		for pos < len(line) && (line[pos] == ' ' || line[pos] == '\t') {
+			pos++
+		}
+		if pos >= len(line) {
+			break
+		}
+		num++
+		start := pos
+		for pos < len(line) && line[pos] != ' ' && line[pos] != '\t' {
+			pos++
+		}
+		if num == n {
+			return start, pos, true
+		}
+	}
+	return 0, 0, false
+}
+
+// convertNumber converts a single number string. R1.1-R1.3, R2.1, R2.2, R3.4.
+func convertNumber(input string, cfg config) (string, error) {
+	padding := cfg.padding
+	trimmed := strings.TrimSpace(input)
+	// R2.4: auto-detect padding from input spacing.
+	if padding == 0 && len(trimmed) < len(input) {
+		padding = len(input)
+	}
+	val, err := parseInputNumber(trimmed, cfg.from)
+	if err != nil {
+		return "", err
 	}
 	val *= cfg.fromUnit
 	val /= cfg.toUnit
-	output := formatOutputNumber(val, cfg.to)
-	_, err = fmt.Fprintln(w, output)
-	return err
+	precision := -1
+	if cfg.hasFormat {
+		precision = cfg.fmtSpec.precision
+	}
+	numStr := formatOutputNumber(val, cfg.to, precision)
+	if cfg.hasFormat {
+		numStr = applyFormat(numStr, cfg.fmtSpec)
+	}
+	if padding != 0 {
+		numStr = applyPadding(numStr, padding)
+	}
+	return numStr, nil
 }
+
+// applyFormat applies the format spec to a numeric string. R2.1.
+func applyFormat(numStr string, spec formatSpec) string {
+	if spec.width > 0 && len(numStr) < spec.width {
+		pad := strings.Repeat(" ", spec.width-len(numStr))
+		if spec.leftAlign {
+			numStr += pad
+		} else {
+			numStr = pad + numStr
+		}
+	}
+	return spec.prefix + numStr + spec.suffix
+}
+
+// applyPadding pads output to width. R2.2: positive=right-align, negative=left-align.
+func applyPadding(s string, padding int) string {
+	w := padding
+	if w < 0 {
+		w = -w
+	}
+	if len(s) >= w {
+		return s
+	}
+	pad := strings.Repeat(" ", w-len(s))
+	if padding < 0 {
+		return s + pad
+	}
+	return pad + s
+}
+
+// --- Number parsing ---
 
 // parseInputNumber parses a number string with optional suffix.
 // R1.2: interprets suffixes based on the from unit mode.
-// R1.3: unitNone requires plain numeric input.
 func parseInputNumber(s string, mode unitMode) (float64, error) {
 	if mode == unitNone {
 		v, err := strconv.ParseFloat(s, 64)
@@ -283,8 +476,6 @@ func parseInputNumber(s string, mode unitMode) (float64, error) {
 	return val * mult, nil
 }
 
-// splitNumSuffix splits a string into its numeric part and suffix.
-// The suffix is the trailing alphabetic characters.
 func splitNumSuffix(s string) (string, string) {
 	i := len(s)
 	for i > 0 && isASCIILetter(s[i-1]) {
@@ -293,13 +484,10 @@ func splitNumSuffix(s string) (string, string) {
 	return s[:i], s[i:]
 }
 
-// isASCIILetter reports whether c is an ASCII letter.
 func isASCIILetter(c byte) bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }
 
-// suffixMultiplier returns the multiplier for a suffix in the given mode.
-// R1.2: dispatches to mode-specific suffix handlers.
 func suffixMultiplier(suffix string, mode unitMode) (float64, error) {
 	switch mode {
 	case unitSI:
@@ -314,8 +502,6 @@ func suffixMultiplier(suffix string, mode unitMode) (float64, error) {
 	return 0, fmt.Errorf("unknown suffix '%s'", suffix)
 }
 
-// scaledPower returns base^power for a suffix letter.
-// When expectI is true, the suffix must end with 'i' (e.g., "Ki").
 func scaledPower(suffix string, expectI bool, base float64) (float64, error) {
 	idx := lookupSuffixPower(suffix, expectI)
 	if idx < 0 {
@@ -324,8 +510,6 @@ func scaledPower(suffix string, expectI bool, base float64) (float64, error) {
 	return math.Pow(base, float64(idx)), nil
 }
 
-// lookupSuffixPower returns the power index for a suffix string.
-// Returns -1 if the suffix is not recognized.
 func lookupSuffixPower(suffix string, expectI bool) int {
 	if expectI {
 		if len(suffix) != 2 || suffix[1] != 'i' {
@@ -347,36 +531,34 @@ func lookupSuffixPower(suffix string, expectI bool) int {
 	return idx
 }
 
-// autoSuffixMultiplier detects the suffix type and returns the multiplier.
-// R1.2: single letter (K) → SI (1000-based), letter+i (Ki) → IEC (1024-based).
 func autoSuffixMultiplier(suffix string) (float64, error) {
 	if len(suffix) == 2 && suffix[1] == 'i' {
-		idx := lookupSuffixPower(suffix, true)
-		if idx >= 0 {
+		if idx := lookupSuffixPower(suffix, true); idx >= 0 {
 			return math.Pow(iecBase, float64(idx)), nil
 		}
 	}
 	if len(suffix) == 1 {
-		idx := lookupSuffixPower(suffix, false)
-		if idx >= 0 {
+		if idx := lookupSuffixPower(suffix, false); idx >= 0 {
 			return math.Pow(siBase, float64(idx)), nil
 		}
 	}
 	return 0, fmt.Errorf("invalid suffix '%s'", suffix)
 }
 
-// formatOutputNumber formats a value with the appropriate suffix.
-// R1.1: --to=si uses base 1000, --to=iec uses base 1024, --to=iec-i uses
-// base 1024 with 'i' suffix. R1.3: unitNone outputs plain number.
-func formatOutputNumber(val float64, mode unitMode) string {
+// --- Output formatting ---
+
+// formatOutputNumber formats a value with optional suffix and precision.
+func formatOutputNumber(val float64, mode unitMode, precision int) string {
 	if mode == unitNone {
+		if precision >= 0 {
+			return fmt.Sprintf("%.*f", precision, val)
+		}
 		return formatPlainNumber(val)
 	}
 	base, suffixes := outputParams(mode)
-	return formatWithSuffix(val, base, suffixes)
+	return formatWithSuffix(val, base, suffixes, precision)
 }
 
-// outputParams returns the base and suffix table for an output mode.
 func outputParams(mode unitMode) (float64, []string) {
 	switch mode {
 	case unitSI:
@@ -389,8 +571,6 @@ func outputParams(mode unitMode) (float64, []string) {
 	return 1, []string{""}
 }
 
-// formatPlainNumber formats a value as a plain number without suffix.
-// Outputs integer form when the value has no fractional part.
 func formatPlainNumber(val float64) string {
 	if val == math.Trunc(val) && !math.IsInf(val, 0) && !math.IsNaN(val) {
 		return strconv.FormatInt(int64(val), 10)
@@ -398,37 +578,39 @@ func formatPlainNumber(val float64) string {
 	return strconv.FormatFloat(val, 'f', -1, 64)
 }
 
-// formatWithSuffix formats a value using the largest appropriate suffix.
-// R1.1: finds the highest unit where scaled value >= 1.
-func formatWithSuffix(val float64, base float64, suffixes []string) string {
+func formatWithSuffix(val, base float64, suffixes []string, precision int) string {
 	neg := val < 0
 	absVal := math.Abs(val)
-	idx := 0
-	scaled := absVal
+	idx, scaled := 0, absVal
 	for idx+1 < len(suffixes) && scaled >= base {
 		scaled /= base
 		idx++
 	}
-	prefix := ""
+	sign := ""
 	if neg {
-		prefix = "-"
+		sign = "-"
 	}
 	if idx == 0 {
-		return prefix + formatPlainNumber(absVal)
+		if precision >= 0 {
+			return sign + fmt.Sprintf("%.*f", precision, absVal)
+		}
+		return sign + formatPlainNumber(absVal)
 	}
-	return prefix + formatScaledValue(scaled, suffixes[idx])
+	return sign + formatScaledValue(scaled, suffixes[idx], precision)
 }
 
-// formatScaledValue formats a scaled value with its suffix.
-// GNU numfmt convention: one decimal if < 10, no decimal if >= 10.
-func formatScaledValue(val float64, suffix string) string {
+func formatScaledValue(val float64, suffix string, precision int) string {
+	if precision >= 0 {
+		return fmt.Sprintf("%.*f%s", precision, val, suffix)
+	}
 	if val < 10 {
 		return fmt.Sprintf("%.1f%s", val, suffix)
 	}
 	return fmt.Sprintf("%.0f%s", val, suffix)
 }
 
-// printHelp prints usage information to stdout. R1.4.
+// --- Help ---
+
 func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "Usage: %s [OPTION]... [NUMBER]...\n", progName)
 	fmt.Fprintln(w, "Reformat NUMBER(s), or the numbers from standard input if none are specified.")
@@ -438,19 +620,24 @@ func printHelp(w io.Writer) {
 	printHelpUnits(w)
 }
 
-// printHelpFlags prints the flag descriptions for --help output.
 func printHelpFlags(w io.Writer) {
-	fmt.Fprintln(w, "      --from=UNIT       auto-scale input numbers to UNITs; default is 'none';")
-	fmt.Fprintln(w, "                          see UNIT below")
-	fmt.Fprintln(w, "      --from-unit=N     specify the input unit size (instead of the default 1)")
-	fmt.Fprintln(w, "      --to=UNIT         auto-scale output numbers to UNITs; default is 'none';")
-	fmt.Fprintln(w, "                          see UNIT below")
-	fmt.Fprintln(w, "      --to-unit=N       the output unit size (instead of the default 1)")
-	fmt.Fprintln(w, "      --help            display this help and exit")
-	fmt.Fprintln(w, "      --version         output version information and exit")
+	flags := []string{
+		"  -d, --delimiter=X  use X instead of whitespace for field delimiter",
+		"      --field=N      replace the number in input field N (default N=1)",
+		"      --format=FORMAT  use printf style floating-point FORMAT",
+		"      --from=UNIT    auto-scale input numbers to UNITs; default is 'none'",
+		"      --from-unit=N  specify the input unit size (instead of the default 1)",
+		"      --padding=N    pad the output to N characters; positive for right-aligned",
+		"      --to=UNIT      auto-scale output numbers to UNITs; default is 'none'",
+		"      --to-unit=N    the output unit size (instead of the default 1)",
+		"      --help         display this help and exit",
+		"      --version      output version information and exit",
+	}
+	for _, f := range flags {
+		fmt.Fprintln(w, f)
+	}
 }
 
-// printHelpUnits prints the UNIT options section for --help output.
 func printHelpUnits(w io.Writer) {
 	fmt.Fprintln(w, "UNIT options:")
 	fmt.Fprintln(w, "  none       no auto-scaling is done; suffixes will trigger an error")
@@ -464,7 +651,6 @@ func printHelpUnits(w io.Writer) {
 	fmt.Fprintln(w, "               1Ki = 1024, 1Mi = 1048576, ...")
 }
 
-// printVersion prints version information to stdout. R1.4.
 func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "%s (go-unix-utils)\n", progName)
 }
