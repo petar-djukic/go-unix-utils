@@ -69,8 +69,13 @@ func execute(cfg config) error {
 	switch cfg.mode {
 	case modeTranslate:
 		return execTranslate(cfg)
+	case modeDelete:
+		return execDelete(cfg)
+	case modeSqueeze:
+		return execSqueeze(cfg)
+	case modeDeleteSqueeze:
+		return execDeleteSqueeze(cfg)
 	default:
-		// Delete, squeeze, and delete-squeeze modes are not yet implemented.
 		return fmt.Errorf("mode not implemented")
 	}
 }
@@ -88,6 +93,191 @@ func execTranslate(cfg config) error {
 	set1, set2 = adjustSets(set1, set2, cfg.complement, cfg.truncate)
 	table := buildTranslateTable(set1, set2)
 	return translateStream(table, os.Stdin, os.Stdout)
+}
+
+// execDelete implements delete mode (R2.1).
+// Deletes all characters in SET1 from input.
+func execDelete(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	deleteSet := buildMemberSet(set1)
+	return deleteStream(deleteSet, os.Stdin, os.Stdout)
+}
+
+// execSqueeze implements squeeze mode (R2.2).
+// With one SET: squeeze repeats in SET1.
+// With two SETs: translate SET1->SET2, then squeeze SET2.
+func execSqueeze(cfg config) error {
+	if len(cfg.sets) == 1 {
+		return execSqueezeOnly(cfg)
+	}
+	return execTranslateSqueeze(cfg)
+}
+
+// execSqueezeOnly squeezes repeated characters in SET1.
+func execSqueezeOnly(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	squeezeSet := buildMemberSet(set1)
+	return squeezeStream(squeezeSet, os.Stdin, os.Stdout)
+}
+
+// execTranslateSqueeze translates then squeezes (two SETs with -s).
+func execTranslateSqueeze(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	set2, err := expandSet(cfg.sets[1])
+	if err != nil {
+		return err
+	}
+	set1, set2 = adjustSets(set1, set2, cfg.complement, cfg.truncate)
+	table := buildTranslateTable(set1, set2)
+	squeezeSet := buildMemberSet(set2)
+	return translateSqueezeStream(table, squeezeSet, os.Stdin, os.Stdout)
+}
+
+// execDeleteSqueeze implements delete+squeeze mode (R2.3).
+// Deletes characters in SET1, then squeezes characters in SET2.
+func execDeleteSqueeze(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	set2, err := expandSet(cfg.sets[1])
+	if err != nil {
+		return err
+	}
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	deleteSet := buildMemberSet(set1)
+	squeezeSet := buildMemberSet(set2)
+	return deleteSqueezeStream(deleteSet, squeezeSet, os.Stdin, os.Stdout)
+}
+
+// buildMemberSet creates a 256-entry membership table from a byte slice.
+func buildMemberSet(set []byte) [256]bool {
+	var table [256]bool
+	for _, b := range set {
+		table[b] = true
+	}
+	return table
+}
+
+// deleteStream reads from r, drops bytes in deleteSet, writes remainder to w.
+func deleteStream(deleteSet [256]bool, r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if deleteSet[b] {
+			continue
+		}
+		if wErr := writer.WriteByte(b); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// squeezeStream replaces runs of repeated squeezeSet characters.
+func squeezeStream(squeezeSet [256]bool, r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	lastByte := -1
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if squeezeSet[b] && int(b) == lastByte {
+			continue
+		}
+		lastByte = int(b)
+		if wErr := writer.WriteByte(b); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// translateSqueezeStream translates then squeezes output characters.
+func translateSqueezeStream(
+	table [256]byte, squeezeSet [256]bool,
+	r io.Reader, w io.Writer,
+) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	lastByte := -1
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		out := table[b]
+		if squeezeSet[out] && int(out) == lastByte {
+			continue
+		}
+		lastByte = int(out)
+		if wErr := writer.WriteByte(out); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// deleteSqueezeStream deletes SET1 chars and squeezes SET2 chars (R2.3).
+func deleteSqueezeStream(
+	deleteSet [256]bool, squeezeSet [256]bool,
+	r io.Reader, w io.Writer,
+) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	lastByte := -1
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if deleteSet[b] {
+			continue
+		}
+		if squeezeSet[b] && int(b) == lastByte {
+			continue
+		}
+		lastByte = int(b)
+		if wErr := writer.WriteByte(b); wErr != nil {
+			return wErr
+		}
+	}
 }
 
 // adjustSets applies complement and truncate/extend logic to SET1/SET2.
