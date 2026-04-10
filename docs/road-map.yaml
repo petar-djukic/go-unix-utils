@@ -385,7 +385,7 @@ releases:
         reference binaries.
       use_cases:
         - id: rel08.1-uc001-split
-          status: spec_complete
+          status: implemented
         - id: rel08.1-uc002-csplit
           status: spec_complete
         - id: rel08.1-uc003-join
