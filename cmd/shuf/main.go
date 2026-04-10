@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/shuf: shuffle lines randomly.
-// Implements srd064-shuf R1.1-R1.4, R2.1-R2.4, R3.1, R3.3.
+// Implements srd064-shuf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"math/rand"
@@ -20,15 +21,42 @@ import (
 // progName is used in diagnostic messages.
 const progName = "shuf"
 
+// helpText is printed when --help is given.
+// R4.1: --help prints usage to stdout and exits 0.
+const helpText = `Usage: shuf [OPTION]... [FILE]
+  or:  shuf -e [OPTION]... [ARG]...
+  or:  shuf -i LO-HI [OPTION]...
+Write a randomly permuted copy of the input lines to standard output.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -e, --echo                treat each ARG as an input line
+  -i, --input-range=LO-HI   treat each number LO through HI as an input line
+  -n, --head-count=COUNT     output at most COUNT lines
+  -o, --output=FILE          write result to FILE instead of standard output
+      --random-source=FILE   get random bytes from FILE
+  -r, --repeat               output lines can be repeated
+  -z, --zero-terminated      line delimiter is NUL, not newline
+      --help        display this help and exit
+      --version     output version information and exit
+`
+
+// versionText is printed when --version is given.
+// R4.2: --version prints version to stdout and exits 0.
+const versionText = "shuf (go-unix-utils) 1.0\n"
+
 // config holds parsed command-line flags for shuf.
 type config struct {
-	inputRange   string
-	echo         bool
-	headCount    int // -1 means not set
-	outputFile   string
-	randomSource string
-	repeat       bool
-	args         []string
+	inputRange     string
+	echo           bool
+	headCount      int // -1 means not set
+	outputFile     string
+	randomSource   string
+	repeat         bool
+	zeroTerminated bool
+	showHelp       bool
+	showVersion    bool
+	args           []string
 }
 
 func main() {
@@ -41,7 +69,16 @@ func run(args []string) int {
 	cfg, err := parseFlags(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		return 1
+	}
+	if cfg.showHelp {
+		fmt.Fprint(os.Stdout, helpText)
+		return 0
+	}
+	if cfg.showVersion {
+		fmt.Fprint(os.Stdout, versionText)
+		return 0
 	}
 	if err := validateExclusivity(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
@@ -107,6 +144,16 @@ func parseFlagAt(args []string, i int, cfg *config) (int, error) {
 		return 0, nil
 	case "-r", "--repeat":
 		cfg.repeat = true
+		return 0, nil
+	case "-z", "--zero-terminated":
+		// R3.2: use NUL as line delimiter for input and output.
+		cfg.zeroTerminated = true
+		return 0, nil
+	case "--help":
+		cfg.showHelp = true
+		return 0, nil
+	case "--version":
+		cfg.showVersion = true
 		return 0, nil
 	}
 	return parseValueFlagAt(args, i, cfg)
@@ -194,6 +241,15 @@ func validateExclusivity(cfg config) error {
 	return nil
 }
 
+// lineDelim returns the line delimiter byte based on -z flag.
+// R3.2: NUL when -z is given, newline otherwise.
+func lineDelim(cfg config) byte {
+	if cfg.zeroTerminated {
+		return 0
+	}
+	return '\n'
+}
+
 // collectLines gathers input lines based on the active mode.
 func collectLines(cfg config) ([]string, error) {
 	if cfg.inputRange != "" {
@@ -202,7 +258,7 @@ func collectLines(cfg config) ([]string, error) {
 	if cfg.echo {
 		return cfg.args, nil
 	}
-	return readAllLines(cfg.args)
+	return readAllLines(cfg.args, lineDelim(cfg))
 }
 
 // generateRange produces integers from LO to HI inclusive.
@@ -241,13 +297,13 @@ func parseRange(s string) (int, int, error) {
 
 // readAllLines reads all lines from the given files.
 // R1.2: empty slice or "-" means stdin.
-func readAllLines(files []string) ([]string, error) {
+func readAllLines(files []string, delim byte) ([]string, error) {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	var lines []string
 	for _, name := range files {
-		fileLines, err := readLinesFromFile(name)
+		fileLines, err := readLinesFromFile(name, delim)
 		if err != nil {
 			return nil, err
 		}
@@ -257,13 +313,13 @@ func readAllLines(files []string) ([]string, error) {
 }
 
 // readLinesFromFile reads lines from a single file or stdin.
-func readLinesFromFile(name string) ([]string, error) {
+func readLinesFromFile(name string, delim byte) ([]string, error) {
 	r, closer, err := openInput(name)
 	if err != nil {
 		return nil, err
 	}
 	defer closer()
-	return scanLines(r)
+	return scanLines(r, delim)
 }
 
 // openInput opens a file for reading, or returns stdin for "-".
@@ -278,18 +334,35 @@ func openInput(name string) (io.Reader, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-// scanLines reads all lines from a reader using bufio.Scanner.
-// R1.4: includes the last line even without a trailing newline.
-func scanLines(r io.Reader) ([]string, error) {
+// scanLines reads all lines from a reader using the given delimiter.
+// R1.4: includes the last line even without a trailing delimiter.
+// R3.2: uses NUL as delimiter when -z is given.
+func scanLines(r io.Reader, delim byte) ([]string, error) {
 	scanner := bufio.NewScanner(r)
+	if delim != '\n' {
+		scanner.Split(splitOnByte(delim))
+	}
 	var lines []string
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	return lines, scanner.Err()
+}
+
+// splitOnByte returns a bufio.SplitFunc that splits on the given byte.
+func splitOnByte(delim byte) bufio.SplitFunc {
+	return func(data []byte, atEOF bool) (int, []byte, error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		if i := bytes.IndexByte(data, delim); i >= 0 {
+			return i + 1, data[:i], nil
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
 	}
-	return lines, nil
 }
 
 // makeRNG creates a random number generator.
@@ -332,8 +405,9 @@ func shuffleAndWrite(w io.Writer, lines []string, rng *rand.Rand, cfg config) er
 	if len(lines) == 0 {
 		return nil
 	}
+	delim := lineDelim(cfg)
 	if cfg.repeat {
-		return writeRepeat(w, lines, rng, cfg.headCount)
+		return writeRepeat(w, lines, rng, cfg.headCount, delim)
 	}
 	rng.Shuffle(len(lines), func(i, j int) {
 		lines[i], lines[j] = lines[j], lines[i]
@@ -342,27 +416,29 @@ func shuffleAndWrite(w io.Writer, lines []string, rng *rand.Rand, cfg config) er
 	if cfg.headCount >= 0 && cfg.headCount < count {
 		count = cfg.headCount
 	}
-	return writeLinesTo(w, lines[:count])
+	return writeLinesTo(w, lines[:count], delim)
 }
 
 // writeRepeat outputs random selections with replacement.
 // R2.3: -r samples with replacement; without -n, repeats indefinitely.
-func writeRepeat(w io.Writer, lines []string, rng *rand.Rand, headCount int) error {
+func writeRepeat(w io.Writer, lines []string, rng *rand.Rand, headCount int, delim byte) error {
 	bw := bufio.NewWriter(w)
 	n := len(lines)
 	for written := 0; headCount < 0 || written < headCount; written++ {
-		if _, err := fmt.Fprintln(bw, lines[rng.Intn(n)]); err != nil {
+		bw.WriteString(lines[rng.Intn(n)])
+		if err := bw.WriteByte(delim); err != nil {
 			return err
 		}
 	}
 	return bw.Flush()
 }
 
-// writeLinesTo writes each line followed by a newline to the writer.
-func writeLinesTo(w io.Writer, lines []string) error {
+// writeLinesTo writes each line followed by the delimiter to the writer.
+func writeLinesTo(w io.Writer, lines []string, delim byte) error {
 	bw := bufio.NewWriter(w)
 	for _, line := range lines {
-		if _, err := fmt.Fprintln(bw, line); err != nil {
+		bw.WriteString(line)
+		if err := bw.WriteByte(delim); err != nil {
 			return err
 		}
 	}
