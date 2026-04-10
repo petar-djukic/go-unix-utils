@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,16 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeProgramName strips path prefixes from "sort:" in error messages
+// so that "/opt/homebrew/bin/sort:" and "gsort:" both become "sort:".
+var normalizeProgramName testutils.NormalizeFunc = func(b []byte) []byte {
+	idx := bytes.Index(b, []byte("sort:"))
+	if idx > 0 {
+		return b[idx:]
+	}
+	return b
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -198,6 +209,109 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-k1,1b"},
 			Stdin: []byte("  cherry\napple\n  banana\n"),
 		},
+		// R4.1: exit 0 when input is sorted successfully
+		{
+			Name:  "default sort exits 0",
+			Args:  []string{},
+			Stdin: []byte("banana\napple\ncherry\n"),
+		},
+		{
+			Name:  "empty input exits 0",
+			Args:  []string{},
+			Stdin: []byte(""),
+		},
+		// R4.2: -c check sorted order
+		{
+			Name:     "check sorted input exits 0",
+			Args:     []string{"-c"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted input exits 1",
+			Args:      []string{"-c"},
+			Stdin:     []byte("b\na\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check quiet unsorted exits 1 no stderr",
+			Args:     []string{"-C"},
+			Stdin:    []byte("b\na\nc\n"),
+			ExitCode: 1,
+		},
+		{
+			Name:     "check sorted reverse",
+			Args:     []string{"-c", "-r"},
+			Stdin:    []byte("c\nb\na\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted reverse exits 1",
+			Args:      []string{"-c", "-r"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted numeric",
+			Args:     []string{"-c", "-n"},
+			Stdin:    []byte("1\n2\n10\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted numeric exits 1",
+			Args:      []string{"-c", "-n"},
+			Stdin:     []byte("10\n2\n1\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check unique sorted no duplicates",
+			Args:     []string{"-c", "-u"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unique sorted with duplicates exits 1",
+			Args:      []string{"-c", "-u"},
+			Stdin:     []byte("a\na\nb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check empty input",
+			Args:     []string{"-c"},
+			Stdin:    []byte(""),
+			ExitCode: 0,
+		},
+		{
+			Name:     "check single line",
+			Args:     []string{"-c"},
+			Stdin:    []byte("only\n"),
+			ExitCode: 0,
+		},
+		// R4.4: additional comprehensive differential tests
+		{
+			Name:  "default sort stdin",
+			Args:  []string{},
+			Stdin: []byte("cherry\napple\nbanana\n"),
+		},
+		{
+			Name:  "reverse sort",
+			Args:  []string{"-r"},
+			Stdin: []byte("apple\nbanana\ncherry\n"),
+		},
+		{
+			Name:  "single line input",
+			Args:  []string{},
+			Stdin: []byte("only\n"),
+		},
+		{
+			Name:  "empty input no crash",
+			Args:  []string{},
+			Stdin: []byte(""),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -276,4 +390,52 @@ func TestDiffOutputFile(t *testing.T) {
 				expected, goOutput)
 		}
 	})
+}
+
+// TestDiffMultiFile tests multi-file input (R1.3, R4.4).
+func TestDiffMultiFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skip("reference binary gsort not in PATH")
+	}
+
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "f1.txt")
+	file2 := filepath.Join(dir, "f2.txt")
+	if err := os.WriteFile(file1, []byte("cherry\napple\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte("banana\ndate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "multi-file combined sort",
+			Args:    []string{file1, file2},
+			WorkDir: dir,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestUsageError verifies that invalid flags produce exit code 2 (R4.3).
+func TestUsageError(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "--invalid-flag")
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit code for invalid flag")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected *exec.ExitError, got %T", err)
+	}
+	if exitErr.ExitCode() != 2 {
+		t.Errorf("expected exit code 2, got %d", exitErr.ExitCode())
+	}
 }

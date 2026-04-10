@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sort: sort lines of text files.
-// Implements srd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4.
+// Implements srd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -70,6 +70,10 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 2
+	}
+	// R4.2: check mode — verify sorted order without producing output.
+	if cfg.check || cfg.checkQuiet {
+		return checkSorted(&cfg, lines)
 	}
 	sortLines(lines, &cfg)
 	if cfg.unique {
@@ -489,4 +493,47 @@ func shortKeyFlag(dst *[]string, rest string, args []string, nextIdx int) int {
 		return 1
 	}
 	return -1
+}
+
+// checkSorted verifies that lines are already in sorted order.
+// R4.2: -c exits 1 with diagnostic on disorder. -C exits 1 silently.
+func checkSorted(cfg *config, lines []string) int {
+	for i := 1; i < len(lines); i++ {
+		result := comparePair(cfg, lines[i-1], lines[i])
+		if result > 0 || (cfg.unique && result == 0) {
+			if cfg.check && !cfg.checkQuiet {
+				reportDisorder(cfg, i+1, lines[i])
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// comparePair compares two adjacent lines using the same ordering as sort.
+// Returns negative if a < b, 0 if equal, positive if a > b in sort order.
+func comparePair(cfg *config, a, b string) int {
+	var result int
+	if len(cfg.parsedKeys) > 0 {
+		result = compareKeys(a, b, cfg)
+	} else {
+		result = compareFuncWithBlanks(cfg)(a, b)
+	}
+	if result == 0 && !cfg.stable {
+		result = strings.Compare(a, b)
+	}
+	// For no-key path, apply global reverse.
+	// For key path, reverse is already applied per-key inside compareKeys.
+	if len(cfg.parsedKeys) == 0 && cfg.reverse {
+		result = -result
+	}
+	return result
+}
+
+// reportDisorder prints the GNU sort-style disorder diagnostic to stderr.
+// R4.2: format matches GNU sort: "sort: FILE:LINE: disorder: CONTENT".
+func reportDisorder(cfg *config, lineNum int, line string) {
+	name := cfg.files[0]
+	fmt.Fprintf(os.Stderr, "%s: %s:%d: disorder: %s\n",
+		progName, name, lineNum, line)
 }
