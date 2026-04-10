@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rm against grm (GNU coreutils).
-// Implements srd058 differential testing for R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd058 differential testing for R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -171,6 +171,10 @@ func TestDiff(t *testing.T) {
 	t.Run("R3.2", func(t *testing.T) { testR3_2(t, goBin, refBin) })
 	t.Run("R3.3", func(t *testing.T) { testR3_3(t, goBin, refBin) })
 	t.Run("R3.4", func(t *testing.T) { testR3_4(t, goBin, refBin) })
+	t.Run("R4.1", func(t *testing.T) { testR4_1(t, goBin, refBin) })
+	t.Run("R4.2", func(t *testing.T) { testR4_2(t, goBin, refBin) })
+	t.Run("R4.3", func(t *testing.T) { testR4_3(t, goBin, refBin) })
+	t.Run("R4.4", func(t *testing.T) { testR4_4(t, goBin, refBin) })
 }
 
 // testR1_1 tests basic file removal.
@@ -629,6 +633,205 @@ func testR3_4(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "f.txt", "data\n")
 			},
 			[]string{"-i", "-f", "f.txt"},
+		)
+	})
+}
+
+// testR4_1 tests exit code 0 on successful removal.
+// R4.1: must exit 0 when all files are removed successfully.
+func testR4_1(t *testing.T, goBin, refBin string) {
+	t.Run("exit_0_single_file", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"f.txt"},
+		)
+	})
+	t.Run("exit_0_multiple_files", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a", "1\n")
+				writeFile(t, dir, "b", "2\n")
+			},
+			[]string{"a", "b"},
+		)
+	})
+	t.Run("exit_0_recursive", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d/sub")
+				writeFile(t, dir, "d/sub/f.txt", "data\n")
+			},
+			[]string{"-r", "d"},
+		)
+	})
+	t.Run("exit_0_empty_dir_d", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "emptydir")
+			},
+			[]string{"-d", "emptydir"},
+		)
+	})
+}
+
+// testR4_2 tests exit code 1 on failure with continuation.
+// R4.2: must exit 1 when any removal fails and continue.
+func testR4_2(t *testing.T, goBin, refBin string) {
+	t.Run("exit_1_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"nonexistent"},
+		)
+	})
+	t.Run("exit_1_dir_without_r", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "subdir")
+			},
+			[]string{"subdir"},
+		)
+	})
+	t.Run("exit_1_continue_after_error", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "good.txt", "ok\n")
+			},
+			[]string{"good.txt", "missing.txt"},
+		)
+	})
+	t.Run("exit_1_permission_denied", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				noWrite := filepath.Join(dir, "noperm")
+				if err := os.Mkdir(noWrite, 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				p := filepath.Join(noWrite, "protected.txt")
+				if err := os.WriteFile(
+					p, []byte("secret\n"), 0o644,
+				); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+				// Remove write permission from parent dir.
+				if err := os.Chmod(noWrite, 0o555); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() {
+					// best-effort restore for cleanup
+					_ = os.Chmod(noWrite, 0o755)
+				})
+			},
+			[]string{"noperm/protected.txt"},
+		)
+	})
+	t.Run("exit_1_no_operand", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{},
+		)
+	})
+}
+
+// testR4_3 tests force mode exit codes.
+// R4.3: with -f, must exit 0 even when files do not exist.
+func testR4_3(t *testing.T, goBin, refBin string) {
+	t.Run("f_exit_0_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f", "no_such_file"},
+		)
+	})
+	t.Run("f_exit_0_no_args", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f"},
+		)
+	})
+	t.Run("f_exit_0_multiple_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f", "a", "b", "c"},
+		)
+	})
+	t.Run("rf_exit_0_nonexistent_dir", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-rf", "no_such_dir"},
+		)
+	})
+}
+
+// testR4_4 tests the comprehensive differential test coverage.
+// R4.4: covers single file, multi-file, -r, -f, -d, -v, errors,
+// permission denied, and . / .. refusal.
+func testR4_4(t *testing.T, goBin, refBin string) {
+	t.Run("comprehensive_single_file", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "single.txt", "one\n")
+			},
+			[]string{"single.txt"},
+		)
+	})
+	t.Run("comprehensive_multi_file", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "x", "1\n")
+				writeFile(t, dir, "y", "2\n")
+				writeFile(t, dir, "z", "3\n")
+			},
+			[]string{"x", "y", "z"},
+		)
+	})
+	t.Run("comprehensive_recursive", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "tree/a/b")
+				writeFile(t, dir, "tree/a/b/leaf.txt", "leaf\n")
+				writeFile(t, dir, "tree/a/mid.txt", "mid\n")
+			},
+			[]string{"-r", "tree"},
+		)
+	})
+	t.Run("comprehensive_force_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f", "ghost"},
+		)
+	})
+	t.Run("comprehensive_d_empty_dir", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "edir")
+			},
+			[]string{"-d", "edir"},
+		)
+	})
+	t.Run("comprehensive_verbose", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "v.txt", "verbose\n")
+			},
+			[]string{"-v", "v.txt"},
+		)
+	})
+	t.Run("comprehensive_error_dir_no_r", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "mydir")
+			},
+			[]string{"mydir"},
+		)
+	})
+	t.Run("comprehensive_refuse_dot", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "sub")
+			},
+			[]string{"-rf", "sub/."},
+		)
+	})
+	t.Run("comprehensive_refuse_dotdot", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "sub")
+			},
+			[]string{"-rf", "sub/.."},
 		)
 	})
 }

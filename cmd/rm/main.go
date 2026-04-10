@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/rm: remove files or directories.
-// Implements srd058 R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd058 R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
