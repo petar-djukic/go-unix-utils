@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cp against gcp (GNU coreutils).
-// Implements srd056 R4.4 (differential testing) for R1.1-R1.4.
+// Implements srd056 R4.4 (differential testing) for R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -33,6 +33,15 @@ func mkTestDir(t *testing.T, dir, name string) {
 	path := filepath.Join(dir, name)
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatalf("failed to create test dir %s: %v", path, err)
+	}
+}
+
+// mkSymlink creates a symbolic link in dir.
+func mkSymlink(t *testing.T, dir, name, target string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatalf("failed to create symlink %s -> %s: %v", path, target, err)
 	}
 }
 
@@ -246,6 +255,124 @@ func TestDiff(t *testing.T) {
 			WorkDir:   dir,
 			ExitCode:  1,
 			Normalize: norm,
+		}})
+	})
+
+	// R2.2: directory without -r produces error
+	t.Run("R2.2_dir_without_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/file.txt", "content\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "dir_no_r",
+			Args:      []string{"srcdir", "destdir"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R2.1: recursive directory copy
+	t.Run("R2.1_recursive_copy", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		writeTestFile(t, dir, "srcdir/b.txt", "file b\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "recursive",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.1: recursive copy with nested subdirectories
+	t.Run("R2.1_recursive_nested", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir/sub1")
+		mkTestDir(t, dir, "srcdir/sub2")
+		writeTestFile(t, dir, "srcdir/top.txt", "top\n")
+		writeTestFile(t, dir, "srcdir/sub1/deep.txt", "deep\n")
+		writeTestFile(t, dir, "srcdir/sub2/other.txt", "other\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "nested",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.1: recursive copy into existing directory
+	t.Run("R2.1_recursive_into_existing", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		mkTestDir(t, dir, "destdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "r_into_dir",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.3: -L follows symlinks (copies target content, not symlink)
+	t.Run("R2.3_dereference_file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "real.txt", "real content\n")
+		mkSymlink(t, dir, "link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "deref",
+			Args:    []string{"-L", "link.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.3: -rL follows symlinks within directory during recursive copy
+	t.Run("R2.3_recursive_dereference", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "rL_deref",
+			Args:    []string{"-rL", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.4: -rP preserves symlinks in directory copy
+	t.Run("R2.4_no_deref_preserves_symlink", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "preserve_link",
+			Args:    []string{"-rP", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.4: -r defaults to -P (preserves symlinks)
+	t.Run("R2.4_recursive_default_noderef", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "r_default_P",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.1: -R long form works same as -r
+	t.Run("R2.1_uppercase_R", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "upper_R",
+			Args:    []string{"-R", "srcdir", "destdir"},
+			WorkDir: dir,
 		}})
 	})
 }
