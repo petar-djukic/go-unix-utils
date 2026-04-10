@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/join against gjoin (GNU coreutils).
-// Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R4.3.
+// Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4, R4.3.
 package main
 
 import (
@@ -295,6 +296,177 @@ func TestDiff(t *testing.T) {
 			WorkDir: setupDir(t, map[string]string{
 				"f1.txt": "a 1 2\nb 3 4\n",
 				"f2.txt": "a X Y\nb P Q\n",
+			}),
+		},
+		// R3.1: -a 1 shows unpairable lines from file1 plus paired
+		{
+			Name: "a1_unpairable_file1",
+			Args: []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.1: -a 2 shows unpairable lines from file2 plus paired
+		{
+			Name: "a2_unpairable_file2",
+			Args: []string{"-a", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R3.1: -a 1 -a 2 shows unpairable from both files
+		{
+			Name: "a1_a2_unpairable_both",
+			Args: []string{"-a", "1", "-a", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nd 4\n",
+				"f2.txt": "a X\nc Y\nd Z\n",
+			}),
+		},
+		// R3.1: -a 1 with all lines matching (no effect)
+		{
+			Name: "a1_all_match",
+			Args: []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R3.1: -a 1 with no lines matching
+		{
+			Name: "a1_no_match",
+			Args: []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "c X\nd Y\n",
+			}),
+		},
+		// R3.2: -v 1 shows only unpairable from file1
+		{
+			Name: "v1_only_unpairable_file1",
+			Args: []string{"-v", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.2: -v 2 shows only unpairable from file2
+		{
+			Name: "v2_only_unpairable_file2",
+			Args: []string{"-v", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R3.2: -v 1 -v 2 shows only unpairable from both
+		{
+			Name: "v1_v2_only_unpairable_both",
+			Args: []string{"-v", "1", "-v", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nd 4\n",
+				"f2.txt": "a X\nc Y\nd Z\n",
+			}),
+		},
+		// R3.2: -v 1 with no unpairable lines (all match)
+		{
+			Name: "v1_all_match",
+			Args: []string{"-v", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R3.3: -e STRING replaces missing fields with -o format
+		{
+			Name: "e_replace_missing_a1",
+			Args: []string{"-a", "1", "-e", "EMPTY", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.3: -e with -a 2
+		{
+			Name: "e_replace_missing_a2",
+			Args: []string{"-a", "2", "-e", "NA", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R3.3: -e with -a 1 -a 2 both unpairable
+		{
+			Name: "e_replace_both_unpaired",
+			Args: []string{"-a", "1", "-a", "2", "-e", "---", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nc Y\n",
+			}),
+		},
+		// R3.4: --header joins first lines unconditionally
+		{
+			Name: "header_basic",
+			Args: []string{"--header", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY VAL1\na 1\nb 2\n",
+				"f2.txt": "KEY VAL2\na X\nb Y\n",
+			}),
+		},
+		// R3.4: --header with unsorted header line
+		{
+			Name: "header_unsorted",
+			Args: []string{"--header", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "ZZZ COL1\na 1\nb 2\n",
+				"f2.txt": "AAA COL2\na X\nb Y\n",
+			}),
+		},
+		// R3.4: --header with -o format
+		{
+			Name: "header_with_output_format",
+			Args: []string{"--header", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY VAL1\na 1\nb 2\n",
+				"f2.txt": "KEY VAL2\na X\nb Y\n",
+			}),
+		},
+		// R3.4: --header with -t separator
+		{
+			Name: "header_with_separator",
+			Args: []string{"--header", "-t", ",", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY,VAL1\na,1\nb,2\n",
+				"f2.txt": "KEY,VAL2\na,X\nb,Y\n",
+			}),
+		},
+		// R3.1 + R3.4: --header combined with -a 1
+		{
+			Name: "header_with_a1",
+			Args: []string{"--header", "-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY VAL1\na 1\nb 2\nc 3\n",
+				"f2.txt": "KEY VAL2\na X\nc Z\n",
+			}),
+		},
+		// R3.2 + R3.3: -v with -e and -o format
+		{
+			Name: "v1_with_e_and_o",
+			Args: []string{"-v", "1", "-e", "X", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.1: -a 1 with custom separator
+		{
+			Name: "a1_with_separator",
+			Args: []string{"-a", "1", "-t", ",", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a,1\nb,2\nc,3\n",
+				"f2.txt": "a,X\nc,Z\n",
 			}),
 		},
 	}

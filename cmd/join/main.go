@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/join: join lines of two files on a common field.
-// Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
