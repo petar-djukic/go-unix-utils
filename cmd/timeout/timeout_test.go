@@ -5,9 +5,15 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -15,18 +21,10 @@ import (
 // TestDiff verifies timeout exit code and output parity against gtimeout
 // (GNU coreutils). Uses fast commands (true, false, sleep 0) and short
 // durations to avoid slow test execution (R4.3).
-// R1.1: run command and kill on timeout.
-// R1.2: fractional durations.
-// R1.3: suffix multipliers s, m, h, d.
-// R1.4: duration 0 = no time limit.
-// R2.1: -s SIGNAL / --signal=SIGNAL for signal selection.
-// R2.2: -k DURATION / --kill-after=DURATION for kill escalation.
-// R2.3: --foreground skips process group creation.
-// R2.4: --preserve-status returns command exit status on timeout.
-// R3.1: exit with command's exit status when no timeout.
-// R3.2: exit 124 on timeout (unless --preserve-status).
-// R3.3: exit 128+signum on external signal.
-// R3.4: exit 125/126/127 for internal/exec errors.
+// R4.1: differential tests compare exit codes via pkg/testutils.
+// R4.2: covers all required scenarios.
+// R4.3: uses fast commands and short durations.
+// R4.4: verifies timed-out processes are killed (see TestProcessCleanup).
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtimeout")
@@ -122,6 +120,14 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "signal-term-success",
 			Args: []string{"-s", "TERM", "10", "true"},
+		},
+		// R2.1: -s KILL sends SIGKILL on timeout. Uses --foreground so the
+		// signal goes only to the child. SIGKILL always produces exit 137
+		// (128+9) matching GNU behavior.
+		{
+			Name:     "signal-kill-foreground",
+			Args:     []string{"--foreground", "-s", "KILL", "0.1", "sleep", "10"},
+			ExitCode: 137,
 		},
 		// R2.2: -k kill-after with timeout.
 		{
@@ -250,6 +256,66 @@ func TestDiff(t *testing.T) {
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestProcessCleanup verifies that the timed-out process is actually killed
+// and does not remain as an orphan (R4.4). This test runs the timeout binary
+// against a shell script that writes its PID to a file, then checks after
+// timeout exits that the child process no longer exists.
+func TestProcessCleanup(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+
+	// R4.3: use short duration to avoid slow test execution.
+	script := fmt.Sprintf(
+		"echo $$ > %s; exec sleep 100", pidFile)
+	cmd := exec.Command(goBin, "0.2", "sh", "-c", script)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected timeout exit, got success")
+	}
+	verifyExitCode(t, err, exitTimeout)
+
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("reading pid file: %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("parsing pid: %v", err)
+	}
+	// R4.4: verify process is no longer running.
+	waitForProcessExit(t, pid)
+}
+
+// verifyExitCode checks that the error has the expected exit code.
+func verifyExitCode(t *testing.T, err error, want int) {
+	t.Helper()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != want {
+		t.Fatalf("expected exit code %d, got %d", want, exitErr.ExitCode())
+	}
+}
+
+// waitForProcessExit polls briefly to confirm a process has exited.
+// Uses kill(pid, 0) which returns ESRCH if the process does not exist.
+func waitForProcessExit(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err := syscall.Kill(pid, 0)
+		if err == syscall.ESRCH {
+			return // process is gone
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("R4.4: process %d still running after timeout killed it", pid)
 }
 
 // makeBinaryNameNormalizer returns a NormalizeFunc that replaces the reference

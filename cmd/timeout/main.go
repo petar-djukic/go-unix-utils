@@ -3,7 +3,7 @@
 
 // Package main implements cmd/timeout: run a command with a time limit.
 // Implements srd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -302,8 +302,19 @@ func handlePostTimeout(done <-chan int, cmd *exec.Cmd, cfg *config) int {
 		return waitWithKillAfter(done, cmd, cfg)
 	}
 	code := <-done
+	return timeoutExitCode(code, cfg)
+}
+
+// timeoutExitCode returns the appropriate exit code after timeout.
+// Matches GNU behavior: SIGKILL always produces 128+9=137 because the
+// signal cannot be caught. For other signals, returns the command's
+// status (--preserve-status) or 124 (default).
+func timeoutExitCode(childCode int, cfg *config) int {
+	if cfg.signal == syscall.SIGKILL {
+		return 128 + int(syscall.SIGKILL)
+	}
 	if cfg.preserveStatus {
-		return code
+		return childCode
 	}
 	return exitTimeout
 }
@@ -316,17 +327,15 @@ func waitWithKillAfter(done <-chan int, cmd *exec.Cmd, cfg *config) int {
 	defer killTimer.Stop()
 	select {
 	case code := <-done:
-		if cfg.preserveStatus {
-			return code
-		}
-		return exitTimeout
+		return timeoutExitCode(code, cfg)
 	case <-killTimer.C:
 		sendSignal(cmd.Process.Pid, syscall.SIGKILL, cfg.foreground)
 		code := <-done
+		// SIGKILL escalation always returns 128+9=137.
 		if cfg.preserveStatus {
 			return code
 		}
-		return exitTimeout
+		return 128 + int(syscall.SIGKILL)
 	}
 }
 
