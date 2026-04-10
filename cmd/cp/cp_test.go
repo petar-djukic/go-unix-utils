@@ -3,7 +3,7 @@
 
 // Differential tests for cmd/cp against gcp (GNU coreutils).
 // Implements srd056 R4.4 (differential testing) for R1.1-R1.4, R2.1-R2.4,
-// R3.1-R3.4.
+// R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
@@ -511,6 +511,114 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"-vp", "src.txt", "dest.txt"},
 			WorkDir:   dir,
 			Normalize: norm,
+		}})
+	})
+
+	// R4.1: successful copy exits 0
+	t.Run("R4.1_exit_0_success", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "exit zero\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:     "exit_0",
+			Args:     []string{"src.txt", "dest.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		}})
+	})
+
+	// R4.2: missing source exits 1
+	t.Run("R4.2_exit_1_missing_source", func(t *testing.T) {
+		dir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "exit_1_nosrc",
+			Args:      []string{"nonexistent.txt", "dest.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.2: copying directory without -r exits 1
+	t.Run("R4.2_exit_1_dir_no_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "exit_1_dir",
+			Args:      []string{"srcdir", "destdir"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.2: permission denied exits 1
+	t.Run("R4.2_exit_1_permission_denied", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		noWriteDir := filepath.Join(dir, "nowrite")
+		mkTestDir(t, dir, "nowrite")
+		if err := os.Chmod(noWriteDir, 0o555); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(noWriteDir, 0o755) // best-effort restore for cleanup
+		})
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "exit_1_perm",
+			Args:      []string{"src.txt", "nowrite/dest.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.3: -t DIRECTORY copies sources into directory
+	t.Run("R4.3_target_directory_short", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "a.txt", "file a\n")
+		writeTestFile(t, dir, "b.txt", "file b\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_short",
+			Args:    []string{"-t", "dest", "a.txt", "b.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R4.3: --target-directory=DIRECTORY long form
+	t.Run("R4.3_target_directory_long", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "content\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_long",
+			Args:    []string{"--target-directory=dest", "src.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R4.3: -t with verbose
+	t.Run("R4.3_target_directory_verbose", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_verbose",
+			Args:    []string{"-v", "-t", "dest", "src.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R4.3: -t with recursive directory copy
+	t.Run("R4.3_target_directory_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/file.txt", "data\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_recursive",
+			Args:    []string{"-r", "-t", "dest", "srcdir"},
+			WorkDir: dir,
 		}})
 	})
 }
