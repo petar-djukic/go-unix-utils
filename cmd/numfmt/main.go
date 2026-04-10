@@ -3,7 +3,8 @@
 
 // Package main implements cmd/numfmt: convert numbers from/to human-readable strings.
 // Implements srd071-numfmt R1.1-R1.4 (core conversion), R2.1 (--format),
-// R2.2 (--padding), R3.1 (--field), R3.2 (--delimiter), R3.4 (--from-unit/--to-unit).
+// R2.2 (--padding), R2.3 (--round), R2.4 (--suffix), R3.1 (--field),
+// R3.2 (--delimiter), R3.3 (--header), R3.4 (--from-unit/--to-unit).
 package main
 
 import (
@@ -28,6 +29,17 @@ const (
 	unitSI
 	unitIEC
 	unitIECI
+)
+
+// roundMethod controls rounding behavior. R2.3.
+type roundMethod int
+
+const (
+	roundFromZero    roundMethod = iota // default: away from zero
+	roundUp                             // ceiling (towards +infinity)
+	roundDown                           // floor (towards -infinity)
+	roundTowardsZero                    // truncation
+	roundNearest                        // round half away from zero
 )
 
 const (
@@ -58,13 +70,17 @@ type formatSpec struct {
 type config struct {
 	from      unitMode
 	to        unitMode
-	fromUnit  float64    // R3.4: --from-unit multiplier (default 1)
-	toUnit    float64    // R3.4: --to-unit divisor (default 1)
-	fmtSpec   formatSpec // R2.1: --format
+	fromUnit  float64     // R3.4: --from-unit multiplier (default 1)
+	toUnit    float64     // R3.4: --to-unit divisor (default 1)
+	fmtSpec   formatSpec  // R2.1: --format
 	hasFormat bool
-	field     int    // R3.1: 1-indexed field to convert (default 1)
-	delimiter string // R3.2: field delimiter (empty = whitespace)
-	padding   int    // R2.2: output padding width
+	field     int         // R3.1: 1-indexed field to convert (default 1)
+	delimiter string      // R3.2: field delimiter (empty = whitespace)
+	padding   int         // R2.2: output padding width
+	header    int         // R3.3: lines to pass through unchanged (0 = disabled)
+	suffix    string      // R2.4: suffix to strip/append
+	round     roundMethod // R2.3: rounding method (default from-zero)
+	// TODO: --grouping conflicts with srd071 non_goals; skipped per E6.
 }
 
 func main() {
@@ -127,6 +143,10 @@ func handleInfoFlags(arg string, stdout io.Writer) int {
 
 // handleLongFlag dispatches long flags using a table-driven approach.
 func handleLongFlag(arg string, args []string, i *int, cfg *config) error {
+	// R3.3: --header has optional value (--header or --header=N).
+	if handled, err := handleHeaderFlag(arg, cfg); handled {
+		return err
+	}
 	type entry struct {
 		name    string
 		handler func(string, *config) error
@@ -136,6 +156,7 @@ func handleLongFlag(arg string, args []string, i *int, cfg *config) error {
 		{"--from", parseFromMode}, {"--to", parseToMode},
 		{"--format", parseFormat}, {"--field", parseField},
 		{"--delimiter", parseDelimiter}, {"--padding", parsePadding},
+		{"--suffix", parseSuffix}, {"--round", parseRound},
 	}
 	for _, e := range table {
 		if v, ok := extractFlagValue(arg, args, i, e.name); ok {
@@ -143,6 +164,24 @@ func handleLongFlag(arg string, args []string, i *int, cfg *config) error {
 		}
 	}
 	return fmt.Errorf("unrecognized option '%s'", arg)
+}
+
+// handleHeaderFlag handles --header with optional =N value. R3.3.
+func handleHeaderFlag(arg string, cfg *config) (bool, error) {
+	if arg == "--header" {
+		cfg.header = 1
+		return true, nil
+	}
+	if strings.HasPrefix(arg, "--header=") {
+		val := arg[len("--header="):]
+		n, err := strconv.Atoi(val)
+		if err != nil || n < 0 {
+			return true, fmt.Errorf("invalid --header argument '%s'", val)
+		}
+		cfg.header = n
+		return true, nil
+	}
+	return false, nil
 }
 
 // handleShortFlag handles -d (delimiter). R3.2.
@@ -250,6 +289,31 @@ func parsePadding(v string, cfg *config) error {
 	return nil
 }
 
+// parseSuffix sets the suffix to strip from input and append to output. R2.4.
+func parseSuffix(v string, cfg *config) error {
+	cfg.suffix = v
+	return nil
+}
+
+// parseRound sets the rounding method. R2.3.
+func parseRound(v string, cfg *config) error {
+	switch v {
+	case "up":
+		cfg.round = roundUp
+	case "down":
+		cfg.round = roundDown
+	case "from-zero":
+		cfg.round = roundFromZero
+	case "towards-zero":
+		cfg.round = roundTowardsZero
+	case "nearest":
+		cfg.round = roundNearest
+	default:
+		return fmt.Errorf("invalid --round argument '%s'", v)
+	}
+	return nil
+}
+
 func parseUnitMode(s string) (unitMode, error) {
 	switch s {
 	case "none":
@@ -321,10 +385,17 @@ func processOperands(operands []string, cfg config, stdout, stderr io.Writer) in
 	return exitCode
 }
 
+// processStdin reads lines from stdin and processes them. R3.3: header passthrough.
 func processStdin(stdin io.Reader, cfg config, stdout, stderr io.Writer) int {
 	scanner := bufio.NewScanner(stdin)
 	exitCode := 0
+	lineNum := 0
 	for scanner.Scan() {
+		lineNum++
+		if lineNum <= cfg.header {
+			fmt.Fprintln(stdout, scanner.Text())
+			continue
+		}
 		result, err := processLine(scanner.Text(), cfg)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
@@ -392,14 +463,16 @@ func findFieldBounds(line string, n int) (int, int, bool) {
 	return 0, 0, false
 }
 
-// convertNumber converts a single number string. R1.1-R1.3, R2.1, R2.2, R3.4.
+// convertNumber converts a single number string.
+// R1.1-R1.3, R2.1-R2.4, R3.4.
 func convertNumber(input string, cfg config) (string, error) {
 	padding := cfg.padding
 	trimmed := strings.TrimSpace(input)
-	// R2.4: auto-detect padding from input spacing.
 	if padding == 0 && len(trimmed) < len(input) {
 		padding = len(input)
 	}
+	// R2.4: strip suffix from input before conversion.
+	trimmed = stripSuffix(trimmed, cfg.suffix)
 	val, err := parseInputNumber(trimmed, cfg.from)
 	if err != nil {
 		return "", err
@@ -410,14 +483,24 @@ func convertNumber(input string, cfg config) (string, error) {
 	if cfg.hasFormat {
 		precision = cfg.fmtSpec.precision
 	}
-	numStr := formatOutputNumber(val, cfg.to, precision)
+	numStr := formatOutputNumber(val, cfg.to, precision, cfg.round)
 	if cfg.hasFormat {
 		numStr = applyFormat(numStr, cfg.fmtSpec)
 	}
+	// R2.4: append suffix to output.
+	numStr += cfg.suffix
 	if padding != 0 {
 		numStr = applyPadding(numStr, padding)
 	}
 	return numStr, nil
+}
+
+// stripSuffix removes a user suffix from the input before parsing. R2.4.
+func stripSuffix(s, suffix string) string {
+	if suffix != "" && strings.HasSuffix(s, suffix) {
+		return s[:len(s)-len(suffix)]
+	}
+	return s
 }
 
 // applyFormat applies the format spec to a numeric string. R2.1.
@@ -547,16 +630,17 @@ func autoSuffixMultiplier(suffix string) (float64, error) {
 
 // --- Output formatting ---
 
-// formatOutputNumber formats a value with optional suffix and precision.
-func formatOutputNumber(val float64, mode unitMode, precision int) string {
+// formatOutputNumber formats a value with optional suffix, precision, and rounding. R2.3.
+func formatOutputNumber(val float64, mode unitMode, prec int, rnd roundMethod) string {
 	if mode == unitNone {
-		if precision >= 0 {
-			return fmt.Sprintf("%.*f", precision, val)
+		if prec >= 0 {
+			val = roundValue(val, prec, rnd)
+			return fmt.Sprintf("%.*f", prec, val)
 		}
 		return formatPlainNumber(val)
 	}
 	base, suffixes := outputParams(mode)
-	return formatWithSuffix(val, base, suffixes, precision)
+	return formatWithSuffix(val, base, suffixes, prec, rnd)
 }
 
 func outputParams(mode unitMode) (float64, []string) {
@@ -578,7 +662,8 @@ func formatPlainNumber(val float64) string {
 	return strconv.FormatFloat(val, 'f', -1, 64)
 }
 
-func formatWithSuffix(val, base float64, suffixes []string, precision int) string {
+// formatWithSuffix scales val by base and formats with the appropriate suffix. R2.3.
+func formatWithSuffix(val, base float64, suffixes []string, prec int, rnd roundMethod) string {
 	neg := val < 0
 	absVal := math.Abs(val)
 	idx, scaled := 0, absVal
@@ -586,27 +671,61 @@ func formatWithSuffix(val, base float64, suffixes []string, precision int) strin
 		scaled /= base
 		idx++
 	}
-	sign := ""
 	if neg {
-		sign = "-"
+		scaled = -scaled
 	}
 	if idx == 0 {
-		if precision >= 0 {
-			return sign + fmt.Sprintf("%.*f", precision, absVal)
+		if prec >= 0 {
+			val = roundValue(val, prec, rnd)
+			return fmt.Sprintf("%.*f", prec, val)
 		}
-		return sign + formatPlainNumber(absVal)
+		return formatPlainNumber(val)
 	}
-	return sign + formatScaledValue(scaled, suffixes[idx], precision)
+	return formatScaledValue(scaled, suffixes[idx], prec, rnd)
 }
 
-func formatScaledValue(val float64, suffix string, precision int) string {
-	if precision >= 0 {
-		return fmt.Sprintf("%.*f%s", precision, val, suffix)
+// formatScaledValue formats a scaled value with its unit suffix. R2.3.
+func formatScaledValue(val float64, suffix string, prec int, rnd roundMethod) string {
+	if prec >= 0 {
+		val = roundValue(val, prec, rnd)
+		return fmt.Sprintf("%.*f%s", prec, val, suffix)
 	}
-	if val < 10 {
-		return fmt.Sprintf("%.1f%s", val, suffix)
+	defPrec := 1
+	if math.Abs(val) >= 10 {
+		defPrec = 0
 	}
-	return fmt.Sprintf("%.0f%s", val, suffix)
+	val = roundValue(val, defPrec, rnd)
+	return fmt.Sprintf("%.*f%s", defPrec, val, suffix)
+}
+
+// roundValue rounds val to the given precision using the specified method. R2.3.
+func roundValue(val float64, precision int, method roundMethod) float64 {
+	factor := math.Pow(10, float64(precision))
+	scaled := val * factor
+	var rounded float64
+	switch method {
+	case roundUp:
+		rounded = math.Ceil(scaled)
+	case roundDown:
+		rounded = math.Floor(scaled)
+	case roundFromZero:
+		rounded = roundAwayFromZero(scaled)
+	case roundTowardsZero:
+		rounded = math.Trunc(scaled)
+	case roundNearest:
+		rounded = math.Round(scaled)
+	default:
+		rounded = roundAwayFromZero(scaled)
+	}
+	return rounded / factor
+}
+
+// roundAwayFromZero rounds away from zero: positive values ceil, negative values floor.
+func roundAwayFromZero(v float64) float64 {
+	if v >= 0 {
+		return math.Ceil(v)
+	}
+	return math.Floor(v)
 }
 
 // --- Help ---
@@ -627,7 +746,10 @@ func printHelpFlags(w io.Writer) {
 		"      --format=FORMAT  use printf style floating-point FORMAT",
 		"      --from=UNIT    auto-scale input numbers to UNITs; default is 'none'",
 		"      --from-unit=N  specify the input unit size (instead of the default 1)",
+		"      --header[=N]   print (without converting) the first N header lines",
 		"      --padding=N    pad the output to N characters; positive for right-aligned",
+		"      --round=METHOD use METHOD for rounding: up, down, from-zero, towards-zero, nearest",
+		"      --suffix=SUFFIX  add SUFFIX to output, and accept optional SUFFIX in input",
 		"      --to=UNIT      auto-scale output numbers to UNITs; default is 'none'",
 		"      --to-unit=N    the output unit size (instead of the default 1)",
 		"      --help         display this help and exit",
