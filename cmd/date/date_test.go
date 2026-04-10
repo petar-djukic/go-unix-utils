@@ -19,6 +19,7 @@ import (
 // R1.1: default format. R1.2: +FORMAT. R1.3: strftime specs. R1.4: GNU extensions.
 // R2.1: -d/--date string parsing. R2.2: epoch @timestamps. R2.3: ISO 8601. R2.4: invalid date errors.
 // R3.1: -u/--utc/--universal UTC mode. R3.2: -r/--reference file. R3.3: missing file error. R3.4: stdout only.
+// R4.1: exit 0 on success. R4.2: exit 1 on error. R4.3: differential tests. R4.4: comprehensive coverage.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gdate")
@@ -345,6 +346,119 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Env:       []string{"LC_ALL=C", "TZ=UTC"},
 			Normalize: errNorms,
+		},
+		// R4.1: exit 0 on successful display. R4.3: deterministic via -d @EPOCH.
+		{
+			Name: "exit-0-default-format",
+			Args: []string{"-d", "@0"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "exit-0-custom-format",
+			Args: []string{"-d", "@0", "+%Y"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R4.2: exit 1 on invalid date or missing file.
+		{
+			Name:      "exit-1-invalid-date",
+			Args:      []string{"-d", "xyz123"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: errNorms,
+		},
+		{
+			Name:      "exit-1-missing-ref-file",
+			Args:      []string{"-r", "/no/such/file"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C", "TZ=UTC"},
+			Normalize: errNorms,
+		},
+		// R4.4: comprehensive format coverage — week specifiers.
+		{
+			Name: "format-week-sunday-U",
+			Args: []string{"-d", "@1700000000", "+%U"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-week-monday-W",
+			Args: []string{"-d", "@1700000000", "+%W"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-iso-week-V",
+			Args: []string{"-d", "@1700000000", "+%V"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-iso-year-G",
+			Args: []string{"-d", "@1700000000", "+%G"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-iso-short-year-g",
+			Args: []string{"-d", "@1700000000", "+%g"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R4.4: composite format specifiers.
+		{
+			Name: "format-composite-c",
+			Args: []string{"-d", "@1700000000", "+%c"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-composite-x",
+			Args: []string{"-d", "@1700000000", "+%x"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-composite-X",
+			Args: []string{"-d", "@1700000000", "+%X"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R4.4: month abbreviation alias %h.
+		{
+			Name: "format-month-abbrev-h",
+			Args: []string{"-d", "@1700000000", "+%h"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R4.4: space-padded 12-hour %l.
+		{
+			Name: "format-12hour-space-padded",
+			Args: []string{"-d", "@0", "+%l"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R4.4: escape sequences %n (newline) and %t (tab).
+		{
+			Name: "format-tab-escape",
+			Args: []string{"-d", "@0", "+%H%t%M"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "format-newline-escape",
+			Args: []string{"-d", "@0", "+%H%n%M"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		// R4.4: combined -u with -d and format.
+		{
+			Name: "combined-utc-date-format",
+			Args: []string{"-u", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"},
+			Env:  []string{"LC_ALL=C"},
+		},
+		// R4.4: padding modifiers on additional specifiers.
+		{
+			Name: "pad-no-padding-hour",
+			Args: []string{"-d", "@3600", "+%-H"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "pad-space-padding-month",
+			Args: []string{"-d", "@0", "+%_m"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
+		},
+		{
+			Name: "pad-zero-padding-minute",
+			Args: []string{"-d", "@300", "+%0M"},
+			Env:  []string{"LC_ALL=C", "TZ=UTC"},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
