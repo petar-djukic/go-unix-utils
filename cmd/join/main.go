@@ -3,11 +3,12 @@
 
 // Package main implements cmd/join: join lines of two files on a common field.
 // Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,8 +19,11 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// progName is used in diagnostic messages.
+// progName is used in diagnostic messages. D2: 'join: MESSAGE' format.
 const progName = "join"
+
+// version is the program version for --version output. R4.4.
+const version = "0.1"
 
 // config holds parsed command-line options from srd069-join.
 type config struct {
@@ -31,9 +35,11 @@ type config struct {
 	unpairA    []int  // R3.1: -a FILENUM (1 or 2)
 	unpairV    []int  // R3.2: -v FILENUM (1 or 2)
 	header     bool   // R3.4: --header
-	checkOrder bool   // R4.4: --check-order
+	checkOrder bool   // R4.3: --check-order
+	ignoreCase bool   // R4.2: -i/--ignore-case
 	files      []string
 	parseErr   bool
+	done       bool // set by --help or --version
 }
 
 // outputSpec represents a single output field specifier from -o FORMAT.
@@ -45,9 +51,10 @@ type outputSpec struct {
 
 // lineScanner wraps bufio.Scanner with peek capability for merge-join.
 type lineScanner struct {
-	sc    *bufio.Scanner
-	line  string
-	valid bool
+	sc      *bufio.Scanner
+	line    string
+	lineNum int
+	valid   bool
 }
 
 func newLineScanner(r io.Reader) *lineScanner {
@@ -59,15 +66,20 @@ func (ls *lineScanner) advance() bool {
 	ls.valid = ls.sc.Scan()
 	if ls.valid {
 		ls.line = ls.sc.Text()
+		ls.lineNum++
 	}
 	return ls.valid
 }
 
 // joiner holds state for the merge-join operation.
 type joiner struct {
-	cfg   *config
-	specs []outputSpec
-	w     *bufio.Writer
+	cfg      *config
+	specs    []outputSpec
+	w        *bufio.Writer
+	prevKey  [2]string // previous join key per file
+	seenLine [2]bool   // whether at least one line has been read
+	warned   [2]bool   // whether unsorted warning was issued
+	orderErr bool      // set when --check-order violation found
 }
 
 func main() {
@@ -79,6 +91,9 @@ func main() {
 // R4.1: returns 0 on success. R4.2: returns 1 on errors.
 func run(args []string) int {
 	cfg := parseArgs(args)
+	if cfg.done {
+		return 0
+	}
 	if cfg.parseErr {
 		return 1
 	}
@@ -88,17 +103,33 @@ func run(args []string) int {
 	}
 	r1, closer1, err := openInput(cfg.files[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n",
+			progName, formatOpenError(err))
 		return 1
 	}
 	defer closer1()
 	r2, closer2, err := openInput(cfg.files[1])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n",
+			progName, formatOpenError(err))
 		return 1
 	}
 	defer closer2()
 	return executeJoin(&cfg, r1, r2, os.Stdout)
+}
+
+// formatOpenError formats os.Open errors to match GNU coreutils style.
+// GNU outputs: "join: <file>: No such file or directory".
+func formatOpenError(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		msg := pe.Err.Error()
+		if len(msg) > 0 {
+			msg = strings.ToUpper(msg[:1]) + msg[1:]
+		}
+		return fmt.Sprintf("%s: %s", pe.Path, msg)
+	}
+	return err.Error()
 }
 
 // parseArgs extracts flags and file arguments from the command line.
@@ -115,6 +146,9 @@ func parseArgs(args []string) config {
 			continue
 		}
 		consumed := parseLongFlag(&cfg, args, i)
+		if cfg.done {
+			return cfg
+		}
 		if consumed > 0 {
 			i += consumed - 1
 			continue
@@ -132,17 +166,29 @@ func parseArgs(args []string) config {
 	return cfg
 }
 
-// parseLongFlag handles --long-form flags. Returns args consumed.
+// parseLongFlag handles --long-form flags. Returns args consumed (0=no match).
 func parseLongFlag(cfg *config, args []string, i int) int {
 	arg := args[i]
-	switch {
-	case arg == "--header":
+	switch arg {
+	case "--header":
 		cfg.header = true
 		return 1
-	case arg == "--check-order":
+	case "--check-order":
 		cfg.checkOrder = true
 		return 1
+	case "--ignore-case":
+		cfg.ignoreCase = true
+		return 1
+	case "--help":
+		printUsage()
+		cfg.done = true
+		return 1
+	case "--version":
+		printVersion()
+		cfg.done = true
+		return 1
 	}
+	// TODO: --nocheck-order is a non-goal in srd069-join (E6).
 	return parseLongValueFlag(cfg, args, i)
 }
 
@@ -199,6 +245,9 @@ func parseOneShort(cfg *config, ch byte, rest string, args []string, nextIdx int
 		return shortFileNumFlag(&cfg.unpairA, rest, args, nextIdx)
 	case 'v':
 		return shortFileNumFlag(&cfg.unpairV, rest, args, nextIdx)
+	case 'i':
+		cfg.ignoreCase = true
+		return 0
 	default:
 		return -1
 	}
@@ -360,7 +409,8 @@ func executeJoin(cfg *config, r1, r2 io.Reader, w io.Writer) int {
 	j := &joiner{cfg: cfg, specs: specs, w: bw}
 	code := j.process(r1, r2)
 	if flushErr := bw.Flush(); flushErr != nil {
-		fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, flushErr)
+		fmt.Fprintf(os.Stderr, "%s: write error: %v\n",
+			progName, flushErr)
 		return 1
 	}
 	return code
@@ -376,14 +426,26 @@ func (j *joiner) process(r1, r2 io.Reader) int {
 		j.handleHeader(ls1, ls2)
 	}
 	j.mergeJoin(ls1, ls2)
-	j.drainUnpaired(ls1, 1)
-	j.drainUnpaired(ls2, 2)
+	if !j.orderErr {
+		j.drainUnpaired(ls1, 1)
+	}
+	if !j.orderErr {
+		j.drainUnpaired(ls2, 2)
+	}
 	if err := ls1.sc.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
 		return 1
 	}
 	if err := ls2.sc.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
+		return 1
+	}
+	if j.orderErr {
+		return 1
+	}
+	if j.warned[0] || j.warned[1] {
+		fmt.Fprintf(os.Stderr, "%s: input is not in sorted order\n",
+			progName)
 		return 1
 	}
 	return 0
@@ -402,16 +464,24 @@ func (j *joiner) handleHeader(ls1, ls2 *lineScanner) {
 
 // mergeJoin performs the sorted merge-join loop.
 // R1.1: matches lines where join fields are equal.
-// R1.3: unpaired lines suppressed by default.
+// R4.2: -i uses case-insensitive comparison via compareKeys.
+// R4.3: checks sort order and warns/errors as configured.
 func (j *joiner) mergeJoin(ls1, ls2 *lineScanner) {
 	for ls1.valid && ls2.valid {
 		key1 := j.joinKey(ls1.line, 1)
 		key2 := j.joinKey(ls2.line, 2)
+		if !j.checkOrder(1, key1, ls1) {
+			return
+		}
+		if !j.checkOrder(2, key2, ls2) {
+			return
+		}
+		cmp := j.compareKeys(key1, key2)
 		switch {
-		case key1 < key2:
+		case cmp < 0:
 			j.printUnpaired(ls1.line, 1)
 			ls1.advance()
-		case key1 > key2:
+		case cmp > 0:
 			j.printUnpaired(ls2.line, 2)
 			ls2.advance()
 		default:
@@ -420,29 +490,36 @@ func (j *joiner) mergeJoin(ls1, ls2 *lineScanner) {
 	}
 }
 
-// processMatch handles matching join keys by computing the cross product
-// of all file1 and file2 lines sharing the same key.
+// processMatch handles matching join keys by collecting both groups
+// before writing output. This ensures order violations detected while
+// reading ahead in file1 prevent output for the current key.
 func (j *joiner) processMatch(ls1, ls2 *lineScanner, key string) {
+	group1 := j.collectGroup(ls1, 1, key)
 	group2 := j.collectGroup(ls2, 2, key)
-	for {
-		if !j.suppressPaired() {
-			for _, line2 := range group2 {
-				j.writePair(ls1.line, line2)
-			}
-		}
-		ls1.advance()
-		if !ls1.valid || j.joinKey(ls1.line, 1) != key {
-			break
+	if j.orderErr {
+		return
+	}
+	if j.suppressPaired() {
+		return
+	}
+	for _, line1 := range group1 {
+		for _, line2 := range group2 {
+			j.writePair(line1, line2)
 		}
 	}
 }
 
 // collectGroup gathers all consecutive lines with the same join key.
+// R4.3: checks order for the first line of the next group (read-ahead).
 func (j *joiner) collectGroup(ls *lineScanner, fileNum int, key string) []string {
 	var group []string
-	for ls.valid && j.joinKey(ls.line, fileNum) == key {
+	for ls.valid && j.compareKeys(j.joinKey(ls.line, fileNum), key) == 0 {
 		group = append(group, ls.line)
 		ls.advance()
+	}
+	if ls.valid {
+		nextKey := j.joinKey(ls.line, fileNum)
+		j.checkOrder(fileNum, nextKey, ls)
 	}
 	return group
 }
@@ -455,6 +532,36 @@ func (j *joiner) joinKey(line string, fileNum int) string {
 		idx = j.cfg.field2
 	}
 	return getField(fields, idx)
+}
+
+// compareKeys compares two join keys, respecting the -i flag.
+// D1: sort order checking uses the same comparison logic as join matching.
+func (j *joiner) compareKeys(a, b string) int {
+	if j.cfg.ignoreCase {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	}
+	return strings.Compare(a, b)
+}
+
+// checkOrder verifies sort order for a file. Returns false if --check-order
+// violation requires stopping. D1: uses compareKeys for -i support.
+// R4.3: warns once per file in default mode; errors in --check-order mode.
+func (j *joiner) checkOrder(fileNum int, key string, ls *lineScanner) bool {
+	idx := fileNum - 1
+	if j.seenLine[idx] && !j.warned[idx] {
+		if j.compareKeys(key, j.prevKey[idx]) < 0 {
+			fmt.Fprintf(os.Stderr, "%s: %s:%d: is not sorted: %s\n",
+				progName, j.cfg.files[idx], ls.lineNum, ls.line)
+			j.warned[idx] = true
+			if j.cfg.checkOrder {
+				j.orderErr = true
+				return false
+			}
+		}
+	}
+	j.seenLine[idx] = true
+	j.prevKey[idx] = key
+	return true
 }
 
 // writePair outputs a single joined line from two matching input lines.
@@ -488,8 +595,13 @@ func (j *joiner) printUnpaired(line string, fileNum int) {
 }
 
 // drainUnpaired outputs remaining lines from a scanner as unpaired.
+// R4.3: checks sort order for remaining lines.
 func (j *joiner) drainUnpaired(ls *lineScanner, fileNum int) {
 	for ls.valid {
+		key := j.joinKey(ls.line, fileNum)
+		if !j.checkOrder(fileNum, key, ls) {
+			return
+		}
 		j.printUnpaired(ls.line, fileNum)
 		ls.advance()
 	}
@@ -569,4 +681,31 @@ func fieldOrEmpty(fields []string, fieldNum int, empty string) string {
 		return empty
 	}
 	return fields[fieldNum-1]
+}
+
+// printUsage outputs usage information to stdout. R4.4: --help.
+func printUsage() {
+	fmt.Print(`Usage: join [OPTION]... FILE1 FILE2
+For each pair of input lines with identical join fields, write a line to
+standard output. The default join field is the first, delimited by blanks.
+
+  -a FILENUM        also print unpairable lines from file FILENUM
+  -e STRING         replace missing (empty) input fields with STRING
+  -i, --ignore-case ignore differences in case when comparing fields
+  -j FIELD          equivalent to '-1 FIELD -2 FIELD'
+  -o FORMAT         obey FORMAT while constructing output line
+  -t CHAR           use CHAR as input and output field separator
+  -v FILENUM        like -a FILENUM, but suppress joined output lines
+  -1 FIELD          join on this FIELD of file 1
+  -2 FIELD          join on this FIELD of file 2
+  --check-order     check that the input is correctly sorted
+  --header          treat the first line in each file as field headers
+  --help            display this help and exit
+  --version         output version information and exit
+`)
+}
+
+// printVersion outputs version information to stdout. R4.4: --version.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) %s\n", progName, version)
 }

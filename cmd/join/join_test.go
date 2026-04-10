@@ -3,10 +3,11 @@
 
 // Differential tests for cmd/join against gjoin (GNU coreutils).
 // Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4, R4.3.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,12 @@ func setupDir(t *testing.T, files map[string]string) string {
 		}
 	}
 	return dir
+}
+
+// normalizeProgramName replaces gjoin: with join: in output so that
+// stderr diagnostics match between the reference and Go binaries.
+func normalizeProgramName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gjoin:"), []byte("join:"))
 }
 
 func TestDiff(t *testing.T) {
@@ -129,7 +136,7 @@ func TestDiff(t *testing.T) {
 		},
 		// R1.4: stdin as file1
 		{
-			Name: "stdin_as_file1",
+			Name:  "stdin_as_file1",
 			Args:  []string{"-", "f2.txt"},
 			Stdin: []byte("a 1\nb 2\n"),
 			WorkDir: setupDir(t, map[string]string{
@@ -138,7 +145,7 @@ func TestDiff(t *testing.T) {
 		},
 		// R1.4: stdin as file2
 		{
-			Name: "stdin_as_file2",
+			Name:  "stdin_as_file2",
 			Args:  []string{"f1.txt", "-"},
 			Stdin: []byte("a X\nb Y\n"),
 			WorkDir: setupDir(t, map[string]string{
@@ -467,6 +474,91 @@ func TestDiff(t *testing.T) {
 			WorkDir: setupDir(t, map[string]string{
 				"f1.txt": "a,1\nb,2\nc,3\n",
 				"f2.txt": "a,X\nc,Z\n",
+			}),
+		},
+		// R4.1: -e with -o, out-of-range field replaced
+		{
+			Name: "e_replace_out_of_range_field",
+			Args: []string{"-e", "N/A", "-o", "0,1.2,2.2,2.3", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R4.2: -i case-insensitive basic join
+		{
+			Name: "ignore_case_basic",
+			Args: []string{"-i", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "A 1\nB 2\nC 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.2: -i with mixed case keys
+		{
+			Name: "ignore_case_mixed",
+			Args: []string{"-i", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "Apple 1\nBanana 2\n",
+				"f2.txt": "APPLE X\nBANANA Y\n",
+			}),
+		},
+		// R4.2: --ignore-case long flag form
+		{
+			Name: "ignore_case_long_flag",
+			Args: []string{"--ignore-case", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "A 1\nB 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R4.2: -i with -a unpairable
+		{
+			Name: "ignore_case_with_a1",
+			Args: []string{"-i", "-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "A 1\nB 2\nC 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R4.3: --check-order with sorted input (no error)
+		{
+			Name: "check_order_sorted",
+			Args: []string{"--check-order", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.3: --check-order with unsorted file1
+		{
+			Name:      "check_order_unsorted_file1",
+			Args:      []string{"--check-order", "f1.txt", "f2.txt"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\nb 2\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.3: default order check warns on unsorted input
+		{
+			Name:      "default_order_check_warns",
+			Args:      []string{"f1.txt", "f2.txt"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\nb 2\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.4: missing file error
+		{
+			Name:      "missing_file_error",
+			Args:      []string{"nonexistent.txt", "f2.txt"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			WorkDir: setupDir(t, map[string]string{
+				"f2.txt": "a X\nb Y\n",
 			}),
 		},
 	}
