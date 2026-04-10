@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mv against gmv (GNU coreutils).
-// Implements srd057 differential testing for R1.1-R1.4.
+// Implements srd057 differential testing for R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -58,13 +58,19 @@ func normalizeMv(data []byte) []byte {
 }
 
 // runBin executes a binary and captures its output.
-func runBin(t *testing.T, bin string, args []string, dir string) binResult {
+func runBin(
+	t *testing.T, bin string, args []string,
+	dir string, stdin []byte,
+) binResult {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Dir = dir
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
 	err := cmd.Run()
 	code := extractExitCode(t, err, bin)
@@ -92,8 +98,11 @@ func extractExitCode(t *testing.T, err error, bin string) int {
 // runMvDiff runs a differential test with separate temp dirs.
 // Creates identical directory state for ref and go binaries,
 // then compares stdout, stderr, and exit code.
-func runMvDiff(t *testing.T, goBin, refBin string,
-	setup func(t *testing.T, dir string), args []string) {
+func runMvDiff(
+	t *testing.T, goBin, refBin string,
+	setup func(t *testing.T, dir string),
+	args []string, stdin []byte,
+) {
 	t.Helper()
 	refDir := t.TempDir()
 	goDir := t.TempDir()
@@ -101,8 +110,8 @@ func runMvDiff(t *testing.T, goBin, refBin string,
 		setup(t, refDir)
 		setup(t, goDir)
 	}
-	ref := runBin(t, refBin, args, refDir)
-	got := runBin(t, goBin, args, goDir)
+	ref := runBin(t, refBin, args, refDir, stdin)
+	got := runBin(t, goBin, args, goDir, stdin)
 	compareMvResults(t, args, ref, got)
 }
 
@@ -141,6 +150,10 @@ func TestDiff(t *testing.T) {
 	t.Run("R1.2", func(t *testing.T) { testR1_2(t, goBin, refBin) })
 	t.Run("R1.3", func(t *testing.T) { testR1_3(t, goBin, refBin) })
 	t.Run("R1.4", func(t *testing.T) { testR1_4(t, goBin, refBin) })
+	t.Run("R2.1", func(t *testing.T) { testR2_1(t, goBin, refBin) })
+	t.Run("R2.2", func(t *testing.T) { testR2_2(t, goBin, refBin) })
+	t.Run("R2.3", func(t *testing.T) { testR2_3(t, goBin, refBin) })
+	t.Run("R2.4", func(t *testing.T) { testR2_4(t, goBin, refBin) })
 }
 
 // testR1_1 tests single file rename.
@@ -151,7 +164,7 @@ func testR1_1(t *testing.T, goBin, refBin string) {
 			func(t *testing.T, dir string) {
 				writeFile(t, dir, "src.txt", "hello\n")
 			},
-			[]string{"src.txt", "dest.txt"},
+			[]string{"src.txt", "dest.txt"}, nil,
 		)
 	})
 	t.Run("overwrite_existing", func(t *testing.T) {
@@ -160,12 +173,12 @@ func testR1_1(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "src.txt", "new\n")
 				writeFile(t, dir, "dest.txt", "old\n")
 			},
-			[]string{"src.txt", "dest.txt"},
+			[]string{"src.txt", "dest.txt"}, nil,
 		)
 	})
 	t.Run("missing_source", func(t *testing.T) {
 		runMvDiff(t, goBin, refBin, nil,
-			[]string{"nonexistent.txt", "dest.txt"},
+			[]string{"nonexistent.txt", "dest.txt"}, nil,
 		)
 	})
 }
@@ -180,7 +193,7 @@ func testR1_2(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "b.txt", "file b\n")
 				mkDir(t, dir, "destdir")
 			},
-			[]string{"a.txt", "b.txt", "destdir"},
+			[]string{"a.txt", "b.txt", "destdir"}, nil,
 		)
 	})
 	t.Run("multi_target_not_dir", func(t *testing.T) {
@@ -190,7 +203,7 @@ func testR1_2(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "b.txt", "file b\n")
 				writeFile(t, dir, "notdir", "not a dir\n")
 			},
-			[]string{"a.txt", "b.txt", "notdir"},
+			[]string{"a.txt", "b.txt", "notdir"}, nil,
 		)
 	})
 }
@@ -204,7 +217,7 @@ func testR1_3(t *testing.T, goBin, refBin string) {
 				mkDir(t, dir, "srcdir")
 				writeFile(t, dir, "srcdir/file.txt", "content\n")
 			},
-			[]string{"srcdir", "destdir"},
+			[]string{"srcdir", "destdir"}, nil,
 		)
 	})
 	t.Run("move_nested_directory", func(t *testing.T) {
@@ -214,7 +227,7 @@ func testR1_3(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "srcdir/a.txt", "top\n")
 				writeFile(t, dir, "srcdir/sub/b.txt", "deep\n")
 			},
-			[]string{"srcdir", "destdir"},
+			[]string{"srcdir", "destdir"}, nil,
 		)
 	})
 }
@@ -228,7 +241,7 @@ func testR1_4(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "src.txt", "data\n")
 				mkDir(t, dir, "destdir")
 			},
-			[]string{"src.txt", "destdir"},
+			[]string{"src.txt", "destdir"}, nil,
 		)
 	})
 	t.Run("dir_into_existing_dir", func(t *testing.T) {
@@ -238,7 +251,118 @@ func testR1_4(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "srcdir/file.txt", "content\n")
 				mkDir(t, dir, "destdir")
 			},
-			[]string{"srcdir", "destdir"},
+			[]string{"srcdir", "destdir"}, nil,
+		)
+	})
+}
+
+// testR2_1 tests interactive mode.
+// R2.1: -i prompts before overwriting an existing destination.
+func testR2_1(t *testing.T, goBin, refBin string) {
+	t.Run("interactive_no_conflict", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+			},
+			[]string{"-i", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("interactive_decline", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-i", "src.txt", "dest.txt"}, []byte("n\n"),
+		)
+	})
+	t.Run("interactive_accept", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-i", "src.txt", "dest.txt"}, []byte("y\n"),
+		)
+	})
+}
+
+// testR2_2 tests force mode and last-flag-wins precedence.
+// R2.2: -f does not prompt. Last flag between -i/-f/-n wins.
+func testR2_2(t *testing.T, goBin, refBin string) {
+	t.Run("force_overwrite", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-f", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("last_flag_if_force_wins", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-i", "-f", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("last_flag_fi_interactive_wins", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-f", "-i", "src.txt", "dest.txt"},
+			[]byte("n\n"),
+		)
+	})
+}
+
+// testR2_3 tests no-clobber mode.
+// R2.3: -n does not overwrite an existing destination file.
+func testR2_3(t *testing.T, goBin, refBin string) {
+	t.Run("no_clobber_existing", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-n", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("no_clobber_no_conflict", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+			},
+			[]string{"-n", "src.txt", "dest.txt"}, nil,
+		)
+	})
+}
+
+// testR2_4 tests permission error reporting.
+// R2.4: permission errors must be printed to stderr.
+func testR2_4(t *testing.T, goBin, refBin string) {
+	if os.Getuid() == 0 {
+		t.Skip("permission tests unreliable as root")
+	}
+	t.Run("permission_denied_dir", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "data\n")
+				nowrite := filepath.Join(dir, "nowrite")
+				mkDir(t, dir, "nowrite")
+				if err := os.Chmod(nowrite, 0o555); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() {
+					// best-effort: restore permissions for TempDir cleanup
+					os.Chmod(nowrite, 0o755)
+				})
+			},
+			[]string{"src.txt", "nowrite/dest.txt"}, nil,
 		)
 	})
 }
@@ -253,14 +377,14 @@ func TestErrors(t *testing.T) {
 			refBinName, err)
 	}
 	t.Run("no_args", func(t *testing.T) {
-		runMvDiff(t, goBin, refBin, nil, []string{})
+		runMvDiff(t, goBin, refBin, nil, []string{}, nil)
 	})
 	t.Run("one_arg", func(t *testing.T) {
 		runMvDiff(t, goBin, refBin,
 			func(t *testing.T, dir string) {
 				writeFile(t, dir, "src.txt", "data\n")
 			},
-			[]string{"src.txt"},
+			[]string{"src.txt"}, nil,
 		)
 	})
 }

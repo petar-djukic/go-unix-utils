@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mv: move or rename files.
-// Implements srd057 R1.1-R1.4.
+// Implements srd057 R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -19,11 +20,23 @@ import (
 
 const programName = "mv"
 
+// overwriteMode controls behavior when destination exists.
+type overwriteMode int
+
+const (
+	overwriteDefault     overwriteMode = iota
+	overwriteInteractive               // R2.1: prompt before overwriting
+	overwriteForce                     // R2.2: never prompt
+	overwriteNoClobber                 // R2.3: do not overwrite
+)
+
 // options holds parsed command-line flags for mv.
-// D5: structured so R2-R4 flags can be added without restructuring.
 type options struct {
-	// Fields for R2/R3 flags will be added in subsequent tasks.
+	overwrite overwriteMode
 }
+
+// stdinReader provides buffered stdin for interactive prompts.
+var stdinReader = bufio.NewReader(os.Stdin)
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -66,12 +79,54 @@ func moveAllSources(opts options, sources []string, dest string) int {
 	exitCode := 0
 	for _, src := range sources {
 		target := resolveTarget(dest, src, destIsDir)
+		skip, declined := checkOverwrite(opts, target)
+		if skip {
+			if declined {
+				exitCode = 1
+			}
+			continue
+		}
 		if err := moveSingle(src, target); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			exitCode = 1
 		}
 	}
 	return exitCode
+}
+
+// checkOverwrite checks overwrite rules for the target path.
+// Returns (skip, declined). skip=true means do not move.
+// declined=true means user actively refused (exit code 1).
+// R2.1: interactive prompts; decline is an error.
+// R2.3: no-clobber silently skips (not an error).
+func checkOverwrite(opts options, target string) (bool, bool) {
+	if !fileExists(target) {
+		return false, false
+	}
+	switch opts.overwrite {
+	case overwriteNoClobber:
+		return true, false
+	case overwriteInteractive:
+		if !promptOverwrite(target) {
+			return true, true
+		}
+	}
+	return false, false
+}
+
+// fileExists returns true if path exists.
+func fileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// promptOverwrite prompts the user before overwriting dest.
+// R2.1: prompt format matches GNU mv "overwrite 'DEST'? ".
+func promptOverwrite(dest string) bool {
+	fmt.Fprintf(os.Stderr, "%s: overwrite '%s'? ", programName, dest)
+	line, _ := stdinReader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
 // moveSingle moves a single source to destination.
@@ -254,6 +309,7 @@ func finishCopy(in, out *os.File, dest string) error {
 }
 
 // formatRenameError formats a rename error matching GNU mv output.
+// R2.4: permission errors are surfaced through this path.
 func formatRenameError(src, dest string, err error) error {
 	var linkErr *os.LinkError
 	if errors.As(err, &linkErr) {
@@ -285,7 +341,7 @@ func capitalizeFirst(s string) string {
 }
 
 // parseArgs separates flags from positional arguments.
-// D5: structured so R2-R4 flags can be added without restructuring.
+// R2.1-R2.3: parses -i, -f, -n overwrite control flags.
 func parseArgs(rawArgs []string) (options, []string) {
 	var opts options
 	var positional []string
@@ -317,14 +373,33 @@ func parseArgs(rawArgs []string) (options, []string) {
 }
 
 // parseLongFlag handles long-form flags for mv.
-// R2/R3 flags will be added here in subsequent tasks.
+// R2.1: --interactive, R2.2: --force, R2.3: --no-clobber.
 func parseLongFlag(opts *options, rawArgs []string, idx int) int {
+	switch rawArgs[idx] {
+	case "--interactive":
+		opts.overwrite = overwriteInteractive
+	case "--force":
+		opts.overwrite = overwriteForce
+	case "--no-clobber":
+		opts.overwrite = overwriteNoClobber
+	}
 	return idx
 }
 
 // parseShortFlags handles combined short flags for mv.
-// R2/R3 flags will be added here in subsequent tasks.
+// R2.1: -i, R2.2: -f, R2.3: -n. Last flag wins per R2.2.
 func parseShortFlags(opts *options, rawArgs []string, idx int) int {
+	arg := rawArgs[idx]
+	for _, ch := range arg[1:] {
+		switch ch {
+		case 'i':
+			opts.overwrite = overwriteInteractive
+		case 'f':
+			opts.overwrite = overwriteForce
+		case 'n':
+			opts.overwrite = overwriteNoClobber
+		}
+	}
 	return idx
 }
 
@@ -355,6 +430,9 @@ func printUsage() {
 Rename SOURCE to DEST, or move SOURCE(s) to DIRECTORY.
 
 Options:
+  -f, --force          do not prompt before overwriting
+  -i, --interactive    prompt before overwrite
+  -n, --no-clobber     do not overwrite an existing file
       --help     display this help and exit
       --version  output version information and exit
 `, programName, programName)
