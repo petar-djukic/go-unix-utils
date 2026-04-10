@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/timeout: run a command with a time limit.
-// Implements srd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd063-timeout R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -78,6 +79,7 @@ func main() {
 }
 
 // run parses arguments and executes the timeout command.
+// R3.4: returns exitInternal (125) for invalid arguments.
 func run(args []string) int {
 	cfg, err := parseArgs(args)
 	if err != nil {
@@ -294,6 +296,7 @@ func waitWithTimeout(cmd *exec.Cmd, cfg *config) int {
 // handlePostTimeout handles the period after the initial timeout signal.
 // R2.2: if kill-after is set, escalates to SIGKILL.
 // R2.4: if preserve-status is set, returns the command's exit status.
+// R3.2: returns exitTimeout (124) by default on timeout.
 func handlePostTimeout(done <-chan int, cmd *exec.Cmd, cfg *config) int {
 	if cfg.killAfter > 0 {
 		return waitWithKillAfter(done, cmd, cfg)
@@ -328,7 +331,8 @@ func waitWithKillAfter(done <-chan int, cmd *exec.Cmd, cfg *config) int {
 }
 
 // waitForCommand waits for the command to finish and returns its exit code.
-// Handles both normal exit and signal-killed processes.
+// R3.1: returns the command's exit status on normal exit.
+// R3.3: returns 128+signum when killed by an external signal.
 func waitForCommand(cmd *exec.Cmd) int {
 	err := cmd.Wait()
 	if err == nil {
@@ -346,6 +350,7 @@ func waitForCommand(cmd *exec.Cmd) int {
 }
 
 // handleStartError returns the appropriate exit code for a failed exec.
+// R3.4: returns exitNotFound (127) or exitNotExec (126).
 func handleStartError(err error, name string) int {
 	if errors.Is(err, exec.ErrNotFound) {
 		fmt.Fprintf(os.Stderr,

@@ -23,6 +23,10 @@ import (
 // R2.2: -k DURATION / --kill-after=DURATION for kill escalation.
 // R2.3: --foreground skips process group creation.
 // R2.4: --preserve-status returns command exit status on timeout.
+// R3.1: exit with command's exit status when no timeout.
+// R3.2: exit 124 on timeout (unless --preserve-status).
+// R3.3: exit 128+signum on external signal.
+// R3.4: exit 125/126/127 for internal/exec errors.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtimeout")
@@ -164,6 +168,57 @@ func TestDiff(t *testing.T) {
 			Name:     "preserve-status-signal-hup",
 			Args:     []string{"--preserve-status", "-s", "HUP", "0.1", "sleep", "10"},
 			ExitCode: 129,
+		},
+		// R3.1: command exits with custom non-zero status.
+		{
+			Name:     "exit-status-42",
+			Args:     []string{"10", "sh", "-c", "exit 42"},
+			ExitCode: 42,
+		},
+		// R3.1: command exits 0 with duration 0 (no limit).
+		{
+			Name: "exit-status-zero-no-limit",
+			Args: []string{"0", "true"},
+		},
+		// R3.2: command killed on timeout exits 124.
+		{
+			Name:     "timeout-exit-124",
+			Args:     []string{"0.1", "sleep", "10"},
+			ExitCode: exitTimeout,
+		},
+		// R3.2: timeout with --preserve-status exits 128+signal, not 124.
+		{
+			Name:     "timeout-preserve-status-not-124",
+			Args:     []string{"--preserve-status", "0.1", "sleep", "10"},
+			ExitCode: 143,
+		},
+		// R3.3: signal-killed process exits 128+signum. Tested via
+		// --preserve-status -s INT: SIGINT(2) → 128+2=130.
+		{
+			Name:     "signal-int-exit-130",
+			Args:     []string{"--preserve-status", "-s", "INT", "0.1", "sleep", "10"},
+			ExitCode: 130,
+		},
+		// R3.4: invalid arguments exit 125.
+		{
+			Name:      "invalid-args-exit-125",
+			Args:      []string{"-s"},
+			ExitCode:  exitInternal,
+			Normalize: errNorms,
+		},
+		// R3.4: command not found exits 127.
+		{
+			Name:      "not-found-exit-127",
+			Args:      []string{"10", "nonexistent_command_xyz_99"},
+			ExitCode:  exitNotFound,
+			Normalize: errNorms,
+		},
+		// R3.4: non-executable file exits 126.
+		{
+			Name:      "not-executable-exit-126",
+			Args:      []string{"10", "/dev/null"},
+			ExitCode:  exitNotExec,
+			Normalize: errNorms,
 		},
 		// Error: no arguments.
 		{
