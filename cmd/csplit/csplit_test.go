@@ -113,6 +113,55 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeProgName},
 		},
+		{
+			// R3.1: default output filenames xx00, xx01, etc.
+			Name:  "R3.1_default_prefix_and_suffix",
+			Args:  []string{"-", "3"},
+			Stdin: []byte("1\n2\n3\n4\n5\n"),
+		},
+		{
+			// R3.2: -f PREFIX changes output filename prefix.
+			Name:  "R3.2_custom_prefix_short",
+			Args:  []string{"-f", "chunk", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			// R3.2: --prefix=PREFIX long form.
+			Name:  "R3.2_custom_prefix_long",
+			Args:  []string{"--prefix=out", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			// R3.3: -n DIGITS changes suffix digit width.
+			Name:  "R3.3_custom_digits_short",
+			Args:  []string{"-n", "4", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			// R3.3: --digits=DIGITS long form.
+			Name:  "R3.3_custom_digits_long",
+			Args:  []string{"--digits=3", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			// R3.2 + R3.3: combined prefix and digit width.
+			Name:  "R3.2_R3.3_prefix_and_digits",
+			Args:  []string{"-f", "part", "-n", "3", "-", "3", "5"},
+			Stdin: []byte("1\n2\n3\n4\n5\n6\n7\n"),
+		},
+		{
+			// R3.4: -z suppresses empty output files.
+			// Splitting at the first line creates an empty first piece.
+			Name:  "R3.4_elide_empty_short",
+			Args:  []string{"-z", "-", "/^a/"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			// R3.4: --elide-empty-files long form.
+			Name:  "R3.4_elide_empty_long",
+			Args:  []string{"--elide-empty-files", "-", "/^b/"},
+			Stdin: []byte("b\nc\nd\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
