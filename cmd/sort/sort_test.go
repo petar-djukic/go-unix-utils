@@ -291,6 +291,79 @@ func TestDiff(t *testing.T) {
 			Stdin:    []byte("only\n"),
 			ExitCode: 0,
 		},
+		// R4.2: -c check with sort modes
+		{
+			Name:     "check sorted human numeric",
+			Args:     []string{"-c", "-h"},
+			Stdin:    []byte("100\n1K\n1M\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted human numeric exits 1",
+			Args:      []string{"-c", "-h"},
+			Stdin:     []byte("1M\n1K\n100\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted month",
+			Args:     []string{"-c", "-M"},
+			Stdin:    []byte("JAN\nFEB\nMAR\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted month exits 1",
+			Args:      []string{"-c", "-M"},
+			Stdin:     []byte("MAR\nJAN\nFEB\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted version",
+			Args:     []string{"-c", "-V"},
+			Stdin:    []byte("file1\nfile2\nfile10\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted version exits 1",
+			Args:      []string{"-c", "-V"},
+			Stdin:     []byte("file10\nfile2\nfile1\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted with key field",
+			Args:     []string{"-c", "-t:", "-k2,2"},
+			Stdin:    []byte("b:1\na:2\nc:3\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted with key field exits 1",
+			Args:      []string{"-c", "-t:", "-k2,2"},
+			Stdin:     []byte("a:3\nb:1\nc:2\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check quiet long form unsorted exits 1 no stderr",
+			Args:     []string{"--check=quiet"},
+			Stdin:    []byte("b\na\nc\n"),
+			ExitCode: 1,
+		},
+		{
+			Name:     "check quiet sorted exits 0",
+			Args:     []string{"-C"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:     "check with ignore blanks sorted",
+			Args:     []string{"-c", "-b"},
+			Stdin:    []byte("  apple\nbanana\n  cherry\n"),
+			ExitCode: 0,
+		},
+		// R4.3: exit 2 on conflicting options (tested via TestUsageError)
+
 		// R4.4: additional comprehensive differential tests
 		{
 			Name:  "default sort stdin",
@@ -311,6 +384,31 @@ func TestDiff(t *testing.T) {
 			Name:  "empty input no crash",
 			Args:  []string{},
 			Stdin: []byte(""),
+		},
+		{
+			Name:  "numeric and reverse combined",
+			Args:  []string{"-n", "-r"},
+			Stdin: []byte("1\n10\n2\n"),
+		},
+		{
+			Name:  "stable with numeric sort",
+			Args:  []string{"-s", "-n"},
+			Stdin: []byte("2 b\n1 c\n2 a\n1 b\n"),
+		},
+		{
+			Name:  "unique with key field",
+			Args:  []string{"-u", "-t:", "-k1,1"},
+			Stdin: []byte("a:1\na:2\nb:1\nb:2\n"),
+		},
+		{
+			Name:  "key with per-key reverse",
+			Args:  []string{"-t:", "-k2,2r"},
+			Stdin: []byte("a:1\nb:3\nc:2\n"),
+		},
+		{
+			Name:  "multiple keys with mixed modes",
+			Args:  []string{"-t:", "-k1,1", "-k2,2n"},
+			Stdin: []byte("a:10\nb:2\na:3\nb:1\n"),
 		},
 	}
 
