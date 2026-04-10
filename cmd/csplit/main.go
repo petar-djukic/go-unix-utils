@@ -39,11 +39,12 @@ const (
 
 // pattern holds a parsed PATTERN argument from the command line.
 type pattern struct {
-	kind   patternKind
-	regex  *regexp.Regexp // non-nil for patternRegex and patternSkip
-	lineNo int64          // used for patternLineNum
-	offset int            // R2.3: +N or -N offset for regex patterns
-	repeat int            // R2.1: repeat count; -1 means {*} (R2.2)
+	kind    patternKind
+	regex   *regexp.Regexp // non-nil for patternRegex and patternSkip
+	lineNo  int64          // used for patternLineNum
+	offset  int            // R2.3: +N or -N offset for regex patterns
+	repeat  int            // R2.1: repeat count; -1 means {*} (R2.2)
+	display string         // original pattern text for error messages
 }
 
 // config holds parsed command-line options for csplit.
@@ -224,31 +225,71 @@ func setDigits(cfg *config) func(string) error {
 }
 
 // applyPositional handles FILE and PATTERN arguments after flags.
+// R2.1/R2.2: standalone {N} or {*} modifies the previous pattern's repeat.
 func applyPositional(cfg config, pos []string) (config, error) {
 	if len(pos) == 0 {
 		return cfg, nil
 	}
 	cfg.inputFile = pos[0]
 	for _, arg := range pos[1:] {
-		p, err := parsePattern(arg)
-		if err != nil {
+		if err := applyOnePositional(&cfg, arg); err != nil {
 			return cfg, err
 		}
-		cfg.patterns = append(cfg.patterns, p)
 	}
 	return cfg, nil
+}
+
+// applyOnePositional handles a single positional argument.
+// R2.1/R2.2: {N} and {*} are standalone repeat modifiers.
+func applyOnePositional(cfg *config, arg string) error {
+	rc, isRepeat, err := parseRepeatArg(arg)
+	if isRepeat {
+		if err != nil {
+			return err
+		}
+		if len(cfg.patterns) == 0 {
+			return fmt.Errorf("'%s': no preceding pattern", arg)
+		}
+		cfg.patterns[len(cfg.patterns)-1].repeat = rc
+		return nil
+	}
+	p, err := parsePattern(arg)
+	if err != nil {
+		return err
+	}
+	cfg.patterns = append(cfg.patterns, p)
+	return nil
+}
+
+// parseRepeatArg checks if an argument is a standalone {N} or {*} repeat.
+// R2.1: {N} sets repeat to N.
+// R2.2: {*} sets repeat to -1 (unlimited).
+func parseRepeatArg(arg string) (int, bool, error) {
+	if !strings.HasPrefix(arg, "{") || !strings.HasSuffix(arg, "}") {
+		return 0, false, nil
+	}
+	body := arg[1 : len(arg)-1]
+	if body == "*" {
+		return -1, true, nil
+	}
+	n, err := strconv.Atoi(body)
+	if err != nil || n < 0 {
+		return 0, true, fmt.Errorf("invalid repeat count: '%s'", arg)
+	}
+	return n, true, nil
 }
 
 // parsePattern parses a single PATTERN argument.
 // R1.2: /REGEXP/[+/-N]
 // R1.3: %REGEXP%[+/-N]
 // R1.4: INTEGER
-// R2.1: {N} repeat count
-// R2.2: {*} repeat until end
 func parsePattern(arg string) (pattern, error) {
 	raw, repeatCount, err := extractRepeat(arg)
 	if err != nil {
 		return pattern{}, err
+	}
+	if len(raw) == 0 {
+		return pattern{}, fmt.Errorf("invalid pattern: '%s'", arg)
 	}
 	if raw[0] == '/' {
 		return parseRegexPattern(raw, patternRegex, repeatCount)
@@ -305,10 +346,11 @@ func parseRegexPattern(raw string, kind patternKind, repeatCount int) (pattern, 
 		return pattern{}, fmt.Errorf("invalid regex: %v", err)
 	}
 	return pattern{
-		kind:   kind,
-		regex:  re,
-		offset: offset,
-		repeat: repeatCount,
+		kind:    kind,
+		regex:   re,
+		offset:  offset,
+		repeat:  repeatCount,
+		display: raw,
 	}, nil
 }
 
@@ -320,9 +362,10 @@ func parseLineNumPattern(raw string, repeatCount int) (pattern, error) {
 		return pattern{}, fmt.Errorf("invalid line number: '%s'", raw)
 	}
 	return pattern{
-		kind:   patternLineNum,
-		lineNo: n,
-		repeat: repeatCount,
+		kind:    patternLineNum,
+		lineNo:  n,
+		repeat:  repeatCount,
+		display: raw,
 	}, nil
 }
 
@@ -377,119 +420,159 @@ func readAllLines(r io.Reader) ([]string, error) {
 }
 
 // splitWithPatterns applies each pattern in order to split lines.
+// Byte counts are printed immediately as each file is written.
 func splitWithPatterns(lines []string, patterns []pattern, gen *suffixGenerator, cfg *config) error {
 	pos := 0
-	var sizes []int
+	var fileCount int
 	for _, pat := range patterns {
 		var err error
-		pos, sizes, err = applyPattern(lines, pos, pat, gen, cfg, sizes)
+		pos, fileCount, err = applyPattern(lines, pos, pat, gen, cfg, fileCount)
 		if err != nil {
-			removeCreatedFiles(cfg, len(sizes))
+			removeCreatedFiles(cfg, fileCount)
 			return err
 		}
 	}
 	// Write remaining lines as the final piece.
 	if pos < len(lines) {
-		n, err := writePiece(gen, lines[pos:], cfg)
-		if err != nil {
+		if _, err := writePiece(gen, lines[pos:], cfg); err != nil {
 			return err
 		}
-		sizes = append(sizes, n)
 	}
-	printSizes(sizes, cfg.quiet)
 	return nil
 }
 
 // applyPattern applies a single pattern (possibly repeated) to the lines.
-func applyPattern(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, sizes []int) (int, []int, error) {
+// R2.1: {N} repeats pattern N additional times (total N+1).
+// R2.2: {*} repeats until no more matches.
+// R2.4: error on no match (except {*} after at least one success).
+func applyPattern(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, fileCount int) (int, int, error) {
 	total := pat.repeat + 1
 	if pat.repeat < 0 {
 		total = -1 // {*}: unlimited
 	}
 	count := 0
 	for total < 0 || count < total {
-		newPos, sz, err := applyOnce(lines, pos, pat, gen, cfg)
+		newPos, wrote, err := applyOnce(lines, pos, pat, gen, cfg, count > 0)
+		if wrote {
+			fileCount++
+		}
 		if err != nil {
+			pos = newPos
 			if total < 0 && count > 0 {
 				// R2.4: {*} stops when no more matches; not an error.
 				break
 			}
-			return pos, sizes, err
+			return pos, fileCount, err
 		}
-		sizes = append(sizes, sz...)
 		pos = newPos
 		count++
 	}
-	return pos, sizes, nil
+	return pos, fileCount, nil
 }
 
 // applyOnce applies a pattern once and returns the new position.
-func applyOnce(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config) (int, []int, error) {
+// R2.1/R2.2: isRepeat is true for second and subsequent applications.
+// Returns (newPos, wroteFile, error).
+func applyOnce(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, isRepeat bool) (int, bool, error) {
 	switch pat.kind {
 	case patternRegex:
-		return applyRegex(lines, pos, pat, gen, cfg)
+		return applyRegex(lines, pos, pat, gen, cfg, isRepeat)
 	case patternSkip:
-		return applySkip(lines, pos, pat)
+		return applySkip(lines, pos, pat, isRepeat)
 	case patternLineNum:
-		return applyLineNum(lines, pos, pat, gen, cfg)
+		return applyLineNum(lines, pos, pat, gen, cfg, isRepeat)
 	}
-	return pos, nil, fmt.Errorf("unknown pattern kind")
+	return pos, false, fmt.Errorf("unknown pattern kind")
 }
 
 // applyRegex handles /REGEXP/[+/-N] pattern application.
 // R1.2: matching line becomes first line of the next piece.
 // R2.3: offset adjusts the split point.
-func applyRegex(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config) (int, []int, error) {
-	matchIdx := findMatch(lines, pos, pat.regex)
+// R2.1/R2.2: on repeat, search starts from pos+1 to avoid re-matching.
+// R2.4: on no match, writes remaining lines before returning error.
+func applyRegex(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, isRepeat bool) (int, bool, error) {
+	searchFrom := pos
+	if isRepeat {
+		searchFrom = pos + 1
+	}
+	matchIdx := findMatch(lines, searchFrom, pat.regex)
 	if matchIdx < 0 {
-		return pos, nil, fmt.Errorf("'%s': match not found", pat.regex.String())
+		return writeRemainingAndError(lines, pos, pat, gen, cfg)
 	}
-	splitAt := matchIdx + pat.offset
-	if splitAt < pos {
-		splitAt = pos
-	}
-	if splitAt > len(lines) {
-		splitAt = len(lines)
-	}
-	n, err := writePiece(gen, lines[pos:splitAt], cfg)
+	splitAt := clampSplitAt(matchIdx+pat.offset, pos, len(lines))
+	_, err := writePiece(gen, lines[pos:splitAt], cfg)
 	if err != nil {
-		return pos, nil, err
+		return pos, false, err
 	}
-	return splitAt, []int{n}, nil
+	return splitAt, true, nil
+}
+
+// writeRemainingAndError writes remaining lines before a no-match error.
+// R2.4: GNU csplit writes remaining content before reporting the error.
+func writeRemainingAndError(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config) (int, bool, error) {
+	_, werr := writePiece(gen, lines[pos:], cfg)
+	if werr != nil {
+		return pos, false, werr
+	}
+	return len(lines), true, fmt.Errorf("'%s': match not found", pat.display)
 }
 
 // applySkip handles %REGEXP% pattern application.
 // R1.3: skips to the match without creating an output file.
-func applySkip(lines []string, pos int, pat pattern) (int, []int, error) {
-	matchIdx := findMatch(lines, pos, pat.regex)
+// R2.1/R2.2: on repeat, search starts from pos+1 to avoid re-matching.
+func applySkip(lines []string, pos int, pat pattern, isRepeat bool) (int, bool, error) {
+	searchFrom := pos
+	if isRepeat {
+		searchFrom = pos + 1
+	}
+	matchIdx := findMatch(lines, searchFrom, pat.regex)
 	if matchIdx < 0 {
-		return pos, nil, fmt.Errorf("'%s': match not found", pat.regex.String())
+		return pos, false, fmt.Errorf("'%s': match not found", pat.display)
 	}
-	splitAt := matchIdx + pat.offset
-	if splitAt < pos {
-		splitAt = pos
-	}
-	if splitAt > len(lines) {
-		splitAt = len(lines)
-	}
-	return splitAt, nil, nil
+	splitAt := clampSplitAt(matchIdx+pat.offset, pos, len(lines))
+	return splitAt, false, nil
 }
 
 // applyLineNum handles INTEGER pattern application.
 // R1.4: line number becomes first line of next piece.
-func applyLineNum(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config) (int, []int, error) {
-	target := int(pat.lineNo) - 1 // convert 1-based to 0-based
+// R2.1: on repeat, the integer is a relative offset from current position.
+func applyLineNum(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, isRepeat bool) (int, bool, error) {
+	target := computeLineTarget(pat.lineNo, pos, isRepeat)
+	if target <= pos && isRepeat {
+		return pos, false, fmt.Errorf("'%d': line number out of range", pat.lineNo)
+	}
 	if target < pos {
-		return pos, nil, fmt.Errorf("line number '%d' is smaller than current line", pat.lineNo)
+		return pos, false, fmt.Errorf("line number '%d' is smaller than current line", pat.lineNo)
 	}
 	if target > len(lines) {
 		target = len(lines)
 	}
-	n, err := writePiece(gen, lines[pos:target], cfg)
+	_, err := writePiece(gen, lines[pos:target], cfg)
 	if err != nil {
-		return pos, nil, err
+		return pos, false, err
 	}
-	return target, []int{n}, nil
+	return target, true, nil
+}
+
+// computeLineTarget returns the 0-based target index for a line number pattern.
+// R1.4: first application uses absolute line number (1-based to 0-based).
+// R2.1: repeat applications use relative offset from current position.
+func computeLineTarget(lineNo int64, pos int, isRepeat bool) int {
+	if isRepeat {
+		return pos + int(lineNo)
+	}
+	return int(lineNo) - 1
+}
+
+// clampSplitAt clamps the split position to [minPos, maxPos].
+func clampSplitAt(splitAt, minPos, maxPos int) int {
+	if splitAt < minPos {
+		return minPos
+	}
+	if splitAt > maxPos {
+		return maxPos
+	}
+	return splitAt
 }
 
 // findMatch returns the index of the first line matching re, starting at pos.
@@ -504,6 +587,7 @@ func findMatch(lines []string, pos int, re *regexp.Regexp) int {
 
 // writePiece writes a slice of lines to the next output file.
 // R3.4: -z suppresses empty output files.
+// Prints the byte count to stdout immediately unless quiet mode is set.
 func writePiece(gen *suffixGenerator, lines []string, cfg *config) (int, error) {
 	if len(lines) == 0 && cfg.elideEmpty {
 		return 0, nil
@@ -512,6 +596,9 @@ func writePiece(gen *suffixGenerator, lines []string, cfg *config) (int, error) 
 	content := joinLines(lines)
 	if err := os.WriteFile(fname, []byte(content), 0o666); err != nil {
 		return 0, err
+	}
+	if !cfg.quiet {
+		fmt.Println(len(content))
 	}
 	return len(content), nil
 }
@@ -527,17 +614,6 @@ func joinLines(lines []string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
-}
-
-// printSizes prints the byte count of each created file.
-// R3.1: prints sizes to stdout unless -s/--quiet.
-func printSizes(sizes []int, quiet bool) {
-	if quiet {
-		return
-	}
-	for _, sz := range sizes {
-		fmt.Println(sz)
-	}
 }
 
 // removeCreatedFiles removes output files created before an error.

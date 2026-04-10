@@ -6,11 +6,24 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeProgName strips the binary name prefix from stderr lines so that
+// error messages from "csplit" and "gcsplit" compare equal.
+var normalizeProgName = func(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		if _, after, found := bytes.Cut(line, []byte(": ")); found {
+			lines[i] = after
+		}
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -61,6 +74,44 @@ func TestDiff(t *testing.T) {
 			Name:  "R1.3_skip_then_regex_split",
 			Args:  []string{"-", "%c%", "/e/"},
 			Stdin: []byte("a\nb\nc\nd\ne\nf\n"),
+		},
+		{
+			// R2.1: {N} repeats the previous regex pattern N additional times.
+			Name:  "R2.1_repeat_count_regex",
+			Args:  []string{"-", "/a/", "{2}"},
+			Stdin: []byte("x\na\ny\na\nz\na\nw\n"),
+		},
+		{
+			// R2.1: {N} repeats a line number pattern as relative offset.
+			Name:  "R2.1_repeat_count_line_number",
+			Args:  []string{"-", "3", "{2}"},
+			Stdin: []byte("1\n2\n3\n4\n5\n6\n7\n8\n9\n"),
+		},
+		{
+			// R2.2: {*} repeats the regex pattern until end of input.
+			Name:  "R2.2_repeat_star_regex",
+			Args:  []string{"-", "/a/", "{*}"},
+			Stdin: []byte("x\na\ny\na\nz\na\nw\n"),
+		},
+		{
+			// R2.3: /REGEXP/+N splits N lines after the matching line.
+			Name:  "R2.3_offset_positive",
+			Args:  []string{"-", "/c/+1"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			// R2.3: /REGEXP/-N splits N lines before the matching line.
+			Name:  "R2.3_offset_negative",
+			Args:  []string{"-", "/c/-1"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			// R2.4: error when pattern does not match any line.
+			Name:      "R2.4_no_match_error",
+			Args:      []string{"-", "/nomatch/"},
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgName},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
