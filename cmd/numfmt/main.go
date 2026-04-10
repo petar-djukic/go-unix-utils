@@ -4,7 +4,8 @@
 // Package main implements cmd/numfmt: convert numbers from/to human-readable strings.
 // Implements srd071-numfmt R1.1-R1.4 (core conversion), R2.1 (--format),
 // R2.2 (--padding), R2.3 (--round), R2.4 (--suffix), R3.1 (--field),
-// R3.2 (--delimiter), R3.3 (--header), R3.4 (--from-unit/--to-unit).
+// R3.2 (--delimiter), R3.3 (--header), R3.4 (--from-unit/--to-unit),
+// R4.1 (exit codes), R4.2 (--invalid), R4.3 (--zero-terminated).
 package main
 
 import (
@@ -42,13 +43,23 @@ const (
 	roundNearest                        // round half away from zero
 )
 
+// invalidMode controls error handling for unconvertible values. R4.2.
+type invalidMode int
+
+const (
+	invalidAbort  invalidMode = iota // default: print error, exit 2, stop processing
+	invalidFail                      // print error, continue processing, exit 2
+	invalidWarn                      // print warning, pass through value, exit 0
+	invalidIgnore                    // pass through value silently, exit 0
+)
+
 const (
 	siBase  = 1000.0
 	iecBase = 1024.0
 )
 
 var (
-	siSuffixes   = []string{"", "K", "M", "G", "T", "P", "E", "Z", "Y"}
+	siSuffixes   = []string{"", "k", "M", "G", "T", "P", "E", "Z", "Y"}
 	iecSuffixes  = []string{"", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 	ieciSuffixes = []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi", "Yi"}
 	suffixPower  = map[byte]int{
@@ -68,18 +79,20 @@ type formatSpec struct {
 
 // config holds parsed command-line options.
 type config struct {
-	from      unitMode
-	to        unitMode
-	fromUnit  float64     // R3.4: --from-unit multiplier (default 1)
-	toUnit    float64     // R3.4: --to-unit divisor (default 1)
-	fmtSpec   formatSpec  // R2.1: --format
-	hasFormat bool
-	field     int         // R3.1: 1-indexed field to convert (default 1)
-	delimiter string      // R3.2: field delimiter (empty = whitespace)
-	padding   int         // R2.2: output padding width
-	header    int         // R3.3: lines to pass through unchanged (0 = disabled)
-	suffix    string      // R2.4: suffix to strip/append
-	round     roundMethod // R2.3: rounding method (default from-zero)
+	from           unitMode    // R1.2
+	to             unitMode    // R1.1
+	fromUnit       float64     // R3.4: --from-unit multiplier (default 1)
+	toUnit         float64     // R3.4: --to-unit divisor (default 1)
+	fmtSpec        formatSpec  // R2.1: --format
+	hasFormat      bool
+	field          int         // R3.1: 1-indexed field to convert (default 1)
+	delimiter      string      // R3.2: field delimiter (empty = whitespace)
+	padding        int         // R2.2: output padding width
+	header         int         // R3.3: lines to pass through unchanged (0 = disabled)
+	suffix         string      // R2.4: suffix to strip/append
+	round          roundMethod // R2.3: rounding method (default from-zero)
+	invalid        invalidMode // R4.2: error handling mode
+	zeroTerminated bool        // R4.3: use NUL as line delimiter
 	// TODO: --grouping conflicts with srd071 non_goals; skipped per E6.
 }
 
@@ -147,6 +160,11 @@ func handleLongFlag(arg string, args []string, i *int, cfg *config) error {
 	if handled, err := handleHeaderFlag(arg, cfg); handled {
 		return err
 	}
+	// R4.3: --zero-terminated takes no value.
+	if arg == "--zero-terminated" {
+		cfg.zeroTerminated = true
+		return nil
+	}
 	type entry struct {
 		name    string
 		handler func(string, *config) error
@@ -157,6 +175,7 @@ func handleLongFlag(arg string, args []string, i *int, cfg *config) error {
 		{"--format", parseFormat}, {"--field", parseField},
 		{"--delimiter", parseDelimiter}, {"--padding", parsePadding},
 		{"--suffix", parseSuffix}, {"--round", parseRound},
+		{"--invalid", parseInvalid},
 	}
 	for _, e := range table {
 		if v, ok := extractFlagValue(arg, args, i, e.name); ok {
@@ -184,8 +203,12 @@ func handleHeaderFlag(arg string, cfg *config) (bool, error) {
 	return false, nil
 }
 
-// handleShortFlag handles -d (delimiter). R3.2.
+// handleShortFlag handles -d (delimiter) and -z (zero-terminated). R3.2, R4.3.
 func handleShortFlag(arg string, args []string, i *int, cfg *config) error {
+	if arg == "-z" {
+		cfg.zeroTerminated = true
+		return nil
+	}
 	if len(arg) >= 2 && arg[1] == 'd' {
 		var val string
 		if len(arg) > 2 {
@@ -314,6 +337,23 @@ func parseRound(v string, cfg *config) error {
 	return nil
 }
 
+// parseInvalid sets the invalid number handling mode. R4.2.
+func parseInvalid(v string, cfg *config) error {
+	switch v {
+	case "abort":
+		cfg.invalid = invalidAbort
+	case "fail":
+		cfg.invalid = invalidFail
+	case "warn":
+		cfg.invalid = invalidWarn
+	case "ignore":
+		cfg.invalid = invalidIgnore
+	default:
+		return fmt.Errorf("invalid --invalid argument '%s'", v)
+	}
+	return nil
+}
+
 func parseUnitMode(s string) (unitMode, error) {
 	switch s {
 	case "none":
@@ -371,40 +411,98 @@ func parseDigits(s string, pos int, out *int) int {
 
 // --- Processing ---
 
+// lineTerm returns the line terminator based on --zero-terminated. R4.3.
+func lineTerm(cfg config) string {
+	if cfg.zeroTerminated {
+		return "\x00"
+	}
+	return "\n"
+}
+
+// processOperands processes command-line operands. R1.4, R4.1, R4.2.
 func processOperands(operands []string, cfg config, stdout, stderr io.Writer) int {
+	term := lineTerm(cfg)
 	exitCode := 0
 	for _, op := range operands {
 		result, err := convertNumber(op, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-			exitCode = 2
+			code, stop := handleConvError(err, op, cfg, stdout, stderr, exitCode, term)
+			exitCode = code
+			if stop {
+				return exitCode
+			}
 			continue
 		}
-		fmt.Fprintln(stdout, result)
+		fmt.Fprint(stdout, result+term)
 	}
 	return exitCode
 }
 
-// processStdin reads lines from stdin and processes them. R3.3: header passthrough.
+// processStdin reads lines from stdin and processes them. R3.3, R4.1-R4.3.
 func processStdin(stdin io.Reader, cfg config, stdout, stderr io.Writer) int {
 	scanner := bufio.NewScanner(stdin)
+	if cfg.zeroTerminated {
+		scanner.Split(scanNUL)
+	}
+	term := lineTerm(cfg)
 	exitCode := 0
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
+		line := scanner.Text()
 		if lineNum <= cfg.header {
-			fmt.Fprintln(stdout, scanner.Text())
+			fmt.Fprint(stdout, line+term)
 			continue
 		}
-		result, err := processLine(scanner.Text(), cfg)
+		result, err := processLine(line, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-			exitCode = 2
+			code, stop := handleConvError(err, line, cfg, stdout, stderr, exitCode, term)
+			exitCode = code
+			if stop {
+				return exitCode
+			}
 			continue
 		}
-		fmt.Fprintln(stdout, result)
+		fmt.Fprint(stdout, result+term)
 	}
 	return exitCode
+}
+
+// handleConvError handles a conversion error based on --invalid mode. R4.2.
+// Returns updated exit code and whether to stop processing (abort mode).
+func handleConvError(err error, original string, cfg config, stdout, stderr io.Writer, currentCode int, term string) (int, bool) {
+	switch cfg.invalid {
+	case invalidIgnore:
+		fmt.Fprint(stdout, original+term)
+		return currentCode, false
+	case invalidWarn:
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+		fmt.Fprint(stdout, original+term)
+		return currentCode, false
+	case invalidFail:
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+		fmt.Fprint(stdout, original+term)
+		return 2, false
+	default: // invalidAbort
+		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
+		return 2, true
+	}
+}
+
+// scanNUL is a bufio.SplitFunc that splits on NUL bytes. R4.3.
+func scanNUL(data []byte, atEOF bool) (int, []byte, error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == 0 {
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // processLine handles field selection within a line. R3.1, R3.2.
@@ -554,7 +652,7 @@ func parseInputNumber(s string, mode unitMode) (float64, error) {
 	}
 	mult, err := suffixMultiplier(suffix, mode)
 	if err != nil {
-		return 0, fmt.Errorf("invalid suffix in input '%s'", s)
+		return 0, fmt.Errorf("invalid suffix in input: '%s'", s)
 	}
 	return val * mult, nil
 }
@@ -747,11 +845,13 @@ func printHelpFlags(w io.Writer) {
 		"      --from=UNIT    auto-scale input numbers to UNITs; default is 'none'",
 		"      --from-unit=N  specify the input unit size (instead of the default 1)",
 		"      --header[=N]   print (without converting) the first N header lines",
+		"      --invalid=MODE failure mode for invalid numbers: abort (default), fail, warn, ignore",
 		"      --padding=N    pad the output to N characters; positive for right-aligned",
 		"      --round=METHOD use METHOD for rounding: up, down, from-zero, towards-zero, nearest",
 		"      --suffix=SUFFIX  add SUFFIX to output, and accept optional SUFFIX in input",
 		"      --to=UNIT      auto-scale output numbers to UNITs; default is 'none'",
 		"      --to-unit=N    the output unit size (instead of the default 1)",
+		"  -z, --zero-terminated  line delimiter is NUL, not newline",
 		"      --help         display this help and exit",
 		"      --version      output version information and exit",
 	}
