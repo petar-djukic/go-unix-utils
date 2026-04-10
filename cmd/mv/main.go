@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/mv: move or rename files.
-// Implements srd057 R1.1-R1.4, R2.1-R2.4.
+// Implements srd057 R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
@@ -32,7 +32,10 @@ const (
 
 // options holds parsed command-line flags for mv.
 type options struct {
-	overwrite overwriteMode
+	overwrite   overwriteMode
+	verbose     bool   // R3.1: print file names as moved
+	targetDir   string // R3.2: -t DIRECTORY
+	noTargetDir bool   // R3.3: -T
 }
 
 // stdinReader provides buffered stdin for interactive prompts.
@@ -46,6 +49,18 @@ func main() {
 
 // run validates arguments and dispatches the move operation.
 func run(opts options, args []string) int {
+	if opts.targetDir != "" && opts.noTargetDir {
+		printTargetConflict()
+		return 1
+	}
+	if opts.targetDir != "" {
+		return runTargetDir(opts, args)
+	}
+	return runNormal(opts, args)
+}
+
+// runNormal handles the standard mv invocation without -t.
+func runNormal(opts options, args []string) int {
 	if len(args) == 0 {
 		printMissingOperand()
 		return 1
@@ -54,28 +69,50 @@ func run(opts options, args []string) int {
 		printMissingDest(args[0])
 		return 1
 	}
+	if opts.noTargetDir && len(args) > 2 {
+		printExtraOperand(args[2])
+		return 1
+	}
 	return moveFiles(opts, args)
+}
+
+// runTargetDir handles mv -t DIRECTORY SOURCES...
+// R3.2: all positional args are sources; target is from -t.
+func runTargetDir(opts options, args []string) int {
+	if len(args) == 0 {
+		printMissingOperand()
+		return 1
+	}
+	if !isDir(opts.targetDir) {
+		fmt.Fprintf(os.Stderr,
+			"%s: target '%s' is not a directory\n",
+			programName, opts.targetDir)
+		return 1
+	}
+	return executeMoves(opts, args, opts.targetDir, true)
 }
 
 // moveFiles splits sources from destination and dispatches moves.
 // R1.1: move SOURCE to DEST.
 // R1.2: move multiple SOURCEs into DEST directory.
+// R3.3: when noTargetDir is set, never treat dest as a directory.
 func moveFiles(opts options, args []string) int {
 	sources := args[:len(args)-1]
 	dest := args[len(args)-1]
-	return moveAllSources(opts, sources, dest)
-}
-
-// moveAllSources moves each source to dest, continuing on errors.
-// R1.2: multiple sources require dest to be a directory.
-// R1.4: if dest is an existing directory, move source into it.
-func moveAllSources(opts options, sources []string, dest string) int {
-	destIsDir := isDir(dest)
+	destIsDir := !opts.noTargetDir && isDir(dest)
 	if len(sources) > 1 && !destIsDir {
 		fmt.Fprintf(os.Stderr,
 			"%s: target '%s': Not a directory\n", programName, dest)
 		return 1
 	}
+	return executeMoves(opts, sources, dest, destIsDir)
+}
+
+// executeMoves moves each source to dest, continuing on errors.
+// R1.2: multiple sources require dest to be a directory.
+// R1.4: if destIsDir, move source into dest.
+// R3.1: prints verbose output after each successful move.
+func executeMoves(opts options, sources []string, dest string, destIsDir bool) int {
 	exitCode := 0
 	for _, src := range sources {
 		target := resolveTarget(dest, src, destIsDir)
@@ -89,9 +126,19 @@ func moveAllSources(opts options, sources []string, dest string) int {
 		if err := moveSingle(src, target); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			exitCode = 1
+			continue
+		}
+		if opts.verbose {
+			printVerbose(src, target)
 		}
 	}
 	return exitCode
+}
+
+// printVerbose prints the verbose message for a successful move.
+// R3.1: format is "renamed 'SOURCE' -> 'DEST'".
+func printVerbose(src, dest string) {
+	fmt.Fprintf(os.Stdout, "renamed '%s' -> '%s'\n", src, dest)
 }
 
 // checkOverwrite checks overwrite rules for the target path.
@@ -342,6 +389,9 @@ func capitalizeFirst(s string) string {
 
 // parseArgs separates flags from positional arguments.
 // R2.1-R2.3: parses -i, -f, -n overwrite control flags.
+// R3.1: parses -v verbose flag.
+// R3.2: parses -t target directory flag.
+// R3.3: parses -T no-target-directory flag.
 func parseArgs(rawArgs []string) (options, []string) {
 	var opts options
 	var positional []string
@@ -374,30 +424,57 @@ func parseArgs(rawArgs []string) (options, []string) {
 
 // parseLongFlag handles long-form flags for mv.
 // R2.1: --interactive, R2.2: --force, R2.3: --no-clobber.
+// R3.1: --verbose, R3.2: --target-directory, R3.3: --no-target-directory.
 func parseLongFlag(opts *options, rawArgs []string, idx int) int {
-	switch rawArgs[idx] {
-	case "--interactive":
+	arg := rawArgs[idx]
+	switch {
+	case arg == "--interactive":
 		opts.overwrite = overwriteInteractive
-	case "--force":
+	case arg == "--force":
 		opts.overwrite = overwriteForce
-	case "--no-clobber":
+	case arg == "--no-clobber":
 		opts.overwrite = overwriteNoClobber
+	case arg == "--verbose":
+		opts.verbose = true
+	case arg == "--no-target-directory":
+		opts.noTargetDir = true
+	case arg == "--target-directory":
+		if idx+1 < len(rawArgs) {
+			idx++
+			opts.targetDir = rawArgs[idx]
+		}
+	case strings.HasPrefix(arg, "--target-directory="):
+		opts.targetDir = arg[len("--target-directory="):]
 	}
 	return idx
 }
 
 // parseShortFlags handles combined short flags for mv.
 // R2.1: -i, R2.2: -f, R2.3: -n. Last flag wins per R2.2.
+// R3.1: -v, R3.2: -t (consumes next arg), R3.3: -T.
 func parseShortFlags(opts *options, rawArgs []string, idx int) int {
 	arg := rawArgs[idx]
-	for _, ch := range arg[1:] {
-		switch ch {
+	for j := 1; j < len(arg); j++ {
+		switch arg[j] {
 		case 'i':
 			opts.overwrite = overwriteInteractive
 		case 'f':
 			opts.overwrite = overwriteForce
 		case 'n':
 			opts.overwrite = overwriteNoClobber
+		case 'v':
+			opts.verbose = true
+		case 'T':
+			opts.noTargetDir = true
+		case 't':
+			rest := arg[j+1:]
+			if len(rest) > 0 {
+				opts.targetDir = rest
+			} else if idx+1 < len(rawArgs) {
+				idx++
+				opts.targetDir = rawArgs[idx]
+			}
+			return idx
 		}
 	}
 	return idx
@@ -417,6 +494,21 @@ func printMissingDest(arg string) {
 	printTryHelp()
 }
 
+// printExtraOperand prints the extra operand error for -T mode.
+// R3.3: -T allows exactly two positional arguments.
+func printExtraOperand(arg string) {
+	fmt.Fprintf(os.Stderr,
+		"%s: extra operand '%s'\n", programName, arg)
+	printTryHelp()
+}
+
+// printTargetConflict prints the -t/-T conflict error.
+func printTargetConflict() {
+	fmt.Fprintf(os.Stderr,
+		"%s: cannot combine --target-directory (-t) and --no-target-directory (-T)\n",
+		programName)
+}
+
 // printTryHelp prints the "Try --help" hint to stderr.
 func printTryHelp() {
 	fmt.Fprintf(os.Stderr,
@@ -425,17 +517,21 @@ func printTryHelp() {
 
 // printUsage prints the usage message.
 func printUsage() {
-	fmt.Fprintf(os.Stdout, `Usage: %s [OPTION]... SOURCE DEST
+	fmt.Fprintf(os.Stdout, `Usage: %s [OPTION]... [-T] SOURCE DEST
   or:  %s [OPTION]... SOURCE... DIRECTORY
+  or:  %s [OPTION]... -t DIRECTORY SOURCE...
 Rename SOURCE to DEST, or move SOURCE(s) to DIRECTORY.
 
 Options:
-  -f, --force          do not prompt before overwriting
-  -i, --interactive    prompt before overwrite
-  -n, --no-clobber     do not overwrite an existing file
+  -f, --force                do not prompt before overwriting
+  -i, --interactive          prompt before overwrite
+  -n, --no-clobber           do not overwrite an existing file
+  -t, --target-directory=DIRECTORY  move all SOURCE arguments into DIRECTORY
+  -T, --no-target-directory  treat DEST as a normal file
+  -v, --verbose              explain what is being done
       --help     display this help and exit
       --version  output version information and exit
-`, programName, programName)
+`, programName, programName, programName)
 }
 
 // printVersion prints version information.

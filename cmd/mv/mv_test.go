@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mv against gmv (GNU coreutils).
-// Implements srd057 differential testing for R1.1-R1.4, R2.1-R2.4.
+// Implements srd057 differential testing for R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
@@ -154,6 +154,9 @@ func TestDiff(t *testing.T) {
 	t.Run("R2.2", func(t *testing.T) { testR2_2(t, goBin, refBin) })
 	t.Run("R2.3", func(t *testing.T) { testR2_3(t, goBin, refBin) })
 	t.Run("R2.4", func(t *testing.T) { testR2_4(t, goBin, refBin) })
+	t.Run("R3.1", func(t *testing.T) { testR3_1(t, goBin, refBin) })
+	t.Run("R3.2", func(t *testing.T) { testR3_2(t, goBin, refBin) })
+	t.Run("R3.3", func(t *testing.T) { testR3_3(t, goBin, refBin) })
 }
 
 // testR1_1 tests single file rename.
@@ -363,6 +366,101 @@ func testR2_4(t *testing.T, goBin, refBin string) {
 				})
 			},
 			[]string{"src.txt", "nowrite/dest.txt"}, nil,
+		)
+	})
+}
+
+// testR3_1 tests verbose output.
+// R3.1: -v prints the name of each file as it is moved.
+func testR3_1(t *testing.T, goBin, refBin string) {
+	t.Run("verbose_rename", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+			},
+			[]string{"-v", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("verbose_into_dir", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+				mkDir(t, dir, "destdir")
+			},
+			[]string{"-v", "src.txt", "destdir"}, nil,
+		)
+	})
+	t.Run("verbose_overwrite", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-v", "src.txt", "dest.txt"}, nil,
+		)
+	})
+}
+
+// testR3_2 tests target directory mode.
+// R3.2: -t DIRECTORY moves all SOURCE arguments into DIRECTORY.
+func testR3_2(t *testing.T, goBin, refBin string) {
+	t.Run("target_dir_single", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+				mkDir(t, dir, "destdir")
+			},
+			[]string{"-t", "destdir", "src.txt"}, nil,
+		)
+	})
+	t.Run("target_dir_multi", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "file a\n")
+				writeFile(t, dir, "b.txt", "file b\n")
+				mkDir(t, dir, "destdir")
+			},
+			[]string{"-t", "destdir", "a.txt", "b.txt"}, nil,
+		)
+	})
+	t.Run("target_dir_verbose", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+				mkDir(t, dir, "destdir")
+			},
+			[]string{"-v", "-t", "destdir", "src.txt"}, nil,
+		)
+	})
+}
+
+// testR3_3 tests no-target-directory mode.
+// R3.3: -T treats DEST as a normal file, not a directory.
+func testR3_3(t *testing.T, goBin, refBin string) {
+	t.Run("no_target_dir_rename", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+			},
+			[]string{"-T", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("no_target_dir_verbose", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "hello\n")
+			},
+			[]string{"-T", "-v", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("no_target_dir_extra_operand", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "file a\n")
+				writeFile(t, dir, "b.txt", "file b\n")
+				writeFile(t, dir, "c.txt", "file c\n")
+			},
+			[]string{"-T", "a.txt", "b.txt", "c.txt"}, nil,
 		)
 	})
 }
