@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mv against gmv (GNU coreutils).
-// Implements srd057 differential testing for R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
+// Implements srd057 differential testing for R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4.
 package main
 
 import (
@@ -157,6 +157,10 @@ func TestDiff(t *testing.T) {
 	t.Run("R3.1", func(t *testing.T) { testR3_1(t, goBin, refBin) })
 	t.Run("R3.2", func(t *testing.T) { testR3_2(t, goBin, refBin) })
 	t.Run("R3.3", func(t *testing.T) { testR3_3(t, goBin, refBin) })
+	t.Run("R4.1", func(t *testing.T) { testR4_1(t, goBin, refBin) })
+	t.Run("R4.2", func(t *testing.T) { testR4_2(t, goBin, refBin) })
+	t.Run("R4.3", func(t *testing.T) { testR4_3(t, goBin, refBin) })
+	t.Run("R4.4", func(t *testing.T) { testR4_4(t, goBin, refBin) })
 }
 
 // testR1_1 tests single file rename.
@@ -461,6 +465,134 @@ func testR3_3(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "c.txt", "file c\n")
 			},
 			[]string{"-T", "a.txt", "b.txt", "c.txt"}, nil,
+		)
+	})
+}
+
+// testR4_1 tests exit code 0 on successful moves.
+// R4.1: must exit 0 when all files are moved successfully.
+func testR4_1(t *testing.T, goBin, refBin string) {
+	t.Run("single_success_exit_0", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "hello\n")
+			},
+			[]string{"a.txt", "b.txt"}, nil,
+		)
+	})
+	t.Run("multi_success_exit_0", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "alpha\n")
+				writeFile(t, dir, "b.txt", "beta\n")
+				mkDir(t, dir, "dest")
+			},
+			[]string{"a.txt", "b.txt", "dest"}, nil,
+		)
+	})
+	t.Run("dir_move_exit_0", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "srcdir")
+				writeFile(t, dir, "srcdir/f.txt", "data\n")
+			},
+			[]string{"srcdir", "newdir"}, nil,
+		)
+	})
+}
+
+// testR4_2 tests exit code 1 on failed moves.
+// R4.2: must exit 1 when any move operation fails.
+func testR4_2(t *testing.T, goBin, refBin string) {
+	t.Run("source_not_found_exit_1", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin, nil,
+			[]string{"nonexistent.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("target_not_dir_exit_1", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "a\n")
+				writeFile(t, dir, "b.txt", "b\n")
+				writeFile(t, dir, "notdir", "x\n")
+			},
+			[]string{"a.txt", "b.txt", "notdir"}, nil,
+		)
+	})
+}
+
+// testR4_3 tests partial failure: continue moving remaining files.
+// R4.3: when moving multiple files and one fails, must continue
+// moving remaining files and exit 1.
+func testR4_3(t *testing.T, goBin, refBin string) {
+	t.Run("partial_failure_continues", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "good1.txt", "ok1\n")
+				// no "missing.txt" — this source will fail
+				writeFile(t, dir, "good2.txt", "ok2\n")
+				mkDir(t, dir, "dest")
+			},
+			[]string{"good1.txt", "missing.txt", "good2.txt", "dest"},
+			nil,
+		)
+	})
+	t.Run("partial_failure_verbose", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "alpha\n")
+				writeFile(t, dir, "c.txt", "gamma\n")
+				mkDir(t, dir, "dest")
+			},
+			[]string{"-v", "a.txt", "noexist.txt", "c.txt", "dest"},
+			nil,
+		)
+	})
+}
+
+// testR4_4 tests comprehensive differential coverage.
+// R4.4: single file rename, move into directory, multi-file move,
+// -i interactive, -f force, -n no-clobber, -v verbose,
+// -t target directory, directory move, and error cases.
+func testR4_4(t *testing.T, goBin, refBin string) {
+	t.Run("combined_nv_no_clobber_verbose", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-n", "-v", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("combined_fv_force_verbose", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "new\n")
+				writeFile(t, dir, "dest.txt", "old\n")
+			},
+			[]string{"-f", "-v", "src.txt", "dest.txt"}, nil,
+		)
+	})
+	t.Run("target_dir_with_verbose", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "x.txt", "x\n")
+				writeFile(t, dir, "y.txt", "y\n")
+				mkDir(t, dir, "tgt")
+			},
+			[]string{"-v", "-t", "tgt", "x.txt", "y.txt"}, nil,
+		)
+	})
+	t.Run("missing_operand_error", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin, nil, []string{}, nil)
+	})
+	t.Run("target_t_T_conflict", func(t *testing.T) {
+		runMvDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "src.txt", "data\n")
+				mkDir(t, dir, "tgt")
+			},
+			[]string{"-t", "tgt", "-T", "src.txt"}, nil,
 		)
 	})
 }
