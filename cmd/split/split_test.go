@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/split via differential testing against gsplit.
-// Implements srd067-split R4.3, R4.4 for requirements R1.1-R1.4, R2.1-R2.4.
+// Implements srd067-split R4.3, R4.4 for requirements R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -142,6 +142,50 @@ func TestDiff(t *testing.T) {
 			name:  "chunks_more_than_bytes",
 			args:  []string{"-n", "5"},
 			stdin: []byte("ab"),
+		},
+		// R3.1 tests (suffix length)
+		{
+			name:  "suffix_length_3",
+			args:  []string{"-a", "3", "-l", "2"},
+			stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			name:  "suffix_length_1",
+			args:  []string{"-a", "1", "-l", "1"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.2 tests (numeric suffixes)
+		{
+			name:  "numeric_suffixes",
+			args:  []string{"-d", "-l", "2"},
+			stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			name:  "numeric_suffix_length_3",
+			args:  []string{"-d", "-a", "3", "-l", "2"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.3 tests (additional suffix)
+		{
+			name:  "additional_suffix_txt",
+			args:  []string{"--additional-suffix=.txt", "-l", "2"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			name:  "additional_suffix_with_numeric",
+			args:  []string{"--additional-suffix=.dat", "-d", "-l", "1"},
+			stdin: []byte("x\ny\n"),
+		},
+		// R3.4 tests (filter)
+		{
+			name:  "filter_cat_to_file",
+			args:  []string{"--filter=cat > $FILE", "-l", "2"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			name:  "filter_with_numeric_suffix",
+			args:  []string{"--filter=cat > $FILE", "-d", "-l", "1"},
+			stdin: []byte("x\ny\n"),
 		},
 	}
 	for _, tc := range tests {

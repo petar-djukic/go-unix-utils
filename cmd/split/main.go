@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -829,9 +830,48 @@ func writePiece(gen *suffixGenerator, cfg *config, data []byte) error {
 // R3.4: when --filter is set, pipes to a shell command instead.
 func openOutputPiece(filename, filter string) (io.WriteCloser, error) {
 	if filter != "" {
-		panic("not implemented") // R3.4: filter mode
+		return newFilterWriter(filter, filename)
 	}
 	return os.Create(filename)
+}
+
+// filterWriter wraps a shell command that receives piece data on stdin.
+// R3.4: implements --filter=COMMAND pipe-to-shell behavior.
+type filterWriter struct {
+	cmd   *exec.Cmd
+	stdin io.WriteCloser
+}
+
+// newFilterWriter starts a shell command with FILE=filename and returns
+// a writer piped to its stdin.
+// R3.4: $FILE in the command is the output filename.
+func newFilterWriter(command, filename string) (*filterWriter, error) {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = append(os.Environ(), "FILE="+filename)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &filterWriter{cmd: cmd, stdin: stdin}, nil
+}
+
+// Write sends data to the filter command's stdin.
+func (fw *filterWriter) Write(p []byte) (int, error) {
+	return fw.stdin.Write(p)
+}
+
+// Close closes the stdin pipe and waits for the command to exit.
+func (fw *filterWriter) Close() error {
+	if err := fw.stdin.Close(); err != nil {
+		fw.cmd.Wait() // best-effort wait on stdin close error
+		return err
+	}
+	return fw.cmd.Wait()
 }
 
 // closeIfOpen closes w if it is non-nil.
