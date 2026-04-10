@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/split via differential testing against gsplit.
-// Implements srd067-split R4.3, R4.4 for requirements R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd067-split R4.1-R4.4 for requirements R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -80,6 +80,11 @@ func TestDiff(t *testing.T) {
 			args:  []string{"-l", "2"},
 			stdin: []byte("a\nb\nc"),
 		},
+		// R4.4: default 1000-line split with >1000 lines
+		{
+			name:  "default_1000_lines",
+			stdin: numberedLines(1, 2500),
+		},
 		// R2.1 tests (byte-based splitting)
 		{
 			name:  "bytes_5",
@@ -100,6 +105,12 @@ func TestDiff(t *testing.T) {
 			name:  "bytes_larger_than_input",
 			args:  []string{"-b", "100"},
 			stdin: []byte("small\n"),
+		},
+		// R4.4: byte split with size suffix
+		{
+			name:  "bytes_with_suffix_K",
+			args:  []string{"-b", "1K"},
+			stdin: numberedLines(1, 500),
 		},
 		// R2.2 tests (line-bytes splitting)
 		{
@@ -222,6 +233,28 @@ func TestDiffExitCodes(t *testing.T) {
 		{
 			Name:      "conflicting_line_bytes_lines",
 			Args:      []string{"-C", "100", "-l", "10"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		// R4.4: invalid counts
+		{
+			Name:      "invalid_line_count_zero",
+			Args:      []string{"-l", "0"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_line_count_text",
+			Args:      []string{"-l", "abc"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_byte_count",
+			Args:      []string{"-b", "xyz"},
 			Stdin:     []byte("data\n"),
 			ExitCode:  1,
 			Normalize: norm,

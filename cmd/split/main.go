@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/split: split a file into pieces.
-// Implements srd067-split R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
+// Implements srd067-split R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -170,7 +170,7 @@ func applyPositional(cfg config, pos []string) (config, error) {
 		cfg.prefix = pos[1]
 	}
 	if len(pos) > 2 {
-		return cfg, fmt.Errorf("extra operand %q", pos[2])
+		return cfg, fmt.Errorf("extra operand '%s'", pos[2])
 	}
 	return cfg, validateConfig(&cfg)
 }
@@ -272,7 +272,7 @@ func setLineCount(cfg *config) func(string) error {
 	return func(s string) error {
 		n, err := strconv.ParseInt(s, 10, 64)
 		if err != nil || n <= 0 {
-			return fmt.Errorf("invalid number of lines: %q", s)
+			return fmt.Errorf("invalid number of lines: '%s'", s)
 		}
 		cfg.mode = modeLineCount
 		cfg.lineCount = n
@@ -328,7 +328,7 @@ func setSuffixLen(cfg *config) func(string) error {
 	return func(s string) error {
 		n, err := strconv.Atoi(s)
 		if err != nil || n <= 0 {
-			return fmt.Errorf("invalid suffix length: %q", s)
+			return fmt.Errorf("invalid suffix length: '%s'", s)
 		}
 		cfg.suffixLen = n
 		return nil
@@ -359,7 +359,7 @@ func parseChunkSpec(s string) (chunkSpec, error) {
 func parseChunkNum(s string, kind chunkType) (chunkSpec, error) {
 	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil || n <= 0 {
-		return chunkSpec{}, fmt.Errorf("invalid number of chunks: %q", s)
+		return chunkSpec{}, fmt.Errorf("invalid number of chunks: '%s'", s)
 	}
 	return chunkSpec{kind: kind, count: n}, nil
 }
@@ -369,10 +369,10 @@ func parseChunkNum(s string, kind chunkType) (chunkSpec, error) {
 func parseByteSize(s string) (int64, error) {
 	n, err := sizeparse.Parse(s)
 	if err != nil {
-		return 0, fmt.Errorf("invalid number of bytes: %q", s)
+		return 0, fmt.Errorf("invalid number of bytes: '%s'", s)
 	}
 	if n <= 0 {
-		return 0, fmt.Errorf("invalid number of bytes: %q", s)
+		return 0, fmt.Errorf("invalid number of bytes: '%s'", s)
 	}
 	return n, nil
 }
