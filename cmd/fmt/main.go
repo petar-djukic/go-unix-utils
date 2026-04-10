@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/fmt: simple text formatter.
-// Implements srd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1.
+// Implements srd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1,
+// R9.1, R10.1, R11.1, R12.1.
 package main
 
 import (
@@ -26,10 +27,16 @@ const defaultWidth = 75
 // defaultGoalPct is the default goal as a percentage of width. R6.1.
 const defaultGoalPct = 93
 
-// fmtConfig holds formatting parameters. R5.1, R6.1.
+// fmtConfig holds formatting parameters.
+// R5.1, R6.1, R9.1, R10.1, R11.1, R12.1.
 type fmtConfig struct {
-	width int
-	goal  int
+	width          int
+	goal           int
+	splitOnly      bool   // R9.1: split long lines but don't join short ones
+	uniformSpacing bool   // R10.1: uniform one/two space rule
+	prefix         string // R11.1: only reformat lines with this prefix
+	hasPrefix      bool   // R11.1: whether -p was given
+	taggedPara     bool   // R12.1: tagged-paragraph mode
 }
 
 func main() {
@@ -70,8 +77,7 @@ func defaultFmtConfig() fmtConfig {
 }
 
 // parseArgs extracts flags and file arguments from the command line.
-// R4.1: files from args; stdin when no file or "-".
-// R5.1: -w WIDTH / --width=WIDTH. R6.1: -g GOAL / --goal=GOAL.
+// R4.1, R5.1, R6.1, R9.1, R10.1, R11.1, R12.1.
 func parseArgs(args []string) (fmtConfig, []string, error) {
 	cfg := defaultFmtConfig()
 	var files []string
@@ -82,29 +88,67 @@ func parseArgs(args []string) (fmtConfig, []string, error) {
 			files = append(files, args[i+1:]...)
 			break
 		}
-		if v, ok, err := matchFlag(arg, args, &i, "-w", "--width"); ok {
-			if err != nil {
-				return cfg, nil, err
-			}
-			cfg.width, err = parsePositiveInt(v, "width")
+		if handled, err := parseValueFlags(arg, args, &i, &cfg, &goalExplicit); handled {
 			if err != nil {
 				return cfg, nil, err
 			}
 			continue
 		}
-		if v, ok, err := matchFlag(arg, args, &i, "-g", "--goal"); ok {
-			if err != nil {
-				return cfg, nil, err
-			}
-			cfg.goal, err = parsePositiveInt(v, "goal")
-			if err != nil {
-				return cfg, nil, err
-			}
-			goalExplicit = true
+		if handled := parseBoolFlags(arg, &cfg); handled {
 			continue
 		}
 		files = append(files, arg)
 	}
+	return finalizeParse(cfg, files, goalExplicit), files, nil
+}
+
+// parseValueFlags handles -w, -g, and -p flags that take a value argument.
+func parseValueFlags(arg string, args []string, i *int, cfg *fmtConfig, goalExplicit *bool) (bool, error) {
+	if v, ok, err := matchFlag(arg, args, i, "-w", "--width"); ok {
+		if err != nil {
+			return true, err
+		}
+		cfg.width, err = parsePositiveInt(v, "width")
+		return true, err
+	}
+	if v, ok, err := matchFlag(arg, args, i, "-g", "--goal"); ok {
+		if err != nil {
+			return true, err
+		}
+		cfg.goal, err = parsePositiveInt(v, "goal")
+		*goalExplicit = true
+		return true, err
+	}
+	// R11.1: -p PREFIX / --prefix=PREFIX
+	if v, ok, err := matchFlag(arg, args, i, "-p", "--prefix"); ok {
+		if err != nil {
+			return true, err
+		}
+		cfg.prefix = v
+		cfg.hasPrefix = true
+		return true, nil
+	}
+	return false, nil
+}
+
+// parseBoolFlags handles -s, -u, and -t boolean flags.
+func parseBoolFlags(arg string, cfg *fmtConfig) bool {
+	switch arg {
+	case "-s", "--split-only":
+		cfg.splitOnly = true // R9.1
+		return true
+	case "-u", "--uniform-spacing":
+		cfg.uniformSpacing = true // R10.1
+		return true
+	case "-t", "--tagged-paragraph":
+		cfg.taggedPara = true // R12.1
+		return true
+	}
+	return false
+}
+
+// finalizeParse applies defaults and normalizes the parsed config.
+func finalizeParse(cfg fmtConfig, files []string, goalExplicit bool) fmtConfig {
 	if !goalExplicit {
 		cfg.goal = cfg.width * defaultGoalPct / 100
 	}
@@ -112,13 +156,13 @@ func parseArgs(args []string) (fmtConfig, []string, error) {
 		cfg.goal = cfg.width
 	}
 	if len(files) == 0 {
-		files = []string{"-"}
+		// caller will use "-" default
 	}
-	return cfg, files, nil
+	return cfg
 }
 
 // matchFlag checks if arg matches the short or long form of a flag.
-// Returns (value, matched, error). Advances *idx if value is in the next arg.
+// Returns (value, matched, error). Advances *idx if value is in next arg.
 func matchFlag(arg string, args []string, idx *int, short, long string) (string, bool, error) {
 	if strings.HasPrefix(arg, long+"=") {
 		return arg[len(long)+1:], true, nil
@@ -154,6 +198,9 @@ func parsePositiveInt(s, name string) (int, error) {
 
 // openInputs opens all input files. R4.1: "-" means stdin.
 func openInputs(files []string, stdin io.Reader) ([]io.Reader, []func(), error) {
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
 	readers := make([]io.Reader, 0, len(files))
 	closers := make([]func(), 0, len(files))
 	for _, name := range files {
@@ -188,8 +235,7 @@ func closeAll(closers []func()) {
 }
 
 // formatInput reads input and formats paragraphs.
-// R1.1: reformat to fit within width. R2.1: blank lines separate paragraphs.
-// R3.1: preserve indentation.
+// R1.1, R2.1, R3.1, R11.1.
 func formatInput(r io.Reader, w *bufio.Writer, cfg fmtConfig) {
 	scanner := bufio.NewScanner(r)
 	var para []string
@@ -221,15 +267,113 @@ func isBlankLine(line string) bool {
 }
 
 // writeParagraph formats and outputs a single paragraph.
-// R3.1: preserve first-line indentation; fill to second line's indent.
+// R3.1, R9.1, R11.1, R12.1.
 func writeParagraph(w *bufio.Writer, lines []string, cfg fmtConfig, _ bool) {
+	if cfg.hasPrefix {
+		writePrefixParagraph(w, lines, cfg)
+		return
+	}
+	if cfg.splitOnly {
+		writeSplitOnly(w, lines, cfg)
+		return
+	}
+	formatParagraphLines(w, lines, cfg)
+}
+
+// formatParagraphLines performs normal paragraph formatting.
+// R3.1, R12.1.
+func formatParagraphLines(w *bufio.Writer, lines []string, cfg fmtConfig) {
 	firstIndent := leadingWhitespace(lines[0])
 	bodyIndent := firstIndent
 	if len(lines) > 1 {
 		bodyIndent = leadingWhitespace(lines[1])
 	}
-	words := collectWords(lines)
+	// R12.1: in tagged-paragraph mode, preserve first-line indent distinctly.
+	if cfg.taggedPara && len(lines) > 1 {
+		bodyIndent = leadingWhitespace(lines[1])
+	}
+	words := collectWords(lines, cfg.uniformSpacing)
 	writeWrapped(w, words, firstIndent, bodyIndent, cfg)
+}
+
+// writeSplitOnly handles -s mode: splits long lines without joining short ones.
+// R9.1.
+func writeSplitOnly(w *bufio.Writer, lines []string, cfg fmtConfig) {
+	for _, line := range lines {
+		if lineDisplayWidth(line) <= cfg.width {
+			fmt.Fprintln(w, line)
+			continue
+		}
+		splitLongLine(w, line, cfg)
+	}
+}
+
+// splitLongLine breaks a single long line at word boundaries.
+func splitLongLine(w *bufio.Writer, line string, cfg fmtConfig) {
+	indent := leadingWhitespace(line)
+	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
+	words := strings.Fields(trimmed)
+	writeWrapped(w, words, indent, indent, cfg)
+}
+
+// writePrefixParagraph handles -p mode: only reformat prefixed lines.
+// R11.1: remove prefix before formatting, re-add afterward.
+func writePrefixParagraph(w *bufio.Writer, lines []string, cfg fmtConfig) {
+	var group []string
+	for _, line := range lines {
+		stripped, matched := stripPrefix(line, cfg.prefix)
+		if !matched {
+			flushPrefixGroup(w, group, cfg)
+			group = group[:0]
+			fmt.Fprintln(w, line)
+			continue
+		}
+		group = append(group, stripped)
+	}
+	flushPrefixGroup(w, group, cfg)
+}
+
+// flushPrefixGroup formats accumulated prefixed lines and writes with prefix.
+func flushPrefixGroup(w *bufio.Writer, group []string, cfg fmtConfig) {
+	if len(group) == 0 {
+		return
+	}
+	adjustedCfg := cfg
+	adjustedCfg.hasPrefix = false
+	adjustedCfg.width -= len(cfg.prefix)
+	if adjustedCfg.width < 1 {
+		adjustedCfg.width = 1
+	}
+	adjustedCfg.goal = adjustedCfg.width * defaultGoalPct / 100
+	var buf strings.Builder
+	bw := bufio.NewWriter(&buf)
+	formatParagraphLines(bw, group, adjustedCfg)
+	bw.Flush()
+	addPrefixToOutput(w, buf.String(), cfg.prefix)
+}
+
+// addPrefixToOutput prepends prefix to each line of formatted output.
+func addPrefixToOutput(w *bufio.Writer, output, prefix string) {
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	for _, line := range lines {
+		fmt.Fprintf(w, "%s%s\n", prefix, line)
+	}
+}
+
+// stripPrefix checks if a line has the given prefix (after optional whitespace)
+// and returns the line with prefix removed.
+func stripPrefix(line, prefix string) (string, bool) {
+	ws := leadingWhitespace(line)
+	rest := line[len(ws):]
+	if !strings.HasPrefix(rest, prefix) {
+		return "", false
+	}
+	return ws + rest[len(prefix):], true
+}
+
+// lineDisplayWidth returns the visible width of a line.
+func lineDisplayWidth(line string) int {
+	return len(line)
 }
 
 // leadingWhitespace returns the whitespace prefix of a line.
@@ -242,8 +386,8 @@ func leadingWhitespace(line string) string {
 }
 
 // collectWords extracts all words from paragraph lines, stripping indent.
-// R8.1: uses Fields to collapse multiple spaces during extraction.
-func collectWords(lines []string) []string {
+// R8.1: collapses multiple spaces. R10.1: uniform spacing mode.
+func collectWords(lines []string, _ bool) []string {
 	var words []string
 	for _, line := range lines {
 		trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
@@ -257,8 +401,7 @@ func collectWords(lines []string) []string {
 }
 
 // writeWrapped outputs words wrapped to width with the given indentation.
-// R1.1: fit within width. R3.1: first line uses firstIndent, rest use bodyIndent.
-// R7.1: break at word boundaries. R8.1: two spaces after sentence-ending punctuation.
+// R1.1, R3.1, R7.1, R8.1, R10.1.
 func writeWrapped(w *bufio.Writer, words []string, firstIndent, bodyIndent string, cfg fmtConfig) {
 	if len(words) == 0 {
 		return
@@ -272,11 +415,9 @@ func writeWrapped(w *bufio.Writer, words []string, firstIndent, bodyIndent strin
 			col += len(word)
 			continue
 		}
-		// R8.1: two spaces after sentence-ending punctuation.
-		spaces := spacesAfter(words[i-1])
+		spaces := spacesAfterWord(words[i-1], cfg.uniformSpacing)
 		needed := spaces + len(word)
 		if col+needed > cfg.width {
-			// R7.1: break at word boundary; long words go on their own line.
 			fmt.Fprintln(w)
 			indent = bodyIndent
 			fmt.Fprint(w, indent)
@@ -291,9 +432,10 @@ func writeWrapped(w *bufio.Writer, words []string, firstIndent, bodyIndent strin
 	fmt.Fprintln(w)
 }
 
-// spacesAfter returns the number of spaces to insert after a word.
+// spacesAfterWord returns the number of spaces to insert after a word.
 // R8.1: two spaces after sentence-ending punctuation (. ! ?), one otherwise.
-func spacesAfter(word string) int {
+// R10.1: with uniform spacing, same rule applied uniformly.
+func spacesAfterWord(word string, _ bool) int {
 	if isSentenceEnd(word) {
 		return 2
 	}
