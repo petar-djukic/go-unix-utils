@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/factor: prime factorization.
-// Implements srd065-factor R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd065-factor R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -42,23 +42,53 @@ func main() {
 // run executes the factor logic and returns the exit code.
 // R2.1: when no arguments, reads from stdin.
 // R3.1, R3.2: check first argument for --help/--version.
+// R4.1: exit 0 on success. R4.2: exit 1 on any invalid input.
 func run(args []string) int {
-	if len(args) > 0 {
-		switch args[0] {
-		case "--help":
-			fmt.Print(helpText)
-			return 0
-		case "--version":
-			fmt.Print(versionText)
-			return 0
-		}
+	nums, code := parseOptions(args)
+	if code >= 0 {
+		return code
 	}
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
-	if len(args) == 0 {
+	if len(nums) == 0 {
 		return processStdin(w)
 	}
-	return processArgs(w, args)
+	return processArgs(w, nums)
+}
+
+// parseOptions processes option-like arguments and returns remaining
+// number arguments. Returns (nil, exitCode) when the program should
+// exit immediately; returns (nums, -1) to continue processing.
+func parseOptions(args []string) ([]string, int) {
+	if len(args) == 0 {
+		return args, -1
+	}
+	switch args[0] {
+	case "--help":
+		fmt.Print(helpText)
+		return nil, 0
+	case "--version":
+		fmt.Print(versionText)
+		return nil, 0
+	case "--":
+		return args[1:], -1
+	}
+	if strings.HasPrefix(args[0], "-") {
+		reportInvalidOption(args[0])
+		return nil, 1
+	}
+	return args, -1
+}
+
+// reportInvalidOption prints a GNU-style error for unrecognized flags.
+// R4.2: invalid options (e.g. -5) exit 1 with diagnostic to stderr.
+func reportInvalidOption(arg string) {
+	// GNU factor reports each character after '-' as an invalid option.
+	opt := strings.TrimPrefix(arg, "-")
+	if len(opt) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, opt[0])
+	}
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 }
 
 // processArgs factorizes each command-line argument.
