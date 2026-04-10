@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/tr: translate or delete characters.
-// Implements srd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.2
-// (scaffold and flag parsing with SET expansion).
+// Implements srd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.2.
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -56,9 +57,117 @@ func run(args []string) int {
 		return 1
 	}
 	cfg.mode = resolveMode(cfg.delete, cfg.squeeze)
-	// Stub: actual translation/delete/squeeze logic not yet implemented.
-	fmt.Fprintf(os.Stderr, "%s: translation not implemented\n", progName)
-	return 2
+	if err := execute(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
+	return 0
+}
+
+// execute dispatches to the appropriate mode handler.
+func execute(cfg config) error {
+	switch cfg.mode {
+	case modeTranslate:
+		return execTranslate(cfg)
+	default:
+		// Delete, squeeze, and delete-squeeze modes are not yet implemented.
+		return fmt.Errorf("mode not implemented")
+	}
+}
+
+// execTranslate implements translate mode (R1.1-R1.4).
+func execTranslate(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	set2, err := expandSet(cfg.sets[1])
+	if err != nil {
+		return err
+	}
+	set1, set2 = adjustSets(set1, set2, cfg.complement, cfg.truncate)
+	table := buildTranslateTable(set1, set2)
+	return translateStream(table, os.Stdin, os.Stdout)
+}
+
+// adjustSets applies complement and truncate/extend logic to SET1/SET2.
+// R1.1: extend SET2 by repeating last char. R1.2: -t truncates SET1.
+// R1.3: -c complements SET1 (sorted ascending byte order).
+func adjustSets(set1, set2 []byte, complement, truncate bool) ([]byte, []byte) {
+	if complement {
+		set1 = complementSet(set1)
+	}
+	if truncate {
+		if len(set1) > len(set2) {
+			set1 = set1[:len(set2)]
+		}
+	} else {
+		set2 = extendSet2(set2, len(set1))
+	}
+	return set1, set2
+}
+
+// complementSet returns all 256 byte values NOT in the given set,
+// sorted in ascending byte order. R1.3: complement mode.
+func complementSet(set []byte) []byte {
+	var present [256]bool
+	for _, b := range set {
+		present[b] = true
+	}
+	var result []byte
+	for i := range 256 {
+		if !present[byte(i)] {
+			result = append(result, byte(i))
+		}
+	}
+	return result
+}
+
+// extendSet2 extends set2 to targetLen by repeating its last character.
+// R1.1: when SET2 is shorter than SET1.
+func extendSet2(set2 []byte, targetLen int) []byte {
+	if len(set2) >= targetLen || len(set2) == 0 {
+		return set2
+	}
+	last := set2[len(set2)-1]
+	for len(set2) < targetLen {
+		set2 = append(set2, last)
+	}
+	return set2
+}
+
+// buildTranslateTable creates a 256-entry lookup table.
+// D1: O(1) translation per byte.
+func buildTranslateTable(set1, set2 []byte) [256]byte {
+	var table [256]byte
+	for i := range table {
+		table[i] = byte(i)
+	}
+	n := min(len(set1), len(set2))
+	for i := range n {
+		table[set1[i]] = set2[i]
+	}
+	return table
+}
+
+// translateStream reads from r, translates each byte via table,
+// and writes to w using buffered I/O. D2, D3: byte-oriented, buffered.
+func translateStream(table [256]byte, r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush() // best-effort flush on early return
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if wErr := writer.WriteByte(table[b]); wErr != nil {
+			return wErr
+		}
+	}
 }
 
 // resolveMode determines the operating mode from flag combination.
@@ -502,3 +611,4 @@ func mergeClasses(a, b []byte) []byte {
 	copy(result[len(a):], b)
 	return result
 }
+
