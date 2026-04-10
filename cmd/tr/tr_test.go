@@ -162,6 +162,70 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normStderr},
 		},
+		// R4.1: exit 0 on successful translation
+		{
+			Name:  "R4.1 basic translate a-z to A-Z",
+			Args:  []string{"a-z", "A-Z"},
+			Stdin: []byte("hello\n"),
+		},
+		{
+			Name:  "R4.1 translate single char",
+			Args:  []string{"a", "b"},
+			Stdin: []byte("aaa\n"),
+		},
+		{
+			Name:  "R4.1 translate octal escape",
+			Args:  []string{"\\141", "b"},
+			Stdin: []byte("aaa\n"),
+		},
+		{
+			Name:  "R4.1 translate range to range",
+			Args:  []string{"0-9", "a-j"},
+			Stdin: []byte("0123456789\n"),
+		},
+		// R4.2: exit 1 on usage errors
+		{
+			Name:      "R4.2 invalid option",
+			Args:      []string{"-Z", "abc"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:      "R4.2 invalid character class",
+			Args:      []string{"-d", "[:bogus:]"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:      "R4.2 extra operand in delete mode",
+			Args:      []string{"-d", "a", "b"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		// R4.3: comprehensive differential tests
+		{
+			Name:  "R4.3 translate with set2 shorter",
+			Args:  []string{"abc", "x"},
+			Stdin: []byte("abcabc\n"),
+		},
+		{
+			Name:  "R4.3 delete with complement and class",
+			Args:  []string{"-cd", "[:alpha:]\\n"},
+			Stdin: []byte("abc123!@#def\n"),
+		},
+		{
+			Name:  "R4.3 squeeze with complement",
+			Args:  []string{"-cs", "[:alpha:]", "\\n"},
+			Stdin: []byte("abc 123 def\n"),
+		},
+		{
+			Name:  "R4.3 translate octal to char",
+			Args:  []string{"\\040", "_"},
+			Stdin: []byte("hello world\n"),
+		},
 		// R3.3: equivalence classes
 		{
 			Name:      "equiv class rejected in set2 translate",
@@ -202,10 +266,11 @@ func normStderr(data []byte) []byte {
 	return result
 }
 
-// normProgName replaces "gtr: " prefix with "tr: " for comparison.
+// normProgName replaces reference binary name prefix with "tr: " for comparison.
+// Handles both "gtr: " and full-path forms like "/opt/homebrew/bin/gtr: ".
 func normProgName(line []byte) []byte {
-	if bytes.HasPrefix(line, []byte("gtr: ")) {
-		return append([]byte("tr: "), line[5:]...)
+	if idx := bytes.Index(line, []byte("gtr: ")); idx >= 0 {
+		return append([]byte("tr: "), line[idx+5:]...)
 	}
 	return line
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/tr: translate or delete characters.
-// Implements srd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.2.
+// Implements srd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.3.
 package main
 
 import (
@@ -452,8 +452,11 @@ func validateOperands(cfg *config) error {
 			return fmt.Errorf("two strings must be given when both deleting and squeezing repeats")
 		}
 	case del:
-		if n != 1 {
-			return fmt.Errorf("extra operand '%s'", extraOperand(cfg.sets, 1))
+		if n > 1 {
+			return fmt.Errorf("extra operand '%s'\nOnly one string may be given when deleting without squeezing repeats.", extraOperand(cfg.sets, 1))
+		}
+		if n == 0 {
+			return fmt.Errorf("missing operand")
 		}
 	case squeeze:
 		if n < 1 || n > 2 {
