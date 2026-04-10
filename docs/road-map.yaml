@@ -389,7 +389,7 @@ releases:
         - id: rel08.1-uc002-csplit
           status: implemented
         - id: rel08.1-uc003-join
-          status: spec_complete
+          status: implemented
         - id: rel08.1-uc004-fmt
           status: spec_complete
         - id: rel08.1-uc005-numfmt
