@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/factor: prime factorization.
-// Implements srd065-factor R1.1-R1.4.
+// Implements srd065-factor R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -25,9 +25,19 @@ func main() {
 }
 
 // run executes the factor logic and returns the exit code.
+// R2.1: when no arguments, reads from stdin.
 func run(args []string) int {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
+	if len(args) == 0 {
+		return processStdin(w)
+	}
+	return processArgs(w, args)
+}
+
+// processArgs factorizes each command-line argument.
+// R1.4: each argument produces one output line.
+func processArgs(w *bufio.Writer, args []string) int {
 	exitCode := 0
 	for _, arg := range args {
 		if err := factorArg(w, arg); err != nil {
@@ -38,8 +48,29 @@ func run(args []string) int {
 	return exitCode
 }
 
+// processStdin reads integers from stdin, one per line.
+// R2.1: factorizes each line. R2.3: skips blank lines.
+// R2.4: prints error on invalid input, continues processing.
+func processStdin(w *bufio.Writer) int {
+	scanner := bufio.NewScanner(os.Stdin)
+	exitCode := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if err := factorArg(w, line); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+			exitCode = 1
+		}
+		w.Flush()
+	}
+	return exitCode
+}
+
 // factorArg parses a single argument and prints its factorization.
-// R1.4: each argument produces one output line.
+// R2.2: accepts integers up to at least 2^63-1.
+// R2.4: returns error for non-integer or negative input.
 func factorArg(w *bufio.Writer, arg string) error {
 	n, err := strconv.ParseUint(strings.TrimSpace(arg), 10, 64)
 	if err != nil {
