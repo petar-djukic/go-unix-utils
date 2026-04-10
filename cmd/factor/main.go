@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/factor: prime factorization.
-// Implements srd065-factor R1.1-R1.4, R2.1-R2.4.
+// Implements srd065-factor R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -19,6 +19,21 @@ import (
 // progName is used in diagnostic messages.
 const progName = "factor"
 
+// helpText is printed when --help is given.
+// R3.1: --help prints usage to stdout and exits 0.
+const helpText = `Usage: factor [NUMBER]...
+  or:  factor [OPTION]
+Print the prime factors of each specified integer NUMBER.  If none
+are specified on the command line, they are read from standard input.
+
+      --help        display this help and exit
+      --version     output version information and exit
+`
+
+// versionText is printed when --version is given.
+// R3.2: --version prints version to stdout and exits 0.
+const versionText = "factor (go-unix-utils) 1.0\n"
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -26,7 +41,18 @@ func main() {
 
 // run executes the factor logic and returns the exit code.
 // R2.1: when no arguments, reads from stdin.
+// R3.1, R3.2: check first argument for --help/--version.
 func run(args []string) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "--help":
+			fmt.Print(helpText)
+			return 0
+		case "--version":
+			fmt.Print(versionText)
+			return 0
+		}
+	}
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
 	if len(args) == 0 {
@@ -37,6 +63,7 @@ func run(args []string) int {
 
 // processArgs factorizes each command-line argument.
 // R1.4: each argument produces one output line.
+// R3.4: errors go to stderr, processing continues.
 func processArgs(w *bufio.Writer, args []string) int {
 	exitCode := 0
 	for _, arg := range args {
@@ -50,7 +77,7 @@ func processArgs(w *bufio.Writer, args []string) int {
 
 // processStdin reads integers from stdin, one per line.
 // R2.1: factorizes each line. R2.3: skips blank lines.
-// R2.4: prints error on invalid input, continues processing.
+// R2.4, R3.4: prints error on invalid input to stderr, continues.
 func processStdin(w *bufio.Writer) int {
 	scanner := bufio.NewScanner(os.Stdin)
 	exitCode := 0
@@ -84,6 +111,7 @@ func factorArg(w *bufio.Writer, arg string) error {
 // R1.1: format is 'NUMBER: FACTOR FACTOR ...' with ascending factors.
 // R1.2: for 1, prints '1:' with no factors.
 // R1.3: primes print the number as the sole factor.
+// R3.3: output goes to stdout via the buffered writer.
 func printFactors(w *bufio.Writer, n uint64) {
 	fmt.Fprintf(w, "%d:", n)
 	if n > 1 {
