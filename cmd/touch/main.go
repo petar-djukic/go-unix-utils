@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/touch: create files and update timestamps.
-// Implements srd062-touch R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd062-touch R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -121,7 +122,7 @@ func resolveRefTime(refFile string) (resolvedTime, error) {
 	fi, err := sys.Stat(refFile)
 	if err != nil {
 		return resolvedTime{}, fmt.Errorf(
-			"failed to get attributes of '%s': %v", refFile, err)
+			"failed to get attributes of '%s': %s", refFile, sysError(err))
 	}
 	return resolvedTime{atime: fi.AccessTime, mtime: fi.ModTime}, nil
 }
@@ -283,7 +284,7 @@ func touchFile(path string, opts *options, ts resolvedTime) error {
 			return err
 		}
 	} else if err != nil {
-		return fmt.Errorf("cannot touch '%s': %v", path, err)
+		return fmt.Errorf("cannot touch '%s': %s", path, sysError(err))
 	}
 	return applyTimestamps(path, opts, ts)
 }
@@ -293,7 +294,7 @@ func touchFile(path string, opts *options, ts resolvedTime) error {
 func createEmpty(path string) error {
 	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("cannot touch '%s': %v", path, err)
+		return fmt.Errorf("cannot touch '%s': %s", path, sysError(err))
 	}
 	f.Close() // best-effort close; file is empty
 	return nil
@@ -313,7 +314,7 @@ func applyTimestamps(path string, opts *options, ts resolvedTime) error {
 		return setTimesNoFollow(path, atime, mtime)
 	}
 	if err := os.Chtimes(path, atime, mtime); err != nil {
-		return fmt.Errorf("cannot touch '%s': %v", path, err)
+		return fmt.Errorf("cannot touch '%s': %s", path, sysError(err))
 	}
 	return nil
 }
@@ -328,7 +329,7 @@ func computeTimestamps(path string, opts *options, ts resolvedTime) (time.Time, 
 		fi, err = sys.Stat(path)
 	}
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("cannot touch '%s': %v", path, err)
+		return time.Time{}, time.Time{}, fmt.Errorf("cannot touch '%s': %s", path, sysError(err))
 	}
 	atime := fi.AccessTime
 	mtime := fi.ModTime
@@ -352,9 +353,28 @@ func setTimesNoFollow(path string, atime, mtime time.Time) error {
 	}
 	err := unix.UtimesNanoAt(unix.AT_FDCWD, path, ts[:], unix.AT_SYMLINK_NOFOLLOW)
 	if err != nil {
-		return fmt.Errorf("cannot touch '%s': %v", path, err)
+		return fmt.Errorf("cannot touch '%s': %s", path, capitalizeFirst(err.Error()))
 	}
 	return nil
+}
+
+// sysError extracts the underlying OS error message from a *os.PathError
+// or *os.SyscallError, producing output like "No such file or directory"
+// instead of "stat /path: no such file or directory".
+func sysError(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return capitalizeFirst(pe.Err.Error())
+	}
+	return capitalizeFirst(err.Error())
+}
+
+// capitalizeFirst uppercases the first letter of a string to match GNU error messages.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // parseDate parses a date string for the -d flag.
