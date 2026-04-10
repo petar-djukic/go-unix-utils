@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main tests cmd/split via differential testing against gsplit.
-// Implements srd067-split R4.3, R4.4 for requirements R1.1-R1.4.
+// Implements srd067-split R4.3, R4.4 for requirements R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +31,8 @@ type splitTest struct {
 
 // TestDiff runs differential tests comparing Go split against gsplit.
 // R4.3: compares output file contents and exit codes.
-// R4.4: covers default 1000-line split, -l custom, custom prefix, stdin.
+// R4.4: covers default 1000-line split, -l custom, custom prefix, stdin,
+// -b byte split, -C line-bytes, -n chunk modes.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsplit")
@@ -38,6 +40,7 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gsplit not in PATH: %v", err)
 	}
 	tests := []splitTest{
+		// R1 tests (line-based splitting)
 		{
 			name:  "default_small_input",
 			stdin: numberedLines(1, 5),
@@ -77,6 +80,69 @@ func TestDiff(t *testing.T) {
 			args:  []string{"-l", "2"},
 			stdin: []byte("a\nb\nc"),
 		},
+		// R2.1 tests (byte-based splitting)
+		{
+			name:  "bytes_5",
+			args:  []string{"-b", "5"},
+			stdin: []byte("hello world this is test\n"),
+		},
+		{
+			name:  "bytes_long_form",
+			args:  []string{"--bytes=10"},
+			stdin: []byte("abcdefghijklmnopqrstuvwxyz\n"),
+		},
+		{
+			name:  "bytes_exact_boundary",
+			args:  []string{"-b", "3"},
+			stdin: []byte("abcdef"),
+		},
+		{
+			name:  "bytes_larger_than_input",
+			args:  []string{"-b", "100"},
+			stdin: []byte("small\n"),
+		},
+		// R2.2 tests (line-bytes splitting)
+		{
+			name:  "line_bytes_10",
+			args:  []string{"-C", "10"},
+			stdin: []byte("short\nhi\nworld\ntest\n"),
+		},
+		{
+			name:  "line_bytes_long_line",
+			args:  []string{"-C", "5"},
+			stdin: []byte("ab\nabcdefghij\nxy\n"),
+		},
+		{
+			name:  "line_bytes_exact_fit",
+			args:  []string{"-C", "4"},
+			stdin: []byte("abc\ndef\nghi\n"),
+		},
+		// R2.3 tests (chunk-based splitting)
+		{
+			name:  "chunks_3_bytes",
+			args:  []string{"-n", "3"},
+			stdin: numberedLines(1, 9),
+		},
+		{
+			name:  "chunks_line_mode",
+			args:  []string{"-n", "l/3"},
+			stdin: numberedLines(1, 9),
+		},
+		{
+			name:  "chunks_round_robin",
+			args:  []string{"-n", "r/3"},
+			stdin: numberedLines(1, 9),
+		},
+		{
+			name:  "chunks_2_small_input",
+			args:  []string{"-n", "2"},
+			stdin: []byte("abcde"),
+		},
+		{
+			name:  "chunks_more_than_bytes",
+			args:  []string{"-n", "5"},
+			stdin: []byte("ab"),
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,6 +152,7 @@ func TestDiff(t *testing.T) {
 }
 
 // TestDiffExitCodes uses RunDiffTests for exit code and stderr comparison.
+// R2.4: conflicting split options must produce an error and exit 1.
 func TestDiffExitCodes(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsplit")
@@ -95,8 +162,22 @@ func TestDiffExitCodes(t *testing.T) {
 	norm := []testutils.NormalizeFunc{stderrProgNormalizer}
 	tests := []testutils.DiffTest{
 		{
-			Name:      "conflicting_options",
+			Name:      "conflicting_lines_bytes",
 			Args:      []string{"-l", "10", "-b", "100"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "conflicting_bytes_chunks",
+			Args:      []string{"-b", "100", "-n", "3"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "conflicting_line_bytes_lines",
+			Args:      []string{"-C", "100", "-l", "10"},
 			Stdin:     []byte("data\n"),
 			ExitCode:  1,
 			Normalize: norm,
@@ -186,10 +267,19 @@ func compareFileMaps(t *testing.T, ref, got map[string][]byte) {
 			continue
 		}
 		if !bytes.Equal(refData, goData) {
-			t.Errorf("file %q: content mismatch\n  ref len=%d\n  go  len=%d",
-				name, len(refData), len(goData))
+			t.Errorf("file %q: content mismatch\n  ref len=%d: %s\n  go  len=%d: %s",
+				name, len(refData), abbreviate(refData), len(goData), abbreviate(goData))
 		}
 	}
+}
+
+// abbreviate returns a truncated representation of data for error messages.
+func abbreviate(data []byte) string {
+	s := string(data)
+	if len(s) > 60 {
+		s = s[:60] + "..."
+	}
+	return strings.ReplaceAll(s, "\n", "\\n")
 }
 
 // mergeKeys returns the sorted union of keys from two maps.
