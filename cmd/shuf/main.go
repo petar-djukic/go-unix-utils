@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/shuf: shuffle lines randomly.
-// Implements srd064-shuf R1.1, R1.2, R1.3, R1.4, R2.1, R3.3.
+// Implements srd064-shuf R1.1-R1.4, R2.1-R2.4, R3.1, R3.3.
 package main
 
 import (
@@ -22,9 +22,13 @@ const progName = "shuf"
 
 // config holds parsed command-line flags for shuf.
 type config struct {
-	inputRange string
-	echo       bool
-	args       []string
+	inputRange   string
+	echo         bool
+	headCount    int // -1 means not set
+	outputFile   string
+	randomSource string
+	repeat       bool
+	args         []string
 }
 
 func main() {
@@ -48,70 +52,138 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 1
 	}
-	// R1.3: uniform random permutation.
-	rand.Shuffle(len(lines), func(i, j int) {
-		lines[i], lines[j] = lines[j], lines[i]
-	})
-	if err := writeLines(lines); err != nil {
+	return emitOutput(cfg, lines)
+}
+
+// emitOutput creates the RNG and output writer, then shuffles and writes.
+func emitOutput(cfg config, lines []string) int {
+	rng, err := makeRNG(cfg.randomSource)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
+	}
+	w, closer, err := openOutput(cfg.outputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
+	}
+	defer closer()
+	if err := shuffleAndWrite(w, lines, rng, cfg); err != nil {
 		return 1
 	}
 	return 0
 }
 
-// parseFlags extracts -i, -e, and positional arguments.
+// parseFlags extracts all recognized flags and positional arguments.
 func parseFlags(args []string) (config, error) {
-	var cfg config
+	cfg := config{headCount: -1}
 	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
+		if args[i] == "--" {
 			cfg.args = append(cfg.args, args[i+1:]...)
 			return cfg, nil
 		}
-		if arg == "-e" || arg == "--echo" {
-			cfg.echo = true
-			continue
+		adv, err := parseFlagAt(args, i, &cfg)
+		if err != nil {
+			return cfg, err
 		}
-		if handled, adv, err := parseInputRange(args, i, &cfg); handled {
-			if err != nil {
-				return cfg, err
-			}
+		if adv >= 0 {
 			i += adv
 			continue
 		}
-		if strings.HasPrefix(arg, "-") && arg != "-" {
-			return cfg, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
+		if strings.HasPrefix(args[i], "-") && args[i] != "-" {
+			return cfg, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(args[i], "-"))
 		}
-		cfg.args = append(cfg.args, arg)
+		cfg.args = append(cfg.args, args[i])
 	}
 	return cfg, nil
 }
 
-// parseInputRange handles -i and --input-range flag variants.
-// Returns (handled, advance, error).
-func parseInputRange(args []string, i int, cfg *config) (bool, int, error) {
-	arg := args[i]
-	switch {
-	case arg == "-i":
-		if i+1 >= len(args) {
-			return true, 0, fmt.Errorf("option requires an argument -- 'i'")
-		}
-		cfg.inputRange = args[i+1]
-		return true, 1, nil
-	case strings.HasPrefix(arg, "--input-range="):
-		cfg.inputRange = arg[len("--input-range="):]
-		return true, 0, nil
-	case arg == "--input-range":
-		if i+1 >= len(args) {
-			return true, 0, fmt.Errorf("option '--input-range' requires an argument")
-		}
-		cfg.inputRange = args[i+1]
-		return true, 1, nil
+// parseFlagAt attempts to parse a flag at position i.
+// Returns (advance, nil) on success, (-1, nil) if not a flag.
+func parseFlagAt(args []string, i int, cfg *config) (int, error) {
+	switch args[i] {
+	case "-e", "--echo":
+		cfg.echo = true
+		return 0, nil
+	case "-r", "--repeat":
+		cfg.repeat = true
+		return 0, nil
 	}
-	return false, 0, nil
+	return parseValueFlagAt(args, i, cfg)
 }
 
-// validateExclusivity checks R2.3: -i and -e are mutually exclusive;
-// -i must not be combined with file arguments.
+// parseValueFlagAt handles flags that require a value argument.
+func parseValueFlagAt(args []string, i int, cfg *config) (int, error) {
+	if val, adv, ok, err := optValue(args, i, "-i", "--input-range"); ok {
+		if err != nil {
+			return 0, err
+		}
+		cfg.inputRange = val
+		return adv, nil
+	}
+	if val, adv, ok, err := optValue(args, i, "-n", "--head-count"); ok {
+		if err != nil {
+			return 0, err
+		}
+		return adv, parseHeadCount(val, cfg)
+	}
+	if val, adv, ok, err := optValue(args, i, "-o", "--output"); ok {
+		if err != nil {
+			return 0, err
+		}
+		cfg.outputFile = val
+		return adv, nil
+	}
+	if val, adv, ok, err := optValue(args, i, "", "--random-source"); ok {
+		if err != nil {
+			return 0, err
+		}
+		cfg.randomSource = val
+		return adv, nil
+	}
+	return -1, nil
+}
+
+// optValue extracts the value for a short (-x) or long (--xxx) option.
+// Handles forms: -x VAL, -xVAL, --xxx=VAL, --xxx VAL.
+// Returns (value, advance, matched, error).
+func optValue(args []string, i int, short, long string) (string, int, bool, error) {
+	arg := args[i]
+	if short != "" && arg == short {
+		if i+1 >= len(args) {
+			ch := short[len(short)-1]
+			return "", 0, true, fmt.Errorf("option requires an argument -- '%c'", ch)
+		}
+		return args[i+1], 1, true, nil
+	}
+	if short != "" && strings.HasPrefix(arg, short) && len(arg) > len(short) {
+		return arg[len(short):], 0, true, nil
+	}
+	if long != "" && strings.HasPrefix(arg, long+"=") {
+		return arg[len(long)+1:], 0, true, nil
+	}
+	if long != "" && arg == long {
+		if i+1 >= len(args) {
+			return "", 0, true, fmt.Errorf("option '%s' requires an argument", long)
+		}
+		return args[i+1], 1, true, nil
+	}
+	return "", 0, false, nil
+}
+
+// parseHeadCount validates and sets the -n value.
+// R2.2: COUNT must be a non-negative integer.
+func parseHeadCount(val string, cfg *config) error {
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 0 {
+		return fmt.Errorf("invalid line count: '%s'", val)
+	}
+	cfg.headCount = n
+	return nil
+}
+
+// validateExclusivity checks that -i and -e are mutually exclusive,
+// and -i is not combined with file arguments.
 func validateExclusivity(cfg config) error {
 	if cfg.inputRange != "" && cfg.echo {
 		return fmt.Errorf("cannot combine -e and -i options")
@@ -135,7 +207,6 @@ func collectLines(cfg config) ([]string, error) {
 
 // generateRange produces integers from LO to HI inclusive.
 // R2.1: -i LO-HI generates the integer sequence.
-// R2.4: validates LO and HI are non-negative with LO <= HI.
 func generateRange(rangeStr string) ([]string, error) {
 	lo, hi, err := parseRange(rangeStr)
 	if err != nil {
@@ -221,13 +292,79 @@ func scanLines(r io.Reader) ([]string, error) {
 	return lines, nil
 }
 
-// writeLines writes each line to stdout followed by a newline.
-func writeLines(lines []string) error {
-	w := bufio.NewWriter(os.Stdout)
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
+// makeRNG creates a random number generator.
+// R3.1: --random-source reads bytes from a file to seed the PRNG.
+func makeRNG(path string) (*rand.Rand, error) {
+	if path == "" {
+		return rand.New(rand.NewSource(rand.Int63())), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return rand.New(rand.NewSource(seedFromBytes(data))), nil
+}
+
+// seedFromBytes converts up to 8 bytes into an int64 seed.
+func seedFromBytes(data []byte) int64 {
+	var seed int64
+	for i := 0; i < len(data) && i < 8; i++ {
+		seed |= int64(data[i]) << (uint(i) * 8)
+	}
+	return seed
+}
+
+// openOutput opens the output file, or returns stdout if path is empty.
+// R2.4: -o FILE writes output to FILE instead of stdout.
+func openOutput(path string) (io.Writer, func(), error) {
+	if path == "" {
+		return os.Stdout, func() {}, nil
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return f, func() { f.Close() }, nil
+}
+
+// shuffleAndWrite performs the shuffle or repeat and writes output.
+func shuffleAndWrite(w io.Writer, lines []string, rng *rand.Rand, cfg config) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	if cfg.repeat {
+		return writeRepeat(w, lines, rng, cfg.headCount)
+	}
+	rng.Shuffle(len(lines), func(i, j int) {
+		lines[i], lines[j] = lines[j], lines[i]
+	})
+	count := len(lines)
+	if cfg.headCount >= 0 && cfg.headCount < count {
+		count = cfg.headCount
+	}
+	return writeLinesTo(w, lines[:count])
+}
+
+// writeRepeat outputs random selections with replacement.
+// R2.3: -r samples with replacement; without -n, repeats indefinitely.
+func writeRepeat(w io.Writer, lines []string, rng *rand.Rand, headCount int) error {
+	bw := bufio.NewWriter(w)
+	n := len(lines)
+	for written := 0; headCount < 0 || written < headCount; written++ {
+		if _, err := fmt.Fprintln(bw, lines[rng.Intn(n)]); err != nil {
 			return err
 		}
 	}
-	return w.Flush()
+	return bw.Flush()
+}
+
+// writeLinesTo writes each line followed by a newline to the writer.
+func writeLinesTo(w io.Writer, lines []string) error {
+	bw := bufio.NewWriter(w)
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(bw, line); err != nil {
+			return err
+		}
+	}
+	return bw.Flush()
 }
