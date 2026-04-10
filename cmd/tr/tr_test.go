@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
@@ -115,6 +116,96 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-cd", "[:upper:]\\n"},
 			Stdin: []byte("Hello World 123\n"),
 		},
+		// R3.1: character class translation pairs
+		{
+			Name:  "lower to upper",
+			Args:  []string{"[:lower:]", "[:upper:]"},
+			Stdin: []byte("hello world\n"),
+		},
+		{
+			Name:  "upper to lower",
+			Args:  []string{"[:upper:]", "[:lower:]"},
+			Stdin: []byte("HELLO WORLD\n"),
+		},
+		{
+			Name:  "lower to upper mixed",
+			Args:  []string{"[:lower:]", "[:upper:]"},
+			Stdin: []byte("Hello World 123!\n"),
+		},
+		{
+			Name:  "upper to lower mixed",
+			Args:  []string{"[:upper:]", "[:lower:]"},
+			Stdin: []byte("Hello World 123!\n"),
+		},
+		{
+			Name:  "lower to upper empty input",
+			Args:  []string{"[:lower:]", "[:upper:]"},
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "lower to upper no letters",
+			Args:  []string{"[:lower:]", "[:upper:]"},
+			Stdin: []byte("123 !@#\n"),
+		},
+		// R3.2: missing SET2 error
+		{
+			Name:      "missing set2 error",
+			Args:      []string{"abc"},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:      "missing operand no args",
+			Args:      []string{},
+			Stdin:     []byte(""),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		// R3.3: equivalence classes
+		{
+			Name:      "equiv class rejected in set2 translate",
+			Args:      []string{"a", "[=b=]"},
+			Stdin:     []byte("aaa\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:  "equiv class in set1 delete",
+			Args:  []string{"-d", "[=a=]"},
+			Stdin: []byte("abc\n"),
+		},
+		{
+			Name:  "equiv class in set1 squeeze",
+			Args:  []string{"-s", "[=a=]"},
+			Stdin: []byte("aaabbb\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// normStderr normalizes stderr for error case comparison.
+// Strips "Try '...'" help hint lines and normalizes binary name
+// prefix (gtr: → tr:) so Go and reference outputs can match.
+func normStderr(data []byte) []byte {
+	var result []byte
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("Try '")) {
+			continue
+		}
+		line = normProgName(line)
+		if len(result) > 0 {
+			result = append(result, '\n')
+		}
+		result = append(result, line...)
+	}
+	return result
+}
+
+// normProgName replaces "gtr: " prefix with "tr: " for comparison.
+func normProgName(line []byte) []byte {
+	if bytes.HasPrefix(line, []byte("gtr: ")) {
+		return append([]byte("tr: "), line[5:]...)
+	}
+	return line
 }

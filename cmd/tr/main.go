@@ -460,14 +460,21 @@ func validateOperands(cfg *config) error {
 			return missingOrExtraError(n, 1, 2, cfg.sets)
 		}
 	default:
-		if n != 2 {
-			if n < 2 {
-				return fmt.Errorf("missing operand")
-			}
+		// R3.2: translate mode requires exactly two SETs.
+		if n == 0 {
+			return fmt.Errorf("missing operand")
+		}
+		if n == 1 {
+			return fmt.Errorf("missing operand after '%s'\nTwo strings must be given when translating.", cfg.sets[0])
+		}
+		if n > 2 {
 			return fmt.Errorf("extra operand '%s'", extraOperand(cfg.sets, 2))
 		}
 	}
-	return validateSETs(cfg.sets)
+	if err := validateSETs(cfg.sets); err != nil {
+		return err
+	}
+	return validateEquivInTranslate(cfg)
 }
 
 // extraOperand returns the first extra operand beyond limit.
@@ -494,6 +501,29 @@ func validateSETs(sets []string) error {
 		}
 	}
 	return nil
+}
+
+// validateEquivInTranslate rejects equivalence classes in SET2
+// during translate mode. R3.3: GNU tr forbids [=c=] in string2
+// when translating.
+func validateEquivInTranslate(cfg *config) error {
+	if cfg.delete || len(cfg.sets) < 2 {
+		return nil
+	}
+	if containsEquivClass(cfg.sets[1]) {
+		return fmt.Errorf("[=c=] expressions may not appear in string2 when translating")
+	}
+	return nil
+}
+
+// containsEquivClass reports whether s contains an [=c=] expression.
+func containsEquivClass(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '[' && matchEquivClass(s, i) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // expandSet parses a SET specification string and returns the expanded bytes.
