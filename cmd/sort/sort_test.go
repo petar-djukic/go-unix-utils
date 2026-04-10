@@ -149,6 +149,55 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-V"},
 			Stdin: []byte("v2.0\nv1.10\nv1.2\nv1.1\n"),
 		},
+		// R3.1: -t field separator
+		{
+			Name:  "field separator colon sort by field 2",
+			Args:  []string{"-t:", "-k2,2"},
+			Stdin: []byte("b:2\na:3\nc:1\n"),
+		},
+		// R3.2: -k key field specs
+		{
+			Name:  "key field numeric sort",
+			Args:  []string{"-t:", "-k2,2n"},
+			Stdin: []byte("alice:30\nbob:25\ncharlie:35\n"),
+		},
+		{
+			Name:  "key with character position",
+			Args:  []string{"-k1.2,1.2"},
+			Stdin: []byte("ba\nac\ncb\n"),
+		},
+		{
+			Name:  "key sort by second blank-delimited field",
+			Args:  []string{"-k2,2"},
+			Stdin: []byte("foo cherry\nbar apple\nbaz banana\n"),
+		},
+		// R3.3: multiple -k options
+		{
+			Name:  "multiple keys primary and tiebreak",
+			Args:  []string{"-t:", "-k1,1", "-k2,2n"},
+			Stdin: []byte("a:3\nb:1\na:1\nb:2\n"),
+		},
+		{
+			Name:  "multiple keys secondary tiebreak",
+			Args:  []string{"-t:", "-k2,2", "-k1,1"},
+			Stdin: []byte("b:1\na:2\nc:1\na:1\n"),
+		},
+		// R3.4: -b ignore leading blanks
+		{
+			Name:  "ignore leading blanks global",
+			Args:  []string{"-b"},
+			Stdin: []byte("  cherry\napple\n  banana\n"),
+		},
+		{
+			Name:  "ignore leading blanks with key",
+			Args:  []string{"-b", "-k1,1"},
+			Stdin: []byte("  cherry\napple\n  banana\n"),
+		},
+		{
+			Name:  "per-key b option in keydef",
+			Args:  []string{"-k1,1b"},
+			Stdin: []byte("  cherry\napple\n  banana\n"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

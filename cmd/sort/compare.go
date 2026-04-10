@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// compare.go implements sort comparison functions for srd053-sort R2.1-R2.4.
+// compare.go implements sort comparison functions for srd053-sort R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -25,6 +25,68 @@ func compareFunc(cfg *config) func(string, string) int {
 		return compareVersion
 	}
 	return strings.Compare
+}
+
+// compareKeys compares two lines using the parsed key specifications.
+// R3.2, R3.3: earlier keys take precedence; later keys break ties.
+func compareKeys(a, b string, cfg *config) int {
+	for k := range cfg.parsedKeys {
+		ks := &cfg.parsedKeys[k]
+		ka := extractKey(a, ks, cfg.sepByte, cfg.ignoreBlanks)
+		kb := extractKey(b, ks, cfg.sepByte, cfg.ignoreBlanks)
+		cmpFn := keySortFunc(ks, cfg)
+		result := cmpFn(ka, kb)
+		if effectiveReverse(ks, cfg) {
+			result = -result
+		}
+		if result != 0 {
+			return result
+		}
+	}
+	return 0
+}
+
+// keySortFunc returns the comparison function for a specific key.
+// If the key has its own opts, uses those; otherwise uses the global sort mode.
+func keySortFunc(ks *keySpec, cfg *config) func(string, string) int {
+	if ks.hasOpts {
+		return optsCompareFunc(&ks.opts)
+	}
+	return compareFunc(cfg)
+}
+
+// optsCompareFunc returns a comparison function for the given key options.
+func optsCompareFunc(opts *keyOpts) func(string, string) int {
+	if opts.numeric {
+		return compareNumeric
+	}
+	if opts.humanNumeric {
+		return compareHumanNumeric
+	}
+	if opts.monthSort {
+		return compareMonth
+	}
+	if opts.versionSort {
+		return compareVersion
+	}
+	if opts.ignoreCase {
+		return compareFoldCase
+	}
+	return strings.Compare
+}
+
+// compareFoldCase compares strings case-insensitively.
+func compareFoldCase(a, b string) int {
+	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+}
+
+// effectiveReverse returns whether this key's comparison should be reversed.
+// Per-key opts override global -r when present.
+func effectiveReverse(ks *keySpec, cfg *config) bool {
+	if ks.hasOpts {
+		return ks.opts.reverse
+	}
+	return cfg.reverse
 }
 
 // compareNumeric compares two strings by their leading numeric value.

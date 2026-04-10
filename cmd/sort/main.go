@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/sort: sort lines of text files.
-// Implements srd053-sort scaffold: flag parsing and input/output wiring.
-// Sorting logic is stubbed — output equals input (unsorted passthrough).
+// Implements srd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -20,26 +19,32 @@ import (
 // progName is used in diagnostic messages.
 const progName = "sort"
 
+// restConsumed signals that a value-consuming short flag used the rest
+// of the argument cluster (e.g. -t: consumed ":" from the cluster).
+const restConsumed = -2
+
 // config holds parsed command-line options from srd053-sort.
 type config struct {
-	reverse       bool     // R1.4: -r
-	unique        bool     // R1.5: -u
-	stable        bool     // R1.7: -s
-	numericSort   bool     // R2.1: -n
-	humanNumeric  bool     // R2.2: -h
-	monthSort     bool     // R2.3: -M
-	versionSort   bool     // R2.4: -V
-	generalNum    bool     // -g
-	ignoreCase    bool     // -f
-	ignoreBlanks  bool     // R3.4: -b
-	check         bool     // R4.2: -c
-	checkQuiet    bool     // R4.2: -C
-	zeroTerm      bool     // -z
-	outputFile    string   // R1.6: -o
-	fieldSep      string   // R3.1: -t
-	keys          []string // R3.2, R3.3: -k
-	files         []string
-	parseErr      bool
+	reverse      bool     // R1.4: -r
+	unique       bool     // R1.5: -u
+	stable       bool     // R1.7: -s
+	numericSort  bool     // R2.1: -n
+	humanNumeric bool     // R2.2: -h
+	monthSort    bool     // R2.3: -M
+	versionSort  bool     // R2.4: -V
+	generalNum   bool     // -g
+	ignoreCase   bool     // -f
+	ignoreBlanks bool     // R3.4: -b
+	check        bool     // R4.2: -c
+	checkQuiet   bool     // R4.2: -C
+	zeroTerm     bool     // -z
+	outputFile   string   // R1.6: -o
+	fieldSep     string   // R3.1: -t
+	keys         []string // R3.2, R3.3: -k
+	files        []string
+	parseErr     bool
+	parsedKeys   []keySpec // R3.2: parsed -k specs
+	sepByte      byte      // R3.1: field separator byte (0 = default)
 }
 
 func main() {
@@ -54,6 +59,10 @@ func run(args []string) int {
 	if cfg.parseErr {
 		return 2
 	}
+	if err := parseKeySpecs(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 2
+	}
 	if len(cfg.files) == 0 {
 		cfg.files = []string{"-"}
 	}
@@ -62,14 +71,37 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 2
 	}
-	// R1.1: sort lexicographically in LC_ALL=C byte order.
-	// R1.2: -r reverses the sort order.
 	sortLines(lines, &cfg)
-	// R1.3: -u suppresses duplicate lines.
 	if cfg.unique {
-		lines = dedup(lines, compareFunc(&cfg))
+		lines = dedup(lines, dedupFunc(&cfg))
 	}
 	return writeOutput(&cfg, lines)
+}
+
+// parseKeySpecs parses -t and -k flags into sepByte and parsedKeys.
+// R3.1: field separator. R3.2, R3.3: key definitions.
+func parseKeySpecs(cfg *config) error {
+	if cfg.fieldSep != "" {
+		cfg.sepByte = cfg.fieldSep[0]
+	}
+	for _, k := range cfg.keys {
+		ks, err := parseKeyDef(k)
+		if err != nil {
+			return err
+		}
+		cfg.parsedKeys = append(cfg.parsedKeys, ks)
+	}
+	return nil
+}
+
+// dedupFunc returns the comparison function for dedup based on config.
+func dedupFunc(cfg *config) func(string, string) int {
+	if len(cfg.parsedKeys) > 0 {
+		return func(a, b string) int {
+			return compareKeys(a, b, cfg)
+		}
+	}
+	return compareFuncWithBlanks(cfg)
 }
 
 // readAllLines reads all input lines from the configured files.
@@ -183,11 +215,15 @@ func writeLines(w io.Writer, lines []string, terminator string) error {
 // sortLines sorts lines in-place using stable sort with the configured mode.
 // R1.1: default lexicographic sort. R1.4: -r reverses the result.
 // R2.1-R2.4: numeric, human-numeric, month, version sort modes.
+// R3.2-R3.3: key-based sorting when -k is specified.
 func sortLines(lines []string, cfg *config) {
-	cmp := compareFunc(cfg)
+	if len(cfg.parsedKeys) > 0 {
+		sortWithKeys(lines, cfg)
+		return
+	}
+	cmp := compareFuncWithBlanks(cfg)
 	sort.SliceStable(lines, func(i, j int) bool {
 		result := cmp(lines[i], lines[j])
-		// Last-resort: full-line comparison when keys are equal (unless -s).
 		if result == 0 && !cfg.stable {
 			result = strings.Compare(lines[i], lines[j])
 		}
@@ -196,6 +232,31 @@ func sortLines(lines []string, cfg *config) {
 		}
 		return result < 0
 	})
+}
+
+// sortWithKeys sorts lines using the key specifications.
+// R3.2, R3.3: keys are compared in order; earlier keys take precedence.
+// Per-key reverse is applied within compareKeys; last-resort is always ascending.
+func sortWithKeys(lines []string, cfg *config) {
+	sort.SliceStable(lines, func(i, j int) bool {
+		result := compareKeys(lines[i], lines[j], cfg)
+		if result == 0 && !cfg.stable {
+			result = strings.Compare(lines[i], lines[j])
+		}
+		return result < 0
+	})
+}
+
+// compareFuncWithBlanks wraps compareFunc with R3.4 -b support for the
+// no-key sort path.
+func compareFuncWithBlanks(cfg *config) func(string, string) int {
+	base := compareFunc(cfg)
+	if !cfg.ignoreBlanks {
+		return base
+	}
+	return func(a, b string) int {
+		return base(strings.TrimLeft(a, " \t"), strings.TrimLeft(b, " \t"))
+	}
 }
 
 // dedup removes consecutive lines that compare equal under the active sort key.
@@ -343,8 +404,11 @@ func parseShortFlags(cfg *config, args []string, i int) int {
 	extra := 0
 	for j := 1; j < len(arg); j++ {
 		consumed := parseOneShort(cfg, arg[j], arg[j+1:], args, i+1+extra)
-		if consumed < 0 {
+		if consumed == -1 {
 			return 0 // unknown flag
+		}
+		if consumed == restConsumed {
+			break // value consumed from rest of this arg
 		}
 		if consumed > 0 {
 			extra += consumed
@@ -405,7 +469,7 @@ func parseOneShort(cfg *config, ch byte, rest string, args []string, nextIdx int
 func shortValueFlag(dst *string, rest string, args []string, nextIdx int) int {
 	if rest != "" {
 		*dst = rest
-		return 0
+		return restConsumed
 	}
 	if nextIdx < len(args) {
 		*dst = args[nextIdx]
@@ -418,7 +482,7 @@ func shortValueFlag(dst *string, rest string, args []string, nextIdx int) int {
 func shortKeyFlag(dst *[]string, rest string, args []string, nextIdx int) int {
 	if rest != "" {
 		*dst = append(*dst, rest)
-		return 0
+		return restConsumed
 	}
 	if nextIdx < len(args) {
 		*dst = append(*dst, args[nextIdx])
