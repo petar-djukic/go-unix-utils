@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rm against grm (GNU coreutils).
-// Implements srd058 differential testing for R1.1-R1.4, R2.1-R2.4.
+// Implements srd058 differential testing for R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -44,8 +44,8 @@ func mkDir(t *testing.T, dir, name string) {
 	}
 }
 
-// programNameRe matches the program name prefix in error output.
-var programNameRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+// programNameRe matches any binary path ending in rm or grm.
+var programNameRe = regexp.MustCompile(`(?:\S+/)?g?rm:`)
 
 // tryHelpRe matches "Try 'BINARY --help'" with any binary path.
 var tryHelpRe = regexp.MustCompile(`Try '[^']+' for`)
@@ -87,8 +87,7 @@ func extractExitCode(t *testing.T, err error, bin string) int {
 	if err == nil {
 		return 0
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exitErr.ExitCode()
 	}
 	t.Fatalf("failed to execute %s: %v", bin, err)
@@ -104,14 +103,24 @@ func runRmDiff(
 	args []string,
 ) {
 	t.Helper()
+	runRmDiffStdin(t, goBin, refBin, setup, args, nil)
+}
+
+// runRmDiffStdin runs a differential test with stdin input.
+func runRmDiffStdin(
+	t *testing.T, goBin, refBin string,
+	setup func(t *testing.T, dir string),
+	args []string, stdin []byte,
+) {
+	t.Helper()
 	refDir := t.TempDir()
 	goDir := t.TempDir()
 	if setup != nil {
 		setup(t, refDir)
 		setup(t, goDir)
 	}
-	ref := runBin(t, refBin, args, refDir, nil)
-	got := runBin(t, goBin, args, goDir, nil)
+	ref := runBin(t, refBin, args, refDir, stdin)
+	got := runBin(t, goBin, args, goDir, stdin)
 	compareRmResults(t, args, ref, got)
 }
 
@@ -158,6 +167,10 @@ func TestDiff(t *testing.T) {
 	t.Run("R2.2", func(t *testing.T) { testR2_2(t, goBin, refBin) })
 	t.Run("R2.3", func(t *testing.T) { testR2_3(t, goBin, refBin) })
 	t.Run("R2.4", func(t *testing.T) { testR2_4(t, goBin, refBin) })
+	t.Run("R3.1", func(t *testing.T) { testR3_1(t, goBin, refBin) })
+	t.Run("R3.2", func(t *testing.T) { testR3_2(t, goBin, refBin) })
+	t.Run("R3.3", func(t *testing.T) { testR3_3(t, goBin, refBin) })
+	t.Run("R3.4", func(t *testing.T) { testR3_4(t, goBin, refBin) })
 }
 
 // testR1_1 tests basic file removal.
@@ -437,6 +450,185 @@ func testR2_4(t *testing.T, goBin, refBin string) {
 				writeFile(t, dir, "f.txt", "data\n")
 			},
 			[]string{"-d", "f.txt"},
+		)
+	})
+}
+
+// testR3_1 tests interactive mode prompting before every removal.
+// R3.1: -i must prompt before every removal.
+func testR3_1(t *testing.T, goBin, refBin string) {
+	t.Run("i_yes_single_file", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"-i", "f.txt"},
+			[]byte("y\n"),
+		)
+	})
+	t.Run("i_no_single_file", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"-i", "f.txt"},
+			[]byte("n\n"),
+		)
+	})
+	t.Run("i_yes_multiple_files", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "aa\n")
+				writeFile(t, dir, "b.txt", "bb\n")
+			},
+			[]string{"-i", "a.txt", "b.txt"},
+			[]byte("y\ny\n"),
+		)
+	})
+	t.Run("i_recursive_dir", func(t *testing.T) {
+		// descend? y, remove file? y, remove dir? y
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d")
+				writeFile(t, dir, "d/f.txt", "data\n")
+			},
+			[]string{"-ir", "d"},
+			[]byte("y\ny\ny\n"),
+		)
+	})
+	t.Run("i_empty_file", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "empty.txt", "")
+			},
+			[]string{"-i", "empty.txt"},
+			[]byte("y\n"),
+		)
+	})
+}
+
+// testR3_2 tests interactive-once mode.
+// R3.2: -I prompts once before removing >3 files or recursively.
+func testR3_2(t *testing.T, goBin, refBin string) {
+	t.Run("I_four_files_yes", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a", "1\n")
+				writeFile(t, dir, "b", "2\n")
+				writeFile(t, dir, "c", "3\n")
+				writeFile(t, dir, "d", "4\n")
+			},
+			[]string{"-I", "a", "b", "c", "d"},
+			[]byte("y\n"),
+		)
+	})
+	t.Run("I_four_files_no", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a", "1\n")
+				writeFile(t, dir, "b", "2\n")
+				writeFile(t, dir, "c", "3\n")
+				writeFile(t, dir, "d", "4\n")
+			},
+			[]string{"-I", "a", "b", "c", "d"},
+			[]byte("n\n"),
+		)
+	})
+	t.Run("I_three_files_no_prompt", func(t *testing.T) {
+		// Three files: no prompt needed, removes all.
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a", "1\n")
+				writeFile(t, dir, "b", "2\n")
+				writeFile(t, dir, "c", "3\n")
+			},
+			[]string{"-I", "a", "b", "c"},
+		)
+	})
+	t.Run("I_recursive_yes", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d")
+				writeFile(t, dir, "d/f.txt", "data\n")
+			},
+			[]string{"-Ir", "d"},
+			[]byte("y\n"),
+		)
+	})
+	t.Run("I_recursive_no", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d")
+				writeFile(t, dir, "d/f.txt", "data\n")
+			},
+			[]string{"-Ir", "d"},
+			[]byte("n\n"),
+		)
+	})
+}
+
+// testR3_3 tests verbose output.
+// R3.3: -v must print the name of each file as it is removed.
+func testR3_3(t *testing.T, goBin, refBin string) {
+	t.Run("v_single_file", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"-v", "f.txt"},
+		)
+	})
+	t.Run("v_multiple_files", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a.txt", "aa\n")
+				writeFile(t, dir, "b.txt", "bb\n")
+			},
+			[]string{"-v", "a.txt", "b.txt"},
+		)
+	})
+}
+
+// testR3_4 tests --interactive=WHEN flag.
+// R3.4: WHEN is never (like -f), once (like -I), always (like -i).
+func testR3_4(t *testing.T, goBin, refBin string) {
+	t.Run("interactive_always", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"--interactive=always", "f.txt"},
+			[]byte("y\n"),
+		)
+	})
+	t.Run("interactive_once_four_files", func(t *testing.T) {
+		runRmDiffStdin(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "a", "1\n")
+				writeFile(t, dir, "b", "2\n")
+				writeFile(t, dir, "c", "3\n")
+				writeFile(t, dir, "d", "4\n")
+			},
+			[]string{"--interactive=once", "a", "b", "c", "d"},
+			[]byte("y\n"),
+		)
+	})
+	t.Run("interactive_never", func(t *testing.T) {
+		// No prompt, removes file directly.
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"--interactive=never", "f.txt"},
+		)
+	})
+	t.Run("f_overrides_i", func(t *testing.T) {
+		// -i then -f: last wins, no prompt.
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"-i", "-f", "f.txt"},
 		)
 	})
 }
