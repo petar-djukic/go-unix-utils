@@ -384,7 +384,7 @@ func splitWithPatterns(lines []string, patterns []pattern, gen *suffixGenerator,
 		var err error
 		pos, sizes, err = applyPattern(lines, pos, pat, gen, cfg, sizes)
 		if err != nil {
-			removeCreatedFiles(gen, cfg, len(sizes))
+			removeCreatedFiles(cfg, len(sizes))
 			return err
 		}
 	}
@@ -542,7 +542,7 @@ func printSizes(sizes []int, quiet bool) {
 
 // removeCreatedFiles removes output files created before an error.
 // Per GNU behavior, files are removed on error by default.
-func removeCreatedFiles(gen *suffixGenerator, cfg *config, count int) {
+func removeCreatedFiles(cfg *config, count int) {
 	rgen := newSuffixGenerator(cfg.prefix, cfg.digits)
 	for range count {
 		fname := rgen.next()
