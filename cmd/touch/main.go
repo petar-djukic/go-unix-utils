@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/touch: create files and update timestamps.
-// Implements srd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd062-touch R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -44,11 +46,20 @@ const versionText = "touch (go-unix-utils) 1.0\n"
 
 // options holds parsed command-line flags.
 type options struct {
-	noCreate   bool
-	accessOnly bool   // R2.1: -a flag
-	modOnly    bool   // R2.2: -m flag
-	stamp      string // R2.4: -t STAMP value
-	files      []string
+	noCreate      bool
+	accessOnly    bool   // R2.1: -a flag
+	modOnly       bool   // R2.2: -m flag
+	noDereference bool   // R3.4: -h flag
+	stamp         string // R2.4: -t STAMP value
+	refFile       string // R3.1: -r FILE value
+	dateStr       string // R3.2: -d STRING value
+	files         []string
+}
+
+// resolvedTime holds the timestamps to apply to target files.
+type resolvedTime struct {
+	atime time.Time
+	mtime time.Time
 }
 
 func main() {
@@ -57,10 +68,6 @@ func main() {
 }
 
 // run executes the touch logic and returns the exit code.
-// R1.1: update access and modification times to current time.
-// R1.2: create file if absent. R1.3: -c suppresses creation.
-// R1.4: process multiple file arguments in order.
-// R2.1-R2.4: timestamp selection and explicit times.
 func run(args []string) int {
 	opts, err := parseArgs(args)
 	if err != nil {
@@ -89,13 +96,53 @@ func run(args []string) int {
 	return exitCode
 }
 
-// resolveTime determines the timestamp to apply.
-// R2.3: default is current time. R2.4: -t overrides with parsed stamp.
-func resolveTime(opts *options) (time.Time, error) {
-	if opts.stamp != "" {
-		return parseStamp(opts.stamp)
+// resolveTime determines the timestamps to apply.
+// R2.3: default is current time. R2.4: -t overrides.
+// R3.1: -r overrides with reference file timestamps.
+// R3.2: -d overrides with parsed date string.
+func resolveTime(opts *options) (resolvedTime, error) {
+	if opts.refFile != "" {
+		return resolveRefTime(opts.refFile)
 	}
-	return time.Now(), nil
+	if opts.dateStr != "" {
+		return resolveDateStr(opts.dateStr)
+	}
+	if opts.stamp != "" {
+		return resolveStamp(opts.stamp)
+	}
+	now := time.Now()
+	return resolvedTime{atime: now, mtime: now}, nil
+}
+
+// resolveRefTime reads timestamps from a reference file.
+// R3.1: use reference file timestamps.
+// R3.3: error if reference file does not exist.
+func resolveRefTime(refFile string) (resolvedTime, error) {
+	fi, err := sys.Stat(refFile)
+	if err != nil {
+		return resolvedTime{}, fmt.Errorf(
+			"failed to get attributes of '%s': %v", refFile, err)
+	}
+	return resolvedTime{atime: fi.AccessTime, mtime: fi.ModTime}, nil
+}
+
+// resolveDateStr parses a date string and returns it as both timestamps.
+// R3.2: -d STRING parsing.
+func resolveDateStr(dateStr string) (resolvedTime, error) {
+	t, err := parseDate(dateStr)
+	if err != nil {
+		return resolvedTime{}, err
+	}
+	return resolvedTime{atime: t, mtime: t}, nil
+}
+
+// resolveStamp parses a -t STAMP value and returns it as both timestamps.
+func resolveStamp(stamp string) (resolvedTime, error) {
+	t, err := parseStamp(stamp)
+	if err != nil {
+		return resolvedTime{}, err
+	}
+	return resolvedTime{atime: t, mtime: t}, nil
 }
 
 // parseArgs parses command-line arguments into options.
@@ -123,7 +170,12 @@ func parseArgs(args []string) (*options, error) {
 			i++
 			continue
 		}
-		if handled, advance, err := parseLongWithValue(arg, args, i); handled {
+		if arg == "--no-dereference" {
+			opts.noDereference = true
+			i++
+			continue
+		}
+		if handled, advance, err := parseLongWithValue(arg, args, i, opts); handled {
 			if err != nil {
 				return nil, err
 			}
@@ -145,24 +197,36 @@ func parseArgs(args []string) (*options, error) {
 }
 
 // parseLongWithValue handles --date=X and --reference=X flags.
-// Returns (handled, advance, error). These are R3 flags; we
-// accept them for parsing but they are no-ops until R3 scope.
-func parseLongWithValue(arg string, args []string, idx int) (bool, int, error) {
-	if strings.HasPrefix(arg, "--date=") || strings.HasPrefix(arg, "--reference=") {
+// R3.1: --reference=FILE. R3.2: --date=STRING.
+func parseLongWithValue(arg string, args []string, idx int, opts *options) (bool, int, error) {
+	if strings.HasPrefix(arg, "--date=") {
+		opts.dateStr = arg[len("--date="):]
 		return true, 1, nil
 	}
-	if arg == "--date" || arg == "--reference" {
+	if strings.HasPrefix(arg, "--reference=") {
+		opts.refFile = arg[len("--reference="):]
+		return true, 1, nil
+	}
+	if arg == "--date" {
 		if idx+1 >= len(args) {
 			return true, 1, fmt.Errorf("option '%s' requires an argument", arg)
 		}
+		opts.dateStr = args[idx+1]
+		return true, 2, nil
+	}
+	if arg == "--reference" {
+		if idx+1 >= len(args) {
+			return true, 1, fmt.Errorf("option '%s' requires an argument", arg)
+		}
+		opts.refFile = args[idx+1]
 		return true, 2, nil
 	}
 	return false, 0, nil
 }
 
 // parseShortFlags processes a cluster of short flags (e.g., "-acm").
-// R1.3: -c sets noCreate. R2.1: -a sets accessOnly. R2.2: -m sets modOnly.
-// R2.4: -t captures the stamp value.
+// R1.3: -c. R2.1: -a. R2.2: -m. R2.4: -t.
+// R3.1: -r. R3.2: -d. R3.4: -h.
 func parseShortFlags(flags string, args []string, idx int, opts *options) (int, error) {
 	for j := 0; j < len(flags); j++ {
 		switch flags[j] {
@@ -173,17 +237,13 @@ func parseShortFlags(flags string, args []string, idx int, opts *options) (int, 
 		case 'c':
 			opts.noCreate = true
 		case 'h':
-			// R3.4: --no-dereference; accepted for parsing, no-op until R3 scope.
+			opts.noDereference = true
 		case 't':
 			return consumeValueFlag(flags, args, idx, j, 't', &opts.stamp)
 		case 'r':
-			// -r FILE: consume the value argument (R3 scope, no-op).
-			var discard string
-			return consumeValueFlag(flags, args, idx, j, 'r', &discard)
+			return consumeValueFlag(flags, args, idx, j, 'r', &opts.refFile)
 		case 'd':
-			// -d STRING: consume the value argument (R3 scope, no-op).
-			var discard string
-			return consumeValueFlag(flags, args, idx, j, 'd', &discard)
+			return consumeValueFlag(flags, args, idx, j, 'd', &opts.dateStr)
 		default:
 			return 1, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
@@ -208,12 +268,16 @@ func consumeValueFlag(flags string, args []string, idx, j int, flag byte, dest *
 
 // touchFile updates timestamps or creates a file.
 // R1.1: update times. R1.2: create file if absent.
-// R1.3: skip creation when noCreate is true.
-func touchFile(path string, opts *options, ts time.Time) error {
-	_, err := os.Stat(path)
+// R1.3: -c suppresses creation. R3.4: -h uses lstat and suppresses creation.
+func touchFile(path string, opts *options, ts resolvedTime) error {
+	statFn := os.Stat
+	if opts.noDereference {
+		statFn = os.Lstat
+	}
+	_, err := statFn(path)
 	if os.IsNotExist(err) {
-		if opts.noCreate {
-			return nil // R1.3: suppress creation silently
+		if opts.noCreate || opts.noDereference {
+			return nil // R1.3, R3.4: suppress creation silently
 		}
 		if err := createEmpty(path); err != nil {
 			return err
@@ -239,25 +303,132 @@ func createEmpty(path string) error {
 // R2.1: -a changes only access time.
 // R2.2: -m changes only modification time.
 // R2.3: neither -a nor -m changes both.
-func applyTimestamps(path string, opts *options, ts time.Time) error {
-	fi, err := sys.Stat(path)
+// R3.4: -h uses lstat and UtimesNanoAt with AT_SYMLINK_NOFOLLOW.
+func applyTimestamps(path string, opts *options, ts resolvedTime) error {
+	atime, mtime, err := computeTimestamps(path, opts, ts)
 	if err != nil {
+		return err
+	}
+	if opts.noDereference {
+		return setTimesNoFollow(path, atime, mtime)
+	}
+	if err := os.Chtimes(path, atime, mtime); err != nil {
 		return fmt.Errorf("cannot touch '%s': %v", path, err)
+	}
+	return nil
+}
+
+// computeTimestamps determines final atime/mtime applying -a/-m selection.
+func computeTimestamps(path string, opts *options, ts resolvedTime) (time.Time, time.Time, error) {
+	var fi *sys.FileInfo
+	var err error
+	if opts.noDereference {
+		fi, err = sys.Lstat(path)
+	} else {
+		fi, err = sys.Stat(path)
+	}
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("cannot touch '%s': %v", path, err)
 	}
 	atime := fi.AccessTime
 	mtime := fi.ModTime
 	changeAccess := !opts.modOnly || opts.accessOnly
 	changeMod := !opts.accessOnly || opts.modOnly
 	if changeAccess {
-		atime = ts
+		atime = ts.atime
 	}
 	if changeMod {
-		mtime = ts
+		mtime = ts.mtime
 	}
-	if err := os.Chtimes(path, atime, mtime); err != nil {
+	return atime, mtime, nil
+}
+
+// setTimesNoFollow sets timestamps on a symlink without following it.
+// R3.4: uses UtimesNanoAt with AT_SYMLINK_NOFOLLOW.
+func setTimesNoFollow(path string, atime, mtime time.Time) error {
+	ts := [2]unix.Timespec{
+		unix.NsecToTimespec(atime.UnixNano()),
+		unix.NsecToTimespec(mtime.UnixNano()),
+	}
+	err := unix.UtimesNanoAt(unix.AT_FDCWD, path, ts[:], unix.AT_SYMLINK_NOFOLLOW)
+	if err != nil {
 		return fmt.Errorf("cannot touch '%s': %v", path, err)
 	}
 	return nil
+}
+
+// parseDate parses a date string for the -d flag.
+// R3.2: supports ISO 8601 formats and @epoch notation.
+func parseDate(s string) (time.Time, error) {
+	if strings.HasPrefix(s, "@") {
+		return parseEpoch(s[1:])
+	}
+	return parseDateLayouts(s)
+}
+
+// dateLayoutTZ contains layouts with explicit timezone info.
+var dateLayoutTZ = []string{
+	"2006-01-02 15:04:05.999999999 -0700",
+	"2006-01-02 15:04:05 -0700",
+	"2006-01-02T15:04:05.999999999-07:00",
+	"2006-01-02T15:04:05-07:00",
+	"2006-01-02T15:04:05.999999999Z",
+	"2006-01-02T15:04:05Z",
+}
+
+// dateLayoutLocal contains layouts without timezone (interpreted as local).
+var dateLayoutLocal = []string{
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02",
+}
+
+// parseDateLayouts tries to parse s against known date layouts.
+func parseDateLayouts(s string) (time.Time, error) {
+	for _, layout := range dateLayoutTZ {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	for _, layout := range dateLayoutLocal {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid date format '%s'", s)
+}
+
+// parseEpoch parses an epoch seconds string (from @SECONDS[.FRAC]).
+func parseEpoch(s string) (time.Time, error) {
+	idx := strings.IndexByte(s, '.')
+	if idx < 0 {
+		sec, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid date format '@%s'", s)
+		}
+		return time.Unix(sec, 0), nil
+	}
+	return parseEpochFrac(s, idx)
+}
+
+// parseEpochFrac parses epoch seconds with a fractional part.
+func parseEpochFrac(s string, dotIdx int) (time.Time, error) {
+	sec, err := strconv.ParseInt(s[:dotIdx], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date format '@%s'", s)
+	}
+	frac := s[dotIdx+1:]
+	for len(frac) < 9 {
+		frac += "0"
+	}
+	nsec, err := strconv.ParseInt(frac[:9], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date format '@%s'", s)
+	}
+	return time.Unix(sec, nsec), nil
 }
 
 // parseStamp parses [[CC]YY]MMDDhhmm[.ss] into a time.Time.
