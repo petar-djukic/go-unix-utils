@@ -19,6 +19,10 @@ import (
 // R1.2: fractional durations.
 // R1.3: suffix multipliers s, m, h, d.
 // R1.4: duration 0 = no time limit.
+// R2.1: -s SIGNAL / --signal=SIGNAL for signal selection.
+// R2.2: -k DURATION / --kill-after=DURATION for kill escalation.
+// R2.3: --foreground skips process group creation.
+// R2.4: --preserve-status returns command exit status on timeout.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtimeout")
@@ -91,6 +95,75 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "zero-suffix-s",
 			Args: []string{"0s", "true"},
+		},
+		// R2.1: -s HUP sends SIGHUP on timeout.
+		{
+			Name:     "signal-hup-timeout",
+			Args:     []string{"-s", "HUP", "0.1", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.1: -s with numeric signal value (1 = SIGHUP).
+		{
+			Name:     "signal-numeric-1",
+			Args:     []string{"-s", "1", "0.1", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.1: --signal=HUP long form.
+		{
+			Name:     "signal-long-form",
+			Args:     []string{"--signal=HUP", "0.1", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.1: -s TERM explicit, command succeeds before timeout.
+		{
+			Name: "signal-term-success",
+			Args: []string{"-s", "TERM", "10", "true"},
+		},
+		// R2.2: -k kill-after with timeout.
+		{
+			Name:     "kill-after",
+			Args:     []string{"-k", "0.5", "0.1", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.2: --kill-after= long form.
+		{
+			Name:     "kill-after-long",
+			Args:     []string{"--kill-after=0.5", "0.1", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.3: --foreground with command that succeeds.
+		{
+			Name: "foreground-success",
+			Args: []string{"--foreground", "10", "true"},
+		},
+		// R2.3: --foreground with timeout.
+		{
+			Name:     "foreground-timeout",
+			Args:     []string{"--foreground", "0.1", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.4: --preserve-status with timeout returns 128+SIGTERM(15)=143.
+		{
+			Name:     "preserve-status-timeout",
+			Args:     []string{"--preserve-status", "0.1", "sleep", "10"},
+			ExitCode: 143,
+		},
+		// R2.4: --preserve-status without timeout, exits with command status.
+		{
+			Name: "preserve-status-success",
+			Args: []string{"--preserve-status", "10", "true"},
+		},
+		// R2.4: --preserve-status with failing command, no timeout.
+		{
+			Name:     "preserve-status-failure",
+			Args:     []string{"--preserve-status", "10", "false"},
+			ExitCode: 1,
+		},
+		// R2.1+R2.4: --preserve-status -s HUP returns 128+SIGHUP(1)=129.
+		{
+			Name:     "preserve-status-signal-hup",
+			Args:     []string{"--preserve-status", "-s", "HUP", "0.1", "sleep", "10"},
+			ExitCode: 129,
 		},
 		// Error: no arguments.
 		{
