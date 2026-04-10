@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/rm: remove files or directories.
-// Implements srd058 R1.1-R1.4.
+// Implements srd058 R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -88,6 +88,8 @@ func isDotOrDotDot(path string) bool {
 
 // handleDir handles directory removal based on flags.
 // R1.2: without -r or -d, refuses to remove directories.
+// R2.1: -r removes directories and their contents recursively.
+// R2.4: -d removes empty directories only.
 func handleDir(opts options, path string) error {
 	if opts.recursive {
 		return removeRecursive(opts, path)
@@ -113,6 +115,7 @@ func removeFile(opts options, path string) error {
 
 // removeRecursive recursively removes a directory tree.
 // R2.1: -r removes directories and their contents.
+// R2.3: combined with -f, silently removes without prompting.
 func removeRecursive(opts options, path string) error {
 	if opts.verbose {
 		return removeTreeVerbose(path)
@@ -137,7 +140,7 @@ func removeTreeVerbose(path string) error {
 			return err
 		}
 	}
-	return removeAndPrint(path)
+	return removeDirAndPrint(path)
 }
 
 // removeChildVerbose removes a single child entry with verbose output.
@@ -153,13 +156,13 @@ func removeChildVerbose(child string, entry os.DirEntry) error {
 	return nil
 }
 
-// removeAndPrint removes a path and prints verbose output.
-func removeAndPrint(path string) error {
+// removeDirAndPrint removes a directory and prints verbose output.
+func removeDirAndPrint(path string) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("cannot remove '%s': %s",
 			path, sysErrMsg(err))
 	}
-	printRemoved(path)
+	printRemovedDir(path)
 	return nil
 }
 
@@ -171,15 +174,21 @@ func removeDirEntry(opts options, path string) error {
 			path, sysErrMsg(err))
 	}
 	if opts.verbose {
-		printRemoved(path)
+		printRemovedDir(path)
 	}
 	return nil
 }
 
-// printRemoved prints verbose removal output.
+// printRemoved prints verbose removal output for files.
 // R3.3: format matches GNU rm "removed 'PATH'".
 func printRemoved(path string) {
 	fmt.Fprintf(os.Stdout, "removed '%s'\n", path)
+}
+
+// printRemovedDir prints verbose removal output for directories.
+// R3.3: format matches GNU rm "removed directory 'PATH'".
+func printRemovedDir(path string) {
+	fmt.Fprintf(os.Stdout, "removed directory '%s'\n", path)
 }
 
 // sysErrMsg extracts the system error message from an os error.
@@ -248,7 +257,7 @@ func parseLongFlag(opts *options, arg string) {
 }
 
 // parseShortFlags handles combined short flags for rm.
-// Last-wins for -f overriding -i.
+// R2.2: -f overrides -i (last-wins for interactive flags).
 func parseShortFlags(opts *options, arg string) {
 	for j := 1; j < len(arg); j++ {
 		switch arg[j] {

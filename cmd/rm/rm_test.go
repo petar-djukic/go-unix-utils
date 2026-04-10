@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/rm against grm (GNU coreutils).
-// Implements srd058 differential testing for R1.1-R1.4.
+// Implements srd058 differential testing for R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -154,6 +154,10 @@ func TestDiff(t *testing.T) {
 	t.Run("R1.2", func(t *testing.T) { testR1_2(t, goBin, refBin) })
 	t.Run("R1.3", func(t *testing.T) { testR1_3(t, goBin, refBin) })
 	t.Run("R1.4", func(t *testing.T) { testR1_4(t, goBin, refBin) })
+	t.Run("R2.1", func(t *testing.T) { testR2_1(t, goBin, refBin) })
+	t.Run("R2.2", func(t *testing.T) { testR2_2(t, goBin, refBin) })
+	t.Run("R2.3", func(t *testing.T) { testR2_3(t, goBin, refBin) })
+	t.Run("R2.4", func(t *testing.T) { testR2_4(t, goBin, refBin) })
 }
 
 // testR1_1 tests basic file removal.
@@ -256,6 +260,183 @@ func testR1_4(t *testing.T, goBin, refBin string) {
 	t.Run("no_args", func(t *testing.T) {
 		runRmDiff(t, goBin, refBin, nil,
 			[]string{},
+		)
+	})
+}
+
+// testR2_1 tests recursive directory removal.
+// R2.1: -r/-R/--recursive removes directories and contents.
+func testR2_1(t *testing.T, goBin, refBin string) {
+	t.Run("recursive_r_flag", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d/sub")
+				writeFile(t, dir, "d/sub/file.txt", "data\n")
+				writeFile(t, dir, "d/top.txt", "top\n")
+			},
+			[]string{"-r", "d"},
+		)
+	})
+	t.Run("recursive_R_flag", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d/sub")
+				writeFile(t, dir, "d/sub/file.txt", "data\n")
+			},
+			[]string{"-R", "d"},
+		)
+	})
+	t.Run("recursive_long_flag", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d/sub")
+				writeFile(t, dir, "d/sub/file.txt", "data\n")
+			},
+			[]string{"--recursive", "d"},
+		)
+	})
+	t.Run("recursive_empty_dir", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "emptydir")
+			},
+			[]string{"-r", "emptydir"},
+		)
+	})
+	t.Run("recursive_nested_dirs", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "a/b/c")
+				writeFile(t, dir, "a/b/c/deep.txt", "deep\n")
+				writeFile(t, dir, "a/b/mid.txt", "mid\n")
+				writeFile(t, dir, "a/top.txt", "top\n")
+			},
+			[]string{"-r", "a"},
+		)
+	})
+	t.Run("recursive_verbose", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d")
+				writeFile(t, dir, "d/file.txt", "data\n")
+			},
+			[]string{"-rv", "d"},
+		)
+	})
+}
+
+// testR2_2 tests force mode.
+// R2.2: -f ignores non-existent files and never prompts.
+func testR2_2(t *testing.T, goBin, refBin string) {
+	t.Run("force_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f", "no_such_file"},
+		)
+	})
+	t.Run("force_no_args", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f"},
+		)
+	})
+	t.Run("force_long_flag", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"--force", "no_such_file"},
+		)
+	})
+	t.Run("force_existing_file", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"-f", "f.txt"},
+		)
+	})
+	t.Run("force_multiple_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-f", "a", "b", "c"},
+		)
+	})
+}
+
+// testR2_3 tests combined recursive and force mode.
+// R2.3: -r and -f combined silently removes directory trees.
+func testR2_3(t *testing.T, goBin, refBin string) {
+	t.Run("rf_directory_tree", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d/sub")
+				writeFile(t, dir, "d/sub/file.txt", "data\n")
+				writeFile(t, dir, "d/top.txt", "top\n")
+			},
+			[]string{"-rf", "d"},
+		)
+	})
+	t.Run("rf_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin, nil,
+			[]string{"-rf", "no_such_dir"},
+		)
+	})
+	t.Run("rf_mixed_existing_nonexistent", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d")
+				writeFile(t, dir, "d/f.txt", "data\n")
+			},
+			[]string{"-rf", "d", "no_such"},
+		)
+	})
+	t.Run("rf_empty_dir", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "emptydir")
+			},
+			[]string{"-rf", "emptydir"},
+		)
+	})
+}
+
+// testR2_4 tests empty directory removal with -d.
+// R2.4: -d removes empty directories; without -d or -r, fails.
+func testR2_4(t *testing.T, goBin, refBin string) {
+	t.Run("d_empty_dir", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "emptydir")
+			},
+			[]string{"-d", "emptydir"},
+		)
+	})
+	t.Run("d_nonempty_dir", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "d")
+				writeFile(t, dir, "d/f.txt", "data\n")
+			},
+			[]string{"-d", "d"},
+		)
+	})
+	t.Run("d_long_flag", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "emptydir")
+			},
+			[]string{"--dir", "emptydir"},
+		)
+	})
+	t.Run("d_verbose", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				mkDir(t, dir, "emptydir")
+			},
+			[]string{"-dv", "emptydir"},
+		)
+	})
+	t.Run("d_with_file", func(t *testing.T) {
+		runRmDiff(t, goBin, refBin,
+			func(t *testing.T, dir string) {
+				writeFile(t, dir, "f.txt", "data\n")
+			},
+			[]string{"-d", "f.txt"},
 		)
 	})
 }
