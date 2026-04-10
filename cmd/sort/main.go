@@ -59,6 +59,10 @@ func run(args []string) int {
 	if cfg.parseErr {
 		return 2
 	}
+	if err := validateOptions(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 2
+	}
 	if err := parseKeySpecs(&cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 2
@@ -80,6 +84,15 @@ func run(args []string) int {
 		lines = dedup(lines, dedupFunc(&cfg))
 	}
 	return writeOutput(&cfg, lines)
+}
+
+// validateOptions checks for conflicting option combinations.
+// R4.3: exit 2 on conflicting options (e.g. -c and -C together).
+func validateOptions(cfg *config) error {
+	if cfg.check && cfg.checkQuiet {
+		return fmt.Errorf("options '-cC' are incompatible")
+	}
+	return nil
 }
 
 // parseKeySpecs parses -t and -k flags into sepByte and parsedKeys.

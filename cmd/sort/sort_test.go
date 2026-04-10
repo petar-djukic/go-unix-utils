@@ -362,6 +362,56 @@ func TestDiff(t *testing.T) {
 			Stdin:    []byte("  apple\nbanana\n  cherry\n"),
 			ExitCode: 0,
 		},
+		// R4.2: -c combined with numeric+reverse
+		{
+			Name:     "check sorted numeric reverse",
+			Args:     []string{"-c", "-n", "-r"},
+			Stdin:    []byte("10\n2\n1\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted numeric reverse exits 1",
+			Args:      []string{"-c", "-n", "-r"},
+			Stdin:     []byte("1\n2\n10\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.3: -c and -C are incompatible, exit 2
+		{
+			Name:      "check and check quiet incompatible exits 2",
+			Args:      []string{"-c", "-C"},
+			Stdin:     []byte("b\na\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: -c check with key+numeric
+		{
+			Name:     "check sorted key numeric",
+			Args:     []string{"-c", "-t:", "-k2,2n"},
+			Stdin:    []byte("b:1\na:2\nc:10\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted key numeric exits 1",
+			Args:      []string{"-c", "-t:", "-k2,2n"},
+			Stdin:     []byte("a:10\nb:2\nc:1\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: -c check with version sort
+		{
+			Name:     "check sorted version ascending",
+			Args:     []string{"-c", "-V"},
+			Stdin:    []byte("v1.1\nv1.2\nv1.10\n"),
+			ExitCode: 0,
+		},
+		// R4.2: --check=silent long form
+		{
+			Name:     "check silent long form unsorted exits 1",
+			Args:     []string{"--check=silent"},
+			Stdin:    []byte("b\na\nc\n"),
+			ExitCode: 1,
+		},
 		// R4.3: exit 2 on conflicting options (tested via TestUsageError)
 
 		// R4.4: additional comprehensive differential tests
@@ -519,21 +569,76 @@ func TestDiffMultiFile(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffCheckFile tests -c check mode with file arguments (R4.2, R4.4).
+func TestDiffCheckFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skip("reference binary gsort not in PATH")
+	}
+
+	dir := t.TempDir()
+	sortedFile := filepath.Join(dir, "sorted.txt")
+	unsortedFile := filepath.Join(dir, "unsorted.txt")
+	if err := os.WriteFile(sortedFile, []byte("a\nb\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unsortedFile, []byte("b\na\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "check sorted file exits 0",
+			Args:     []string{"-c", sortedFile},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted file exits 1",
+			Args:      []string{"-c", unsortedFile},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check quiet unsorted file exits 1",
+			Args:     []string{"-C", unsortedFile},
+			WorkDir:  dir,
+			ExitCode: 1,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestUsageError verifies that invalid flags produce exit code 2 (R4.3).
 func TestUsageError(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 
-	cmd := exec.Command(goBin, "--invalid-flag")
-	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit code for invalid flag")
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"invalid long flag", []string{"--invalid-flag"}},
+		{"invalid short flag", []string{"-Q"}},
 	}
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("expected *exec.ExitError, got %T", err)
-	}
-	if exitErr.ExitCode() != 2 {
-		t.Errorf("expected exit code 2, got %d", exitErr.ExitCode())
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected non-zero exit code")
+			}
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected *exec.ExitError, got %T", err)
+			}
+			if exitErr.ExitCode() != 2 {
+				t.Errorf("expected exit code 2, got %d", exitErr.ExitCode())
+			}
+		})
 	}
 }
