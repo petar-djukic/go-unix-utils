@@ -24,11 +24,9 @@ const version = "1.0.0"
 var stdinReader = bufio.NewReader(os.Stdin)
 
 // errDeclined indicates the user declined an interactive overwrite.
-// Not printed to stderr, but causes exit code 1.
 var errDeclined = errors.New("declined")
 
 // errPartialCopy indicates some entries in a recursive copy failed.
-// Errors were already printed; the caller should set exit code 1.
 var errPartialCopy = errors.New("partial copy")
 
 // options holds parsed command-line flags for cp.
@@ -45,18 +43,24 @@ type options struct {
 	targetDir     string // R4.3: -t/--target-directory
 }
 
+// copyState holds shared mutable state for a copy operation tree.
+type copyState struct {
+	opts      options
+	prs       preserveSet
+	hardLinks map[devIno]string
+}
+
 // main entry point with SIGPIPE handler and argument dispatch.
 func main() {
 	sys.InstallSIGPIPEHandler()
 	opts, args := parseArgs(os.Args[1:])
-	exitCode := run(opts, args)
-	os.Exit(exitCode)
+	os.Exit(run(opts, args))
 }
 
 // run dispatches the copy operation based on parsed options and args.
 func run(opts options, args []string) int {
 	if len(args) == 0 {
-		printMissingOperand("")
+		printMissingOperand()
 		return 1
 	}
 	if len(args) == 1 && opts.targetDir == "" {
@@ -67,7 +71,7 @@ func run(opts options, args []string) int {
 }
 
 // printMissingOperand prints the missing file operand error.
-func printMissingOperand(_ string) {
+func printMissingOperand() {
 	fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
 	printTryHelp()
 }
@@ -86,10 +90,20 @@ func printTryHelp() {
 		"Try '%s --help' for more information.\n", programName)
 }
 
-// copyFiles performs the copy operation for all sources to dest.
+// copyFiles creates a copyState and dispatches all source copies.
 // R1.1: copies SOURCE to DEST, or multiple SOURCEs into DEST directory.
 func copyFiles(opts options, args []string) int {
-	sources, dest := splitSourcesDest(opts, args)
+	cs := &copyState{
+		opts:      opts,
+		prs:       parsePreserve(opts.preserve),
+		hardLinks: make(map[devIno]string),
+	}
+	sources, dest := splitSourcesDest(cs.opts, args)
+	return copyAllSources(cs, sources, dest)
+}
+
+// copyAllSources copies each source to dest, accumulating exit codes.
+func copyAllSources(cs *copyState, sources []string, dest string) int {
 	destIsDir := isDir(dest)
 	if len(sources) > 1 && !destIsDir {
 		fmt.Fprintf(os.Stderr,
@@ -99,7 +113,7 @@ func copyFiles(opts options, args []string) int {
 	exitCode := 0
 	for _, src := range sources {
 		target := resolveTarget(dest, src, destIsDir)
-		if err := copySingle(opts, src, target); err != nil {
+		if err := copySingle(cs, src, target); err != nil {
 			reportErr(err)
 			exitCode = 1
 		}
@@ -151,66 +165,105 @@ func shouldDeref(opts options) bool {
 	return !opts.recursive
 }
 
-// statSource returns file info, following symlinks only when deref is true.
-func statSource(path string, deref bool) (os.FileInfo, error) {
+// sysStatSource stats path using pkg/sys for extended file metadata.
+// D4: uses pkg/sys for platform-specific file metadata.
+func sysStatSource(path string, deref bool) (*sys.FileInfo, error) {
 	if deref {
-		return os.Stat(path)
+		return sys.Stat(path)
 	}
-	return os.Lstat(path)
+	return sys.Lstat(path)
 }
 
-// copySingle copies a single source to destination, applying -n, -i, -f.
-// R1.1: basic copy, R1.2: interactive, R1.3: force, R1.4: no-clobber.
-// R2.1: recursive dirs, R2.2: refuse dirs without -r, R2.3/R2.4: symlinks.
-func copySingle(opts options, src, dest string) error {
-	deref := shouldDeref(opts)
-	srcInfo, err := statSource(src, deref)
+// copySingle copies a single source to destination, dispatching by type.
+// R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+func copySingle(cs *copyState, src, dest string) error {
+	srcInfo, err := sysStatSource(src, shouldDeref(cs.opts))
 	if err != nil {
 		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
 	}
-	// R2.4: check symlink before directory (lstat sets ModeSymlink, not ModeDir)
-	if srcInfo.Mode()&os.ModeSymlink != 0 {
-		return copySymlink(opts, src, dest)
+	if srcInfo.Mode&os.ModeSymlink != 0 {
+		return copySymlink(cs, src, dest)
 	}
-	if srcInfo.IsDir() {
-		return copyDirOrRefuse(opts, src, dest)
+	if srcInfo.Mode.IsDir() {
+		return copyDirOrRefuse(cs, src, dest)
 	}
-	if skipForNoClobber(opts, dest) {
+	return copyRegEntry(cs, src, dest, srcInfo)
+}
+
+// copyRegEntry handles no-clobber, interactive, hard links, and file copy.
+// R3.3: checks for hard link opportunity before copying.
+// R3.4: prints verbose message before copy.
+func copyRegEntry(cs *copyState, src, dest string, info *sys.FileInfo) error {
+	if skipForNoClobber(cs.opts, dest) {
 		return nil
 	}
-	if skipForInteractive(opts, dest) {
+	if skipForInteractive(cs.opts, dest) {
 		return errDeclined
 	}
-	return copyRegularFile(src, dest, opts)
+	if prev, ok := checkHardLink(cs, info, dest); ok {
+		verbosePrint(cs.opts, src, dest)
+		return makeHardLink(prev, dest)
+	}
+	verbosePrint(cs.opts, src, dest)
+	if err := copyFileContent(src, dest, cs.opts); err != nil {
+		return err
+	}
+	return applyFilePreserve(cs.prs, dest, info)
+}
+
+// makeHardLink creates a hard link, removing dest if it exists.
+func makeHardLink(from, to string) error {
+	os.Remove(to) // best-effort removal of existing
+	if err := os.Link(from, to); err != nil {
+		return fmt.Errorf("cannot create hard link '%s': %s",
+			to, sysErrMsg(err))
+	}
+	return nil
 }
 
 // copyDirOrRefuse copies a directory recursively or returns an error.
 // R2.1: recursive copy when -r is set. R2.2: error without -r.
-func copyDirOrRefuse(opts options, src, dest string) error {
-	if !opts.recursive {
+func copyDirOrRefuse(cs *copyState, src, dest string) error {
+	if !cs.opts.recursive {
 		return fmt.Errorf(
 			"-r not specified; omitting directory '%s'", src)
 	}
-	return copyDir(opts, src, dest)
+	return copyDir(cs, src, dest)
 }
 
-// copyDir creates the destination directory and copies entries recursively.
-// R2.1: preserves directory structure.
-func copyDir(opts options, src, dest string) error {
-	srcInfo, err := os.Stat(src)
+// copyDir creates the destination directory, copies entries, then preserves.
+// R2.1: preserves directory structure. R3.1: preserves dir attributes.
+func copyDir(cs *copyState, src, dest string) error {
+	srcInfo, err := sys.Stat(src)
 	if err != nil {
 		return fmt.Errorf("cannot stat '%s': %s", src, sysErrMsg(err))
 	}
-	if err := os.Mkdir(dest, srcInfo.Mode().Perm()); err != nil && !os.IsExist(err) {
+	if err := mkDestDir(dest, srcInfo); err != nil {
+		return err
+	}
+	verbosePrint(cs.opts, src, dest)
+	cpErr := copyDirEntries(cs, src, dest)
+	// R3.1: apply preserve after entries so timestamps reflect final state.
+	pErr := applyFilePreserve(cs.prs, dest, srcInfo)
+	if cpErr != nil {
+		return cpErr
+	}
+	return pErr
+}
+
+// mkDestDir creates the destination directory with source permissions.
+func mkDestDir(dest string, srcInfo *sys.FileInfo) error {
+	err := os.Mkdir(dest, srcInfo.Mode.Perm())
+	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("cannot create directory '%s': %s",
 			dest, sysErrMsg(err))
 	}
-	return copyDirEntries(opts, src, dest)
+	return nil
 }
 
 // copyDirEntries reads and copies each entry from src to dest.
 // Prints errors for individual entries and returns errPartialCopy on failure.
-func copyDirEntries(opts options, src, dest string) error {
+func copyDirEntries(cs *copyState, src, dest string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("cannot open directory '%s' for reading: %s",
@@ -220,7 +273,7 @@ func copyDirEntries(opts options, src, dest string) error {
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
-		if err := copySingle(opts, srcPath, destPath); err != nil {
+		if err := copySingle(cs, srcPath, destPath); err != nil {
 			reportErr(err)
 			hadErr = true
 		}
@@ -233,11 +286,12 @@ func copyDirEntries(opts options, src, dest string) error {
 
 // copySymlink copies a symbolic link, preserving it as a symlink.
 // R2.4: reads the link target and creates a new symlink at dest.
-func copySymlink(opts options, src, dest string) error {
-	if skipForNoClobber(opts, dest) {
+// R3.4: prints verbose message after creating symlink.
+func copySymlink(cs *copyState, src, dest string) error {
+	if skipForNoClobber(cs.opts, dest) {
 		return nil
 	}
-	if skipForInteractive(opts, dest) {
+	if skipForInteractive(cs.opts, dest) {
 		return errDeclined
 	}
 	target, err := os.Readlink(src)
@@ -245,12 +299,12 @@ func copySymlink(opts options, src, dest string) error {
 		return fmt.Errorf("cannot read symlink '%s': %s",
 			src, sysErrMsg(err))
 	}
-	// Remove existing dest to avoid EEXIST from Symlink.
-	os.Remove(dest) // best-effort removal
+	os.Remove(dest) // best-effort removal to avoid EEXIST
 	if err := os.Symlink(target, dest); err != nil {
 		return fmt.Errorf("cannot create symlink '%s': %s",
 			dest, sysErrMsg(err))
 	}
+	verbosePrint(cs.opts, src, dest)
 	return nil
 }
 
@@ -286,9 +340,9 @@ func promptOverwrite(path string) bool {
 	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
-// copyRegularFile copies the contents of src to dest.
-// R1.3: uses createDest which handles force removal.
-func copyRegularFile(src, dest string, opts options) error {
+// copyFileContent copies file data from src to dest.
+// R1.3: uses createDest which handles -f removal.
+func copyFileContent(src, dest string, opts options) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("cannot open '%s' for reading: %s",
@@ -299,6 +353,11 @@ func copyRegularFile(src, dest string, opts options) error {
 	if err != nil {
 		return err
 	}
+	return finishCopy(in, out, dest)
+}
+
+// finishCopy performs the data copy and closes the output file.
+func finishCopy(in, out *os.File, dest string) error {
 	_, cpErr := io.Copy(out, in)
 	closeErr := out.Close()
 	if cpErr != nil {
@@ -326,13 +385,20 @@ func createDest(dest string, opts options) (*os.File, error) {
 	return out, nil
 }
 
+// verbosePrint prints the copy operation when -v is set.
+// R3.4: prints "'src' -> 'dest'" to stdout.
+func verbosePrint(opts options, src, dest string) {
+	if opts.verbose {
+		fmt.Printf("'%s' -> '%s'\n", src, dest)
+	}
+}
+
 // sysErrMsg extracts the system error message from an os error,
 // capitalizing the first letter to match GNU coreutils format.
 func sysErrMsg(err error) string {
 	var pathErr *os.PathError
 	if errors.As(err, &pathErr) {
-		msg := pathErr.Err.Error()
-		return capitalizeFirst(msg)
+		return capitalizeFirst(pathErr.Err.Error())
 	}
 	return err.Error()
 }
@@ -350,11 +416,9 @@ func capitalizeFirst(s string) string {
 
 // parseArgs separates flags from positional arguments.
 // Supports short flags, combined short flags, and long forms.
-// R1.4: when -n and -i both appear, -n takes precedence.
 func parseArgs(rawArgs []string) (options, []string) {
 	var opts options
 	var positional []string
-
 	for i := 0; i < len(rawArgs); i++ {
 		arg := rawArgs[i]
 		if arg == "--" {
@@ -399,10 +463,7 @@ func parseLongFlag(opts *options, rawArgs []string, idx int) int {
 	case flag == "--no-dereference":
 		opts.noDereference = true
 	case flag == "--archive":
-		opts.archive = true
-		opts.recursive = true
-		opts.noDereference = true
-		opts.preserve = "all"
+		setArchive(opts)
 	case flag == "--verbose":
 		opts.verbose = true
 	case strings.HasPrefix(flag, "--preserve="):
@@ -418,6 +479,15 @@ func parseLongFlag(opts *options, rawArgs []string, idx int) int {
 		}
 	}
 	return idx
+}
+
+// setArchive applies -a flag settings.
+// R3.2: -a is equivalent to -dR --preserve=all.
+func setArchive(opts *options) {
+	opts.archive = true
+	opts.recursive = true
+	opts.noDereference = true
+	opts.preserve = "all"
 }
 
 // parseShortFlags handles combined short flags like -rfv.
@@ -441,22 +511,38 @@ func parseShortFlags(opts *options, rawArgs []string, idx int) int {
 		case 'p':
 			opts.preserve = "mode,ownership,timestamps"
 		case 'a':
-			opts.archive = true
-			opts.recursive = true
-			opts.noDereference = true
-			opts.preserve = "all"
+			setArchive(opts)
 		case 'v':
 			opts.verbose = true
+		case 'd':
+			opts.noDereference = true
+			opts.preserve = mergePreserveLinks(opts.preserve)
 		case 't':
-			rest := chars[j+1:]
-			if len(rest) > 0 {
-				opts.targetDir = rest
-			} else if idx+1 < len(rawArgs) {
-				idx++
-				opts.targetDir = rawArgs[idx]
-			}
+			idx = parseTargetDirShort(opts, chars[j+1:], rawArgs, idx)
 			return idx
 		}
+	}
+	return idx
+}
+
+// mergePreserveLinks adds "links" to the preserve string if not already present.
+func mergePreserveLinks(current string) string {
+	if current == "" {
+		return "links"
+	}
+	if current == "all" || strings.Contains(current, "links") {
+		return current
+	}
+	return current + ",links"
+}
+
+// parseTargetDirShort handles -t with remaining chars or next arg.
+func parseTargetDirShort(opts *options, rest string, rawArgs []string, idx int) int {
+	if len(rest) > 0 {
+		opts.targetDir = rest
+	} else if idx+1 < len(rawArgs) {
+		idx++
+		opts.targetDir = rawArgs[idx]
 	}
 	return idx
 }
