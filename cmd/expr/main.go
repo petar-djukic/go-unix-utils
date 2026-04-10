@@ -3,7 +3,7 @@
 
 // Package main implements cmd/expr: evaluate expressions.
 // Implements srd066-expr R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -95,29 +95,14 @@ type parser struct {
 	pos    int
 }
 
-// R1.1-R1.4, R3.1: tokenize converts command-line arguments into typed tokens.
-// R3.1: + TOKEN consumes + and treats TOKEN as a literal string.
+// R1.1-R1.4: tokenize converts command-line arguments into typed tokens.
 func tokenize(args []string) []token {
 	tokens := make([]token, 0, len(args)+1)
-	for i := 0; i < len(args); i++ {
-		if args[i] == "+" && i+1 < len(args) {
-			i++
-			tokens = append(tokens, classifyLiteral(args[i]))
-		} else {
-			tokens = append(tokens, classifyToken(args[i]))
-		}
+	for _, arg := range args {
+		tokens = append(tokens, classifyToken(arg))
 	}
 	tokens = append(tokens, token{typ: tokEOF})
 	return tokens
-}
-
-// classifyLiteral classifies an argument as a number or string literal,
-// bypassing keyword and operator recognition. R3.1: + escaping.
-func classifyLiteral(arg string) token {
-	if isIntegerLiteral(arg) {
-		return token{tokNumber, arg}
-	}
-	return token{tokString, arg}
 }
 
 // classifyToken maps a single argument string to its token type.
@@ -335,13 +320,15 @@ func (p *parser) parseColonMatch() (string, error) {
 	return left, nil
 }
 
-// R1.4, R2.1-R2.4: parse primary values — numbers, strings, parenthesized
-// expressions, and string keyword operations.
+// R1.4, R2.1-R2.4, R3.1: parse primary values — numbers, strings,
+// parenthesized expressions, + escaping, and string keyword operations.
 func (p *parser) parsePrimary() (string, error) {
 	tok := p.peek()
 	switch tok.typ {
 	case tokLParen:
 		return p.parseParenExpr()
+	case tokAdd:
+		return p.parsePlusEscape()
 	case tokNumber, tokString:
 		p.advance()
 		return tok.val, nil
@@ -358,6 +345,17 @@ func (p *parser) parsePrimary() (string, error) {
 	default:
 		return "", fmt.Errorf("syntax error")
 	}
+}
+
+// R3.1: + TOKEN treats TOKEN as a string literal, consuming the +.
+func (p *parser) parsePlusEscape() (string, error) {
+	p.advance() // consume +
+	tok := p.peek()
+	if tok.typ == tokEOF {
+		return "", fmt.Errorf("syntax error")
+	}
+	p.advance()
+	return tok.val, nil
 }
 
 // R1.4: parse a parenthesized sub-expression.
