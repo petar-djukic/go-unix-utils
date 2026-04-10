@@ -3,13 +3,15 @@
 
 // Package main implements cmd/fmt: simple text formatter.
 // Implements srd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1,
-// R9.1, R10.1, R11.1, R12.1.
+// R9.1, R10.1, R11.1, R12.1, R13.1, R13.2, R13.3, R13.4.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -45,6 +47,7 @@ func main() {
 }
 
 // run executes the fmt logic and returns the exit code.
+// R13.1: returns 0 on success. R13.2: returns 1 on error.
 func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	cfg, files, err := parseArgs(args)
 	if err != nil {
@@ -77,7 +80,7 @@ func defaultFmtConfig() fmtConfig {
 }
 
 // parseArgs extracts flags and file arguments from the command line.
-// R4.1, R5.1, R6.1, R9.1, R10.1, R11.1, R12.1.
+// R4.1, R5.1, R6.1, R9.1, R10.1, R11.1, R12.1, R13.2.
 func parseArgs(args []string) (fmtConfig, []string, error) {
 	cfg := defaultFmtConfig()
 	var files []string
@@ -96,6 +99,10 @@ func parseArgs(args []string) (fmtConfig, []string, error) {
 		}
 		if handled := parseBoolFlags(arg, &cfg); handled {
 			continue
+		}
+		// R13.2: reject unknown options.
+		if isUnknownOption(arg) {
+			return cfg, nil, fmt.Errorf("invalid option -- '%s'", arg[1:])
 		}
 		files = append(files, arg)
 	}
@@ -148,15 +155,12 @@ func parseBoolFlags(arg string, cfg *fmtConfig) bool {
 }
 
 // finalizeParse applies defaults and normalizes the parsed config.
-func finalizeParse(cfg fmtConfig, files []string, goalExplicit bool) fmtConfig {
+func finalizeParse(cfg fmtConfig, _ []string, goalExplicit bool) fmtConfig {
 	if !goalExplicit {
 		cfg.goal = cfg.width * defaultGoalPct / 100
 	}
 	if cfg.goal > cfg.width {
 		cfg.goal = cfg.width
-	}
-	if len(files) == 0 {
-		// caller will use "-" default
 	}
 	return cfg
 }
@@ -168,30 +172,38 @@ func matchFlag(arg string, args []string, idx *int, short, long string) (string,
 		return arg[len(long)+1:], true, nil
 	}
 	if arg == long {
-		if *idx+1 >= len(args) {
-			return "", true, fmt.Errorf("option '%s' requires an argument", long)
-		}
-		*idx++
-		return args[*idx], true, nil
+		return nextArg(args, idx, long)
 	}
 	if strings.HasPrefix(arg, short) && len(arg) > len(short) {
 		return arg[len(short):], true, nil
 	}
 	if arg == short {
-		if *idx+1 >= len(args) {
-			return "", true, fmt.Errorf("option '%s' requires an argument", short)
-		}
-		*idx++
-		return args[*idx], true, nil
+		return nextArg(args, idx, short)
 	}
 	return "", false, nil
 }
 
+// nextArg returns the next argument for a flag that requires a value.
+func nextArg(args []string, idx *int, flag string) (string, bool, error) {
+	if *idx+1 >= len(args) {
+		return "", true, fmt.Errorf("option '%s' requires an argument", flag)
+	}
+	*idx++
+	return args[*idx], true, nil
+}
+
+// isUnknownOption returns true if arg looks like an unrecognized flag.
+// R13.2: "-" (stdin) is not an option; "--" is handled before this.
+func isUnknownOption(arg string) bool {
+	return len(arg) > 1 && arg[0] == '-'
+}
+
 // parsePositiveInt parses a string as a positive integer for a named option.
+// R13.2: error format matches GNU fmt.
 func parsePositiveInt(s, name string) (int, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("invalid %s: %q", name, s)
+		return 0, fmt.Errorf("invalid %s: '%s'", name, s)
 	}
 	return n, nil
 }
@@ -216,15 +228,34 @@ func openInputs(files []string, stdin io.Reader) ([]io.Reader, []func(), error) 
 }
 
 // openInput opens a single file or returns stdin for "-".
+// R13.2: error format matches GNU fmt.
 func openInput(name string, stdin io.Reader) (io.Reader, func(), error) {
 	if name == "-" {
 		return stdin, func() {}, nil
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, formatOpenError(name, err)
 	}
 	return f, func() { f.Close() }, nil
+}
+
+// formatOpenError formats a file open error to match GNU fmt's message format.
+func formatOpenError(name string, err error) error {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		msg := pathErr.Err.Error()
+		return fmt.Errorf("cannot open '%s' for reading: %s", name, capitalizeFirst(msg))
+	}
+	return fmt.Errorf("cannot open '%s' for reading: %s", name, err)
+}
+
+// capitalizeFirst returns s with the first byte uppercased.
+func capitalizeFirst(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // closeAll calls all closer functions.
@@ -281,15 +312,16 @@ func writeParagraph(w *bufio.Writer, lines []string, cfg fmtConfig, _ bool) {
 }
 
 // formatParagraphLines performs normal paragraph formatting.
-// R3.1, R12.1.
+// R3.1, R12.1, R6.1.
 func formatParagraphLines(w *bufio.Writer, lines []string, cfg fmtConfig) {
+	// Single line within width: pass through unchanged to preserve spacing.
+	if len(lines) == 1 && lineDisplayWidth(lines[0]) <= cfg.width && !cfg.uniformSpacing {
+		fmt.Fprintln(w, lines[0])
+		return
+	}
 	firstIndent := leadingWhitespace(lines[0])
 	bodyIndent := firstIndent
 	if len(lines) > 1 {
-		bodyIndent = leadingWhitespace(lines[1])
-	}
-	// R12.1: in tagged-paragraph mode, preserve first-line indent distinctly.
-	if cfg.taggedPara && len(lines) > 1 {
 		bodyIndent = leadingWhitespace(lines[1])
 	}
 	words := collectWords(lines, cfg.uniformSpacing)
@@ -354,8 +386,7 @@ func flushPrefixGroup(w *bufio.Writer, group []string, cfg fmtConfig) {
 
 // addPrefixToOutput prepends prefix to each line of formatted output.
 func addPrefixToOutput(w *bufio.Writer, output, prefix string) {
-	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
 		fmt.Fprintf(w, "%s%s\n", prefix, line)
 	}
 }
@@ -394,48 +425,124 @@ func collectWords(lines []string, _ bool) []string {
 		if trimmed == "" {
 			continue
 		}
-		lineWords := strings.Fields(trimmed)
-		words = append(words, lineWords...)
+		words = append(words, strings.Fields(trimmed)...)
 	}
 	return words
 }
 
+// computeBreaks finds optimal line break positions using dynamic programming.
+// R6.1: minimizes deviation from goal width. R7.1: respects max width.
+// Returns indices into words where each new line starts (excluding line 0).
+func computeBreaks(words []string, firstIndentLen, bodyIndentLen int, cfg fmtConfig) []int {
+	n := len(words)
+	if n == 0 {
+		return nil
+	}
+	// dp[i] = minimum cost to typeset words[i..n-1]
+	dp := make([]int64, n+1)
+	nextStart := make([]int, n) // nextStart[i] = first word of the line after the one starting at i
+	for i := n - 1; i >= 0; i-- {
+		dp[i] = math.MaxInt64
+		indentLen, maxW := lineParams(i, firstIndentLen, bodyIndentLen, cfg)
+		col := indentLen
+		for j := i; j < n; j++ {
+			col += wordSpacing(words, i, j) + len(words[j])
+			if col > maxW && j > i {
+				break
+			}
+			cost := lineCost(col, cfg.goal, j == n-1) + dp[j+1]
+			if cost < dp[i] {
+				dp[i] = cost
+				nextStart[i] = j + 1
+			}
+			if col > maxW {
+				break
+			}
+		}
+	}
+	return reconstructBreaks(nextStart, n)
+}
+
+// lineParams returns the indent length and effective max width for a line
+// starting at word index i. R12.1: in tagged mode, the first line's effective
+// width is reduced by the indent difference so text content is balanced.
+func lineParams(i, firstIndentLen, bodyIndentLen int, cfg fmtConfig) (int, int) {
+	if i == 0 {
+		maxW := cfg.width
+		if cfg.taggedPara && firstIndentLen > bodyIndentLen {
+			maxW -= firstIndentLen - bodyIndentLen
+		}
+		return firstIndentLen, maxW
+	}
+	return bodyIndentLen, cfg.width
+}
+
+// wordSpacing returns the number of spaces before words[j] on a line starting at i.
+func wordSpacing(words []string, i, j int) int {
+	if j == i {
+		return 0
+	}
+	return spacesAfterWord(words[j-1])
+}
+
+// underGoalPenalty is the extra per-character penalty for lines shorter than
+// the goal width. This asymmetry matches GNU fmt's preference for slightly
+// over-goal lines over slightly under-goal lines.
+const underGoalPenalty = 3
+
+// lineCost returns the DP cost for a line of given length.
+// Last lines have zero cost; other lines penalize deviation from goal.
+// Lines under the goal get an extra linear penalty to prefer fuller lines.
+func lineCost(lineLen, goal int, isLast bool) int64 {
+	if isLast {
+		return 0
+	}
+	diff := int64(lineLen - goal)
+	cost := diff * diff
+	if lineLen < goal {
+		cost += underGoalPenalty * (int64(goal) - int64(lineLen))
+	}
+	return cost
+}
+
+// reconstructBreaks extracts line-start indices from the DP next-start array.
+func reconstructBreaks(nextStart []int, n int) []int {
+	var breaks []int
+	for i := nextStart[0]; i < n; i = nextStart[i] {
+		breaks = append(breaks, i)
+	}
+	return breaks
+}
+
 // writeWrapped outputs words wrapped to width with the given indentation.
-// R1.1, R3.1, R7.1, R8.1, R10.1.
+// R1.1, R3.1, R6.1, R7.1, R8.1.
 func writeWrapped(w *bufio.Writer, words []string, firstIndent, bodyIndent string, cfg fmtConfig) {
 	if len(words) == 0 {
 		return
 	}
+	breaks := computeBreaks(words, len(firstIndent), len(bodyIndent), cfg)
+	breakSet := make(map[int]bool, len(breaks))
+	for _, b := range breaks {
+		breakSet[b] = true
+	}
 	indent := firstIndent
-	col := len(indent)
 	fmt.Fprint(w, indent)
 	for i, word := range words {
-		if i == 0 {
-			fmt.Fprint(w, word)
-			col += len(word)
-			continue
-		}
-		spaces := spacesAfterWord(words[i-1], cfg.uniformSpacing)
-		needed := spaces + len(word)
-		if col+needed > cfg.width {
+		if breakSet[i] {
 			fmt.Fprintln(w)
 			indent = bodyIndent
 			fmt.Fprint(w, indent)
-			fmt.Fprint(w, word)
-			col = len(indent) + len(word)
-		} else {
-			writeSpaces(w, spaces)
-			fmt.Fprint(w, word)
-			col += needed
+		} else if i > 0 {
+			writeSpaces(w, spacesAfterWord(words[i-1]))
 		}
+		fmt.Fprint(w, word)
 	}
 	fmt.Fprintln(w)
 }
 
 // spacesAfterWord returns the number of spaces to insert after a word.
 // R8.1: two spaces after sentence-ending punctuation (. ! ?), one otherwise.
-// R10.1: with uniform spacing, same rule applied uniformly.
-func spacesAfterWord(word string, _ bool) int {
+func spacesAfterWord(word string) int {
 	if isSentenceEnd(word) {
 		return 2
 	}
