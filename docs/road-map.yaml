@@ -368,7 +368,7 @@ releases:
         - id: rel08.0-uc006-factor
           status: implemented
         - id: rel08.0-uc007-expr
-          status: spec_complete
+          status: implemented
     - version: "08.1"
       name: "Batch 8.1 — file splitting, joining, formatting, and data display (split, csplit, join, fmt, numfmt, od, printf)"
       status: spec_complete
