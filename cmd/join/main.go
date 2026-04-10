@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/join: join lines of two files on a common field.
-// Implements srd069-join R1, R2, R3, R4.
+// Implements srd069-join R1.1, R1.2, R1.3, R1.4.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,33 @@ type outputSpec struct {
 	fieldNum int // 1-based field index within the file
 }
 
+// lineScanner wraps bufio.Scanner with peek capability for merge-join.
+type lineScanner struct {
+	sc    *bufio.Scanner
+	line  string
+	valid bool
+}
+
+func newLineScanner(r io.Reader) *lineScanner {
+	return &lineScanner{sc: bufio.NewScanner(r)}
+}
+
+// advance reads the next line. Returns true if a line is available.
+func (ls *lineScanner) advance() bool {
+	ls.valid = ls.sc.Scan()
+	if ls.valid {
+		ls.line = ls.sc.Text()
+	}
+	return ls.valid
+}
+
+// joiner holds state for the merge-join operation.
+type joiner struct {
+	cfg   *config
+	specs []outputSpec
+	w     *bufio.Writer
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -57,7 +85,6 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
 		return 1
 	}
-	// TODO: implement join logic (srd069 R1, R2, R3)
 	r1, closer1, err := openInput(cfg.files[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
@@ -119,11 +146,9 @@ func parseLongFlag(cfg *config, args []string, i int) int {
 }
 
 // parseLongValueFlag handles --flag=VALUE and --flag VALUE forms.
-func parseLongValueFlag(cfg *config, args []string, i int) int {
+func parseLongValueFlag(_ *config, args []string, i int) int {
 	arg := args[i]
-	switch {
-	case strings.HasPrefix(arg, "--"):
-		// No other long flags with values for join
+	if strings.HasPrefix(arg, "--") {
 		return 0
 	}
 	return 0
@@ -262,16 +287,6 @@ func openInput(name string) (io.Reader, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-// readLines reads all lines from a reader into a string slice.
-func readLines(r io.Reader) ([]string, error) {
-	scanner := bufio.NewScanner(r)
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines, scanner.Err()
-}
-
 // splitFields splits a line into fields using the configured separator.
 // R1.2: default separator is runs of whitespace. R2.4: -t CHAR uses CHAR.
 func splitFields(line string, sep string) []string {
@@ -297,7 +312,6 @@ func parseOutputFormat(format string) ([]outputSpec, error) {
 	if format == "" {
 		return nil, nil
 	}
-	// Replace commas with spaces for uniform splitting.
 	normalized := strings.ReplaceAll(format, ",", " ")
 	tokens := strings.Fields(normalized)
 	specs := make([]outputSpec, 0, len(tokens))
@@ -334,25 +348,161 @@ func parseOneSpec(tok string) (outputSpec, error) {
 }
 
 // executeJoin performs the join operation on two input readers.
-// TODO: full implementation in subsequent task (srd069 R1, R2, R3).
+// R1.1: merge-join on sorted input. R1.3: unpaired lines suppressed.
 func executeJoin(cfg *config, r1, r2 io.Reader, w io.Writer) int {
-	_, err1 := readLines(r1)
-	if err1 != nil {
-		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err1)
-		return 1
-	}
-	_, err2 := readLines(r2)
-	if err2 != nil {
-		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err2)
-		return 1
-	}
-	// Stub: parse output format to ensure it compiles.
-	_, err := parseOutputFormat(cfg.outFormat)
+	specs, err := parseOutputFormat(cfg.outFormat)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 1
 	}
+	bw := bufio.NewWriter(w)
+	j := &joiner{cfg: cfg, specs: specs, w: bw}
+	code := j.process(r1, r2)
+	if flushErr := bw.Flush(); flushErr != nil {
+		fmt.Fprintf(os.Stderr, "%s: write error: %v\n", progName, flushErr)
+		return 1
+	}
+	return code
+}
+
+// process runs the merge-join algorithm on two readers.
+func (j *joiner) process(r1, r2 io.Reader) int {
+	ls1 := newLineScanner(r1)
+	ls2 := newLineScanner(r2)
+	ls1.advance()
+	ls2.advance()
+	if j.cfg.header {
+		j.handleHeader(ls1, ls2)
+	}
+	j.mergeJoin(ls1, ls2)
+	j.drainUnpaired(ls1, 1)
+	j.drainUnpaired(ls2, 2)
+	if err := ls1.sc.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
+		return 1
+	}
+	if err := ls2.sc.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
+		return 1
+	}
 	return 0
+}
+
+// handleHeader joins the first line of each file regardless of order.
+// R3.4: --header treats first lines as headers.
+func (j *joiner) handleHeader(ls1, ls2 *lineScanner) {
+	if !ls1.valid || !ls2.valid {
+		return
+	}
+	j.writePair(ls1.line, ls2.line)
+	ls1.advance()
+	ls2.advance()
+}
+
+// mergeJoin performs the sorted merge-join loop.
+// R1.1: matches lines where join fields are equal.
+// R1.3: unpaired lines suppressed by default.
+func (j *joiner) mergeJoin(ls1, ls2 *lineScanner) {
+	for ls1.valid && ls2.valid {
+		key1 := j.joinKey(ls1.line, 1)
+		key2 := j.joinKey(ls2.line, 2)
+		switch {
+		case key1 < key2:
+			j.printUnpaired(ls1.line, 1)
+			ls1.advance()
+		case key1 > key2:
+			j.printUnpaired(ls2.line, 2)
+			ls2.advance()
+		default:
+			j.processMatch(ls1, ls2, key1)
+		}
+	}
+}
+
+// processMatch handles matching join keys by computing the cross product
+// of all file1 and file2 lines sharing the same key.
+func (j *joiner) processMatch(ls1, ls2 *lineScanner, key string) {
+	group2 := j.collectGroup(ls2, 2, key)
+	for {
+		if !j.suppressPaired() {
+			for _, line2 := range group2 {
+				j.writePair(ls1.line, line2)
+			}
+		}
+		ls1.advance()
+		if !ls1.valid || j.joinKey(ls1.line, 1) != key {
+			break
+		}
+	}
+}
+
+// collectGroup gathers all consecutive lines with the same join key.
+func (j *joiner) collectGroup(ls *lineScanner, fileNum int, key string) []string {
+	var group []string
+	for ls.valid && j.joinKey(ls.line, fileNum) == key {
+		group = append(group, ls.line)
+		ls.advance()
+	}
+	return group
+}
+
+// joinKey extracts the join field value from a line for the given file.
+func (j *joiner) joinKey(line string, fileNum int) string {
+	fields := splitFields(line, j.cfg.separator)
+	idx := j.cfg.field1
+	if fileNum == 2 {
+		idx = j.cfg.field2
+	}
+	return getField(fields, idx)
+}
+
+// writePair outputs a single joined line from two matching input lines.
+// R1.3: output format is join field + remaining fields from both files.
+func (j *joiner) writePair(line1, line2 string) {
+	fields1 := splitFields(line1, j.cfg.separator)
+	fields2 := splitFields(line2, j.cfg.separator)
+	joinField := getField(fields1, j.cfg.field1)
+	out := formatOutputLine(j.cfg, joinField, fields1, fields2, j.specs)
+	fmt.Fprintln(j.w, out)
+}
+
+// printUnpaired outputs an unpaired line if -a or -v includes the file.
+// R1.3: suppressed by default (no -a or -v).
+func (j *joiner) printUnpaired(line string, fileNum int) {
+	if !j.shouldPrintUnpaired(fileNum) {
+		return
+	}
+	fields := splitFields(line, j.cfg.separator)
+	idx := j.cfg.field1
+	var fields1, fields2 []string
+	if fileNum == 1 {
+		fields1 = fields
+	} else {
+		fields2 = fields
+		idx = j.cfg.field2
+	}
+	joinField := getField(fields, idx)
+	out := formatOutputLine(j.cfg, joinField, fields1, fields2, j.specs)
+	fmt.Fprintln(j.w, out)
+}
+
+// drainUnpaired outputs remaining lines from a scanner as unpaired.
+func (j *joiner) drainUnpaired(ls *lineScanner, fileNum int) {
+	for ls.valid {
+		j.printUnpaired(ls.line, fileNum)
+		ls.advance()
+	}
+}
+
+// shouldPrintUnpaired checks if unpaired lines from fileNum should print.
+func (j *joiner) shouldPrintUnpaired(fileNum int) bool {
+	return slices.Contains(j.cfg.unpairA, fileNum) ||
+		slices.Contains(j.cfg.unpairV, fileNum)
+}
+
+// suppressPaired returns true if -v mode suppresses paired output.
+func (j *joiner) suppressPaired() bool {
+	return len(j.cfg.unpairV) > 0
 }
 
 // formatOutputLine builds the output line for a joined pair.
