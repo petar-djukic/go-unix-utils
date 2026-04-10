@@ -64,10 +64,10 @@ func run(args []string) int {
 	}
 	// R1.1: sort lexicographically in LC_ALL=C byte order.
 	// R1.2: -r reverses the sort order.
-	sortLines(lines, cfg.reverse)
+	sortLines(lines, &cfg)
 	// R1.3: -u suppresses duplicate lines.
 	if cfg.unique {
-		lines = dedup(lines)
+		lines = dedup(lines, compareFunc(&cfg))
 	}
 	return writeOutput(&cfg, lines)
 }
@@ -180,26 +180,33 @@ func writeLines(w io.Writer, lines []string, terminator string) error {
 	return bw.Flush()
 }
 
-// sortLines sorts lines in-place using stable sort with LC_ALL=C byte order.
-// R1.1: default lexicographic sort. R1.2: -r reverses the result.
-func sortLines(lines []string, reverse bool) {
+// sortLines sorts lines in-place using stable sort with the configured mode.
+// R1.1: default lexicographic sort. R1.4: -r reverses the result.
+// R2.1-R2.4: numeric, human-numeric, month, version sort modes.
+func sortLines(lines []string, cfg *config) {
+	cmp := compareFunc(cfg)
 	sort.SliceStable(lines, func(i, j int) bool {
-		if reverse {
-			return lines[i] > lines[j]
+		result := cmp(lines[i], lines[j])
+		// Last-resort: full-line comparison when keys are equal (unless -s).
+		if result == 0 && !cfg.stable {
+			result = strings.Compare(lines[i], lines[j])
 		}
-		return lines[i] < lines[j]
+		if cfg.reverse {
+			return result > 0
+		}
+		return result < 0
 	})
 }
 
-// dedup removes consecutive duplicate lines, keeping only the first of each run.
-// R1.3: -u outputs only the first of an equal run.
-func dedup(lines []string) []string {
+// dedup removes consecutive lines that compare equal under the active sort key.
+// R1.5: -u outputs only the first of an equal run.
+func dedup(lines []string, cmp func(string, string) int) []string {
 	if len(lines) == 0 {
 		return lines
 	}
 	out := lines[:1]
 	for _, line := range lines[1:] {
-		if line != out[len(out)-1] {
+		if cmp(line, out[len(out)-1]) != 0 {
 			out = append(out, line)
 		}
 	}

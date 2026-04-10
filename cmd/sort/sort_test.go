@@ -65,6 +65,90 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-s", "-u"},
 			Stdin: []byte("b\na\na\nc\nc\n"),
 		},
+		// R2.1: -n numeric sort
+		{
+			Name:  "numeric sort basic",
+			Args:  []string{"-n"},
+			Stdin: []byte("10\n2\n1\n"),
+		},
+		{
+			Name:  "numeric sort with negatives",
+			Args:  []string{"-n"},
+			Stdin: []byte("5\n-3\n0\n10\n-1\n"),
+		},
+		{
+			Name:  "numeric sort with leading spaces",
+			Args:  []string{"-n"},
+			Stdin: []byte("  10\n2\n  1\n"),
+		},
+		{
+			Name:  "numeric sort non-numeric lines",
+			Args:  []string{"-n"},
+			Stdin: []byte("abc\n3\n1\nxyz\n"),
+		},
+		{
+			Name:  "numeric sort with decimals",
+			Args:  []string{"-n"},
+			Stdin: []byte("1.5\n1.1\n2.0\n0.5\n"),
+		},
+		{
+			Name:  "numeric sort reverse",
+			Args:  []string{"-n", "-r"},
+			Stdin: []byte("10\n2\n1\n"),
+		},
+		{
+			Name:  "numeric sort unique",
+			Args:  []string{"-n", "-u"},
+			Stdin: []byte("2\n1\n2\n3\n1\n"),
+		},
+		// R2.2: -h human-numeric sort
+		{
+			Name:  "human numeric sort SI suffixes",
+			Args:  []string{"-h"},
+			Stdin: []byte("1K\n1M\n1G\n500\n"),
+		},
+		{
+			Name:  "human numeric sort mixed values",
+			Args:  []string{"-h"},
+			Stdin: []byte("10K\n5M\n1G\n100\n2K\n"),
+		},
+		{
+			Name:  "human numeric sort same suffix",
+			Args:  []string{"-h"},
+			Stdin: []byte("5K\n1K\n10K\n2K\n"),
+		},
+		// R2.3: -M month sort
+		{
+			Name:  "month sort basic",
+			Args:  []string{"-M"},
+			Stdin: []byte("MAR\nJAN\nFEB\nDEC\n"),
+		},
+		{
+			Name:  "month sort with unknown",
+			Args:  []string{"-M"},
+			Stdin: []byte("FOO\nJAN\nBAR\nFEB\n"),
+		},
+		{
+			Name:  "month sort case insensitive",
+			Args:  []string{"-M"},
+			Stdin: []byte("mar\njan\nfeb\ndec\n"),
+		},
+		// R2.4: -V version sort
+		{
+			Name:  "version sort basic",
+			Args:  []string{"-V"},
+			Stdin: []byte("file10\nfile2\nfile1\n"),
+		},
+		{
+			Name:  "version sort with dots",
+			Args:  []string{"-V"},
+			Stdin: []byte("1.10\n1.2\n1.1\n"),
+		},
+		{
+			Name:  "version sort mixed",
+			Args:  []string{"-V"},
+			Stdin: []byte("v2.0\nv1.10\nv1.2\nv1.1\n"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
