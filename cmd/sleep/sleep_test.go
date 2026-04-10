@@ -15,12 +15,14 @@ import (
 )
 
 // TestDiff verifies sleep exit code parity against gsleep (GNU coreutils).
-// Uses short durations (0 or 0.01) to avoid slow test execution.
+// Uses short durations (0 or 0.01) to avoid slow test execution (R4.3).
 // R1.1: single numeric argument. R1.2: fractional seconds.
 // R1.3: suffix multipliers. R1.4: multiple arguments summed.
 // R2.1: zero duration. R2.2: no args error. R2.3: invalid/negative error.
 // R3.1: no output under normal operation. R3.2: no stdin reading.
 // R3.3: --help exits 0. R3.4: --version exits 0.
+// R4.1: exit 0 after sleeping. R4.2: exit 1 on invalid args.
+// R4.3: differential exit code comparison. R4.4: full case coverage.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsleep")
@@ -34,17 +36,17 @@ func TestDiff(t *testing.T) {
 	stdoutBlank := []testutils.NormalizeFunc{replaceNonEmpty}
 
 	tests := []testutils.DiffTest{
-		// R1.1: zero duration exits immediately with 0.
+		// R1.1, R4.1, R4.4: zero duration exits immediately with 0.
 		{
 			Name: "zero-duration",
 			Args: []string{"0"},
 		},
-		// R1.2: fractional seconds.
+		// R1.2, R4.1, R4.4: fractional seconds.
 		{
 			Name: "fractional-seconds",
 			Args: []string{"0.01"},
 		},
-		// R1.3: suffix multipliers.
+		// R1.3, R4.1, R4.4: suffix multipliers.
 		{
 			Name: "suffix-s",
 			Args: []string{"0.01s"},
@@ -61,7 +63,7 @@ func TestDiff(t *testing.T) {
 			Name: "suffix-d",
 			Args: []string{"0.000001d"},
 		},
-		// R1.4: multiple arguments summed.
+		// R1.4, R4.1, R4.4: multiple arguments summed.
 		{
 			Name: "multiple-args-summed",
 			Args: []string{"0", "0.01", "0"},
@@ -79,14 +81,14 @@ func TestDiff(t *testing.T) {
 			Name: "zero-with-suffix",
 			Args: []string{"0s"},
 		},
-		// R2.2: no arguments gives usage error, exit 1.
+		// R2.2, R4.2, R4.4: no arguments gives usage error, exit 1.
 		{
 			Name:      "no-args",
 			Args:      []string{},
 			ExitCode:  1,
 			Normalize: errNorms,
 		},
-		// R2.3: non-numeric or negative argument gives error, exit 1.
+		// R2.3, R4.2, R4.4: non-numeric or negative argument gives error, exit 1.
 		{
 			Name:      "invalid-arg",
 			Args:      []string{"abc"},
