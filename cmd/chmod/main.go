@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -28,25 +29,26 @@ const (
 )
 
 // modeClause represents a single parsed symbolic mode clause (e.g., u+rwx).
+// When who is empty, no ugoa was specified and umask filtering applies.
 type modeClause struct {
-	who    string     // subset of "ugoa"
+	who    string     // subset of "ugoa"; empty means umask-dependent
 	action modeAction // +, -, =
 	perms  string     // subset of "rwxXst"
 }
 
 // mode represents a parsed mode specification, either octal or symbolic.
 type mode struct {
-	octal    uint32       // R1.1: octal mode value (valid when isOctal is true)
+	octal    uint32       // R1.1: Go os.FileMode bits (valid when isOctal is true)
 	symbolic []modeClause // R1.2: parsed symbolic clauses
 	isOctal  bool         // true when the mode was specified as an octal number
 }
 
 // options holds parsed command-line flags for chmod.
 type options struct {
-	recursive bool // R2.1: -R/--recursive
-	verbose   bool // R2.2: -v/--verbose
-	changes   bool // R2.3: -c/--changes
-	silent    bool // R2.4: -f/--silent/--quiet
+	recursive bool   // R2.1: -R/--recursive
+	verbose   bool   // R2.2: -v/--verbose
+	changes   bool   // R2.3: -c/--changes
+	silent    bool   // R2.4: -f/--silent/--quiet
 	reference string // R3.2: --reference=RFILE
 }
 
@@ -192,13 +194,15 @@ func resolveMode(opts options, modeSpec string) (mode, error) {
 // modeFromReference reads the mode bits from a reference file.
 // R3.2: --reference=RFILE sets each FILE's mode to match RFILE's mode.
 func modeFromReference(rfile string) (mode, error) {
-	// TODO: implement reference file mode reading using sys.Stat
 	fi, err := sys.Stat(rfile)
 	if err != nil {
 		return mode{}, fmt.Errorf("cannot stat %q: %w", rfile, err)
 	}
 	return mode{
-		octal:   uint32(fi.Mode.Perm()) | uint32(fi.Mode&os.ModeSetuid) | uint32(fi.Mode&os.ModeSetgid) | uint32(fi.Mode&os.ModeSticky),
+		octal: uint32(fi.Mode.Perm()) |
+			uint32(fi.Mode&os.ModeSetuid) |
+			uint32(fi.Mode&os.ModeSetgid) |
+			uint32(fi.Mode&os.ModeSticky),
 		isOctal: true,
 	}, nil
 }
@@ -227,20 +231,30 @@ func isOctalMode(spec string) bool {
 }
 
 // parseOctalMode parses an octal mode string into a mode struct.
-// R1.1: sets the file's permission bits to the octal value.
+// R1.1: converts Unix octal to Go os.FileMode representation,
+// handling basic permissions (0-0777) and special bits (4000, 2000, 1000).
 func parseOctalMode(spec string) (mode, error) {
 	var val uint32
 	for _, c := range spec {
 		val = val*8 + uint32(c-'0')
 	}
-	return mode{octal: val, isOctal: true}, nil
+	goMode := os.FileMode(val & 0o777)
+	if val&0o4000 != 0 {
+		goMode |= os.ModeSetuid
+	}
+	if val&0o2000 != 0 {
+		goMode |= os.ModeSetgid
+	}
+	if val&0o1000 != 0 {
+		goMode |= os.ModeSticky
+	}
+	return mode{octal: uint32(goMode), isOctal: true}, nil
 }
 
 // parseSymbolicMode parses a symbolic mode string into a mode struct.
 // R1.2: supports [ugoa][+-=][rwxXst] with comma-separated clauses.
 // R3.1: supports setuid (u+s), setgid (g+s), and sticky bit (o+t).
 func parseSymbolicMode(spec string) (mode, error) {
-	// TODO: implement full symbolic mode parsing
 	clauses := strings.Split(spec, ",")
 	var parsed []modeClause
 	for _, clause := range clauses {
@@ -255,8 +269,9 @@ func parseSymbolicMode(spec string) (mode, error) {
 
 // parseSingleClause parses a single symbolic mode clause (e.g., u+rwx).
 // R1.2: format is [ugoa...][+-=][rwxXst...].
+// When no who characters are present, who is left empty to indicate
+// umask-dependent behavior per GNU chmod semantics.
 func parseSingleClause(clause string) (modeClause, error) {
-	// TODO: implement single clause parsing
 	if len(clause) == 0 {
 		return modeClause{}, fmt.Errorf("invalid mode: empty clause")
 	}
@@ -264,7 +279,7 @@ func parseSingleClause(clause string) (modeClause, error) {
 	var mc modeClause
 	i := 0
 
-	// Parse who characters
+	// Parse who characters (leave empty if none specified)
 	for i < len(clause) {
 		c := clause[i]
 		if c == 'u' || c == 'g' || c == 'o' || c == 'a' {
@@ -273,11 +288,6 @@ func parseSingleClause(clause string) (modeClause, error) {
 		} else {
 			break
 		}
-	}
-
-	// Default to 'a' if no who specified
-	if mc.who == "" {
-		mc.who = "a"
 	}
 
 	// Parse action
@@ -312,10 +322,7 @@ func parseSingleClause(clause string) (modeClause, error) {
 
 // applyMode applies the parsed mode to a single file.
 // R2.1: when recursive, traverses directories.
-// R2.2: prints diagnostic when verbose.
-// R2.3: prints diagnostic only when mode changed.
 func applyMode(opts options, m mode, path string) error {
-	// TODO: implement mode application
 	if opts.recursive {
 		return applyModeRecursive(opts, m, path)
 	}
@@ -324,34 +331,178 @@ func applyMode(opts options, m mode, path string) error {
 
 // applyModeRecursive recursively applies mode changes to a directory tree.
 // R2.1: -R/--recursive changes modes for directories and their contents.
-func applyModeRecursive(opts options, m mode, path string) error {
-	// TODO: implement recursive traversal
-	return fmt.Errorf("not implemented")
+func applyModeRecursive(_ options, _ mode, path string) error {
+	// TODO: implement recursive traversal (srd089 R2.1)
+	return fmt.Errorf("cannot operate on '%s' recursively: not yet implemented", path)
 }
 
 // applyModeToFile applies the mode change to a single file.
+// R1.1, R1.2: reads current mode, computes new mode, applies via os.Chmod.
+// R1.4: returns error when file cannot be accessed.
 func applyModeToFile(opts options, m mode, path string) error {
-	// TODO: implement single file mode change
-	return fmt.Errorf("not implemented")
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("cannot access '%s': %s",
+			path, unwrapPathError(err))
+	}
+	oldMode := fi.Mode()
+	newMode := computeNewMode(m, oldMode)
+	if err := os.Chmod(path, newMode); err != nil {
+		return fmt.Errorf("changing permissions of '%s': %s",
+			path, unwrapPathError(err))
+	}
+	printDiagnostic(opts, path, oldMode, newMode)
+	return nil
+}
+
+// unwrapPathError extracts the underlying error message from *os.PathError.
+func unwrapPathError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // computeNewMode calculates the new permission bits for a file.
-// R1.1: for octal modes, returns the octal value directly.
+// R1.1: for octal modes, returns the stored Go os.FileMode value directly.
 // R1.2: for symbolic modes, applies each clause to the current mode.
-// R3.1: handles setuid, setgid, and sticky bit.
 func computeNewMode(m mode, current os.FileMode) os.FileMode {
-	// TODO: implement mode computation
 	if m.isOctal {
 		return os.FileMode(m.octal)
 	}
+	result := current
+	for _, clause := range m.symbolic {
+		result = applyClauseToMode(clause, result)
+	}
+	return result
+}
+
+// applyClauseToMode applies one symbolic mode clause to the current mode.
+// R1.2: handles +, -, = operators with who mask.
+// When who is empty, basic permission bits are filtered by ~umask.
+func applyClauseToMode(mc modeClause, current os.FileMode) os.FileMode {
+	bits := resolvePermBits(mc, current)
+	basicMask := effectiveBasicMask(mc.who)
+	maskedBasic := bits & basicMask
+	specialBits := bits & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+
+	switch mc.action {
+	case modeAdd:
+		return current | maskedBasic | specialBits
+	case modeRemove:
+		return current &^ (maskedBasic | specialBits)
+	case modeSet:
+		specMask := effectiveSpecialMask(mc.who)
+		cleared := current &^ basicMask &^ specMask
+		return cleared | maskedBasic | specialBits
+	}
 	return current
+}
+
+// effectiveBasicMask returns the basic permission mask for the who specifier.
+// When who is empty (no ugoa specified), uses ~umask per GNU chmod semantics.
+func effectiveBasicMask(who string) os.FileMode {
+	if who == "" {
+		umask := syscall.Umask(0)
+		syscall.Umask(umask)
+		return 0o777 &^ os.FileMode(umask)
+	}
+	return whoToBasicMask(who)
+}
+
+// effectiveSpecialMask returns the special bits mask for the who specifier.
+// When who is empty, all special bits are included (not affected by umask).
+func effectiveSpecialMask(who string) os.FileMode {
+	if who == "" {
+		return os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+	}
+	return whoToSpecialMask(who)
+}
+
+// resolvePermBits converts permission characters to os.FileMode bits.
+// R1.2: handles rwxXst characters.
+// R3.1: maps s to setuid/setgid based on who, t to sticky.
+func resolvePermBits(mc modeClause, current os.FileMode) os.FileMode {
+	var bits os.FileMode
+	isDir := current&os.ModeDir != 0
+	hasExec := current.Perm()&0o111 != 0
+
+	for _, c := range mc.perms {
+		switch c {
+		case 'r':
+			bits |= 0o444
+		case 'w':
+			bits |= 0o222
+		case 'x':
+			bits |= 0o111
+		case 'X':
+			if isDir || hasExec {
+				bits |= 0o111
+			}
+		case 's':
+			bits |= suidBitsForWho(mc.who)
+		case 't':
+			bits |= os.ModeSticky
+		}
+	}
+	return bits
+}
+
+// suidBitsForWho returns setuid/setgid bits based on who specifier.
+// R3.1: u+s → setuid, g+s → setgid, a+s → both.
+// Empty who (no ugoa specified) acts like 'a' for special bits.
+func suidBitsForWho(who string) os.FileMode {
+	var bits os.FileMode
+	if who == "" || strings.ContainsAny(who, "ua") {
+		bits |= os.ModeSetuid
+	}
+	if who == "" || strings.ContainsAny(who, "ga") {
+		bits |= os.ModeSetgid
+	}
+	return bits
+}
+
+// whoToBasicMask converts who characters to a basic permission bitmask.
+func whoToBasicMask(who string) os.FileMode {
+	var mask os.FileMode
+	for _, c := range who {
+		switch c {
+		case 'u':
+			mask |= 0o700
+		case 'g':
+			mask |= 0o070
+		case 'o':
+			mask |= 0o007
+		case 'a':
+			mask |= 0o777
+		}
+	}
+	return mask
+}
+
+// whoToSpecialMask converts who characters to special mode bits mask.
+func whoToSpecialMask(who string) os.FileMode {
+	var mask os.FileMode
+	for _, c := range who {
+		switch c {
+		case 'u':
+			mask |= os.ModeSetuid
+		case 'g':
+			mask |= os.ModeSetgid
+		case 'o':
+			mask |= os.ModeSticky
+		case 'a':
+			mask |= os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+		}
+	}
+	return mask
 }
 
 // printDiagnostic prints a verbose or changes-only diagnostic message.
 // R2.2: format matches GNU chmod verbose output.
 // R2.3: only prints when mode actually changed (changes mode).
 func printDiagnostic(opts options, path string, oldMode, newMode os.FileMode) {
-	// TODO: implement diagnostic output
+	// TODO: implement diagnostic output (srd089 R2.2, R2.3)
 	if opts.changes && oldMode == newMode {
 		return
 	}
