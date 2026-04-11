@@ -415,7 +415,7 @@ releases:
         - id: rel09.0-uc002-sha384sum
           status: implemented
         - id: rel09.0-uc003-b2sum
-          status: spec_complete
+          status: implemented
         - id: rel09.0-uc004-cksum
           status: spec_complete
         - id: rel09.0-uc005-sum
