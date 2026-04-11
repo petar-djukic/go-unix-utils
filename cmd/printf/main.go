@@ -306,7 +306,7 @@ func applyConvSpec(
 	case 'b':
 		argIdx = fmtBackslash(args, argIdx)
 	default:
-		fmt.Fprintf(os.Stderr, "printf: %%%c: invalid directive\n", spec.verb)
+		fmt.Fprintf(os.Stderr, "printf: %%%c: invalid conversion specification\n", spec.verb)
 		hadError = true
 	}
 	return endIdx, argIdx, hadError

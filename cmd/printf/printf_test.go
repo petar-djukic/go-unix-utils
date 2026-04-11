@@ -5,11 +5,18 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// normalizeBinName replaces "gprintf:" with "printf:" in output so that
+// stderr error messages from the reference binary match the Go binary.
+func normalizeBinName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gprintf:"), []byte("printf:"))
+}
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -18,6 +25,8 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skipf("reference binary gprintf not in PATH: %v", err)
 	}
+
+	errNorm := []testutils.NormalizeFunc{normalizeBinName}
 
 	// R4.4: tests cover integer formats, float formats, string, char,
 	// backslash-interpreted string, width and precision, all flags,
@@ -308,6 +317,134 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "double percent only",
 			Args: []string{"%%"},
+		},
+
+		// R3.1: escape sequences in format string (\n, \t, \NNN, \xHH)
+		{
+			Name: "escape tab in format",
+			Args: []string{"a\\tb\\n"},
+		},
+		{
+			Name: "escape octal in format",
+			Args: []string{"\\101\\n"},
+		},
+		{
+			Name: "escape hex in format",
+			Args: []string{"\\x41\\n"},
+		},
+		{
+			Name: "escape unicode in format",
+			Args: []string{"\\u0041\\n"},
+		},
+		{
+			Name: "escape backslash in format",
+			Args: []string{"a\\\\b\\n"},
+		},
+		{
+			Name: "escape bell in format",
+			Args: []string{"\\a"},
+		},
+		{
+			Name: "escape carriage return in format",
+			Args: []string{"X\\rY"},
+		},
+
+		// R3.2: argument recycling
+		{
+			Name: "recycle format one arg per pass",
+			Args: []string{"%s\\n", "a", "b", "c"},
+		},
+		{
+			Name: "recycle format two args per pass",
+			Args: []string{"%s=%d\\n", "x", "1", "y", "2"},
+		},
+		{
+			Name: "recycle format with extra args",
+			Args: []string{"%d\\n", "10", "20", "30"},
+		},
+
+		// R3.3: missing arguments default to 0 or ""
+		{
+			Name: "missing arg for percent d",
+			Args: []string{"%d %d\\n", "42"},
+		},
+		{
+			Name: "missing arg for percent s",
+			Args: []string{"%s %s\\n", "hello"},
+		},
+		{
+			Name: "missing arg for percent f",
+			Args: []string{"%f\\n"},
+		},
+		{
+			Name: "no args for specifier",
+			Args: []string{"%d\\n"},
+		},
+
+		// R3.4: character value arguments (quote prefix)
+		{
+			Name: "single quote char value A",
+			Args: []string{"%d\\n", "'A"},
+		},
+		{
+			Name: "double quote char value A",
+			Args: []string{"%d\\n", "\"A"},
+		},
+		{
+			Name: "quote char value space",
+			Args: []string{"%d\\n", "' "},
+		},
+		{
+			Name: "quote char value zero",
+			Args: []string{"%d\\n", "'0"},
+		},
+		{
+			Name: "quote char in float context",
+			Args: []string{"%f\\n", "'A"},
+		},
+
+		// R4.1: exit 0 on successful format
+		{
+			Name:     "exit 0 on success simple",
+			Args:     []string{"%d\\n", "42"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "exit 0 on success no args",
+			Args:     []string{"hello"},
+			ExitCode: 0,
+		},
+
+		// R4.2: exit 1 on error with partial output
+		{
+			Name:      "exit 1 non-numeric arg for d",
+			Args:      []string{"%d\\n", "abc"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "exit 1 non-numeric arg for f",
+			Args:      []string{"%f\\n", "notanumber"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "exit 1 invalid directive",
+			Args:      []string{"%z"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "exit 1 partial output before error",
+			Args:      []string{"ok %d\\n", "abc"},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "exit 1 non-numeric mixed with valid",
+			Args:      []string{"%d %d\\n", "42", "xyz"},
+			ExitCode:  1,
+			Normalize: errNorm,
 		},
 	}
 
