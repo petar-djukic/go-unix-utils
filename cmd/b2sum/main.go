@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/b2sum: compute and check BLAKE2b message digests.
-// Implements srd076-b2sum R1.1-R1.4, R2.1-R2.3, R3.1.
+// Implements srd076-b2sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.2.
 package main
 
 import (
@@ -103,7 +103,7 @@ func run(cfg config) int {
 	if cfg.check {
 		return runCheck(cfg, hcfg)
 	}
-	return hashutil.DigestFiles(cfg.files, hcfg, cfg.binary, cfg.tag, os.Stdout, os.Stderr)
+	return digestFiles(cfg, hcfg)
 }
 
 // buildHashConfig constructs a HashConfig for the configured digest length.
@@ -174,6 +174,60 @@ func runCheck(cfg config, hcfg hashutil.HashConfig) int {
 		return 1
 	}
 	return 0
+}
+
+// digestFiles computes and prints digests for files.
+// R3.2: uses FormatBSDTag when --tag is set.
+// R4.1: errors use 'b2sum: <filename>: <error>' format.
+func digestFiles(cfg config, hcfg hashutil.HashConfig) int {
+	files := cfg.files
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+	exitCode := 0
+	for _, name := range files {
+		if err := digestFile(name, hcfg, cfg.binary, cfg.tag); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", programName, name, unwrapErr(err))
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+// digestFile computes and prints the digest for one file or stdin.
+func digestFile(name string, hcfg hashutil.HashConfig, binary, tag bool) error {
+	digest, err := computeDigest(name, hcfg)
+	if err != nil {
+		return err
+	}
+	if tag {
+		fmt.Fprintln(os.Stdout, hashutil.FormatBSDTag(hcfg.Algorithm, name, digest))
+	} else {
+		fmt.Fprintln(os.Stdout, hashutil.FormatGNU(digest, name, binary))
+	}
+	return nil
+}
+
+// computeDigest opens a file (or stdin for "-") and returns its hex digest.
+func computeDigest(name string, hcfg hashutil.HashConfig) (string, error) {
+	if name == "-" {
+		return hashutil.ComputeDigest(os.Stdin, hcfg)
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close() // best-effort close on read-only file
+	return hashutil.ComputeDigest(f, hcfg)
+}
+
+// unwrapErr extracts the inner error from os.PathError for cleaner messages.
+// R4.1: avoids redundant path in 'b2sum: <path>: open <path>: ...' output.
+func unwrapErr(err error) error {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err
+	}
+	return err
 }
 
 // parseArgs parses command-line arguments into config.
