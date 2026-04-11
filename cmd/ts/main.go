@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ts: prepend timestamps to stdin lines.
-// Implements srd004-ts R1.1-R1.6, R2.1-R2.2.
+// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.2.
 package main
 
 import (
@@ -20,6 +20,15 @@ const progName = "ts"
 // defaultStrftimeFmt is the default strftime format per R1.2.
 const defaultStrftimeFmt = "%b %d %H:%M:%S"
 
+// defaultIncrementalFmt is the default format for -i mode per R3.2.
+const defaultIncrementalFmt = "%H:%M:%S"
+
+// config holds parsed command-line options.
+type config struct {
+	format      string
+	incremental bool // -i mode (R3.1)
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -27,42 +36,72 @@ func main() {
 
 // run parses arguments and timestamps stdin.
 func run(args []string) int {
-	format, err := parseArgs(args)
+	cfg, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	return timestampStdin(format)
+	return timestampStdin(cfg)
 }
 
-// parseArgs extracts the optional format string from positional args.
+// parseArgs extracts flags and the optional format string.
 // R2.1: accepts optional positional format string.
+// R3.1: -i enables incremental mode.
+// R3.2: -i default format is "%H:%M:%S".
 // R7.2: unrecognized flags produce an error.
-func parseArgs(args []string) (string, error) {
-	format := defaultStrftimeFmt
+func parseArgs(args []string) (config, error) {
+	var cfg config
+	hasCustomFormat := false
+	var customFormat string
 	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			return "", fmt.Errorf("%s: unrecognized option '%s'", progName, arg)
+		if arg == "-i" {
+			cfg.incremental = true
+			continue
 		}
-		format = arg
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			return config{}, fmt.Errorf(
+				"%s: unrecognized option '%s'", progName, arg)
+		}
+		customFormat = arg
+		hasCustomFormat = true
 	}
-	return format, nil
+	cfg.format = selectFormat(hasCustomFormat, customFormat, cfg.incremental)
+	return cfg, nil
+}
+
+// selectFormat determines the format string based on mode and user input.
+func selectFormat(hasCustom bool, custom string, incr bool) string {
+	if hasCustom {
+		return custom
+	}
+	if incr {
+		return defaultIncrementalFmt
+	}
+	return defaultStrftimeFmt
 }
 
 // timestampStdin reads stdin and prepends timestamps.
 // R1.1: read line by line, prepend timestamp + space.
 // R1.3: flush stdout after each line.
 // R1.4: preserve original newline, do not add extra.
-// R1.5: pass through partial lines (no trailing newline at EOF).
+// R1.5: pass through partial lines.
 // R1.6: exit 0 on EOF.
-func timestampStdin(format string) int {
+// R3.1: -i shows elapsed time since previous line.
+// R3.2: -i uses TZ=GMT for elapsed formatting.
+func timestampStdin(cfg config) int {
 	reader := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
+	var lastTime time.Time
+	var gmt *time.Location
+	if cfg.incremental {
+		gmt, _ = time.LoadLocation("GMT")
+		lastTime = time.Now()
+	}
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
 			now := time.Now()
-			ts := formatStrftime(format, now)
+			ts := formatTimestamp(cfg, now, &lastTime, gmt)
 			fmt.Fprintf(w, "%s %s", ts, line)
 			w.Flush()
 		}
@@ -71,6 +110,20 @@ func timestampStdin(format string) int {
 		}
 	}
 	return 0
+}
+
+// formatTimestamp produces the timestamp string for one line.
+// R2.4: a single time sample is used for both second and subsecond.
+func formatTimestamp(
+	cfg config, now time.Time, lastTime *time.Time, gmt *time.Location,
+) string {
+	if cfg.incremental {
+		delta := now.Sub(*lastTime)
+		*lastTime = now
+		deltaTime := time.Unix(0, delta.Nanoseconds()).In(gmt)
+		return formatStrftime(cfg.format, deltaTime)
+	}
+	return formatStrftime(cfg.format, now)
 }
 
 // strftimeSimple maps strftime specifiers to Go time.Format tokens
@@ -97,6 +150,7 @@ var strftimeSimple = map[byte]string{
 
 // formatStrftime formats a time value using a strftime format string.
 // R2.2: supports standard strftime(3) conversion specifications.
+// R2.3: supports %.S, %.s, %.T subsecond extensions.
 func formatStrftime(format string, t time.Time) string {
 	var b strings.Builder
 	b.Grow(len(format) * 2)
@@ -106,9 +160,32 @@ func formatStrftime(format string, t time.Time) string {
 			continue
 		}
 		i++
-		writeSpecifier(&b, format[i], t)
+		if format[i] == '.' && i+1 < len(format) {
+			i++
+			writeSubsecondSpec(&b, format[i], t)
+		} else {
+			writeSpecifier(&b, format[i], t)
+		}
 	}
 	return b.String()
+}
+
+// writeSubsecondSpec handles ts-specific subsecond extensions.
+// R2.3: %.S = seconds.microseconds, %.s = epoch.microseconds,
+// %.T = HH:MM:SS.microseconds. Six decimal places.
+func writeSubsecondSpec(b *strings.Builder, spec byte, t time.Time) {
+	usec := t.Nanosecond() / 1000
+	switch spec {
+	case 'S':
+		fmt.Fprintf(b, "%02d.%06d", t.Second(), usec)
+	case 's':
+		fmt.Fprintf(b, "%d.%06d", t.Unix(), usec)
+	case 'T':
+		fmt.Fprintf(b, "%s.%06d", t.Format("15:04:05"), usec)
+	default:
+		b.WriteString("%.")
+		b.WriteByte(spec)
+	}
 }
 
 // writeSpecifier writes a single strftime specifier to the builder.
