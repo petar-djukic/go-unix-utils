@@ -77,7 +77,9 @@ func parseArgs(args []string) (string, error) {
 		case arg == "--":
 			return parseFileAfterDash(args[i+1:], file)
 		case strings.HasPrefix(arg, "-") && arg != "-":
-			return "", fmt.Errorf("unrecognized option '%s'", arg)
+			fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+			os.Exit(1)
 		default:
 			if file != "" {
 				return "", fmt.Errorf("extra operand '%s'", arg)
