@@ -415,9 +415,16 @@ func fmtUnsigned(
 
 // fmtFloat formats one argument as a floating-point number.
 // R1.3: %f, %e, %g and uppercase variants.
+// GNU printf defaults to precision 6 for all float verbs; Go's %g/%G
+// default differs, so we force .6 when no precision was specified.
 func fmtFloat(
 	spec convSpec, width, prec int, args []string, argIdx int, verb byte,
 ) (int, bool) {
+	// Force default precision 6 to match GNU printf behavior.
+	if !spec.hasPrec && !spec.precStar {
+		spec.hasPrec = true
+		spec.prec = "6"
+	}
 	s, newIdx := consumeStringArg(args, argIdx)
 	val, err := parseFloatArg(s)
 	if err != nil {
