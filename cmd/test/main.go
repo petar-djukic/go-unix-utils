@@ -26,6 +26,13 @@ const (
 	exitError = 2
 )
 
+// Access mode constants for syscall.Access.
+const (
+	accessRead    = 0x4 // R_OK
+	accessWrite   = 0x2 // W_OK
+	accessExecute = 0x1 // X_OK
+)
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -40,7 +47,7 @@ func run(args []string) int {
 		return exitError
 	}
 	if p.pos < len(p.args) {
-		fmt.Fprintf(os.Stderr, "test: extra argument %q\n", p.args[p.pos])
+		fmt.Fprintf(os.Stderr, "test: extra argument '%s'\n", p.args[p.pos])
 		return exitError
 	}
 	if result {
@@ -140,19 +147,22 @@ func (p *parser) parseGroup() (bool, error) {
 		return false, err
 	}
 	if p.peek() != ")" {
-		return false, fmt.Errorf("missing )")
+		last := p.args[p.pos-1]
+		return false, fmt.Errorf("missing argument after '%s'", last)
 	}
 	p.advance() // skip ")"
 	return val, nil
 }
 
 // parsePrimaryExpr evaluates a primary expression: unary op, binary op, or string.
+// Per POSIX, a single argument is treated as a non-empty string test regardless
+// of whether it looks like an operator.
 func (p *parser) parsePrimaryExpr() (bool, error) {
 	if p.remaining() == 0 {
 		return false, nil // zero args = false per R1.2
 	}
 	tok := p.peek()
-	if isUnaryFileOp(tok) || tok == "-z" || tok == "-n" {
+	if p.remaining() >= 2 && isUnaryOp(tok) {
 		return p.parseUnary()
 	}
 	if p.remaining() >= 3 && isBinaryOp(p.args[p.pos+1]) {
@@ -163,12 +173,17 @@ func (p *parser) parsePrimaryExpr() (bool, error) {
 	return tok != "", nil
 }
 
+// isUnaryOp reports whether op is a unary operator (file test, -z, or -n).
+func isUnaryOp(op string) bool {
+	return isUnaryFileOp(op) || op == "-z" || op == "-n"
+}
+
 // parseUnary evaluates a unary operator expression.
 func (p *parser) parseUnary() (bool, error) {
 	op := p.peek()
 	p.advance()
 	if p.remaining() == 0 {
-		return false, fmt.Errorf("missing argument after %q", op)
+		return false, fmt.Errorf("missing argument after '%s'", op)
 	}
 	operand := p.peek()
 	p.advance()
@@ -182,7 +197,7 @@ func (p *parser) parseBinary() (bool, error) {
 	op := p.peek()
 	p.advance()
 	if p.remaining() == 0 {
-		return false, fmt.Errorf("missing argument after %q", op)
+		return false, fmt.Errorf("missing argument after '%s'", op)
 	}
 	right := p.peek()
 	p.advance()
@@ -213,7 +228,7 @@ func evalBinary(op, left, right string) (bool, error) {
 	case "-nt", "-ot", "-ef":
 		return evalFileCompare(op, left, right) // R1.2
 	default:
-		return false, fmt.Errorf("unknown binary operator %q", op)
+		return false, fmt.Errorf("unknown condition: '%s'", op)
 	}
 }
 
@@ -336,8 +351,10 @@ func evalFileTest(op, path string) bool {
 	}
 }
 
+// R3.1: -e uses os.Stat (follows symlinks) per POSIX: true if path resolves
+// to an existing directory entry.
 func fileExists(path string) bool {
-	_, err := os.Lstat(path)
+	_, err := os.Stat(path)
 	return err == nil
 }
 
@@ -357,15 +374,15 @@ func isNonEmpty(path string) bool {
 }
 
 func isReadable(path string) bool {
-	return syscall.Access(path, syscall.O_RDONLY) == nil
+	return syscall.Access(path, accessRead) == nil
 }
 
 func isWritable(path string) bool {
-	return syscall.Access(path, 0x2) == nil // W_OK
+	return syscall.Access(path, accessWrite) == nil
 }
 
 func isExecutable(path string) bool {
-	return syscall.Access(path, 0x1) == nil // X_OK
+	return syscall.Access(path, accessExecute) == nil
 }
 
 func isSymlink(path string) bool {
@@ -429,7 +446,7 @@ func evalFileCompare(op, left, right string) (bool, error) {
 	case "-ef":
 		return sameFile(left, right), nil
 	default:
-		return false, fmt.Errorf("unknown file comparison %q", op)
+		return false, fmt.Errorf("unknown file comparison '%s'", op)
 	}
 }
 
