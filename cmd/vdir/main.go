@@ -170,6 +170,15 @@ func parseArgs(args []string) (options, []string) {
 			flagsDone = true
 			continue
 		}
+		// R2.3: --help and --version exit 0.
+		if arg == "--help" {
+			printHelp()
+			os.Exit(0)
+		}
+		if arg == "--version" {
+			printVersion()
+			os.Exit(0)
+		}
 		if arg == "--color" || strings.HasPrefix(arg, "--color=") {
 			if err := parseColorFlag(&opts, arg); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
@@ -187,6 +196,47 @@ func parseArgs(args []string) (options, []string) {
 		}
 	}
 	return opts, paths
+}
+
+// printHelp writes usage information to stdout.
+// R2.3: --help prints usage to stdout and exits 0.
+func printHelp() {
+	fmt.Print(`Usage: vdir [OPTION]... [FILE]...
+List directory contents in long format with C-style escaping (equivalent to ls -l -b).
+
+Options:
+  -a             do not ignore entries starting with .
+  -A             do not list implied . and ..
+  -b             print C-style escapes for nongraphic characters (default)
+  -C             list entries by columns
+  -d             list directories themselves, not their contents
+  -F             append indicator (one of */=>@|) to entries
+  -g             like -l, but do not list owner
+  -G             in a long listing, don't print group names
+  -h             with -l, print sizes like 1K 234M 2G etc.
+  -i             print the index number of each file
+  -l             use a long listing format (default)
+  -n             like -l, but list numeric user and group IDs
+  -o             like -l, but do not list group information
+  -r             reverse order while sorting
+  -R             list subdirectories recursively
+  -s             print the allocated size of each file, in blocks
+  -S             sort by file size, largest first
+  -t             sort by time, newest first
+  -U             do not sort; list entries in directory order
+  -v             natural sort of (version) numbers within text
+  -x             list entries by lines instead of by columns
+  -1             list one file per line
+      --color[=WHEN]  colorize the output; WHEN can be 'always', 'auto', or 'never'
+      --help     display this help and exit
+      --version  output version information and exit
+`)
+}
+
+// printVersion writes version information to stdout.
+// R2.3: --version prints version to stdout and exits 0.
+func printVersion() {
+	fmt.Println("vdir (go-unix-utils)")
 }
 
 // parseColorFlag handles --color[=VALUE].
