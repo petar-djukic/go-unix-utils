@@ -495,7 +495,7 @@ releases:
           status: implemented
     - version: "11.1"
       name: "Batch 11.1 — user and session information (users, who, pinky)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three user information utilities. users prints login names of logged-in
