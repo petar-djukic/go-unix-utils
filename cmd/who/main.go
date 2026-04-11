@@ -25,12 +25,16 @@ import (
 
 const progName = "who"
 
+// timeFormat matches GNU who output: "Jan _2 HH:MM".
+const timeFormat = "Jan _2 15:04"
+
 // utmpEntry holds one session from the utmpx database.
 type utmpEntry struct {
 	user    string
 	line    string
 	time    time.Time
 	host    string
+	pid     int
 	entType int
 }
 
@@ -69,6 +73,16 @@ func main() {
 	displayEntries(entries, opts)
 }
 
+// showUsers returns true when user-process entries should be printed.
+// When no entry-type flag is set, users are shown by default.
+// When -b is set alone, only boot entries are shown.
+func showUsers(opts options) bool {
+	if opts.users {
+		return true
+	}
+	return !opts.boot
+}
+
 // displayEntries dispatches to the appropriate output mode.
 func displayEntries(entries []utmpEntry, opts options) {
 	if opts.count {
@@ -81,7 +95,9 @@ func displayEntries(entries []utmpEntry, opts options) {
 	if opts.boot {
 		printBootEntry(entries)
 	}
-	printUserEntries(entries, opts)
+	if showUsers(opts) {
+		printUserEntries(entries, opts)
+	}
 }
 
 // parseArgs parses command-line arguments into options.
@@ -205,6 +221,7 @@ func extractEntry(entry *C.struct_utmpx, eType int) utmpEntry {
 		line:    C.GoString(&entry.ut_line[0]),
 		time:    time.Unix(int64(entry.ut_tv.tv_sec), 0),
 		host:    C.GoString(&entry.ut_host[0]),
+		pid:     int(entry.ut_pid),
 		entType: eType,
 	}
 }
@@ -213,10 +230,10 @@ func extractEntry(entry *C.struct_utmpx, eType int) utmpEntry {
 // R2.1: header shows NAME, LINE, TIME, and optionally IDLE, COMMENT.
 func printHeading(opts options) {
 	if opts.users {
-		fmt.Printf("%-8s %-12s %-5s %-16s %s\n",
-			"NAME", "LINE", "IDLE", "TIME", "COMMENT")
+		fmt.Printf("%-8s %-12s %-12s %-5s %12s %s\n",
+			"NAME", "LINE", "TIME", "IDLE", "PID", "COMMENT")
 	} else {
-		fmt.Printf("%-8s %-12s %-16s %s\n",
+		fmt.Printf("%-8s %-12s %-12s %s\n",
 			"NAME", "LINE", "TIME", "COMMENT")
 	}
 }
@@ -241,7 +258,7 @@ func printCount(entries []utmpEntry) {
 func printBootEntry(entries []utmpEntry) {
 	for _, e := range entries {
 		if e.entType == C.BOOT_TIME {
-			timeStr := e.time.Format("2006-01-02 15:04")
+			timeStr := e.time.Format(timeFormat)
 			fmt.Printf("%-8s %-12s %s\n", "", "system boot", timeStr)
 			return
 		}
@@ -263,9 +280,9 @@ func printUserEntries(entries []utmpEntry, opts options) {
 }
 
 // printEntry prints one user session line in GNU who default format.
-// R1.2: format is NAME LINE TIME (HOST).
+// R1.1: format is NAME LINE TIME (HOST).
 func printEntry(e utmpEntry) {
-	timeStr := e.time.Format("2006-01-02 15:04")
+	timeStr := e.time.Format(timeFormat)
 	if e.host != "" {
 		fmt.Printf("%-8s %-12s %s (%s)\n", e.user, e.line, timeStr, e.host)
 	} else {
@@ -273,17 +290,18 @@ func printEntry(e utmpEntry) {
 	}
 }
 
-// printEntryWithIdle prints a user session line including idle time.
+// printEntryWithIdle prints a user session line including idle time and PID.
 // R2.2: idle time as HH:MM, '.' for active, 'old' for > 24 hours.
+// Format matches GNU who -u: NAME LINE TIME IDLE PID (HOST).
 func printEntryWithIdle(e utmpEntry) {
-	timeStr := e.time.Format("2006-01-02 15:04")
+	timeStr := e.time.Format(timeFormat)
 	idle := idleString(e.line)
 	if e.host != "" {
-		fmt.Printf("%-8s %-12s %s %s (%s)\n",
-			e.user, e.line, idle, timeStr, e.host)
+		fmt.Printf("%-8s %-12s %s %-5s%12d (%s)\n",
+			e.user, e.line, timeStr, idle, e.pid, e.host)
 	} else {
-		fmt.Printf("%-8s %-12s %s %s\n",
-			e.user, e.line, idle, timeStr)
+		fmt.Printf("%-8s %-12s %s %-5s%12d\n",
+			e.user, e.line, timeStr, idle, e.pid)
 	}
 }
 
