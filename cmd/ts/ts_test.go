@@ -1,17 +1,28 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
+// Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// subsecondRe matches a dot followed by 1-6 digits after a TIMESTAMP placeholder
+// or after a time-like pattern, normalizing microsecond differences from timing.
+var subsecondRe = regexp.MustCompile(`\.\d{1,6}`)
+
+// subsecondNormalizer strips subsecond suffixes (.USEC) that vary due to
+// timing differences between the Go and reference binary executions.
+var subsecondNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return subsecondRe.ReplaceAll(b, []byte(".SUBSEC"))
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -137,6 +148,60 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
+		// R4.3: -s with custom format (%.T subsecond extension)
+		{
+			Name:      "elapsed_custom_subsecond",
+			Args:      []string{"-s", "%.T"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer, subsecondNormalizer},
+		},
+		// R5.1, R5.2: -m monotonic mode with default format
+		{
+			Name:      "monotonic_default",
+			Args:      []string{"-m"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m with -i (monotonic incremental)
+		{
+			Name:      "monotonic_incremental",
+			Args:      []string{"-m", "-i"},
+			Stdin:     []byte("line1\nline2\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m with -s (monotonic elapsed)
+		{
+			Name:      "monotonic_elapsed",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("line1\nline2\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m with custom format
+		{
+			Name:      "monotonic_custom_format",
+			Args:      []string{"-m", "%Y-%m-%d"},
+			Stdin:     []byte("hello\n"),
+		},
+		// R5.2: -m with subsecond extension
+		{
+			Name:      "monotonic_subsecond",
+			Args:      []string{"-m", "%.s"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.3: -m multi-line (monotonic clock should not jump)
+		{
+			Name:      "monotonic_multi_line",
+			Args:      []string{"-m"},
+			Stdin:     []byte("a\nb\nc\nd\ne\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m empty stdin
+		{
+			Name:  "monotonic_empty_stdin",
+			Args:  []string{"-m"},
+			Stdin: nil,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -209,7 +274,7 @@ func TestFormatStrftime(t *testing.T) {
 	}
 }
 
-// TestParseArgs verifies argument parsing for R2.1, R3.1-R3.4, R4.1-R4.2, R7.2.
+// TestParseArgs verifies argument parsing for R2.1, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R7.2.
 func TestParseArgs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -218,25 +283,38 @@ func TestParseArgs(t *testing.T) {
 		wantFmt     string
 		wantIncr    bool
 		wantElapsed bool
+		wantMono    bool
 		wantErr     bool
 		errSubstr   string
 	}{
-		{"no_args", nil, "%b %d %H:%M:%S", false, false, false, ""},
-		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, false, ""},
-		{"custom_format_epoch", []string{"%s"}, "%s", false, false, false, ""},
-		{"unknown_flag", []string{"-x"}, "", false, false, true, "unrecognized option"},
-		{"dash_only", []string{"-"}, "-", false, false, false, ""},
+		{"no_args", nil, "%b %d %H:%M:%S", false, false, false, false, ""},
+		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, false, false, ""},
+		{"custom_format_epoch", []string{"%s"}, "%s", false, false, false, false, ""},
+		{"unknown_flag", []string{"-x"}, "", false, false, false, true, "unrecognized option"},
+		{"dash_only", []string{"-"}, "-", false, false, false, false, ""},
 		// R3.1: -i flag
-		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, false, ""},
+		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, false, false, ""},
 		// R3.3: -i with custom format
-		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, false, ""},
+		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, false, false, ""},
 		// R3.4: -i and -s combined, -s takes precedence (matches reference)
-		{"incr_elapsed_combined", []string{"-i", "-s"}, "%H:%M:%S", false, true, false, ""},
-		{"elapsed_incr_combined", []string{"-s", "-i"}, "%H:%M:%S", false, true, false, ""},
+		{"incr_elapsed_combined", []string{"-i", "-s"}, "%H:%M:%S", false, true, false, false, ""},
+		{"elapsed_incr_combined", []string{"-s", "-i"}, "%H:%M:%S", false, true, false, false, ""},
 		// R4.1: -s flag
-		{"elapsed_flag", []string{"-s"}, "%H:%M:%S", false, true, false, ""},
-		// R4.2: -s with custom format
-		{"elapsed_custom", []string{"-s", "%T"}, "%T", false, true, false, ""},
+		{"elapsed_flag", []string{"-s"}, "%H:%M:%S", false, true, false, false, ""},
+		// R4.2, R4.3: -s with custom format overrides default
+		{"elapsed_custom", []string{"-s", "%T"}, "%T", false, true, false, false, ""},
+		// R4.3: -s with subsecond custom format
+		{"elapsed_custom_subsec", []string{"-s", "%.T"}, "%.T", false, true, false, false, ""},
+		// R5.1: -m flag alone
+		{"mono_flag", []string{"-m"}, "%b %d %H:%M:%S", false, false, true, false, ""},
+		// R5.2: -m with -i
+		{"mono_incr", []string{"-m", "-i"}, "%H:%M:%S", true, false, true, false, ""},
+		// R5.2: -m with -s
+		{"mono_elapsed", []string{"-m", "-s"}, "%H:%M:%S", false, true, true, false, ""},
+		// R5.2: -m with custom format
+		{"mono_custom", []string{"-m", "%Y"}, "%Y", false, false, true, false, ""},
+		// R5.2: -m with -s and custom format
+		{"mono_elapsed_custom", []string{"-m", "-s", "%.T"}, "%.T", false, true, true, false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -266,6 +344,10 @@ func TestParseArgs(t *testing.T) {
 			if got.elapsed != tc.wantElapsed {
 				t.Errorf("parseArgs(%v).elapsed = %v, want %v",
 					tc.args, got.elapsed, tc.wantElapsed)
+			}
+			if got.monotonic != tc.wantMono {
+				t.Errorf("parseArgs(%v).monotonic = %v, want %v",
+					tc.args, got.monotonic, tc.wantMono)
 			}
 		})
 	}

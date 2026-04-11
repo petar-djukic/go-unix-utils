@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ts: prepend timestamps to stdin lines.
-// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
+// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3.
 package main
 
 import (
@@ -28,6 +28,7 @@ type config struct {
 	format      string
 	incremental bool // -i mode (R3.1)
 	elapsed     bool // -s mode (R4.1)
+	monotonic   bool // -m mode (R5.1)
 }
 
 func main() {
@@ -51,6 +52,8 @@ func run(args []string) int {
 // R3.3: custom format overrides -i default.
 // R3.4: when both -i and -s are given, -s takes precedence (matches reference).
 // R4.1: -s enables elapsed-since-start mode.
+// R4.3: custom format overrides -s default.
+// R5.1: -m enables monotonic clock mode.
 // R7.2: unrecognized flags produce an error.
 func parseArgs(args []string) (config, error) {
 	var cfg config
@@ -63,6 +66,13 @@ func parseArgs(args []string) (config, error) {
 		}
 		if arg == "-s" {
 			cfg.elapsed = true
+			continue
+		}
+		// R5.1: -m uses monotonic clock. In Go, time.Now() already
+		// includes a monotonic reading used by time.Sub(), so this
+		// flag is accepted for compatibility but behavior is inherent.
+		if arg == "-m" {
+			cfg.monotonic = true
 			continue
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
