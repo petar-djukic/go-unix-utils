@@ -53,6 +53,8 @@ func statfsToMount(st *syscall.Statfs_t) mountInfo {
 		freeBlocks:  st.Bfree,
 		availBlocks: st.Bavail,
 		blockSize:   int64(st.Bsize),
+		totalInodes: st.Files,
+		freeInodes:  st.Ffree,
 	}
 }
 

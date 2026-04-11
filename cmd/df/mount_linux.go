@@ -61,6 +61,8 @@ func parseMountLine(line string) (mountInfo, bool) {
 		freeBlocks:  st.Bfree,
 		availBlocks: st.Bavail,
 		blockSize:   bs,
+		totalInodes: st.Files,
+		freeInodes:  st.Ffree,
 	}, true
 }
 
@@ -84,6 +86,8 @@ func getFilesystemInfo(path string) (*mountInfo, error) {
 		freeBlocks:  st.Bfree,
 		availBlocks: st.Bavail,
 		blockSize:   bs,
+		totalInodes: st.Files,
+		freeInodes:  st.Ffree,
 	}, nil
 }
 
