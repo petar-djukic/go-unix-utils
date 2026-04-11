@@ -10,7 +10,9 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -18,6 +20,10 @@ import (
 )
 
 const programName = "chmod"
+
+// errAlreadyReported signals that errors were already printed to stderr
+// by the recursive walker, so the caller should not print again.
+var errAlreadyReported = fmt.Errorf("errors already reported")
 
 // modeAction represents the operator in a symbolic mode clause.
 type modeAction int
@@ -173,7 +179,7 @@ func run(opts options, modeSpec string, files []string) int {
 	exitCode := 0
 	for _, file := range files {
 		if err := applyMode(opts, m, file); err != nil {
-			if !opts.silent {
+			if !opts.silent && err != errAlreadyReported {
 				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			}
 			exitCode = 1
@@ -331,9 +337,36 @@ func applyMode(opts options, m mode, path string) error {
 
 // applyModeRecursive recursively applies mode changes to a directory tree.
 // R2.1: -R/--recursive changes modes for directories and their contents.
-func applyModeRecursive(_ options, _ mode, path string) error {
-	// TODO: implement recursive traversal (srd089 R2.1)
-	return fmt.Errorf("cannot operate on '%s' recursively: not yet implemented", path)
+// Skips symbolic links encountered during traversal.
+func applyModeRecursive(opts options, m mode, root string) error {
+	hadError := false
+	walkErr := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if !opts.silent {
+				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
+					programName, p, unwrapPathError(err))
+			}
+			hadError = true
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if err := applyModeToFile(opts, m, p); err != nil {
+			if !opts.silent {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			}
+			hadError = true
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return walkErr
+	}
+	if hadError {
+		return errAlreadyReported
+	}
+	return nil
 }
 
 // applyModeToFile applies the mode change to a single file.
@@ -499,16 +532,84 @@ func whoToSpecialMask(who string) os.FileMode {
 }
 
 // printDiagnostic prints a verbose or changes-only diagnostic message.
-// R2.2: format matches GNU chmod verbose output.
-// R2.3: only prints when mode actually changed (changes mode).
-func printDiagnostic(opts options, path string, oldMode, newMode os.FileMode) {
-	// TODO: implement diagnostic output (srd089 R2.2, R2.3)
-	if opts.changes && oldMode == newMode {
+// R2.2: -v prints a diagnostic for every file processed.
+// R2.3: -c prints a diagnostic only when mode actually changed.
+// Format matches GNU chmod: "mode of 'X' changed from OOOO (SSS) to OOOO (SSS)"
+// or "mode of 'X' retained as OOOO (SSS)".
+func printDiagnostic(opts options, path string, old, new os.FileMode) {
+	if !opts.verbose && !opts.changes {
 		return
 	}
-	if opts.verbose || opts.changes {
-		fmt.Fprintf(os.Stdout, "mode of '%s' changed from %04o (%s) to %04o (%s)\n",
-			path, uint32(oldMode.Perm()), oldMode.String(),
-			uint32(newMode.Perm()), newMode.String())
+	changed := modeToOctal(old) != modeToOctal(new)
+	if opts.changes && !changed {
+		return
+	}
+	if changed {
+		fmt.Fprintf(os.Stdout,
+			"mode of '%s' changed from %04o (%s) to %04o (%s)\n",
+			path, modeToOctal(old), formatPermString(old),
+			modeToOctal(new), formatPermString(new))
+	} else {
+		fmt.Fprintf(os.Stdout,
+			"mode of '%s' retained as %04o (%s)\n",
+			path, modeToOctal(new), formatPermString(new))
+	}
+}
+
+// modeToOctal converts Go os.FileMode to Unix-style octal representation
+// including special bits (setuid=4000, setgid=2000, sticky=1000).
+func modeToOctal(m os.FileMode) uint32 {
+	val := uint32(m.Perm())
+	if m&os.ModeSetuid != 0 {
+		val |= 0o4000
+	}
+	if m&os.ModeSetgid != 0 {
+		val |= 0o2000
+	}
+	if m&os.ModeSticky != 0 {
+		val |= 0o1000
+	}
+	return val
+}
+
+// formatPermString returns the 9-character symbolic permission string
+// (e.g., "rwxr-xr-x") with special bit markers (s/S, t/T).
+func formatPermString(m os.FileMode) string {
+	var buf [9]byte
+	perm := m.Perm()
+	for i := 0; i < 9; i++ {
+		if perm&(1<<uint(8-i)) != 0 {
+			buf[i] = "rwxrwxrwx"[i]
+		} else {
+			buf[i] = '-'
+		}
+	}
+	applySpecialBitMarkers(m, &buf)
+	return string(buf[:])
+}
+
+// applySpecialBitMarkers overlays setuid, setgid, and sticky bit markers
+// onto the 9-character permission string.
+func applySpecialBitMarkers(m os.FileMode, buf *[9]byte) {
+	if m&os.ModeSetuid != 0 {
+		if buf[2] == 'x' {
+			buf[2] = 's'
+		} else {
+			buf[2] = 'S'
+		}
+	}
+	if m&os.ModeSetgid != 0 {
+		if buf[5] == 'x' {
+			buf[5] = 's'
+		} else {
+			buf[5] = 'S'
+		}
+	}
+	if m&os.ModeSticky != 0 {
+		if buf[8] == 'x' {
+			buf[8] = 't'
+		} else {
+			buf[8] = 'T'
+		}
 	}
 }

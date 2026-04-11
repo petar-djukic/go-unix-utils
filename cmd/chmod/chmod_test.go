@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/chmod against gchmod (GNU coreutils).
-// Implements srd089 R1.1-R1.4.
+// Implements srd089 R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -77,6 +77,23 @@ func TestDiff(t *testing.T) {
 		t.Parallel()
 		runErrorContinueTests(t, goBin, refBin, norm)
 	})
+	// R2.1-R2.4 test groups
+	t.Run("recursive", func(t *testing.T) {
+		t.Parallel()
+		runRecursiveTests(t, goBin, refBin, norm)
+	})
+	t.Run("verbose", func(t *testing.T) {
+		t.Parallel()
+		runVerboseTests(t, goBin, refBin, norm)
+	})
+	t.Run("changes", func(t *testing.T) {
+		t.Parallel()
+		runChangesTests(t, goBin, refBin, norm)
+	})
+	t.Run("silent", func(t *testing.T) {
+		t.Parallel()
+		runSilentTests(t, goBin, refBin, norm)
+	})
 }
 
 // runErrorTests tests error cases where no file modification occurs.
@@ -85,9 +102,9 @@ func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeF
 	norms := []testutils.NormalizeFunc{norm}
 	tests := []testutils.DiffTest{
 		{
-			Name:     "nonexistent_file",
-			Args:     []string{"755", "nonexistent"},
-			ExitCode: 1,
+			Name:      "nonexistent_file",
+			Args:      []string{"755", "nonexistent"},
+			ExitCode:  1,
 			Normalize: norms,
 		},
 	}
@@ -179,6 +196,143 @@ func runErrorContinueTests(t *testing.T, goBin, refBin string, norm testutils.No
 		compareOutputs(t, norm, refRes, goRes)
 		compareFilePerm(t, refDir, goDir, "realfile")
 	})
+}
+
+// runRecursiveTests tests R2.1: -R recursive mode changes.
+func runRecursiveTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("recursive_octal_755", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupTree(t, refDir, 0o644)
+		setupTree(t, goDir, 0o644)
+
+		args := []string{"-R", "755", "testdir"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "file1"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub", "file2"))
+	})
+	t.Run("recursive_symbolic_a_plus_x", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupTree(t, refDir, 0o644)
+		setupTree(t, goDir, 0o644)
+
+		args := []string{"-R", "a+x", "testdir"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "file1"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub", "file2"))
+	})
+}
+
+// runVerboseTests tests R2.2: -v verbose diagnostic output.
+func runVerboseTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("verbose_mode_change", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-v", "755", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+	t.Run("verbose_no_change", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-v", "644", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runChangesTests tests R2.3: -c changes-only diagnostic output.
+func runChangesTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("changes_mode_changed", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-c", "755", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+	t.Run("changes_no_change", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-c", "644", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runSilentTests tests R2.4: -f silent/quiet error suppression.
+func runSilentTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("silent_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		args := []string{"-f", "755", "nonexistent"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// setupTree creates a directory tree for recursive tests:
+// root/testdir/file1, root/testdir/sub/file2.
+func setupTree(t *testing.T, root string, mode os.FileMode) {
+	t.Helper()
+	dir := filepath.Join(root, "testdir")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("setup MkdirAll: %v", err)
+	}
+	setupFile(t, dir, "file1", mode)
+	setupFile(t, sub, "file2", mode)
+	if err := os.Chmod(sub, mode); err != nil {
+		t.Fatalf("setup Chmod sub: %v", err)
+	}
 }
 
 // runIsolatedChmod runs a single chmod test in isolated directories.
