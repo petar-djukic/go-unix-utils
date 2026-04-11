@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -171,31 +172,115 @@ func formatOpenError(name string, err error) error {
 }
 
 // formatHeader formats a page header line.
-// R1.1: header shows date, filename, and page number.
-func formatHeader(_ config, _ string, _ int) string {
-	log.Fatal("not implemented")
-	return ""
+// R1.1: header shows date centered with filename and page number.
+func formatHeader(cfg config, headerText string, pageNum int, date time.Time) string {
+	dateStr := date.Format("2006-01-02 15:04")
+	pageStr := fmt.Sprintf("Page %d", pageNum)
+	centerStart := max((cfg.pageWidth-len(headerText))/2, len(dateStr))
+	leftPad := centerStart - len(dateStr)
+	pagePos := cfg.pageWidth - len(pageStr)
+	rightPad := max(pagePos-centerStart-len(headerText), 0)
+	return dateStr + strings.Repeat(" ", leftPad) +
+		headerText + strings.Repeat(" ", rightPad) + pageStr
 }
 
 // writeHeader writes the page header to the output.
-// R1.1: 5-line header block.
-func writeHeader(_ *bufio.Writer, _ config, _ string, _ int) error {
-	log.Fatal("not implemented")
-	return nil
+// R1.1: 5-line header block (2 blank + header line + 2 blank).
+func writeHeader(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time) error {
+	line := formatHeader(cfg, hdr, pg, date)
+	_, err := fmt.Fprintf(w, "\n\n%s\n\n\n", line)
+	return err
 }
 
 // writeFooter writes the page footer to the output.
 // R1.1: 5-line footer block.
-func writeFooter(_ *bufio.Writer, _ config) error {
-	log.Fatal("not implemented")
-	return nil
+func writeFooter(w *bufio.Writer, _ config) error {
+	_, err := fmt.Fprint(w, "\n\n\n\n\n")
+	return err
+}
+
+// writePage writes a single page: header, body lines (padded), footer.
+func writePage(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time, lines []string, bodyCount int) error {
+	if err := writeHeader(w, cfg, hdr, pg, date); err != nil {
+		return err
+	}
+	for i := range bodyCount {
+		if i < len(lines) {
+			if _, err := fmt.Fprintln(w, lines[i]); err != nil {
+				return err
+			}
+		} else {
+			if err := w.WriteByte('\n'); err != nil {
+				return err
+			}
+		}
+	}
+	return writeFooter(w, cfg)
 }
 
 // paginateFile reads a file and writes paginated output.
 // R1.1: formats input into pages with header, body, footer.
-func paginateFile(_ io.Reader, _ *bufio.Writer, _ config, _ string) error {
-	log.Fatal("not implemented")
+func paginateFile(r io.Reader, w *bufio.Writer, cfg config, hdr string, date time.Time) error {
+	scanner := bufio.NewScanner(r)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	body := bodyLines(cfg)
+	if body <= 0 {
+		body = 1
+	}
+	return writePages(w, cfg, hdr, date, lines, body)
+}
+
+// writePages outputs all pages from the collected lines.
+func writePages(w *bufio.Writer, cfg config, hdr string, date time.Time, lines []string, body int) error {
+	pageNum := 1
+	for i := 0; ; i += body {
+		end := min(i+body, len(lines))
+		if err := writePage(w, cfg, hdr, pageNum, date, lines[i:end], body); err != nil {
+			return err
+		}
+		pageNum++
+		if end >= len(lines) {
+			break
+		}
+	}
 	return nil
+}
+
+// fileHeaderInfo returns the header text and date for a file.
+func fileHeaderInfo(f *os.File, name string, cfg config) (string, time.Time) {
+	hdr := cfg.header
+	if hdr == "" && name != "-" {
+		hdr = name
+	}
+	date := time.Now()
+	if name != "-" {
+		if info, err := f.Stat(); err == nil {
+			date = info.ModTime()
+		}
+	}
+	return hdr, date
+}
+
+// prFile processes a single file through the pr pipeline.
+func prFile(name string, w *bufio.Writer, cfg config) error {
+	f, err := openInput(name)
+	if err != nil {
+		return err
+	}
+	if f != os.Stdin {
+		defer f.Close()
+	}
+	hdr, date := fileHeaderInfo(f, name, cfg)
+	return paginateFile(f, w, cfg, hdr, date)
 }
 
 // formatColumns arranges lines into multi-column layout.
@@ -225,15 +310,6 @@ func doubleSpaceLine(line string) string {
 	log.Fatal("not implemented")
 	_ = line
 	return ""
-}
-
-// prFile processes a single file through the pr pipeline.
-func prFile(name string, w *bufio.Writer, cfg config) error {
-	log.Fatal("not implemented")
-	_ = name
-	_ = w
-	_ = cfg
-	return nil
 }
 
 // run processes all files and returns the exit code.
@@ -271,6 +347,3 @@ func main() {
 
 	os.Exit(run(cfg, args))
 }
-
-// init suppresses unused import warnings.
-var _ = strings.TrimSpace
