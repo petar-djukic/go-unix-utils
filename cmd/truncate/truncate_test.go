@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/truncate against gtruncate (GNU coreutils).
-// Implements srd083 R1.1-R1.4, R2.1-R2.2, R3.1-R3.2.
+// Implements srd083 R1.1-R1.4, R2.1-R2.2, R3.1-R3.3.
 package main
 
 import (
@@ -380,6 +380,45 @@ func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResu
 	if ref.exitCode != got.exitCode {
 		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
 	}
+}
+
+// TestSIGPIPE verifies that truncate handles SIGPIPE gracefully.
+// R3.3: must exit 0 (not crash) when stdout is a broken pipe.
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	verifySIGPIPE(t, goBin)
+}
+
+// verifySIGPIPE runs the binary with --help piped to a reader that closes
+// immediately, verifying the process does not exit with a SIGPIPE error.
+func verifySIGPIPE(t *testing.T, bin string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, "--help")
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Close the read end immediately to trigger SIGPIPE on write.
+	stdout.Close()
+
+	err = cmd.Wait()
+	if err == nil {
+		return // exit 0, SIGPIPE handled gracefully
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 0 {
+		return
+	}
+	t.Errorf("SIGPIPE: expected exit 0, got error: %v", err)
 }
 
 // TestHelpVersion verifies --help and --version exit 0 with output.
