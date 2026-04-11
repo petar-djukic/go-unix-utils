@@ -14,8 +14,7 @@ project:
         docs/engineering/
         docs/prompts/
         cmd/
-    releases:
-        - "15.0"
+    releases: []
 generation:
     prefix: generation-
     cycles: 30
