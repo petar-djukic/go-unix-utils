@@ -4,6 +4,7 @@
 // Package main implements cmd/pinky: lightweight finger information lookup.
 // Implements srd098-pinky R1.1-R1.3: core utmpx reading and default output.
 // Implements srd098-pinky R2.1-R2.3: flags and display options.
+// Implements srd098-pinky R3.1-R3.3: error handling, version, and help.
 package main
 
 /*
@@ -44,6 +45,8 @@ type options struct {
 	suppressProject bool // R2.3: -h
 	suppressPlan    bool // R2.3: -p
 	suppressName    bool // -w
+	version         bool // R3.1: --version
+	help            bool // R3.2: --help
 }
 
 // gecosFields holds parsed GECOS information.
@@ -67,7 +70,19 @@ type passwdInfo struct {
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	opts, operands := parseArgs(os.Args[1:])
+	opts, operands, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	if opts.version {
+		printVersion()
+		return
+	}
+	if opts.help {
+		printUsage()
+		return
+	}
 	if opts.longFormat {
 		runLongFormat(opts, operands)
 		return
@@ -100,32 +115,58 @@ func runLongFormat(opts options, operands []string) {
 	}
 }
 
-// parseArgs extracts options and user operands from arguments.
-func parseArgs(args []string) (options, []string) {
+// parseArgs parses command-line arguments into options and operands.
+// Returns an error for unrecognized flags (R3.3).
+func parseArgs(args []string) (options, []string, error) {
 	var opts options
 	var operands []string
 	for _, arg := range args {
 		if arg == "--" {
 			continue
 		}
+		if strings.HasPrefix(arg, "--") {
+			if err := applyLongFlag(&opts, arg); err != nil {
+				return options{}, nil, err
+			}
+			continue
+		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			parseFlags(&opts, arg)
+			if err := parseShortFlags(&opts, arg); err != nil {
+				return options{}, nil, err
+			}
 			continue
 		}
 		operands = append(operands, arg)
 	}
-	return opts, operands
+	return opts, operands, nil
 }
 
-// parseFlags processes a flag argument, supporting combined short flags.
-func parseFlags(opts *options, arg string) {
-	for _, ch := range arg[1:] {
-		applyFlag(opts, ch)
+// applyLongFlag handles long-form flags (--version, --help).
+func applyLongFlag(opts *options, arg string) error {
+	switch arg {
+	case "--version":
+		opts.version = true
+	case "--help":
+		opts.help = true
+	default:
+		return fmt.Errorf("%s: unrecognized option '%s'\nTry '%s --help' for more information.",
+			progName, arg, progName)
 	}
+	return nil
 }
 
-// applyFlag sets the option for a single flag character.
-func applyFlag(opts *options, ch rune) {
+// parseShortFlags processes a short flag argument, supporting combined flags.
+func parseShortFlags(opts *options, arg string) error {
+	for _, ch := range arg[1:] {
+		if err := applyShortFlag(opts, ch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyShortFlag sets the option for a single flag character.
+func applyShortFlag(opts *options, ch rune) error {
 	switch ch {
 	case 'l':
 		opts.longFormat = true
@@ -142,10 +183,34 @@ func applyFlag(opts *options, ch rune) {
 	case 'w':
 		opts.suppressName = true
 	default:
-		fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, ch)
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
-		os.Exit(1)
+		return fmt.Errorf("%s: invalid option -- '%c'\nTry '%s --help' for more information.",
+			progName, ch, progName)
 	}
+	return nil
+}
+
+// printVersion prints version information to stdout and exits 0.
+// R3.1: matches GNU pinky --version output structure.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) 0.1\n", progName)
+}
+
+// printUsage prints usage information to stdout.
+// R3.2: matches GNU pinky --help output structure.
+func printUsage() {
+	fmt.Printf("Usage: %s [OPTION]... [USER]...\n", progName)
+	fmt.Println()
+	fmt.Println("Print information about users who are currently logged in.")
+	fmt.Println()
+	fmt.Println("  -l        produce long format output")
+	fmt.Println("  -b        omit the user's home directory and shell in long format")
+	fmt.Println("  -h        omit the user's project file in long format")
+	fmt.Println("  -p        omit the user's plan file in long format")
+	fmt.Println("  -s        do short format output, this is the default")
+	fmt.Println("  -f        omit the line of column headings in short format")
+	fmt.Println("  -w        omit the user's full name in short format")
+	fmt.Println("      --help     display this help and exit")
+	fmt.Println("      --version  output version information and exit")
 }
 
 // readUserEntries reads the utmpx database and returns USER_PROCESS entries.
