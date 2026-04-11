@@ -36,6 +36,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// R7.2: Exit 1 when stdin is not a terminal.
 		{
 			Name:      "no-terminal-stdin",
 			Args:      nil,
@@ -54,11 +55,25 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
 		},
+		// R7.2: Exit 1 on invalid setting argument.
+		{
+			Name:      "invalid-setting",
+			Args:      []string{"--all", "--save"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+		// R7.2: Exit 1 on invalid device path.
+		{
+			Name:      "invalid-device",
+			Args:      []string{"-F", "/dev/nonexistent_stty_test_device"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
 	}
 
 	if hasTTY {
 		tests = append(tests,
-			// R1.1, R2.1, R3.1, R3.2: Display tests.
+			// R7.1: Exit 0 on successful display (default, -a, -g).
 			testutils.DiffTest{
 				Name: "default-display-tty",
 				Args: []string{"-F", "/dev/tty"},
