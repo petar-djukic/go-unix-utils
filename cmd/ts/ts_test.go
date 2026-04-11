@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4,
-// R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.3, R8.1-R8.2, R9.1.
+// R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.3, R8.1-R8.2,
+// R9.1-R9.2, R10.1-R10.3.
 package main
 
 import (
@@ -42,17 +43,19 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary ts not in PATH: %v", err)
 	}
 	tests := []testutils.DiffTest{
+		// R9.2: default format
 		{
 			Name:      "default_format_single_line",
 			Stdin:     []byte("hello world\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
+		// R9.2: multi-line stdin
 		{
 			Name:      "default_format_multi_line",
 			Stdin:     []byte("line1\nline2\nline3\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R7.1: empty stdin exits 0.
+		// R7.1, R9.2: empty stdin exits 0.
 		{
 			Name:  "empty_stdin",
 			Stdin: nil,
@@ -72,7 +75,7 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("\n\n\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R1.5: partial last line (no trailing newline at EOF)
+		// R1.5, R9.2: partial last line (no trailing newline at EOF)
 		{
 			Name:      "partial_last_line",
 			Stdin:     []byte("no newline"),
@@ -84,7 +87,7 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("complete\npartial"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R2.1: custom format string (date-only, stable within a day)
+		// R2.1, R9.2: custom strftime format string (date-only, stable within a day)
 		{
 			Name:  "custom_format_date",
 			Args:  []string{"%Y-%m-%d"},
@@ -103,7 +106,7 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R3.1, R3.2: incremental mode
+		// R3.1, R3.2, R9.2: incremental mode (-i)
 		{
 			Name:      "incremental_single_line",
 			Args:      []string{"-i"},
@@ -135,7 +138,7 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R4.1, R4.2: elapsed-since-start mode
+		// R4.1, R4.2, R9.2: elapsed-since-start mode (-s)
 		{
 			Name:      "elapsed_single_line",
 			Args:      []string{"-s"},
@@ -167,7 +170,7 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer, subsecondNormalizer},
 		},
-		// R5.1, R5.2: -m monotonic mode with default format
+		// R5.1, R5.2, R9.2: -m monotonic mode with default format
 		{
 			Name:      "monotonic_default",
 			Args:      []string{"-m"},
@@ -228,7 +231,7 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("Jan  5 14:30:00 test line\n"),
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
-		// R6.1: -r with no recognized timestamp (pass-through)
+		// R6.1, R10.2: -r with no recognized timestamp (pass-through)
 		{
 			Name:  "relative_no_timestamp",
 			Args:  []string{"-r"},
@@ -270,6 +273,33 @@ func TestDiff(t *testing.T) {
 			Stdin:     []byte("hello\n"),
 			Env:       []string{"TZ=America/New_York"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R10.1: -r with format string reformats matched timestamps.
+		{
+			Name:      "relative_with_format_syslog",
+			Args:      []string{"-r", "%Y-%m-%d %H:%M:%S"},
+			Stdin:     []byte("Jun 15 10:30:00 test event\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R10.2: -r with format, no timestamp passes through unchanged.
+		{
+			Name:  "relative_with_format_no_ts",
+			Args:  []string{"-r", "%Y-%m-%d"},
+			Stdin: []byte("just plain text\n"),
+		},
+		// R10.3: -r with -i — reference silently ignores -i, -r takes precedence.
+		{
+			Name:      "relative_with_incremental",
+			Args:      []string{"-r", "-i"},
+			Stdin:     []byte("Jun 15 10:30:00 event\n"),
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R10.3: -r with -s — reference silently ignores -s, -r takes precedence.
+		{
+			Name:      "relative_with_elapsed",
+			Args:      []string{"-r", "-s"},
+			Stdin:     []byte("Jun 15 10:30:00 event\n"),
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -344,7 +374,7 @@ func TestFormatStrftime(t *testing.T) {
 }
 
 // TestParseArgs verifies argument parsing for R2.1, R3.1-R3.4, R4.1-R4.3,
-// R5.1-R5.3, R6.1, R7.2.
+// R5.1-R5.3, R6.1, R7.2, R10.3.
 func TestParseArgs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -355,42 +385,51 @@ func TestParseArgs(t *testing.T) {
 		wantElapsed bool
 		wantMono    bool
 		wantRel     bool
+		wantCustom  bool
 		wantErr     bool
 		errSubstr   string
 	}{
-		{"no_args", nil, "%b %d %H:%M:%S", false, false, false, false, false, ""},
-		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, false, false, false, ""},
-		{"custom_format_epoch", []string{"%s"}, "%s", false, false, false, false, false, ""},
+		{"no_args", nil, "%b %d %H:%M:%S", false, false, false, false, false, false, ""},
+		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, false, false, true, false, ""},
+		{"custom_format_epoch", []string{"%s"}, "%s", false, false, false, false, true, false, ""},
 		// R7.2: unrecognized flag produces error.
-		{"unknown_flag", []string{"-x"}, "", false, false, false, false, true, "unrecognized option"},
-		{"dash_only", []string{"-"}, "-", false, false, false, false, false, ""},
+		{"unknown_flag", []string{"-x"}, "", false, false, false, false, false, true, "unrecognized option"},
+		{"dash_only", []string{"-"}, "-", false, false, false, false, true, false, ""},
 		// R3.1: -i flag
-		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, false, false, false, ""},
+		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, false, false, false, false, ""},
 		// R3.3: -i with custom format
-		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, false, false, false, ""},
+		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, false, false, true, false, ""},
 		// R3.4: -i and -s combined, -s takes precedence (matches reference)
-		{"incr_elapsed_combined", []string{"-i", "-s"}, "%H:%M:%S", false, true, false, false, false, ""},
-		{"elapsed_incr_combined", []string{"-s", "-i"}, "%H:%M:%S", false, true, false, false, false, ""},
+		{"incr_elapsed_combined", []string{"-i", "-s"}, "%H:%M:%S", false, true, false, false, false, false, ""},
+		{"elapsed_incr_combined", []string{"-s", "-i"}, "%H:%M:%S", false, true, false, false, false, false, ""},
 		// R4.1: -s flag
-		{"elapsed_flag", []string{"-s"}, "%H:%M:%S", false, true, false, false, false, ""},
+		{"elapsed_flag", []string{"-s"}, "%H:%M:%S", false, true, false, false, false, false, ""},
 		// R4.2, R4.3: -s with custom format overrides default
-		{"elapsed_custom", []string{"-s", "%T"}, "%T", false, true, false, false, false, ""},
+		{"elapsed_custom", []string{"-s", "%T"}, "%T", false, true, false, false, true, false, ""},
 		// R4.3: -s with subsecond custom format
-		{"elapsed_custom_subsec", []string{"-s", "%.T"}, "%.T", false, true, false, false, false, ""},
+		{"elapsed_custom_subsec", []string{"-s", "%.T"}, "%.T", false, true, false, false, true, false, ""},
 		// R5.1: -m flag alone
-		{"mono_flag", []string{"-m"}, "%b %d %H:%M:%S", false, false, true, false, false, ""},
+		{"mono_flag", []string{"-m"}, "%b %d %H:%M:%S", false, false, true, false, false, false, ""},
 		// R5.2: -m with -i
-		{"mono_incr", []string{"-m", "-i"}, "%H:%M:%S", true, false, true, false, false, ""},
+		{"mono_incr", []string{"-m", "-i"}, "%H:%M:%S", true, false, true, false, false, false, ""},
 		// R5.2: -m with -s
-		{"mono_elapsed", []string{"-m", "-s"}, "%H:%M:%S", false, true, true, false, false, ""},
+		{"mono_elapsed", []string{"-m", "-s"}, "%H:%M:%S", false, true, true, false, false, false, ""},
 		// R5.2: -m with custom format
-		{"mono_custom", []string{"-m", "%Y"}, "%Y", false, false, true, false, false, ""},
+		{"mono_custom", []string{"-m", "%Y"}, "%Y", false, false, true, false, true, false, ""},
 		// R5.2: -m with -s and custom format
-		{"mono_elapsed_custom", []string{"-m", "-s", "%.T"}, "%.T", false, true, true, false, false, ""},
+		{"mono_elapsed_custom", []string{"-m", "-s", "%.T"}, "%.T", false, true, true, false, true, false, ""},
 		// R6.1: -r flag
-		{"relative_flag", []string{"-r"}, "%b %d %H:%M:%S", false, false, false, true, false, ""},
+		{"relative_flag", []string{"-r"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
 		// R6.1: -r with -m
-		{"relative_mono", []string{"-r", "-m"}, "%b %d %H:%M:%S", false, false, true, true, false, ""},
+		{"relative_mono", []string{"-r", "-m"}, "%b %d %H:%M:%S", false, false, true, true, false, false, ""},
+		// R10.1: -r with custom format
+		{"relative_custom_fmt", []string{"-r", "%Y-%m-%d %H:%M:%S"}, "%Y-%m-%d %H:%M:%S", false, false, false, true, true, false, ""},
+		// R10.3: -r with -i — -r silently takes precedence (matches reference).
+		{"relative_incr", []string{"-r", "-i"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
+		// R10.3: -r with -s — -r silently takes precedence (matches reference).
+		{"relative_elapsed", []string{"-r", "-s"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
+		// R10.3: -r with -i -s — -r silently takes precedence (matches reference).
+		{"relative_both", []string{"-r", "-i", "-s"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -429,6 +468,10 @@ func TestParseArgs(t *testing.T) {
 				t.Errorf("parseArgs(%v).relative = %v, want %v",
 					tc.args, got.relative, tc.wantRel)
 			}
+			if got.hasCustomFormat != tc.wantCustom {
+				t.Errorf("parseArgs(%v).hasCustomFormat = %v, want %v",
+					tc.args, got.hasCustomFormat, tc.wantCustom)
+			}
 		})
 	}
 }
@@ -465,25 +508,36 @@ func TestFormatRelativeAge(t *testing.T) {
 	}
 }
 
-// TestProcessRelativeLine verifies timestamp replacement for R6.1, R6.2.
+// TestProcessRelativeLine verifies timestamp replacement for R6.1, R6.2,
+// R10.1, R10.2.
 func TestProcessRelativeLine(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name string
-		line string
-		want string
+		name        string
+		line        string
+		fmtOverride string
+		want        string
 	}{
-		{"no_timestamp", "just text\n", "just text\n"},
-		{"iso8601_1h", "2026-04-11T11:00:00Z event\n", "1h ago event\n"},
-		{"iso8601_1d", "2026-04-10T12:00:00Z event\n", "1d ago event\n"},
-		{"iso8601_no_tz", "2026-04-11T11:00:00 event\n", "1h ago event\n"},
-		{"rfc2822", "11 Apr 2026 11:00:00 UTC event\n", "1h ago event\n"},
+		// R10.2: no timestamp passes through unchanged.
+		{"no_timestamp", "just text\n", "", "just text\n"},
+		{"iso8601_1h", "2026-04-11T11:00:00Z event\n", "", "1h ago event\n"},
+		{"iso8601_1d", "2026-04-10T12:00:00Z event\n", "", "1d ago event\n"},
+		{"iso8601_no_tz", "2026-04-11T11:00:00 event\n", "", "1h ago event\n"},
+		{"rfc2822", "11 Apr 2026 11:00:00 UTC event\n", "", "1h ago event\n"},
+		// R10.1: format override reformats timestamp via strftime.
+		{"iso8601_fmt_override", "2026-04-11T11:00:00Z event\n",
+			"%Y-%m-%d %H:%M:%S", "2026-04-11 11:00:00 event\n"},
+		// R10.1: syslog with format override.
+		{"syslog_fmt_override", "Jun 15 10:30:00 event\n",
+			"%H:%M:%S", "10:30:00 event\n"},
+		// R10.2: no timestamp with format override passes through.
+		{"no_ts_fmt_override", "plain text\n", "%Y-%m-%d", "plain text\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := processRelativeLine(tc.line, now)
+			got := processRelativeLine(tc.line, now, tc.fmtOverride)
 			if got != tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}

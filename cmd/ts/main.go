@@ -3,7 +3,7 @@
 
 // Package main implements cmd/ts: prepend timestamps to stdin lines.
 // Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3,
-// R6.1-R6.2, R7.1-R7.3, R8.1-R8.2, R9.1.
+// R6.1-R6.2, R7.1-R7.3, R8.1-R8.2, R9.1-R9.2, R10.1-R10.3.
 package main
 
 import (
@@ -27,11 +27,12 @@ const defaultIncrementalFmt = "%H:%M:%S"
 
 // config holds parsed command-line options.
 type config struct {
-	format      string
-	incremental bool // -i mode (R3.1)
-	elapsed     bool // -s mode (R4.1)
-	monotonic   bool // -m mode (R5.1)
-	relative    bool // -r mode (R6.1)
+	format          string
+	hasCustomFormat bool // true when user supplied a format argument
+	incremental     bool // -i mode (R3.1)
+	elapsed         bool // -s mode (R4.1)
+	monotonic       bool // -m mode (R5.1)
+	relative        bool // -r mode (R6.1)
 }
 
 func main() {
@@ -59,10 +60,9 @@ func run(args []string) int {
 // R5.1: -m enables monotonic clock mode.
 // R6.1: -r enables relative-time parsing mode.
 // R7.2: unrecognized flags produce an error.
+// R10.3: -r is mutually exclusive with -i and -s.
 func parseArgs(args []string) (config, error) {
 	var cfg config
-	hasCustomFormat := false
-	var customFormat string
 	for _, arg := range args {
 		if arg == "-i" {
 			cfg.incremental = true
@@ -88,8 +88,14 @@ func parseArgs(args []string) (config, error) {
 			return config{}, fmt.Errorf(
 				"%s: unrecognized option '%s'", progName, arg)
 		}
-		customFormat = arg
-		hasCustomFormat = true
+		cfg.format = arg
+		cfg.hasCustomFormat = true
+	}
+	// R10.3: -r is mutually exclusive with -i and -s. The reference binary
+	// silently ignores -i/-s when -r is present, so we match that behavior.
+	if cfg.relative {
+		cfg.incremental = false
+		cfg.elapsed = false
 	}
 	// R3.4: when both -i and -s are given, -s takes precedence
 	// (matches reference binary behavior).
@@ -99,17 +105,15 @@ func parseArgs(args []string) (config, error) {
 	// R7.3: In the Go implementation, timestamp parsing for -r mode is always
 	// compiled in (no external dependency like Perl's Date::Parse). The error
 	// condition "parsing dependency unavailable" cannot arise.
-	cfg.format = selectFormat(
-		hasCustomFormat, customFormat, cfg.incremental || cfg.elapsed)
+	if !cfg.hasCustomFormat {
+		cfg.format = selectDefaultFormat(cfg.incremental || cfg.elapsed)
+	}
 	return cfg, nil
 }
 
-// selectFormat determines the format string based on mode and user input.
-// R3.3, R4.2: custom format overrides defaults for both -i and -s.
-func selectFormat(hasCustom bool, custom string, delta bool) string {
-	if hasCustom {
-		return custom
-	}
+// selectDefaultFormat determines the default format string based on mode.
+// R3.2, R4.2: delta modes default to "%H:%M:%S".
+func selectDefaultFormat(delta bool) string {
 	if delta {
 		return defaultIncrementalFmt
 	}
@@ -129,6 +133,8 @@ func selectFormat(hasCustom bool, custom string, delta bool) string {
 // R6.1: -r scans lines for timestamps and replaces with relative age.
 // R8.1: wall-clock timestamps respect TZ via time.Now() which uses time.Local.
 // R8.2: -i/-s modes use TZ=GMT internally via time.LoadLocation("GMT").
+// R10.1: -r with format reformats matched timestamps via strftime.
+// R10.2: lines with no recognized timestamp pass through unchanged.
 func timestampStdin(cfg config) int {
 	reader := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
@@ -146,9 +152,15 @@ func timestampStdin(cfg config) int {
 		if len(line) > 0 {
 			now := time.Now()
 			if cfg.relative {
-				fmt.Fprint(w, processRelativeLine(line, now))
+				fmtOverride := ""
+				if cfg.hasCustomFormat {
+					fmtOverride = cfg.format
+				}
+				fmt.Fprint(w, processRelativeLine(
+					line, now, fmtOverride))
 			} else {
-				ts := formatTimestamp(cfg, now, &lastTime, startTime, gmt)
+				ts := formatTimestamp(
+					cfg, now, &lastTime, startTime, gmt)
 				fmt.Fprintf(w, "%s %s", ts, line)
 			}
 			w.Flush()
@@ -336,7 +348,7 @@ func weekNumber(t time.Time, firstDay time.Weekday) int {
 	return (yday + 7 - wday) / 7
 }
 
-// --- Relative time mode (-r) R6.1, R6.2 ---
+// --- Relative time mode (-r) R6.1, R6.2, R10.1, R10.2 ---
 
 // tsPattern describes a timestamp regex and its parser for -r mode.
 // R6.2: each pattern recognizes a specific timestamp format.
@@ -381,22 +393,31 @@ var relLastlogRe = regexp.MustCompile(
 var weekdayPrefixRe = regexp.MustCompile(
 	`^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+`)
 
-// processRelativeLine scans a line for timestamps and replaces them
-// with human-readable relative age strings.
-// R6.1: replace each match with relative age.
-func processRelativeLine(line string, now time.Time) string {
+// processRelativeLine scans a line for timestamps and replaces them.
+// R6.1: replace each match with relative age when fmtOverride is empty.
+// R10.1: when fmtOverride is non-empty, reformat matched timestamps
+// using strftime instead of relative age.
+// R10.2: lines with no recognizable timestamp pass through unchanged.
+func processRelativeLine(
+	line string, now time.Time, fmtOverride string,
+) string {
 	for _, pat := range relPatterns {
 		if pat.re.MatchString(line) {
 			p := pat.parse
-			return pat.re.ReplaceAllStringFunc(line, func(m string) string {
-				t, err := p(m, now)
-				if err != nil {
-					return m
-				}
-				return formatRelativeAge(now.Sub(t))
-			})
+			return pat.re.ReplaceAllStringFunc(
+				line, func(m string) string {
+					t, err := p(m, now)
+					if err != nil {
+						return m
+					}
+					if fmtOverride != "" {
+						return formatStrftime(fmtOverride, t)
+					}
+					return formatRelativeAge(now.Sub(t))
+				})
 		}
 	}
+	// R10.2: no recognizable timestamp, pass through unchanged.
 	return line
 }
 
