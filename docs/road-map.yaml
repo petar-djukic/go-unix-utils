@@ -436,7 +436,7 @@ releases:
         - id: rel09.1-uc002-base64
           status: implemented
         - id: rel09.1-uc003-basenc
-          status: spec_complete
+          status: implemented
     - version: "10.0"
       name: "Batch 10.0 — file metadata and operations (stat, truncate, link, sync)"
       status: spec_complete
