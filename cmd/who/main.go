@@ -4,10 +4,12 @@
 // Package main implements cmd/who: show who is logged on.
 // Implements srd097-who R1.1-R1.4: core utmpx reading and default output.
 // Implements srd097-who R2.1-R2.4: flags and display options.
+// Implements srd097-who R3.1-R3.3: error handling, version, and help.
 package main
 
 /*
 #include <utmpx.h>
+#include <unistd.h>
 #include <stdlib.h>
 */
 import "C"
@@ -38,14 +40,37 @@ type options struct {
 	users   bool // R2.2: -u/--users
 	boot    bool // R2.3: -b/--boot
 	count   bool // R2.4: -q/--count
+	version bool // R3.1: --version
+	help    bool // R3.2: --help
+	amI     bool // R1.3: "am i" two-argument form
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	opts := parseArgs(os.Args[1:])
-	entries := readAllEntries()
+	opts, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	if opts.version {
+		printVersion()
+		return
+	}
+	if opts.help {
+		printUsage()
+		return
+	}
 
+	entries := readAllEntries()
+	if opts.amI {
+		entries = filterCurrentUser(entries)
+	}
+	displayEntries(entries, opts)
+}
+
+// displayEntries dispatches to the appropriate output mode.
+func displayEntries(entries []utmpEntry, opts options) {
 	if opts.count {
 		printCount(entries)
 		return
@@ -60,22 +85,97 @@ func main() {
 }
 
 // parseArgs parses command-line arguments into options.
-// D1: supports both short and long flag forms.
-func parseArgs(args []string) options {
+// Returns an error for unrecognized flags (R3.2).
+func parseArgs(args []string) (options, error) {
 	var opts options
+	var nonFlags []string
 	for _, arg := range args {
-		switch arg {
-		case "-H", "--heading":
-			opts.heading = true
-		case "-u", "--users":
-			opts.users = true
-		case "-b", "--boot":
-			opts.boot = true
-		case "-q", "--count":
-			opts.count = true
+		if !strings.HasPrefix(arg, "-") {
+			nonFlags = append(nonFlags, arg)
+			continue
+		}
+		if err := applyFlag(&opts, arg); err != nil {
+			return options{}, err
 		}
 	}
-	return opts
+	// R1.3: any two non-flag arguments trigger "am i" mode.
+	if len(nonFlags) >= 2 {
+		opts.amI = true
+	}
+	return opts, nil
+}
+
+// applyFlag sets the option corresponding to arg, or returns an error.
+func applyFlag(opts *options, arg string) error {
+	switch arg {
+	case "-H", "--heading":
+		opts.heading = true
+	case "-u", "--users":
+		opts.users = true
+	case "-b", "--boot":
+		opts.boot = true
+	case "-q", "--count":
+		opts.count = true
+	case "--version":
+		opts.version = true
+	case "--help":
+		opts.help = true
+	default:
+		return fmt.Errorf("%s: unrecognized option '%s'\nTry '%s --help' for more information.",
+			progName, arg, progName)
+	}
+	return nil
+}
+
+// printVersion prints version information to stdout and exits 0.
+// R3.1: matches GNU who --version output structure.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) 0.1\n", progName)
+}
+
+// printUsage prints usage information to stdout.
+// R3.2: matches GNU who --help output structure.
+func printUsage() {
+	fmt.Printf("Usage: %s [OPTION]... [ FILE | ARG1 ARG2 ]\n", progName)
+	fmt.Println()
+	fmt.Println("Print information about users who are currently logged in.")
+	fmt.Println()
+	fmt.Println("  -b, --boot     time of last system boot")
+	fmt.Println("  -H, --heading  print line of column headings")
+	fmt.Println("  -q, --count    all login names and number of users logged on")
+	fmt.Println("  -u, --users    add user idle time")
+	fmt.Println("      --help     display this help and exit")
+	fmt.Println("      --version  output version information and exit")
+}
+
+// currentTTY returns the terminal name for stdin, stripped of "/dev/" prefix.
+// D1: used by "am i" form to identify the current session.
+func currentTTY() string {
+	name := C.ttyname(0)
+	if name == nil {
+		return ""
+	}
+	return strings.TrimPrefix(C.GoString(name), "/dev/")
+}
+
+// filterCurrentUser returns only the current user's session and boot entries.
+// D1: if stdin is not a terminal, returns nil (print nothing, exit 0).
+func filterCurrentUser(entries []utmpEntry) []utmpEntry {
+	tty := currentTTY()
+	if tty == "" {
+		return nil
+	}
+	var filtered []utmpEntry
+	for _, e := range entries {
+		if e.entType == C.BOOT_TIME {
+			filtered = append(filtered, e)
+			continue
+		}
+		if e.entType == C.USER_PROCESS && e.line == tty {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered
 }
 
 // readAllEntries reads the utmpx database and returns all relevant entries.
