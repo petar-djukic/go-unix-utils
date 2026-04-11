@@ -2,16 +2,32 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements df: report filesystem disk space usage.
-// Implements srd106-df R1.1-R1.5, R3.2, R3.7, R4.1-R4.3.
+// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1, R3.2, R3.7, R4.1-R4.3.
 package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+// sizeMode controls how size columns are formatted.
+// R2.1: sizeHuman uses binary units (K, M, G).
+// R2.2: sizeSI uses SI units (k, M, G).
+type sizeMode int
+
+const (
+	sizeDefault sizeMode = iota
+	sizeHuman
+	sizeSI
+)
+
+// humanMinWidth is the minimum column width GNU df applies to
+// human-readable size columns (Size, Used, Avail).
+const humanMinWidth = 5
 
 // mountInfo holds filesystem data from the OS.
 type mountInfo struct {
@@ -37,11 +53,14 @@ type colDef struct {
 	header     string
 	rightAlign bool
 	getValue   func(dfEntry) string
+	minWidth   int // minimum column width; 0 = use header/data max
 }
 
 // config holds parsed command-line options.
 type config struct {
 	inodes    bool
+	printType bool
+	sizeMode  sizeMode
 	hasOutput bool
 	outFields []string // specific fields; nil means all when hasOutput
 	paths     []string
@@ -54,19 +73,36 @@ func valTarget(e dfEntry) string { return e.mount.target }
 func valFsType(e dfEntry) string { return e.mount.fsType }
 func valFile(e dfEntry) string   { return e.filePath }
 
+// totalBytes returns the total size in bytes for a filesystem.
+func totalBytes(e dfEntry) int64 {
+	return int64(e.mount.totalBlocks) * e.mount.blockSize
+}
+
+// usedBytes returns the used size in bytes for a filesystem.
+func usedBytes(e dfEntry) int64 {
+	m := e.mount
+	used := max(int64(m.totalBlocks)-int64(m.freeBlocks), 0)
+	return used * m.blockSize
+}
+
+// availBytes returns the available size in bytes for a filesystem.
+func availBytes(e dfEntry) int64 {
+	return int64(e.mount.availBlocks) * e.mount.blockSize
+}
+
+// valSize returns the total size in 1K-blocks.
 func valSize(e dfEntry) string {
-	m := e.mount
-	return fmt.Sprintf("%d", int64(m.totalBlocks)*m.blockSize/1024)
+	return fmt.Sprintf("%d", totalBytes(e)/1024)
 }
 
+// valUsed returns the used size in 1K-blocks.
 func valUsed(e dfEntry) string {
-	m := e.mount
-	return fmt.Sprintf("%d", (int64(m.totalBlocks)-int64(m.freeBlocks))*m.blockSize/1024)
+	return fmt.Sprintf("%d", usedBytes(e)/1024)
 }
 
+// valAvail returns the available size in 1K-blocks.
 func valAvail(e dfEntry) string {
-	m := e.mount
-	return fmt.Sprintf("%d", int64(m.availBlocks)*m.blockSize/1024)
+	return fmt.Sprintf("%d", availBytes(e)/1024)
 }
 
 func valPcent(e dfEntry) string {
@@ -96,42 +132,119 @@ func valIpcent(e dfEntry) string {
 	return computeUsePct(m.totalInodes, m.freeInodes, m.freeInodes)
 }
 
+// --- Size formatting ---
+
+// formatSizeVal formats a byte count according to the active sizeMode.
+// R2.1: sizeHuman uses 1024-based ceiling (K, M, G).
+// R2.2: sizeSI uses 1000-based ceiling (k, M, G).
+func formatSizeVal(b int64, sm sizeMode) string {
+	switch sm {
+	case sizeHuman:
+		return gnuHumanSize(b, true)
+	case sizeSI:
+		return gnuHumanSize(b, false)
+	default:
+		return fmt.Sprintf("%d", b/1024)
+	}
+}
+
+// gnuHumanSize formats bytes using GNU coreutils human_readable() conventions
+// with ceiling rounding. binary=true uses 1024-base, binary=false uses 1000-base.
+func gnuHumanSize(bytes int64, binary bool) string {
+	if bytes == 0 {
+		return "0"
+	}
+	base := 1000.0
+	suffixes := []string{"", "k", "M", "G", "T", "P", "E"}
+	if binary {
+		base = 1024.0
+		suffixes = []string{"", "K", "M", "G", "T", "P", "E"}
+	}
+	return formatCeilSize(float64(bytes), base, suffixes)
+}
+
+// formatCeilSize formats a value with the given base and suffixes,
+// using ceiling rounding matching GNU coreutils behavior.
+func formatCeilSize(val float64, base float64, suffixes []string) string {
+	idx := 0
+	for idx+1 < len(suffixes) && val >= base {
+		val /= base
+		idx++
+	}
+	if suffixes[idx] == "" {
+		return fmt.Sprintf("%.0f", math.Ceil(val))
+	}
+	tenths := math.Ceil(val*10) / 10
+	if tenths >= 10 {
+		return fmt.Sprintf("%.0f%s", math.Ceil(val), suffixes[idx])
+	}
+	return fmt.Sprintf("%.1f%s", tenths, suffixes[idx])
+}
+
+// makeSizeFunc returns a value function that formats bytes using sizeMode.
+func makeSizeFunc(sm sizeMode, fn func(dfEntry) int64) func(dfEntry) string {
+	return func(e dfEntry) string {
+		return formatSizeVal(fn(e), sm)
+	}
+}
+
 // --- Column definitions ---
 
-// defaultCols is the column set for default block-usage mode (R1.1, R1.2).
-var defaultCols = []colDef{
-	{"Filesystem", false, valSource},
-	{"1K-blocks", true, valSize},
-	{"Used", true, valUsed},
-	{"Available", true, valAvail},
-	{"Use%", true, valPcent},
-	{"Mounted on", false, valTarget},
+// buildDefaultCols creates the default column set for the given sizeMode.
+// R2.1/R2.2: header changes from "1K-blocks" to "Size" in human-readable modes.
+func buildDefaultCols(sm sizeMode) []colDef {
+	sizeHeader := "1K-blocks"
+	availHeader := "Available"
+	minW := 0
+	if sm != sizeDefault {
+		sizeHeader = "Size"
+		availHeader = "Avail"
+		minW = humanMinWidth
+	}
+	return []colDef{
+		{"Filesystem", false, valSource, 0},
+		{sizeHeader, true, makeSizeFunc(sm, totalBytes), minW},
+		{"Used", true, makeSizeFunc(sm, usedBytes), minW},
+		{availHeader, true, makeSizeFunc(sm, availBytes), minW},
+		{"Use%", true, valPcent, 0},
+		{"Mounted on", false, valTarget, 0},
+	}
+}
+
+// insertTypeCol inserts a Type column after Filesystem.
+// R3.1: -T adds a Type column showing filesystem type.
+func insertTypeCol(cols []colDef) []colDef {
+	typeCol := colDef{"Type", false, valFsType, 0}
+	result := make([]colDef, 0, len(cols)+1)
+	result = append(result, cols[0], typeCol)
+	result = append(result, cols[1:]...)
+	return result
 }
 
 // inodeCols is the column set for inode mode (R3.2).
 var inodeCols = []colDef{
-	{"Filesystem", false, valSource},
-	{"Inodes", true, valItotal},
-	{"IUsed", true, valIused},
-	{"IFree", true, valIavail},
-	{"IUse%", true, valIpcent},
-	{"Mounted on", false, valTarget},
+	{"Filesystem", false, valSource, 0},
+	{"Inodes", true, valItotal, 0},
+	{"IUsed", true, valIused, 0},
+	{"IFree", true, valIavail, 0},
+	{"IUse%", true, valIpcent, 0},
+	{"Mounted on", false, valTarget, 0},
 }
 
 // outputFieldMap maps --output field names to column definitions (R3.7).
 var outputFieldMap = map[string]colDef{
-	"source": {"Filesystem", false, valSource},
-	"fstype": {"Type", false, valFsType},
-	"itotal": {"Inodes", true, valItotal},
-	"iused":  {"IUsed", true, valIused},
-	"iavail": {"IFree", true, valIavail},
-	"ipcent": {"IUse%", true, valIpcent},
-	"size":   {"1K-blocks", true, valSize},
-	"used":   {"Used", true, valUsed},
-	"avail":  {"Avail", true, valAvail},
-	"pcent":  {"Use%", true, valPcent},
-	"file":   {"File", false, valFile},
-	"target": {"Mounted on", false, valTarget},
+	"source": {"Filesystem", false, valSource, 0},
+	"fstype": {"Type", false, valFsType, 0},
+	"itotal": {"Inodes", true, valItotal, 0},
+	"iused":  {"IUsed", true, valIused, 0},
+	"iavail": {"IFree", true, valIavail, 0},
+	"ipcent": {"IUse%", true, valIpcent, 0},
+	"size":   {"1K-blocks", true, valSize, 0},
+	"used":   {"Used", true, valUsed, 0},
+	"avail":  {"Avail", true, valAvail, 0},
+	"pcent":  {"Use%", true, valPcent, 0},
+	"file":   {"File", false, valFile, 0},
+	"target": {"Mounted on", false, valTarget, 0},
 }
 
 // outputAllOrder defines the canonical field order for --output without a field list (R3.7).
@@ -147,8 +260,9 @@ var dummyTypes = map[string]bool{
 	"nullfs": true, "procfs": true,
 }
 
-// TODO: --total is listed in srd106-df non_goals. Task references it but
-// it conflicts with the SRD non_goals list. Skipped per constitution E6.
+// TODO: -B/--block-size=SIZE is listed in srd106-df non_goals.
+// Task R3 references it but it conflicts with the SRD non_goals list.
+// Skipped per constitution E6.
 
 // R4.3: install SIGPIPE handler at startup.
 func main() {
@@ -179,7 +293,7 @@ func run() int {
 func parseConfig(args []string) config {
 	var cfg config
 	stopFlags := false
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		arg := args[i]
 		if stopFlags || !strings.HasPrefix(arg, "-") || arg == "-" {
 			cfg.paths = append(cfg.paths, arg)
@@ -199,6 +313,15 @@ func handleFlag(cfg *config, arg string) {
 	switch {
 	case arg == "-i" || arg == "--inodes":
 		cfg.inodes = true
+	case arg == "-h" || arg == "--human-readable":
+		// R2.1: binary human-readable. R2.3: last flag wins.
+		cfg.sizeMode = sizeHuman
+	case arg == "-H" || arg == "--si":
+		// R2.2: SI units. R2.3: last flag wins.
+		cfg.sizeMode = sizeSI
+	case arg == "-T" || arg == "--print-type":
+		// R3.1: insert Type column.
+		cfg.printType = true
 	case arg == "--output":
 		cfg.hasOutput = true
 	case strings.HasPrefix(arg, "--output="):
@@ -219,10 +342,20 @@ func isNoOpFlag(arg string) bool {
 	return arg == "-k" || arg == "--no-sync"
 }
 
-// validateConfig checks for incompatible flag combinations (R3.7).
+// validateConfig checks for incompatible flag combinations.
+// R3.7: --output is incompatible with -i, -T, and -h/-H.
 func validateConfig(cfg config) error {
-	if cfg.hasOutput && cfg.inodes {
+	if !cfg.hasOutput {
+		return nil
+	}
+	if cfg.inodes {
 		return fmt.Errorf("-i and --output are mutually exclusive")
+	}
+	if cfg.printType {
+		return fmt.Errorf("-T and --output are mutually exclusive")
+	}
+	if cfg.sizeMode != sizeDefault {
+		return fmt.Errorf("-h/-H and --output are mutually exclusive")
 	}
 	return validateOutputFields(cfg)
 }
@@ -245,10 +378,16 @@ func selectColumns(cfg config) []colDef {
 	if cfg.hasOutput {
 		return selectOutputColumns(cfg.outFields)
 	}
+	var cols []colDef
 	if cfg.inodes {
-		return inodeCols
+		cols = inodeCols
+	} else {
+		cols = buildDefaultCols(cfg.sizeMode)
 	}
-	return defaultCols
+	if cfg.printType {
+		cols = insertTypeCol(cols)
+	}
+	return cols
 }
 
 // selectOutputColumns builds columns from the --output field list.
@@ -379,10 +518,11 @@ func extractHeaders(cols []colDef) []string {
 
 // computeWidths returns the per-column max width including headers.
 // R1.5: column widths are per-column maxima across all rows.
+// Respects colDef.minWidth for human-readable size columns.
 func computeWidths(cols []colDef, rows [][]string) []int {
 	widths := make([]int, len(cols))
 	for i, c := range cols {
-		widths[i] = len(c.header)
+		widths[i] = max(len(c.header), c.minWidth)
 	}
 	for _, r := range rows {
 		for i, v := range r {

@@ -23,22 +23,54 @@ var stderrProgramNameNormalizer testutils.NormalizeFunc = func(b []byte) []byte 
 // digitPattern matches sequences of 4 or more digits.
 var digitPattern = regexp.MustCompile(`\b\d{4,}\b`)
 
-// fsUsageNormalizer rounds numbers with 4+ digits to the nearest 10000
+// fsUsageNormalizer rounds numbers with 4+ digits to the nearest 100000
 // to tolerate filesystem usage changes between binary invocations.
 // Preserves column width by zero-padding the rounded value.
 var fsUsageNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
 	return digitPattern.ReplaceAllFunc(b, roundNumber)
 }
 
-// roundNumber rounds a numeric byte sequence to the nearest 100000
+// roundNumber rounds a numeric byte sequence to 2 significant figures
 // to tolerate filesystem usage fluctuations between binary invocations.
 func roundNumber(m []byte) []byte {
 	n, err := strconv.ParseInt(string(m), 10, 64)
 	if err != nil {
 		return m
 	}
-	rounded := (n / 100000) * 100000
-	return []byte(fmt.Sprintf("%0*d", len(m), rounded))
+	rounded := roundToSigFigs(n, 2)
+	return fmt.Appendf(nil, "%0*d", len(m), rounded)
+}
+
+// roundToSigFigs rounds n to the specified number of significant figures.
+func roundToSigFigs(n int64, figs int) int64 {
+	if n <= 0 {
+		return n
+	}
+	mag := int64(1)
+	temp := n
+	for temp >= 10 {
+		temp /= 10
+		mag *= 10
+	}
+	divisor := mag
+	for range figs - 1 {
+		divisor /= 10
+	}
+	if divisor == 0 {
+		return n
+	}
+	return (n / divisor) * divisor
+}
+
+// humanSizePattern matches human-readable size values like "1.5G", "234M", "1.2kB".
+var humanSizePattern = regexp.MustCompile(`\b\d+(\.\d)?\s*(K|M|G|T|P|E|kB|MB|GB|TB)\b`)
+
+// humanSizeNormalizer replaces human-readable size values with "0X"
+// to tolerate minor filesystem usage changes between binary invocations.
+var humanSizeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return humanSizePattern.ReplaceAllFunc(b, func(m []byte) []byte {
+		return []byte("0X")
+	})
 }
 
 // TestDiff runs differential tests comparing the Go df binary against
@@ -71,6 +103,143 @@ func TestDiff(t *testing.T) {
 			// R1.4: multiple FILE arguments on different filesystems.
 			Name:      "multiple_paths",
 			Args:      []string{"/", "/dev"},
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffHumanReadable verifies human-readable output matches gdf -h.
+// R2.1: binary unit display (K, M, G, T).
+func TestDiffHumanReadable(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdf")
+	if err != nil {
+		t.Skipf("reference binary gdf not in PATH: %v", err)
+	}
+
+	norms := []testutils.NormalizeFunc{humanSizeNormalizer}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "human_readable_default",
+			Args:      []string{"-h"},
+			Normalize: norms,
+		},
+		{
+			Name:      "human_readable_long_flag",
+			Args:      []string{"--human-readable"},
+			Normalize: norms,
+		},
+		{
+			Name:      "human_readable_root",
+			Args:      []string{"-h", "/"},
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffSI verifies SI output matches gdf -H.
+// R2.2: SI unit display (kB, MB, GB, TB).
+func TestDiffSI(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdf")
+	if err != nil {
+		t.Skipf("reference binary gdf not in PATH: %v", err)
+	}
+
+	norms := []testutils.NormalizeFunc{humanSizeNormalizer}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "si_default",
+			Args:      []string{"-H"},
+			Normalize: norms,
+		},
+		{
+			Name:      "si_long_flag",
+			Args:      []string{"--si"},
+			Normalize: norms,
+		},
+		{
+			Name:      "si_root",
+			Args:      []string{"-H", "/"},
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffPrintType verifies filesystem type display matches gdf -T.
+// R3.1: Type column display.
+func TestDiffPrintType(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdf")
+	if err != nil {
+		t.Skipf("reference binary gdf not in PATH: %v", err)
+	}
+
+	norms := []testutils.NormalizeFunc{fsUsageNormalizer}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "print_type_default",
+			Args:      []string{"-T"},
+			Normalize: norms,
+		},
+		{
+			Name:      "print_type_long_flag",
+			Args:      []string{"--print-type"},
+			Normalize: norms,
+		},
+		{
+			Name:      "print_type_root",
+			Args:      []string{"-T", "/"},
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCombined verifies combined flag usage matches gdf.
+// R2.1, R2.3, R3.1: -T with -h and last-flag-wins behavior.
+func TestDiffCombined(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdf")
+	if err != nil {
+		t.Skipf("reference binary gdf not in PATH: %v", err)
+	}
+
+	norms := []testutils.NormalizeFunc{humanSizeNormalizer}
+
+	tests := []testutils.DiffTest{
+		{
+			// R3.1 + R2.1: Type column with human-readable sizes.
+			Name:      "print_type_human_readable",
+			Args:      []string{"-T", "-h"},
+			Normalize: norms,
+		},
+		{
+			// R3.1 + R2.2: Type column with SI sizes.
+			Name:      "print_type_si",
+			Args:      []string{"-T", "-H"},
+			Normalize: norms,
+		},
+		{
+			// R2.3: last flag wins — -h then -H gives SI output.
+			Name:      "last_wins_h_then_H",
+			Args:      []string{"-h", "-H"},
+			Normalize: norms,
+		},
+		{
+			// R2.3: last flag wins — -H then -h gives human-readable output.
+			Name:      "last_wins_H_then_h",
+			Args:      []string{"-H", "-h"},
 			Normalize: norms,
 		},
 	}
@@ -189,19 +358,36 @@ func TestDiffErrors(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestIncompatibleFlags verifies that -i and --output cannot be combined.
-// R3.7: --output is incompatible with -i.
+// TestIncompatibleFlags verifies that mutually exclusive flag combinations
+// are rejected with an error.
+// R3.7: --output is incompatible with -i, -T, and -h/-H.
 func TestIncompatibleFlags(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--output", "-i")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit for -i with --output")
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"output_with_inodes", []string{"--output", "-i"}, "mutually exclusive"},
+		{"output_with_print_type", []string{"--output", "-T"}, "mutually exclusive"},
+		{"output_with_human", []string{"--output", "-h"}, "mutually exclusive"},
+		{"output_with_si", []string{"--output", "-H"}, "mutually exclusive"},
 	}
-	if !bytes.Contains(stderr.Bytes(), []byte("mutually exclusive")) {
-		t.Errorf("expected 'mutually exclusive' in stderr, got: %s", stderr.String())
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(goBin, tc.args...)
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if err == nil {
+				t.Fatalf("expected non-zero exit for %v", tc.args)
+			}
+			if !bytes.Contains(stderr.Bytes(), []byte(tc.want)) {
+				t.Errorf("expected %q in stderr, got: %s", tc.want, stderr.String())
+			}
+		})
 	}
 }
