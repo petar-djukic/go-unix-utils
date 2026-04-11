@@ -10,6 +10,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -195,8 +198,7 @@ func validateDeviceArgs(name string, ntype nodeType, args []string) (parsedArgs,
 }
 
 // createNode creates the special file described by parsed arguments.
-// TODO: R1.1 — implement actual mknod system call using syscall.Mknod
-// or unix.Mknod. Currently stubbed pending full implementation.
+// R1.1: uses syscall.Mkfifo for FIFOs, unix.Mknod for device files.
 func createNode(cfg config, p parsedArgs) error {
 	mode := defaultModeForType(p.ntype)
 	if cfg.mode != "" {
@@ -206,11 +208,34 @@ func createNode(cfg config, p parsedArgs) error {
 		}
 		mode = parsed
 	}
-	// TODO: Call syscall.Mknod(p.name, modeWithType, dev) where dev
-	// is constructed from p.major and p.minor via syscall.Mkdev or
-	// equivalent platform-specific device number construction.
-	_ = mode
-	_ = p
+
+	if p.ntype == nodeFIFO {
+		return createFIFO(p.name, mode)
+	}
+	return createDevice(p, mode)
+}
+
+// createFIFO creates a FIFO (named pipe) at the given path.
+func createFIFO(path string, mode os.FileMode) error {
+	if err := syscall.Mkfifo(path, uint32(mode)); err != nil {
+		return fmt.Errorf("cannot create fifo '%s': %v", path, err)
+	}
+	return nil
+}
+
+// createDevice creates a block or character special file.
+func createDevice(p parsedArgs, mode os.FileMode) error {
+	var sysMode uint32
+	switch p.ntype {
+	case nodeBlock:
+		sysMode = uint32(mode) | syscall.S_IFBLK
+	case nodeChar:
+		sysMode = uint32(mode) | syscall.S_IFCHR
+	}
+	dev := unix.Mkdev(uint32(p.major), uint32(p.minor))
+	if err := unix.Mknod(p.name, sysMode, int(dev)); err != nil {
+		return fmt.Errorf("%s: %v", p.name, err)
+	}
 	return nil
 }
 
