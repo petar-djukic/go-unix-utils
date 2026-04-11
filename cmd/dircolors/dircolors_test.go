@@ -9,10 +9,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+// reProgName matches gdircolors with an optional path prefix.
+var reProgName = regexp.MustCompile(`(?:/[^ ']*)?gdircolors`)
+
+// normalizeProgramName replaces gdircolors (with optional path) with "dircolors"
+// so error messages from both binaries match despite different program names.
+func normalizeProgramName(data []byte) []byte {
+	return reProgName.ReplaceAll(data, []byte("dircolors"))
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -82,6 +92,24 @@ func TestDiff(t *testing.T) {
 			"*.tar 01;31\n"+
 			"*.gz 01;31\n"+
 			"*.jpg 01;35\n")
+
+	// R3.4: database with unrecognized keyword.
+	invalidKeywordDB := filepath.Join(tmpDir, "invalid_kw.db")
+	writeFile(t, invalidKeywordDB,
+		"TERM xterm*\nBADKW 01;31\n")
+
+	// R3.4: database with missing second token.
+	malformedDB := filepath.Join(tmpDir, "malformed.db")
+	writeFile(t, malformedDB,
+		"TERM xterm*\nBADLINE\n")
+
+	// R3.4: database with multiple errors.
+	multiErrorDB := filepath.Join(tmpDir, "multi_error.db")
+	writeFile(t, multiErrorDB,
+		"TERM xterm*\nBADKW1 01;31\nDIR 01;34\nBADKW2 01;35\n")
+
+	// Path to a nonexistent file for file-not-found testing.
+	nonexistentDB := filepath.Join(tmpDir, "nonexistent.db")
 
 	tests := []testutils.DiffTest{
 		// AC1: Bourne shell output with --sh
@@ -186,7 +214,7 @@ func TestDiff(t *testing.T) {
 			Env:  defaultEnv("xterm-256color", ""),
 		},
 
-		// --- New tests for R2.5, R3.1–R3.3 ---
+		// --- Tests for R2.5, R3.1–R3.3 ---
 
 		// R2.5: read custom database from stdin via "-"
 		{
@@ -244,6 +272,51 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--sh", "-"},
 			Stdin: []byte("DIR 01;34\n.tar 01;31\n"),
 			Env:   defaultEnv("dumb", ""),
+		},
+
+		// --- R3.4-R3.5: error handling and edge cases ---
+
+		// R3.4/R3.5: unrecognized option exits non-zero with diagnostic
+		{
+			Name:      "unrecognized option",
+			Args:      []string{"--invalid-option"},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4/R3.5: nonexistent file exits non-zero with diagnostic
+		{
+			Name:      "nonexistent file",
+			Args:      []string{"--sh", nonexistentDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4/R3.5: unrecognized keyword in database
+		{
+			Name:      "invalid keyword in db",
+			Args:      []string{"--sh", invalidKeywordDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4/R3.5: malformed line missing second token
+		{
+			Name:      "malformed db line",
+			Args:      []string{"--sh", malformedDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4: multiple errors reported for all bad lines
+		{
+			Name:      "multiple db errors",
+			Args:      []string{"--sh", multiErrorDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.5: extra operand exits non-zero
+		{
+			Name:      "extra operand",
+			Args:      []string{"--sh", customDB, customDBNoTerm},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 	}
 

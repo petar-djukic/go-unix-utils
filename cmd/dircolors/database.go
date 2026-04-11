@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Database parsing and built-in default database for dircolors.
-// Implements srd109 R2.1–R2.5, R3.1.
+// Implements srd109 R2.1–R2.5, R3.1, R3.4.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,10 +32,29 @@ func loadDatabase(filename string) ([]dbEntry, error) {
 	}
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return nil, formatOpenError(filename, err)
 	}
 	defer f.Close() // best-effort close
 	return parseDatabase(f, filename)
+}
+
+// formatOpenError formats a file-open error to match GNU dircolors format.
+// R3.4: "FILE: Reason" (e.g., "file.db: No such file or directory").
+func formatOpenError(filename string, err error) error {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		reason := capitalizeFirst(pathErr.Err.Error())
+		return fmt.Errorf("%s: %s", filename, reason)
+	}
+	return fmt.Errorf("%s: %v", filename, err)
+}
+
+// capitalizeFirst uppercases the first character of s.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // parseDatabaseString parses a database from a string.
@@ -45,9 +65,11 @@ func parseDatabaseString(data, source string) ([]dbEntry, error) {
 // parseDatabase reads lines from r and extracts dbEntry values.
 // R2.1: parses comments, blanks, TERM lines, keywords, extensions.
 // R2.2: TERM/COLORTERM lines control whether the database applies.
+// R3.4: collects all errors and reports them; does not stop at first.
 func parseDatabase(r io.Reader, source string) ([]dbEntry, error) {
 	scanner := bufio.NewScanner(r)
 	var state parseState
+	var errs []string
 	lineNum := 0
 
 	for scanner.Scan() {
@@ -57,11 +79,16 @@ func parseDatabase(r io.Reader, source string) ([]dbEntry, error) {
 			continue
 		}
 		if err := parseLine(line, source, lineNum, &state); err != nil {
-			return nil, err
+			errs = append(errs, err.Error())
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+
+	// R3.4: report all errors from database parsing.
+	if len(errs) > 0 {
+		return nil, &parseErrors{msgs: errs}
 	}
 
 	// R2.2: if TERM/COLORTERM lines present but none match, empty output.
@@ -80,10 +107,13 @@ type parseState struct {
 }
 
 // parseLine processes a single non-comment, non-blank database line.
+// R3.4: returns error with source:line format for invalid lines.
 func parseLine(line, source string, lineNum int, state *parseState) error {
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
-		return fmt.Errorf("%s:%d: unrecognized keyword %s", source, lineNum, line)
+		// R3.4: match GNU format for missing second token (double space after semicolon).
+		return fmt.Errorf("%s:%d: invalid line;  missing second token",
+			source, lineNum)
 	}
 	keyword, value := fields[0], fields[1]
 

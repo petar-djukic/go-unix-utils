@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -31,19 +32,47 @@ type options struct {
 	filename      string
 }
 
+// parseErrors collects multiple database parse error messages.
+type parseErrors struct {
+	msgs []string
+}
+
+// Error returns all parse errors joined by newlines.
+func (e *parseErrors) Error() string {
+	return strings.Join(e.msgs, "\n")
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	opts, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+		printTryHelp()
 		os.Exit(1)
 	}
 
 	if err := run(opts); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+		printRunError(err)
 		os.Exit(1)
 	}
+}
+
+// printTryHelp writes the "Try --help" hint to stderr.
+func printTryHelp() {
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+}
+
+// printRunError writes runtime errors to stderr, handling multiple parse errors.
+func printRunError(err error) {
+	var pe *parseErrors
+	if errors.As(err, &pe) {
+		for _, msg := range pe.msgs {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, msg)
+		}
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
 }
 
 // run executes the main logic based on parsed options.
