@@ -94,7 +94,8 @@ func parseArgs(args []string) (options, error) {
 			fmt.Println(programName)
 			os.Exit(0)
 		default:
-			if strings.HasPrefix(arg, "-") {
+			// R2.5: "-" is a valid filename meaning stdin, not an option.
+			if arg != "-" && strings.HasPrefix(arg, "-") {
 				return options{}, fmt.Errorf("unrecognized option '%s'", arg)
 			}
 			if opts.filename != "" {

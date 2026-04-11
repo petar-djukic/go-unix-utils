@@ -21,9 +21,67 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary gdircolors not in PATH")
 	}
 
-	// Write a custom database file for file-argument tests.
-	customDB := filepath.Join(t.TempDir(), "custom.db")
-	writeCustomDB(t, customDB)
+	tmpDir := t.TempDir()
+
+	// Custom database files for various test scenarios.
+	customDB := filepath.Join(tmpDir, "custom.db")
+	writeFile(t, customDB,
+		"TERM xterm*\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n")
+
+	// R3.1/R2.2: TERM vt100 only — won't match xterm-256color.
+	customDBTermVT := filepath.Join(tmpDir, "term_vt.db")
+	writeFile(t, customDBTermVT,
+		"TERM vt100\nDIR 01;34\n.tar 01;31\n")
+
+	// R3.1: no TERM lines — applies to all terminals.
+	customDBNoTerm := filepath.Join(tmpDir, "no_term.db")
+	writeFile(t, customDBNoTerm,
+		"DIR 01;34\nEXEC 01;32\n.gz 01;31\n")
+
+	// R3.2: comments and blank lines interspersed.
+	customDBComments := filepath.Join(tmpDir, "comments.db")
+	writeFile(t, customDBComments,
+		"# This is a comment\n"+
+			"\n"+
+			"# Another comment\n"+
+			"TERM xterm*\n"+
+			"\n"+
+			"# File types below\n"+
+			"DIR 01;34\n"+
+			"\n"+
+			"# Extensions\n"+
+			".tar 01;31\n"+
+			".gz 01;31\n")
+
+	// R3.3: many keyword types and extensions.
+	customDBKeywords := filepath.Join(tmpDir, "keywords.db")
+	writeFile(t, customDBKeywords,
+		"TERM xterm*\n"+
+			"RESET 0\n"+
+			"DIR 01;34\n"+
+			"LINK 01;36\n"+
+			"FIFO 40;33\n"+
+			"SOCK 01;35\n"+
+			"BLK 40;33;01\n"+
+			"CHR 40;33;01\n"+
+			"ORPHAN 40;31;01\n"+
+			"SETUID 37;41\n"+
+			"SETGID 30;43\n"+
+			"STICKY 37;44\n"+
+			"OTHER_WRITABLE 34;42\n"+
+			"STICKY_OTHER_WRITABLE 30;42\n"+
+			"EXEC 01;32\n"+
+			".tar 01;31\n"+
+			".jpg 01;35\n")
+
+	// R3.3: extensions with *. prefix form.
+	customDBStarExt := filepath.Join(tmpDir, "star_ext.db")
+	writeFile(t, customDBStarExt,
+		"TERM xterm*\n"+
+			"DIR 01;34\n"+
+			"*.tar 01;31\n"+
+			"*.gz 01;31\n"+
+			"*.jpg 01;35\n")
 
 	tests := []testutils.DiffTest{
 		// AC1: Bourne shell output with --sh
@@ -127,6 +185,66 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--csh", customDB},
 			Env:  defaultEnv("xterm-256color", ""),
 		},
+
+		// --- New tests for R2.5, R3.1–R3.3 ---
+
+		// R2.5: read custom database from stdin via "-"
+		{
+			Name:  "stdin custom db sh",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n"),
+			Env:   defaultEnv("xterm-256color", ""),
+		},
+		// R2.5: stdin with C shell output
+		{
+			Name:  "stdin custom db csh",
+			Args:  []string{"--csh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\n.tar 01;31\n"),
+			Env:   defaultEnv("xterm-256color", ""),
+		},
+		// R3.1: TERM pattern non-match in custom db
+		{
+			Name: "custom db term nomatch",
+			Args: []string{"--sh", customDBTermVT},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.1: no TERM filter — applies to all terminals including dumb
+		{
+			Name: "custom db no term filter",
+			Args: []string{"--sh", customDBNoTerm},
+			Env:  defaultEnv("dumb", ""),
+		},
+		// R3.2: comments and blank lines are ignored in custom db
+		{
+			Name: "custom db comments blanks",
+			Args: []string{"--sh", customDBComments},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.3: many keywords in custom db with --sh
+		{
+			Name: "custom db keywords sh",
+			Args: []string{"--sh", customDBKeywords},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.3: many keywords in custom db with --csh
+		{
+			Name: "custom db keywords csh",
+			Args: []string{"--csh", customDBKeywords},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.3: extensions with *. prefix form
+		{
+			Name: "custom db star ext",
+			Args: []string{"--sh", customDBStarExt},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R2.5: stdin with no TERM filter
+		{
+			Name:  "stdin no term filter",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34\n.tar 01;31\n"),
+			Env:   defaultEnv("dumb", ""),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -158,11 +276,10 @@ func shellEnv(shell, term, colorterm string) []string {
 	return env
 }
 
-// writeCustomDB creates a small custom database file for testing.
-func writeCustomDB(t *testing.T, path string) {
+// writeFile creates a file with the given content for testing.
+func writeFile(t *testing.T, path, data string) {
 	t.Helper()
-	data := "TERM xterm*\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n"
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
-		t.Fatalf("failed to write custom db: %v", err)
+		t.Fatalf("failed to write %s: %v", path, err)
 	}
 }
