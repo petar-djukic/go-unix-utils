@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,6 +26,12 @@ const (
 	exitNotFound      = 127
 )
 
+// optionError wraps errors that should show the "Try --help" hint,
+// matching GNU nice behavior for getopt-style errors.
+type optionError struct{ msg string }
+
+func (e *optionError) Error() string { return e.msg }
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
@@ -36,7 +43,11 @@ func run(args []string) int {
 	adjustment, command, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		var oe *optionError
+		if errors.As(err, &oe) {
+			fmt.Fprintf(os.Stderr,
+				"Try '%s --help' for more information.\n", progName)
+		}
 		return exitInternal
 	}
 	return execute(adjustment, command)
@@ -55,8 +66,8 @@ func parseArgs(args []string) (int, []string, error) {
 		}
 		if arg == "-n" || arg == "--adjustment" {
 			if i+1 >= len(args) {
-				return 0, nil, fmt.Errorf(
-					"option requires an argument -- 'n'")
+				return 0, nil, &optionError{
+					msg: "option requires an argument -- 'n'"}
 			}
 			val, err := strconv.Atoi(args[i+1])
 			if err != nil {
@@ -160,12 +171,22 @@ func adjustPriority(adjustment int) error {
 	return syscall.Setpriority(syscall.PRIO_PROCESS, 0, target)
 }
 
+// formatLookPathError formats the error from exec.LookPath to match GNU nice
+// output: "'cmd': No such file or directory" instead of Go's verbose format.
+func formatLookPathError(name string, err error) string {
+	var pathErr *exec.Error
+	if errors.As(err, &pathErr) {
+		return fmt.Sprintf("'%s': No such file or directory", name)
+	}
+	return fmt.Sprintf("%s: %v", name, err)
+}
+
 // execCommand replaces the process with the given command. R1.4, R2.1, R2.2.
 func execCommand(command []string) int {
 	binary, err := exec.LookPath(command[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s: %v\n",
-			progName, command[0], err)
+		msg := formatLookPathError(command[0], err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, msg)
 		return exitNotFound
 	}
 	err = syscall.Exec(binary, command, os.Environ())
