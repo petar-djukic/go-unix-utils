@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/stat against gstat (GNU coreutils).
-// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2.
+// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -26,6 +27,14 @@ func makeNormalizer(refBin string) testutils.NormalizeFunc {
 		b = normalizeSyscallErrors(b)
 		return b
 	}
+}
+
+// normalizeFsLiveValues replaces large decimal numbers (7+ digits) with
+// a placeholder. Live filesystem stats (free blocks, inodes) change
+// between the reference and Go binary invocations.
+func normalizeFsLiveValues(b []byte) []byte {
+	re := regexp.MustCompile(`\d{7,}`)
+	return re.ReplaceAll(b, []byte("NNNNNNN"))
 }
 
 // normalizeSyscallErrors lowercases known syscall error messages that
@@ -86,6 +95,14 @@ func TestDiff(t *testing.T) {
 	t.Run("modes", func(t *testing.T) {
 		t.Parallel()
 		runModeTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("filesystem", func(t *testing.T) {
+		t.Parallel()
+		runFilesystemTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("dereference", func(t *testing.T) {
+		t.Parallel()
+		runDereferenceTests(t, goBin, refBin, workDir, norms)
 	})
 }
 
@@ -189,17 +206,123 @@ func runModeTests(
 			WorkDir: workDir, Normalize: norms,
 		},
 		{
-			Name:     "missing_file",
-			Args:     []string{"nonexistent"},
-			WorkDir:  workDir,
-			ExitCode: 1,
+			Name:      "missing_file",
+			Args:      []string{"nonexistent"},
+			WorkDir:   workDir,
+			ExitCode:  1,
 			Normalize: norms,
 		},
 		{
-			Name:     "mixed_valid_invalid",
-			Args:     []string{"hello.txt", "nonexistent", "subdir"},
-			WorkDir:  workDir,
-			ExitCode: 1,
+			Name:      "mixed_valid_invalid",
+			Args:      []string{"hello.txt", "nonexistent", "subdir"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runFilesystemTests tests -f filesystem stat mode.
+// R5.1: filesystem status via -f flag.
+// R6.1: filesystem format directives.
+func runFilesystemTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	// Filesystem stats (free blocks, inodes) change between runs.
+	// Add a normalizer to replace large numbers with a placeholder.
+	fsNorms := append(norms, normalizeFsLiveValues)
+	tests := []testutils.DiffTest{
+		{
+			Name:      "fs_default",
+			Args:      []string{"-f", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_blocks",
+			Args:      []string{"-f", "-c", "%a %b %f", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_inodes",
+			Args:      []string{"-f", "-c", "%c %d", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_sizes",
+			Args:      []string{"-f", "-c", "%s %S", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_type",
+			Args:      []string{"-f", "-c", "%t %T", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_id_namelen",
+			Args:      []string{"-f", "-c", "%i %l", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_name",
+			Args:      []string{"-f", "-c", "%n", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_terse",
+			Args:      []string{"-f", "-t", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_on_file",
+			Args:      []string{"-f", "hello.txt"},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runDereferenceTests tests -L dereference mode.
+// R2.2: -L follows symlinks and reports target file status.
+func runDereferenceTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	tests := []testutils.DiffTest{
+		{
+			Name:      "deref_default",
+			Args:      []string{"-L", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+		{
+			Name:      "deref_format_type",
+			Args:      []string{"-L", "-c", "%F", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+		{
+			Name:      "deref_format_size",
+			Args:      []string{"-L", "-c", "%s %n", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+		{
+			Name:      "deref_terse",
+			Args:      []string{"-L", "-t", "link"},
+			WorkDir:   workDir,
 			Normalize: norms,
 		},
 	}

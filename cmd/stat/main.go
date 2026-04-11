@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/stat: display file status.
-// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2.
+// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1.
 package main
 
 import (
@@ -26,6 +26,7 @@ const blockSize = 512
 // options holds parsed command-line flags.
 type options struct {
 	deref  bool
+	fsys   bool
 	terse  bool
 	format string
 	files  []string
@@ -64,6 +65,8 @@ func parseArgs(args []string) options {
 		switch {
 		case arg == "-L" || arg == "--dereference":
 			opts.deref = true
+		case arg == "-f" || arg == "--file-system":
+			opts.fsys = true
 		case arg == "-t" || arg == "--terse":
 			opts.terse = true
 		case arg == "-c" || arg == "--format":
@@ -91,6 +94,8 @@ func parseShortFlags(flags string, args []string, i int, opts *options) int {
 		switch flags[j] {
 		case 'L':
 			opts.deref = true
+		case 'f':
+			opts.fsys = true
 		case 't':
 			opts.terse = true
 		case 'c':
@@ -114,7 +119,11 @@ func parseShortFlags(flags string, args []string, i int, opts *options) int {
 
 // processFile stats a file and prints output according to options.
 // R2.3: returns error on stat failure, prints error to stderr.
+// R5.1: dispatches to filesystem stat when -f is set.
 func processFile(path string, opts options) error {
+	if opts.fsys {
+		return processFileFsys(path, opts)
+	}
 	fi, err := statFile(path, opts.deref)
 	if err != nil {
 		reportError(path, err)
@@ -206,9 +215,11 @@ func formatTerse(fi *sys.FileInfo, path string) string {
 		fi.ChangeTime.Unix(), birthEpoch(fi), fi.Blksize)
 }
 
-// expandFormat expands format directives in the format string.
-// R3.1: supports all standard format directives.
-func expandFormat(format string, fi *sys.FileInfo, path string) string {
+// expandFormatWith expands format directives using the provided handler.
+// Shared by file stat and filesystem stat expansion.
+func expandFormatWith(
+	format string, handler func(formatSpec) string,
+) string {
 	var buf strings.Builder
 	for i := 0; i < len(format); {
 		if format[i] != '%' {
@@ -228,9 +239,17 @@ func expandFormat(format string, fi *sys.FileInfo, path string) string {
 		}
 		spec, n := parseSpec(format[i:])
 		i += n
-		buf.WriteString(applyDirective(spec, fi, path))
+		buf.WriteString(handler(spec))
 	}
 	return buf.String()
+}
+
+// expandFormat expands format directives in the format string.
+// R3.1: supports all standard format directives.
+func expandFormat(format string, fi *sys.FileInfo, path string) string {
+	return expandFormatWith(format, func(spec formatSpec) string {
+		return applyDirective(spec, fi, path)
+	})
 }
 
 // parseSpec parses flags, width, precision, and directive letter.
