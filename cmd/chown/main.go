@@ -276,12 +276,13 @@ func parseOwnerGroup(arg string) (ownerSpec, error) {
 		return spec, nil
 	}
 
-	return resolveOwnerGroupParts(spec, ownerPart, groupPart)
+	return resolveOwnerGroupParts(spec, ownerPart, groupPart, arg)
 }
 
 // resolveOwnerGroupParts resolves the owner and group parts of OWNER:GROUP.
+// originalArg is the full OWNER[:GROUP] string for error messages.
 func resolveOwnerGroupParts(
-	spec ownerSpec, ownerPart, groupPart string,
+	spec ownerSpec, ownerPart, groupPart, originalArg string,
 ) (ownerSpec, error) {
 	if ownerPart != "" {
 		uid, err := resolveUser(ownerPart)
@@ -296,7 +297,7 @@ func resolveOwnerGroupParts(
 		// OWNER:GROUP or :GROUP
 		gid, err := resolveGroup(groupPart)
 		if err != nil {
-			return spec, err
+			return spec, fmt.Errorf("invalid group: '%s'", originalArg)
 		}
 		spec.gid = gid
 		spec.changeGID = true
