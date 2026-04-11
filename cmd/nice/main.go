@@ -128,24 +128,49 @@ func execute(adjustment int, command []string) int {
 	return runCommand(adjustment, command)
 }
 
-// printCurrentNice prints the current nice value and exits 0.
-// R1.3: stub — returns 0.
+// printCurrentNice prints the current nice value and exits 0. R1.3.
 func printCurrentNice() int {
+	prio, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: getpriority: %v\n", progName, err)
+		return exitInternal
+	}
+	fmt.Println(prio)
 	return 0
 }
 
 // runCommand applies the niceness adjustment and executes the command.
-// R1.1, R1.4: stub — returns 0.
+// R1.1, R1.2, R1.4, R2.1, R2.2.
 func runCommand(adjustment int, command []string) int {
-	return 0
+	if err := adjustPriority(adjustment); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: cannot set niceness: %v\n",
+			progName, err)
+		// non-fatal per GNU nice: warn but continue
+	}
+	return execCommand(command)
 }
 
-// Ensure imports are used. These variables exist only to satisfy
-// the compiler for the contract stub and will be removed when
-// the implementation is filled in.
-var (
-	_ = fmt.Sprintf
-	_ = exec.Command
-	_ = syscall.SIGTERM
-	_ = strconv.Atoi
-)
+// adjustPriority retrieves the current priority and sets the new one. R1.2, R1.3.
+func adjustPriority(adjustment int) error {
+	current, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+	if err != nil {
+		return fmt.Errorf("getpriority: %w", err)
+	}
+	target := current + adjustment
+	return syscall.Setpriority(syscall.PRIO_PROCESS, 0, target)
+}
+
+// execCommand replaces the process with the given command. R1.4, R2.1, R2.2.
+func execCommand(command []string) int {
+	binary, err := exec.LookPath(command[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s: %v\n",
+			progName, command[0], err)
+		return exitNotFound
+	}
+	err = syscall.Exec(binary, command, os.Environ())
+	// syscall.Exec only returns on error
+	fmt.Fprintf(os.Stderr, "%s: %s: %v\n",
+		progName, command[0], err)
+	return exitNotExec
+}
