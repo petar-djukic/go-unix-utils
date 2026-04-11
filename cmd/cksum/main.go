@@ -10,6 +10,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -157,6 +158,7 @@ func run(cfg config) int {
 
 // runCRC processes files using the POSIX CRC-32 algorithm.
 // R1.1: default CRC-32 mode with "CHECKSUM BYTES FILENAME" output.
+// R3.2: reports file errors to stderr and sets exit code 1.
 func runCRC(cfg config) int {
 	files := cfg.files
 	if len(files) == 0 {
@@ -165,11 +167,21 @@ func runCRC(cfg config) int {
 	exitCode := 0
 	for _, name := range files {
 		if err := processFileCRC(name); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, formatFileError(err))
 			exitCode = 1
 		}
 	}
 	return exitCode
+}
+
+// formatFileError produces a GNU-style diagnostic from a file operation error.
+// R3.2: strips Go's "open" wrapper from *os.PathError for "NAME: error" format.
+func formatFileError(err error) string {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return fmt.Sprintf("%s: %s", pathErr.Path, pathErr.Err)
+	}
+	return err.Error()
 }
 
 // runModern processes files using a non-CRC hash algorithm via hashutil.
