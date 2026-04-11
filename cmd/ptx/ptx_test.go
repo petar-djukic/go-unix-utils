@@ -16,6 +16,33 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skipf("reference binary gptx not in PATH: %v", err)
 	}
-	tests := []testutils.DiffTest{}
+	tests := []testutils.DiffTest{
+		{
+			Name:  "single_line",
+			Stdin: []byte("the quick brown fox\n"),
+		},
+		{
+			Name:  "empty_input",
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "multiple_lines",
+			Stdin: []byte("hello world\nfoo bar baz\n"),
+		},
+		{
+			Name:  "ignore_case_flag",
+			Args:  []string{"-f"},
+			Stdin: []byte("Alpha beta Gamma\n"),
+		},
+		{
+			Name:  "single_word_line",
+			Stdin: []byte("hello\n"),
+		},
+		{
+			Name:  "width_flag",
+			Args:  []string{"-w", "40"},
+			Stdin: []byte("one two three four\n"),
+		},
+	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
