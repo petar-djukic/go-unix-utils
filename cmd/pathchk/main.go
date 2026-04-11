@@ -17,7 +17,6 @@ import (
 const progName = "pathchk"
 
 // versionText is printed when --version is passed.
-// R1.4: prints version information and exits 0.
 const versionText = progName + " (go-unix-utils) dev"
 
 // portableMaxComponent is the POSIX _POSIX_NAME_MAX limit for -p mode.
@@ -51,6 +50,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	// R2.1: exit 0 when all pathnames pass.
+	// R2.2: exit 1 when any pathname fails.
 	exitCode := 0
 	for _, p := range paths {
 		if !checkPath(p, opts) {
@@ -84,7 +85,6 @@ func handleInfoFlags(args []string) bool {
 }
 
 // printHelp writes usage information to stdout.
-// R1.4: matches GNU pathchk --help structure.
 func printHelp() {
 	fmt.Print(`Usage: pathchk [OPTION]... NAME...
 Diagnose invalid or unportable file names.
@@ -146,17 +146,22 @@ func parseFlagArg(arg string, opts *options) error {
 }
 
 // checkPath validates a single pathname according to the given options.
-// Returns true if the path is valid.
+// R2.1: returns true when the path passes all applicable checks.
+// R2.2: returns false when any check fails.
+// Matches GNU pathchk order: posix checks first, then extra portability.
+// Both checks run independently when both flags are set.
 func checkPath(path string, opts options) bool {
-	if opts.extraPortable {
-		if !checkExtraPortable(path) {
-			return false
-		}
+	if !opts.posix && !opts.extraPortable {
+		return checkSystem(path)
 	}
-	if opts.posix {
-		return checkPosixPortable(path)
+	ok := true
+	if opts.posix && !checkPosixPortable(path) {
+		ok = false
 	}
-	return checkSystem(path)
+	if opts.extraPortable && !checkExtraPortable(path) {
+		ok = false
+	}
+	return ok
 }
 
 // checkExtraPortable applies -P checks: no empty path, no leading dash in components.
@@ -166,8 +171,7 @@ func checkExtraPortable(path string) bool {
 		fmt.Fprintf(os.Stderr, "%s: empty file name\n", progName)
 		return false
 	}
-	components := strings.Split(path, "/")
-	for _, comp := range components {
+	for _, comp := range strings.Split(path, "/") {
 		if strings.HasPrefix(comp, "-") {
 			fmt.Fprintf(os.Stderr,
 				"%s: leading '-' in a component of file name '%s'\n",
@@ -179,21 +183,31 @@ func checkExtraPortable(path string) bool {
 }
 
 // checkPosixPortable validates against POSIX portable filename rules.
-// R1.2: portable characters only, component <= 14, path <= 256.
+// R1.2: portable characters only, component <= 14, path < _POSIX_PATH_MAX.
+// R2.1/R2.2: reports all violations without short-circuiting, matching GNU behavior.
 func checkPosixPortable(path string) bool {
-	if len(path) > portableMaxPath {
+	if path == "" {
+		fmt.Fprintf(os.Stderr, "%s: empty file name\n", progName)
+		return false
+	}
+	ok := true
+	if len(path) >= portableMaxPath {
 		fmt.Fprintf(os.Stderr,
 			"%s: limit %d exceeded by length %d of file name '%s'\n",
-			progName, portableMaxPath, len(path), path)
-		return false
+			progName, portableMaxPath-1, len(path), path)
+		ok = false
 	}
 	if !checkPortableChars(path) {
-		return false
+		ok = false
 	}
-	return checkPortableComponentLengths(path)
+	if !checkPortableComponentLengths(path) {
+		ok = false
+	}
+	return ok
 }
 
 // checkPortableChars verifies all characters are in the portable set.
+// Reports the first nonportable character found.
 func checkPortableChars(path string) bool {
 	for _, ch := range path {
 		if ch == '/' {
@@ -210,21 +224,22 @@ func checkPortableChars(path string) bool {
 }
 
 // checkPortableComponentLengths checks each component against the 14-char limit.
+// Reports all components that exceed the limit, matching GNU behavior.
 func checkPortableComponentLengths(path string) bool {
-	components := strings.Split(path, "/")
-	for _, comp := range components {
+	ok := true
+	for _, comp := range strings.Split(path, "/") {
 		if len(comp) > portableMaxComponent {
 			fmt.Fprintf(os.Stderr,
 				"%s: limit %d exceeded by length %d of file name component '%s'\n",
 				progName, portableMaxComponent, len(comp), comp)
-			return false
+			ok = false
 		}
 	}
-	return true
+	return ok
 }
 
 // checkSystem validates a path against current system limits.
-// R1.1: checks component length, path length, and character validity.
+// R1.1: checks for empty path and NUL characters.
 func checkSystem(path string) bool {
 	if path == "" {
 		fmt.Fprintf(os.Stderr, "%s: '': No such file or directory\n", progName)
@@ -238,7 +253,7 @@ func checkSystemChars(path string) bool {
 	for _, ch := range path {
 		if ch == 0 {
 			fmt.Fprintf(os.Stderr,
-				"%s: non-portable character '\\0' in file name '%s'\n",
+				"%s: nonportable character '\\0' in file name '%s'\n",
 				progName, path)
 			return false
 		}

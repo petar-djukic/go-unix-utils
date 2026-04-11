@@ -8,6 +8,7 @@ package main
 import (
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -44,6 +45,14 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gpathchk not in PATH: %v", err)
 	}
 
+	// Build boundary-length paths for -p mode testing.
+	// POSIX _POSIX_PATH_MAX is 256; paths of 256+ chars fail.
+	// Usable limit is 255 chars.
+	path255 := strings.Repeat("a/", 127) + "a"  // 254 + 1 = 255 chars
+	path256 := strings.Repeat("a/", 127) + "ab" // 254 + 2 = 256 chars
+
+	norms := []testutils.NormalizeFunc{stderrNormalizer}
+
 	tests := []testutils.DiffTest{
 		// R1.1: valid path exits 0.
 		{
@@ -64,7 +73,7 @@ func TestDiff(t *testing.T) {
 			Name:      "empty_default",
 			Args:      []string{""},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 
 		// R1.2: -p portable character set checks.
@@ -76,19 +85,19 @@ func TestDiff(t *testing.T) {
 			Name:      "posix_invalid_char",
 			Args:      []string{"-p", "invalid@path"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 		{
 			Name:      "posix_space_in_name",
 			Args:      []string{"-p", "has space"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 		{
 			Name:      "posix_long_component",
 			Args:      []string{"-p", "abcdefghijklmno"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 		{
 			Name: "posix_max_component",
@@ -100,13 +109,13 @@ func TestDiff(t *testing.T) {
 			Name:      "extra_leading_dash",
 			Args:      []string{"-P", "--", "-filename"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 		{
 			Name:      "extra_empty",
 			Args:      []string{"-P", ""},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 		{
 			Name: "extra_valid",
@@ -116,7 +125,7 @@ func TestDiff(t *testing.T) {
 			Name:      "extra_leading_dash_in_component",
 			Args:      []string{"-P", "dir/-file"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 
 		// R1.3 + R1.2: combined -p -P (--portability).
@@ -124,13 +133,13 @@ func TestDiff(t *testing.T) {
 			Name:      "portability_flag",
 			Args:      []string{"--portability", "--", "-leadingdash"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 		{
 			Name:      "combined_pP_invalid_char",
 			Args:      []string{"-pP", "bad@name"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 
 		// R1.4: multiple pathnames.
@@ -142,7 +151,7 @@ func TestDiff(t *testing.T) {
 			Name:      "multi_one_invalid",
 			Args:      []string{"-p", "valid", "invalid@"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
 		},
 
 		// R1.4: --help and --version.
@@ -162,7 +171,117 @@ func TestDiff(t *testing.T) {
 			Name:      "no_args",
 			Args:      []string{},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+			Normalize: norms,
+		},
+
+		// R2.1: additional exit 0 cases -- various valid paths.
+		{
+			Name: "exit_0_root",
+			Args: []string{"/"},
+		},
+		{
+			Name: "exit_0_dot",
+			Args: []string{"."},
+		},
+		{
+			Name: "exit_0_dotdot",
+			Args: []string{".."},
+		},
+		{
+			Name: "posix_path_at_limit",
+			Args: []string{"-p", path255},
+		},
+		{
+			Name: "extra_root",
+			Args: []string{"-P", "/"},
+		},
+		{
+			Name: "extra_dot",
+			Args: []string{"-P", "."},
+		},
+		{
+			Name: "posix_trailing_slash",
+			Args: []string{"-p", "abc/"},
+		},
+		{
+			Name: "posix_double_slash",
+			Args: []string{"-p", "a//b"},
+		},
+		{
+			Name: "posix_nested_max_component",
+			Args: []string{"-p", "ab/abcdefghijklmn/cd"},
+		},
+
+		// R2.2: exit 1 cases -- path length boundary.
+		{
+			Name:      "posix_path_over_limit",
+			Args:      []string{"-p", path256},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: exit 1 cases -- various nonportable characters.
+		{
+			Name:      "posix_colon",
+			Args:      []string{"-p", "has:colon"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "posix_tilde",
+			Args:      []string{"-p", "has~tilde"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "posix_hash",
+			Args:      []string{"-p", "has#hash"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "posix_equals",
+			Args:      []string{"-p", "has=equals"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: exit 1 when multiple paths all fail.
+		{
+			Name:      "exit_1_multi_invalid",
+			Args:      []string{"-p", "bad@", "bad!"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: exit 1 when second path fails (first valid).
+		{
+			Name:      "exit_1_second_fails",
+			Args:      []string{"-p", "good", "bad@"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: -P edge cases.
+		{
+			Name:      "extra_bare_dash",
+			Args:      []string{"-P", "--", "-"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "extra_nested_dash",
+			Args:      []string{"-P", "a/-b"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: -p with empty string.
+		{
+			Name:      "posix_empty",
+			Args:      []string{"-p", ""},
+			ExitCode:  1,
+			Normalize: norms,
 		},
 	}
 
