@@ -57,6 +57,35 @@ func TestDiff(t *testing.T) {
 			Name: "verbose_suppressed_on_success",
 			Args: []string{"-v", "echo", "hello"},
 		},
+		{
+			// R2.1: exit code propagation with specific non-1 exit code.
+			Name:     "exit_code_propagation_42",
+			Args:     []string{"sh", "-c", "exit 42"},
+			ExitCode: 42,
+		},
+		{
+			// R2.1: exit code propagation preserves exit 0 on success.
+			Name: "exit_code_zero_on_success",
+			Args: []string{"true"},
+		},
+		{
+			// R1.3 + R1.2: -v -e combined, stderr triggers labeled output.
+			Name:     "verbose_stderr_combined",
+			Args:     []string{"-v", "-e", "sh", "-c", "echo err >&2"},
+			ExitCode: 2,
+		},
+		{
+			// R1.3 + R2.1: -v with specific exit code, labeled format.
+			Name:     "verbose_exit_code_propagation",
+			Args:     []string{"-v", "sh", "-c", "echo out; echo err >&2; exit 3"},
+			ExitCode: 3,
+		},
+		{
+			// R1.2 + R2.1: -e with non-zero exit, stderr present.
+			Name:     "stderr_flag_with_nonzero_exit",
+			Args:     []string{"-e", "sh", "-c", "echo err >&2; exit 1"},
+			ExitCode: 1,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

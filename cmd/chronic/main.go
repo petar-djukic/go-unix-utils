@@ -104,12 +104,14 @@ func executeCommand(cmdArgs []string, opts options) int {
 }
 
 // replayOutput displays captured command output.
-// In verbose mode, uses labeled STDOUT:/STDERR:/RETVAL: format to stdout.
+// In verbose mode, uses labeled STDOUT:/STDERR:/RETVAL: format to stdout,
+// while writing captured stderr to actual stderr.
 // In normal mode, replays raw stdout and stderr to their respective streams.
 func replayOutput(stdout, stderr []byte, exitCode int, opts options) {
 	if opts.verbose {
-		fmt.Fprintf(os.Stdout, "STDOUT:\n%s\nSTDERR:\n%s\nRETVAL: %d\n",
-			stdout, stderr, exitCode)
+		fmt.Fprintf(os.Stdout, "STDOUT:\n%s\nSTDERR:\n\nRETVAL: %d\n",
+			stdout, exitCode)
+		os.Stderr.Write(stderr)
 		return
 	}
 	os.Stdout.Write(stdout)
