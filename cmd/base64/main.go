@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/base64 encodes data in Base64 format.
+// cmd/base64 encodes and decodes data in Base64 format.
 // Implements: srd080 R1.1-R1.4 (encoding, wrap control, multi-file,
-// exit codes, and SIGPIPE).
+// exit codes, and SIGPIPE), R2.1-R2.4 (decoding, ignore-garbage,
+// whitespace handling, error reporting).
 package main
 
 import (
@@ -14,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/encutil"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -32,8 +34,8 @@ func main() {
 	}
 }
 
-// runMain parses flags and dispatches to encode.
-// R1.4: exits 0 on success, 1 on any error.
+// runMain parses flags and dispatches to encode or decode.
+// R1.4, R3.1, R3.2: exits 0 on success, 1 on any error.
 func runMain() int {
 	if handleSpecialFlags() {
 		return 0
@@ -42,7 +44,7 @@ func runMain() int {
 	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	wrap := defineFlags(fs)
+	wrap, decode, ignoreGarbage := defineFlags(fs)
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return handleFlagError(err)
@@ -59,7 +61,7 @@ func runMain() int {
 		filename = fs.Arg(0)
 	}
 
-	if err := encode(filename, *wrap); err != nil {
+	if err := run(filename, *decode, *ignoreGarbage, *wrap); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		return 1
 	}
@@ -85,10 +87,14 @@ func handleSpecialFlags() bool {
 }
 
 // defineFlags registers all command-line flags on fs.
-func defineFlags(fs *flag.FlagSet) *int {
-	wrap := fs.Int("w", defaultWrapCol, "")
+func defineFlags(fs *flag.FlagSet) (wrap *int, decode, ignoreGarbage *bool) {
+	wrap = fs.Int("w", defaultWrapCol, "")
 	fs.IntVar(wrap, "wrap", defaultWrapCol, "")
-	return wrap
+	decode = fs.Bool("d", false, "")
+	fs.BoolVar(decode, "decode", false, "")
+	ignoreGarbage = fs.Bool("i", false, "")
+	fs.BoolVar(ignoreGarbage, "ignore-garbage", false, "")
+	return wrap, decode, ignoreGarbage
 }
 
 // handleFlagError prints an error for invalid flags and returns exit code.
@@ -109,11 +115,21 @@ func printHelp(w io.Writer) {
 		"Usage: %s [OPTION]... [FILE]\n"+
 			"Base64 encode or decode FILE, or standard input, to standard output.\n\n"+
 			"With no FILE, or when FILE is -, read standard input.\n\n"+
+			"  -d, --decode          decode data\n"+
+			"  -i, --ignore-garbage  when decoding, ignore non-alphabet characters\n"+
 			"  -w, --wrap=COLS       wrap encoded lines after COLS character (default 76).\n"+
 			"                          Use 0 to disable line wrapping\n\n"+
 			"      --help        display this help and exit\n"+
 			"      --version     output version information and exit\n",
 		progName)
+}
+
+// run dispatches to encode or decode based on the decode flag.
+func run(filename string, decode, ignoreGarbage bool, wrapCol int) error {
+	if decode {
+		return decodeInput(filename, ignoreGarbage)
+	}
+	return encode(filename, wrapCol)
 }
 
 // encode reads from filename (or stdin for "-"), Base64-encodes the data,
@@ -157,10 +173,37 @@ func adjustOutput(out []byte, wrapCol int) []byte {
 	return out
 }
 
+// decodeInput reads, decodes Base64, and writes binary to stdout.
+// R2.1-R2.4: decode pipeline with error reporting.
+func decodeInput(filename string, ignoreGarbage bool) error {
+	rc, err := encutil.OpenInput(filename)
+	if err != nil {
+		return fileError(filename, err)
+	}
+	defer rc.Close()
+
+	cfg := encutil.DecoderConfig{
+		Decode:        base64Decode,
+		IgnoreGarbage: ignoreGarbage,
+	}
+	if err := encutil.Decode(rc, os.Stdout, cfg); err != nil {
+		return fmt.Errorf("invalid input")
+	}
+	return nil
+}
+
 // base64Encode encodes data using RFC 4648 Base64 standard alphabet.
-// R1.1: uses encoding/base64.StdEncoding per design decision D4.
+// R1.1: uses encoding/base64.StdEncoding per design decision D2.
 func base64Encode(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
+}
+
+// base64Decode decodes a Base64-encoded string, stripping whitespace.
+// R2.2: spaces and tabs are ignored during decoding.
+func base64Decode(s string) ([]byte, error) {
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "\t", "")
+	return base64.StdEncoding.DecodeString(s)
 }
 
 // fileError unwraps os.PathError for GNU-compatible error messages.

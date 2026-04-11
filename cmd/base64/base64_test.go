@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/base64: srd080 R1.1-R1.4.
+// Differential tests for cmd/base64: srd080 R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -61,6 +61,100 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"nonexistent_file_xyz"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDecode runs differential tests for decode mode.
+// Traces: srd080 R2.1 (decode flag), R2.2 (whitespace handling),
+// R2.3 (ignore-garbage), R2.4 (invalid input error).
+func TestDiffDecode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase64")
+	if err != nil {
+		t.Skip("reference binary gbase64 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.1: -d decodes Base64 input.
+		{
+			Name:  "decode simple base64",
+			Args:  []string{"-d"},
+			Stdin: []byte("aGVsbG8K\n"),
+		},
+		{
+			Name:  "decode with --decode long flag",
+			Args:  []string{"--decode"},
+			Stdin: []byte("aGVsbG8K\n"),
+		},
+		{
+			Name:  "decode empty input",
+			Args:  []string{"-d"},
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "decode padded input",
+			Args:  []string{"-d"},
+			Stdin: []byte("YQ==\n"),
+		},
+		// R2.2: whitespace in encoded input is handled transparently.
+		{
+			Name:  "decode multiline base64",
+			Args:  []string{"-d"},
+			Stdin: []byte("aGVs\nbG8K\n"),
+		},
+		{
+			Name:  "decode with spaces in input",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("aGVs bG8K\n"),
+		},
+		// R2.3: -i ignores non-alphabet characters.
+		{
+			Name:  "decode ignore-garbage short flag",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("aGVs!!!bG8K\n"),
+		},
+		{
+			Name:  "decode ignore-garbage long flag",
+			Args:  []string{"-d", "--ignore-garbage"},
+			Stdin: []byte("aGVs@#$bG8K\n"),
+		},
+		// R2.4: invalid Base64 input produces error and exit 1.
+		{
+			Name:      "decode invalid input exits 1",
+			Args:      []string{"-d"},
+			Stdin:     []byte("!!!invalid!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDecodeFile tests decoding from a file argument.
+// Traces: srd080 R2.1 (decode from FILE).
+func TestDiffDecodeFile(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase64")
+	if err != nil {
+		t.Skip("reference binary gbase64 not in PATH")
+	}
+
+	dir := t.TempDir()
+	inputFile := filepath.Join(dir, "encoded.txt")
+	if err := os.WriteFile(inputFile, []byte("aGVsbG8K\n"), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "decode from file argument",
+			Args: []string{"-d", inputFile},
 		},
 	}
 
