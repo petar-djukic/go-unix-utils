@@ -422,7 +422,7 @@ releases:
           status: implemented
     - version: "09.1"
       name: "Batch 9.1 — encoding utilities (base32, base64, basenc)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three encoding/decoding utilities. base32 and base64 handle RFC 4648
