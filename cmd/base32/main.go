@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/base32 encodes and decodes data in Base32 format.
-// Implements: srd079 R1.1 (encoding from file/stdin), R1.2 (default 76-col wrap),
-// R1.3 (--wrap flag), R1.4 (file open error), R2.1 (decode mode),
-// R2.2 (whitespace tolerance), R2.3 (--ignore-garbage), R2.4 (invalid input error),
-// R3.1-R3.3 (exit codes and SIGPIPE).
+// Implements: srd079 R1.1-R1.4 (encoding), R2.1-R2.4 (decoding),
+// R3.1-R3.3 (exit codes, error reporting, and SIGPIPE).
 package main
 
 import (
@@ -14,6 +12,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -24,30 +23,98 @@ import (
 const (
 	progName       = "base32"
 	defaultWrapCol = 76
+	versionStr     = "base32 (go-unix-utils) 0.1"
 )
 
 func main() {
 	sys.InstallSIGPIPEHandler()
+	if code := runMain(); code != 0 {
+		os.Exit(code)
+	}
+}
 
-	wrap := flag.Int("w", defaultWrapCol, "wrap encoded lines after COLS characters (0 to disable)")
-	flag.IntVar(wrap, "wrap", defaultWrapCol, "wrap encoded lines after COLS characters (0 to disable)")
-	decode := flag.Bool("d", false, "decode data")
-	flag.BoolVar(decode, "decode", false, "decode data")
-	ignoreGarbage := flag.Bool("i", false, "when decoding, ignore non-alphabet characters")
-	flag.BoolVar(ignoreGarbage, "ignore-garbage", false, "when decoding, ignore non-alphabet characters")
+// runMain parses flags and dispatches to encode or decode.
+// R3.1: exits 0 on success. R3.2: exits 1 on any error.
+func runMain() int {
+	if handleSpecialFlags() {
+		return 0
+	}
 
-	flag.Usage = usage
-	flag.Parse()
+	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	wrap, decode, ignoreGarbage := defineFlags(fs)
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return handleFlagError(err)
+	}
 
 	filename := "-"
-	if flag.NArg() > 0 {
-		filename = flag.Arg(0)
+	if fs.NArg() > 0 {
+		filename = fs.Arg(0)
 	}
 
 	if err := run(filename, *decode, *ignoreGarbage, *wrap); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
+}
+
+// handleSpecialFlags checks for --help and --version before flag parsing.
+// R3.1: GNU base32 prints help/version to stdout and exits 0.
+func handleSpecialFlags() bool {
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--help":
+			printHelp(os.Stdout)
+			return true
+		case "--version":
+			fmt.Println(versionStr)
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
+}
+
+// defineFlags registers all command-line flags on fs.
+func defineFlags(fs *flag.FlagSet) (wrap *int, decode, ignoreGarbage *bool) {
+	wrap = fs.Int("w", defaultWrapCol, "")
+	fs.IntVar(wrap, "wrap", defaultWrapCol, "")
+	decode = fs.Bool("d", false, "")
+	fs.BoolVar(decode, "decode", false, "")
+	ignoreGarbage = fs.Bool("i", false, "")
+	fs.BoolVar(ignoreGarbage, "ignore-garbage", false, "")
+	return wrap, decode, ignoreGarbage
+}
+
+// handleFlagError prints an error for invalid flags and returns exit code.
+// R3.2: exits 1 on invalid option.
+func handleFlagError(err error) int {
+	if errors.Is(err, flag.ErrHelp) {
+		printHelp(os.Stdout)
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+	return 1
+}
+
+// printHelp writes usage information to w.
+func printHelp(w io.Writer) {
+	fmt.Fprintf(w,
+		"Usage: %s [OPTION]... [FILE]\n"+
+			"Base32 encode or decode FILE, or standard input, to standard output.\n\n"+
+			"With no FILE, or when FILE is -, read standard input.\n\n"+
+			"  -d, --decode          decode data\n"+
+			"  -i, --ignore-garbage  when decoding, ignore non-alphabet characters\n"+
+			"  -w, --wrap=COLS       wrap encoded lines after COLS character (default 76).\n"+
+			"                          Use 0 to disable line wrapping\n\n"+
+			"      --help        display this help and exit\n"+
+			"      --version     output version information and exit\n",
+		progName)
 }
 
 // run dispatches to encode or decode based on the decode flag.
@@ -58,18 +125,9 @@ func run(filename string, decode, ignoreGarbage bool, wrapCol int) error {
 	return encode(filename, wrapCol)
 }
 
-// usage prints the help message to stderr.
-func usage() {
-	fmt.Fprintf(os.Stderr,
-		"Usage: %s [OPTION]... [FILE]\n"+
-			"Base32 encode or decode FILE, or standard input, to standard output.\n\n",
-		progName)
-	flag.PrintDefaults()
-}
-
 // encode reads from filename (or stdin for "-"), Base32-encodes the data,
 // and writes wrapped output to stdout.
-// R1.1: read from file or stdin; R1.2/R1.3: wrap control; R1.4: file errors.
+// R1.1-R1.4: encode pipeline.
 func encode(filename string, wrapCol int) error {
 	rc, err := encutil.OpenInput(filename)
 	if err != nil {
@@ -94,8 +152,7 @@ func encode(filename string, wrapCol int) error {
 	return err
 }
 
-// adjustOutput trims the trailing newline that encutil.Encode always appends
-// in cases where GNU base32 omits it: empty input and -w 0 mode.
+// adjustOutput trims trailing newlines for GNU compatibility.
 func adjustOutput(out []byte, wrapCol int) []byte {
 	// GNU base32 produces no output for empty input.
 	if len(out) == 1 && out[0] == '\n' {
@@ -108,10 +165,8 @@ func adjustOutput(out []byte, wrapCol int) []byte {
 	return out
 }
 
-// decodeInput reads from filename (or stdin for "-"), decodes Base32 data,
-// and writes the binary result to stdout.
-// R2.1: decode mode; R2.2: whitespace tolerance; R2.3: ignore-garbage;
-// R2.4: invalid input error.
+// decodeInput reads, decodes Base32, and writes binary to stdout.
+// R2.1-R2.4: decode pipeline with error reporting.
 func decodeInput(filename string, ignoreGarbage bool) error {
 	rc, err := encutil.OpenInput(filename)
 	if err != nil {
@@ -130,22 +185,20 @@ func decodeInput(filename string, ignoreGarbage bool) error {
 }
 
 // base32Encode encodes data using RFC 4648 Base32 standard alphabet.
-// R1.1: delegates to encoding/base32.StdEncoding.
 func base32Encode(data []byte) string {
 	return base32.StdEncoding.EncodeToString(data)
 }
 
-// base32Decode decodes a Base32-encoded string, stripping spaces first.
-// R2.2: spaces are ignored during decoding (in addition to \n and \r
-// already stripped by encutil.Decode).
+// base32Decode decodes a Base32-encoded string, stripping whitespace.
+// R2.2: spaces and tabs are ignored during decoding.
 func base32Decode(s string) ([]byte, error) {
 	s = strings.ReplaceAll(s, " ", "")
 	s = strings.ReplaceAll(s, "\t", "")
 	return base32.StdEncoding.DecodeString(s)
 }
 
-// fileError unwraps os.PathError to produce GNU-compatible error messages
-// of the form "filename: reason".
+// fileError unwraps os.PathError for GNU-compatible error messages.
+// R3.2: produces "filename: reason" format.
 func fileError(filename string, err error) error {
 	var pe *os.PathError
 	if errors.As(err, &pe) {

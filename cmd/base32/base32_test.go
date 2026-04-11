@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/base32: srd079 R1.1-R1.4, R2.1-R2.4.
+// Differential tests for cmd/base32: srd079 R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
@@ -169,7 +169,8 @@ func TestDiffDecodeIgnoreGarbage(t *testing.T) {
 }
 
 // TestDiffDecodeInvalidInput runs differential tests for invalid input errors.
-// Traces: srd079 R2.4 (exit 1 on invalid Base32 characters without --ignore-garbage).
+// Traces: srd079 R2.4 (exit 1 on invalid Base32 characters without --ignore-garbage),
+// R3.2 (exit 1 on error).
 func TestDiffDecodeInvalidInput(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -225,10 +226,83 @@ func TestDiffDecodeFromFile(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffErrorPaths runs differential tests for error reporting.
+// Traces: srd079 R3.1 (exit 0 on success), R3.2 (exit 1 on error).
+func TestDiffErrorPaths(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.1: --version exits 0.
+		{
+			Name:      "version flag exits 0",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.1: --help exits 0.
+		{
+			Name:      "help flag exits 0",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffPermissionError tests file permission error reporting.
+// Traces: srd079 R3.2 (exit 1 on error).
+func TestDiffPermissionError(t *testing.T) {
+	t.Parallel()
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	dir := t.TempDir()
+	noReadFile := filepath.Join(dir, "noperm.txt")
+	if err := os.WriteFile(noReadFile, []byte("data"), 0o000); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "permission denied on encode",
+			Args:      []string{noReadFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:      "permission denied on decode",
+			Args:      []string{"-d", noReadFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // normStderr normalizes error output so that gbase32 and our binary
 // produce comparable stderr. Handles program name and OS error case.
 func normStderr(data []byte) []byte {
 	data = bytes.ReplaceAll(data, []byte("gbase32: "), []byte("base32: "))
 	data = bytes.ReplaceAll(data, []byte("No such file"), []byte("no such file"))
+	data = bytes.ReplaceAll(data, []byte("Permission denied"), []byte("permission denied"))
 	return data
+}
+
+// clearOutput clears all output for tests where only exit code matters
+// (e.g., --help and --version produce different text but same exit code).
+func clearOutput(data []byte) []byte {
+	return nil
 }
