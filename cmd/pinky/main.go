@@ -26,8 +26,8 @@ import (
 
 const progName = "pinky"
 
-// timeFormat matches GNU pinky short-format login time.
-const timeFormat = "2006-01-02 15:04"
+// timeFormat matches GNU pinky short-format login time: "Mon DD HH:MM".
+const timeFormat = "Jan _2 15:04"
 
 // utmpEntry holds one user session from the utmpx database.
 type utmpEntry struct {
@@ -84,7 +84,7 @@ func main() {
 		return
 	}
 	if opts.longFormat {
-		runLongFormat(opts, operands)
+		os.Exit(runLongFormat(opts, operands))
 		return
 	}
 	runShortFormat(opts, operands)
@@ -103,16 +103,20 @@ func runShortFormat(opts options, operands []string) {
 }
 
 // runLongFormat displays long-format user information.
-// R2.1: without operands, shows all logged-in users.
-// R2.3: with operands, shows those specific users from passwd.
-func runLongFormat(opts options, operands []string) {
+// R2.1: requires at least one username operand, matching GNU behavior.
+func runLongFormat(opts options, operands []string) int {
 	if len(operands) == 0 {
-		entries := readUserEntries()
-		operands = uniqueUserNames(entries)
+		fmt.Fprintf(os.Stderr,
+			"%s: no username specified; at least one must be "+
+				"specified when using -l\n"+
+				"Try '%s --help' for more information.\n",
+			progName, progName)
+		return 1
 	}
 	for _, username := range operands {
 		printLongEntry(username, opts)
 	}
+	return 0
 }
 
 // parseArgs parses command-line arguments into options and operands.
@@ -259,28 +263,16 @@ func filterByUsers(entries []utmpEntry, users []string) []utmpEntry {
 	return filtered
 }
 
-// uniqueUserNames returns deduplicated login names in order of appearance.
-func uniqueUserNames(entries []utmpEntry) []string {
-	seen := make(map[string]bool)
-	var names []string
-	for _, e := range entries {
-		if !seen[e.user] {
-			seen[e.user] = true
-			names = append(names, e.user)
-		}
-	}
-	return names
-}
-
 // printHeader prints the short-format column header line.
 // R2.2: suppressed when -f is set.
+// Column widths match GNU pinky: Login(9) Name(21) TTY(9) Idle(7) When(13) Where.
 func printHeader(opts options) {
 	if opts.suppressName {
-		fmt.Printf("%-8s %-9s %-5s %-16s %s\n",
+		fmt.Printf("%-10s%-9s%-7s%-13s%s\n",
 			"Login", "TTY", "Idle", "When", "Where")
 		return
 	}
-	fmt.Printf("%-8s %-19s %-9s %-5s %-16s %s\n",
+	fmt.Printf("%-9s%-21s%-9s%-7s%-13s%s\n",
 		"Login", "Name", "TTY", "Idle", "When", "Where")
 }
 
@@ -297,20 +289,39 @@ func printShortEntry(e utmpEntry, opts options) {
 	idle := idleString(e.line)
 	timeStr := e.time.Format(timeFormat)
 	if opts.suppressName {
-		fmt.Printf("%-8s %-9s %-5s %s %s\n",
-			e.user, e.line, idle, timeStr, e.host)
+		printShortLine("%-10s%-9s%-7s", e.user, e.line, idle, timeStr, e.host)
 		return
 	}
 	fullName := lookupRealName(e.user)
-	fmt.Printf("%-8s %-19s %-9s %-5s %s %s\n",
-		e.user, fullName, e.line, idle, timeStr, e.host)
+	printShortLineWithName(e.user, fullName, e.line, idle, timeStr, e.host)
+}
+
+// printShortLine prints a short-format line without the name column.
+func printShortLine(prefix string, user, line, idle, when, host string) {
+	fmt.Printf(prefix, user, line, idle)
+	printWhenHost(when, host)
+}
+
+// printShortLineWithName prints a short-format line with the name column.
+func printShortLineWithName(user, name, line, idle, when, host string) {
+	fmt.Printf("%-9s%-21s%-9s%-7s", user, name, line, idle)
+	printWhenHost(when, host)
+}
+
+// printWhenHost prints the When and optional Where fields, avoiding trailing spaces.
+func printWhenHost(when, host string) {
+	if host != "" {
+		fmt.Printf("%-13s%s\n", when, host)
+	} else {
+		fmt.Printf("%s\n", when)
+	}
 }
 
 // lookupRealName returns the GECOS real name for the given username.
 func lookupRealName(username string) string {
 	pw, ok := lookupPasswd(username)
 	if !ok {
-		return ""
+		return "???"
 	}
 	return pw.gecos.realName
 }
@@ -356,7 +367,7 @@ func parseGECOS(gecos string) gecosFields {
 func printLongEntry(username string, opts options) {
 	pw, ok := lookupPasswd(username)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "%s: '%s': no such user\n", progName, username)
+		printLongNameLine(username, "???")
 		return
 	}
 	printLongNameLine(pw.username, pw.gecos.realName)
@@ -370,21 +381,21 @@ func printLongEntry(username string, opts options) {
 
 // printLongNameLine prints the login/real name line in long format.
 func printLongNameLine(username, realName string) {
-	fmt.Printf("Login name: %-28s In real life:  %s\n",
+	fmt.Printf("Login name: %-28sIn real life:  %s\n",
 		username, realName)
 }
 
 // printLongDirLine prints the directory/shell line in long format.
 // R2.3: suppressed by -b flag.
 func printLongDirLine(homeDir, shell string) {
-	fmt.Printf("Directory: %-29s Shell:  %s\n", homeDir, shell)
+	fmt.Printf("Directory: %-29sShell:  %s\n", homeDir, shell)
 }
 
 // printLongContactLine prints office/phone info if any fields are present.
 func printLongContactLine(g gecosFields) {
 	left := buildOfficeString(g.office, g.officePhone)
 	if g.homePhone != "" {
-		fmt.Printf("%-40s Home Phone: %s\n", left, g.homePhone)
+		fmt.Printf("%-40sHome Phone: %s\n", left, g.homePhone)
 	} else if left != "" {
 		fmt.Println(left)
 	}
@@ -407,19 +418,21 @@ func buildOfficeString(office, officePhone string) string {
 
 // idleString computes the idle time string for a terminal device.
 // D2: computed from tty device modification time.
+// Returns bare strings; column formatting is handled by the caller's printf.
 func idleString(line string) string {
 	devPath := "/dev/" + line
 	info, err := os.Stat(devPath)
 	if err != nil {
-		return "  ?  "
+		return "?"
 	}
 	idle := time.Since(info.ModTime())
 	if idle < time.Minute {
-		return "     "
+		return ""
 	}
 	const day = 24 * time.Hour
 	if idle >= day {
-		return " old "
+		days := int(idle.Hours()) / 24
+		return fmt.Sprintf("%dd", days)
 	}
 	hours := int(idle.Hours())
 	minutes := int(idle.Minutes()) % 60
