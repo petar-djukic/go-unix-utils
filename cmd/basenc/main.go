@@ -3,8 +3,9 @@
 
 // cmd/basenc encodes and decodes data using selectable encoding schemes.
 // Implements: srd081 R1.1-R1.4 (encoding schemes: base64, base64url,
-// base32, base32hex, base16, z85), R2.3-R2.4 (decode, wrap control),
-// R3.1-R3.4 (ignore-garbage, input handling, error cases, SIGPIPE).
+// base32, base32hex, base16, z85), R2.1-R2.4 (base16 hex, z85, decode
+// mode, wrap control), R3.1-R3.4 (ignore-garbage, input handling, error
+// cases, SIGPIPE).
 package main
 
 import (
