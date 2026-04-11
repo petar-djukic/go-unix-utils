@@ -512,7 +512,7 @@ releases:
           status: implemented
     - version: "12.0"
       name: "Batch 12.0 — file security and installation (shred, chroot, install)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three file security and installation utilities. shred overwrites files
