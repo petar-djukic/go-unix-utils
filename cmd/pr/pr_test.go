@@ -47,6 +47,41 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizePrDate},
 		},
+		{
+			Name:      "two_columns_down",
+			Args:      []string{"-2"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "two_columns_across",
+			Args:      []string{"-2", "-a"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "three_columns_down",
+			Args:      []string{"-3"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "columns_flag",
+			Args:      []string{"--columns=4"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "two_columns_many_lines",
+			Args:      []string{"-2"},
+			Stdin:     bytes.Repeat([]byte("line\n"), 120),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
