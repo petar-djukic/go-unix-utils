@@ -78,7 +78,11 @@ func run(args []string) int {
 		die("%v", err)
 		return 1
 	}
-	entries := buildIndex(&cfg, lines)
+	entries, err := buildIndex(&cfg, lines)
+	if err != nil {
+		die("%v", err)
+		return 1
+	}
 	sortEntries(entries, &cfg)
 	formatted := formatEntries(entries, &cfg)
 	if err := writeOutput(formatted); err != nil {
@@ -312,13 +316,16 @@ func readStream(name string, r io.Reader) ([]lineInfo, error) {
 // buildIndex produces the permuted index entries from input lines.
 // R1.1: each significant word appears as a keyword in context.
 // R4.1/R4.2: per-line references via -A or -r.
-func buildIndex(cfg *config, lines []lineInfo) []indexEntry {
-	re := compileWordRegexp(cfg)
+func buildIndex(cfg *config, lines []lineInfo) ([]indexEntry, error) {
+	re, err := compileWordRegexp(cfg)
+	if err != nil {
+		return nil, err
+	}
 	if cfg.references {
-		return buildPerLineIndex(lines, re)
+		return buildPerLineIndex(lines, re), nil
 	}
 	text, spans := joinWithSpans(lines, cfg)
-	return extractEntries(text, spans, re)
+	return extractEntries(text, spans, re), nil
 }
 
 // buildPerLineIndex processes each line separately for -r mode.
@@ -380,12 +387,16 @@ func extractEntries(text string, spans []lineSpan, re *regexp.Regexp) []indexEnt
 
 // compileWordRegexp returns the compiled word pattern.
 // R3.1: uses -W REGEXP if set, otherwise default \w+ pattern.
-func compileWordRegexp(cfg *config) *regexp.Regexp {
+func compileWordRegexp(cfg *config) (*regexp.Regexp, error) {
 	pattern := `\w+`
 	if cfg.wordRegexp != "" {
 		pattern = cfg.wordRegexp
 	}
-	return regexp.MustCompile(pattern)
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid word regexp: %w", err)
+	}
+	return re, nil
 }
 
 // findRef returns the reference for the line span containing pos.
