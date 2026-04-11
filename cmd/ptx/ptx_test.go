@@ -43,6 +43,36 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-w", "40"},
 			Stdin: []byte("one two three four\n"),
 		},
+		{
+			Name:  "auto_reference_stdin",
+			Args:  []string{"-A"},
+			Stdin: []byte("hello world\nfoo bar\n"),
+		},
+		{
+			Name:  "auto_reference_right",
+			Args:  []string{"-A", "-R"},
+			Stdin: []byte("hello world\nfoo bar\n"),
+		},
+		{
+			Name:  "sentence_refs",
+			Args:  []string{"-r"},
+			Stdin: []byte("p1 hello world\np2 foo bar\n"),
+		},
+		{
+			Name:  "sentence_refs_right",
+			Args:  []string{"-r", "-R"},
+			Stdin: []byte("p1 hello world\np2 foo bar\n"),
+		},
+		{
+			Name:  "auto_ref_single_line",
+			Args:  []string{"-A"},
+			Stdin: []byte("alpha beta gamma\n"),
+		},
+		{
+			Name:  "right_ref_width",
+			Args:  []string{"-A", "-R", "-w", "60"},
+			Stdin: []byte("one two three\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

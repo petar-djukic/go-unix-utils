@@ -29,22 +29,23 @@ const defaultGap = 3
 
 // config holds parsed command-line options from srd111-ptx.
 type config struct {
-	width         int    // R2.1: -w N output width
-	gapSize       int    // R2.1: -g N gap size
-	ignoreCase    bool   // R2.2: -f fold case
-	autoReference bool   // R4.1: -A auto-reference
-	references    bool   // R4.2: -r treat first field as reference
-	wordRegexp    string // R3.1: -W REGEXP word pattern
-	files         []string
-	parseErr      bool
+	width          int    // R2.1: -w N output width
+	gapSize        int    // R2.1: -g N gap size
+	ignoreCase     bool   // R2.2: -f fold case
+	autoReference  bool   // R4.1: -A auto-reference
+	references     bool   // R4.2: -r treat first field as reference
+	rightReference bool   // -R right-side references
+	wordRegexp     string // R3.1: -W REGEXP word pattern
+	files          []string
+	parseErr       bool
 }
 
 // indexEntry represents a single entry in the permuted index.
 type indexEntry struct {
-	ref     string // reference (filename:line or first field)
+	ref     string // reference (filename:linenum or first field)
 	head    string // text before the keyword, trailing whitespace trimmed
 	keyword string // the keyword itself
-	tail    string // raw text after the keyword (may start with whitespace)
+	tail    string // raw text after the keyword
 }
 
 // lineInfo tracks the source of each input line for reference generation.
@@ -52,6 +53,12 @@ type lineInfo struct {
 	filename string
 	num      int
 	text     string
+}
+
+// lineSpan maps an offset in the joined text to a per-line reference.
+type lineSpan struct {
+	offset int
+	ref    string
 }
 
 func main() {
@@ -130,6 +137,9 @@ func parseLongFlag(cfg *config, args []string, i int) int {
 		return 1
 	case arg == "--references":
 		cfg.references = true
+		return 1
+	case arg == "--right-side-refs":
+		cfg.rightReference = true
 		return 1
 	}
 	return 0
@@ -234,7 +244,7 @@ func shortValue(arg string, args []string, i int, flag byte, cfg *config) (strin
 	return args[i+1], 2
 }
 
-// parseBoolFlags handles boolean short flags like -f, -A, -r, and combined -fAr.
+// parseBoolFlags handles boolean short flags like -f, -A, -r, -R and combined forms.
 func parseBoolFlags(cfg *config, arg string) int {
 	for _, ch := range arg[1:] {
 		switch ch {
@@ -244,6 +254,8 @@ func parseBoolFlags(cfg *config, arg string) int {
 			cfg.autoReference = true
 		case 'r':
 			cfg.references = true
+		case 'R':
+			cfg.rightReference = true
 		default:
 			die("invalid option -- '%c'", ch)
 			cfg.parseErr = true
@@ -257,7 +269,7 @@ func parseBoolFlags(cfg *config, arg string) int {
 // R2.3: reads from FILE or stdin when no file or "-" is given.
 func readInput(cfg *config) ([]lineInfo, error) {
 	if len(cfg.files) == 0 {
-		return readStream("<stdin>", os.Stdin)
+		return readStream("", os.Stdin)
 	}
 	var all []lineInfo
 	for _, f := range cfg.files {
@@ -273,7 +285,7 @@ func readInput(cfg *config) ([]lineInfo, error) {
 // readOneFile reads lines from a named file or stdin if name is "-".
 func readOneFile(name string) ([]lineInfo, error) {
 	if name == "-" {
-		return readStream("<stdin>", os.Stdin)
+		return readStream("-", os.Stdin)
 	}
 	f, err := os.Open(name)
 	if err != nil {
@@ -299,32 +311,71 @@ func readStream(name string, r io.Reader) ([]lineInfo, error) {
 
 // buildIndex produces the permuted index entries from input lines.
 // R1.1: each significant word appears as a keyword in context.
+// R4.1/R4.2: per-line references via -A or -r.
 func buildIndex(cfg *config, lines []lineInfo) []indexEntry {
 	re := compileWordRegexp(cfg)
-	text := joinInputText(lines, cfg)
-	ref := buildJoinedRef(lines, cfg)
-	return buildLineEntries(text, ref, re)
+	if cfg.references {
+		return buildPerLineIndex(lines, re)
+	}
+	text, spans := joinWithSpans(lines, cfg)
+	return extractEntries(text, spans, re)
 }
 
-// joinInputText joins all input lines into a single text for KWIC processing.
-func joinInputText(lines []lineInfo, cfg *config) string {
-	parts := make([]string, len(lines))
-	for i, li := range lines {
-		t := li.text
-		if cfg.references {
-			_, t = stripReference(t)
+// buildPerLineIndex processes each line separately for -r mode.
+// R4.2: first field is reference, remaining text is indexed per-line.
+func buildPerLineIndex(lines []lineInfo, re *regexp.Regexp) []indexEntry {
+	var entries []indexEntry
+	for _, li := range lines {
+		ref, text := stripReference(li.text)
+		matches := re.FindAllStringIndex(text, -1)
+		for _, m := range matches {
+			entries = append(entries, indexEntry{
+				ref:     ref,
+				head:    strings.TrimRight(text[:m[0]], " \t"),
+				keyword: text[m[0]:m[1]],
+				tail:    text[m[1]:],
+			})
 		}
-		parts[i] = t
 	}
-	return strings.Join(parts, " ")
+	return entries
 }
 
-// buildJoinedRef returns a reference string when all lines are joined.
-func buildJoinedRef(lines []lineInfo, cfg *config) string {
-	if !cfg.autoReference || len(lines) == 0 {
-		return ""
+// joinWithSpans joins input line text and records per-line reference spans.
+func joinWithSpans(lines []lineInfo, cfg *config) (string, []lineSpan) {
+	parts := make([]string, len(lines))
+	spans := make([]lineSpan, len(lines))
+	offset := 0
+	for i, li := range lines {
+		ref := autoRef(cfg, li)
+		spans[i] = lineSpan{offset: offset, ref: ref}
+		parts[i] = li.text
+		offset += len(li.text) + 1
 	}
-	return fmt.Sprintf("%s:%d", lines[0].filename, lines[0].num)
+	return strings.Join(parts, " "), spans
+}
+
+// autoRef returns the auto-reference string for a line when -A is set.
+// R4.1: format is "filename:linenum".
+func autoRef(cfg *config, li lineInfo) string {
+	if cfg.autoReference {
+		return fmt.Sprintf("%s:%d", li.filename, li.num)
+	}
+	return ""
+}
+
+// extractEntries finds all keywords in text and maps each to its line reference.
+func extractEntries(text string, spans []lineSpan, re *regexp.Regexp) []indexEntry {
+	matches := re.FindAllStringIndex(text, -1)
+	entries := make([]indexEntry, 0, len(matches))
+	for _, m := range matches {
+		entries = append(entries, indexEntry{
+			ref:     findRef(spans, m[0]),
+			head:    strings.TrimRight(text[:m[0]], " \t"),
+			keyword: text[m[0]:m[1]],
+			tail:    text[m[1]:],
+		})
+	}
+	return entries
 }
 
 // compileWordRegexp returns the compiled word pattern.
@@ -337,19 +388,16 @@ func compileWordRegexp(cfg *config) *regexp.Regexp {
 	return regexp.MustCompile(pattern)
 }
 
-// buildLineEntries creates index entries for every keyword in a text.
-func buildLineEntries(text, ref string, re *regexp.Regexp) []indexEntry {
-	matches := re.FindAllStringIndex(text, -1)
-	entries := make([]indexEntry, 0, len(matches))
-	for _, m := range matches {
-		entries = append(entries, indexEntry{
-			ref:     ref,
-			head:    strings.TrimRight(text[:m[0]], " \t"),
-			keyword: text[m[0]:m[1]],
-			tail:    text[m[1]:],
-		})
+// findRef returns the reference for the line span containing pos.
+func findRef(spans []lineSpan, pos int) string {
+	ref := ""
+	for _, s := range spans {
+		if s.offset > pos {
+			break
+		}
+		ref = s.ref
 	}
-	return entries
+	return ref
 }
 
 // sortEntries sorts index entries by keyword.
@@ -364,10 +412,30 @@ func sortEntries(entries []indexEntry, cfg *config) {
 	})
 }
 
+// displayRef returns the reference string as it appears in output.
+// -A auto-refs get a trailing colon on the left side only.
+func displayRef(ref string, cfg *config) string {
+	if cfg.autoReference && !cfg.rightReference {
+		return ref + ":"
+	}
+	return ref
+}
+
+// computeRefWidth returns the maximum displayed reference width.
+func computeRefWidth(entries []indexEntry, cfg *config) int {
+	w := 0
+	for _, e := range entries {
+		r := displayRef(e.ref, cfg)
+		if len(r) > w {
+			w = len(r)
+		}
+	}
+	return w
+}
+
 // formatEntries formats index entries for output respecting width and gap.
-// R2.1: output width and gap size control column layout.
 func formatEntries(entries []indexEntry, cfg *config) []string {
-	refW := maxRefWidth(entries)
+	refW := computeRefWidth(entries, cfg)
 	lines := make([]string, len(entries))
 	for i, e := range entries {
 		lines[i] = formatEntry(e, cfg, refW)
@@ -375,38 +443,58 @@ func formatEntries(entries []indexEntry, cfg *config) []string {
 	return lines
 }
 
-// maxRefWidth returns the length of the longest reference string.
-func maxRefWidth(entries []indexEntry) int {
-	w := 0
-	for _, e := range entries {
-		if len(e.ref) > w {
-			w = len(e.ref)
-		}
-	}
-	return w
-}
-
 // formatEntry formats a single index entry into the output line.
-// Layout: [ref][gap][left_ctx right-justified in half][gap][keyword+tail].
 func formatEntry(e indexEntry, cfg *config, refW int) string {
-	avail := cfg.width
-	if refW > 0 {
-		avail -= refW + cfg.gapSize
+	ref := displayRef(e.ref, cfg)
+	half := cfg.width / 2
+	if cfg.rightReference && refW > 0 {
+		return fmtRightRef(e, cfg, half, refW, ref)
 	}
-	half := avail / 2
-	left := truncateLeft(e.head, half)
-	right := e.keyword + e.tail
-	return buildOutputLine(left, right, cfg.gapSize, half, refW, e.ref)
+	return fmtLeftRef(e, cfg, half, refW, ref)
 }
 
-// buildOutputLine assembles the formatted output line from its components.
-func buildOutputLine(left, right string, gap, leftW, refW int, ref string) string {
+// fmtLeftRef formats a line with reference on the left (or no reference).
+// Layout: {ref rjust refW}{left rjust leftW}{gap}{keyword+tail}
+func fmtLeftRef(e indexEntry, cfg *config, half, refW int, ref string) string {
+	leftW := half
+	if refW > 0 {
+		leftW = half - refW - 1
+	}
+	leftW = max(leftW, 0)
+	left := truncateLeft(e.head, leftW)
+	right := e.keyword + e.tail
 	var sb strings.Builder
 	if refW > 0 {
-		fmt.Fprintf(&sb, "%*s%s", refW, ref, strings.Repeat(" ", gap))
+		fmt.Fprintf(&sb, "%*s", refW, ref)
 	}
-	fmt.Fprintf(&sb, "%*s%s%s", leftW, left, strings.Repeat(" ", gap), right)
+	fmt.Fprintf(&sb, "%*s%s%s", leftW, left,
+		strings.Repeat(" ", cfg.gapSize), right)
 	return sb.String()
+}
+
+// fmtRightRef formats a line with reference on the right.
+// Layout: {left rjust leftW}{gap}{keyword+tail padded to rightW}{gap}{ref}
+func fmtRightRef(e indexEntry, cfg *config, half, _ int, ref string) string {
+	leftW := max(cfg.width-half-cfg.gapSize, 0)
+	rightW := half
+	left := truncateLeft(e.head, leftW)
+	right := padOrTrunc(e.keyword+e.tail, rightW)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%*s%s%s%s%s", leftW, left,
+		strings.Repeat(" ", cfg.gapSize), right,
+		strings.Repeat(" ", cfg.gapSize), ref)
+	return sb.String()
+}
+
+// padOrTrunc pads s with spaces or truncates it to exactly w characters.
+func padOrTrunc(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if len(s) >= w {
+		return s[:w]
+	}
+	return s + strings.Repeat(" ", w-len(s))
 }
 
 // truncateLeft truncates a string from the left to fit maxW characters.
