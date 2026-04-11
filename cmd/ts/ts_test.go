@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.2.
+// Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
 package main
 
 import (
@@ -98,10 +98,42 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-i"},
 			Stdin: nil,
 		},
-		// R3.2: -i with custom format overrides default
+		// R3.3: -i with custom format overrides default
 		{
 			Name:      "incremental_custom_format",
 			Args:      []string{"-i", "%H:%M:%S"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.4: -i and -s combined (reference treats as -s)
+		{
+			Name:      "incremental_elapsed_combined",
+			Args:      []string{"-i", "-s"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R4.1, R4.2: elapsed-since-start mode
+		{
+			Name:      "elapsed_single_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			Name:      "elapsed_multi_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			Name:  "elapsed_empty_stdin",
+			Args:  []string{"-s"},
+			Stdin: nil,
+		},
+		// R4.2: -s with custom format overrides default
+		{
+			Name:      "elapsed_custom_format",
+			Args:      []string{"-s", "%H:%M:%S"},
 			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
@@ -177,26 +209,34 @@ func TestFormatStrftime(t *testing.T) {
 	}
 }
 
-// TestParseArgs verifies argument parsing for R2.1, R3.1, R3.2, R7.2.
+// TestParseArgs verifies argument parsing for R2.1, R3.1-R3.4, R4.1-R4.2, R7.2.
 func TestParseArgs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		args      []string
-		wantFmt   string
-		wantIncr  bool
-		wantErr   bool
-		errSubstr string
+		name        string
+		args        []string
+		wantFmt     string
+		wantIncr    bool
+		wantElapsed bool
+		wantErr     bool
+		errSubstr   string
 	}{
-		{"no_args", nil, "%b %d %H:%M:%S", false, false, ""},
-		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, ""},
-		{"custom_format_epoch", []string{"%s"}, "%s", false, false, ""},
-		{"unknown_flag", []string{"-x"}, "", false, true, "unrecognized option"},
-		{"dash_only", []string{"-"}, "-", false, false, ""},
+		{"no_args", nil, "%b %d %H:%M:%S", false, false, false, ""},
+		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, false, ""},
+		{"custom_format_epoch", []string{"%s"}, "%s", false, false, false, ""},
+		{"unknown_flag", []string{"-x"}, "", false, false, true, "unrecognized option"},
+		{"dash_only", []string{"-"}, "-", false, false, false, ""},
 		// R3.1: -i flag
-		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, ""},
-		// R3.2: -i with custom format
-		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, ""},
+		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, false, ""},
+		// R3.3: -i with custom format
+		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, false, ""},
+		// R3.4: -i and -s combined, -s takes precedence (matches reference)
+		{"incr_elapsed_combined", []string{"-i", "-s"}, "%H:%M:%S", false, true, false, ""},
+		{"elapsed_incr_combined", []string{"-s", "-i"}, "%H:%M:%S", false, true, false, ""},
+		// R4.1: -s flag
+		{"elapsed_flag", []string{"-s"}, "%H:%M:%S", false, true, false, ""},
+		// R4.2: -s with custom format
+		{"elapsed_custom", []string{"-s", "%T"}, "%T", false, true, false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,6 +262,10 @@ func TestParseArgs(t *testing.T) {
 			if got.incremental != tc.wantIncr {
 				t.Errorf("parseArgs(%v).incremental = %v, want %v",
 					tc.args, got.incremental, tc.wantIncr)
+			}
+			if got.elapsed != tc.wantElapsed {
+				t.Errorf("parseArgs(%v).elapsed = %v, want %v",
+					tc.args, got.elapsed, tc.wantElapsed)
 			}
 		})
 	}

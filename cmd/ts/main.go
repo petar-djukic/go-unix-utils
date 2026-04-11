@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ts: prepend timestamps to stdin lines.
-// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.2.
+// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
 package main
 
 import (
@@ -20,13 +20,14 @@ const progName = "ts"
 // defaultStrftimeFmt is the default strftime format per R1.2.
 const defaultStrftimeFmt = "%b %d %H:%M:%S"
 
-// defaultIncrementalFmt is the default format for -i mode per R3.2.
+// defaultIncrementalFmt is the default format for -i and -s modes per R3.2, R4.2.
 const defaultIncrementalFmt = "%H:%M:%S"
 
 // config holds parsed command-line options.
 type config struct {
 	format      string
 	incremental bool // -i mode (R3.1)
+	elapsed     bool // -s mode (R4.1)
 }
 
 func main() {
@@ -47,7 +48,9 @@ func run(args []string) int {
 // parseArgs extracts flags and the optional format string.
 // R2.1: accepts optional positional format string.
 // R3.1: -i enables incremental mode.
-// R3.2: -i default format is "%H:%M:%S".
+// R3.3: custom format overrides -i default.
+// R3.4: when both -i and -s are given, -s takes precedence (matches reference).
+// R4.1: -s enables elapsed-since-start mode.
 // R7.2: unrecognized flags produce an error.
 func parseArgs(args []string) (config, error) {
 	var cfg config
@@ -58,6 +61,10 @@ func parseArgs(args []string) (config, error) {
 			cfg.incremental = true
 			continue
 		}
+		if arg == "-s" {
+			cfg.elapsed = true
+			continue
+		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 			return config{}, fmt.Errorf(
 				"%s: unrecognized option '%s'", progName, arg)
@@ -65,16 +72,23 @@ func parseArgs(args []string) (config, error) {
 		customFormat = arg
 		hasCustomFormat = true
 	}
-	cfg.format = selectFormat(hasCustomFormat, customFormat, cfg.incremental)
+	// R3.4: when both -i and -s are given, -s takes precedence
+	// (matches reference binary behavior).
+	if cfg.elapsed {
+		cfg.incremental = false
+	}
+	cfg.format = selectFormat(
+		hasCustomFormat, customFormat, cfg.incremental || cfg.elapsed)
 	return cfg, nil
 }
 
 // selectFormat determines the format string based on mode and user input.
-func selectFormat(hasCustom bool, custom string, incr bool) string {
+// R3.3, R4.2: custom format overrides defaults for both -i and -s.
+func selectFormat(hasCustom bool, custom string, delta bool) string {
 	if hasCustom {
 		return custom
 	}
-	if incr {
+	if delta {
 		return defaultIncrementalFmt
 	}
 	return defaultStrftimeFmt
@@ -88,20 +102,25 @@ func selectFormat(hasCustom bool, custom string, incr bool) string {
 // R1.6: exit 0 on EOF.
 // R3.1: -i shows elapsed time since previous line.
 // R3.2: -i uses TZ=GMT for elapsed formatting.
+// R4.1: -s shows elapsed time since start.
+// R4.2: -s uses TZ=GMT for elapsed formatting.
 func timestampStdin(cfg config) int {
 	reader := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
 	var lastTime time.Time
+	var startTime time.Time
 	var gmt *time.Location
-	if cfg.incremental {
+	if cfg.incremental || cfg.elapsed {
 		gmt, _ = time.LoadLocation("GMT")
-		lastTime = time.Now()
+		now := time.Now()
+		lastTime = now
+		startTime = now
 	}
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
 			now := time.Now()
-			ts := formatTimestamp(cfg, now, &lastTime, gmt)
+			ts := formatTimestamp(cfg, now, &lastTime, startTime, gmt)
 			fmt.Fprintf(w, "%s %s", ts, line)
 			w.Flush()
 		}
@@ -114,12 +133,19 @@ func timestampStdin(cfg config) int {
 
 // formatTimestamp produces the timestamp string for one line.
 // R2.4: a single time sample is used for both second and subsecond.
+// R4.1: -s uses time since start (monotonically increasing).
 func formatTimestamp(
-	cfg config, now time.Time, lastTime *time.Time, gmt *time.Location,
+	cfg config, now time.Time, lastTime *time.Time,
+	startTime time.Time, gmt *time.Location,
 ) string {
 	if cfg.incremental {
 		delta := now.Sub(*lastTime)
 		*lastTime = now
+		deltaTime := time.Unix(0, delta.Nanoseconds()).In(gmt)
+		return formatStrftime(cfg.format, deltaTime)
+	}
+	if cfg.elapsed {
+		delta := now.Sub(startTime)
 		deltaTime := time.Unix(0, delta.Nanoseconds()).In(gmt)
 		return formatStrftime(cfg.format, deltaTime)
 	}
