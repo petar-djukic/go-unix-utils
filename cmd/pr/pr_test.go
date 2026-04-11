@@ -82,6 +82,49 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normalizePrDate},
 		},
+		// R4.1: line numbering tests
+		{
+			Name:      "number_lines_default",
+			Args:      []string{"-n"},
+			Stdin:     []byte("alpha\nbeta\ngamma\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "number_lines_with_empty",
+			Args:      []string{"-n"},
+			Stdin:     []byte("first\n\nsecond\n\nthird\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "number_lines_colon_sep",
+			Args:      []string{"-n:"},
+			Stdin:     []byte("one\ntwo\nthree\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "number_lines_colon_width3",
+			Args:      []string{"-n:3"},
+			Stdin:     []byte("a\nb\nc\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "number_lines_multi_page",
+			Args:      []string{"-n", "-l", "20"},
+			Stdin:     bytes.Repeat([]byte("line\n"), 30),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
+		{
+			Name:      "number_lines_two_columns",
+			Args:      []string{"-n", "-2"},
+			Stdin:     []byte("a\nb\nc\nd\ne\nf\n"),
+			Env:       []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normalizePrDate},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

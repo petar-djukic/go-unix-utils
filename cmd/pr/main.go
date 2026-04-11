@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -21,43 +20,33 @@ import (
 )
 
 const (
-	// defaultPageLength is the default number of lines per page (R1.1).
-	defaultPageLength = 66
-	// defaultHeaderLines is the number of header lines per page (R1.1).
-	defaultHeaderLines = 5
-	// defaultFooterLines is the number of footer lines per page (R1.1).
-	defaultFooterLines = 5
-	// defaultPageWidth is the default page width in columns (R4.2).
-	defaultPageWidth = 72
-	// defaultNumberWidth is the default line number field width (R4.1).
-	defaultNumberWidth = 5
-	// defaultNumberChar is the default line number separator (R4.1).
-	defaultNumberChar = '\t'
-	// tabWidth is the tab stop interval used for column padding.
-	tabWidth = 8
-	// progName is the program name for error messages.
-	progName = "pr"
+	defaultPageLength  = 66 // R1.1: lines per page
+	defaultHeaderLines = 5  // R1.1: header lines
+	defaultFooterLines = 5  // R1.1: footer lines
+	defaultPageWidth   = 72 // R4.2: page width
+	defaultNumberWidth = 5  // R4.1: number field width
+	defaultNumberChar  = '\t'
+	tabWidth           = 8
+	progName           = "pr"
 )
 
 // config holds all parsed command-line options for pr.
 type config struct {
-	pageLength     int    // R2.1: -l N, page length in lines (default 66)
-	header         string // R2.1: -h HEADER, custom header text
-	omitHeader     bool   // R2.2: -t, suppress header and footer
-	omitPagination bool   // R2.2: -T, suppress header/footer and page padding
-	columns        int    // R3.1: -COLUMN, number of columns (default 1)
-	across         bool   // R3.1: -a, fill columns across instead of down
-	// TODO: srd110 non_goals: -m/--merge (merge files side by side) is excluded from this release.
-	numberLines bool   // R4.1: -n, number output lines
-	numberChar  byte   // R4.1: separator char after number (default tab)
-	numberWidth int    // R4.1: number field width (default 5)
-	indent      int    // R4.2: -o MARGIN, left margin indent
-	pageWidth   int    // R4.2: -w WIDTH, page width (default 72)
-	doubleSpace bool   // R4.3: -d, double-space output
-	separator   string // R4.3: -s CHAR, column separator (default tab)
+	pageLength     int
+	header         string
+	omitHeader     bool
+	omitPagination bool
+	columns        int
+	across         bool
+	numberLines    bool
+	numberChar     byte
+	numberWidth    int
+	indent         int
+	pageWidth      int
+	doubleSpace    bool
+	separator      string
 }
 
-// defaultConfig returns the default pr configuration.
 func defaultConfig() config {
 	return config{
 		pageLength:  defaultPageLength,
@@ -76,45 +65,32 @@ func parseFlags() (config, []string) {
 	fs.SetOutput(os.Stderr)
 	fs.Usage = func() {}
 
-	// R2.1: page length and header
 	pageLength := fs.Int("l", defaultPageLength, "page length")
 	header := fs.String("h", "", "header string")
-
-	// R2.2: omit header/pagination
 	omitHeader := fs.Bool("t", false, "omit header and footer")
 	omitPagination := fs.Bool("T", false, "omit pagination")
-
-	// R3.1: columns and across
 	columns := fs.Int("columns", 1, "number of columns")
 	across := fs.Bool("a", false, "fill columns across")
-
-	// R4.1: line numbering
-	numberLines := fs.Bool("n", false, "number lines")
-
-	// R4.2: indent and width
+	// R4.1: -n handled by preprocessNumberFlag (not registered here)
 	indent := fs.Int("o", 0, "indent margin")
 	pageWidth := fs.Int("w", defaultPageWidth, "page width")
-
-	// R4.3: double-space and separator
 	doubleSpace := fs.Bool("d", false, "double-space output")
 	separator := fs.String("s", "\t", "column separator")
 
-	// R3.1: check for -COLUMN numeric flag before parsing
 	args := preprocessColumnFlag(os.Args[1:], &cfg)
+	args = preprocessNumberFlag(args, &cfg)
 
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
 
 	applyParsedFlags(&cfg, *pageLength, *header, *omitHeader, *omitPagination,
-		*columns, *across, *numberLines, *indent, *pageWidth, *doubleSpace, *separator)
-
+		*columns, *across, *indent, *pageWidth, *doubleSpace, *separator)
 	return cfg, fs.Args()
 }
 
-// applyParsedFlags copies parsed flag values into the config.
 func applyParsedFlags(cfg *config, pageLength int, header string, omitHeader, omitPagination bool,
-	columns int, across, numberLines bool, indent, pageWidth int, doubleSpace bool, separator string) {
+	columns int, across bool, indent, pageWidth int, doubleSpace bool, separator string) {
 	cfg.pageLength = pageLength
 	cfg.header = header
 	cfg.omitHeader = omitHeader
@@ -123,7 +99,6 @@ func applyParsedFlags(cfg *config, pageLength int, header string, omitHeader, om
 		cfg.columns = columns
 	}
 	cfg.across = across
-	cfg.numberLines = numberLines
 	cfg.indent = indent
 	cfg.pageWidth = pageWidth
 	cfg.doubleSpace = doubleSpace
@@ -131,7 +106,6 @@ func applyParsedFlags(cfg *config, pageLength int, header string, omitHeader, om
 }
 
 // preprocessColumnFlag extracts -N column flags from args before flag parsing.
-// R3.1: -COLUMN syntax sets the number of columns.
 func preprocessColumnFlag(args []string, cfg *config) []string {
 	var filtered []string
 	for _, arg := range args {
@@ -146,8 +120,57 @@ func preprocessColumnFlag(args []string, cfg *config) []string {
 	return filtered
 }
 
-// bodyLines returns the number of body lines per page given the config.
-// R1.1: body = pageLength - headerLines - footerLines.
+// preprocessNumberFlag extracts -n[SEP[DIGITS]] and --number-lines[=SEP[DIGITS]].
+// R4.1: line numbering with optional separator and width.
+func preprocessNumberFlag(args []string, cfg *config) []string {
+	var filtered []string
+	for _, arg := range args {
+		if matchesNumberFlag(arg) {
+			cfg.numberLines = true
+			if len(arg) > 2 {
+				parseNumberSuffix(arg[2:], cfg)
+			}
+			continue
+		}
+		if matchesNumberLongFlag(arg, cfg) {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return filtered
+}
+
+func matchesNumberFlag(arg string) bool {
+	return arg == "-n" || (len(arg) > 2 && arg[0] == '-' && arg[1] == 'n')
+}
+
+func matchesNumberLongFlag(arg string, cfg *config) bool {
+	if arg == "--number-lines" {
+		cfg.numberLines = true
+		return true
+	}
+	const prefix = "--number-lines="
+	if strings.HasPrefix(arg, prefix) {
+		cfg.numberLines = true
+		parseNumberSuffix(arg[len(prefix):], cfg)
+		return true
+	}
+	return false
+}
+
+// parseNumberSuffix parses optional SEP[DIGITS] from -n or --number-lines value.
+func parseNumberSuffix(suffix string, cfg *config) {
+	if len(suffix) == 0 {
+		return
+	}
+	cfg.numberChar = suffix[0]
+	if len(suffix) > 1 {
+		if w, err := strconv.Atoi(suffix[1:]); err == nil && w > 0 {
+			cfg.numberWidth = w
+		}
+	}
+}
+
 func bodyLines(cfg config) int {
 	if cfg.omitPagination || cfg.omitHeader {
 		return cfg.pageLength
@@ -159,8 +182,6 @@ func bodyLines(cfg config) int {
 	return body
 }
 
-// openInput returns os.Stdin for "-", otherwise opens the named file.
-// R2.3: stdin when filename is "-" or no files given.
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
@@ -172,7 +193,6 @@ func openInput(name string) (*os.File, error) {
 	return f, nil
 }
 
-// formatOpenError extracts the underlying error for GNU-compatible messages.
 func formatOpenError(name string, err error) error {
 	var pe *os.PathError
 	if errors.As(err, &pe) {
@@ -181,8 +201,6 @@ func formatOpenError(name string, err error) error {
 	return fmt.Errorf("%s: %s", name, err)
 }
 
-// formatHeader formats a page header line.
-// R1.1: header shows date centered with filename and page number.
 func formatHeader(cfg config, headerText string, pageNum int, date time.Time) string {
 	dateStr := date.Format("2006-01-02 15:04")
 	pageStr := fmt.Sprintf("Page %d", pageNum)
@@ -194,22 +212,47 @@ func formatHeader(cfg config, headerText string, pageNum int, date time.Time) st
 		headerText + strings.Repeat(" ", rightPad) + pageStr
 }
 
-// writeHeader writes the page header to the output.
-// R1.1: 5-line header block (2 blank + header line + 2 blank).
 func writeHeader(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time) error {
 	line := formatHeader(cfg, hdr, pg, date)
 	_, err := fmt.Fprintf(w, "\n\n%s\n\n\n", line)
 	return err
 }
 
-// writeFooter writes the page footer to the output.
-// R1.1: 5-line footer block.
 func writeFooter(w *bufio.Writer, _ config) error {
 	_, err := fmt.Fprint(w, "\n\n\n\n\n")
 	return err
 }
 
-// writePage writes a single page: header, body lines (padded), footer.
+// numberLine prepends a line number for single-column mode.
+// R4.1: right-justified number in numberWidth field, then separator, then text.
+func numberLine(line string, num int, cfg config) string {
+	return fmt.Sprintf("%*d%c%s", cfg.numberWidth, num, cfg.numberChar, line)
+}
+
+// numberPageLines numbers each input line for single-column output.
+func numberPageLines(lines []string, lineNum *int, cfg config) []string {
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		result[i] = numberLine(line, *lineNum, cfg)
+		*lineNum++
+	}
+	return result
+}
+
+// visualWidth computes visual width of text starting at a given visual position,
+// accounting for tab expansion to 8-char tab stops.
+func visualWidth(text string, startPos int) int {
+	pos := startPos
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\t' {
+			pos = ((pos / tabWidth) + 1) * tabWidth
+		} else {
+			pos++
+		}
+	}
+	return pos - startPos
+}
+
 func writePage(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time, lines []string, bodyCount int) error {
 	if err := writeHeader(w, cfg, hdr, pg, date); err != nil {
 		return err
@@ -228,8 +271,6 @@ func writePage(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time, 
 	return writeFooter(w, cfg)
 }
 
-// paginateFile reads a file and writes paginated output.
-// R1.1: formats input into pages with header, body, footer.
 func paginateFile(r io.Reader, w *bufio.Writer, cfg config, hdr string, date time.Time) error {
 	scanner := bufio.NewScanner(r)
 	var lines []string
@@ -250,16 +291,16 @@ func paginateFile(r io.Reader, w *bufio.Writer, cfg config, hdr string, date tim
 }
 
 // writePages outputs all pages from the collected lines.
-// R3.1: when columns > 1, each page consumes body*columns input lines.
+// R4.1: numbering applies before column layout for multi-column mode;
+// lineNum increments across pages (D3).
 func writePages(w *bufio.Writer, cfg config, hdr string, date time.Time, lines []string, body int) error {
 	linesPerPage := linesPerPageCount(cfg, body)
 	pageNum := 1
+	lineNum := 1
 	for i := 0; ; i += linesPerPage {
 		end := min(i+linesPerPage, len(lines))
 		pageLines := lines[i:end]
-		if cfg.columns > 1 {
-			pageLines = formatColumns(pageLines, cfg, body)
-		}
+		pageLines = formatPageLines(pageLines, cfg, body, &lineNum)
 		if err := writePage(w, cfg, hdr, pageNum, date, pageLines, body); err != nil {
 			return err
 		}
@@ -271,7 +312,22 @@ func writePages(w *bufio.Writer, cfg config, hdr string, date time.Time, lines [
 	return nil
 }
 
-// linesPerPageCount returns input lines consumed per page.
+// formatPageLines applies column layout and/or numbering to page lines.
+func formatPageLines(lines []string, cfg config, body int, lineNum *int) []string {
+	if cfg.columns > 1 && cfg.numberLines {
+		result := formatColumns(lines, cfg, body, *lineNum)
+		*lineNum += len(lines)
+		return result
+	}
+	if cfg.columns > 1 {
+		return formatColumns(lines, cfg, body, 0)
+	}
+	if cfg.numberLines {
+		return numberPageLines(lines, lineNum, cfg)
+	}
+	return lines
+}
+
 func linesPerPageCount(cfg config, body int) int {
 	if cfg.columns > 1 {
 		return body * cfg.columns
@@ -279,15 +335,13 @@ func linesPerPageCount(cfg config, body int) int {
 	return body
 }
 
-// columnWidth calculates the width per column for multi-column output.
-// R3.1: total page width divided by number of columns.
 func columnWidth(cfg config) int {
 	return cfg.pageWidth / cfg.columns
 }
 
 // formatColumns arranges lines into multi-column layout.
-// R3.1: columns filled down by default, across with -a.
-func formatColumns(lines []string, cfg config, bodyRows int) []string {
+// baseNum > 0 enables line numbering within columns.
+func formatColumns(lines []string, cfg config, bodyRows, baseNum int) []string {
 	colWidth := columnWidth(cfg)
 	nlines := len(lines)
 	rows := (nlines + cfg.columns - 1) / cfg.columns
@@ -296,13 +350,14 @@ func formatColumns(lines []string, cfg config, bodyRows int) []string {
 	}
 	result := make([]string, rows)
 	for j := range rows {
-		result[j] = formatColumnRow(lines, cfg, j, rows, colWidth)
+		result[j] = formatColumnRow(lines, cfg, j, rows, colWidth, baseNum)
 	}
 	return result
 }
 
 // formatColumnRow formats a single output row for multi-column layout.
-func formatColumnRow(lines []string, cfg config, rowIdx, rowCount, colWidth int) string {
+// When baseNum > 0 and cfg.numberLines, each cell includes a position-aware number.
+func formatColumnRow(lines []string, cfg config, rowIdx, rowCount, colWidth, baseNum int) string {
 	lastCol := lastPresentCol(lines, cfg, rowIdx, rowCount)
 	if lastCol < 0 {
 		return ""
@@ -310,21 +365,73 @@ func formatColumnRow(lines []string, cfg config, rowIdx, rowCount, colWidth int)
 	var buf strings.Builder
 	for c := 0; c <= lastCol; c++ {
 		idx := columnLineIndex(cfg, rowIdx, c, rowCount)
-		text := ""
-		if idx < len(lines) {
-			text = lines[idx]
-		}
-		if c < lastCol {
-			colStart := c * colWidth
-			writeColumnField(&buf, text, colStart, colStart+colWidth)
+		text := cellText(lines, idx)
+		colStart := c * colWidth
+		colEnd := colStart + colWidth
+		isLast := c == lastCol
+		if cfg.numberLines && baseNum > 0 {
+			writeNumberedCell(&buf, text, baseNum+idx, cfg, colStart, colEnd, isLast)
 		} else {
-			buf.WriteString(text)
+			writeColumnCell(&buf, text, colStart, colEnd, isLast)
 		}
 	}
 	return buf.String()
 }
 
-// lastPresentCol returns the index of the last column with a valid input line.
+func cellText(lines []string, idx int) string {
+	if idx < len(lines) {
+		return lines[idx]
+	}
+	return ""
+}
+
+// writeColumnCell writes a plain (unnumbered) column cell with padding.
+func writeColumnCell(buf *strings.Builder, text string, colStart, colEnd int, isLast bool) {
+	if isLast {
+		buf.WriteString(text)
+		return
+	}
+	writeColumnField(buf, text, colStart, colEnd)
+}
+
+// writeNumberedCell writes a column cell with position-aware line numbering.
+// R4.1: the number is right-justified using tab-aware padding from colStart.
+// The separator (TAB or char) bridges from number to text start position.
+func writeNumberedCell(buf *strings.Builder, text string, num int, cfg config, colStart, colEnd int, isLast bool) {
+	digits := strconv.Itoa(num)
+	digitStart := colStart + cfg.numberWidth - len(digits)
+
+	// R4.1: right-justify number in field
+	padWithTabs(buf, colStart, digitStart)
+	buf.WriteString(digits)
+	pos := digitStart + len(digits)
+
+	// Write separator and advance to text position
+	pos = writeSeparator(buf, pos, colStart, cfg)
+
+	buf.WriteString(text)
+	if !isLast {
+		pos += visualWidth(text, pos)
+		padWithTabs(buf, pos, colEnd)
+	}
+}
+
+// writeSeparator writes the number separator and returns the new visual position.
+// For TAB separator, pads to colStart+tabWidth using tab-aware spacing.
+// For non-TAB, writes the literal separator byte.
+func writeSeparator(buf *strings.Builder, pos, colStart int, cfg config) int {
+	if cfg.numberChar == '\t' {
+		target := colStart + tabWidth
+		if target <= pos {
+			target = ((pos / tabWidth) + 1) * tabWidth
+		}
+		padWithTabs(buf, pos, target)
+		return target
+	}
+	buf.WriteByte(cfg.numberChar)
+	return pos + 1
+}
+
 func lastPresentCol(lines []string, cfg config, rowIdx, rowCount int) int {
 	for c := cfg.columns - 1; c >= 0; c-- {
 		if columnLineIndex(cfg, rowIdx, c, rowCount) < len(lines) {
@@ -334,8 +441,6 @@ func lastPresentCol(lines []string, cfg config, rowIdx, rowCount int) int {
 	return -1
 }
 
-// columnLineIndex returns the input line index for a given row and column.
-// R3.1: down mode = row + col*rowCount, across mode = row*columns + col.
 func columnLineIndex(cfg config, row, col, rowCount int) int {
 	if cfg.across {
 		return row*cfg.columns + col
@@ -344,20 +449,18 @@ func columnLineIndex(cfg config, row, col, rowCount int) int {
 }
 
 // writeColumnField writes text and pads to the column end using tabs and spaces.
-// colStart is the absolute position where this column begins on the line.
-// colEnd is the absolute position where the next column begins.
-// GNU pr uses tab-based padding with 8-char tab stops.
+// Uses visual width (accounting for tab expansion) for correct padding.
 func writeColumnField(buf *strings.Builder, text string, colStart, colEnd int) {
 	colWidth := colEnd - colStart
-	if len(text) >= colWidth {
+	vw := visualWidth(text, colStart)
+	if vw >= colWidth {
 		buf.WriteString(text[:colWidth])
 		return
 	}
 	buf.WriteString(text)
-	padWithTabs(buf, colStart+len(text), colEnd)
+	padWithTabs(buf, colStart+vw, colEnd)
 }
 
-// padWithTabs pads from pos to target using tabs then spaces.
 func padWithTabs(buf *strings.Builder, pos, target int) {
 	for pos < target {
 		nextTab := ((pos / tabWidth) + 1) * tabWidth
@@ -371,7 +474,6 @@ func padWithTabs(buf *strings.Builder, pos, target int) {
 	}
 }
 
-// fileHeaderInfo returns the header text and date for a file.
 func fileHeaderInfo(f *os.File, name string, cfg config) (string, time.Time) {
 	hdr := cfg.header
 	if hdr == "" && name != "-" {
@@ -386,7 +488,6 @@ func fileHeaderInfo(f *os.File, name string, cfg config) (string, time.Time) {
 	return hdr, date
 }
 
-// prFile processes a single file through the pr pipeline.
 func prFile(name string, w *bufio.Writer, cfg config) error {
 	f, err := openInput(name)
 	if err != nil {
@@ -399,60 +500,28 @@ func prFile(name string, w *bufio.Writer, cfg config) error {
 	return paginateFile(f, w, cfg, hdr, date)
 }
 
-// numberLine prepends a line number to a line.
-// R4.1: number with configurable separator and width.
-func numberLine(_ string, _ int, _ config) string {
-	log.Fatal("not implemented")
-	return ""
-}
-
-// indentLine prepends margin spaces to a line.
-// R4.2: -o MARGIN indents each line.
-func indentLine(_ string, _ int) string {
-	log.Fatal("not implemented")
-	return ""
-}
-
-// doubleSpaceLine adds an extra newline after a line.
-// R4.3: -d double-spaces output.
-func doubleSpaceLine(line string) string {
-	log.Fatal("not implemented")
-	_ = line
-	return ""
-}
-
-// run processes all files and returns the exit code.
-// R5.1: exit 0 on success, exit 1 on any error.
 func run(cfg config, files []string) int {
 	w := bufio.NewWriter(os.Stdout)
 	exitCode := 0
-
 	for _, name := range files {
 		if err := prFile(name, w, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 			exitCode = 1
 		}
 	}
-
 	// best-effort flush; SIGPIPE handler covers broken pipe
 	if err := w.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: write error\n", progName)
 		exitCode = 1
 	}
-
 	return exitCode
 }
 
 func main() {
-	// R5.2: handle SIGPIPE gracefully.
 	sys.InstallSIGPIPEHandler()
-
 	cfg, args := parseFlags()
-
-	// R2.3: no arguments means read stdin.
 	if len(args) == 0 {
 		args = []string{"-"}
 	}
-
 	os.Exit(run(cfg, args))
 }
