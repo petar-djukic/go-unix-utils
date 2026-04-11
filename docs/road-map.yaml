@@ -524,7 +524,7 @@ releases:
         - id: rel12.0-uc001-shred
           status: spec_complete
         - id: rel12.0-uc002-chroot
-          status: spec_complete
+          status: implemented
         - id: rel12.0-uc003-install
           status: spec_complete
     - version: "12.1"
