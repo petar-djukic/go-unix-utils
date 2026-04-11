@@ -58,9 +58,17 @@ func run(cfg config, files []string) bool {
 		return false
 	}
 
-	// R1.1: no arguments (or -f without files) — global sync(2).
+	// R1.1: no arguments — global sync(2).
 	if len(files) == 0 {
 		syscall.Sync()
+		return true
+	}
+
+	// R1.4/R2.1: pure --file-system mode without --data. On macOS,
+	// syncfs(2) is unavailable so GNU falls back to global sync(2)
+	// without opening individual files.
+	if cfg.fileSystem && !cfg.data {
+		syncFilesystem(0)
 		return true
 	}
 

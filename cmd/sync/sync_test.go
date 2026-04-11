@@ -109,6 +109,37 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"doesnotexist"},
 			WorkDir: workDir, ExitCode: 1, Normalize: norms,
 		},
+		// R2.2: unrecognized long option exits 1.
+		{
+			Name: "unrecognized_long_option",
+			Args:    []string{"--invalid"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.2: invalid short option exits 1.
+		{
+			Name: "invalid_short_option",
+			Args:    []string{"-x"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.1: nonexistent file with -d flag exits 1.
+		{
+			Name: "data_nonexistent_file",
+			Args:    []string{"-d", "doesnotexist"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.1: -f with nonexistent file — on macOS, syncfs(2) is
+		// unavailable so GNU falls back to global sync(2), exit 0.
+		{
+			Name: "filesystem_nonexistent_file",
+			Args:    []string{"-f", "doesnotexist"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
+		},
+		// R2.1: mix of existing and nonexistent files exits 1.
+		{
+			Name: "mixed_existing_nonexistent",
+			Args:    []string{"testfile1", "doesnotexist"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
