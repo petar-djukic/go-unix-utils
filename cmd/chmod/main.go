@@ -10,7 +10,6 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +33,15 @@ const (
 	modeRemove                   // '-'
 )
 
+// symlinkPolicy controls how symlinks are handled during recursive traversal.
+type symlinkPolicy int
+
+const (
+	symlinkNone    symlinkPolicy = iota // -P: don't follow symlinks (default)
+	symlinkCmdLine                      // -H: follow command-line symlinks only
+	symlinkAll                          // -L: follow all symlinks
+)
+
 // modeClause represents a single parsed symbolic mode clause (e.g., u+rwx).
 // When who is empty, no ugoa was specified and umask filtering applies.
 type modeClause struct {
@@ -51,11 +59,12 @@ type mode struct {
 
 // options holds parsed command-line flags for chmod.
 type options struct {
-	recursive bool   // R2.1: -R/--recursive
-	verbose   bool   // R2.2: -v/--verbose
-	changes   bool   // R2.3: -c/--changes
-	silent    bool   // R2.4: -f/--silent/--quiet
-	reference string // R3.2: --reference=RFILE
+	recursive bool          // R2.1: -R/--recursive
+	verbose   bool          // R2.2: -v/--verbose
+	changes   bool          // R2.3: -c/--changes
+	silent    bool          // R2.4: -f/--silent/--quiet
+	reference string        // R3.2: --reference=RFILE
+	symlinks  symlinkPolicy // R3.1-R3.2: -H/-L/-P symlink traversal
 }
 
 // R4.3, R1.1: main entry with SIGPIPE handler and argument dispatch.
@@ -73,7 +82,7 @@ func main() {
 }
 
 // parseArgs separates flags, mode specification, and file operands.
-// Supports short flags (-R, -v, -c, -f), combined short flags,
+// Supports short flags (-R, -v, -c, -f, -H, -L, -P), combined short flags,
 // and long forms (--recursive, --verbose, --changes, --silent,
 // --quiet, --reference=RFILE).
 func parseArgs(rawArgs []string) (options, string, []string) {
@@ -120,7 +129,7 @@ func parseArgs(rawArgs []string) (options, string, []string) {
 func isShortFlags(arg string) bool {
 	for _, c := range arg[1:] {
 		switch c {
-		case 'R', 'v', 'c', 'f':
+		case 'R', 'v', 'c', 'f', 'H', 'L', 'P':
 			// valid short flag
 		default:
 			return false
@@ -160,6 +169,12 @@ func parseShortFlags(opts *options, chars string) {
 			opts.changes = true
 		case 'f':
 			opts.silent = true
+		case 'H':
+			opts.symlinks = symlinkCmdLine
+		case 'L':
+			opts.symlinks = symlinkAll
+		case 'P':
+			opts.symlinks = symlinkNone
 		}
 	}
 }
@@ -337,41 +352,96 @@ func applyMode(opts options, m mode, path string) error {
 
 // applyModeRecursive recursively applies mode changes to a directory tree.
 // R2.1: -R/--recursive changes modes for directories and their contents.
-// Skips symbolic links encountered during traversal.
+// R3.1-R3.2: respects -H/-L/-P symlink traversal policy.
 func applyModeRecursive(opts options, m mode, root string) error {
 	hadError := false
-	walkErr := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if !opts.silent {
-				fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
-					programName, p, unwrapPathError(err))
-			}
-			hadError = true
-			return nil
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if err := applyModeToFile(opts, m, p); err != nil {
-			if !opts.silent {
-				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
-			}
-			hadError = true
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return walkErr
-	}
+	walkChmod(opts, m, root, true, &hadError)
 	if hadError {
 		return errAlreadyReported
 	}
 	return nil
 }
 
+// walkChmod recursively applies mode changes, respecting symlink policy.
+// R3.1: -P (default) skips symlinks.
+// R3.2: -H follows command-line symlinks, -L follows all symlinks.
+func walkChmod(opts options, m mode, path string, isRoot bool, hadErr *bool) {
+	fi, skip := resolveEntry(opts, path, isRoot, hadErr)
+	if skip || fi == nil {
+		return
+	}
+	if err := applyModeToFile(opts, m, path); err != nil {
+		reportFileError(opts, err, hadErr)
+	}
+	if fi.IsDir() {
+		walkChildren(opts, m, path, hadErr)
+	}
+}
+
+// resolveEntry checks the path and decides whether to process it.
+// Returns the file info and whether to skip the entry.
+// A nil fi with skip=true means the entry is a symlink not being followed.
+// A nil fi with skip=false means an error occurred (already reported).
+func resolveEntry(opts options, path string, isRoot bool, hadErr *bool) (os.FileInfo, bool) {
+	lfi, err := os.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	if lfi.Mode()&os.ModeSymlink == 0 {
+		return lfi, false
+	}
+	if !shouldFollowSymlink(opts.symlinks, isRoot) {
+		return nil, true
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	return fi, false
+}
+
+// shouldFollowSymlink returns true if the symlink should be followed
+// based on the policy and whether the path is a command-line argument.
+func shouldFollowSymlink(policy symlinkPolicy, isRoot bool) bool {
+	return policy == symlinkAll || (policy == symlinkCmdLine && isRoot)
+}
+
+// walkChildren reads directory entries and recurses into each child.
+func walkChildren(opts options, m mode, dir string, hadErr *bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportWalkError(opts, dir, err, hadErr)
+		return
+	}
+	for _, e := range entries {
+		walkChmod(opts, m, filepath.Join(dir, e.Name()), false, hadErr)
+	}
+}
+
+// reportWalkError prints a directory traversal error to stderr.
+func reportWalkError(opts options, path string, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
+			programName, path, unwrapPathError(err))
+	}
+	*hadErr = true
+}
+
+// reportFileError prints a file mode change error to stderr.
+func reportFileError(opts options, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+	}
+	*hadErr = true
+}
+
 // applyModeToFile applies the mode change to a single file.
 // R1.1, R1.2: reads current mode, computes new mode, applies via os.Chmod.
 // R1.4: returns error when file cannot be accessed.
+// Uses os.Lstat so symlinks themselves are not followed; chmod(2) follows
+// symlinks when called by os.Chmod.
 func applyModeToFile(opts options, m mode, path string) error {
 	fi, err := os.Lstat(path)
 	if err != nil {
