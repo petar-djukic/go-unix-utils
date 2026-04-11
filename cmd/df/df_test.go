@@ -322,6 +322,63 @@ func TestDiffOutput(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+// TestDiffTypeFilter verifies filesystem type filtering matches gdf.
+// R3.5: -t TYPE inclusion. R3.6: -x TYPE exclusion.
+func TestDiffTypeFilter(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gdf")
+	if err != nil {
+		t.Skipf("reference binary gdf not in PATH: %v", err)
+	}
+
+	norms := []testutils.NormalizeFunc{fsUsageNormalizer}
+
+	tests := []testutils.DiffTest{
+		{
+			// R3.5: include only apfs filesystems.
+			Name:      "type_include_apfs",
+			Args:      []string{"-t", "apfs"},
+			Normalize: norms,
+		},
+		{
+			// R3.5: long flag form.
+			Name:      "type_include_long_flag",
+			Args:      []string{"--type=apfs"},
+			Normalize: norms,
+		},
+		{
+			// R3.6: exclude devfs filesystems.
+			Name:      "type_exclude_devfs",
+			Args:      []string{"-x", "devfs"},
+			Normalize: norms,
+		},
+		{
+			// R3.6: long flag form.
+			Name:      "type_exclude_long_flag",
+			Args:      []string{"--exclude-type=devfs"},
+			Normalize: norms,
+		},
+		{
+			// R3.5 + R3.1: type filter with type column display.
+			Name:      "type_include_with_print_type",
+			Args:      []string{"-t", "apfs", "-T"},
+			Normalize: norms,
+		},
+		{
+			// R3.5: include a nonexistent type shows no entries.
+			Name:     "type_include_nonexistent",
+			Args:     []string{"-t", "nonexistent_type_xyz"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				fsUsageNormalizer,
+				stderrProgramNameNormalizer,
+			},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 // TestDiffErrors verifies exit code and stderr for error conditions.
 // R4.1: exit 0 on success. R4.2: exit 1 with diagnostic for errors.
 func TestDiffErrors(t *testing.T) {

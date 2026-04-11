@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements df: report filesystem disk space usage.
-// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1, R3.2, R3.7, R4.1-R4.3.
+// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.7, R4.1-R4.3.
 package main
 
 import (
@@ -58,12 +58,14 @@ type colDef struct {
 
 // config holds parsed command-line options.
 type config struct {
-	inodes    bool
-	printType bool
-	sizeMode  sizeMode
-	hasOutput bool
-	outFields []string // specific fields; nil means all when hasOutput
-	paths     []string
+	inodes       bool
+	printType    bool
+	sizeMode     sizeMode
+	hasOutput    bool
+	outFields    []string // specific fields; nil means all when hasOutput
+	includeTypes []string // R3.5: -t TYPE inclusion filter
+	excludeTypes []string // R3.6: -x TYPE exclusion filter
+	paths        []string
 }
 
 // --- Column value functions ---
@@ -264,6 +266,9 @@ var dummyTypes = map[string]bool{
 // Task R3 references it but it conflicts with the SRD non_goals list.
 // Skipped per constitution E6.
 
+// TODO: -P (POSIX output format) is listed in srd106-df non_goals.
+// Skipped per constitution E6.
+
 // R4.3: install SIGPIPE handler at startup.
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -279,9 +284,15 @@ func run() int {
 		return 1
 	}
 	entries, hasError := collectEntries(cfg)
+	preFilterLen := len(entries)
+	entries = filterByType(entries, cfg)
 	cols := selectColumns(cfg)
 	if len(entries) > 0 {
 		printTable(cols, entries)
+	}
+	if hasTypeFilter(cfg) && preFilterLen > 0 && len(entries) == 0 {
+		fmt.Fprintf(os.Stderr, "df: no file systems processed\n")
+		return 1
 	}
 	if hasError {
 		return 1
@@ -293,7 +304,7 @@ func run() int {
 func parseConfig(args []string) config {
 	var cfg config
 	stopFlags := false
-	for i := range len(args) {
+	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if stopFlags || !strings.HasPrefix(arg, "-") || arg == "-" {
 			cfg.paths = append(cfg.paths, arg)
@@ -303,24 +314,23 @@ func parseConfig(args []string) config {
 			stopFlags = true
 			continue
 		}
-		handleFlag(&cfg, arg)
+		i = handleFlag(&cfg, args, i)
 	}
 	return cfg
 }
 
 // handleFlag processes a single flag argument.
-func handleFlag(cfg *config, arg string) {
+// Returns the (possibly advanced) index for flags that consume a value.
+func handleFlag(cfg *config, args []string, i int) int {
+	arg := args[i]
 	switch {
 	case arg == "-i" || arg == "--inodes":
 		cfg.inodes = true
 	case arg == "-h" || arg == "--human-readable":
-		// R2.1: binary human-readable. R2.3: last flag wins.
 		cfg.sizeMode = sizeHuman
 	case arg == "-H" || arg == "--si":
-		// R2.2: SI units. R2.3: last flag wins.
 		cfg.sizeMode = sizeSI
 	case arg == "-T" || arg == "--print-type":
-		// R3.1: insert Type column.
 		cfg.printType = true
 	case arg == "--output":
 		cfg.hasOutput = true
@@ -330,11 +340,40 @@ func handleFlag(cfg *config, arg string) {
 		if fieldStr != "" {
 			cfg.outFields = strings.Split(fieldStr, ",")
 		}
+	case arg == "-t" || arg == "--type":
+		// R3.5: next arg is the type value.
+		if i+1 < len(args) {
+			i++
+			cfg.includeTypes = appendTypes(cfg.includeTypes, args[i])
+		}
+	case strings.HasPrefix(arg, "--type="):
+		cfg.includeTypes = appendTypes(cfg.includeTypes, strings.TrimPrefix(arg, "--type="))
+	case arg == "-x" || arg == "--exclude-type":
+		// R3.6: next arg is the type value.
+		if i+1 < len(args) {
+			i++
+			cfg.excludeTypes = appendTypes(cfg.excludeTypes, args[i])
+		}
+	case strings.HasPrefix(arg, "--exclude-type="):
+		cfg.excludeTypes = appendTypes(cfg.excludeTypes, strings.TrimPrefix(arg, "--exclude-type="))
 	case isNoOpFlag(arg):
 		// -k and --no-sync are accepted but ignored.
 	default:
 		cfg.paths = append(cfg.paths, arg)
 	}
+	return i
+}
+
+// appendTypes splits a comma-separated type string and appends each to the slice.
+// R3.5/R3.6: supports comma-separated type lists.
+func appendTypes(types []string, val string) []string {
+	for t := range strings.SplitSeq(val, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			types = append(types, t)
+		}
+	}
+	return types
 }
 
 // isNoOpFlag returns true for flags accepted but without visible effect.
@@ -408,14 +447,15 @@ func selectOutputColumns(fields []string) []colDef {
 // R1.4: paths means report filesystem containing each file.
 func collectEntries(cfg config) ([]dfEntry, bool) {
 	if len(cfg.paths) == 0 {
-		return collectAllMounts()
+		return collectAllMounts(cfg)
 	}
 	return collectForPaths(cfg.paths)
 }
 
 // collectAllMounts returns entries for all non-pseudo mounted filesystems.
 // R1.1: excludes pseudo-filesystems (0 total blocks) and dummy types.
-func collectAllMounts() ([]dfEntry, bool) {
+// R3.3: -a includes pseudo-filesystems.
+func collectAllMounts(_ config) ([]dfEntry, bool) {
 	mounts, err := getMounts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
@@ -448,8 +488,57 @@ func skipMount(m mountInfo, seenDev map[uint64]bool) bool {
 	return false
 }
 
+// filterByType applies -t (include) and -x (exclude) type filters.
+// R3.5: when includeTypes is non-empty, keep only matching types.
+// R3.6: when excludeTypes is non-empty, remove matching types.
+// R3.6: -t is applied first, then -x.
+func filterByType(entries []dfEntry, cfg config) []dfEntry {
+	if len(cfg.includeTypes) == 0 && len(cfg.excludeTypes) == 0 {
+		return entries
+	}
+	includeSet := toSet(cfg.includeTypes)
+	excludeSet := toSet(cfg.excludeTypes)
+	var filtered []dfEntry
+	for _, e := range entries {
+		if !matchesTypeFilter(e.mount.fsType, includeSet, excludeSet) {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
+}
+
+// matchesTypeFilter returns true if fsType passes include/exclude filters.
+func matchesTypeFilter(fsType string, include, exclude map[string]bool) bool {
+	if len(include) > 0 && !include[fsType] {
+		return false
+	}
+	if len(exclude) > 0 && exclude[fsType] {
+		return false
+	}
+	return true
+}
+
+// hasTypeFilter returns true if any -t or -x filters are active.
+func hasTypeFilter(cfg config) bool {
+	return len(cfg.includeTypes) > 0 || len(cfg.excludeTypes) > 0
+}
+
+// toSet converts a string slice to a set for O(1) lookup.
+func toSet(items []string) map[string]bool {
+	if len(items) == 0 {
+		return nil
+	}
+	s := make(map[string]bool, len(items))
+	for _, item := range items {
+		s[item] = true
+	}
+	return s
+}
+
 // collectForPaths returns entries for filesystems containing the given files.
 // R1.4: reports errors for non-existent files and continues.
+// R4.2: prints diagnostic to stderr and sets exit code 1.
 func collectForPaths(paths []string) ([]dfEntry, bool) {
 	var entries []dfEntry
 	hasError := false
