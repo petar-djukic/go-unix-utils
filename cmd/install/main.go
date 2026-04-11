@@ -3,6 +3,7 @@
 
 // Package main implements cmd/install: copy files and set attributes.
 // Implements srd101 R1.1-R1.4: core file copy with mode and ownership.
+// Implements srd101 R2.1-R2.4: directory creation, backup, verbose, target-directory.
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 
 const programName = "install"
 const defaultMode = os.FileMode(0o755)
+const defaultBackupSuffix = "~"
 
 // TODO: Task R4/AC6 requested -s/--strip, but srd101 non_goals explicitly
 // states "cmd/install does not implement --strip (binary stripping requires
@@ -27,9 +29,16 @@ const defaultMode = os.FileMode(0o755)
 
 // options holds parsed command-line flags for install.
 type options struct {
-	mode  string // R1.2: -m/--mode
-	owner string // R1.3: -o/--owner
-	group string // R1.4: -g/--group
+	mode            string // R1.2: -m/--mode
+	owner           string // R1.3: -o/--owner
+	group           string // R1.4: -g/--group
+	dirMode         bool   // R2.1: -d/--directory
+	createDirs      bool   // R2.2: -D
+	backup          bool   // R2.3: -b/--backup
+	suffix          string // R2.3: --suffix
+	verbose         bool   // R2.4: -v/--verbose
+	targetDir       string // R2.4: -t/--target-directory
+	noTargetDir     bool   // R2.4: -T/--no-target-directory
 }
 
 // modeAction represents the operator in a symbolic mode clause.
@@ -57,12 +66,17 @@ func main() {
 
 // run validates arguments, resolves mode, and dispatches installation.
 func run(opts options, args []string) int {
+	if opts.dirMode {
+		return runDirMode(opts, args)
+	}
+	return runCopyMode(opts, args)
+}
+
+// runDirMode handles -d/--directory: create directories like mkdir -p.
+// R2.1: create each given directory and any missing parent directories.
+func runDirMode(opts options, args []string) int {
 	if len(args) == 0 {
 		printMissingOperand()
-		return 1
-	}
-	if len(args) == 1 {
-		printMissingDest(args[0])
 		return 1
 	}
 	fileMode, err := resolveMode(opts.mode)
@@ -70,49 +84,140 @@ func run(opts options, args []string) int {
 		fmt.Fprintf(os.Stderr, "%s: invalid mode %q\n", programName, opts.mode)
 		return 1
 	}
-	sources := args[:len(args)-1]
-	dest := args[len(args)-1]
+	exitCode := 0
+	for _, dir := range args {
+		if err := createDirWithParents(opts, dir, fileMode); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+// createDirWithParents creates a directory and all parents, applying mode/ownership.
+func createDirWithParents(opts options, dir string, fileMode os.FileMode) error {
+	if err := os.MkdirAll(dir, fileMode); err != nil {
+		return fmt.Errorf("cannot create directory '%s': %s", dir, unwrapErr(err))
+	}
+	// R2.1: set mode explicitly after creation (MkdirAll applies umask)
+	if err := os.Chmod(dir, fileMode); err != nil {
+		return fmt.Errorf("cannot change permissions of '%s': %s",
+			dir, unwrapErr(err))
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "%s: creating directory '%s'\n", programName, dir)
+	}
+	return applyOwnership(opts, dir)
+}
+
+// runCopyMode handles normal file copy mode.
+func runCopyMode(opts options, args []string) int {
+	dest, sources, err := resolveDestAndSources(opts, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
+	}
+	fileMode, err := resolveMode(opts.mode)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: invalid mode %q\n", programName, opts.mode)
+		return 1
+	}
 	return installFiles(opts, sources, dest, fileMode)
 }
 
-// printMissingOperand prints the missing file operand error.
-func printMissingOperand() {
-	fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
-	printTryHelp()
-}
-
-// printMissingDest prints the missing destination error.
-func printMissingDest(arg string) {
-	fmt.Fprintf(os.Stderr,
-		"%s: missing destination file operand after '%s'\n",
-		programName, arg)
-	printTryHelp()
-}
-
-// printTryHelp prints the "Try --help" hint to stderr.
-func printTryHelp() {
-	fmt.Fprintf(os.Stderr,
-		"Try '%s --help' for more information.\n", programName)
+// resolveDestAndSources determines dest and sources based on -t/-T flags.
+func resolveDestAndSources(opts options, args []string) (string, []string, error) {
+	if opts.targetDir != "" {
+		if len(args) == 0 {
+			return "", nil, fmt.Errorf("missing file operand")
+		}
+		return opts.targetDir, args, nil
+	}
+	if len(args) == 0 {
+		return "", nil, fmt.Errorf("missing file operand")
+	}
+	if len(args) == 1 {
+		return "", nil, fmt.Errorf(
+			"missing destination file operand after '%s'", args[0])
+	}
+	return args[len(args)-1], args[:len(args)-1], nil
 }
 
 // installFiles copies each source to dest with mode and ownership.
 // R1.1: last argument is destination; multiple sources require directory dest.
 func installFiles(opts options, sources []string, dest string, fileMode os.FileMode) int {
+	if opts.createDirs {
+		return installWithCreateDirs(opts, sources, dest, fileMode)
+	}
 	destIsDir := isDir(dest)
-	if len(sources) > 1 && !destIsDir {
+	if !opts.noTargetDir && len(sources) > 1 && !destIsDir {
 		fmt.Fprintf(os.Stderr,
 			"%s: target '%s': Not a directory\n", programName, dest)
 		return 1
 	}
 	exitCode := 0
 	for _, src := range sources {
-		target := resolveTarget(dest, src, destIsDir)
-		if err := installSingle(opts, src, target, fileMode); err != nil {
+		target := resolveTarget(dest, src, destIsDir && !opts.noTargetDir)
+		if err := installOneCopy(opts, src, target, fileMode); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			exitCode = 1
 		}
 	}
 	return exitCode
+}
+
+// installWithCreateDirs handles -D: create leading directories then copy.
+// R2.2: create all leading destination directory components.
+func installWithCreateDirs(opts options, sources []string, dest string, fileMode os.FileMode) int {
+	destIsDir := isDir(dest)
+	exitCode := 0
+	for _, src := range sources {
+		target := resolveTarget(dest, src, destIsDir && !opts.noTargetDir)
+		dir := filepath.Dir(target)
+		if err := os.MkdirAll(dir, defaultMode); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: cannot create directory '%s': %s\n",
+				programName, dir, unwrapErr(err))
+			exitCode = 1
+			continue
+		}
+		if err := installOneCopy(opts, src, target, fileMode); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+// installOneCopy copies one source file, handling backup and verbose.
+func installOneCopy(opts options, src, dest string, fileMode os.FileMode) error {
+	if opts.backup {
+		if err := makeBackup(dest, opts.suffix); err != nil {
+			return err
+		}
+	}
+	if err := installSingle(opts, src, dest, fileMode); err != nil {
+		return err
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", src, dest)
+	}
+	return nil
+}
+
+// makeBackup creates a backup of dest if it exists.
+// R2.3: append suffix to original filename.
+func makeBackup(dest, suffix string) error {
+	if suffix == "" {
+		suffix = defaultBackupSuffix
+	}
+	if _, err := os.Lstat(dest); os.IsNotExist(err) {
+		return nil
+	}
+	backupPath := dest + suffix
+	if err := os.Rename(dest, backupPath); err != nil {
+		return fmt.Errorf("cannot backup '%s': %s", dest, unwrapErr(err))
+	}
+	return nil
 }
 
 // installSingle copies one source file to dest and applies attributes.
@@ -506,24 +611,40 @@ func parseLongFlag(opts *options, rawArgs []string, idx int) int {
 	case strings.HasPrefix(flag, "--mode="):
 		opts.mode = strings.TrimPrefix(flag, "--mode=")
 	case flag == "--mode":
-		if idx+1 < len(rawArgs) {
-			idx++
-			opts.mode = rawArgs[idx]
-		}
+		idx = consumeLongArg(&opts.mode, rawArgs, idx)
 	case strings.HasPrefix(flag, "--owner="):
 		opts.owner = strings.TrimPrefix(flag, "--owner=")
 	case flag == "--owner":
-		if idx+1 < len(rawArgs) {
-			idx++
-			opts.owner = rawArgs[idx]
-		}
+		idx = consumeLongArg(&opts.owner, rawArgs, idx)
 	case strings.HasPrefix(flag, "--group="):
 		opts.group = strings.TrimPrefix(flag, "--group=")
 	case flag == "--group":
-		if idx+1 < len(rawArgs) {
-			idx++
-			opts.group = rawArgs[idx]
-		}
+		idx = consumeLongArg(&opts.group, rawArgs, idx)
+	case flag == "--directory":
+		opts.dirMode = true
+	case flag == "--backup":
+		opts.backup = true
+	case strings.HasPrefix(flag, "--suffix="):
+		opts.suffix = strings.TrimPrefix(flag, "--suffix=")
+	case flag == "--suffix":
+		idx = consumeLongArg(&opts.suffix, rawArgs, idx)
+	case flag == "--verbose":
+		opts.verbose = true
+	case strings.HasPrefix(flag, "--target-directory="):
+		opts.targetDir = strings.TrimPrefix(flag, "--target-directory=")
+	case flag == "--target-directory":
+		idx = consumeLongArg(&opts.targetDir, rawArgs, idx)
+	case flag == "--no-target-directory":
+		opts.noTargetDir = true
+	}
+	return idx
+}
+
+// consumeLongArg reads the next argument as a long flag value.
+func consumeLongArg(target *string, rawArgs []string, idx int) int {
+	if idx+1 < len(rawArgs) {
+		idx++
+		*target = rawArgs[idx]
 	}
 	return idx
 }
@@ -534,14 +655,23 @@ func parseShortFlags(opts *options, rawArgs []string, idx int) int {
 	for j := 0; j < len(chars); j++ {
 		switch chars[j] {
 		case 'm':
-			idx = consumeShortArg(&opts.mode, chars[j+1:], rawArgs, idx)
-			return idx
+			return consumeShortArg(&opts.mode, chars[j+1:], rawArgs, idx)
 		case 'o':
-			idx = consumeShortArg(&opts.owner, chars[j+1:], rawArgs, idx)
-			return idx
+			return consumeShortArg(&opts.owner, chars[j+1:], rawArgs, idx)
 		case 'g':
-			idx = consumeShortArg(&opts.group, chars[j+1:], rawArgs, idx)
-			return idx
+			return consumeShortArg(&opts.group, chars[j+1:], rawArgs, idx)
+		case 't':
+			return consumeShortArg(&opts.targetDir, chars[j+1:], rawArgs, idx)
+		case 'd':
+			opts.dirMode = true
+		case 'D':
+			opts.createDirs = true
+		case 'b':
+			opts.backup = true
+		case 'v':
+			opts.verbose = true
+		case 'T':
+			opts.noTargetDir = true
 		}
 	}
 	return idx
@@ -560,17 +690,36 @@ func consumeShortArg(target *string, rest string, rawArgs []string, idx int) int
 	return idx
 }
 
+// printMissingOperand prints the missing file operand error.
+func printMissingOperand() {
+	fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
+	printTryHelp()
+}
+
+// printTryHelp prints the "Try --help" hint to stderr.
+func printTryHelp() {
+	fmt.Fprintf(os.Stderr,
+		"Try '%s --help' for more information.\n", programName)
+}
+
 // printUsage prints the usage message.
 func printUsage() {
 	fmt.Fprintf(os.Stdout, `Usage: %s [OPTION]... SOURCE... DEST
 Copy SOURCE to DEST, setting permission and ownership attributes.
 
 Options:
-  -g, --group=GROUP   set group ownership (R1.4)
-  -m, --mode=MODE     set permission mode (default: 0755) (R1.2)
-  -o, --owner=OWNER   set ownership (R1.3)
-      --help          display this help and exit
-      --version       output version information and exit
+  -b, --backup            make a backup of each existing destination file
+  -d, --directory         create all arguments as directories
+  -D                      create all leading destination components, then copy
+  -g, --group=GROUP       set group ownership (R1.4)
+  -m, --mode=MODE         set permission mode (default: 0755) (R1.2)
+  -o, --owner=OWNER       set ownership (R1.3)
+      --suffix=SUFFIX     override the backup suffix (default ~)
+  -t, --target-directory=DIR  install into DIR
+  -T, --no-target-directory   treat DEST as a normal file
+  -v, --verbose           print the name of each file as it is installed
+      --help              display this help and exit
+      --version           output version information and exit
 `, programName)
 }
 
