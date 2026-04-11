@@ -277,6 +277,24 @@ func TestDiffInodes(t *testing.T) {
 			Args:      []string{"--inodes"},
 			Normalize: norms,
 		},
+		{
+			// R4.2: -i combined with -h applies human-readable formatting to inode counts.
+			Name:      "inodes_with_human_readable",
+			Args:      []string{"-i", "-h"},
+			Normalize: []testutils.NormalizeFunc{humanSizeNormalizer},
+		},
+		{
+			// R4.2: -i combined with -T adds Type column to inode output.
+			Name:      "inodes_with_print_type",
+			Args:      []string{"-i", "-T"},
+			Normalize: norms,
+		},
+		{
+			// R4.2: -i on multiple filesystem paths.
+			Name:      "inodes_multiple_paths",
+			Args:      []string{"-i", "/", "/dev"},
+			Normalize: norms,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

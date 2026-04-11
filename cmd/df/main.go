@@ -112,26 +112,48 @@ func valPcent(e dfEntry) string {
 	return computeUsePct(m.totalBlocks, m.freeBlocks, m.availBlocks)
 }
 
-func valItotal(e dfEntry) string {
-	return fmt.Sprintf("%d", e.mount.totalInodes)
-}
+// totalInodes returns the total inode count as int64.
+func totalInodes(e dfEntry) int64 { return int64(e.mount.totalInodes) }
 
-func valIused(e dfEntry) string {
+// usedInodes returns the used inode count as int64.
+func usedInodes(e dfEntry) int64 {
 	m := e.mount
-	var used uint64
 	if m.totalInodes > m.freeInodes {
-		used = m.totalInodes - m.freeInodes
+		return int64(m.totalInodes - m.freeInodes)
 	}
-	return fmt.Sprintf("%d", used)
+	return 0
 }
 
-func valIavail(e dfEntry) string {
-	return fmt.Sprintf("%d", e.mount.freeInodes)
-}
+// freeInodes returns the free inode count as int64.
+func freeInodes(e dfEntry) int64 { return int64(e.mount.freeInodes) }
+
+func valItotal(e dfEntry) string  { return fmt.Sprintf("%d", e.mount.totalInodes) }
+func valIused(e dfEntry) string   { return fmt.Sprintf("%d", usedInodes(e)) }
+func valIavail(e dfEntry) string  { return fmt.Sprintf("%d", e.mount.freeInodes) }
 
 func valIpcent(e dfEntry) string {
 	m := e.mount
 	return computeUsePct(m.totalInodes, m.freeInodes, m.freeInodes)
+}
+
+// formatInodeVal formats an inode count according to the active sizeMode.
+// R4.2: sizeHuman/sizeSI apply human-readable formatting to inode counts.
+func formatInodeVal(count int64, sm sizeMode) string {
+	switch sm {
+	case sizeHuman:
+		return gnuHumanSize(count, true)
+	case sizeSI:
+		return gnuHumanSize(count, false)
+	default:
+		return fmt.Sprintf("%d", count)
+	}
+}
+
+// makeInodeFunc returns a value function that formats inode counts.
+func makeInodeFunc(sm sizeMode, fn func(dfEntry) int64) func(dfEntry) string {
+	return func(e dfEntry) string {
+		return formatInodeVal(fn(e), sm)
+	}
 }
 
 // --- Size formatting ---
@@ -223,14 +245,21 @@ func insertTypeCol(cols []colDef) []colDef {
 	return result
 }
 
-// inodeCols is the column set for inode mode (R3.2).
-var inodeCols = []colDef{
-	{"Filesystem", false, valSource, 0},
-	{"Inodes", true, valItotal, 0},
-	{"IUsed", true, valIused, 0},
-	{"IFree", true, valIavail, 0},
-	{"IUse%", true, valIpcent, 0},
-	{"Mounted on", false, valTarget, 0},
+// buildInodeCols creates the inode column set for the given sizeMode.
+// R3.2: inode columns. R4.2: -h/-H applies human formatting to inode counts.
+func buildInodeCols(sm sizeMode) []colDef {
+	minW := 0
+	if sm != sizeDefault {
+		minW = humanMinWidth
+	}
+	return []colDef{
+		{"Filesystem", false, valSource, 0},
+		{"Inodes", true, makeInodeFunc(sm, totalInodes), minW},
+		{"IUsed", true, makeInodeFunc(sm, usedInodes), minW},
+		{"IFree", true, makeInodeFunc(sm, freeInodes), minW},
+		{"IUse%", true, valIpcent, 0},
+		{"Mounted on", false, valTarget, 0},
+	}
 }
 
 // outputFieldMap maps --output field names to column definitions (R3.7).
@@ -419,7 +448,7 @@ func selectColumns(cfg config) []colDef {
 	}
 	var cols []colDef
 	if cfg.inodes {
-		cols = inodeCols
+		cols = buildInodeCols(cfg.sizeMode)
 	} else {
 		cols = buildDefaultCols(cfg.sizeMode)
 	}
