@@ -4,9 +4,11 @@
 // Package main implements cmd/install: copy files and set attributes.
 // Implements srd101 R1.1-R1.4: core file copy with mode and ownership.
 // Implements srd101 R2.1-R2.4: directory creation, backup, verbose, target-directory.
+// Implements srd101 R3.1-R3.3: compare mode, exit codes, SIGPIPE handling.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -37,6 +39,7 @@ type options struct {
 	backup          bool   // R2.3: -b/--backup
 	suffix          string // R2.3: --suffix
 	verbose         bool   // R2.4: -v/--verbose
+	compare         bool   // R3.1: -C/--compare
 	targetDir       string // R2.4: -t/--target-directory
 	noTargetDir     bool   // R2.4: -T/--no-target-directory
 }
@@ -115,6 +118,7 @@ func runCopyMode(opts options, args []string) int {
 	dest, sources, err := resolveDestAndSources(opts, args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		printTryHelp()
 		return 1
 	}
 	fileMode, err := resolveMode(opts.mode)
@@ -188,8 +192,12 @@ func installWithCreateDirs(opts options, sources []string, dest string, fileMode
 	return exitCode
 }
 
-// installOneCopy copies one source file, handling backup and verbose.
+// installOneCopy copies one source file, handling compare, backup, and verbose.
 func installOneCopy(opts options, src, dest string, fileMode os.FileMode) error {
+	// R3.1: skip install if source and destination are identical.
+	if opts.compare && filesMatch(src, dest, fileMode) {
+		return nil
+	}
 	if opts.backup {
 		if err := makeBackup(dest, opts.suffix); err != nil {
 			return err
@@ -202,6 +210,32 @@ func installOneCopy(opts options, src, dest string, fileMode os.FileMode) error 
 		fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", src, dest)
 	}
 	return nil
+}
+
+// filesMatch returns true if src and dest have identical content and permissions.
+// R3.1: -C/--compare avoids installing when files already match.
+func filesMatch(src, dest string, fileMode os.FileMode) bool {
+	destInfo, err := os.Stat(dest)
+	if err != nil {
+		return false
+	}
+	if destInfo.Mode().Perm() != fileMode.Perm() {
+		return false
+	}
+	return contentEqual(src, dest)
+}
+
+// contentEqual returns true if two files have identical byte content.
+func contentEqual(a, b string) bool {
+	aData, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	bData, err := os.ReadFile(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(aData, bData)
 }
 
 // makeBackup creates a backup of dest if it exists.
@@ -636,6 +670,8 @@ func parseLongFlag(opts *options, rawArgs []string, idx int) int {
 		idx = consumeLongArg(&opts.targetDir, rawArgs, idx)
 	case flag == "--no-target-directory":
 		opts.noTargetDir = true
+	case flag == "--compare":
+		opts.compare = true
 	}
 	return idx
 }
@@ -672,6 +708,8 @@ func parseShortFlags(opts *options, rawArgs []string, idx int) int {
 			opts.verbose = true
 		case 'T':
 			opts.noTargetDir = true
+		case 'C':
+			opts.compare = true
 		}
 	}
 	return idx
@@ -709,6 +747,7 @@ Copy SOURCE to DEST, setting permission and ownership attributes.
 
 Options:
   -b, --backup            make a backup of each existing destination file
+  -C, --compare           compare and do not install if identical
   -d, --directory         create all arguments as directories
   -D                      create all leading destination components, then copy
   -g, --group=GROUP       set group ownership (R1.4)
