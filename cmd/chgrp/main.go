@@ -33,6 +33,10 @@ const (
 	symlinkAll                          // -L: follow all symlinks
 )
 
+// TODO: Task requested --preserve-root/--no-preserve-root, but srd090
+// non_goals explicitly states "cmd/chgrp does not implement --preserve-root".
+// Skipped per E6.
+
 // options holds parsed command-line flags for chgrp.
 type options struct {
 	recursive   bool          // R2.1: -R/--recursive
@@ -219,7 +223,7 @@ func parseGroup(group string) (int, error) {
 	// D1: fall back to name lookup
 	g, err := user.LookupGroup(group)
 	if err != nil {
-		return 0, fmt.Errorf("invalid group: %q", group)
+		return 0, fmt.Errorf("invalid group: '%s'", group)
 	}
 	gid, err := strconv.Atoi(g.Gid)
 	if err != nil {
@@ -358,7 +362,7 @@ func reportFileError(opts options, err error, hadErr *bool) {
 func changeGroup(opts options, gid int, path string) error {
 	fi, err := statForOpts(opts, path)
 	if err != nil {
-		return fmt.Errorf("changing group of '%s': %s",
+		return fmt.Errorf("cannot access '%s': %s",
 			path, unwrapPathError(err))
 	}
 
