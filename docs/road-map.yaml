@@ -566,7 +566,7 @@ releases:
           status: implemented
     - version: "14.0"
       name: "Batch 14.0 — moreutils (chronic, pee, vidir)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement three moreutils utilities. chronic runs commands and suppresses output

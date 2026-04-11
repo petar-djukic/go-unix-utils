@@ -15,7 +15,6 @@ project:
         docs/prompts/
         cmd/
     releases:
-        - "14.0"
         - "15.0"
 generation:
     prefix: generation-
