@@ -11,7 +11,7 @@ import (
 )
 
 // TestDiff runs differential tests comparing the Go od against GNU god.
-// Covers srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Covers srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -198,6 +198,89 @@ func TestDiff(t *testing.T) {
 		{
 			Name:  "empty_input",
 			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -w8 explicit narrow width.
+		{
+			Name:  "width_8",
+			Args:  []string{"-w8", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOP"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -w without value defaults to 32.
+		{
+			Name:  "width_no_value",
+			Args:  []string{"-w", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --width=8 long form with value.
+		{
+			Name:  "width_long_eq",
+			Args:  []string{"--width=8", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOP"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --width long form without value defaults to 32.
+		{
+			Name:  "width_long_no_value",
+			Args:  []string{"--width", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: duplicate suppression replaces repeated lines with '*'.
+		{
+			Name:  "duplicate_suppression",
+			Args:  []string{"-t", "x1"},
+			Stdin: make([]byte, 64),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: -v disables duplicate suppression, all lines printed.
+		{
+			Name:  "output_duplicates_v",
+			Args:  []string{"-v", "-t", "x1"},
+			Stdin: make([]byte, 64),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: --output-duplicates long form.
+		{
+			Name:  "output_duplicates_long",
+			Args:  []string{"--output-duplicates", "-t", "x1"},
+			Stdin: make([]byte, 64),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: combined traditional options -bc.
+		{
+			Name:  "traditional_combined_bc",
+			Args:  []string{"-b", "-c"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: duplicate suppression with non-zero repeated data.
+		{
+			Name:  "duplicate_suppression_nonzero",
+			Args:  []string{"-t", "o1"},
+			Stdin: func() []byte {
+				b := make([]byte, 80)
+				for i := range b {
+					b[i] = 0xAA
+				}
+				return b
+			}(),
+			Env: []string{"LC_ALL=C"},
+		},
+		// R3.1 + R3.3: width with duplicate suppression.
+		{
+			Name:  "width_with_dup_suppress",
+			Args:  []string{"-w8", "-t", "x1"},
+			Stdin: make([]byte, 40),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1 + R3.4: width with -v shows all lines.
+		{
+			Name:  "width_with_v",
+			Args:  []string{"-w8", "-v", "-t", "x1"},
+			Stdin: make([]byte, 40),
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
