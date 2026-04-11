@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -94,8 +95,7 @@ func run(cfg config) int {
 }
 
 // createFIFO creates a single FIFO at the given path.
-// TODO: R1.1 — implement actual FIFO creation using syscall.Mkfifo
-// or unix.Mkfifo. Currently stubbed pending full implementation.
+// R1.1: uses syscall.Mkfifo to create the named pipe.
 func createFIFO(cfg config, path string) error {
 	mode := defaultFIFOMode
 	if cfg.mode != "" {
@@ -105,9 +105,9 @@ func createFIFO(cfg config, path string) error {
 		}
 		mode = parsed
 	}
-	// TODO: Call syscall.Mkfifo(path, uint32(mode)) to create the FIFO.
-	_ = mode
-	_ = path
+	if err := syscall.Mkfifo(path, uint32(mode)); err != nil {
+		return fmt.Errorf("cannot create fifo '%s': %v", path, err)
+	}
 	return nil
 }
 
