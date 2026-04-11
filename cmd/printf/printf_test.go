@@ -165,6 +165,150 @@ func TestDiff(t *testing.T) {
 			Name: "multiple specifiers",
 			Args: []string{"%s is %d\\n", "age", "30"},
 		},
+
+		// R2.1: width and precision
+		{
+			Name: "width integer",
+			Args: []string{"%10d\\n", "42"},
+		},
+		{
+			Name: "width string",
+			Args: []string{"%10s\\n", "hello"},
+		},
+		{
+			Name: "precision float",
+			Args: []string{"%.2f\\n", "3.14159"},
+		},
+		{
+			Name: "precision float 5 digits",
+			Args: []string{"%.5f\\n", "2.71828"},
+		},
+		{
+			Name: "width and precision float",
+			Args: []string{"%10.3f\\n", "3.14159"},
+		},
+		{
+			Name: "precision string truncation",
+			Args: []string{"%.3s\\n", "hello"},
+		},
+		{
+			Name: "width and precision string",
+			Args: []string{"%10.3s\\n", "hello"},
+		},
+		{
+			Name: "width zero",
+			Args: []string{"%5d\\n", "0"},
+		},
+		{
+			Name: "precision zero float",
+			Args: []string{"%.0f\\n", "3.14"},
+		},
+		{
+			Name: "precision e notation",
+			Args: []string{"%.2e\\n", "12345.6789"},
+		},
+		{
+			Name: "width and precision g",
+			Args: []string{"%12.4g\\n", "12345.6789"},
+		},
+
+		// R2.2: flag characters
+		{
+			Name: "flag left align string",
+			Args: []string{"%-10s|\\n", "hello"},
+		},
+		{
+			Name: "flag left align integer",
+			Args: []string{"%-10d|\\n", "42"},
+		},
+		{
+			Name: "flag plus sign positive",
+			Args: []string{"%+d\\n", "42"},
+		},
+		{
+			Name: "flag plus sign negative",
+			Args: []string{"%+d\\n", "-42"},
+		},
+		{
+			Name: "flag space before positive",
+			Args: []string{"% d\\n", "42"},
+		},
+		{
+			Name: "flag space before negative",
+			Args: []string{"% d\\n", "-42"},
+		},
+		{
+			Name: "flag zero pad integer",
+			Args: []string{"%010d\\n", "42"},
+		},
+		{
+			Name: "flag zero pad float",
+			Args: []string{"%010.2f\\n", "3.14"},
+		},
+		{
+			Name: "flag hash octal",
+			Args: []string{"%#o\\n", "255"},
+		},
+		{
+			Name: "flag hash hex lowercase",
+			Args: []string{"%#x\\n", "255"},
+		},
+		{
+			Name: "flag hash hex uppercase",
+			Args: []string{"%#X\\n", "255"},
+		},
+		{
+			Name: "flag hash float",
+			Args: []string{"%#.0f\\n", "3.0"},
+		},
+		{
+			Name: "flags combined left and plus",
+			Args: []string{"%-+10d|\\n", "42"},
+		},
+		{
+			Name: "flags combined zero and width",
+			Args: []string{"%05d\\n", "42"},
+		},
+
+		// R2.3: * for width and precision from arguments
+		{
+			Name: "star width integer",
+			Args: []string{"%*d\\n", "10", "42"},
+		},
+		{
+			Name: "star width string",
+			Args: []string{"%*s\\n", "10", "hello"},
+		},
+		{
+			Name: "star precision float",
+			Args: []string{"%.*f\\n", "2", "3.14159"},
+		},
+		{
+			Name: "star width and precision float",
+			Args: []string{"%*.*f\\n", "10", "2", "3.14159"},
+		},
+		{
+			Name: "star negative width left align",
+			Args: []string{"%*d|\\n", "-10", "42"},
+		},
+		{
+			Name: "star precision string truncation",
+			Args: []string{"%.*s\\n", "3", "hello"},
+		},
+
+		// R2.4: %% literal percent
+		{
+			Name: "literal percent",
+			Args: []string{"100%%\\n"},
+		},
+		{
+			Name: "percent with specifier",
+			Args: []string{"%d%%\\n", "50"},
+		},
+		{
+			Name: "double percent only",
+			Args: []string{"%%"},
+		},
 	}
 
 	// R4.3: compare Go printf output against gprintf byte-for-byte.
