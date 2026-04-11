@@ -87,6 +87,28 @@ func TestDiff(t *testing.T) {
 			},
 			Env: withEditor(t, "true"),
 		},
+		{
+			// R2.1: editor exits non-zero causes vidir to exit 2
+			Name: "editor_exits_nonzero",
+			Args: []string{
+				filepath.Join(dir, "alpha.txt"),
+			},
+			Env:      withEditor(t, "false"),
+			ExitCode: 2,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestUnknownOption verifies that an unknown flag exits non-zero.
+// R2.1: not a diff test because the reference binary includes its full path in stderr.
+func TestUnknownOption(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--invalid-flag")
+	cmd.Env = withEditor(t, "true")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit for unknown option")
+	}
 }

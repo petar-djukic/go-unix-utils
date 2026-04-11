@@ -152,9 +152,10 @@ func editAndApply(files []string, opts options) int {
 		return 1
 	}
 	defer os.Remove(tmpPath)
+	// R2.1: exit 2 when editor exits non-zero (matches reference vidir).
 	if err := openEditor(tmpPath); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		return 1
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
 	return processEdits(original, tmpPath, opts)
 }
@@ -208,12 +209,13 @@ func resolveEditor() string {
 func openEditor(path string) error {
 	editor := resolveEditor()
 	parts := strings.Fields(editor)
-	cmd := exec.Command(parts[0], append(parts[1:], path)...)
+	name := parts[0]
+	cmd := exec.Command(name, append(parts[1:], path)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor failed: %w", err)
+		return fmt.Errorf("%s exited nonzero, aborting", name)
 	}
 	return nil
 }
