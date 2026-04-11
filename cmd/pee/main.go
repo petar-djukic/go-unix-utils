@@ -23,7 +23,8 @@ func main() {
 // waits for all to complete, and returns the exit code.
 // R1.1: read stdin, write to each command via sh -c.
 // R1.2: wait for all commands.
-// R2.1: exit 0 if all succeed, 1 if any fail.
+// R2.1: exit 0 if all succeed, 1 if any fail or fail to start.
+// R2.2: report errors to stderr.
 func run(commands []string) int {
 	if len(commands) == 0 {
 		return 0
@@ -33,12 +34,13 @@ func run(commands []string) int {
 		fmt.Fprintf(os.Stderr, "pee: read stdin: %v\n", err)
 		return 1
 	}
-	procs, ok := startAll(commands)
-	if !ok {
-		return 1
-	}
+	procs, allStarted := startAll(commands)
 	writeAll(procs, input)
-	return waitAll(procs)
+	exitCode := waitAll(procs)
+	if !allStarted {
+		exitCode = 1
+	}
+	return exitCode
 }
 
 // proc holds a running child process and its stdin pipe.
@@ -47,22 +49,26 @@ type proc struct {
 	stdin io.WriteCloser
 }
 
-// startAll launches all commands via sh -c. Returns the process list and
-// true if all started successfully.
+// startAll launches all commands via sh -c. If a command fails to start,
+// it reports the error to stderr and continues with the remaining commands.
+// Returns the successfully started processes and whether all started.
 // R1.1: each command is executed via sh -c COMMAND.
 // R1.3: stdout of each command goes to os.Stdout.
+// R2.1: track start failures for exit code aggregation.
+// R2.2: report start errors to stderr.
 func startAll(commands []string) ([]proc, bool) {
 	procs := make([]proc, 0, len(commands))
+	allOk := true
 	for _, c := range commands {
 		p, err := startOne(c)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "pee: %v\n", err)
-			cleanupStarted(procs)
-			return nil, false
+			allOk = false
+			continue
 		}
 		procs = append(procs, p)
 	}
-	return procs, true
+	return procs, allOk
 }
 
 // startOne launches a single shell command and returns its proc.
@@ -80,14 +86,6 @@ func startOne(command string) (proc, error) {
 	return proc{cmd: cmd, stdin: stdin}, nil
 }
 
-// cleanupStarted closes stdin pipes and waits for already-started procs.
-func cleanupStarted(procs []proc) {
-	for _, p := range procs {
-		p.stdin.Close() // best-effort close
-		p.cmd.Wait()    // best-effort wait
-	}
-}
-
 // writeAll writes the buffered input to each command's stdin and closes
 // the pipe. R1.1: write full buffer to each command's stdin.
 func writeAll(procs []proc, input []byte) {
@@ -97,13 +95,17 @@ func writeAll(procs []proc, input []byte) {
 	}
 }
 
-// waitAll waits for all processes to complete and returns 0 if all
-// succeeded, 1 if any failed. R1.2, R2.1.
+// waitAll waits for all processes to complete and returns the bitwise OR
+// of all exit codes, matching reference pee behavior. R1.2, R2.1.
 func waitAll(procs []proc) int {
 	exitCode := 0
 	for _, p := range procs {
 		if err := p.cmd.Wait(); err != nil {
-			exitCode = 1
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode |= ee.ExitCode()
+			} else {
+				exitCode |= 1
+			}
 		}
 	}
 	return exitCode

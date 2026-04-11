@@ -63,6 +63,33 @@ func TestDiff(t *testing.T) {
 			Args:  []string{},
 			Stdin: []byte("hello\n"),
 		},
+		{
+			// R2.1: exit 1 when any command in a mix fails
+			Name:     "mixed_exit_codes",
+			Args:     []string{"cat", "false"},
+			Stdin:    []byte("hello\n"),
+			ExitCode: 1,
+		},
+		{
+			// R2.1: exit 1 when all commands fail
+			Name:     "all_commands_fail",
+			Args:     []string{"false", "false"},
+			Stdin:    []byte("data\n"),
+			ExitCode: 1,
+		},
+		{
+			// R2.1: exit 0 when all commands succeed
+			Name:  "all_commands_succeed",
+			Args:  []string{"cat", "cat"},
+			Stdin: []byte("ok\n"),
+		},
+		{
+			// R2.1: command exits non-zero via sh -c 'exit 2'
+			Name:     "nonzero_exit_code",
+			Args:     []string{"exit 2"},
+			Stdin:    []byte(""),
+			ExitCode: 2,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
