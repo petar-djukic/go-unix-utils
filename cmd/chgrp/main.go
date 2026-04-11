@@ -10,6 +10,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/user"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -191,18 +193,34 @@ func resolveGroup(opts options, group string) (int, error) {
 
 // groupFromReference reads the group from a reference file.
 // R1.2: --reference=RFILE sets each FILE's group to match RFILE's group.
-// TODO: stub — returns 0 pending full implementation.
+// D3: uses pkg/sys.Stat to read the GID from the reference file.
 func groupFromReference(rfile string) (int, error) {
-	fmt.Fprintf(os.Stderr, "TODO: groupFromReference(%q)\n", rfile)
-	return 0, nil
+	fi, err := sys.Stat(rfile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get attributes of %q: %s",
+			rfile, unwrapPathError(err))
+	}
+	return int(fi.Gid), nil
 }
 
 // parseGroup parses a group name or numeric GID string.
-// R1.1: accepts GROUP as name or numeric GID.
-// TODO: stub — returns 0 pending full implementation.
+// R1.1: accepts GROUP as name (via os/user.LookupGroup) or numeric GID
+// (via strconv.Atoi). Returns an error for unknown groups.
 func parseGroup(group string) (int, error) {
-	fmt.Fprintf(os.Stderr, "TODO: parseGroup(%q)\n", group)
-	return 0, nil
+	// D1: try numeric GID first
+	if gid, err := strconv.Atoi(group); err == nil {
+		return gid, nil
+	}
+	// D1: fall back to name lookup
+	g, err := user.LookupGroup(group)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group: %q", group)
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group ID %q for group %q", g.Gid, group)
+	}
+	return gid, nil
 }
 
 // applyGroup applies the group change to a single file or recursively.
@@ -217,36 +235,93 @@ func applyGroup(opts options, gid int, path string) error {
 // applyGroupRecursive recursively applies group changes to a directory tree.
 // R2.1: -R/--recursive changes group for directories and their contents.
 // R2.3: respects -H/-L/-P symlink traversal policy.
-// TODO: stub — returns nil pending full implementation.
+// TODO: stub — returns nil pending full recursive implementation (R2.1-R2.3).
 func applyGroupRecursive(opts options, gid int, root string) error {
-	fmt.Fprintf(os.Stderr, "TODO: applyGroupRecursive(%q, gid=%d)\n", root, gid)
-	return nil
+	return changeGroup(opts, gid, root)
 }
 
 // changeGroup changes the group ownership of a single file.
-// R1.1: changes file's group to GID.
-// R2.2: respects --no-dereference / --dereference for symlinks.
-// TODO: stub — returns nil pending full implementation.
+// R1.1: changes file's group to GID, preserving existing UID.
+// R1.4: --dereference (default) follows symlinks via os.Chown.
+// R1.4/R2.2: --no-dereference (-h) changes symlink itself via os.Lchown.
+// D2: uses os.Chown for regular mode, os.Lchown for --no-dereference.
+// D3: uses pkg/sys.Stat or pkg/sys.Lstat to read current UID.
 func changeGroup(opts options, gid int, path string) error {
-	fmt.Fprintf(os.Stderr, "TODO: changeGroup(%q, gid=%d)\n", path, gid)
+	fi, err := statForOpts(opts, path)
+	if err != nil {
+		return fmt.Errorf("changing group of '%s': %s",
+			path, unwrapPathError(err))
+	}
+
+	oldGID := int(fi.Gid)
+	uid := int(fi.Uid)
+
+	if err := chownForOpts(opts, path, uid, gid); err != nil {
+		return fmt.Errorf("changing group of '%s': %s",
+			path, unwrapPathError(err))
+	}
+
+	printDiagnostic(opts, path, oldGID, gid)
 	return nil
+}
+
+// statForOpts calls sys.Lstat or sys.Stat depending on dereference mode.
+// R2.2: --no-dereference uses Lstat; default (dereference) uses Stat.
+func statForOpts(opts options, path string) (*sys.FileInfo, error) {
+	if opts.noDerefer {
+		return sys.Lstat(path)
+	}
+	return sys.Stat(path)
+}
+
+// chownForOpts calls os.Lchown or os.Chown depending on dereference mode.
+// D2: --no-dereference uses os.Lchown; default uses os.Chown.
+func chownForOpts(opts options, path string, uid, gid int) error {
+	if opts.noDerefer {
+		return os.Lchown(path, uid, gid)
+	}
+	return os.Chown(path, uid, gid)
 }
 
 // printDiagnostic prints a verbose or changes-only diagnostic message.
 // R3.1: -v prints a diagnostic for every file processed.
 // R3.1: -c prints a diagnostic only when changes are made.
-// TODO: stub — prints TODO pending full implementation.
 func printDiagnostic(opts options, path string, oldGID, newGID int) {
-	fmt.Fprintf(os.Stderr, "TODO: printDiagnostic(%q, old=%d, new=%d)\n",
-		path, oldGID, newGID)
-}
-
-// reportError prints an error message to stderr unless silent mode is active.
-// R1.4: prints error to stderr and continues processing remaining files.
-// R3.1: -f/--silent suppresses most errors.
-func reportError(opts options, path string, err error) {
-	if !opts.silent {
-		fmt.Fprintf(os.Stderr, "%s: changing group of '%s': %s\n",
-			programName, path, err)
+	if !opts.verbose && !opts.changes {
+		return
+	}
+	changed := oldGID != newGID
+	if opts.changes && !changed {
+		return
+	}
+	oldName := groupName(oldGID)
+	newName := groupName(newGID)
+	if changed {
+		fmt.Fprintf(os.Stdout,
+			"changed group of '%s' from %s to %s\n",
+			path, oldName, newName)
+	} else {
+		fmt.Fprintf(os.Stdout,
+			"group of '%s' retained as %s\n",
+			path, newName)
 	}
 }
+
+// groupName returns the group name for a GID, or the numeric string if
+// the name cannot be looked up.
+func groupName(gid int) string {
+	g, err := user.LookupGroupId(strconv.Itoa(gid))
+	if err != nil {
+		return strconv.Itoa(gid)
+	}
+	return g.Name
+}
+
+// unwrapPathError extracts the underlying error message from *os.PathError.
+func unwrapPathError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
