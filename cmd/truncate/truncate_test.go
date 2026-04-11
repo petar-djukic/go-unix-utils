@@ -72,6 +72,8 @@ func TestDiff(t *testing.T) {
 
 // runErrorTests tests error cases using RunDiffTests where no filesystem
 // mutation occurs (both binaries fail before modifying files).
+// R2.1/R2.2: invalid size and reference file errors.
+// R3.2: exit 1 on any failure.
 func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
 	t.Helper()
 	norms := []testutils.NormalizeFunc{norm}
@@ -86,6 +88,14 @@ func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeF
 		},
 		{
 			Name: "invalid_size", Args: []string{"-s", "abc", "file"},
+			ExitCode: 1, Normalize: norms,
+		},
+		{
+			Name: "empty_size", Args: []string{"-s", "", "file"},
+			ExitCode: 1, Normalize: norms,
+		},
+		{
+			Name: "ref_not_found", Args: []string{"-r", "nonexistent", "file"},
 			ExitCode: 1, Normalize: norms,
 		},
 	}
@@ -124,6 +134,8 @@ func writeFile(t *testing.T, dir, name string, size int64) {
 }
 
 // sizingCases returns the table of isolated truncate test cases.
+// R1.1-R1.4: absolute, relative, suffix, reference, no-create, multi-file.
+// R3.2: multi-file partial failure continues and exits 1.
 func sizingCases() []isolatedCase {
 	return []isolatedCase{
 		{
@@ -235,6 +247,33 @@ func sizingCases() []isolatedCase {
 			},
 			files: []string{"testfile"},
 		},
+		{
+			name: "multi_file_partial_error",
+			args: []string{"-s", "100", "file1", "nodir/file2"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "file1", 0)
+			},
+			files: []string{"file1"},
+		},
+		{
+			name: "round_down",
+			args: []string{"-s", "/100", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 250)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "round_up",
+			args: []string{"-s", "%100", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 250)
+			},
+			files: []string{"testfile"},
+		},
 	}
 }
 
@@ -341,4 +380,32 @@ func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResu
 	if ref.exitCode != got.exitCode {
 		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
 	}
+}
+
+// TestHelpVersion verifies --help and --version exit 0 with output.
+// R3.1: --help and --version produce output and exit 0.
+func TestHelpVersion(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("help", func(t *testing.T) {
+		t.Parallel()
+		res := runBin(t, goBin, []string{"--help"}, t.TempDir())
+		if res.exitCode != 0 {
+			t.Errorf("--help exit code: got %d, want 0", res.exitCode)
+		}
+		if len(res.stdout) == 0 {
+			t.Error("--help produced no stdout output")
+		}
+	})
+	t.Run("version", func(t *testing.T) {
+		t.Parallel()
+		res := runBin(t, goBin, []string{"--version"}, t.TempDir())
+		if res.exitCode != 0 {
+			t.Errorf("--version exit code: got %d, want 0", res.exitCode)
+		}
+		if len(res.stdout) == 0 {
+			t.Error("--version produced no stdout output")
+		}
+	})
 }
