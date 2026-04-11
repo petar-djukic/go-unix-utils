@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/stat: display file status.
-// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1.
+// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1, R7.1-R7.3.
 package main
 
 import (
@@ -22,6 +22,23 @@ const programName = "stat"
 
 // blockSize is the fundamental block size for st_blocks (POSIX 512 bytes).
 const blockSize = 512
+
+// versionStr is the version string printed by --version.
+const versionStr = "stat (go-unix-utils) 1.0"
+
+// helpMsg is the usage text printed by --help.
+// R7.3: --help prints usage information.
+const helpMsg = `Usage: stat [OPTION]... FILE...
+Display file or file system status.
+
+  -L, --dereference     follow links
+  -f, --file-system     display file system status instead of file status
+  -c  --format=FORMAT   use the specified FORMAT instead of the default;
+                          output a newline after each use of FORMAT
+  -t, --terse           print the information in terse form
+      --help        display this help and exit
+      --version     output version information and exit
+`
 
 // options holds parsed command-line flags.
 type options struct {
@@ -54,6 +71,7 @@ func main() {
 
 // parseArgs parses command-line arguments into options.
 // R2.1: accepts multiple file operands in order.
+// R7.3: --version and --help exit immediately.
 func parseArgs(args []string) options {
 	var opts options
 	for i := 0; i < len(args); i++ {
@@ -63,6 +81,12 @@ func parseArgs(args []string) options {
 			break
 		}
 		switch {
+		case arg == "--version":
+			fmt.Println(versionStr)
+			os.Exit(0)
+		case arg == "--help":
+			fmt.Print(helpMsg)
+			os.Exit(0)
 		case arg == "-L" || arg == "--dereference":
 			opts.deref = true
 		case arg == "-f" || arg == "--file-system":

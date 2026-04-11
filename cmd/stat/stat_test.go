@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/stat against gstat (GNU coreutils).
-// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1.
+// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1, R7.1-R7.3.
 package main
 
 import (
@@ -103,6 +103,10 @@ func TestDiff(t *testing.T) {
 	t.Run("dereference", func(t *testing.T) {
 		t.Parallel()
 		runDereferenceTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("errors", func(t *testing.T) {
+		t.Parallel()
+		runErrorTests(t, goBin, refBin, workDir, norms)
 	})
 }
 
@@ -327,4 +331,78 @@ func runDereferenceTests(
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runErrorTests tests error handling and edge cases.
+// R7.1: exit 0 when all files processed successfully.
+// R7.2: exit 1 when any file cannot be accessed.
+func runErrorTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	tests := []testutils.DiffTest{
+		{
+			Name:      "no_operand",
+			Args:      []string{},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "multiple_missing",
+			Args:      []string{"nofile1", "nofile2"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "valid_then_missing",
+			Args:      []string{"hello.txt", "no_such_file"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "missing_then_valid",
+			Args:      []string{"no_such_file", "hello.txt"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersionFlag verifies that --version prints version info and exits 0.
+// R7.3: --version flag support.
+func TestVersionFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version exited with error: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("--version produced no output")
+	}
+	if !bytes.Contains(out, []byte("stat")) {
+		t.Errorf("--version output does not contain 'stat': %q", out)
+	}
+}
+
+// TestHelpFlag verifies that --help prints usage info and exits 0.
+// R7.3: --help flag support.
+func TestHelpFlag(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help exited with error: %v", err)
+	}
+	if !bytes.Contains(out, []byte("Usage:")) {
+		t.Errorf("--help output does not contain 'Usage:': %q", out)
+	}
 }
