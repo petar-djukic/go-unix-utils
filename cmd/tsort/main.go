@@ -101,6 +101,7 @@ With no FILE, or when FILE is -, read standard input.
 
 // parseArgs parses command-line arguments.
 // R1.4: accepts optional FILE argument, --help, --version.
+// R2.1: rejects invalid options and extra operands with exit 1.
 func parseArgs(args []string) (string, runAction, error) {
 	file := "-"
 	flagsDone := false
@@ -140,7 +141,7 @@ func parseArgs(args []string) (string, runAction, error) {
 }
 
 // run opens the input, builds the graph, and performs topological sort.
-// Returns exit code: 0 on success, 1 on cycle or error.
+// R2.1: returns 0 on success. R2.2: returns 1 on cycle, malformed input, or I/O error.
 func run(file string) int {
 	r, err := openInput(file)
 	if err != nil {
@@ -151,7 +152,8 @@ func run(file string) int {
 
 	tokens, err := readTokens(r)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		// R2.2: include filename in read error for parity with gtsort.
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", programName, file, err)
 		return 1
 	}
 
@@ -170,6 +172,7 @@ func run(file string) int {
 }
 
 // openInput opens a file for reading; "-" means stdin.
+// R2.2: returns error on file open failure.
 func openInput(name string) (io.ReadCloser, error) {
 	if name == "-" {
 		return os.Stdin, nil

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main provides differential tests for cmd/tsort against gtsort.
-// Implements srd102-tsort acceptance criteria via testutils.RunDiffTests.
+// Implements srd102-tsort R2.1-R2.3 acceptance criteria via testutils.RunDiffTests.
 package main
 
 import (
@@ -30,6 +30,12 @@ func normalizeStderr(data []byte) []byte {
 	data = bytes.ReplaceAll(data,
 		[]byte("No such file or directory"),
 		[]byte("no such file or directory"))
+	data = bytes.ReplaceAll(data,
+		[]byte("Permission denied"),
+		[]byte("permission denied"))
+	data = bytes.ReplaceAll(data,
+		[]byte("Is a directory"),
+		[]byte("is a directory"))
 	return data
 }
 
@@ -64,8 +70,7 @@ func writeTestFile(t *testing.T, dir, name, content string) string {
 }
 
 // TestDiff runs differential tests for tsort against gtsort.
-// D2: uses testutils.BuildBinary and exec.LookPath with t.Skip.
-// D4: LC_ALL=C is set by default via testutils.
+// Covers srd102-tsort R1.1-R1.4, R2.1-R2.3 acceptance criteria.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtsort")
@@ -79,128 +84,182 @@ func TestDiff(t *testing.T) {
 	selfFile := writeTestFile(t, dir, "self.txt", "a a\n")
 	emptyFile := writeTestFile(t, dir, "empty.txt", "")
 	oddFile := writeTestFile(t, dir, "odd.txt", "a b c\n")
+	tabFile := writeTestFile(t, dir, "tabs.txt", "a\tb\tb\tc\n")
+	multiLineFile := writeTestFile(t, dir, "multi.txt", "a b\nb c\nc d\n")
+
+	// Create a permission-denied file for R2.2 testing.
+	noReadFile := writeTestFile(t, dir, "noread.txt", "a b\n")
+	os.Chmod(noReadFile, 0o000)
+	t.Cleanup(func() { os.Chmod(noReadFile, 0o644) })
 
 	stderrNorm := []testutils.NormalizeFunc{normalizeStderr, normalizeStderrHint}
 
 	tests := []testutils.DiffTest{
-		// AC1: basic linear chain via stdin
+		// --- R1.1: basic topological sort ---
 		{
 			Name:  "linear_chain_stdin",
 			Stdin: []byte("a b b c c d\n"),
 		},
-		// AC1: linear chain from file argument
 		{
 			Name: "linear_chain_file",
 			Args: []string{linearFile},
 		},
-		// AC1: reading from stdin via "-"
 		{
-			Name:  "stdin_dash",
-			Args:  []string{"-"},
-			Stdin: []byte("a b b c\n"),
+			Name:  "single_pair",
+			Stdin: []byte("a b\n"),
 		},
-		// AC2: diamond graph ordering
 		{
 			Name:  "diamond_graph",
 			Stdin: []byte("a b a c b d c d\n"),
 		},
-		// R1.1: self pair registers node without creating edge
 		{
 			Name:  "self_pair",
 			Stdin: []byte("a a\n"),
 		},
-		// R1.4: self pair from file
 		{
 			Name: "self_pair_file",
 			Args: []string{selfFile},
 		},
-		// AC3: cycle detection with two nodes
+		{
+			Name:  "disconnected_nodes",
+			Stdin: []byte("a a b b c c\n"),
+		},
+		// R1.1: tab-separated tokens
+		{
+			Name: "tab_separated_file",
+			Args: []string{tabFile},
+		},
+		// R1.1: multi-line input with one pair per line
+		{
+			Name: "multi_line_file",
+			Args: []string{multiLineFile},
+		},
+		// R1.1: tokens with mixed whitespace via stdin
+		{
+			Name:  "mixed_whitespace_stdin",
+			Stdin: []byte("a\tb\n  b\tc\n"),
+		},
+
+		// --- R1.2: cycle detection ---
 		{
 			Name:      "cycle_two_nodes",
 			Stdin:     []byte("a b b a\n"),
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// AC3: cycle detection from file
 		{
 			Name:      "cycle_file",
 			Args:      []string{cycleFile},
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// AC3: three-node cycle
 		{
 			Name:      "cycle_three_nodes",
 			Stdin:     []byte("a b b c c a\n"),
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// R1.1: empty input produces empty output
 		{
-			Name:  "empty_stdin",
-			Stdin: []byte(""),
+			Name:      "cycle_with_linear",
+			Stdin:     []byte("a b b c c b\n"),
+			ExitCode:  1,
+			Normalize: stderrNorm,
 		},
-		// R1.4: empty file
+		// R1.1: self-pair does not create a cycle edge
 		{
-			Name: "empty_file",
-			Args: []string{emptyFile},
+			Name:  "self_pair_no_cycle",
+			Stdin: []byte("a b b b\n"),
 		},
-		// R1.3: odd number of tokens
+		// R1.2: multiple independent cycles
+		{
+			Name:      "two_independent_cycles",
+			Stdin:     []byte("a b b a c d d c\n"),
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+
+		// --- R1.3: odd number of tokens ---
 		{
 			Name:      "odd_tokens_stdin",
 			Stdin:     []byte("a b c\n"),
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// R1.3: odd tokens from file
 		{
 			Name:      "odd_tokens_file",
 			Args:      []string{oddFile},
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// R1.1: single pair
+
+		// --- R1.4: file input modes ---
 		{
-			Name:  "single_pair",
-			Stdin: []byte("a b\n"),
+			Name:  "stdin_dash",
+			Args:  []string{"-"},
+			Stdin: []byte("a b b c\n"),
 		},
-		// R1.1: multiple disconnected self-pairs
 		{
-			Name:  "disconnected_nodes",
-			Stdin: []byte("a a b b c c\n"),
+			Name:  "empty_stdin",
+			Stdin: []byte(""),
 		},
-		// AC4: --help prints usage and exits 0
 		{
-			Name:      "help_flag",
-			Args:      []string{"--help"},
-			Normalize: []testutils.NormalizeFunc{clearOutput},
+			Name: "empty_file",
+			Args: []string{emptyFile},
 		},
-		// AC4: --version prints version and exits 0
-		{
-			Name:      "version_flag",
-			Args:      []string{"--version"},
-			Normalize: []testutils.NormalizeFunc{clearOutput},
-		},
-		// R1.4: extra operand error
+
+		// --- R2.1: invalid argument errors ---
 		{
 			Name:      "extra_operand",
 			Args:      []string{linearFile, cycleFile},
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// R1.4: nonexistent file error
+		// R2.1: invalid short option
+		{
+			Name:      "invalid_short_option",
+			Args:      []string{"-x"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		// R2.1: invalid long option
+		{
+			Name:      "invalid_long_option",
+			Args:      []string{"--invalid"},
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+
+		// --- R2.2: file error handling ---
 		{
 			Name:      "nonexistent_file",
 			Args:      []string{filepath.Join(dir, "no_such_file.txt")},
 			ExitCode:  1,
 			Normalize: stderrNorm,
 		},
-		// R1.2: cycle mixed with linear dependencies
+		// R2.2: permission denied on file
 		{
-			Name:      "cycle_with_linear",
-			Stdin:     []byte("a b b c c b\n"),
+			Name:      "permission_denied",
+			Args:      []string{noReadFile},
 			ExitCode:  1,
 			Normalize: stderrNorm,
+		},
+
+		// --- R2.1: --help and --version exit 0 ---
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+
+		// --- R1.4: -- separator handling ---
+		{
+			Name: "double_dash_separator",
+			Args: []string{"--", linearFile},
 		},
 	}
 
