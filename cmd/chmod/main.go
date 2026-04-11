@@ -67,6 +67,10 @@ type options struct {
 	symlinks  symlinkPolicy // R3.1-R3.2: -H/-L/-P symlink traversal
 }
 
+// TODO: Task R1 requested --preserve-root/--no-preserve-root (srd089 R4.2),
+// but srd089 non_goals explicitly states "cmd/chmod does not implement
+// --preserve-root (not applicable on macOS)". Skipped per E6.
+
 // R4.3, R1.1: main entry with SIGPIPE handler and argument dispatch.
 func main() {
 	sys.InstallSIGPIPEHandler()
