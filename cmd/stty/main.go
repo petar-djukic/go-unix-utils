@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/stty: Change and print terminal line settings.
-// Implements srd105-stty R1.1, R2.1, R3.1, R3.2.
+// Implements srd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2.
 package main
 
 import (
@@ -388,44 +388,8 @@ func dispatch(fd int, showAll, showSave bool, device string) error {
 	return nil
 }
 
-// R4.1: Apply a single setting change (enable or disable a mode flag).
-func applySetting(_ int, _ string, _ bool) error {
-	// TODO: implement R4.1
-	return fmt.Errorf("setting changes not yet implemented")
-}
-
-// R5.1: Set a special character to a value.
-func setSpecialChar(_ *unix.Termios, _ string, _ string) error {
-	// TODO: implement R5.1
-	return fmt.Errorf("special character changes not yet implemented")
-}
-
-// R6.1: Apply a combination setting (sane, raw, cooked, evenp, oddp).
-func applyCombination(_ int, _ string, _ bool) error {
-	// TODO: implement R6.1
-	return fmt.Errorf("combination settings not yet implemented")
-}
-
-// R6.2: Set input speed, output speed, or both.
-func setSpeed(_ int, _ uint32) error {
-	// TODO: implement R6.2
-	return fmt.Errorf("speed changes not yet implemented")
-}
-
-// setInputSpeed sets the terminal input baud rate.
-func setInputSpeed(_ int, _ uint32) error {
-	// TODO: implement R6.2 ispeed
-	return fmt.Errorf("speed changes not yet implemented")
-}
-
-// setOutputSpeed sets the terminal output baud rate.
-func setOutputSpeed(_ int, _ uint32) error {
-	// TODO: implement R6.2 ospeed
-	return fmt.Errorf("speed changes not yet implemented")
-}
-
-// parseArgs extracts display flags and device from arguments.
-func parseArgs(args []string) (showAll, showSave bool, device string, err error) {
+// parseArgs extracts display flags, device, and setting arguments.
+func parseArgs(args []string) (showAll, showSave bool, device string, settings []string, err error) {
 	i := 0
 	for i < len(args) {
 		arg := args[i]
@@ -436,7 +400,7 @@ func parseArgs(args []string) (showAll, showSave bool, device string, err error)
 			showSave = true
 		case arg == "-F":
 			if i+1 >= len(args) {
-				return false, false, "", fmt.Errorf("option requires an argument -- 'F'")
+				return false, false, "", nil, fmt.Errorf("option requires an argument -- 'F'")
 			}
 			i++
 			device = args[i]
@@ -446,23 +410,23 @@ func parseArgs(args []string) (showAll, showSave bool, device string, err error)
 			device = arg[len("--file="):]
 		case arg == "--file":
 			if i+1 >= len(args) {
-				return false, false, "", fmt.Errorf("option '--file' requires an argument")
+				return false, false, "", nil, fmt.Errorf("option '--file' requires an argument")
 			}
 			i++
 			device = args[i]
 		default:
-			// Future: setting arguments (R4-R6)
-			return false, false, "", fmt.Errorf("invalid argument '%s'", arg)
+			// R4.1, R5.1, R6.1, R6.2: Collect setting arguments.
+			settings = append(settings, arg)
 		}
 		i++
 	}
-	return showAll, showSave, device, nil
+	return showAll, showSave, device, settings, nil
 }
 
 // run is the main entry point logic, separated for testability.
 // Returns the exit code per R7.1 and R7.2.
 func run(args []string) int {
-	showAll, showSave, device, err := parseArgs(args)
+	showAll, showSave, device, settings, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stty: %v\n", err)
 		return 1
@@ -480,9 +444,17 @@ func run(args []string) int {
 	if deviceFile != nil {
 		defer deviceFile.Close()
 	}
-	if err := dispatch(fd, showAll, showSave, device); err != nil {
-		fmt.Fprintf(os.Stderr, "stty: %v\n", err)
-		return 1
+	if len(settings) > 0 {
+		if err := processSettings(fd, settings); err != nil {
+			fmt.Fprintf(os.Stderr, "stty: %v\n", err)
+			return 1
+		}
+	}
+	if showAll || showSave || len(settings) == 0 {
+		if err := dispatch(fd, showAll, showSave, device); err != nil {
+			fmt.Fprintf(os.Stderr, "stty: %v\n", err)
+			return 1
+		}
 	}
 	return 0
 }
