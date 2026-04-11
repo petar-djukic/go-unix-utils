@@ -4,14 +4,24 @@
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+// clearData is a normalizer that clears all output. Used for error tests
+// where stderr messages differ between Go and GNU implementations but
+// exit codes should match.
+func clearData(data []byte) []byte {
+	return nil
+}
+
 // TestDiff runs differential tests comparing the Go od against GNU god.
-// Covers srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
+// Covers srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -283,6 +293,142 @@ func TestDiff(t *testing.T) {
 			Stdin: make([]byte, 40),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R4.1, R4.4: exit 0 on successful dump.
+		{
+			Name:     "exit_zero_success",
+			Args:     []string{"-t", "x1"},
+			Stdin:    []byte("test"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.4: -t d1 signed decimal 1-byte size variant.
+		{
+			Name:  "type_signed_d1",
+			Args:  []string{"-t", "d1"},
+			Stdin: []byte("\x80\x7f\x00\xff"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t d4 signed decimal 4-byte size variant.
+		{
+			Name:  "type_signed_d4",
+			Args:  []string{"-t", "d4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t o4 octal 4-byte size variant.
+		{
+			Name:  "type_octal_o4",
+			Args:  []string{"-t", "o4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t u1 unsigned decimal 1-byte size variant.
+		{
+			Name:  "type_unsigned_u1",
+			Args:  []string{"-t", "u1"},
+			Stdin: []byte("\x00\x7f\x80\xff"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t u4 unsigned decimal 4-byte size variant.
+		{
+			Name:  "type_unsigned_u4",
+			Args:  []string{"-t", "u4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t x4 hexadecimal 4-byte size variant.
+		{
+			Name:  "type_hex_x4",
+			Args:  []string{"-t", "x4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t f8 double float size variant.
+		{
+			Name:  "type_float_f8",
+			Args:  []string{"-t", "f8"},
+			Stdin: []byte("\x00\x00\x00\x00\x00\x00\xf0\x3f\x00\x00\x00\x00\x00\x00\x00\x40"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t o1 octal 1-byte size variant.
+		{
+			Name:  "type_octal_o1",
+			Args:  []string{"-t", "o1"},
+			Stdin: []byte("\x00\x7f\x80\xff"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t x2 hexadecimal 2-byte size variant.
+		{
+			Name:  "type_hex_x2",
+			Args:  []string{"-t", "x2"},
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: multiple -t options with different types (o2 + x1).
+		{
+			Name:  "multiple_types_o2_x1",
+			Args:  []string{"-t", "o2", "-t", "x1"},
+			Stdin: []byte("ABCDEFGH"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFiles tests file-based inputs including multi-file and error cases.
+// Covers srd072-od R1.4 (multi-file), R4.2 (error exits), R4.3, R4.4.
+func TestDiffFiles(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("god")
+	if err != nil {
+		t.Skip("reference binary god not in PATH")
+	}
+
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "file1.txt"), []byte("hello"))
+	writeTestFile(t, filepath.Join(dir, "file2.txt"), []byte(" world"))
+
+	tests := []testutils.DiffTest{
+		// R1.4, R4.4: multi-file input reads files in order.
+		{
+			Name:    "multi_file_input",
+			Args:    []string{"-t", "c", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		// R1.4, R4.4: single file input.
+		{
+			Name:    "single_file_input",
+			Args:    []string{"-t", "x1", "file1.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		// R4.2, R4.4: missing file causes exit 1.
+		{
+			Name:      "error_missing_file",
+			Args:      []string{"nonexistent.txt"},
+			WorkDir:   dir,
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearData},
+		},
+		// R4.2, R4.4: invalid type causes exit 1.
+		{
+			Name:      "error_invalid_type",
+			Args:      []string{"-t", "z"},
+			Stdin:     []byte("test"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearData},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func writeTestFile(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("failed to write test file %s: %v", path, err)
+	}
 }

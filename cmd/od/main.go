@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/od implements the od utility for dumping file contents in various formats.
-// Implements srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
+// Implements srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -33,6 +33,7 @@ type odConfig struct {
 	showDupes bool  // -v — R3.4
 }
 
+// R4.1: exit 0 on success. R4.2: exit 1 on error.
 func main() {
 	sys.InstallSIGPIPEHandler()
 	cfg, files, err := parseArgs(os.Args[1:])
@@ -311,8 +312,7 @@ func parseByteCount(s string) (int64, error) {
 	}
 	mul := int64(1)
 	numStr := s
-	last := s[len(s)-1]
-	switch {
+	switch last := s[len(s)-1]; {
 	case last == 'b':
 		mul, numStr = 512, s[:len(s)-1]
 	case last == 'k' || last == 'K':
@@ -393,7 +393,7 @@ func openInputs(files []string) (io.Reader, func(), error) {
 func processChunks(cfg *odConfig, r io.Reader) error {
 	buf := make([]byte, cfg.width)
 	offset := cfg.skipBytes
-	cpb := charsPerByte(cfg.types)
+	bw := computeByteWidths(cfg.types, cfg.width)
 	var prevChunk []byte
 	suppressing := false
 	for {
@@ -411,7 +411,7 @@ func processChunks(cfg *odConfig, r io.Reader) error {
 			}
 		} else {
 			suppressing = false
-			printChunk(cfg, offset, chunk, cpb)
+			printChunk(cfg, offset, chunk, bw)
 		}
 		prevChunk = chunk
 		offset += int64(n)
@@ -439,7 +439,7 @@ func bytesEqual(a, b []byte) bool {
 }
 
 // printChunk outputs one or more formatted lines for a data chunk.
-func printChunk(cfg *odConfig, offset int64, data []byte, cpb int) {
+func printChunk(cfg *odConfig, offset int64, data []byte, bw []int) {
 	aw := addrWidth(cfg.addrRadix)
 	for i, ts := range cfg.types {
 		var sb strings.Builder
@@ -450,8 +450,7 @@ func printChunk(cfg *odConfig, offset int64, data []byte, cpb int) {
 				writeSpaces(&sb, aw)
 			}
 		}
-		elemW := elementWidth(ts, cpb, len(cfg.types) > 1)
-		writeTypeLine(&sb, data, ts, elemW)
+		writeTypeLine(&sb, data, ts, bw)
 		fmt.Println(sb.String())
 	}
 }
@@ -462,20 +461,63 @@ func writeSpaces(sb *strings.Builder, n int) {
 	}
 }
 
-// charsPerByte computes aligned display chars per input byte for multi-type.
-func charsPerByte(types []typeSpec) int {
+// computeByteWidths returns per-byte display widths for multi-type alignment.
+// For single type, returns nil (use naturalWidth directly).
+func computeByteWidths(types []typeSpec, lineWidth int) []int {
 	if len(types) <= 1 {
-		return 0
+		return nil
 	}
-	maxCPB := 0
+	_, bestNW := findWidestType(types)
+	return distributeWidths(bestNW, bestTypeSize(types), lineWidth)
+}
+
+// findWidestType returns the type with the highest chars/byte ratio
+// and its natural width.
+func findWidestType(types []typeSpec) (typeSpec, int) {
+	var best typeSpec
+	var bestNW int
+	bestRatio := 0.0
 	for _, ts := range types {
 		nw := naturalWidth(ts)
-		cpb := (nw + ts.size - 1) / ts.size
-		if cpb > maxCPB {
-			maxCPB = cpb
+		ratio := float64(nw) / float64(ts.size)
+		if ratio > bestRatio {
+			bestRatio = ratio
+			best = ts
+			bestNW = nw
 		}
 	}
-	return maxCPB
+	return best, bestNW
+}
+
+// bestTypeSize returns the size of the type with the highest chars/byte ratio.
+func bestTypeSize(types []typeSpec) int {
+	best, _ := findWidestType(types)
+	return best.size
+}
+
+// distributeWidths distributes nw chars across groupSize bytes, repeating
+// for lineWidth bytes. Extra chars go to the first bytes in each group.
+func distributeWidths(nw, groupSize, lineWidth int) []int {
+	base := nw / groupSize
+	rem := nw % groupSize
+	widths := make([]int, lineWidth)
+	for i := range widths {
+		widths[i] = base
+		if i%groupSize < rem {
+			widths[i]++
+		}
+	}
+	return widths
+}
+
+// elemWidthFromBytes sums byte widths for an element at offset with given size.
+func elemWidthFromBytes(bw []int, offset, size int) int {
+	w := 0
+	end := min(offset+size, len(bw))
+	for i := offset; i < end; i++ {
+		w += bw[i]
+	}
+	return w
 }
 
 // naturalWidth returns the natural field width including leading space.
@@ -497,23 +539,18 @@ func naturalWidth(ts typeSpec) int {
 	return 4
 }
 
-// elementWidth returns the display width for a single element.
-func elementWidth(ts typeSpec, cpb int, multiType bool) int {
-	if !multiType {
-		return naturalWidth(ts)
-	}
-	return cpb * ts.size
-}
-
 // writeTypeLine writes formatted elements for one type spec into sb.
-func writeTypeLine(sb *strings.Builder, data []byte, ts typeSpec, elemW int) {
+func writeTypeLine(sb *strings.Builder, data []byte, ts typeSpec, bw []int) {
 	for i := 0; i < len(data); i += ts.size {
-		end := i + ts.size
-		if end > len(data) {
-			end = len(data)
-		}
+		end := min(i+ts.size, len(data))
 		elem := make([]byte, ts.size)
 		copy(elem, data[i:end])
+		var elemW int
+		if bw != nil {
+			elemW = elemWidthFromBytes(bw, i, ts.size)
+		} else {
+			elemW = naturalWidth(ts)
+		}
 		sb.WriteString(formatElement(elem, ts, elemW))
 	}
 }
@@ -658,7 +695,7 @@ func floatWidth(size int) int {
 	case 4:
 		return 15
 	case 8:
-		return 25
+		return 24
 	}
 	return 15
 }
