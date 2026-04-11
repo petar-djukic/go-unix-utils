@@ -37,6 +37,7 @@ func main() {
 func run(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		return exitInternal
 	}
 
