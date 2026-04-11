@@ -3,7 +3,7 @@
 
 // Package main implements cmd/dir: list directory contents.
 // dir is equivalent to ls -C -b: multi-column output with C-style escaping.
-// Implements srd107-dir R1.1-R1.4.
+// Implements srd107-dir R1.1-R1.5, R2.1-R2.4.
 package main
 
 import (
