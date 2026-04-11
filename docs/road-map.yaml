@@ -561,7 +561,7 @@ releases:
         - id: rel13.0-uc002-dir
           status: implemented
         - id: rel13.0-uc003-vdir
-          status: spec_complete
+          status: implemented
         - id: rel13.0-uc004-dircolors
           status: spec_complete
     - version: "14.0"
