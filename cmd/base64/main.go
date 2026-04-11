@@ -4,7 +4,8 @@
 // cmd/base64 encodes and decodes data in Base64 format.
 // Implements: srd080 R1.1-R1.4 (encoding, wrap control, multi-file,
 // exit codes, and SIGPIPE), R2.1-R2.4 (decoding, ignore-garbage,
-// whitespace handling, error reporting).
+// whitespace handling, error reporting), R3.1-R3.3 (exit codes,
+// error reporting, and SIGPIPE).
 package main
 
 import (

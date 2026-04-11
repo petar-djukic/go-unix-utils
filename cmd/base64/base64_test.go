@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/base64: srd080 R1.1-R1.4, R2.1-R2.4.
+// Differential tests for cmd/base64: srd080 R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
@@ -36,13 +36,35 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte(""),
 		},
 		{
+			Name:  "encode single byte",
+			Stdin: []byte("A"),
+		},
+		{
 			Name:  "encode binary data",
 			Stdin: []byte{0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd},
+		},
+		{
+			Name:  "encode all zero bytes",
+			Stdin: []byte{0x00, 0x00, 0x00, 0x00},
+		},
+		// R1.1: explicit stdin with "-" argument.
+		{
+			Name:  "encode stdin explicit dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\n"),
 		},
 		// R1.2: default wrap at 76 columns.
 		{
 			Name:  "default wrap at 76 columns",
 			Stdin: bytes.Repeat([]byte("A"), 200),
+		},
+		{
+			Name:  "encode exactly 57 bytes wraps to one line",
+			Stdin: bytes.Repeat([]byte("X"), 57),
+		},
+		{
+			Name:  "encode 58 bytes wraps to two lines",
+			Stdin: bytes.Repeat([]byte("X"), 58),
 		},
 		// R1.3: -w flag controls wrap column.
 		{
@@ -54,6 +76,16 @@ func TestDiff(t *testing.T) {
 			Name:  "custom wrap at 40",
 			Args:  []string{"-w", "40"},
 			Stdin: bytes.Repeat([]byte("C"), 200),
+		},
+		{
+			Name:  "wrap with long flag equals syntax",
+			Args:  []string{"--wrap=20"},
+			Stdin: bytes.Repeat([]byte("D"), 100),
+		},
+		{
+			Name:  "wrap at 4 columns",
+			Args:  []string{"-w", "4"},
+			Stdin: []byte("hello world"),
 		},
 		// R1.4: missing file exits 1.
 		{
@@ -100,16 +132,21 @@ func TestDiffDecode(t *testing.T) {
 			Args:  []string{"-d"},
 			Stdin: []byte("YQ==\n"),
 		},
+		{
+			Name:  "decode double padded",
+			Args:  []string{"-d"},
+			Stdin: []byte("YWI=\n"),
+		},
+		{
+			Name:  "decode no padding needed",
+			Args:  []string{"-d"},
+			Stdin: []byte("YWJj\n"),
+		},
 		// R2.2: whitespace in encoded input is handled transparently.
 		{
 			Name:  "decode multiline base64",
 			Args:  []string{"-d"},
 			Stdin: []byte("aGVs\nbG8K\n"),
-		},
-		{
-			Name:  "decode with spaces in input",
-			Args:  []string{"-d", "-i"},
-			Stdin: []byte("aGVs bG8K\n"),
 		},
 		// R2.3: -i ignores non-alphabet characters.
 		{
@@ -122,11 +159,28 @@ func TestDiffDecode(t *testing.T) {
 			Args:  []string{"-d", "--ignore-garbage"},
 			Stdin: []byte("aGVs@#$bG8K\n"),
 		},
+		{
+			Name:  "decode ignore-garbage with various special chars",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("a~G`V{s}b[G]8(K)\n"),
+		},
+		{
+			Name:  "decode with spaces and ignore-garbage",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("aGVs bG8K\n"),
+		},
 		// R2.4: invalid Base64 input produces error and exit 1.
 		{
 			Name:      "decode invalid input exits 1",
 			Args:      []string{"-d"},
 			Stdin:     []byte("!!!invalid!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:      "decode garbage only exits 1",
+			Args:      []string{"-d"},
+			Stdin:     []byte("!@#$%\n"),
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normStderr},
 		},
@@ -188,7 +242,7 @@ func TestDiffFileInput(t *testing.T) {
 }
 
 // TestDiffExtraOperand tests that extra file arguments are rejected.
-// Traces: srd080 R1.4 (exit 1 on error).
+// Traces: srd080 R3.2 (exit 1 on error).
 func TestDiffExtraOperand(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -216,7 +270,7 @@ func TestDiffExtraOperand(t *testing.T) {
 }
 
 // TestDiffErrorPaths runs differential tests for error reporting.
-// Traces: srd080 R1.4 (exit codes).
+// Traces: srd080 R3.1 (exit 0 on success), R3.2 (exit 1 on error).
 func TestDiffErrorPaths(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -226,14 +280,23 @@ func TestDiffErrorPaths(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
+		// R3.1: --version exits 0.
 		{
 			Name:      "version flag exits 0",
 			Args:      []string{"--version"},
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
+		// R3.1: --help exits 0.
 		{
 			Name:      "help flag exits 0",
 			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.2: invalid option exits 1.
+		{
+			Name:      "invalid long flag exits 1",
+			Args:      []string{"--nonexistent"},
+			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{clearOutput},
 		},
 	}
@@ -242,7 +305,7 @@ func TestDiffErrorPaths(t *testing.T) {
 }
 
 // TestDiffPermissionError tests file permission error reporting.
-// Traces: srd080 R1.4 (exit 1 on error).
+// Traces: srd080 R3.2 (exit 1 on error).
 func TestDiffPermissionError(t *testing.T) {
 	t.Parallel()
 	if os.Getuid() == 0 {
@@ -268,6 +331,64 @@ func TestDiffPermissionError(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normStderr},
 		},
+		{
+			Name:      "permission denied on decode",
+			Args:      []string{"-d", noReadFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFlagCombinations tests various flag combinations.
+// Traces: srd080 R1.3 (wrap), R2.1 (decode), R2.3 (ignore-garbage),
+// R3.1 (exit 0 on success).
+func TestDiffFlagCombinations(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase64")
+	if err != nil {
+		t.Skip("reference binary gbase64 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// Decode with wrap flag (wrap is ignored in decode mode).
+		{
+			Name:  "decode with wrap flag",
+			Args:  []string{"-d", "-w", "40"},
+			Stdin: []byte("aGVsbG8K\n"),
+		},
+		// Decode with ignore-garbage and valid input.
+		{
+			Name:  "decode ignore-garbage valid input",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("aGVsbG8K\n"),
+		},
+		// Decode with all flags combined.
+		{
+			Name:  "decode all flags combined",
+			Args:  []string{"-d", "-i", "-w", "0"},
+			Stdin: []byte("aGVs!!!bG8K\n"),
+		},
+		// Encode with ignore-garbage flag (no-op in encode mode).
+		{
+			Name:  "encode with ignore-garbage flag",
+			Args:  []string{"-i"},
+			Stdin: []byte("hello\n"),
+		},
+		// Encode large input with default wrap.
+		{
+			Name:  "encode large input default wrap",
+			Stdin: bytes.Repeat([]byte("ABCDEFGHIJ"), 100),
+		},
+		// Wrap at 1 column.
+		{
+			Name:  "wrap at 1 column",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("AB"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -282,7 +403,8 @@ func writeTestFile(t *testing.T, path, content string) {
 }
 
 // normStderr normalizes error output so that gbase64 and our binary
-// produce comparable stderr.
+// produce comparable stderr. Handles program name, OS error case,
+// and drops "Try" lines (binary paths differ).
 func normStderr(data []byte) []byte {
 	lines := bytes.Split(data, []byte("\n"))
 	var out []byte
@@ -290,7 +412,7 @@ func normStderr(data []byte) []byte {
 		line = bytes.ReplaceAll(line, []byte("gbase64: "), []byte("base64: "))
 		line = bytes.ReplaceAll(line, []byte("No such file"), []byte("no such file"))
 		line = bytes.ReplaceAll(line, []byte("Permission denied"), []byte("permission denied"))
-		// Drop "Try '...' for more information." lines — paths differ.
+		// Drop "Try '...' for more information." lines — binary paths differ.
 		if bytes.HasPrefix(line, []byte("Try '")) {
 			continue
 		}
