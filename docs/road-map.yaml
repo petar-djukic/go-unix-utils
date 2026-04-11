@@ -371,7 +371,7 @@ releases:
           status: implemented
     - version: "08.1"
       name: "Batch 8.1 — file splitting, joining, formatting, and data display (split, csplit, join, fmt, numfmt, od, printf)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement seven utilities for file splitting, field joining, text formatting, number
