@@ -49,7 +49,8 @@ func runPrintf(format string, args []string) int {
 		if err {
 			hadError = true
 		}
-		if consumed == argIdx && argIdx >= len(args) {
+		// R3.2: stop when a full format pass consumes no arguments.
+		if consumed == argIdx {
 			break
 		}
 		argIdx = consumed
@@ -383,10 +384,15 @@ func buildFmt(spec convSpec, width, prec int, verb string) string {
 
 // fmtInteger formats one argument as a signed integer.
 // R1.2: %d, %i, %o, %x, %X.
+// R3.3: missing argument silently defaults to 0.
 func fmtInteger(
 	spec convSpec, width, prec int, args []string, argIdx int, verb string,
 ) (int, bool) {
 	s, newIdx := consumeStringArg(args, argIdx)
+	if newIdx == argIdx {
+		fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, verb), int64(0))
+		return newIdx, false
+	}
 	val, err := parseIntegerArg(s)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "printf: %s\n", err)
@@ -399,10 +405,15 @@ func fmtInteger(
 
 // fmtUnsigned formats one argument as an unsigned decimal integer.
 // R1.2: %u (unsigned decimal).
+// R3.3: missing argument silently defaults to 0.
 func fmtUnsigned(
 	spec convSpec, width, prec int, args []string, argIdx int,
 ) (int, bool) {
 	s, newIdx := consumeStringArg(args, argIdx)
+	if newIdx == argIdx {
+		fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, "d"), uint64(0))
+		return newIdx, false
+	}
 	val, err := parseIntegerArg(s)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "printf: %s\n", err)
@@ -415,6 +426,7 @@ func fmtUnsigned(
 
 // fmtFloat formats one argument as a floating-point number.
 // R1.3: %f, %e, %g and uppercase variants.
+// R3.3: missing argument silently defaults to 0.
 // GNU printf defaults to precision 6 for all float verbs; Go's %g/%G
 // default differs, so we force .6 when no precision was specified.
 func fmtFloat(
@@ -426,6 +438,11 @@ func fmtFloat(
 		spec.prec = "6"
 	}
 	s, newIdx := consumeStringArg(args, argIdx)
+	if newIdx == argIdx {
+		fmtStr := buildFmt(spec, width, prec, string(verb))
+		fmt.Fprintf(os.Stdout, fmtStr, float64(0))
+		return newIdx, false
+	}
 	val, err := parseFloatArg(s)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "printf: %s\n", err)
