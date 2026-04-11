@@ -599,6 +599,6 @@ releases:
         - id: rel15.0-uc002-stty
           status: implemented
         - id: rel15.0-uc003-pr
-          status: spec_complete
+          status: implemented
         - id: rel15.0-uc004-ptx
           status: spec_complete
