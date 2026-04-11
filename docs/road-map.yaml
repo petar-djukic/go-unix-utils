@@ -454,7 +454,7 @@ releases:
         - id: rel10.0-uc002-truncate
           status: spec_complete
         - id: rel10.0-uc003-link
-          status: spec_complete
+          status: implemented
         - id: rel10.0-uc004-sync
           status: spec_complete
     - version: "10.1"
