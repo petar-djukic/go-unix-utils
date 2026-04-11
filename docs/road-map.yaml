@@ -563,7 +563,7 @@ releases:
         - id: rel13.0-uc003-vdir
           status: implemented
         - id: rel13.0-uc004-dircolors
-          status: spec_complete
+          status: implemented
     - version: "14.0"
       name: "Batch 14.0 — moreutils (chronic, pee, vidir)"
       status: spec_complete
