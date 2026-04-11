@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/b2sum: compute and check BLAKE2b message digests.
-// Implements srd076-b2sum R1.1, R1.2, R1.3, R1.4.
+// Implements srd076-b2sum R1.1-R1.4, R2.1-R2.3, R3.1.
 package main
 
 import (
@@ -204,9 +204,13 @@ func parseArgs(args []string) (config, error) {
 }
 
 // validateArgs checks for invalid flag combinations and length value.
+// R2.3: --binary, --text, --tag are invalid with --check.
 func validateArgs(cfg config) error {
 	if cfg.check && len(cfg.files) == 0 {
 		return fmt.Errorf("--check requires a file argument")
+	}
+	if err := validateCheckCombos(cfg); err != nil {
+		return err
 	}
 	if cfg.length > 0 {
 		if cfg.length%8 != 0 {
@@ -215,6 +219,24 @@ func validateArgs(cfg config) error {
 		if cfg.length > defaultDigestBits {
 			return fmt.Errorf("invalid length: %d exceeds maximum of %d", cfg.length, defaultDigestBits)
 		}
+	}
+	return nil
+}
+
+// validateCheckCombos rejects --binary, --text, and --tag when --check is set.
+// R2.3: these format flags are meaningless in verification mode.
+func validateCheckCombos(cfg config) error {
+	if !cfg.check {
+		return nil
+	}
+	if cfg.binary {
+		return fmt.Errorf("the --binary and --check options are mutually exclusive")
+	}
+	if cfg.text {
+		return fmt.Errorf("the --text and --check options are mutually exclusive")
+	}
+	if cfg.tag {
+		return fmt.Errorf("the --tag and --check options are mutually exclusive")
 	}
 	return nil
 }
