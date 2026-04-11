@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4,
-// R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.2.
+// R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.3, R8.1-R8.2, R9.1.
 package main
 
 import (
@@ -246,6 +246,30 @@ func TestDiff(t *testing.T) {
 			Name:  "relative_empty_stdin",
 			Args:  []string{"-r"},
 			Stdin: nil,
+		},
+		// R8.1: TZ=UTC causes wall-clock timestamps to be in UTC.
+		// R9.1: uses TimestampNormalizer for wall-clock comparison.
+		{
+			Name:      "tz_utc_wallclock",
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"TZ=UTC"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.2: -s mode uses TZ=GMT internally regardless of user TZ.
+		{
+			Name:      "elapsed_tz_override",
+			Args:      []string{"-s"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"TZ=America/New_York"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R8.2: -i mode uses TZ=GMT internally regardless of user TZ.
+		{
+			Name:      "incremental_tz_override",
+			Args:      []string{"-i"},
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"TZ=America/New_York"},
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

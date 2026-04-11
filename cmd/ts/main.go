@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ts: prepend timestamps to stdin lines.
-// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.2.
+// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3,
+// R6.1-R6.2, R7.1-R7.3, R8.1-R8.2, R9.1.
 package main
 
 import (
@@ -95,6 +96,9 @@ func parseArgs(args []string) (config, error) {
 	if cfg.elapsed {
 		cfg.incremental = false
 	}
+	// R7.3: In the Go implementation, timestamp parsing for -r mode is always
+	// compiled in (no external dependency like Perl's Date::Parse). The error
+	// condition "parsing dependency unavailable" cannot arise.
 	cfg.format = selectFormat(
 		hasCustomFormat, customFormat, cfg.incremental || cfg.elapsed)
 	return cfg, nil
@@ -123,6 +127,8 @@ func selectFormat(hasCustom bool, custom string, delta bool) string {
 // R4.1: -s shows elapsed time since start.
 // R4.2: -s uses TZ=GMT for elapsed formatting.
 // R6.1: -r scans lines for timestamps and replaces with relative age.
+// R8.1: wall-clock timestamps respect TZ via time.Now() which uses time.Local.
+// R8.2: -i/-s modes use TZ=GMT internally via time.LoadLocation("GMT").
 func timestampStdin(cfg config) int {
 	reader := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
