@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,10 @@ import (
 )
 
 const programName = "chgrp"
+
+// errAlreadyReported signals that errors were already printed to stderr
+// by the recursive walker, so the caller should not print again.
+var errAlreadyReported = fmt.Errorf("errors already reported")
 
 // symlinkPolicy controls how symlinks are handled during recursive traversal.
 type symlinkPolicy int
@@ -172,7 +177,7 @@ func run(opts options, group string, files []string) int {
 	exitCode := 0
 	for _, file := range files {
 		if err := applyGroup(opts, targetGID, file); err != nil {
-			if !opts.silent {
+			if !opts.silent && err != errAlreadyReported {
 				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 			}
 			exitCode = 1
@@ -235,9 +240,113 @@ func applyGroup(opts options, gid int, path string) error {
 // applyGroupRecursive recursively applies group changes to a directory tree.
 // R2.1: -R/--recursive changes group for directories and their contents.
 // R2.3: respects -H/-L/-P symlink traversal policy.
-// TODO: stub — returns nil pending full recursive implementation (R2.1-R2.3).
 func applyGroupRecursive(opts options, gid int, root string) error {
-	return changeGroup(opts, gid, root)
+	hadError := false
+	walkChgrp(opts, gid, root, true, &hadError)
+	if hadError {
+		return errAlreadyReported
+	}
+	return nil
+}
+
+// walkChgrp recursively applies group changes, respecting symlink policy.
+// R2.3: -P (default) skips symlinks for traversal.
+// R2.3: -H follows command-line symlinks, -L follows all symlinks.
+// R2.2: --no-dereference changes symlink itself via lchown.
+func walkChgrp(opts options, gid int, path string, isRoot bool, hadErr *bool) {
+	fi, isSymlink := resolveEntry(opts, path, isRoot, hadErr)
+	if fi == nil {
+		return
+	}
+	// R2.2: for unfollowed symlinks, change symlink itself if --no-dereference
+	if isSymlink && !shouldFollowSymlink(opts.symlinks, isRoot) {
+		changeSymlinkGroup(opts, gid, path, hadErr)
+		return
+	}
+	if err := changeGroup(opts, gid, path); err != nil {
+		reportFileError(opts, err, hadErr)
+	}
+	if fi.IsDir() {
+		walkChildren(opts, gid, path, hadErr)
+	}
+}
+
+// resolveEntry checks the path and decides how to process it.
+// Returns the file info and whether the entry is a symlink.
+// A nil fi means an error occurred (already reported) or the entry
+// is a non-followed symlink without --no-dereference.
+func resolveEntry(opts options, path string, isRoot bool, hadErr *bool) (os.FileInfo, bool) {
+	lfi, err := os.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	if lfi.Mode()&os.ModeSymlink == 0 {
+		return lfi, false
+	}
+	// Entry is a symlink
+	if !shouldFollowSymlink(opts.symlinks, isRoot) {
+		return lfi, true
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	return fi, true
+}
+
+// shouldFollowSymlink returns true if the symlink should be followed
+// based on the policy and whether the path is a command-line argument.
+// R2.3: -H follows command-line only, -L follows all, -P follows none.
+func shouldFollowSymlink(policy symlinkPolicy, isRoot bool) bool {
+	return policy == symlinkAll || (policy == symlinkCmdLine && isRoot)
+}
+
+// changeSymlinkGroup changes the group of a symlink itself via lchown.
+// R2.2: --no-dereference changes the symlink, not its target.
+func changeSymlinkGroup(opts options, gid int, path string, hadErr *bool) {
+	fi, err := sys.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return
+	}
+	oldGID := int(fi.Gid)
+	uid := int(fi.Uid)
+	if err := os.Lchown(path, uid, gid); err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return
+	}
+	printDiagnostic(opts, path, oldGID, gid)
+}
+
+// walkChildren reads directory entries and recurses into each child.
+func walkChildren(opts options, gid int, dir string, hadErr *bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportWalkError(opts, dir, err, hadErr)
+		return
+	}
+	for _, e := range entries {
+		walkChgrp(opts, gid, filepath.Join(dir, e.Name()), false, hadErr)
+	}
+}
+
+// reportWalkError prints a directory traversal error to stderr.
+func reportWalkError(opts options, path string, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
+			programName, path, unwrapPathError(err))
+	}
+	*hadErr = true
+}
+
+// reportFileError prints a file group change error to stderr.
+func reportFileError(opts options, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+	}
+	*hadErr = true
 }
 
 // changeGroup changes the group ownership of a single file.
@@ -324,4 +433,3 @@ func unwrapPathError(err error) string {
 	}
 	return err.Error()
 }
-
