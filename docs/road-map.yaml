@@ -601,4 +601,4 @@ releases:
         - id: rel15.0-uc003-pr
           status: implemented
         - id: rel15.0-uc004-ptx
-          status: spec_complete
+          status: implemented
