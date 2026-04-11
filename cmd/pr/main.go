@@ -45,6 +45,7 @@ type config struct {
 	pageWidth      int
 	doubleSpace    bool
 	separator      string
+	separatorSet   bool // R4.3: true when -s was explicitly provided
 }
 
 func defaultConfig() config {
@@ -75,22 +76,24 @@ func parseFlags() (config, []string) {
 	indent := fs.Int("o", 0, "indent margin")
 	pageWidth := fs.Int("w", defaultPageWidth, "page width")
 	doubleSpace := fs.Bool("d", false, "double-space output")
-	separator := fs.String("s", "\t", "column separator")
+	// R4.3: -s handled by preprocessSeparatorFlag (not registered here)
 
 	args := preprocessColumnFlag(os.Args[1:], &cfg)
 	args = preprocessNumberFlag(args, &cfg)
+	args = preprocessSeparatorFlag(args, &cfg)
+	args = preprocessLongFlags(args)
 
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
 
 	applyParsedFlags(&cfg, *pageLength, *header, *omitHeader, *omitPagination,
-		*columns, *across, *indent, *pageWidth, *doubleSpace, *separator)
+		*columns, *across, *indent, *pageWidth, *doubleSpace)
 	return cfg, fs.Args()
 }
 
 func applyParsedFlags(cfg *config, pageLength int, header string, omitHeader, omitPagination bool,
-	columns int, across bool, indent, pageWidth int, doubleSpace bool, separator string) {
+	columns int, across bool, indent, pageWidth int, doubleSpace bool) {
 	cfg.pageLength = pageLength
 	cfg.header = header
 	cfg.omitHeader = omitHeader
@@ -102,7 +105,6 @@ func applyParsedFlags(cfg *config, pageLength int, header string, omitHeader, om
 	cfg.indent = indent
 	cfg.pageWidth = pageWidth
 	cfg.doubleSpace = doubleSpace
-	cfg.separator = separator
 }
 
 // preprocessColumnFlag extracts -N column flags from args before flag parsing.
@@ -171,6 +173,74 @@ func parseNumberSuffix(suffix string, cfg *config) {
 	}
 }
 
+// preprocessSeparatorFlag extracts -s[CHAR] and --separator[=CHAR].
+// R4.3: sets separatorSet to distinguish explicit -s from default behavior.
+func preprocessSeparatorFlag(args []string, cfg *config) []string {
+	var filtered []string
+	for _, arg := range args {
+		if parseSepShort(arg, cfg) || parseSepLong(arg, cfg) {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return filtered
+}
+
+func parseSepShort(arg string, cfg *config) bool {
+	if len(arg) < 2 || arg[0] != '-' || arg[1] != 's' {
+		return false
+	}
+	cfg.separatorSet = true
+	if len(arg) > 2 {
+		cfg.separator = string(arg[2])
+	}
+	return true
+}
+
+func parseSepLong(arg string, cfg *config) bool {
+	if arg == "--separator" {
+		cfg.separatorSet = true
+		return true
+	}
+	const prefix = "--separator="
+	if strings.HasPrefix(arg, prefix) {
+		cfg.separatorSet = true
+		val := arg[len(prefix):]
+		if len(val) > 0 {
+			cfg.separator = string(val[0])
+		}
+		return true
+	}
+	return false
+}
+
+// preprocessLongFlags converts long-form flags to short-form equivalents.
+// R4.2: --indent=MARGIN, --width=WIDTH. R4.3: --double-space.
+func preprocessLongFlags(args []string) []string {
+	var filtered []string
+	for _, arg := range args {
+		if replacement, ok := mapLongFlag(arg); ok {
+			filtered = append(filtered, replacement...)
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return filtered
+}
+
+func mapLongFlag(arg string) ([]string, bool) {
+	if strings.HasPrefix(arg, "--indent=") {
+		return []string{"-o", arg[len("--indent="):]}, true
+	}
+	if strings.HasPrefix(arg, "--width=") {
+		return []string{"-w", arg[len("--width="):]}, true
+	}
+	if arg == "--double-space" {
+		return []string{"-d"}, true
+	}
+	return nil, false
+}
+
 func bodyLines(cfg config) int {
 	if cfg.omitPagination || cfg.omitHeader {
 		return cfg.pageLength
@@ -180,6 +250,22 @@ func bodyLines(cfg config) int {
 		return 0
 	}
 	return body
+}
+
+// contentBodyCount returns the number of content lines per page,
+// accounting for double-spacing. R4.3: double-space halves capacity.
+func contentBodyCount(cfg config, body int) int {
+	if cfg.doubleSpace {
+		return body / 2
+	}
+	return body
+}
+
+func indentString(cfg config) string {
+	if cfg.indent <= 0 {
+		return ""
+	}
+	return strings.Repeat(" ", cfg.indent)
 }
 
 func openInput(name string) (*os.File, error) {
@@ -212,14 +298,20 @@ func formatHeader(cfg config, headerText string, pageNum int, date time.Time) st
 		headerText + strings.Repeat(" ", rightPad) + pageStr
 }
 
+// writeHeader writes the 5-line page header with indent.
+// R4.2: each line is prefixed with indent spaces.
 func writeHeader(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time) error {
+	indent := indentString(cfg)
 	line := formatHeader(cfg, hdr, pg, date)
-	_, err := fmt.Fprintf(w, "\n\n%s\n\n\n", line)
+	_, err := fmt.Fprintf(w, "%s\n%s\n%s%s\n%s\n%s\n",
+		indent, indent, indent, line, indent, indent)
 	return err
 }
 
-func writeFooter(w *bufio.Writer, _ config) error {
-	_, err := fmt.Fprint(w, "\n\n\n\n\n")
+func writeFooter(w *bufio.Writer, cfg config) error {
+	indent := indentString(cfg)
+	_, err := fmt.Fprintf(w, "%s\n%s\n%s\n%s\n%s\n",
+		indent, indent, indent, indent, indent)
 	return err
 }
 
@@ -253,20 +345,57 @@ func visualWidth(text string, startPos int) int {
 	return pos - startPos
 }
 
+// writeBodyLines writes body content lines with indent and double-spacing.
+// R4.2: indent prefix on every line. R4.3: double-space inserts blank lines.
+func writeBodyLines(w *bufio.Writer, cfg config, indent string, lines []string, bodyCount int) error {
+	written := 0
+	lineIdx := 0
+	for written < bodyCount {
+		if lineIdx < len(lines) {
+			if err := writeIndentedLine(w, indent, lines[lineIdx]); err != nil {
+				return err
+			}
+			lineIdx++
+			written++
+			if cfg.doubleSpace && written < bodyCount {
+				if err := writeIndentedBlank(w, indent); err != nil {
+					return err
+				}
+				written++
+			}
+		} else {
+			if err := writeIndentedBlank(w, indent); err != nil {
+				return err
+			}
+			written++
+		}
+	}
+	return nil
+}
+
+func writeIndentedLine(w *bufio.Writer, indent, text string) error {
+	if indent != "" {
+		if _, err := w.WriteString(indent); err != nil {
+			return err
+		}
+	}
+	if _, err := w.WriteString(text); err != nil {
+		return err
+	}
+	return w.WriteByte('\n')
+}
+
+func writeIndentedBlank(w *bufio.Writer, indent string) error {
+	return writeIndentedLine(w, indent, "")
+}
+
 func writePage(w *bufio.Writer, cfg config, hdr string, pg int, date time.Time, lines []string, bodyCount int) error {
+	indent := indentString(cfg)
 	if err := writeHeader(w, cfg, hdr, pg, date); err != nil {
 		return err
 	}
-	for i := range bodyCount {
-		if i < len(lines) {
-			if _, err := fmt.Fprintln(w, lines[i]); err != nil {
-				return err
-			}
-		} else {
-			if err := w.WriteByte('\n'); err != nil {
-				return err
-			}
-		}
+	if err := writeBodyLines(w, cfg, indent, lines, bodyCount); err != nil {
+		return err
 	}
 	return writeFooter(w, cfg)
 }
@@ -291,16 +420,17 @@ func paginateFile(r io.Reader, w *bufio.Writer, cfg config, hdr string, date tim
 }
 
 // writePages outputs all pages from the collected lines.
-// R4.1: numbering applies before column layout for multi-column mode;
-// lineNum increments across pages (D3).
+// R4.1: numbering applies before column layout; lineNum increments across pages.
+// R4.3: double-space reduces content lines per page.
 func writePages(w *bufio.Writer, cfg config, hdr string, date time.Time, lines []string, body int) error {
-	linesPerPage := linesPerPageCount(cfg, body)
+	content := contentBodyCount(cfg, body)
+	linesPerPage := linesPerPageCount(cfg, content)
 	pageNum := 1
 	lineNum := 1
 	for i := 0; ; i += linesPerPage {
 		end := min(i+linesPerPage, len(lines))
 		pageLines := lines[i:end]
-		pageLines = formatPageLines(pageLines, cfg, body, &lineNum)
+		pageLines = formatPageLines(pageLines, cfg, content, &lineNum)
 		if err := writePage(w, cfg, hdr, pageNum, date, pageLines, body); err != nil {
 			return err
 		}
@@ -356,7 +486,7 @@ func formatColumns(lines []string, cfg config, bodyRows, baseNum int) []string {
 }
 
 // formatColumnRow formats a single output row for multi-column layout.
-// When baseNum > 0 and cfg.numberLines, each cell includes a position-aware number.
+// R4.3: when separatorSet, columns are separated by separator only (no padding).
 func formatColumnRow(lines []string, cfg config, rowIdx, rowCount, colWidth, baseNum int) string {
 	lastCol := lastPresentCol(lines, cfg, rowIdx, rowCount)
 	if lastCol < 0 {
@@ -366,16 +496,35 @@ func formatColumnRow(lines []string, cfg config, rowIdx, rowCount, colWidth, bas
 	for c := 0; c <= lastCol; c++ {
 		idx := columnLineIndex(cfg, rowIdx, c, rowCount)
 		text := cellText(lines, idx)
-		colStart := c * colWidth
-		colEnd := colStart + colWidth
 		isLast := c == lastCol
-		if cfg.numberLines && baseNum > 0 {
-			writeNumberedCell(&buf, text, baseNum+idx, cfg, colStart, colEnd, isLast)
+		if cfg.separatorSet {
+			writeSepCell(&buf, text, idx, cfg, baseNum, c > 0)
 		} else {
-			writeColumnCell(&buf, text, colStart, colEnd, isLast)
+			writeStdCell(&buf, text, idx, cfg, c*colWidth, (c+1)*colWidth, baseNum, isLast)
 		}
 	}
 	return buf.String()
+}
+
+// writeSepCell writes a column cell in separator mode (no padding).
+// R4.3: columns separated by separator character only.
+func writeSepCell(buf *strings.Builder, text string, idx int, cfg config, baseNum int, prependSep bool) {
+	if prependSep {
+		buf.WriteString(cfg.separator)
+	}
+	if cfg.numberLines && baseNum > 0 {
+		fmt.Fprintf(buf, "%*d%c", cfg.numberWidth, baseNum+idx, cfg.numberChar)
+	}
+	buf.WriteString(text)
+}
+
+// writeStdCell writes a column cell in standard mode (padded to column width).
+func writeStdCell(buf *strings.Builder, text string, idx int, cfg config, colStart, colEnd, baseNum int, isLast bool) {
+	if cfg.numberLines && baseNum > 0 {
+		writeNumberedCell(buf, text, baseNum+idx, cfg, colStart, colEnd, isLast)
+	} else {
+		writeColumnCell(buf, text, colStart, colEnd, isLast)
+	}
 }
 
 func cellText(lines []string, idx int) string {
@@ -396,7 +545,6 @@ func writeColumnCell(buf *strings.Builder, text string, colStart, colEnd int, is
 
 // writeNumberedCell writes a column cell with position-aware line numbering.
 // R4.1: the number is right-justified using tab-aware padding from colStart.
-// The separator (TAB or char) bridges from number to text start position.
 func writeNumberedCell(buf *strings.Builder, text string, num int, cfg config, colStart, colEnd int, isLast bool) {
 	digits := strconv.Itoa(num)
 	digitStart := colStart + cfg.numberWidth - len(digits)
@@ -407,7 +555,7 @@ func writeNumberedCell(buf *strings.Builder, text string, num int, cfg config, c
 	pos := digitStart + len(digits)
 
 	// Write separator and advance to text position
-	pos = writeSeparator(buf, pos, colStart, cfg)
+	pos = writeNumberSep(buf, pos, colStart, cfg)
 
 	buf.WriteString(text)
 	if !isLast {
@@ -416,10 +564,10 @@ func writeNumberedCell(buf *strings.Builder, text string, num int, cfg config, c
 	}
 }
 
-// writeSeparator writes the number separator and returns the new visual position.
+// writeNumberSep writes the number separator and returns the new visual position.
 // For TAB separator, pads to colStart+tabWidth using tab-aware spacing.
 // For non-TAB, writes the literal separator byte.
-func writeSeparator(buf *strings.Builder, pos, colStart int, cfg config) int {
+func writeNumberSep(buf *strings.Builder, pos, colStart int, cfg config) int {
 	if cfg.numberChar == '\t' {
 		target := colStart + tabWidth
 		if target <= pos {
