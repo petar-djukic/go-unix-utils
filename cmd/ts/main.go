@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/ts: prepend timestamps to stdin lines.
-// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3.
+// Implements srd004-ts R1.1-R1.6, R2.1-R2.4, R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.2.
 package main
 
 import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type config struct {
 	incremental bool // -i mode (R3.1)
 	elapsed     bool // -s mode (R4.1)
 	monotonic   bool // -m mode (R5.1)
+	relative    bool // -r mode (R6.1)
 }
 
 func main() {
@@ -54,6 +56,7 @@ func run(args []string) int {
 // R4.1: -s enables elapsed-since-start mode.
 // R4.3: custom format overrides -s default.
 // R5.1: -m enables monotonic clock mode.
+// R6.1: -r enables relative-time parsing mode.
 // R7.2: unrecognized flags produce an error.
 func parseArgs(args []string) (config, error) {
 	var cfg config
@@ -73,6 +76,11 @@ func parseArgs(args []string) (config, error) {
 		// flag is accepted for compatibility but behavior is inherent.
 		if arg == "-m" {
 			cfg.monotonic = true
+			continue
+		}
+		// R6.1: -r enables relative-time parsing mode.
+		if arg == "-r" {
+			cfg.relative = true
 			continue
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
@@ -109,11 +117,12 @@ func selectFormat(hasCustom bool, custom string, delta bool) string {
 // R1.3: flush stdout after each line.
 // R1.4: preserve original newline, do not add extra.
 // R1.5: pass through partial lines.
-// R1.6: exit 0 on EOF.
+// R1.6, R7.1: exit 0 on EOF.
 // R3.1: -i shows elapsed time since previous line.
 // R3.2: -i uses TZ=GMT for elapsed formatting.
 // R4.1: -s shows elapsed time since start.
 // R4.2: -s uses TZ=GMT for elapsed formatting.
+// R6.1: -r scans lines for timestamps and replaces with relative age.
 func timestampStdin(cfg config) int {
 	reader := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
@@ -130,8 +139,12 @@ func timestampStdin(cfg config) int {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
 			now := time.Now()
-			ts := formatTimestamp(cfg, now, &lastTime, startTime, gmt)
-			fmt.Fprintf(w, "%s %s", ts, line)
+			if cfg.relative {
+				fmt.Fprint(w, processRelativeLine(line, now))
+			} else {
+				ts := formatTimestamp(cfg, now, &lastTime, startTime, gmt)
+				fmt.Fprintf(w, "%s %s", ts, line)
+			}
 			w.Flush()
 		}
 		if err != nil {
@@ -315,4 +328,186 @@ func weekNumber(t time.Time, firstDay time.Weekday) int {
 		wday += 7
 	}
 	return (yday + 7 - wday) / 7
+}
+
+// --- Relative time mode (-r) R6.1, R6.2 ---
+
+// tsPattern describes a timestamp regex and its parser for -r mode.
+// R6.2: each pattern recognizes a specific timestamp format.
+type tsPattern struct {
+	re    *regexp.Regexp
+	parse func(string, time.Time) (time.Time, error)
+}
+
+// relPatterns lists timestamp patterns ordered by specificity.
+// R6.2: ISO-8601, RFC 2822, syslog, lastlog.
+var relPatterns = []tsPattern{
+	{re: relISO8601Re, parse: parseISO8601},
+	{re: relRFC2822Re, parse: parseRFC2822},
+	{re: relSyslogRe, parse: parseSyslog},
+	{re: relLastlogRe, parse: parseLastlog},
+}
+
+// R6.2: ISO-8601 format "2024-01-05T14:30:00.000Z".
+var relISO8601Re = regexp.MustCompile(
+	`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?` +
+		`(?:Z|[+-]\d{2}:?\d{2})?`)
+
+// R6.2: RFC 2822 format "16 Jun 94 07:29:35 GMT" with optional day.
+var relRFC2822Re = regexp.MustCompile(
+	`(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+)?` +
+		`\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)` +
+		`\s+\d{2,4}\s+\d{2}:\d{2}:\d{2}\s+` +
+		`(?:[A-Z]{2,5}|[+-]\d{4})`)
+
+// R6.2: syslog format "Jan  5 14:30:00".
+var relSyslogRe = regexp.MustCompile(
+	`(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)` +
+		`\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}`)
+
+// R6.2: lastlog format "Mon Jan  5 14:30".
+var relLastlogRe = regexp.MustCompile(
+	`(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+` +
+		`(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)` +
+		`\s+\d{1,2}\s+\d{2}:\d{2}`)
+
+// weekdayPrefixRe strips optional weekday prefix from RFC 2822.
+var weekdayPrefixRe = regexp.MustCompile(
+	`^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+`)
+
+// processRelativeLine scans a line for timestamps and replaces them
+// with human-readable relative age strings.
+// R6.1: replace each match with relative age.
+func processRelativeLine(line string, now time.Time) string {
+	for _, pat := range relPatterns {
+		if pat.re.MatchString(line) {
+			p := pat.parse
+			return pat.re.ReplaceAllStringFunc(line, func(m string) string {
+				t, err := p(m, now)
+				if err != nil {
+					return m
+				}
+				return formatRelativeAge(now.Sub(t))
+			})
+		}
+	}
+	return line
+}
+
+// iso8601Layouts are Go time layouts for ISO-8601 parsing.
+var iso8601Layouts = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
+}
+
+// parseISO8601 parses an ISO-8601 timestamp.
+// R6.2: handles "2024-01-05T14:30:00.000Z" and variants.
+func parseISO8601(match string, _ time.Time) (time.Time, error) {
+	s := normalizeISOTimezone(match)
+	for _, layout := range iso8601Layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse ISO-8601: %s", match)
+}
+
+// normalizeISOTimezone inserts a colon in numeric timezone if missing.
+// Converts "+0000" to "+00:00" for Go time.Parse compatibility.
+func normalizeISOTimezone(s string) string {
+	n := len(s)
+	if n >= 5 && (s[n-5] == '+' || s[n-5] == '-') && s[n-3] != ':' {
+		return s[:n-2] + ":" + s[n-2:]
+	}
+	return s
+}
+
+// rfc2822Layouts are Go time layouts for RFC 2822 parsing.
+var rfc2822Layouts = []string{
+	"2 Jan 2006 15:04:05 MST",
+	"2 Jan 2006 15:04:05 -0700",
+	"2 Jan 06 15:04:05 MST",
+	"2 Jan 06 15:04:05 -0700",
+}
+
+// parseRFC2822 parses an RFC 2822 timestamp.
+// R6.2: handles "16 Jun 94 07:29:35 GMT" with optional day prefix.
+func parseRFC2822(match string, _ time.Time) (time.Time, error) {
+	s := weekdayPrefixRe.ReplaceAllString(match, "")
+	for _, layout := range rfc2822Layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse RFC 2822: %s", match)
+}
+
+// parseSyslog parses a syslog-style timestamp.
+// R6.2: handles "Jan  5 14:30:00". Year is inferred from now.
+func parseSyslog(match string, now time.Time) (time.Time, error) {
+	normalized := collapseSpaces(match)
+	t, err := time.Parse("Jan 2 15:04:05", normalized)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(
+		now.Year(), t.Month(), t.Day(),
+		t.Hour(), t.Minute(), t.Second(), 0, time.Local), nil
+}
+
+// parseLastlog parses a lastlog-style timestamp.
+// R6.2: handles "Mon Jan  5 14:30". Year is inferred from now.
+func parseLastlog(match string, now time.Time) (time.Time, error) {
+	normalized := collapseSpaces(match)
+	t, err := time.Parse("Mon Jan 2 15:04", normalized)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(
+		now.Year(), t.Month(), t.Day(),
+		t.Hour(), t.Minute(), 0, 0, time.Local), nil
+}
+
+// collapseSpaces replaces runs of whitespace with a single space.
+func collapseSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// ageUnit pairs a duration in seconds with its label suffix.
+type ageUnit struct {
+	secs  int64
+	label string
+}
+
+// ageUnits defines the time unit breakdown for relative age formatting.
+var ageUnits = []ageUnit{
+	{365 * 24 * 3600, "y"},
+	{24 * 3600, "d"},
+	{3600, "h"},
+	{60, "m"},
+	{1, "s"},
+}
+
+// formatRelativeAge converts a duration to a human-readable relative
+// age string like "15m5s ago".
+// R6.1: human-readable relative age output.
+func formatRelativeAge(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	total := int64(d.Seconds())
+	if total == 0 {
+		return "0s ago"
+	}
+	var b strings.Builder
+	for _, u := range ageUnits {
+		if val := total / u.secs; val > 0 {
+			fmt.Fprintf(&b, "%d%s", val, u.label)
+			total %= u.secs
+		}
+	}
+	b.WriteString(" ago")
+	return b.String()
 }
