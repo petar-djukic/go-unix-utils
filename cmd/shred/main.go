@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements cmd/shred: overwrite files to hide contents.
-// Implements srd099-shred R1.1-R1.4, R2.1-R2.4.
+// Implements srd099-shred R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
